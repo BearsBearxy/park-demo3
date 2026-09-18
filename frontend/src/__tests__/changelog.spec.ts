@@ -4,6 +4,7 @@ import { CHANGELOG, APP_VERSION, noteOf, cmpVersion as cmp } from '@/changelog'
 import { isTabValue } from '@/stores/tabs'
 import { iconFor } from '@/components/ds/icon'
 import type { ReleaseItem, ReleaseNote } from '@/types/changelog'
+import { RELEASE_ART } from '@/components/shell/release/art'
 
 describe('changelog', () => {
   it('第一段就是当前构建的版本(发版时改了版本号却忘了写内容,这条会红)', () => {
@@ -193,6 +194,23 @@ describe('更新公告规范(RELEASE-NOTES-SPEC §9)', () => {
     for (const n of RULED) {
       const titles = itemsOf(n).map((i) => i.title)
       expect(new Set(titles).size, `${n.version} 标题有重复:${titles.join(' / ')}`).toBe(titles.length)
+    }
+  })
+})
+
+// 配图按版本登记(RELEASE-NOTES-SPEC §5):有重点卡的版本忘了画图,弹窗和更新记录里那张卡就只剩字
+describe('重点卡配图', () => {
+  it('0.13.0 起有重点卡的版本都登记了配图', () => {
+    for (const n of CHANGELOG.filter((x) => x.feature && cmp(x.version, '0.13.0') >= 0)) {
+      expect(RELEASE_ART[n.version], `v${n.version} 有重点卡却没登记配图(components/shell/release/art.ts)`).toBeDefined()
+    }
+  })
+
+  it('登记了配图的版本都在更新记录里、而且有重点卡(没重点卡的图没处放)', () => {
+    for (const v of Object.keys(RELEASE_ART)) {
+      const n = CHANGELOG.find((x) => x.version === v)
+      expect(n, `配图登记了 v${v},更新记录里没有这一版`).toBeDefined()
+      expect(n!.feature, `v${v} 没有重点卡`).toBeDefined()
     }
   })
 })

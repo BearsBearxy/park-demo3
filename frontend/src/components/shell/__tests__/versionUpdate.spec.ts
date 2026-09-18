@@ -4,9 +4,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { nextTick } from 'vue'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { useUpdateStore } from '@/stores/update'
 import { useAuthStore } from '@/stores/auth'
 import { CHANGELOG } from '@/changelog'
+import { RELEASE_ART } from '@/components/shell/release/art'
 
 const push = vi.fn()
 vi.mock('vue-router', () => ({
@@ -102,16 +105,17 @@ describe('入口:账号菜单', () => {
 })
 
 describe('本次更新弹窗', () => {
+  // 弹的是「最新那版功能更新」(当前是小调整时就不是当前版本,stores/update.ts popupNote)
   it('页头写版本号与一句话标题,三组条数与 changelog 一致', () => {
-    login()
+    const { upd } = login()
+    const POP = upd.popupNote!
     const w = mount(WhatsNewDialog, { attachTo: document.body })
     const dlg = document.querySelector('.wn')!
-    expect(dlg.querySelector('.wn-ver')!.textContent).toBe(`v${CUR.version}`)
-    expect(dlg.querySelector('.wn-sub')!.textContent).toBe(CUR.headline)
+    expect(dlg.querySelector('.wn-ver')!.textContent).toBe(`v${POP.version}`)
+    expect(dlg.querySelector('.wn-sub')!.textContent).toBe(POP.headline)
     // 「新增」把重点那条也算进去(它在弹窗顶上单独一张卡)
-    expect(dlg.querySelectorAll('.wn-sec')[0].textContent).toContain(`${CUR.added.length + 1} 项`)
-    expect(dlg.querySelectorAll('.wn-sec')[1].textContent).toContain(`${CUR.improved.length} 项`)
-    expect(dlg.querySelectorAll('.wn-fix li').length).toBe(CUR.fixed.length)
+    expect(dlg.querySelectorAll('.wn-sec')[0].textContent).toContain(`${POP.added.length + (POP.feature ? 1 : 0)} 项`)
+    expect(dlg.querySelectorAll('.wn-fix li').length).toBe(POP.fixed.length)
     w.unmount()
   })
 
@@ -145,12 +149,13 @@ describe('本次更新弹窗', () => {
 
   it('点弹窗里的条目:算看过、跳到那一屏', async () => {
     const { upd } = login()
+    const POP = upd.popupNote!
     const w = mount(WhatsNewDialog, { attachTo: document.body })
-    // 当前版本里第一条能跳的:可能是重点卡(点它的「去看看」),也可能是新增 / 改进里的一行(按标题精确找行 ——
+    // 弹窗那版里第一条能跳的:可能是重点卡(点它的「去看看」),也可能是新增 / 改进里的一行(按标题精确找行 ——
     // 别的条目说明里也可能出现这几个字)。写死「新增里那条」的话,换一版内容这条就坏(0.14.0 两次撞上)。
-    const first = [CUR.feature, ...CUR.added, ...CUR.improved].find((i) => i?.to)!
-    const el = first === CUR.feature
-      ? document.querySelector('.wn-feat .wn-lnk')!
+    const first = [POP.feature, ...POP.added, ...POP.improved].find((i) => i?.to)!
+    const el = first === POP.feature
+      ? document.querySelector('.rfc .rfc-lnk')!
       : [...document.querySelectorAll('.wn-row')].find((r) => r.querySelector('.t')?.textContent === first.title)!
     el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
@@ -213,21 +218,47 @@ describe('更新记录弹窗', () => {
     expect(document.querySelector('.cl-vv')!.textContent).toContain(`v${CHANGELOG[1].version}`)
     expect(document.querySelector('.cl-cur')).toBeNull()
     expect(document.querySelectorAll('.cl-lnk').length).toBe(0)
+    expect(document.querySelectorAll('.rfc-lnk').length, '旧版本的重点卡也不给「去看看」').toBe(0)
     // 列表本身没变(弹窗不变尺寸,只换右边)
     expect(document.querySelectorAll('.cl-item').length).toBe(CHANGELOG.length)
     w.unmount()
   })
 
-  it('当前版本里能跳的条目点了就跳并关窗', async () => {
+  // 「能跳的点了就跳」这条正路径用假数据钉在 releaseCard.spec.ts(当前版本可能根本没有能跳的,比如小调整版);
+  // 这里只钉真数据下的对应关系:当前版本有几条能跳的,就出几个「去看看」
+  it('当前版本有几条能跳的条目,就出几个「去看看」', () => {
     login()
     const w = mount(ChangelogDialog, { attachTo: document.body })
-    // 更新记录里重点卡也按一行列在「新增」里,所以三处一起找
-    const it = [CUR.feature, ...CUR.added, ...CUR.improved].find((i) => i?.to)!
-    const row = [...document.querySelectorAll('.cl-row')].find((r) => r.querySelector('.t')?.textContent === it.title)!
-    row.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await nextTick()
-    expect(push).toHaveBeenCalledWith('/' + it.to)
-    expect(w.emitted('close')).toBeTruthy()
+    const n = [CUR.feature, ...CUR.added, ...CUR.improved].filter((i) => i?.to).length
+    expect(document.querySelectorAll('.cl-lnk, .rfc-lnk').length).toBe(n)
     w.unmount()
+  })
+
+  it('❗重点卡和配图在更新记录里也有(关掉弹窗后还看得到);没重点卡的版本不出卡', async () => {
+    login()
+    const w = mount(ChangelogDialog, { attachTo: document.body })
+    const items = [...document.querySelectorAll('.cl-item')]
+    for (const [i, n] of CHANGELOG.entries()) {
+      items[i].dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await nextTick()
+      const card = document.querySelector('.cl-detail .rfc')
+      expect(!!card, `v${n.version} 重点卡`).toBe(!!n.feature)
+      if (n.feature) {
+        expect(card!.querySelector('h3')!.textContent).toBe(n.feature.title)
+        expect(!!card!.querySelector('.rfc-pic'), `v${n.version} 配图`).toBe(!!RELEASE_ART[n.version])
+        // 重点那条只在卡上出现,不在「新增」行里再列一遍
+        expect([...document.querySelectorAll('.cl-row .t')].some((t) => t.textContent === n.feature!.title)).toBe(false)
+      }
+    }
+    w.unmount()
+  })
+
+  // 左栏标题:<button> 在 Chrome 里默认把内容居中排 —— 不写 align-items 标题就按自身宽度居中、两边撑出框
+  // (2026-09-19 用户截图)。jsdom 不排版,这里钉样式源码;真排版在浏览器里量过
+  it('❗左栏版本标题撑满栏宽、最多两行,不按自身宽度居中', () => {
+    const src = readFileSync(join(__dirname, '..', 'ChangelogDialog.vue'), 'utf8')
+    expect(src).toMatch(/\.cl-item \{[^}]*align-items: stretch/)
+    expect(src).toMatch(/\.cl-item \.hl \{[^}]*-webkit-line-clamp: 2/)
+    expect(src).not.toMatch(/\.cl-item \.hl \{[^}]*white-space: nowrap/)
   })
 })

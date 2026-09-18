@@ -8,6 +8,7 @@ import { useUpdateStore } from '@/stores/update'
 import { useTabsStore } from '@/stores/tabs'
 import { X, ChevronRight, ChevronLeft } from 'lucide-vue-next'
 import type { ReleaseItem } from '@/types/changelog'
+import ReleaseFeatureCard from '@/components/shell/release/ReleaseFeatureCard.vue'
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -18,9 +19,8 @@ const tabs = useTabsStore()
 const sel = ref(0)
 const note = computed(() => CHANGELOG[sel.value])
 const isCurrent = computed(() => note.value.version === upd.version)
+/** 「新增 N 项」含重点卡那条(与「本次更新」弹窗同一个数);重点卡自己在上面单独一张,不再排进行里。 */
 const addedCount = computed(() => note.value.added.length + (note.value.feature ? 1 : 0))
-/** 当前版本的全部条目(重点那条排最前);旧版本没有重点卡。 */
-const added = computed<ReleaseItem[]>(() => (note.value.feature ? [note.value.feature, ...note.value.added] : note.value.added))
 
 function go(item: ReleaseItem) {
   // 旧版本的条目不给跳:那时的屏可能已经改名或合并
@@ -70,10 +70,12 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
             <div class="cl-vv">v{{ note.version }}<span v-if="isCurrent" class="cl-cur">当前版本</span></div>
             <div class="cl-m">{{ note.date }} 发布</div>
             <div class="cl-hl">{{ note.headline }}</div>
+            <!-- 本版重点卡与配图:和「本次更新」弹窗同一张,关掉弹窗以后在这里还看得到;旧版本不给「去看看」 -->
+            <ReleaseFeatureCard :note="note" :linkable="isCurrent" class="cl-feat" @go="go(note.feature!)" />
 
             <template v-if="addedCount">
               <div class="cl-sec"><span class="wn-chip add">新增</span><span class="n">{{ addedCount }} 项</span></div>
-              <div v-for="it in added" :key="it.title" class="cl-row" :class="{ go: !!it.to && isCurrent }" @click="go(it)">
+              <div v-for="it in note.added" :key="it.title" class="cl-row" :class="{ go: !!it.to && isCurrent }" @click="go(it)">
                 <div class="tx"><div class="t">{{ it.title }}</div><div class="d">{{ it.desc }}</div></div>
                 <span v-if="it.to && isCurrent" class="cl-lnk">{{ it.toLabel ?? '去看看' }}<ChevronRight :size="12" /></span>
               </div>
@@ -127,8 +129,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
   flex: 0 0 216px; display: flex; flex-direction: column; gap: 2px; padding: 10px;
   background: var(--surface-card); border-right: 1px solid var(--divider); overflow-y: auto;
 }
+/* align-items 必须写:<button> 在 Chrome 里默认把内容居中排,不写的话标题按自身宽度居中、两边撑出框(2026-09-19 用户截图) */
 .cl-item {
-  display: flex; flex-direction: column; text-align: left; width: 100%;
+  display: flex; flex-direction: column; align-items: stretch; text-align: left; width: 100%;
   padding: 9px 10px; border: none; border-radius: 9px; background: transparent; cursor: pointer;
   font-family: var(--font-sans); color: var(--text-primary);
   transition: background var(--dur-fast) var(--ease-standard);
@@ -138,7 +141,11 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 .cl-item .v { display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: var(--fs-body); font-weight: var(--fw-semibold); }
 .cl-new { height: 18px; padding: 0 6px; border-radius: var(--radius-full); background: var(--hue-blue); color: #fff; font-family: var(--font-sans); font-size: var(--fs-micro); font-weight: var(--fw-semibold); display: inline-flex; align-items: center; }
 .cl-item .dt { font-size: var(--fs-micro); color: var(--text-muted); margin-top: 3px; }
-.cl-item .hl { font-size: var(--fs-label); color: var(--text-secondary); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 一句话标题最多 20 字(RELEASE-NOTES-SPEC §4),这一栏两行放得下:折行不截断,万一超两行才省略 */
+.cl-item .hl {
+  font-size: var(--fs-label); line-height: 16px; color: var(--text-secondary); margin-top: 2px;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere;
+}
 .cl-foot { margin-top: auto; padding: 10px; border-top: 1px solid var(--divider); font-size: var(--fs-micro); line-height: 16px; color: var(--text-muted); }
 
 .cl-detail { flex: 1; min-width: 0; overflow-y: auto; padding: 20px 24px 12px; }
@@ -146,6 +153,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 .cl-cur { font-family: var(--font-sans); font-size: var(--fs-micro); font-weight: var(--fw-medium); color: var(--text-secondary); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 2px 8px; }
 .cl-m { font-size: var(--fs-label); color: var(--text-muted); margin-top: 2px; }
 .cl-hl { font-size: var(--fs-h4); font-weight: var(--fw-medium); margin-top: 8px; }
+.cl-feat { margin-top: 14px; }
 .cl-sec { display: flex; align-items: center; gap: 8px; padding: 16px 0 2px; }
 .cl-sec .n { font-size: var(--fs-label); color: var(--text-muted); }
 /* 分组标签与「本次更新」弹窗同一套 */
@@ -181,6 +189,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
   }
   .cl-item.on, .cl-item.on:hover { background: var(--ink-900); border-color: var(--ink-900); color: #fff; box-shadow: none; }
   .cl-item .dt, .cl-item .hl { display: none; }
+  /* 列表底下那行说明在横排里会被压成一条窄柱、把整排胶囊撑高(0.13.0 起就有,2026-09-19 量到 133px):不折行,排在末尾 */
+  .cl-foot { flex: 0 0 auto; align-self: center; margin: 0; padding: 0 4px; border-top: none; white-space: nowrap; }
   .cl-detail { padding: 16px 16px calc(12px + env(safe-area-inset-bottom)); }
   .cl-row { min-height: 44px; }
 }

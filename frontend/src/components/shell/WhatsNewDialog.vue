@@ -8,7 +8,8 @@ import { useTabsStore } from '@/stores/tabs'
 import { iconFor } from '@/components/ds/icon'
 import { BRAND } from '@/brand'
 import Button from '@/components/ds/Button.vue'
-import { X, ChevronRight, Plus, Search, Star } from 'lucide-vue-next'
+import { X, ChevronRight } from 'lucide-vue-next'
+import ReleaseFeatureCard from '@/components/shell/release/ReleaseFeatureCard.vue'
 import logoUrl from '@/assets/brand/logo.svg'
 import type { ReleaseItem } from '@/types/changelog'
 
@@ -69,30 +70,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 
         <div class="wn-body">
           <!-- 本版重点 -->
-          <section v-if="note.feature" class="wn-feat">
-            <div class="wn-feat-tx">
-              <div class="wn-feat-top">
-                <span class="wn-ic lg"><component :is="iconFor(note.feature.icon)" :size="16" /></span>
-                <span class="wn-chip add">新增</span>
-              </div>
-              <h3>{{ note.feature.title }}</h3>
-              <p>{{ note.feature.desc }}</p>
-              <button v-if="note.feature.to" class="wn-lnk" @click="go(note.feature)">
-                {{ note.feature.toLabel ?? '去看看' }}<ChevronRight :size="12" />
-              </button>
-            </div>
-            <!-- 配图:一张静态示意,说明这一版改的是什么样子(不接数据) -->
-            <div class="wn-pic" aria-hidden="true">
-              <div class="wn-pic-tabs">
-                <span class="wn-pic-tab on"><component :is="iconFor('home')" :size="12" /></span>
-                <span class="wn-pic-tab">本月出账</span>
-                <span class="wn-pic-plus"><Plus :size="12" /></span>
-              </div>
-              <div class="wn-pic-search"><Search :size="12" /><span>搜索页面 / 分组…</span></div>
-              <div class="wn-pic-r"><span>收藏</span><span class="wn-pic-s"><Star :size="12" class="wn-pic-star" />本月出账</span></div>
-              <div class="wn-pic-r"><span>最近打开</span><span class="wn-pic-s">计费参数</span></div>
-            </div>
-          </section>
+          <ReleaseFeatureCard :note="note" linkable @go="go(note.feature!)" />
 
           <template v-if="addedCount">
             <div class="wn-sec"><span class="wn-chip add">新增</span><span class="n">{{ addedCount }} 项</span></div>
@@ -172,48 +150,10 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 
 /* ── 正文 ── */
 .wn-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 16px 10px; }
-.wn-feat {
-  display: flex; gap: 16px; padding: 16px;
-  border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-card);
-}
-.wn-feat-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
-.wn-feat-top { display: flex; align-items: center; gap: 8px; }
-.wn-feat h3 { margin: 10px 0 0; font-size: var(--fs-h3); font-weight: var(--fw-semibold); }
-.wn-feat p { margin: 4px 0 0; font-size: var(--fs-label); line-height: 18px; color: var(--text-muted); }
-.wn-feat .wn-lnk { margin-top: auto; padding-top: 10px; }
-
 .wn-ic {
   width: 30px; height: 30px; flex: 0 0 auto; border-radius: var(--radius-sm);
   display: grid; place-items: center; background: var(--surface-card); color: var(--text-secondary);
 }
-.wn-ic.lg { background: var(--surface-white); border: 1px solid var(--border-subtle); }
-
-/* 配图:静态示意,尺寸与稿一致 */
-.wn-pic {
-  flex: 0 0 200px; align-self: stretch; padding: 10px; display: flex; flex-direction: column; gap: 6px;
-  background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 10px;
-}
-/* 页签条缩样:颜色取 TabStrip(条 = surface-sunken,当前页签 = surface-white) */
-.wn-pic-tabs {
-  display: flex; align-items: flex-end; gap: 2px; height: 28px; padding: 0 3px; overflow: hidden;
-  background: var(--surface-sunken); border-radius: 6px 6px 0 0;
-}
-.wn-pic-tab {
-  height: 22px; padding: 0 6px; display: inline-flex; align-items: center;
-  font-size: var(--fs-micro); color: var(--text-muted); white-space: nowrap; border-radius: 6px 6px 0 0;
-}
-.wn-pic-tab.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-medium); }
-.wn-pic-plus { height: 22px; width: 18px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); }
-/* 首页搜索框缩样:字取 HomeView 的占位字 */
-.wn-pic-search {
-  display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px;
-  border: 1px solid var(--border-subtle); border-radius: var(--radius-full);
-  font-size: var(--fs-micro); color: var(--text-muted);
-}
-.wn-pic-r { display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 24px; font-size: var(--fs-label); }
-.wn-pic-s { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-micro); color: var(--text-muted); }
-.wn-pic-star { color: var(--hue-blue); fill: var(--hue-blue); flex: 0 0 auto; }   /* 同顶栏已收藏的 ☆(.fp-star-on) */
-
 /* 分组与条目 */
 .wn-sec { display: flex; align-items: center; gap: 8px; padding: 16px 6px 4px; }
 .wn-sec .n { font-size: var(--fs-label); color: var(--text-muted); }
@@ -257,8 +197,6 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
   .wn-hero { height: 196px; padding: calc(18px + env(safe-area-inset-top)) 20px 18px; }
   .wn-x { top: calc(14px + env(safe-area-inset-top)); right: 12px; width: 36px; height: 36px; }
   .wn-body { padding: 12px 12px 8px; }
-  .wn-feat { flex-direction: column; }
-  .wn-pic { flex: 0 0 auto; align-self: stretch; }
   /* 触达 ≥44(§6.2);按钮整行宽,链接在它上面一行 */
   .wn-foot { flex-direction: column-reverse; align-items: stretch; gap: 8px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); }
   .wn-foot :deep(.ds-btn) { width: 100%; height: 44px; }
