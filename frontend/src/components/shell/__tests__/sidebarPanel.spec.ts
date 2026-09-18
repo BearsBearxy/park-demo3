@@ -1,4 +1,5 @@
 // 侧栏分组折叠(SIDEBAR-UX-REDESIGN §3.2):展开集合是内存态,换层清空;路由变化只追加含当前屏的组,不收回用户手动展开的组。
+import { landNav } from '@/test-utils/landNav'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick, reactive } from 'vue'
@@ -6,7 +7,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useTabsStore } from '@/stores/tabs'
 
 const route = reactive({ meta: { value: 'data-home' } as Record<string, string>, path: '/data-home' })
-const push = vi.fn()
+const push = vi.fn(landNav)
 vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => ({ push }) }))
 vi.mock('@/api', () => ({
   default: {
@@ -36,6 +37,7 @@ const rowByText = (w: VueWrapper, text: string) =>
   w.findAll('.fp-sbnav-row').find(b => b.text().includes(text))
 
 beforeEach(() => {
+  localStorage.clear()
   setActivePinia(createPinia())
   route.meta = { value: 'data-home' }
   route.path = '/data-home'
@@ -98,13 +100,47 @@ describe('SidebarPanel · 点击语义(§4.1)', () => {
     expect(tabs.epochOf('data-home')).toBe(0)
   })
 
-  it('点别的项 = open(恢复 KeepAlive 现场,epoch 不动)+ push', async () => {
+  it('点别的项 = 在当前页签打开(恢复 KeepAlive 现场,epoch 不动)+ push', async () => {
     const w = mountPanel()
     const tabs = useTabsStore()
+    tabs.commit('data-home')
+    tabs.setActive('data-home')
     await rowByText(w, '园区抄表')!.trigger('click')
     expect(tabs.epochOf('meters')).toBe(0)
-    expect(tabs.preview?.value).toBe('meters')
+    expect(tabs.tabs.map(t => t.value), '本月出账那一格换成园区抄表').toEqual(['home', 'meters'])
     expect(push).toHaveBeenCalledWith('/meters')
+  })
+
+  // ❗TAB-BAR-SPEC §2:Ctrl / ⌘ + 点、中键点 = 新页签放最右边,不跳过去
+  it('❗Ctrl + 点 / 中键点:新页签放最右边,不 push、不换掉当前页签', async () => {
+    const w = mountPanel()
+    const tabs = useTabsStore()
+    tabs.commit('data-home')
+    tabs.setActive('data-home')
+    push.mockClear()
+    await rowByText(w, '园区抄表')!.trigger('click', { ctrlKey: true })
+    await rowByText(w, '公共电核算')!.trigger('auxclick', { button: 1 })
+    expect(tabs.tabs.map(t => t.value)).toEqual(['home', 'data-home', 'meters', 'alloc'])
+    expect(push).not.toHaveBeenCalled()
+  })
+
+  it('❗右键:菜单两行;「在新页签中打开」放最右边,「收藏此页」进收藏', async () => {
+    const w = mountPanel()
+    const tabs = useTabsStore()
+    tabs.commit('data-home')
+    tabs.setActive('data-home')
+    await rowByText(w, '园区抄表')!.trigger('contextmenu', { clientX: 40, clientY: 200 })
+    const menuRows = () => [...document.body.querySelectorAll<HTMLButtonElement>('.fp-tab-menu .row')]
+    expect(menuRows().map(r => r.textContent)).toEqual(['在新页签中打开Ctrl + 点', '收藏此页'])
+    menuRows()[0].click()
+    await w.vm.$nextTick()
+    expect(tabs.tabs.map(t => t.value)).toEqual(['home', 'data-home', 'meters'])
+    expect(document.body.querySelector('.fp-tab-menu')).toBeNull()
+    await rowByText(w, '楼栋损耗')!.trigger('contextmenu', { clientX: 40, clientY: 200 })
+    menuRows()[1].click()
+    const { useFavoritesStore } = await import('@/stores/favorites')
+    expect(useFavoritesStore().has('alloc-loss')).toBe(true)
+    w.unmount()
   })
 
   it('Shift + 点当前项:仍然重建(epoch++),但不 push(路由没变)', async () => {

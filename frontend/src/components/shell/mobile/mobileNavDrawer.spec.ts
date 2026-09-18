@@ -1,3 +1,4 @@
+import { landNav } from '@/test-utils/landNav'
 import { mount } from '@vue/test-utils'
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -5,7 +6,7 @@ import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
 import { reactive } from 'vue'
 
-const push = vi.fn()
+const push = vi.fn(landNav)
 // meta 可变:要造「当前屏属不可见层」那一档(股东从书签进 /ledger)
 const route = reactive({ meta: { value: 'data-home', page: '本月出账' } as Record<string, string> })
 vi.mock('vue-router', () => ({
@@ -42,7 +43,7 @@ describe('MobileNavDrawer 手机导航抽屉', () => {
     const tabs = useTabsStore()
     await w.findAll('.mnav-row').find(r => r.text().includes('租户管理'))!.trigger('click')
     expect(tabs.epochOf('tenants')).toBe(0)
-    expect(tabs.preview?.value).toBe('tenants')
+    expect(tabs.tabs.map(t => t.value)).toContain('tenants')
     expect(push).toHaveBeenCalledWith('/tenants')
     expect(w.emitted('close')).toHaveLength(1)
   })

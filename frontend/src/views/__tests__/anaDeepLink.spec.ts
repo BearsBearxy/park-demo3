@@ -36,7 +36,7 @@ describe('分析层发链门禁', () => {
     expect(s.includes("'@/utils/deepLink'"), `${rel} 还引用已删的 utils/deepLink`).toBe(false)
   })
 
-  it('分析层不再硬编码 pin:一律 tabs.openDeep(来源在预览槽才钉住目标,规则收在 store —— P3 §4.3)', () => {
+  it('分析层不再硬编码 pin:一律 tabs.openDeep(新页签紧挨来源右边,规则收在 store —— TAB-BAR-SPEC §2)', () => {
     // ⚠ 只筛分析层。SENDERS 里还有 views/reports/recon/ReconWorkbench.vue ——
     //   那两处 pin 是 spec §4.1 明写「不变」的(收入核对 → 台账 / 附10 恒钉住),断言进来会把它逼改。
     for (const rel of PIN_SENDERS) {

@@ -1,10 +1,11 @@
 // 报表中心点卡带期(SIDEBAR-UX-REDESIGN §4.2):走 periodLink,co=all → 三大报表直落「全部汇总」。
+import { landNav } from '@/test-utils/landNav'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { useTabsStore } from '@/stores/tabs'
 
-const push = vi.fn()
+const push = vi.fn(landNav)
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => ({ query: {}, meta: {} }) }))
 vi.mock('@/reports/reportsHome', async (o) => ({
   ...(await o<object>()),
@@ -23,5 +24,17 @@ describe('报表中心 · 点卡带期', () => {
     ;(w.vm as unknown as { go: (v: string) => void }).go('income-statement')
     expect(push).toHaveBeenCalledWith({ path: '/income-statement', query: { p: '2025-06', co: 'all' } })
     expect(useTabsStore().epochOf('income-statement')).toBe(1)
+  })
+
+  // ❗TAB-BAR-SPEC §2:页面里的链接 = 新页签紧挨本页右边,报表中心那一格不被换掉
+  it('❗点卡开在报表中心右边的新页签,报表中心还在', async () => {
+    const tabs = useTabsStore()
+    tabs.commit('reports-home')
+    tabs.setActive('reports-home')
+    tabs.openBackground('ledger')
+    const w = mount(ReportsHomeView)
+    await flushPromises()
+    ;(w.vm as unknown as { go: (v: string) => void }).go('income-statement')
+    expect(tabs.tabs.map(t => t.value)).toEqual(['home', 'reports-home', 'income-statement', 'ledger'])
   })
 })

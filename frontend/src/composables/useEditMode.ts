@@ -1,5 +1,6 @@
 import { ref, computed, watch, onMounted, onDeactivated, onUnmounted, getCurrentInstance } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useScreen } from '@/composables/useTabShells'
 import { useEditLock } from '@/composables/useEditLock'
 import { useReviewStore } from '@/stores/review'
 
@@ -67,6 +68,7 @@ export interface EditModeOpts {
 export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
   const auth = useAuthStore()
   const meId = Symbol('edit-mode')
+  const screen = useScreen()
 
   /**
    * 编辑锁（CONCURRENCY-SPEC §4）。占 / 续 / 还 / 被接管的机制在 useEditLock，
@@ -84,7 +86,7 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
   // 用 watch 而不是在 toggle() 里加减：深链(?edit=1 / gotoDiff)会直接写 editMode.value = true，
   // 只在 toggle 里记的话那些路径进了编辑态却没登记，最后一个关掉时算不准。
   watch(editMode, (on) => {
-    if (on) auth.openEditor(meId)
+    if (on) auth.openEditor(meId, screen)
     else auth.closeEditor(meId)
   })
   /** 提权弹窗要补的权限点。非空即打开弹窗。 */

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, nextTick, ref, watch } from 'vue'
+import { computed, h, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import { fpFindLayer } from '@/nav/fpNav'
@@ -8,6 +8,7 @@ import { visibleLayers } from '@/nav/navAccess'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
 import SidebarNav from '@/components/ds/SidebarNav.vue'
+import { useFavoritesStore, MAX_FAVS } from '@/stores/favorites'
 
 const route = useRoute()
 const router = useRouter()
@@ -65,7 +66,14 @@ watch(activeValue, () => {
 // 「全新」收窄成三个显式动作:Shift + 点击 / 关签后重开(dropState) / 换层。
 // Shift + 点当前项照样重建(不 push,路由没变;App.vue 的 key 含 epoch,原地重挂载)——
 // 改前「点当前项」走的就是 openFresh,不给这条出路的话,当前屏在本期之后再没有任何强制刷新手势。
+//
+// 2026-09-18(TAB-BAR-SPEC §2):普通点击 = 在当前页签打开(规则在 tabs.open);
+// Ctrl / ⌘ + 点、中键点 = 在新页签打开,放最右边,不跳过去。
 function onSelect(value: string, ev?: MouseEvent) {
+  if (ev && (ev.ctrlKey || ev.metaKey || ev.button === 1)) {
+    tabs.openBackground(value)
+    return
+  }
   if (value === activeValue.value) {
     if (ev?.shiftKey) tabs.openFresh(value)
     return
@@ -74,6 +82,29 @@ function onSelect(value: string, ev?: MouseEvent) {
   else tabs.open(value)
   router.push('/' + value)
 }
+
+// ── 右键菜单 ──
+const favs = useFavoritesStore()
+const menu = ref<{ v: string; x: number; y: number } | null>(null)
+const menuRef = ref<HTMLElement | null>(null)
+function onContext(value: string, e: MouseEvent) {
+  menu.value = { v: value, x: Math.min(e.clientX, window.innerWidth - 228), y: e.clientY + 2 }
+}
+function menuOpenNew() {
+  if (menu.value) tabs.openBackground(menu.value.v)
+  menu.value = null
+}
+function menuFav() {
+  if (menu.value) favs.toggle(menu.value.v)
+  menu.value = null
+}
+// 点外关 / Esc 关(UI-OVERLAY-SPEC:capture 阶段)
+function onDocDown(e: MouseEvent) {
+  if (menu.value && !(e.target instanceof Node && menuRef.value?.contains(e.target))) menu.value = null
+}
+function onKey(e: KeyboardEvent) { if (e.key === 'Escape') menu.value = null }
+onMounted(() => { document.addEventListener('mousedown', onDocDown, true); document.addEventListener('keydown', onKey) })
+onBeforeUnmount(() => { document.removeEventListener('mousedown', onDocDown, true); document.removeEventListener('keydown', onKey) })
 </script>
 
 <template>
@@ -90,9 +121,20 @@ function onSelect(value: string, ev?: MouseEvent) {
       :sections="sections"
       :active="activeValue"
       :open-titles="openTitles"
+      context-menu
       @select="onSelect"
       @toggle="onToggle"
+      @context="onContext"
     />
+    <!-- 右键左边导航(TAB-BAR-SPEC §2):挂 body,按鼠标位置摆,与页签右键菜单同一套样子 -->
+    <Teleport to="body">
+      <div v-if="menu" ref="menuRef" class="fp-tab-menu" role="menu" :style="{ left: menu.x + 'px', top: menu.y + 'px', width: '220px' }">
+        <button type="button" role="menuitem" class="row" @click="menuOpenNew">在新页签中打开<span class="k">Ctrl + 点</span></button>
+        <button type="button" role="menuitem" class="row" :disabled="!favs.has(menu.v) && favs.list.length >= MAX_FAVS" @click="menuFav">
+          {{ favs.has(menu.v) ? '取消收藏' : '收藏此页' }}<span v-if="!favs.has(menu.v) && favs.list.length >= MAX_FAVS" class="k">已满 {{ MAX_FAVS }} 个</span>
+        </button>
+      </div>
+    </Teleport>
   </div>
 </template>
 

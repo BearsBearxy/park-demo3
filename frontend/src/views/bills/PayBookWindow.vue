@@ -18,6 +18,7 @@ import {
   type PayContractIn, type PayMap, type PayNoticeIn, type PayStash, type PayTenantRow,
 } from '@/utils/payBookLogic'
 import { useAuthStore } from '@/stores/auth'
+import { useScreen } from '@/composables/useTabShells'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
@@ -57,7 +58,8 @@ const editMode = ref(false)
 //   不登记的话守卫两头都失效:别的页面退出编辑时会把本窗口正用着的授权一起结束掉,
 //   而本窗口退出时又会被别的页面挡住结束不了。
 const meId = Symbol('pay-book')
-watch(editMode, (on) => { if (on) auth.openEditor(meId); else auth.closeEditor(meId) })
+const screen = useScreen()
+watch(editMode, (on) => { if (on) auth.openEditor(meId, screen); else auth.closeEditor(meId) })
 // 铁律①(EDIT-MODE-SPEC v4):授权到期 / 点了「结束授权」→ 当场退回浏览态。
 // 本窗口不走 useEditMode,也没有编辑锁(收款簿改的是 bill_pay_company,不进出账链快照),
 // 所以那道守卫既不在 useEditMode 里、也不在 useEditLock 里 —— 只能在这儿补一条。

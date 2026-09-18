@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Toolbar — ported from shell.jsx .fp-toolbar / AppToolbar.
-import { computed, ref, defineAsyncComponent } from 'vue'
+import { computed, ref, defineAsyncComponent, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePresenceStore } from '@/stores/presence'
 import { useAuthStore } from '@/stores/auth'
@@ -17,8 +17,11 @@ import IconButton from '@/components/ds/IconButton.vue'
 import FPPresenceBar from '@/components/fp/FPPresenceBar.vue'
 import { PanelLeft, Star, Search, History, Bell, Sparkles } from 'lucide-vue-next'
 import { useUpdateStore } from '@/stores/update'
+import { useFavoritesStore, MAX_FAVS } from '@/stores/favorites'
+import { fpBuildRoutes, fpFindLayer } from '@/nav/fpNav'
+import ShellTip from '@/components/shell/ShellTip.vue'
 
-const emit = defineEmits<{ 'open-command': [mode: string] }>()
+const emit = defineEmits<{ 'open-command': [] }>()
 
 // C1-07 ③:命令面板是懒加载块(AppShell 的 defineAsyncComponent),首开要等 chunk 到。
 // 不加指示器 —— 把「等」挪到用户按下之前:鼠标划到搜索钮 / Tab 聚到它时就开始拉。
@@ -31,7 +34,8 @@ const route = useRoute()
 const ui = useUiStore()
 
 // ── 待批授权(设计稿 §07 F-3) ──
-// Bell 从此有事做了 —— 它此前是顶栏四个死按钮之一(收藏 / 主题 / 操作记录 / 通知);2026-09-03 收藏接 tabs.pin、主题钮删除,死按钮清零。
+// Bell 从此有事做了 —— 它此前是顶栏四个死按钮之一(收藏 / 主题 / 操作记录 / 通知);2026-09-03 主题钮删除,死按钮清零
+// (收藏 2026-09-18 起是真收藏,见下面 ☆ 一段)。
 const presence = usePresenceStore()
 const auth = useAuthStore()
 const router = useRouter()
@@ -54,10 +58,44 @@ const meta = computed(() => route.meta as Record<string, string>)
 const crumbGroup = computed(() => meta.value.layerLabel ?? '')
 const crumbPage  = computed(() => meta.value.page ?? '')
 
-// ★ 从此有事做了(SIDEBAR-UX-REDESIGN §6):把当前屏从预览槽固定成常驻页签。已固定时呈激活态,再点是空操作。
 const tabs = useTabsStore()
 const activeValue = computed(() => meta.value.value ?? '')
-const pinned = computed(() => tabs.tabs.some(t => t.value === activeValue.value))
+/** 首页 / 新标签页:面包屑只写页名,不出期间与 ☆(TAB-BAR-SPEC §5.6)。 */
+const homeLike = computed(() => activeValue.value === 'home' || activeValue.value === 'newtab')
+
+// ── 面包屑第一段(TAB-BAR-SPEC §6.2):不在这一层第一屏时能点,点了当前页签回第一屏 ──
+const ROUTES = fpBuildRoutes()
+const layerHome = computed(() => fpFindLayer(activeValue.value).home)
+const crumbLink = computed(() => !homeLike.value && !!activeValue.value && activeValue.value !== layerHome.value)
+const crumbTip = computed(() => `回到 ${crumbGroup.value} · ${ROUTES[layerHome.value]?.page ?? ''}`)
+function goLayerHome() {
+  if (!crumbLink.value) return
+  tabs.open(layerHome.value)
+  router.push('/' + layerHome.value)
+}
+
+// ── ☆ 收藏(TAB-BAR-SPEC §6.3)。2026-09-18 前它是「把预览页签钉成常驻」,预览槽取消后改成收藏 ──
+const favs = useFavoritesStore()
+const starred = computed(() => favs.has(activeValue.value))
+/** ☆ 下方的深色提示条:'added' = 已收藏(带撤销);'full' = 满了。4 秒后、或换了屏就收起。 */
+const starNote = ref<'added' | 'full' | null>(null)
+/** 刚收藏的是哪一屏 —— 撤销撤它,不撤「现在停在哪」。 */
+let starredV = ''
+let starTimer: ReturnType<typeof setTimeout> | undefined
+function toggleStar() {
+  const r = favs.toggle(activeValue.value)
+  clearTimeout(starTimer)
+  starredV = activeValue.value
+  starNote.value = r === 'added' || r === 'full' ? r : null
+  if (starNote.value) starTimer = setTimeout(() => { starNote.value = null }, 4000)
+}
+function undoStar() {
+  clearTimeout(starTimer)
+  favs.remove(starredV)
+  starNote.value = null
+}
+watch(activeValue, () => { clearTimeout(starTimer); starNote.value = null })
+onBeforeUnmount(() => clearTimeout(starTimer))
 
 // 上下文 chip:面包屑后面的常驻预留位(§6)。无期显「—」而不是 v-if ——
 // 一进一出会把它右边的东西推着走,LAYOUT-STABILITY §1 铁律禁止。
@@ -69,44 +107,72 @@ const ctxText = computed(() => {
 
 <template>
   <header class="fp-toolbar">
-    <!-- left: sidebar toggle + star -->
-    <IconButton aria-label="折叠侧边栏" @click="ui.toggleSidebar()">
-      <PanelLeft :size="16" />
-    </IconButton>
-    <IconButton aria-label="固定为常驻页签" :aria-pressed="String(pinned)" :active="pinned" @click="tabs.pin(activeValue)">
-      <Star :size="16" />
-    </IconButton>
+    <ShellTip title="收起导航" sub="左边的导航收起来，表格能多看几列" align="start">
+      <IconButton aria-label="折叠侧边栏" @click="ui.toggleSidebar()">
+        <PanelLeft :size="16" />
+      </IconButton>
+    </ShellTip>
 
-    <!-- breadcrumb -->
+    <!-- breadcrumb:第一段 = 层名。不在这一层第一屏时是按钮,点了回第一屏(§6.2) -->
     <span class="fp-crumb">
-      <span class="fp-crumb-grp">{{ crumbGroup }}</span>
-      <span class="fp-crumb-sep">/</span>
-      <span class="fp-crumb-page">{{ crumbPage }}</span>
+      <template v-if="homeLike">
+        <span class="fp-crumb-page">{{ crumbPage }}</span>
+      </template>
+      <template v-else>
+        <ShellTip v-if="crumbLink" :title="crumbTip" align="start">
+          <button type="button" class="fp-crumb-grp lk" @click="goLayerHome">{{ crumbGroup }}</button>
+        </ShellTip>
+        <span v-else class="fp-crumb-grp">{{ crumbGroup }}</span>
+        <span class="fp-crumb-sep">/</span>
+        <span class="fp-crumb-page">{{ crumbPage }}</span>
+      </template>
     </span>
-    <span class="fp-ctx-chip" :title="ctxText">{{ ctxText }}</span>
+    <template v-if="!homeLike">
+      <ShellTip title="这一页现在看的是哪一期、哪家公司" align="start">
+        <span class="fp-ctx-chip">{{ ctxText }}</span>
+      </ShellTip>
+      <!-- ☆ 收藏:和浏览器地址栏右边的星一个位置(§6.1) -->
+      <span class="fp-star">
+        <ShellTip :title="starred ? '取消收藏' : '收藏此页'" :sub="starred ? '' : '收藏后在「首页」上一点就到'">
+          <IconButton :aria-label="starred ? '取消收藏' : '收藏此页'" :aria-pressed="String(starred)" @click="toggleStar">
+            <Star :size="16" :class="{ 'fp-star-on': starred }" />
+          </IconButton>
+        </ShellTip>
+        <span v-if="starNote" class="fp-star-note" role="status">
+          <template v-if="starNote === 'added'">已收藏，在「首页」上能找到<button type="button" class="act" @click="undoStar">撤销</button></template>
+          <template v-else>最多收藏 {{ MAX_FAVS }} 个，先在首页去掉几个</template>
+        </span>
+      </span>
+    </template>
 
     <!-- right: search + utility icons -->
     <div class="fp-toolbar-right">
       <!-- 在场头像组(PRESENCE §03):右区最左,紧挨搜索框。宽度按满员算死,人数变化不挪版。 -->
       <FPPresenceBar />
-      <!-- title 常挂:M 档收纳后文字与 kbd 藏进 CSS,提示只剩这里(§3.3) -->
-      <button class="fp-search-btn" title="搜索页面 / 分组（Ctrl K）"
-              @pointerenter="prefetchPalette"
-              @focus="prefetchPalette"
-              @click="emit('open-command', 'jump')">
-        <Search :size="15" />
-        <span>搜索页面 / 分组…</span>
-        <kbd class="fp-kbd">Ctrl K</kbd>
-      </button>
+      <!-- M 档收纳后文字与 kbd 藏进 CSS,说明气泡照样有(§3.3) -->
+      <ShellTip title="搜索页面" kbd="Ctrl K" sub="输入页面名直接跳过去">
+        <button class="fp-search-btn" aria-label="搜索页面 / 分组"
+                @pointerenter="prefetchPalette"
+                @focus="prefetchPalette"
+                @click="emit('open-command')">
+          <Search :size="15" />
+          <span>搜索页面 / 分组…</span>
+          <kbd class="fp-kbd">Ctrl K</kbd>
+        </button>
+      </ShellTip>
       <!-- 操作记录:SystemLogsView 早就写好了,此前只差这根线(需 system:view) -->
-      <IconButton v-if="auth.can('system:view')" aria-label="操作记录" @click="router.push('/sys-logs')">
-        <History :size="16" />
-      </IconButton>
+      <ShellTip v-if="auth.can('system:view')" title="操作记录" sub="谁在什么时候改了什么">
+        <IconButton aria-label="操作记录" @click="router.push('/sys-logs')">
+          <History :size="16" />
+        </IconButton>
+      </ShellTip>
       <!-- 版本更新:蓝点只表示「有没看过的更新」,看过就没有(同上一条的贴法) -->
       <span class="fp-upd">
-        <IconButton aria-label="版本更新" :title="`版本更新（v${upd.version}）`" @click="upd.openHistory()">
-          <Sparkles :size="16" />
-        </IconButton>
+        <ShellTip title="版本更新" :kbd="`v${upd.version}`" sub="这一版改了什么" align="end" :disabled="upd.coachOn">
+          <IconButton aria-label="版本更新" @click="upd.openHistory()">
+            <Sparkles :size="16" />
+          </IconButton>
+        </ShellTip>
         <span v-if="upd.unread" class="fp-upd-dot" />
         <!-- 看完「本次更新」后在这儿提示一次入口在哪,4 秒后自己收起 -->
         <span v-if="upd.coachOn" class="fp-upd-coach" role="status">更新记录随时在这里看</span>
@@ -115,9 +181,11 @@ const ctxText = computed(() => {
            不改图标尺寸、不挪工具条。这是全站唯一允许「凭空出现」的标记:
            它贴在一个尺寸恒定的按钮上,出现与消失都不影响布局。 -->
       <span class="fp-bell">
-        <IconButton aria-label="待批授权" @click="inbox = true">
-          <Bell :size="16" />
-        </IconButton>
+        <ShellTip :title="pendingCount ? `待我处理 · ${pendingCount} 件` : '待我处理'" sub="等我批的授权、等我审的表、被退回的表" align="end">
+          <IconButton aria-label="待批授权" @click="inbox = true">
+            <Bell :size="16" />
+          </IconButton>
+        </ShellTip>
         <span v-if="pendingCount" class="fp-bell-dot">{{ pendingCount }}</span>
       </span>
     </div>
@@ -151,6 +219,26 @@ const ctxText = computed(() => {
   color: var(--text-muted);
   white-space: nowrap;
 }
+/* 能点的第一段:深一档的字,悬停浅灰底 + 下划线(§6.2) */
+button.fp-crumb-grp.lk {
+  height: 26px;
+  margin: 0 -6px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-family: var(--font-sans);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+button.fp-crumb-grp.lk:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--ink-300);
+}
 .fp-crumb-sep {
   color: var(--text-disabled);
 }
@@ -179,6 +267,25 @@ const ctxText = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.fp-star { position: relative; display: inline-flex; margin-left: -4px; }
+.fp-star-on { fill: var(--hue-blue); color: var(--hue-blue); }
+/* 收藏提示条:☆ 正下方,深底;和底部网络提示同一套颜色(§6.3)。贴附浮层,120ms 长出 */
+.fp-star-note {
+  position: absolute; top: calc(100% + 8px); left: -12px; z-index: var(--z-popover);
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-radius: var(--radius-md);
+  background: var(--ink-900); color: #fff;
+  font-size: var(--fs-label); line-height: 18px; white-space: nowrap;
+  box-shadow: 0 12px 32px rgba(28, 28, 28, 0.32);
+  animation: fp-pop-in var(--dur-fast) var(--ease-out);
+}
+.fp-star-note .act {
+  height: 24px; padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.35); border-radius: var(--radius-sm);
+  background: transparent; color: #fff; font-size: var(--fs-label); cursor: pointer;
+}
+.fp-star-note .act:hover { background: rgba(255, 255, 255, 0.14); }
 
 .fp-toolbar-right {
   margin-left: auto;

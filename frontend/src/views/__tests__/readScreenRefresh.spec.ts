@@ -105,9 +105,12 @@ describe('纯读屏切回重读(P3 §4.1 Step6b) · 源码门禁', () => {
     expect(s, '静默那趟失败也不翻成错误卡').toContain('if (my === seq && !silent) failed.value = true')
   })
 
-  // KeepAlive 深度是「恢复现场」的实际收益所在:排在第 17 的屏切回就是空白重来。
-  // 本期唯一没有门禁的改动点(评审把它改回 10,全量照样全绿)。
-  it('App.vue 的 KeepAlive 深度是 16(D9;侧栏不再重建实例之后,这个数字决定切回去还在不在)', () => {
-    expect(readFileSync(join(__dirname, '..', '..', 'App.vue'), 'utf8')).toContain(':max="16"')
+  // KeepAlive 深度是「恢复现场」的实际收益所在:被挤掉的屏切回就是空白重来。
+  // 2026-09-19 起不设 max(用户拍板,取代 D9 的 16):缓存里只有开着的页签,关掉 / 换掉的按纪元 exclude 卸载;
+  // 设 max 会按最久没看把页签挤掉,连正在编辑的也挤(TAB-BAR-SPEC §1)。
+  it('App.vue 的 KeepAlive 不设 max,只靠 exclude 卸载关掉 / 换掉的屏', () => {
+    const app = readFileSync(join(__dirname, '..', '..', 'App.vue'), 'utf8')
+    expect(app).toContain('<keep-alive :exclude="staleShells">')
+    expect(app).not.toMatch(/<keep-alive[^>]*:max=/)
   })
 })

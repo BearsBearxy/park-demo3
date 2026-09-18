@@ -1,3 +1,4 @@
+import { landNav } from '@/test-utils/landNav'
 import { mount, flushPromises } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ref, defineComponent, h, KeepAlive } from 'vue'
@@ -28,7 +29,7 @@ beforeEach(() => {
   reconOverview.mockClear()
 })
 
-const push = vi.fn()
+const push = vi.fn(landNav)
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 
 const getOverview = vi.fn()
@@ -107,6 +108,8 @@ const EDITOR_PERMS = ['entry:edit', 'billing-run:edit', 'meter-reading:edit', 'r
 
 async function mountWith(patch: Partial<DataHomeOverviewDTO> = {}, opts: { perms?: string[] } = {}) {
   localStorage.setItem('permissions', JSON.stringify(opts.perms ?? EDITOR_PERMS))
+  // push 桩会走一遍 afterEach(landNav)写页签;每条用例从干净的页签条开始
+  for (const k of Object.keys(localStorage)) if (k.startsWith('fp-app-')) localStorage.removeItem(k)   // 按人存的 fp-app-tabs:<user> 也清
   setActivePinia(createPinia())
   getOverview.mockResolvedValue(overview(patch))
   const w = mount(DataHomeView)
@@ -826,6 +829,7 @@ describe('数据中心首页 · 主管条(P2 T6)', () => {
     // 锁串本身带着第二维:ledger:{co}:{ym} 的 co 是公司。改前 goEditor 只发 periodLink(v,{p}),
     // 目标屏收到的 co 是 null,落到默认子视图(首册)—— 那里恰恰没有人在编辑(2026-09-06 复查坐实)。
     const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
+    await landNav('/data-home')                           // 路由落在本月出账
     usePresenceStore().users = [seatEditor('张三', ['ledger:3:2025-06'])]
     await w.vm.$nextTick()
     const chip = w.find('.dh-sup-chip')
@@ -834,6 +838,8 @@ describe('数据中心首页 · 主管条(P2 T6)', () => {
     expect(push).toHaveBeenLastCalledWith({ path: '/ledger', query: { p: '2025-06', co: '3' } })
     // openFresh 真的调了 —— 确认框弹了却什么都没重建,等于弹了个谎(fix-brief FD)。
     expect(useTabsStore().epochOf('ledger')).toBe(1)
+    // ❗TAB-BAR-SPEC §2:页面里的链接 = 新页签紧挨本页右边,本月出账那一格不被换掉
+    expect(useTabsStore().tabs.map(t => t.value)).toEqual(['home', 'data-home', 'ledger'])
   })
 
   it('主管条:chip 文案的屏名读座位自带的 label,与跳转目标是两个不同的源(fix-brief FB)', async () => {

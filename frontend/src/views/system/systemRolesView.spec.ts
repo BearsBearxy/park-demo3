@@ -60,6 +60,22 @@ describe('SystemRolesView', () => {
     expect((boxes[1].element as HTMLInputElement).checked).toBe(false)  // entry:edit
   })
 
+  it('❗有没保存的改动 = 在编辑:登记进 auth.editors(页签条不换掉这一格、关浏览器先问);改回去 / 卸载就撤', async () => {
+    const w = mountWith(['system:view', 'system:edit'])
+    await flushPromises()
+    const auth = useAuthStore()
+    const end = vi.spyOn(auth, 'endElevation').mockResolvedValue()
+    expect(auth.editing).toBe(false)
+    await w.find('.sr-name').setValue('改个名')
+    expect(auth.editing).toBe(true)
+    await w.find('.sr-name').setValue('系统管理员')
+    expect(auth.editing).toBe(false)
+    expect(end, '撤登记顺带结束授权(最后一个编辑态时)').toHaveBeenCalled()
+    await w.find('.sr-name').setValue('改个名')
+    w.unmount()
+    expect(auth.editing).toBe(false)
+  })
+
   it('无 system:edit:矩阵照显当前配置,但全部禁用且无写入口', async () => {
     const w = mountWith(['system:view'])
     await flushPromises()

@@ -1,7 +1,7 @@
 // 「去租户管理加个别名,回来接着干」这条动线的两条铁律(2026-08-28 用户拍板):
 //
-//  · 去租户管理必须**新开一个页签**,不能顶掉台账那个 —— open() 不带 pin 会进预览槽,
-//    而预览槽全局只有一个,进去就把原来那页顶没了。
+//  · 去租户管理必须**新开一个页签**,不能换掉台账那个 —— open() 不带 pin 会在当前页签打开,
+//    台账那一格就被换成租户管理了。
 //  · 回到台账时,抽屉该在原处 —— 抽屉挂在 body 上,停用时必须关(VUE-03,否则会浮到别的
 //    页签上),但"关掉"不等于"忘掉"。
 //
@@ -33,11 +33,9 @@ const book: Book = {
 }
 
 beforeEach(() => {
-  // tabs store 把页签/预览写进 localStorage,不清就跨用例漏:上一条 pin 过的 tenants
-  // 会让下一条的 open('tenants') 走「已固定,直接导航」分支,预览槽纹丝不动
-  localStorage.removeItem('fp-app-tabs')
-  localStorage.removeItem('fp-app-preview')
-  localStorage.removeItem('fp-app-recent')
+  // tabs store 把页签写进 localStorage,不清就跨用例漏:上一条开过的 tenants
+  // 会让下一条的 open('tenants') 走「已开着,直接切过去」分支,页签纹丝不动
+  for (const k of Object.keys(localStorage)) if (k.startsWith('fp-app-')) localStorage.removeItem(k)   // 按人存的 fp-app-tabs:<user> 也清
   setActivePinia(createPinia())
   useAuthStore().permissions = ['entry:edit']
   vi.mocked(booksApi.list).mockResolvedValue([book])
@@ -48,23 +46,25 @@ beforeEach(() => {
   vi.mocked(ledgerApi.years).mockResolvedValue([])
 })
 
-describe('去租户管理:新开页签,不顶掉台账', () => {
-  it('pin 打开不动预览槽 —— 台账那页还在', () => {
+describe('去租户管理:新开页签,不换掉台账', () => {
+  it('pin 打开 = 新页签紧挨台账右边 —— 台账那格还在', () => {
     const tabs = useTabsStore()
-    tabs.open('ledger')                      // 台账进预览槽
-    expect(tabs.preview?.value).toBe('ledger')
+    tabs.commit('ledger')
+    tabs.setActive('ledger')                 // 路由落在台账
 
     tabs.open('tenants', { pin: true })      // 去租户管理
+    tabs.commit('tenants')                   // 导航落定
 
-    expect(tabs.preview?.value).toBe('ledger')
-    expect(tabs.tabs.map(t => t.value)).toContain('tenants')
+    expect(tabs.tabs.map(t => t.value)).toEqual(['home', 'ledger', 'tenants'])
   })
 
-  it('反例:不带 pin 会把台账顶掉(这正是改动前的行为)', () => {
+  it('反例:不带 pin 会在当前页签打开,把台账那格换掉', () => {
     const tabs = useTabsStore()
-    tabs.open('ledger')
+    tabs.commit('ledger')
+    tabs.setActive('ledger')
     tabs.open('tenants')                     // 不带 pin
-    expect(tabs.preview?.value).toBe('tenants')   // 台账没了
+    tabs.commit('tenants')
+    expect(tabs.tabs.map(t => t.value)).toEqual(['home', 'tenants'])   // 台账没了
   })
 
   it('不能用 openFresh:它 bump epoch,回来时 KeepAlive 会丢掉台账的实例', () => {

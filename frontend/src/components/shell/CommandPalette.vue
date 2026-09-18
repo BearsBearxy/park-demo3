@@ -10,7 +10,6 @@ import { filterPages, buildAllPages } from './paletteFilter'
 
 const props = defineProps<{
   open: boolean
-  mode: 'jump' | 'new'
 }>()
 const emit = defineEmits<{ close: [] }>()
 
@@ -43,8 +42,9 @@ watch(() => props.open, open => {
   }
 }, { immediate: true })
 
+// 和 Chrome 地址栏一样:在当前页签打开(首页 / 正在编辑的页签例外,规则在 tabs.open 里)
 function choose(value: string) {
-  tabs.open(value, { pin: props.mode === 'new' })
+  tabs.open(value)
   router.push('/' + value)
   emit('close')
 }

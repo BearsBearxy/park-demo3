@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 
 import FPStepStrip, { type Step } from '@/components/fp/FPStepStrip.vue'
+import { useTabsStore } from '@/stores/tabs'
 
 /**
  * 链路条 / 期间条(2026-08-28 设计稿 §⑤)。
@@ -26,7 +28,20 @@ function mk(current = 'alloc') {
 }
 
 describe('FPStepStrip', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks(); setActivePinia(createPinia()); localStorage.clear() })
+
+  // ❗TAB-BAR-SPEC §2 例外:同一条出账工序链上一步一步走,在当前页签里换,不开新页签
+  it('❗点别的工序:在当前页签里换(盖过「内容区里点出来的开在右边」)', async () => {
+    const tabs = useTabsStore()
+    tabs.commit('alloc')
+    tabs.setActive('alloc')
+    const w = mk()
+    tabs.markInPage()
+    await w.findAll('.fss-step').find(s => s.text() === '园区抄表')!.trigger('click')
+    tabs.beforeNav('meters')                  // router.beforeEach
+    tabs.commit('meters')                     // 导航落定
+    expect(tabs.tabs.map(t => t.value)).toEqual(['home', 'meters'])
+  })
 
   it('五道工序全都在条上 —— 链要完整,少一环就不是链', () => {
     const w = mk()

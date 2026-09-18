@@ -16,7 +16,7 @@
    · 子集到 ASCII + Latin-1 + 通用标点 + 实际用到的数学/货币符号(295 字符),47 KB —— 全量是 104 KB。
      子集不是为省流量,是为**抢在首帧前到达**:字体换入会改变字宽 → 整页重排,正是 PAGE-BEHAVIOR-SPEC
      §1.4 禁止的布局跳动。配 index.html 的 <link rel="preload"> 基本看不到 FOUT。
-   · 不打包 Italic(另 104 KB):全站仅 TabStrip 预览页签用斜体,而页签名是中文,走 CJK 字体合成。
+   · 不打包 Italic(另 104 KB):全站没有用到斜体(页签的斜体预览 2026-09-18 取消)。
    汉字不在此字体内(Roboto Mono 无 CJK),由下面 font-family 里的 PingFang/雅黑逐字回退承接 ——
    即「数字和字母走 Roboto Mono,汉字走系统字体」。㎡ ① ⚠ 这类符号同理回退,与改前行为一致。
    换字体文件必须同时改文件名里的 -v1(public/ 不带 hash,靠文件名做 cache busting),

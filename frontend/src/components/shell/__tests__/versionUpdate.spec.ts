@@ -61,13 +61,19 @@ describe('入口:顶栏 ✦', () => {
     expect(w.find('.fp-upd-dot').exists()).toBe(false)
   })
 
-  it('点 ✦ 开「更新记录」;按钮带版本号提示', async () => {
+  it('点 ✦ 开「更新记录」;悬停说明带版本号(TAB-BAR-SPEC §6.4)', async () => {
     const { upd } = login()
-    const w = mount(Toolbar, { global: { stubs: { FPPresenceBar: true } } })
+    vi.useFakeTimers()
+    const w = mount(Toolbar, { global: { stubs: { FPPresenceBar: true } }, attachTo: document.body })
     const btn = w.find('button[aria-label="版本更新"]')
-    expect(btn.attributes('title')).toBe(`版本更新（v${upd.version}）`)
+    btn.element.parentElement!.dispatchEvent(new MouseEvent('mouseenter'))
+    vi.advanceTimersByTime(500)
+    await nextTick()
+    expect(document.body.querySelector('.fp-tip')!.textContent).toBe(`版本更新v${upd.version}这一版改了什么`)
+    vi.useRealTimers()
     await btn.trigger('click')
     expect(upd.historyOpen).toBe(true)
+    w.unmount()
   })
 
   it('看完弹窗后 ✦ 下方提示一次入口在哪', async () => {

@@ -73,7 +73,7 @@ async function submit() {
   try {
     await auth.login({ username: username.value.trim(), password: password.value }, remember.value)
     // 强制改密优先于一切落点(含 redirect):初始密码没改掉之前哪儿都不该进
-    // 落地页与 router 守卫共用 auth.landing(§6:零 :edit 落驾驶舱、审核员落本月出账)
+    // 落地页与 router 守卫共用 auth.landing(一律首页,TAB-BAR-SPEC §2)
     target = auth.mustChangePassword ? '/change-password' : ((route.query.redirect as string) || auth.landing)
   } catch (e: any) {
     errorMsg.value = e?.msg || e?.message || '登录失败，请检查账号和密码'

@@ -2,7 +2,9 @@
 // 手机导航抽屉(S 档,RESPONSIVE-LAYOUT-SPEC §4.2):IconRail(层切换+账号菜单)、
 // SidebarPanel(目录)与页签模型(最近打开)在手机上的合体。
 // 导航语义分开走,与桌面各自的同类入口保持一致:
-//   层/目录条目 = openFresh(全新状态);最近打开 = open(恢复 KeepAlive 现场)。
+//   层/目录条目 = openFresh(全新状态);最近打开 = open(页签还开着就恢复 KeepAlive 现场)。
+//   ⚠ 手机上只留「首页 + 固定的 + 正在编辑的 + 当前这一页」(TAB-BAR-SPEC §2 手机),
+//     换走的屏当场卸载 —— 在手机上点回去、后退回去,除了这几格都是重新打开。
 import { computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { LogOut, Sparkles } from 'lucide-vue-next'

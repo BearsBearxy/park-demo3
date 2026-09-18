@@ -44,7 +44,7 @@ const tabsStore = useTabsStore()
 // 期一跳转就丢 —— 用户在这里选定 2025 年 9 月、点开利润表,要重走公司→年→月三道门回到原地。
 // openFresh 是深链协议的一半:KeepAlive 缓存实例只在 setup 消费 query,不换 epoch 就读不到。
 function go(v: string) {
-  tabsStore.openFresh(v)
+  tabsStore.openDeep(v)   // 页面里的链接 = 新页签紧挨本页右边(TAB-BAR-SPEC §2),报表中心不被换掉
   // 走 periodLink 带 co:'all'(SIDEBAR-UX-REDESIGN §4.2):三大报表直落「全部汇总」;损益附表 / 收入核对认得几个用几个
   router.push(periodLink(v, { p: periodOf(year.value, month.value), co: 'all' }))
 }

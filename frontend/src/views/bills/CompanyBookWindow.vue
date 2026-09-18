@@ -4,12 +4,13 @@
 // 容器与二次确认范式同 CoefBookWindow(居中 FPDrawer + 未保存改动挡在切换/关闭前)。
 // 本刀只交付「能用的空表单」:公司名必填,其余全选填 —— 账户明细由用户逐条补录。
 // 法定全称印在通知单落款与账户块(空则回落显示名);停用公司不再进收款公司选择器,历史单不受影响。
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onUnmounted } from 'vue'
 import {
   ACCOUNT_KINDS, ACCOUNT_KIND_LABEL, companyBookApi,
   type AccountKind, type AccountReq, type CompanyAccountDTO, type CompanyFullDTO,
 } from '@/api/billDelivery'
 import { useAuthStore } from '@/stores/auth'
+import { useScreen } from '@/composables/useTabShells'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
@@ -111,6 +112,14 @@ async function saveCompany() {
 
 // ── 收款账户 ──
 const acctEdit = ref<number | 'new' | null>(null)
+
+// 有没保存的改动 = 在编辑:登记进 auth.editors —— 页签条不把催缴单换掉、关浏览器先确认(TAB-BAR-SPEC §2)。
+// 本窗口不握锁(公司账簿不进出账链快照),锁那一层的登记兜不到它。
+const meId = Symbol('company-book')
+const screen = useScreen()
+function unregister() { auth.closeEditor(meId); void auth.endElevation() }
+watch(() => dirty.value || acctEdit.value != null, (on) => { if (on) auth.openEditor(meId, screen); else unregister() })
+onUnmounted(unregister)
 const acctForm = ref<{ kind: AccountKind; accountName: string; accountNo: string; bankName: string; isDefault: boolean; remark: string }>(
   { kind: 'bank', accountName: '', accountNo: '', bankName: '', isDefault: false, remark: '' })
 const KIND_OPTS = ACCOUNT_KINDS.map(k => ({ value: k, label: ACCOUNT_KIND_LABEL[k] }))

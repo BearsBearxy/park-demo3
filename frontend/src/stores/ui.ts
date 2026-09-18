@@ -44,5 +44,10 @@ export const useUiStore = defineStore('ui', () => {
   function startNav() { navigating.value = true }
   function endNav() { navigating.value = false }
 
-  return { sbOpen, toggleSidebar, closeTransient, netError, reportNetError, dismissNetError, navigating, startNav, endNav }
+  // 首页的搜索框要打开命令面板,而面板长在外壳里(AppShell 的 paletteOpen)。
+  // 页面够不着外壳的 ref,就递一个计数过去 —— AppShell watch 它,变了就开面板。
+  const paletteReq = ref(0)
+  function requestPalette() { paletteReq.value++ }
+
+  return { sbOpen, toggleSidebar, closeTransient, netError, reportNetError, dismissNetError, navigating, startNav, endNav, paletteReq, requestPalette }
 })
