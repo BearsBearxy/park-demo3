@@ -147,7 +147,8 @@ describe('本次更新弹窗', () => {
     const { upd } = login()
     const w = mount(WhatsNewDialog, { attachTo: document.body })
     const first = CUR.added.find((i) => i.to)!
-    const row = [...document.querySelectorAll('.wn-row')].find((r) => r.textContent?.includes(first.title))!
+    // 按标题精确找行:别的条目的说明里也可能出现这几个字(0.14.0 重点卡的说明里就有「首页」)
+    const row = [...document.querySelectorAll('.wn-row')].find((r) => r.querySelector('.t')?.textContent === first.title)!
     row.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
     expect(push).toHaveBeenCalledWith('/' + first.to)
@@ -218,7 +219,7 @@ describe('更新记录弹窗', () => {
     login()
     const w = mount(ChangelogDialog, { attachTo: document.body })
     const it = CUR.added.find((i) => i.to)!
-    const row = [...document.querySelectorAll('.cl-row')].find((r) => r.textContent?.includes(it.title))!
+    const row = [...document.querySelectorAll('.cl-row')].find((r) => r.querySelector('.t')?.textContent === it.title)!
     row.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
     expect(push).toHaveBeenCalledWith('/' + it.to)

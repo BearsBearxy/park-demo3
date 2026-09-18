@@ -1,6 +1,6 @@
 // 更新记录的形状(内容在 src/changelog.ts,规范见 docs/design/VERSION-UPDATE-SPEC.md)。
 
-/** 一条更新。`to` 是侧栏里那一屏的 value(nav/fpNav.ts),给了才在屏上出现「去看看」。 */
+/** 一条更新。`to` 是侧栏里那一屏的 value(nav/fpNav.ts)或首页 'home',给了才在屏上出现「去看看」。 */
 export interface ReleaseItem {
   /** ds/icon.ts 里的图标名;写了表里没有的名字会回落成问号图标并在控制台告警。 */
   icon: string

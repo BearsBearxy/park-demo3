@@ -8,7 +8,7 @@ import { useTabsStore } from '@/stores/tabs'
 import { iconFor } from '@/components/ds/icon'
 import { BRAND } from '@/brand'
 import Button from '@/components/ds/Button.vue'
-import { X, ChevronRight, Bell, Check } from 'lucide-vue-next'
+import { X, ChevronRight, Plus, Star } from 'lucide-vue-next'
 import logoUrl from '@/assets/brand/logo.svg'
 import type { ReleaseItem } from '@/types/changelog'
 
@@ -82,10 +82,15 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
             </div>
             <!-- 配图:一张静态示意,说明这一版改的是什么样子(不接数据) -->
             <div class="wn-pic" aria-hidden="true">
-              <div class="wn-pic-h"><span>本月出账 · 2026-08</span><span class="wn-pic-bell"><Bell :size="14" /><i>2</i></span></div>
-              <div class="wn-pic-r"><span>利润表</span><span class="wn-pic-s"><i class="wn-dot warn"></i>待审核</span></div>
-              <div class="wn-pic-r"><span>月度台账 · 一期</span><span class="wn-pic-s ok"><Check :size="12" />已审核</span></div>
-              <div class="wn-pic-r"><span>附表10 销售收入</span><span class="wn-pic-btn">交审</span></div>
+              <div class="wn-pic-tabs">
+                <span class="wn-pic-tab"><component :is="iconFor('home')" :size="12" /></span>
+                <span class="wn-pic-tab on">本月出账</span>
+                <span class="wn-pic-tab">计费参数</span>
+                <span class="wn-pic-plus"><Plus :size="12" /></span>
+              </div>
+              <div class="wn-pic-r"><span>数据中心 / 本月出账</span><Star :size="12" class="wn-pic-star" /></div>
+              <div class="wn-pic-r"><span>Ctrl + 点</span><span class="wn-pic-s">开在新页签</span></div>
+              <div class="wn-pic-r"><span>拖动页签</span><span class="wn-pic-s">换位置</span></div>
             </div>
           </section>
 
@@ -188,20 +193,20 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
   flex: 0 0 200px; align-self: stretch; padding: 10px; display: flex; flex-direction: column; gap: 6px;
   background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 10px;
 }
-.wn-pic-h { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-micro); color: var(--text-muted); padding-bottom: 4px; border-bottom: 1px solid var(--divider); }
-.wn-pic-bell { position: relative; display: inline-flex; color: var(--text-secondary); }
-.wn-pic-bell i {
-  position: absolute; top: -6px; right: -8px; min-width: 14px; height: 14px; padding: 0 3px;
-  border-radius: var(--radius-full); background: var(--hue-red); color: #fff;
-  font-family: var(--font-mono); font-size: 9.5px; font-style: normal; font-weight: var(--fw-semibold);
-  display: grid; place-items: center; box-shadow: 0 0 0 1.5px var(--surface-white);
+/* 页签条缩样:颜色取 TabStrip(条 = surface-sunken,当前页签 = surface-white) */
+.wn-pic-tabs {
+  display: flex; align-items: flex-end; gap: 2px; height: 28px; padding: 0 3px; overflow: hidden;
+  background: var(--surface-sunken); border-radius: 6px 6px 0 0;
 }
+.wn-pic-tab {
+  height: 22px; padding: 0 6px; display: inline-flex; align-items: center;
+  font-size: var(--fs-micro); color: var(--text-muted); white-space: nowrap; border-radius: 6px 6px 0 0;
+}
+.wn-pic-tab.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-medium); }
+.wn-pic-plus { height: 22px; width: 18px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); }
 .wn-pic-r { display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 24px; font-size: var(--fs-label); }
 .wn-pic-s { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-micro); color: var(--text-muted); }
-.wn-pic-s.ok { color: var(--status-success); }
-.wn-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
-.wn-dot.warn { background: var(--hue-orange); }
-.wn-pic-btn { height: 24px; padding: 0 10px; border-radius: var(--radius-full); background: var(--ink-900); color: #fff; font-size: var(--fs-micro); display: inline-flex; align-items: center; }
+.wn-pic-star { color: var(--hue-blue); fill: var(--hue-blue); flex: 0 0 auto; }   /* 同顶栏已收藏的 ☆(.fp-star-on) */
 
 /* 分组与条目 */
 .wn-sec { display: flex; align-items: center; gap: 8px; padding: 16px 6px 4px; }

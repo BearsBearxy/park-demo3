@@ -1,7 +1,7 @@
 // 更新内容(src/changelog.ts)的门禁:这些字会原样上屏,写错了没人报错。
 import { describe, it, expect, vi } from 'vitest'
 import { CHANGELOG, APP_VERSION, noteOf } from '@/changelog'
-import { fpBuildRoutes } from '@/nav/fpNav'
+import { isTabValue } from '@/stores/tabs'
 import { iconFor } from '@/components/ds/icon'
 
 describe('changelog', () => {
@@ -24,11 +24,11 @@ describe('changelog', () => {
     for (const n of CHANGELOG) expect(n.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
   })
 
+  // 页签能开的屏都算:侧栏里的屏 + 首页(0.14.0 起登录落在首页)
   it('每条「去看看」都指向真实存在的屏', () => {
-    const routes = fpBuildRoutes()
     for (const n of CHANGELOG) {
       for (const it of [n.feature, ...n.added, ...n.improved].filter(Boolean)) {
-        if (it!.to) expect(routes[it!.to], `${n.version} / ${it!.title} 指向不存在的屏 ${it!.to}`).toBeDefined()
+        if (it!.to) expect(isTabValue(it!.to), `${n.version} / ${it!.title} 指向不存在的屏 ${it!.to}`).toBe(true)
       }
     }
   })
