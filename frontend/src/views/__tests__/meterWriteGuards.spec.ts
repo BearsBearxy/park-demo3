@@ -332,3 +332,24 @@ describe('园区抄表 · 深链遇上草稿', () => {
     w.unmount()
   })
 })
+
+// 没选期时主区是选期矩阵,ym 是 ''。首载 / 换月早就判了 period.picked,漏的是「切回页签」那条刷新 ——
+// 拿 '' 去打接口,后端按月份格式校验直接 400(2026-09-19 开发日志里 14 次),.catch 吞掉,屏上看不出来。
+describe('园区抄表 · 没选期时切回页签', () => {
+  it('❗切走再切回:不拿空月份去拉绑定', async () => {
+    useBillingPeriodStore().clear()
+    vi.mocked(metersApi.binding).mockClear()
+    const alive = ref(true)
+    const w = mount(defineComponent({
+      setup: () => () => h(KeepAlive, null, { default: () => (alive.value ? h(MeterView) : null) }),
+    }), { global: { stubs: { Teleport: true } } })
+    await flushPromises()
+    expect(w.find('.cmg').exists(), '前提:没选期,主区是选期矩阵').toBe(true)
+    alive.value = false                       // 切去别的页签(KeepAlive 停用,不卸载)
+    await flushPromises()
+    alive.value = true                        // 切回来 → onReactivated
+    await flushPromises()
+    expect(metersApi.binding).not.toHaveBeenCalledWith('')
+    w.unmount()
+  })
+})

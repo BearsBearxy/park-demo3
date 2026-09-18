@@ -150,6 +150,7 @@ const bindRows = ref<MeterBindingRowDTO[] | null>(null)
 const bindFail = ref(false)
 let bSeq = 0
 async function loadBinding() {
+  if (!period.picked) return   // 还没选期(主区是选期矩阵):ym 是 '',后端按格式校验直接 400
   const my = ++bSeq
   try {
     const d = await metersApi.binding(ym.value)

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
+import { defineComponent, h, ref, KeepAlive } from 'vue'
 
 import LossLedgerView from '@/views/alloc/LossLedgerView.vue'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
@@ -153,5 +154,26 @@ describe('出账链动线 · 楼栋损耗', () => {
     //   写成 findAll('select') 的话这条恒为 0,把一个 <Select> 塞回去照样绿,等于零守卫。
     expect(w.findAll('.ll-head .ds-sel-trigger')).toHaveLength(0)
     expect(w.find('.ll-head').text(), '标题行只剩屏名与期区').not.toContain('年')
+  })
+})
+
+// 没选期时主区是选期矩阵,ym 是 ''。首载 / 换月早就判了 period.picked,漏的是「切回页签」那条刷新 ——
+// 拿 '' 去打接口,后端按月份格式校验直接 400(2026-09-19 开发日志里 14 次),.catch 吞掉,屏上看不出来。
+describe('楼栋损耗 · 没选期时切回页签', () => {
+  it('❗切走再切回:不拿空月份去刷状态', async () => {
+    useBillingPeriodStore().clear()
+    vi.mocked(paramsApi.status).mockClear()
+    const alive = ref(true)
+    const w = mount(defineComponent({
+      setup: () => () => h(KeepAlive, null, { default: () => (alive.value ? h(LossLedgerView) : null) }),
+    }), { global: { stubs: { Teleport: true } } })
+    await flushPromises()
+    expect(w.find('.cmg').exists(), '前提:没选期,主区是选期矩阵').toBe(true)
+    alive.value = false                       // 切去别的页签(KeepAlive 停用,不卸载)
+    await flushPromises()
+    alive.value = true                        // 切回来 → onReactivated
+    await flushPromises()
+    expect(paramsApi.status).not.toHaveBeenCalledWith('')
+    w.unmount()
   })
 })

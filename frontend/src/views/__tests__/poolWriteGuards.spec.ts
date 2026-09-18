@@ -13,7 +13,7 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { defineComponent } from 'vue'
+import { defineComponent, h, ref, KeepAlive } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 
@@ -86,6 +86,7 @@ vi.mock('@/api/review', () => ({
 
 import PoolLedgerView from '../alloc/PoolLedgerView.vue'
 import { allocApi, type AllocRuleDTO } from '@/api/alloc'
+import { paramsApi } from '@/api/params'
 
 /** vm 直呼写函数用(script setup 的顶层绑定在 dev 构建里挂在实例代理上,meterPeriodFlow 同款) */
 interface Vm {
@@ -267,6 +268,27 @@ describe('PoolLedgerView 写口守卫', () => {
     expect(texts[iSubmit], '双键屏两把一起交').toBe('交审（2 项）')
     // §01:动作簇在编辑按钮**左边**,不是右边、也不是另起一行
     expect(iSubmit, '动作簇必须排在编辑按钮之前').toBeLessThan(iEdit)
+    w.unmount()
+  })
+})
+
+// 没选期时主区是选期矩阵,ym 是 ''。首载 / 换月早就判了 period.picked,漏的是「切回页签」那条刷新 ——
+// 拿 '' 去打接口,后端按月份格式校验直接 400(2026-09-19 开发日志里 14 次),.catch 吞掉,屏上看不出来。
+describe('公共电核算 · 没选期时切回页签', () => {
+  it('❗切走再切回:不拿空月份去刷状态', async () => {
+    useBillingPeriodStore().clear()
+    vi.mocked(paramsApi.status).mockClear()
+    const alive = ref(true)
+    const w = mount(defineComponent({
+      setup: () => () => h(KeepAlive, null, { default: () => (alive.value ? h(PoolLedgerView) : null) }),
+    }), { global: { stubs: { Teleport: true } } })
+    await flushPromises()
+    expect(w.find('.cmg').exists(), '前提:没选期,主区是选期矩阵').toBe(true)
+    alive.value = false                       // 切去别的页签(KeepAlive 停用,不卸载)
+    await flushPromises()
+    alive.value = true                        // 切回来 → onReactivated
+    await flushPromises()
+    expect(paramsApi.status).not.toHaveBeenCalledWith('')
     w.unmount()
   })
 })

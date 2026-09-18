@@ -186,6 +186,7 @@ async function loadMonth() {
 // 页签切回:参数页那边可能刚重算过 —— 池快照时间变了就整月重拉(数字与 stale 条一起变新),没变只刷状态
 // (回包前若已换月(seq 变了)就丢弃,别让旧月 status 盖住新月的 stale 条)
 async function refreshStatus() {
+  if (!period.picked) return   // 还没选期(主区是选期矩阵):ym 是 '',后端按格式校验直接 400
   const my = seq, before = status.value?.poolSnapshotAt
   const st = await paramsApi.status(ym.value).catch(() => null)
   if (my !== seq || !st) return
