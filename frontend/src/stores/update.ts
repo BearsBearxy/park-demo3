@@ -1,11 +1,11 @@
 // src/stores/update.ts — 版本更新(VERSION-UPDATE-SPEC)。
 // 管三件事:
-//   ① 这个账号看没看过当前这一版 → 顶栏 ✦ 的蓝点、首次打开自动弹「本次更新」;
+//   ① 这个账号看没看过当前这一版 → 顶栏 ✦ 的蓝点;还有没看过的功能更新 → 自动弹「本次更新」(小调整不弹);
 //   ② 服务器上是不是已经换了新版 → 底部「刷新提示条」;
 //   ③ 按需加载失败(发版后旧 hash 404,router/index.ts 的 onError)→ 同一条提示条的第二种文案。
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { APP_VERSION, noteOf } from '@/changelog'
+import { APP_VERSION, CHANGELOG, cmpVersion, isFeatureVersion, noteOf } from '@/changelog'
 import { useAuthStore } from '@/stores/auth'
 
 /** 轮询间隔。发版不是高频事件,5 分钟足够;切回标签页时还会额外问一次。 */
@@ -21,7 +21,7 @@ export const useUpdateStore = defineStore('update', () => {
 
   /** 浏览器里正在跑的这一版(构建时注入)。 */
   const version = APP_VERSION
-  /** 当前版本在 changelog 里的那一段。忘了写就是 undefined —— 此时不弹、不点蓝点。 */
+  /** 当前版本在 changelog 里的那一段。忘了写就是 undefined —— 此时不点蓝点(changelog.spec 第一条会先红)。 */
   const note = computed(() => noteOf(version))
 
   // 已读版本按账号分开记(换个人登录要各弹各的)。读写都过 localStorage,
@@ -39,8 +39,19 @@ export const useUpdateStore = defineStore('update', () => {
   }
   loadSeen()
 
-  /** 有没看过的更新:有这一版的更新内容,且这个账号没看过。 */
+  /** 有没看过的更新:有这一版的更新内容,且这个账号没看过。**只管 ✦ 蓝点和更新记录里的「新」**,不管弹不弹。 */
   const unread = computed(() => !!auth.me && !!note.value && seen.value !== version)
+
+  /**
+   * 自动弹的那一段:到当前版本为止最新的一版**功能更新**(版本号最后一位是 0,RELEASE-NOTES-SPEC §7)。
+   * 小调整(0.15.1)不弹,只亮蓝点;可要是这个账号连它之前那版功能更新(0.15.0)都没看过 ——
+   * 比如那几天没登录 —— 照样弹 0.15.0,不能因为最新一版是小调整就把功能更新漏掉。
+   */
+  const popupNote = computed(() =>
+    CHANGELOG.find((n) => isFeatureVersion(n.version) && cmpVersion(n.version, version) <= 0))
+  /** 要不要自动弹:有功能更新,且这个账号看过的版本比它旧(或从没看过)。 */
+  const popupDue = computed(() => !!auth.me && !!popupNote.value
+    && (!seen.value || cmpVersion(seen.value, popupNote.value.version) < 0))
 
   // ── 自动弹出 ──
   const popupOpen = ref(false)
@@ -53,11 +64,11 @@ export const useUpdateStore = defineStore('update', () => {
    * 不如等一等;等待期间用户若进了编辑态,到点仍然不弹。
    */
   function scheduleFirstPopup() {
-    if (popped || !unread.value) return
+    if (popped || !popupDue.value) return
     clearTimeout(popupTimer)
     popupTimer = setTimeout(() => {
       // 编辑态不打断(auth.editing 读的是全站唯一那张编辑态登记表)
-      if (popped || !unread.value || auth.editing) return
+      if (popped || !popupDue.value || auth.editing) return
       popped = true
       popupOpen.value = true
     }, POPUP_DELAY_MS)
@@ -96,6 +107,8 @@ export const useUpdateStore = defineStore('update', () => {
   /** 从哪儿开的「更新记录」:从「本次更新」进来的,手机上左上角给一个返回(SPEC §4)。 */
   const historyFromWhatsNew = ref(false)
   function openHistory(fromWhatsNew = false) {
+    // 翻过更新记录 = 看过了。小调整版不弹,没有这一句它的蓝点就永远灭不掉(2026-09-19 复查)
+    markSeen()
     historyFromWhatsNew.value = fromWhatsNew
     historyOpen.value = true
     hideCoach()
@@ -151,7 +164,7 @@ export const useUpdateStore = defineStore('update', () => {
   }
 
   return {
-    version, note, seen, unread, loadSeen,
+    version, note, seen, unread, popupNote, popupDue, loadSeen,
     popupOpen, historyOpen, historyFromWhatsNew, scheduleFirstPopup, cancelScheduledPopup, markSeen, openHistory,
     coachOn, showCoachOnce, hideCoach,
     serverVersion, blocked, barKind, reportBlocked, dismissBar, checkVersion, startPolling, stopPolling,

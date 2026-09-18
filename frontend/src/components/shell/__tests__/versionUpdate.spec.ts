@@ -146,9 +146,13 @@ describe('本次更新弹窗', () => {
   it('点弹窗里的条目:算看过、跳到那一屏', async () => {
     const { upd } = login()
     const w = mount(WhatsNewDialog, { attachTo: document.body })
-    const first = CUR.added.find((i) => i.to)!
-    const row = [...document.querySelectorAll('.wn-row')].find((r) => r.textContent?.includes(first.title))!
-    row.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    // 当前版本里第一条能跳的:可能是重点卡(点它的「去看看」),也可能是新增 / 改进里的一行(按标题精确找行 ——
+    // 别的条目说明里也可能出现这几个字)。写死「新增里那条」的话,换一版内容这条就坏(0.14.0 两次撞上)。
+    const first = [CUR.feature, ...CUR.added, ...CUR.improved].find((i) => i?.to)!
+    const el = first === CUR.feature
+      ? document.querySelector('.wn-feat .wn-lnk')!
+      : [...document.querySelectorAll('.wn-row')].find((r) => r.querySelector('.t')?.textContent === first.title)!
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
     expect(push).toHaveBeenCalledWith('/' + first.to)
     expect(upd.seen).toBe(upd.version)
@@ -217,8 +221,9 @@ describe('更新记录弹窗', () => {
   it('当前版本里能跳的条目点了就跳并关窗', async () => {
     login()
     const w = mount(ChangelogDialog, { attachTo: document.body })
-    const it = CUR.added.find((i) => i.to)!
-    const row = [...document.querySelectorAll('.cl-row')].find((r) => r.textContent?.includes(it.title))!
+    // 更新记录里重点卡也按一行列在「新增」里,所以三处一起找
+    const it = [CUR.feature, ...CUR.added, ...CUR.improved].find((i) => i?.to)!
+    const row = [...document.querySelectorAll('.cl-row')].find((r) => r.querySelector('.t')?.textContent === it.title)!
     row.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
     expect(push).toHaveBeenCalledWith('/' + it.to)

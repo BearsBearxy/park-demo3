@@ -1,21 +1,47 @@
 // 给用户看的更新记录 —— 全站只有这一处。
 //
-// 发版时要做的两件事:
+// 用户看得见的改动,在同一个 PR 里做完这几件事(什么时候必须做:VERSION-UPDATE-SPEC §8;
+// 版本号怎么涨、写几条、每条多少字、配图画什么:RELEASE-NOTES-SPEC,能自动查的都在 changelog.spec):
 //   ① 改 package.json 的 version(版本号只有那一个来源,构建时注入 __APP_VERSION__);
-//   ② 在下面 CHANGELOG 数组**最前面**加一段,版本号与 ① 一致。
-// 之后正常构建部署:新版本第一次打开时会自动弹「本次更新」,顶栏 ✦ 里随时能翻(VERSION-UPDATE-SPEC)。
+//   ② 在下面 CHANGELOG 数组**最前面**加一段,版本号与 ① 一致;
+//   ③ 换掉 WhatsNewDialog.vue 里重点卡的静态配图(.wn-pic),不换就画着上一版的内容。
+// 之后正常构建部署:功能更新第一次打开时自动弹「本次更新」,小调整只亮顶栏 ✦ 的蓝点;✦ 里随时能翻(VERSION-UPDATE-SPEC)。
 //
 // 怎么写(设计稿「一条更新怎么写」那一段):
 //   · 用用户的话,不贴提交记录,不写「重构 / 门禁 / 口径」这类开发用语;
 //   · 标题就叫那一屏在侧栏里的名字;说明一句话,说他能做什么;
 //   · 分三组:added = 以前没有的屏或功能,improved = 原来就有、现在更好用,
 //     fixed = 原来算错或点不动 —— 写「原来哪里不对」,一行一条;
-//   · 能跳过去的条目给 `to`(侧栏里那一屏的 value,见 nav/fpNav.ts);跳不过去就别给。
-//   · 本版最重要的一条放 `feature`,它在弹窗顶上单独一张卡。
+//   · 能跳过去的条目给 `to`(侧栏里那一屏的 value,见 nav/fpNav.ts;首页是 'home');跳不过去就别给。
+//   · 有新增时,最重要的那条新增放 `feature`(弹窗顶上单独一张卡,标签写死是「新增」);没有新增就不写 feature。
 // ⚠ 这里的每个字都会原样上屏,写完自己读一遍。
 import type { ReleaseNote } from '@/types/changelog'
 
 export const CHANGELOG: ReleaseNote[] = [
+  {
+    version: '0.14.0',
+    date: '2026-09-19',
+    headline: '页签和浏览器一样用，登录后先到首页',
+    feature: {
+      icon: 'home',
+      title: '首页',
+      desc: '登录后先到这里：搜索、收藏的页面、最近打开的页面都在这一页。它固定在页签最左边，关不掉。',
+      to: 'home',
+    },
+    added: [
+      { icon: 'star', title: '收藏', desc: '点页面名后面的 ☆ 收藏这一页，在首页上能找到，最多 12 个。' },
+      { icon: 'panels-top-left', title: '页签能拖动和右键', desc: '页签能拖动换位置；右键能固定、关闭其他、重新打开关掉的页签；点 + 新建。' },
+    ],
+    improved: [
+      { icon: 'layers', title: '页签和浏览器一样用', desc: '原来点导航换掉斜体的预览页签，现在换掉当前页签（首页除外）；按住 Ctrl 点开新页签。' },
+      { icon: 'arrow-left', title: '路径能点、图标有说明', desc: '点「数据中心」这样的前一段回到这一层的第一屏；鼠标在图标上停半秒会说明用途。' },
+      { icon: 'users', title: '在线的人看得清', desc: '原来头像太小看不清，现在头像放大了、写着名字的后两个字，旁边直接写几个人在线。' },
+      { icon: 'pen-line', title: '正在改的页面不会被换掉', desc: '改到一半点左边导航，会开到新页签；关掉正在改的页签前会先问一句。' },
+    ],
+    fixed: [
+      '月度台账、三大报表、账册模板、角色管理、新建合同：改到一半关浏览器，原来不会先问一句',
+    ],
+  },
   {
     version: '0.13.0',
     date: '2026-09-18',
@@ -109,6 +135,19 @@ export const CHANGELOG: ReleaseNote[] = [
 
 /** 当前跑在浏览器里的这一版(构建时由 vite.config.ts 注入)。 */
 export const APP_VERSION = __APP_VERSION__
+
+/** 按语义比版本号:逐位比数字,预发布后缀不参与。a 比 b 新返回正数。 */
+export function cmpVersion(a: string, b: string): number {
+  const x = a.split('-')[0].split('.').map(Number)
+  const y = b.split('-')[0].split('.').map(Number)
+  for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0)
+  return 0
+}
+
+/** 功能更新 = 版本号最后一位是 0(0.15.0、1.0.0);最后一位不是 0 的是小调整(RELEASE-NOTES-SPEC §1)。 */
+export function isFeatureVersion(v: string): boolean {
+  return Number(v.split('-')[0].split('.')[2] ?? 0) === 0
+}
 
 /** 当前版本对应的那一段;版本号没写进 CHANGELOG 时(忘了加)返回 undefined,调用方按「没有可弹的」处理。 */
 export function noteOf(version: string): ReleaseNote | undefined {

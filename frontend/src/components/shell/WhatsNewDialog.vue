@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 「本次更新」——新版本第一次打开时自动弹一次(VERSION-UPDATE-SPEC §2/§3)。
+// 「本次更新」——功能更新第一次打开时自动弹一次;小调整不弹(VERSION-UPDATE-SPEC §2/§3,RELEASE-NOTES-SPEC §7)。
 // 开关在 update store 的 popupOpen:本组件不自己决定什么时候弹,只负责弹出来长什么样。
 import { computed, defineAsyncComponent, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -8,7 +8,7 @@ import { useTabsStore } from '@/stores/tabs'
 import { iconFor } from '@/components/ds/icon'
 import { BRAND } from '@/brand'
 import Button from '@/components/ds/Button.vue'
-import { X, ChevronRight, Bell, Check } from 'lucide-vue-next'
+import { X, ChevronRight, Plus, Search, Star } from 'lucide-vue-next'
 import logoUrl from '@/assets/brand/logo.svg'
 import type { ReleaseItem } from '@/types/changelog'
 
@@ -22,7 +22,8 @@ const upd = useUpdateStore()
 const router = useRouter()
 const tabs = useTabsStore()
 
-const note = computed(() => upd.note)
+// 弹的是「最新一版功能更新」,不一定是当前版本:当前是小调整(0.15.1)时弹的是 0.15.0(stores/update.ts popupNote)
+const note = computed(() => upd.popupNote)
 const addedCount = computed(() => (note.value ? note.value.added.length + (note.value.feature ? 1 : 0) : 0))
 
 /** 关掉 = 看过了。四条路(知道了 / × / 点遮罩 / Esc)都走这里,随后在 ✦ 下提示一次入口在哪。 */
@@ -82,10 +83,14 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
             </div>
             <!-- 配图:一张静态示意,说明这一版改的是什么样子(不接数据) -->
             <div class="wn-pic" aria-hidden="true">
-              <div class="wn-pic-h"><span>本月出账 · 2026-08</span><span class="wn-pic-bell"><Bell :size="14" /><i>2</i></span></div>
-              <div class="wn-pic-r"><span>利润表</span><span class="wn-pic-s"><i class="wn-dot warn"></i>待审核</span></div>
-              <div class="wn-pic-r"><span>月度台账 · 一期</span><span class="wn-pic-s ok"><Check :size="12" />已审核</span></div>
-              <div class="wn-pic-r"><span>附表10 销售收入</span><span class="wn-pic-btn">交审</span></div>
+              <div class="wn-pic-tabs">
+                <span class="wn-pic-tab on"><component :is="iconFor('home')" :size="12" /></span>
+                <span class="wn-pic-tab">本月出账</span>
+                <span class="wn-pic-plus"><Plus :size="12" /></span>
+              </div>
+              <div class="wn-pic-search"><Search :size="12" /><span>搜索页面 / 分组…</span></div>
+              <div class="wn-pic-r"><span>收藏</span><span class="wn-pic-s"><Star :size="12" class="wn-pic-star" />本月出账</span></div>
+              <div class="wn-pic-r"><span>最近打开</span><span class="wn-pic-s">计费参数</span></div>
             </div>
           </section>
 
@@ -188,20 +193,26 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
   flex: 0 0 200px; align-self: stretch; padding: 10px; display: flex; flex-direction: column; gap: 6px;
   background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 10px;
 }
-.wn-pic-h { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-micro); color: var(--text-muted); padding-bottom: 4px; border-bottom: 1px solid var(--divider); }
-.wn-pic-bell { position: relative; display: inline-flex; color: var(--text-secondary); }
-.wn-pic-bell i {
-  position: absolute; top: -6px; right: -8px; min-width: 14px; height: 14px; padding: 0 3px;
-  border-radius: var(--radius-full); background: var(--hue-red); color: #fff;
-  font-family: var(--font-mono); font-size: 9.5px; font-style: normal; font-weight: var(--fw-semibold);
-  display: grid; place-items: center; box-shadow: 0 0 0 1.5px var(--surface-white);
+/* 页签条缩样:颜色取 TabStrip(条 = surface-sunken,当前页签 = surface-white) */
+.wn-pic-tabs {
+  display: flex; align-items: flex-end; gap: 2px; height: 28px; padding: 0 3px; overflow: hidden;
+  background: var(--surface-sunken); border-radius: 6px 6px 0 0;
+}
+.wn-pic-tab {
+  height: 22px; padding: 0 6px; display: inline-flex; align-items: center;
+  font-size: var(--fs-micro); color: var(--text-muted); white-space: nowrap; border-radius: 6px 6px 0 0;
+}
+.wn-pic-tab.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-medium); }
+.wn-pic-plus { height: 22px; width: 18px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); }
+/* 首页搜索框缩样:字取 HomeView 的占位字 */
+.wn-pic-search {
+  display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-full);
+  font-size: var(--fs-micro); color: var(--text-muted);
 }
 .wn-pic-r { display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 24px; font-size: var(--fs-label); }
 .wn-pic-s { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-micro); color: var(--text-muted); }
-.wn-pic-s.ok { color: var(--status-success); }
-.wn-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
-.wn-dot.warn { background: var(--hue-orange); }
-.wn-pic-btn { height: 24px; padding: 0 10px; border-radius: var(--radius-full); background: var(--ink-900); color: #fff; font-size: var(--fs-micro); display: inline-flex; align-items: center; }
+.wn-pic-star { color: var(--hue-blue); fill: var(--hue-blue); flex: 0 0 auto; }   /* 同顶栏已收藏的 ☆(.fp-star-on) */
 
 /* 分组与条目 */
 .wn-sec { display: flex; align-items: center; gap: 8px; padding: 16px 6px 4px; }
