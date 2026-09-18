@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 「本次更新」——新版本第一次打开时自动弹一次(VERSION-UPDATE-SPEC §2/§3)。
+// 「本次更新」——功能更新第一次打开时自动弹一次;小调整不弹(VERSION-UPDATE-SPEC §2/§3,RELEASE-NOTES-SPEC §7)。
 // 开关在 update store 的 popupOpen:本组件不自己决定什么时候弹,只负责弹出来长什么样。
 import { computed, defineAsyncComponent, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -22,7 +22,8 @@ const upd = useUpdateStore()
 const router = useRouter()
 const tabs = useTabsStore()
 
-const note = computed(() => upd.note)
+// 弹的是「最新一版功能更新」,不一定是当前版本:当前是小调整(0.15.1)时弹的是 0.15.0(stores/update.ts popupNote)
+const note = computed(() => upd.popupNote)
 const addedCount = computed(() => (note.value ? note.value.added.length + (note.value.feature ? 1 : 0) : 0))
 
 /** 关掉 = 看过了。四条路(知道了 / × / 点遮罩 / Esc)都走这里,随后在 ✦ 下提示一次入口在哪。 */

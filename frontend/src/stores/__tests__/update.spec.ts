@@ -206,7 +206,7 @@ describe('update store', () => {
     expect(fetchMock).toHaveBeenCalledWith('/version.json', { cache: 'no-store' })
   })
 
-  it('当前版本必须写进 changelog,否则不弹也不点蓝点', () => {
+  it('当前版本必须写进 changelog,否则蓝点不亮(弹不弹看的是功能更新,见 updateMinor.spec)', () => {
     login()
     const u = useUpdateStore()
     u.loadSeen()

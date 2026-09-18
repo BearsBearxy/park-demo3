@@ -1,6 +1,6 @@
 // 更新内容(src/changelog.ts)的门禁:这些字会原样上屏,写错了没人报错。
 import { describe, it, expect, vi } from 'vitest'
-import { CHANGELOG, APP_VERSION, noteOf } from '@/changelog'
+import { CHANGELOG, APP_VERSION, noteOf, cmpVersion as cmp } from '@/changelog'
 import { isTabValue } from '@/stores/tabs'
 import { iconFor } from '@/components/ds/icon'
 import type { ReleaseItem, ReleaseNote } from '@/types/changelog'
@@ -66,12 +66,6 @@ describe('changelog', () => {
 // 只查 0.14.0 及以后:更早的版本写在这份规范之前,不回头改。人工才判得了的(标题是不是屏名、
 // 改进有没有写「原来 …，现在 …」、配图画得对不对)不在这里,归文案复查。
 const num = (v: string) => v.split('-')[0].split('.').map(Number)
-/** 按语义比版本号:逐位比数字,预发布后缀不参与。 */
-const cmp = (a: string, b: string) => {
-  const x = num(a), y = num(b)
-  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i]
-  return 0
-}
 const RULED = CHANGELOG.filter((n) => cmp(n.version, '0.14.0') >= 0)
 /** 字数:中文、英文字母、数字、标点各算 1 个,空格不算(§4)。 */
 const len = (s: string) => [...s.replace(/\s/g, '')].length
@@ -97,11 +91,18 @@ describe('更新公告规范(RELEASE-NOTES-SPEC §9)', () => {
     }
   })
 
-  it('只修复的版本(第三位不是 0):没有重点卡、新增、改进,至少一条修复', () => {
+  // 小调整版不自动弹(只亮 ✦ 蓝点),所以不许藏新增在里面:有新增就是功能更新,中间一位要涨
+  it('小调整版(最后一位不是 0):没有重点卡、没有新增,改进 + 修复至少一条', () => {
     for (const n of RULED.filter((x) => num(x.version)[2] !== 0)) {
-      expect(n.feature, `${n.version} 只修复却有重点卡`).toBeUndefined()
-      expect(n.added.length + n.improved.length, `${n.version} 只修复却有新增 / 改进`).toBe(0)
-      expect(n.fixed.length, `${n.version} 只修复却一条修复都没有`).toBeGreaterThan(0)
+      expect(n.feature, `${n.version} 是小调整却有重点卡`).toBeUndefined()
+      expect(n.added.length, `${n.version} 是小调整却有新增 —— 有新增就是功能更新`).toBe(0)
+      expect(n.improved.length + n.fixed.length, `${n.version} 一条内容都没有`).toBeGreaterThan(0)
+    }
+  })
+
+  it('功能更新版(最后一位是 0):至少一条内容', () => {
+    for (const n of RULED.filter((x) => num(x.version)[2] === 0)) {
+      expect(itemsOf(n).length + n.fixed.length, `${n.version} 一条内容都没有`).toBeGreaterThan(0)
     }
   })
 

@@ -5,7 +5,7 @@
 //   ① 改 package.json 的 version(版本号只有那一个来源,构建时注入 __APP_VERSION__);
 //   ② 在下面 CHANGELOG 数组**最前面**加一段,版本号与 ① 一致;
 //   ③ 换掉 WhatsNewDialog.vue 里重点卡的静态配图(.wn-pic),不换就画着上一版的内容。
-// 之后正常构建部署:新版本第一次打开时会自动弹「本次更新」,顶栏 ✦ 里随时能翻(VERSION-UPDATE-SPEC)。
+// 之后正常构建部署:功能更新第一次打开时自动弹「本次更新」,小调整只亮顶栏 ✦ 的蓝点;✦ 里随时能翻(VERSION-UPDATE-SPEC)。
 //
 // 怎么写(设计稿「一条更新怎么写」那一段):
 //   · 用用户的话,不贴提交记录,不写「重构 / 门禁 / 口径」这类开发用语;
@@ -135,6 +135,19 @@ export const CHANGELOG: ReleaseNote[] = [
 
 /** 当前跑在浏览器里的这一版(构建时由 vite.config.ts 注入)。 */
 export const APP_VERSION = __APP_VERSION__
+
+/** 按语义比版本号:逐位比数字,预发布后缀不参与。a 比 b 新返回正数。 */
+export function cmpVersion(a: string, b: string): number {
+  const x = a.split('-')[0].split('.').map(Number)
+  const y = b.split('-')[0].split('.').map(Number)
+  for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0)
+  return 0
+}
+
+/** 功能更新 = 版本号最后一位是 0(0.15.0、1.0.0);最后一位不是 0 的是小调整(RELEASE-NOTES-SPEC §1)。 */
+export function isFeatureVersion(v: string): boolean {
+  return Number(v.split('-')[0].split('.')[2] ?? 0) === 0
+}
 
 /** 当前版本对应的那一段;版本号没写进 CHANGELOG 时(忘了加)返回 undefined,调用方按「没有可弹的」处理。 */
 export function noteOf(version: string): ReleaseNote | undefined {
