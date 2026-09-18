@@ -4,7 +4,8 @@
 // 版本号怎么涨、写几条、每条多少字、配图画什么:RELEASE-NOTES-SPEC,能自动查的都在 changelog.spec):
 //   ① 改 package.json 的 version(版本号只有那一个来源,构建时注入 __APP_VERSION__);
 //   ② 在下面 CHANGELOG 数组**最前面**加一段,版本号与 ① 一致;
-//   ③ 换掉 WhatsNewDialog.vue 里重点卡的静态配图(.wn-pic),不换就画着上一版的内容。
+//   ③ 有重点卡的版本:在 components/shell/release/ 新建 Art<版本>.vue 画这一版的配图,登记进 art.ts
+//     (不覆盖旧的 —— 弹窗和更新记录都按版本取图)。
 // 之后正常构建部署:功能更新第一次打开时自动弹「本次更新」,小调整只亮顶栏 ✦ 的蓝点;✦ 里随时能翻(VERSION-UPDATE-SPEC)。
 //
 // 怎么写(设计稿「一条更新怎么写」那一段):
@@ -18,6 +19,18 @@
 import type { ReleaseNote } from '@/types/changelog'
 
 export const CHANGELOG: ReleaseNote[] = [
+  {
+    version: '0.14.1',
+    date: '2026-09-19',
+    headline: '更新记录里也能看到重点卡',
+    added: [],
+    improved: [
+      { icon: 'history', title: '更新记录里有重点卡', desc: '原来重点卡和配图只在弹窗里出现一次，现在翻更新记录也能看到。' },
+    ],
+    fixed: [
+      '更新记录：版本列表里的标题太长时会超出框外',
+    ],
+  },
   {
     version: '0.14.0',
     date: '2026-09-19',
