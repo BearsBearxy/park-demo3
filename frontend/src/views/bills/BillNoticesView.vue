@@ -185,6 +185,7 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
 // 页签切回:参数页那边可能刚重算过 —— 批次时间变了就整月重拉(单与 stale 条一起变新),没变只刷状态
 // (回包前若已换月(seq 变了)就丢弃,别让旧月 status 盖住新月的 stale 条)
 onReactivated(async () => {
+  if (!period.picked) return   // 还没选期(主区是选期矩阵):ym 是 '',后端按格式校验直接 400
   const my = seq, before = status.value?.billBatchAt
   const st = await paramsApi.status(ym.value).catch(() => null)
   if (my !== seq || !st) return
