@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { CHANGELOG, APP_VERSION, noteOf } from '@/changelog'
 import { isTabValue } from '@/stores/tabs'
 import { iconFor } from '@/components/ds/icon'
+import type { ReleaseItem, ReleaseNote } from '@/types/changelog'
 
 describe('changelog', () => {
   it('第一段就是当前构建的版本(发版时改了版本号却忘了写内容,这条会红)', () => {
@@ -57,6 +58,140 @@ describe('changelog', () => {
         expect(f.trim()).not.toBe('')
         for (const word of BAN) expect(f.includes(word), `${n.version} 的修复条目里出现了「${word}」`).toBe(false)
       }
+    }
+  })
+})
+
+// ── 更新公告规范的自动检查(docs/design/RELEASE-NOTES-SPEC.md §9)────────────────
+// 只查 0.14.0 及以后:更早的版本写在这份规范之前,不回头改。人工才判得了的(标题是不是屏名、
+// 改进有没有写「原来 …，现在 …」、配图画得对不对)不在这里,归文案复查。
+const num = (v: string) => v.split('-')[0].split('.').map(Number)
+/** 按语义比版本号:逐位比数字,预发布后缀不参与。 */
+const cmp = (a: string, b: string) => {
+  const x = num(a), y = num(b)
+  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i]
+  return 0
+}
+const RULED = CHANGELOG.filter((n) => cmp(n.version, '0.14.0') >= 0)
+/** 字数:中文、英文字母、数字、标点各算 1 个,空格不算(§4)。 */
+const len = (s: string) => [...s.replace(/\s/g, '')].length
+const itemsOf = (n: ReleaseNote): ReleaseItem[] => [n.feature, ...n.added, ...n.improved].filter(Boolean) as ReleaseItem[]
+/** 一版里所有会上屏的字。 */
+const textsOf = (n: ReleaseNote) =>
+  [n.headline, ...itemsOf(n).flatMap((i) => [i.title, i.desc, i.toLabel ?? '']), ...n.fixed].filter(Boolean)
+const inRange = (s: string, lo: number, hi: number) => len(s) >= lo && len(s) <= hi
+
+describe('更新公告规范(RELEASE-NOTES-SPEC §9)', () => {
+  it('规范管得到的版本不是空的(否则下面全是空断言)', () => {
+    expect(RULED.length).toBeGreaterThan(0)
+  })
+
+  it('版本号是纯 X.Y.Z,不带预发布后缀', () => {
+    for (const n of RULED) expect(n.version, n.version).toMatch(/^\d+\.\d+\.\d+$/)
+  })
+
+  it('版本号按语义从大到小', () => {
+    for (let i = 1; i < CHANGELOG.length; i++) {
+      expect(cmp(CHANGELOG[i - 1].version, CHANGELOG[i].version),
+        `${CHANGELOG[i - 1].version} 应比 ${CHANGELOG[i].version} 大`).toBeGreaterThan(0)
+    }
+  })
+
+  it('只修复的版本(第三位不是 0):没有重点卡、新增、改进,至少一条修复', () => {
+    for (const n of RULED.filter((x) => num(x.version)[2] !== 0)) {
+      expect(n.feature, `${n.version} 只修复却有重点卡`).toBeUndefined()
+      expect(n.added.length + n.improved.length, `${n.version} 只修复却有新增 / 改进`).toBe(0)
+      expect(n.fixed.length, `${n.version} 只修复却一条修复都没有`).toBeGreaterThan(0)
+    }
+  })
+
+  it('有新增就必须有重点卡,没有新增就不许有(重点卡的标签写死是「新增」)', () => {
+    for (const n of RULED.filter((x) => num(x.version)[2] === 0)) {
+      expect(!!n.feature, `${n.version}:新增 ${n.added.length} 条,重点卡${n.feature ? '有' : '没有'}`)
+        .toBe(n.added.length > 0)
+    }
+  })
+
+  it('各段字数在 §4 的范围内', () => {
+    for (const n of RULED) {
+      expect(inRange(n.headline, 8, 20), `${n.version} 一句话标题 ${len(n.headline)} 字(8–20)`).toBe(true)
+      if (n.feature) {
+        expect(inRange(n.feature.title, 2, 12), `${n.version} 重点卡标题 ${len(n.feature.title)} 字(2–12)`).toBe(true)
+        expect(inRange(n.feature.desc, 40, 100), `${n.version} 重点卡说明 ${len(n.feature.desc)} 字(40–100)`).toBe(true)
+      }
+      for (const it of [...n.added, ...n.improved]) {
+        expect(inRange(it.title, 2, 12), `${n.version} / ${it.title}:标题 ${len(it.title)} 字(2–12)`).toBe(true)
+        expect(inRange(it.desc, 10, 45), `${n.version} / ${it.title}:说明 ${len(it.desc)} 字(10–45)`).toBe(true)
+      }
+      for (const it of itemsOf(n)) {
+        if (it.toLabel) expect(inRange(it.toLabel, 2, 6), `${n.version} / ${it.title}:跳转字 ${len(it.toLabel)} 字(2–6)`).toBe(true)
+      }
+      for (const f of n.fixed) expect(inRange(f, 15, 45), `${n.version} 修复「${f}」${len(f)} 字(15–45)`).toBe(true)
+    }
+  })
+
+  it('条数:新增 + 改进 ≤ 6(不算重点卡),修复 ≤ 5', () => {
+    for (const n of RULED) {
+      expect(n.added.length + n.improved.length, `${n.version} 新增 + 改进`).toBeLessThanOrEqual(6)
+      expect(n.fixed.length, `${n.version} 修复`).toBeLessThanOrEqual(5)
+    }
+  })
+
+  it('整版总字数 ≤ 450', () => {
+    for (const n of RULED) {
+      const total = len(n.headline) + itemsOf(n).reduce((s, i) => s + len(i.title) + len(i.desc), 0)
+        + n.fixed.reduce((s, f) => s + len(f), 0)
+      expect(total, `${n.version} 整版 ${total} 字`).toBeLessThanOrEqual(450)
+    }
+  })
+
+  it('按 ，。；：！？（） 切开后每一段 ≤ 30 字(顿号不切)', () => {
+    for (const n of RULED) {
+      for (const t of textsOf(n)) {
+        for (const seg of t.split(/[，。；：！？（）]/)) {
+          expect(len(seg), `${n.version}「${seg}」${len(seg)} 字`).toBeLessThanOrEqual(30)
+        }
+      }
+    }
+  })
+
+  it('扩充的禁词、感叹号、emoji', () => {
+    const BAN2 = ['优化', '若干', '已知问题', '全新', '重磅', '大幅']
+    for (const n of RULED) {
+      for (const t of textsOf(n)) {
+        for (const w of BAN2) expect(t.includes(w), `${n.version}「${t}」里有「${w}」`).toBe(false)
+        expect(/bug/i.test(t), `${n.version}「${t}」里有 bug`).toBe(false)
+        expect(/[！!]/.test(t), `${n.version}「${t}」里有感叹号`).toBe(false)
+        expect(/\p{Extended_Pictographic}/u.test(t), `${n.version}「${t}」里有 emoji`).toBe(false)
+      }
+    }
+  })
+
+  it('一句话标题:没有句号,最多一个逗号', () => {
+    for (const n of RULED) {
+      expect(n.headline.includes('。'), `${n.version} 标题有句号`).toBe(false)
+      expect((n.headline.match(/，/g) ?? []).length, `${n.version} 标题的逗号`).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('中文和英文、数字之间有空格', () => {
+    for (const n of RULED) {
+      for (const t of textsOf(n)) {
+        expect(/[\u4e00-\u9fa5][A-Za-z0-9]|[A-Za-z0-9][\u4e00-\u9fa5]/.test(t), `${n.version}「${t}」中英文 / 数字之间少空格`).toBe(false)
+      }
+    }
+  })
+
+  it('修复条目不以「修复」「解决」开头(写原来的现象)', () => {
+    for (const n of RULED) {
+      for (const f of n.fixed) expect(/^(修复|解决)/.test(f), `${n.version}「${f}」`).toBe(false)
+    }
+  })
+
+  it('同一版里标题不重复', () => {
+    for (const n of RULED) {
+      const titles = itemsOf(n).map((i) => i.title)
+      expect(new Set(titles).size, `${n.version} 标题有重复:${titles.join(' / ')}`).toBe(titles.length)
     }
   })
 })
