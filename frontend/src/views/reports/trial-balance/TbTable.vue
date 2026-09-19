@@ -122,7 +122,7 @@ function inputVal(r: TbAccount, field: TbFieldKey): string {
 .tb-caret-ph { width:20px; flex:0 0 auto; }
 .tb-x { width:20px; height:20px; flex:0 0 auto; border:none; background:transparent; border-radius:var(--radius-sm); color:var(--text-disabled); cursor:pointer; display:none; place-items:center; margin-left:auto; }
 .fin-table tbody tr:hover .tb-x { display:grid; }
-.tb-x:hover { background:rgb(255,238,237); color:var(--hue-red); }
+.tb-x:hover { background:var(--danger-soft); color:var(--hue-red); }
 .fin-nv { display:block; text-align:right; font-size:12px; padding:0 12px; color:var(--text-secondary); font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .fin-nv.empty { color:var(--text-disabled); }
 .fin-nv.calc { font-weight:var(--fw-semibold); color:var(--text-primary); }

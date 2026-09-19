@@ -509,7 +509,7 @@ const dragStyle = (v: string) =>
   right: 56px;
   width: 40px;
   pointer-events: none;
-  background: linear-gradient(90deg, rgba(245, 245, 246, 0), var(--surface-sunken));
+  background: linear-gradient(90deg, transparent, var(--surface-sunken));
 }
 
 .fp-tab {
@@ -540,7 +540,7 @@ const dragStyle = (v: string) =>
   background: transparent;
   transition: background var(--dur-fast) var(--ease-standard);
 }
-.fp-tab:hover .bg { background: rgba(28, 28, 28, 0.06); }
+.fp-tab:hover .bg { background: color-mix(in srgb, var(--ink-900) 6%, transparent); }
 .fp-tab > :not(.bg):not(.fl) { position: relative; }
 /* 相邻页签之间的细竖线;挨着当前 / 悬停 / 被拖的那个两侧不画 */
 .fp-tab::before {
@@ -601,7 +601,7 @@ const dragStyle = (v: string) =>
   display: grid;
   place-items: center;
 }
-.fp-tab-x:hover { background: rgba(28, 28, 28, 0.1); color: var(--text-primary); }
+.fp-tab-x:hover { background: var(--ink-100); color: var(--text-primary); }
 /* 触屏无 hover:× 常显(RESPONSIVE-LAYOUT-SPEC §6.1),非激活签才关得掉 */
 @media (hover: none) {
   .fp-tab-x { opacity: 0.55; }
@@ -631,7 +631,7 @@ const dragStyle = (v: string) =>
   transition: background var(--dur-fast), color var(--dur-fast);
 }
 .fp-tab-new { margin: 0 0 4px 4px; }
-.fp-tab-new:hover, .fp-tab-list:hover, .fp-tab-list.open { background: rgba(28, 28, 28, 0.06); color: var(--text-primary); }
+.fp-tab-new:hover, .fp-tab-list:hover, .fp-tab-list.open { background: color-mix(in srgb, var(--ink-900) 6%, transparent); color: var(--text-primary); }
 .fp-tab-listw { margin: 0 0 4px auto; flex: 0 0 auto; display: inline-flex; }
 .fp-tab-list { padding: 0 6px; font-family: var(--font-mono); font-size: var(--fs-label); font-weight: var(--fw-semibold); }
 
@@ -642,10 +642,10 @@ const dragStyle = (v: string) =>
   z-index: var(--z-popover);
   width: 280px;
   padding: 12px 14px;
-  background: var(--surface-white);
+  background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-pop, 0 8px 28px rgba(28, 28, 28, 0.12));
+  box-shadow: var(--shadow-pop);
   pointer-events: none;
   animation: fp-pop-in var(--dur-fast) var(--ease-out);
 }
@@ -667,16 +667,16 @@ const dragStyle = (v: string) =>
   max-height: 60vh;
   overflow-y: auto;
   padding: 8px;
-  background: var(--surface-white);
+  background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  box-shadow: 0 8px 28px rgba(28, 28, 28, 0.12);
+  box-shadow: var(--shadow-pop);
   animation: fp-pop-in var(--dur-fast) var(--ease-out);
 }
 .fp-tablist-in {
   display: flex; align-items: center; gap: 8px;
   height: 36px; padding: 0 10px;
-  border: 1px solid var(--border-subtle); border-radius: 8px;
+  border: 1px solid var(--border-control); border-radius: 8px;
   background: var(--surface-card); color: var(--text-muted);
 }
 .fp-tablist-in input {
@@ -690,7 +690,7 @@ const dragStyle = (v: string) =>
   font-size: var(--fs-body); color: var(--text-primary); cursor: pointer;
 }
 .fp-tablist-row:hover { background: var(--bg-hover); }
-.fp-tablist-row.on { background: var(--accent-slate); }
+.fp-tablist-row.on { background: var(--row-selected-raised); }   /* 同命令面板选中行 */
 .fp-tablist-row.closed .nm { color: var(--text-secondary); }
 .fp-tablist-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fp-tablist-row .r { font-size: var(--fs-label); color: var(--text-muted); white-space: nowrap; }
@@ -710,10 +710,10 @@ const dragStyle = (v: string) =>
   z-index: var(--z-popover);
   width: 248px;
   padding: 6px;
-  background: var(--surface-white);
+  background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  box-shadow: 0 8px 28px rgba(28, 28, 28, 0.12);
+  box-shadow: var(--shadow-pop);
   animation: fp-pop-in var(--dur-fast) var(--ease-out);
 }
 .fp-tab-menu .row {

@@ -291,7 +291,7 @@ async function onContractCreated() {
         <span style="display:flex;align-items:center;gap:8px">
           <!-- 跨栋占用(S15 服务刀字段):经附加单元挂入的外栋合同 -->
           <span v-if="selUnit.crossBuilding"
-                style="font-size:11.5px;color:rgb(64,84,124);background:var(--accent-slate);padding:2px 8px;border-radius:999px"
+                style="font-size:11.5px;color:var(--slate-text);background:var(--accent-slate);padding:2px 8px;border-radius:999px"
                 title="跨栋占用:该单元由其他楼栋的合同经附加单元挂入">跨栋{{ selUnit.homeBuildingName ? ' · ' + selUnit.homeBuildingName : '' }}</span>
           <span style="font-size:12px;color:var(--text-muted)">{{ STATUS_LABEL[selUnit.status] }}</span>
         </span>
@@ -432,8 +432,8 @@ async function onContractCreated() {
 
 <style scoped>
 /* 1:1 参考 FinDialogs .fin-mask/.fin-dlg;z-index 高于 FPDrawer(300/301) */
-.bd-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:320; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
-.bd-dlg { width:min(440px,92vw); background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); animation:fp-rise-in var(--dur-base) var(--ease-standard) both; }
+.bd-mask { position:fixed; inset:0; background:var(--scrim); z-index:320; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
+.bd-dlg { width:min(440px,92vw); background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:var(--shadow-dialog); animation:fp-rise-in var(--dur-base) var(--ease-standard) both; }
 .bd-dlg-h { padding:20px 22px 0; }
 .bd-dlg-h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .bd-dlg-h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
@@ -443,7 +443,7 @@ async function onContractCreated() {
 .bd-dlg-b { display:flex; flex-direction:column; gap:12px; padding:18px 22px 0; }
 .bd-field .lab { font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); margin-bottom:7px; }
 .bd-field .lab i { color:var(--hue-red); font-style:normal; }
-.bd-in { width:100%; box-sizing:border-box; height:40px; padding:0 12px; font-size:13.5px; color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
+.bd-in { width:100%; box-sizing:border-box; height:40px; padding:0 12px; font-size:13.5px; color:var(--text-primary); border:1px solid var(--border-control); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
 .bd-in:focus { border-color:var(--hue-blue); }
 .bd-in.err { border-color:var(--hue-red); }
 .bd-erm { font-size:11.5px; color:var(--hue-red); min-height:14px; }

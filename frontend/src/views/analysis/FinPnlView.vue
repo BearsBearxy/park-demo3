@@ -136,7 +136,7 @@ const snap = computed(() => {
 
 // KPI 条 → 迷你利润表链条(spec 2026-07-11 §C:替换普通瓦片;数值口径=snap,同 v1)
 const chain = computed(() => (snap.value ? pnlChain(snap.value) : []))
-const chainAmt = (v: number): string => (v < 0 ? '−' : '') + '¥' + fint(Math.abs(v) / 1e4) + '万'
+const chainAmt = (v: number): string => (v < 0 ? '−' : '') + '¥' + fint(Math.abs(v) / 1e4)   // 单位「万」在模板里另画 14 号
 // 链条尾注(口径同原「营业外占利润总额」瓦片:占比=nonOp/tot,tot=0 → —)
 const nonOpNote = computed(() => {
   const s = snap.value
@@ -235,9 +235,10 @@ const fmtW = (v: number): string => fnum(v / 1e4, 1)   // 表格单元(元→万
       <div v-if="chain.length" class="fin-chain">
         <template v-for="(n, i) in chain" :key="n.label">
           <span v-if="i" class="op">{{ n.kind === 'neg' ? '−' : chain[i - 1].kind === 'neg' ? '=' : '→' }}</span>
-          <span class="node">
+          <!-- 格底(KpiFormula A):加减的数 slate、等号右边的结果 sky、最后的净利润 blue;利润类(sub)为负标红,收入 / 成本不标 -->
+          <span class="node" :class="i === chain.length - 1 ? 'last' : n.kind === 'sub' ? 'res' : ''">
             <span class="nl">{{ n.label }}</span>
-            <span class="nv" :style="n.value < 0 ? { color: 'var(--hue-red)' } : undefined">{{ chainAmt(n.value) }}</span>
+            <span class="nv" :style="n.kind === 'sub' && n.value < 0 ? { color: 'var(--delta-down-text)' } : undefined">{{ chainAmt(n.value) }}<span class="u">万</span></span>
             <span class="np">{{ n.pct == null ? '—' : n.pct + '%' }}</span>
           </span>
         </template>
@@ -334,12 +335,17 @@ const fmtW = (v: number): string => fnum(v / 1e4, 1)   // 表格单元(元→万
 .fin-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .fin-head .sub { font-size: var(--fs-micro); color: var(--text-muted); }
 
-/* §C 迷你利润表链条(贴 av2-kpi 观感:白底细边圆角卡;.av2-kpis 单子项自然占满整行) */
-.fin-chain { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 9px 14px; }
-.fin-chain .node { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.fin-chain .nl { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
-.fin-chain .nv { font-size: 16px; font-weight: 600; font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-primary); letter-spacing: -0.01em; white-space: nowrap; }
-.fin-chain .np { font-size: var(--fs-micro); font-family: var(--font-mono); color: var(--text-muted); }
-.fin-chain .op { font-size: 15px; color: var(--text-muted); padding: 0 2px; user-select: none; }
-.fin-chain .tail { margin-left: auto; font-size: var(--fs-micro); font-family: var(--font-mono); color: var(--text-muted); text-align: right; }
+/* §C 迷你利润表链条(KPI-CARD-SPEC §4 利润公式条,像素照抄稿 KpiFormula A .fx.a):每个数一格浅底,
+   运算符在格与格之间;尾注独占下一行靠右。格 min-width:max-content → 窄屏放不下整格折行,不压扁数字。
+   .av2-kpis 单子项自然占满整行 */
+.fin-chain { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+.fin-chain .node { flex: 1 1 0; min-width: max-content; display: flex; flex-direction: column; gap: 2px; border-radius: var(--radius-md); padding: 10px 14px; background: var(--accent-slate); }
+.fin-chain .node.res { background: var(--accent-sky); }
+.fin-chain .node.last { background: var(--accent-blue); }
+.fin-chain .nl { font-size: var(--fs-label); line-height: 18px; color: var(--text-primary); white-space: nowrap; }
+.fin-chain .nv { font-family: var(--font-mono); font-size: var(--fs-h2); line-height: 26px; font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; letter-spacing: var(--ls-tight); color: var(--text-primary); white-space: nowrap; }
+.fin-chain .nv .u { font-family: var(--font-sans); font-size: var(--fs-body); font-weight: var(--fw-medium); }
+.fin-chain .np { font-family: var(--font-mono); font-size: var(--fs-micro); line-height: 16px; color: var(--text-muted-tint); }
+.fin-chain .op { flex: 0 0 auto; width: 16px; text-align: center; font-size: var(--fs-h2); color: var(--text-muted); user-select: none; }
+.fin-chain .tail { flex: 1 0 100%; font-size: var(--fs-micro); font-family: var(--font-mono); color: var(--text-muted); text-align: right; white-space: nowrap; }
 </style>

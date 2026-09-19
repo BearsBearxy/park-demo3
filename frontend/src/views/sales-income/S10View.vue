@@ -850,7 +850,7 @@ function onImportClick() {
 .s10-period-ym { font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); }
 .s10-count { font-size:12px; color:var(--text-muted); }
 .s10-count b { color:var(--text-secondary); font-weight:var(--fw-semibold); font-family:var(--font-mono); }
-.s10-editflag { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--hue-orange); background:rgb(255,243,230); padding:5px 11px; border-radius:var(--radius-full); }
+.s10-editflag { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--hue-orange); background:var(--warn-bg); padding:5px 11px; border-radius:var(--radius-full); }
 .s10-issues {
   display: inline-flex; align-items: center; gap: 5px;
   height: 28px; padding: 0 10px; border-radius: var(--radius-full);
@@ -859,7 +859,7 @@ function onImportClick() {
   cursor: pointer; white-space: nowrap;
 }
 .s10-issues:hover { background: var(--bg-hover); }
-.s10-issues.quiet { border-color: var(--border-subtle); color: var(--text-muted); }
+.s10-issues.quiet { border-color: var(--border-control); color: var(--text-muted); }
 .s10-editflag b { font-family:var(--font-mono); margin:0 2px; }
 
 /* 矩阵块:桌面无横滚(占位类,窄档媒体块内加 overflow) */
@@ -876,7 +876,7 @@ function onImportClick() {
   .s10-chip {
     flex:0 0 auto; display:inline-flex; align-items:center;
     height:36px; padding:0 14px; border-radius:var(--radius-full);
-    border:1px solid var(--border-subtle); background:var(--surface-white);
+    border:1px solid var(--border-control); background:var(--surface-white);
     color:var(--text-secondary); font-family:var(--font-sans);
     font-size:var(--fs-label); font-weight:var(--fw-medium);
     cursor:pointer; white-space:nowrap;

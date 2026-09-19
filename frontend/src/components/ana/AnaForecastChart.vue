@@ -5,6 +5,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { forecastChartGeo, type ChartBox, type RollingRow } from '@/views/analysis/forecastChart.logic'
 import { useEnterPhase, useMorphHold } from './anaMotion'
+import { anaSvgVars } from './anaTheme'
 import './ana.css'   // @keyframes fp-wipe · .ana-morph
 
 const props = withDefaults(defineProps<{
@@ -117,7 +118,7 @@ const tipH = computed(() => 12 + tipLines.value.length * 16)
 </script>
 
 <template>
-  <div ref="host" class="afc-host" @mousemove="onMove" @mouseleave="hoverIdx = null">
+  <div ref="host" class="afc-host" :style="anaSvgVars()" @mousemove="onMove" @mouseleave="hoverIdx = null">
     <svg v-if="geo" class="afc" :width="box.width" :height="box.height" :viewBox="`0 0 ${box.width} ${box.height}`" role="img">
       <!-- 只有横向网格线,没有纵向(照稿) -->
       <line v-for="t in geo.yTicks" :key="'g' + t.v" :x1="box.padL" :x2="box.width - box.padR" :y1="t.y" :y2="t.y" class="afc-grid" />
@@ -177,23 +178,23 @@ const tipH = computed(() => 12 + tipLines.value.length * 16)
 .afc { display: block; }
 /* 擦入:数据组自左擦出(首进 / 切回页签);fp-wipe 在 ana.css,不能写进 scoped(名字会被加 hash) */
 .afc-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
-.afc-grid { stroke: #E5EAF0; stroke-width: 1; }
-.afc-ylab { fill: #94A3B8; font-size: 11px; text-anchor: end; font-variant-numeric: tabular-nums; }
-.afc-xlab { fill: #94A3B8; font-size: 11px; text-anchor: middle; }
-.afc-note { fill: #B6BDC8; font-size: 10px; }
-.afc-band { fill: #C7D2FE; fill-opacity: 0.45; }
-.afc-mid { fill: none; stroke: #A5B4FC; stroke-width: 1.2; stroke-dasharray: 4 4; }
-.afc-line { fill: none; stroke: #4F46E5; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
-.afc-dot { fill: #fff; stroke: #4F46E5; stroke-width: 2; }
-.afc-today { stroke: #CBD5E1; stroke-width: 1; stroke-dasharray: 3 3; }
-.afc-todaylab { fill: #94A3B8; font-size: 10px; }
-.afc-fbar { fill: none; stroke: #4F46E5; stroke-width: 1.5; stroke-opacity: 0.55; }
-.afc-fdot { fill: #fff; stroke: #4F46E5; stroke-width: 2.5; }
-.afc-fnum { fill: #94A3B8; font-size: 11px; font-variant-numeric: tabular-nums; }
-.afc-fnum-mid { fill: #1E293B; font-weight: 600; }
-.afc-hair { stroke: #C7D2FE; stroke-width: 1; }
-.afc-hdot { fill: #4F46E5; stroke: #fff; stroke-width: 2; }
-.afc-tip { fill: #1E293B; }
-.afc-tiptext { fill: #E2E8F0; font-size: 11px; font-variant-numeric: tabular-nums; }
-.afc-tiptitle { fill: #fff; font-weight: 600; font-size: 12px; }
+.afc-grid { stroke: var(--sv-grid-fc); stroke-width: 1; }
+.afc-ylab { fill: var(--sv-label); font-size: 11px; text-anchor: end; font-variant-numeric: tabular-nums; }
+.afc-xlab { fill: var(--sv-label); font-size: 11px; text-anchor: middle; }
+.afc-note { fill: var(--sv-note); font-size: 10px; }
+.afc-band { fill: var(--sv-fc-band); fill-opacity: 0.45; }
+.afc-mid { fill: none; stroke: var(--sv-fc-mid); stroke-width: 1.2; stroke-dasharray: 4 4; }
+.afc-line { fill: none; stroke: var(--sv-fc-line); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.afc-dot { fill: var(--surface-white); stroke: var(--sv-fc-line); stroke-width: 2; }
+.afc-today { stroke: var(--sv-today); stroke-width: 1; stroke-dasharray: 3 3; }
+.afc-todaylab { fill: var(--sv-label); font-size: 10px; }
+.afc-fbar { fill: none; stroke: var(--sv-fc-line); stroke-width: 1.5; stroke-opacity: 0.55; }
+.afc-fdot { fill: var(--surface-white); stroke: var(--sv-fc-line); stroke-width: 2.5; }
+.afc-fnum { fill: var(--sv-label); font-size: 11px; font-variant-numeric: tabular-nums; }
+.afc-fnum-mid { fill: var(--sv-figure); font-weight: 600; }
+.afc-hair { stroke: var(--sv-hair); stroke-width: 1; }
+.afc-hdot { fill: var(--sv-fc-line); stroke: var(--surface-white); stroke-width: 2; }
+.afc-tip { fill: var(--sv-tip-bg); }
+.afc-tiptext { fill: var(--sv-tip-text); font-size: 11px; font-variant-numeric: tabular-nums; }
+.afc-tiptitle { fill: var(--text-on-solid); font-weight: 600; font-size: 12px; }
 </style>

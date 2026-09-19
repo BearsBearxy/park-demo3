@@ -201,6 +201,50 @@ U+2190-21FF,U+2200-22FF,U+0391-03A9,U+03B1-03C9 \
   --delta-up:   var(--hue-green);        /* 涨跌走红绿直觉，而非红蓝 */
   --delta-down: var(--hue-red);
 
+  /* ---- 写字用的语义色(2026-09-19 KPI 卡方向 A) ----
+     --hue-green / --hue-red 对白底只够图形的 3:1,KPI 卡浅色底上写涨跌小字要压暗到 ≥4.5。
+     浅色底 = --accent-slate/blue/sky/cyan;对比度见 运维文档/设计稿/未实现/日期选择器与KPI卡-2026-09-19。 */
+  --delta-up-text:   oklch(0.50 0.12 150);
+  --delta-down-text: oklch(0.52 0.15 27);
+  --info-text-on-tint: oklch(0.50 0.115 250);
+  --text-muted-tint: rgba(28, 28, 28, 0.7);
+  --warn-text:       rgb(133, 79, 11);
+
+  /* ---- 收写死颜色用的令牌(2026-09-19 暗色模式) ----
+     浅色值 = 现在各处写死的那个值,浅色外观不变;暗色值见文末 [data-theme="dark"]。 */
+  --surface-raised: rgb(255, 255, 255);          /* 浮起的面:下拉 / 弹窗 / 命令面板 */
+  --border-control: var(--ink-100);              /* 输入框 / 下拉 / 描边按钮 / 分页钮的边框 */
+  --border-control-strong: var(--ink-300);       /* 控件悬停 / 展开 / 聚焦的边框;--border-strong 只留给装饰 */
+  --scrim: rgba(28, 28, 28, 0.34);               /* 弹窗遮罩 */
+  --tip-bg: rgb(40, 52, 66);                     /* 图上深色气泡 / 悬停提示 */
+  --toast-bg: var(--ink-900);                    /* 底部提示条 */
+  --warn-bg: rgb(255, 243, 230);                 /* 警示条底 */
+  --danger-bg: rgb(253, 232, 230);               /* 出错底 */
+  --row-selected: rgba(24, 134, 254, 0.1);       /* 表格选中行 */
+  --shadow-dialog: 0 24px 64px rgba(28, 28, 28, 0.28);
+  --shadow-toast: 0 12px 32px rgba(28, 28, 28, 0.32);   /* 底部提示条 */
+  --shadow-tip: 0 4px 12px rgba(0, 0, 0, 0.18);         /* 深色小气泡 */
+  --shadow-tooltip: 0 8px 24px rgba(0, 0, 0, 0.18);     /* 图上悬停提示框 */
+  --row-selected-raised: var(--accent-slate);           /* 浮层里的选中行(命令面板、页签列表) */
+
+  /* 各屏状态胶囊 / 提示条的浅底与字(收写死颜色,浅色值 = 原值) */
+  --danger-soft:  rgb(255, 238, 237);   /* 出错条 / 删除悬停的淡红底 */
+  --warn-soft:    rgb(252, 243, 232);   /* 橙色警示胶囊、锁按钮 */
+  --caution-soft: rgb(255, 250, 235);   /* 淡黄提示条 */
+  --ok-soft:      rgb(222, 244, 229);   /* 已完成 / 正常胶囊 */
+  --info-soft:    rgb(232, 240, 254);   /* 蓝色信息胶囊 */
+  --ok-text:      rgb(21, 128, 61);
+  --amber-text:   rgb(180, 83, 9);
+  --caution-text: rgb(138, 97, 0);
+  --orange-text:  rgb(178, 100, 0);
+  --coral-text:   rgb(202, 66, 41);     /* 表计可疑读数 */
+  --slate-text:   rgb(64, 84, 124);     /* slate 浅底上的字 */
+  --badge-cyan-text:   rgb(22, 140, 195);
+  --badge-slate-text:  rgb(90, 110, 150);
+  --badge-orange-text: rgb(190, 110, 0);
+
+  color-scheme: light;
+
   /* ---- Spacing scale ---- */
   --space-1:  4px;
   --space-2:  8px;
@@ -276,4 +320,94 @@ U+2190-21FF,U+2200-22FF,U+0391-03A9,U+03B1-03C9 \
   --scrollbar-track:  transparent;
   --scrollbar-radius: 999px;
   --scrollbar-pad:    2px;
+}
+
+/* ============================================================
+   暗色(2026-09-19 用户拍板:② 中性深灰;KPI 浅色底 = 同色相压暗)
+   由 <html data-theme="dark"> 打开(stores/appearance.ts 设,index.html 首帧前先按上次的选择设)。
+   只重定义颜色类令牌;引用别的令牌的别名(--text-primary 等)不用重写,跟着变。
+   值与对比度出处:运维文档/设计稿/未实现/暗色模式-2026-09-19(生成脚本 darkOf(DIRS.d2),全部断言 ≥4.5 / ≥3)。
+   ============================================================ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --ink-900: rgb(236, 236, 238);
+  --ink-700: rgba(236, 236, 238, 0.8);
+  --ink-500: rgba(236, 236, 238, 0.4);
+  --ink-300: rgba(236, 236, 238, 0.2);
+  --ink-100: rgba(236, 236, 238, 0.1);
+  --ink-050: rgba(236, 236, 238, 0.05);
+  --ink-040: rgba(255, 255, 255, 0.04);
+
+  --surface-page:    rgb(32, 32, 34);   /* 画布 */
+  --surface-card:    rgb(50, 50, 52);   /* 卡内浅底 */
+  --surface-sunken:  rgb(32, 32, 34);
+  --surface-overlay: rgba(42, 42, 44, 0.9);
+  --surface-white:   rgb(42, 42, 44);   /* 卡片 */
+
+  --accent-slate: oklch(0.356 0.025 257);
+  --accent-sky:   oklch(0.361 0.045 232);
+  --accent-blue:  oklch(0.356 0.05 250);
+  --accent-cyan:  oklch(0.361 0.04 216);
+
+  --hue-blue:   oklch(0.74 0.12 250);
+  --hue-cyan:   oklch(0.80 0.09 200);   /* 提亮后和蓝挤在一起,色相挪到 200 */
+  --hue-orange: oklch(0.78 0.13 66);
+  --hue-red:    oklch(0.75 0.14 27);
+  --hue-yellow: oklch(0.88 0.13 95);
+  --hue-green:  oklch(0.78 0.15 150);
+
+  --brand-deep: oklch(0.84 0.04 262);   /* 暗色下是低彩度灰蓝,和链接蓝分得开 */
+
+  --text-muted:         rgba(236, 236, 238, 0.62);
+  --text-on-solid:      rgb(255, 255, 255);
+  --control-solid-text: rgb(42, 42, 44);    /* 实底反过来:亮底深字 */
+  --control-solid-hover: rgb(210, 210, 212);
+  --status-danger-hover: oklch(0.82 0.11 27);
+
+  /* 阴影在暗底上看不见:换成 1px 亮边 + 深投影 */
+  --shadow-xs:   0 0 0 1px rgba(255, 255, 255, 0.04);
+  --shadow-sm:   0 0 0 1px rgba(255, 255, 255, 0.06);
+  --shadow-md:   0 0 0 1px rgba(255, 255, 255, 0.06), 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-pop:  0 0 0 1px rgba(255, 255, 255, 0.1), 0 8px 28px rgba(0, 0, 0, 0.5);
+  --shadow-pill: 0 0 0 1px rgba(255, 255, 255, 0.1);
+
+  --scrollbar-thumb:       rgba(255, 255, 255, 0.35);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.5);
+
+  --delta-up-text:     rgb(117, 215, 141);
+  --delta-down-text:   rgb(248, 142, 131);
+  --info-text-on-tint: var(--hue-blue);
+  --text-muted-tint:   rgba(236, 236, 238, 0.7);
+  --warn-text:         oklch(0.82 0.11 75);
+
+  --surface-raised: rgb(58, 58, 61);
+  --border-control: rgba(236, 236, 238, 0.47);
+  --border-control-strong: rgba(236, 236, 238, 0.6);
+  --scrim:     rgba(0, 0, 0, 0.6);
+  --tip-bg:    oklch(0.416 0.035 252);
+  --toast-bg:  oklch(0.406 0.004 286);
+  --warn-bg:   oklch(0.346 0.05 62);
+  --danger-bg: oklch(0.346 0.055 27);
+  --row-selected: rgba(109, 176, 244, 0.16);
+  --shadow-dialog: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 24px 64px rgba(0, 0, 0, 0.6);
+  --shadow-toast: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 12px 32px rgba(0, 0, 0, 0.5);
+  --shadow-tip: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-tooltip: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 8px 24px rgba(0, 0, 0, 0.4);
+  --row-selected-raised: var(--row-selected);
+
+  --danger-soft:  oklch(0.346 0.055 27);
+  --warn-soft:    oklch(0.346 0.05 62);
+  --caution-soft: oklch(0.35 0.045 85);
+  --ok-soft:      oklch(0.346 0.05 150);
+  --info-soft:    oklch(0.356 0.05 250);
+  --ok-text:      rgb(117, 215, 141);
+  --amber-text:   oklch(0.78 0.13 66);
+  --caution-text: oklch(0.84 0.1 85);
+  --orange-text:  oklch(0.78 0.13 66);
+  --coral-text:   oklch(0.78 0.12 40);
+  --slate-text:   oklch(0.84 0.04 262);
+  --badge-cyan-text:   oklch(0.80 0.09 200);
+  --badge-slate-text:  oklch(0.84 0.04 262);
+  --badge-orange-text: oklch(0.78 0.13 66);
 }

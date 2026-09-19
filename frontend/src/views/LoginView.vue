@@ -557,8 +557,8 @@ onBeforeUnmount(() => {
 /* 被踢回来的原因:不是输错密码,用中性色不用错误红 */
 /* 被踢原因住在常驻错误位里(动效稿 C7-03 ⑤):行内着色类,没有自己的 margin/行高 ——
    与报错两句共用 .lg-err 的一行高,插拔不再把「登录」按钮顶上顶下 */
-.lg-kicked { display: inline-flex; align-items: center; gap: 6px; color: var(--hue-amber, #b76e00); }
-.lg-err { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; min-height: 18px; line-height: 18px; font-size: 13px; color: var(--hue-red, #e5484d); }
+.lg-kicked { display: inline-flex; align-items: center; gap: 6px; color: #b76e00; }
+.lg-err { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; min-height: 18px; line-height: 18px; font-size: 13px; color: oklch(0.56 0.150 27); }   /* = 浅色 --hue-red;登录页不跟外观(表单卡恒白),引令牌暗色下会拿到浅红 */
 
 .lg-row { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 26px; }
 .lg-remember { display: flex; align-items: center; gap: 9px; font-size: 13.5px; color: #2a3040; cursor: pointer; user-select: none; }

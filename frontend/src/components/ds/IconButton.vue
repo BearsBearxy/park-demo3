@@ -69,7 +69,7 @@ function onClick(e: MouseEvent) {
 }
 
 .ds-iconbtn[data-variant="soft"]    { --ds-ib-bg: var(--control-soft); }
-.ds-iconbtn[data-variant="outline"] { border-color: var(--border-subtle); }
+.ds-iconbtn[data-variant="outline"] { border-color: var(--border-control); }
 .ds-iconbtn[data-active]            { --ds-ib-bg: var(--bg-hover); --ds-ib-fg: var(--text-primary); }
 
 /* soft 与 outline 的 hover 是本次新增:改前那条 variant === "borderless" 守卫

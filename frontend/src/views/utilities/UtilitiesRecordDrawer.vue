@@ -6,7 +6,7 @@ import { ref, computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import Button from '@/components/ds/Button.vue'
-import Select from '@/components/ds/Select.vue'
+import DatePicker from '@/components/ds/DatePicker.vue'
 import type { OfficeRecordReq } from '@/types/utilities'
 
 const props = defineProps<{
@@ -20,19 +20,18 @@ const emit = defineEmits<{ close: []; save: [req: OfficeRecordReq] }>()
 
 const isOffice = props.no === 13
 
-const acctY = ref(String(props.initYear))
-const acctM = ref('1')
-const belongY = ref(String(props.initYear))
-const belongM = ref('1')
+// 记账月 / 所属月 YYYY-MM(改前各是年下拉 + 月下拉,月默认 1 月)
+const acct = ref(`${props.initYear}-01`)
+const belong = ref(`${props.initYear}-01`)
 const elecQty = ref('')
 const elecPrice = ref(isOffice ? '0.8123' : '0.7965')
 const waterQty = ref('')
 const waterPrice = ref(isOffice ? '4.15' : '3.85')
 const note = ref('')
 
-const months = Array.from({ length: 12 }, (_, i) => String(i + 1))
-const yearOpts = computed(() => props.years.map(y => ({ value: String(y), label: y + '年' })))
-const monthOpts = months.map(m => ({ value: m, label: m + '月' }))
+// 可选范围 = overview 年份范围的首年 1 月 … 末年 12 月(改前年下拉只列这些年,月 1–12 随便选)
+const ymMin = computed(() => props.years.length ? `${Math.min(...props.years)}-01` : undefined)
+const ymMax = computed(() => props.years.length ? `${Math.max(...props.years)}-12` : undefined)
 
 const num = (v: string) => { const n = parseFloat(v); return isNaN(n) ? 0 : n }
 const elecAmt = computed(() => num(elecQty.value) * num(elecPrice.value))
@@ -46,8 +45,8 @@ function save() {
   if (!valid.value) return
   emit('save', {
     scheduleNo: props.no,
-    acctMonth: acctY.value + '-' + acctM.value.padStart(2, '0'),
-    belongMonth: belongY.value + '-' + belongM.value.padStart(2, '0'),
+    acctMonth: acct.value,
+    belongMonth: belong.value,
     elecQty: num(elecQty.value),
     elecPrice: num(elecPrice.value),
     waterQty: num(waterQty.value),
@@ -69,18 +68,12 @@ function save() {
     <!-- 记账月 + 所属月 -->
     <div class="ut-frow">
       <div class="ut-fgrp">
-        <span class="ut-flabel">月份（记账）</span>
-        <div class="ut-frow">
-          <Select :options="yearOpts" v-model="acctY" />
-          <Select :options="monthOpts" v-model="acctM" />
-        </div>
+        <span class="ut-flabel">记账月份</span>
+        <DatePicker v-model="acct" mode="month" :min="ymMin" :max="ymMax" aria-label="记账月份" />
       </div>
       <div class="ut-fgrp">
         <span class="ut-flabel">所属月份</span>
-        <div class="ut-frow">
-          <Select :options="yearOpts" v-model="belongY" />
-          <Select :options="monthOpts" v-model="belongM" />
-        </div>
+        <DatePicker v-model="belong" mode="month" :min="ymMin" :max="ymMax" aria-label="所属月份" align="end" />
       </div>
     </div>
 
@@ -138,9 +131,9 @@ function save() {
 /* 高度对齐设计系统 md=36(ds/Input 与 ds/Select 同档):此前 38/40px,而同一表单网格里的
    下拉已是 ds/Select 的 36px,并排就差 2~4px。改这里而不是改 Select —— 36 是三个 ds 控件
    (Button/Input/Select)共同的 md 档,38/40 才是各表单自己发明的。 */
-.ut-input { height:36px; width:100%; box-sizing:border-box; border:1px solid var(--border-subtle); border-radius:8px; padding:0 12px; font-family:var(--font-sans); font-size:var(--fs-body); color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
+.ut-input { height:36px; width:100%; box-sizing:border-box; border:1px solid var(--border-control); border-radius:8px; padding:0 12px; font-family:var(--font-sans); font-size:var(--fs-body); color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
 .ut-input.mono { font-family:var(--font-mono); text-align:right; }
-.ut-input:focus { border-color:var(--border-strong); }
+.ut-input:focus { border-color:var(--border-control-strong); }
 .ut-input::placeholder { color:var(--text-disabled); }
 .ut-sub2 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; padding:13px 14px; background:var(--surface-card); border-radius:var(--radius-md); }
 .ut-sub2 .k { font-size:11px; color:var(--text-muted); }

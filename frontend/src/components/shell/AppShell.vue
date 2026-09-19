@@ -7,6 +7,7 @@ import { usePresenceStore } from '@/stores/presence'
 import { useAuthStore } from '@/stores/auth'
 import { useTabsStore } from '@/stores/tabs'
 import { useUpdateStore } from '@/stores/update'
+import { useAppearanceStore } from '@/stores/appearance'
 import { BRAND } from '@/brand'
 import { useViewport } from '@/composables/useViewport'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
@@ -114,7 +115,10 @@ onUnmounted(() => presence.stop())
 // 挂在屏上就要挂 48 遍,而且换屏会重来一次。
 const auth = useAuthStore()
 const upd = useUpdateStore()
+// 外观按账号记(DARK-MODE-SPEC §3):外壳挂载 = 刚登录进来,按这个人的选择再设一次
+const appearance = useAppearanceStore()
 onMounted(() => {
+  appearance.load()
   upd.loadSeen()
   upd.startPolling()
   upd.scheduleFirstPopup()
@@ -136,18 +140,22 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
          S 档整卡不渲染(铬边不是内容,可卸载);L/M 档面板改浮层,只有 XL 内联 -->
     <div v-if="tier !== 's'" class="fp-nav-card">
       <IconRail @open-command="openPalette()" />
-      <template v-if="ui.sbOpen && tier === 'xl'">
-        <!-- vertical divider: only shown when sidebar is open -->
-        <div class="fp-vdiv" />
-        <!-- SidebarPanel: only shown when sidebar is open -->
-        <SidebarPanel />
-      </template>
+      <!-- 收起 / 打开导航:宽度 0 ↔ 235 展开收起(2026-09-20 用户要求加动效)。面板本身定宽 234,不随动画挤压折行 -->
+      <Transition name="fp-sb">
+        <div v-if="ui.sbOpen && tier === 'xl'" class="fp-sb-inline">
+          <!-- vertical divider: only shown when sidebar is open -->
+          <div class="fp-vdiv" />
+          <SidebarPanel />
+        </div>
+      </Transition>
     </div>
 
     <!-- L/M 浮层侧栏:挂 stage 不挂 .fp-nav-card——nav 卡 overflow:hidden 会裁掉它(spec §3.2 暗礁①) -->
-    <div v-if="floatActive" ref="floatEl" class="fp-sb-float">
-      <SidebarPanel />
-    </div>
+    <Transition name="fp-sbf">
+      <div v-if="floatActive" ref="floatEl" class="fp-sb-float">
+        <SidebarPanel />
+      </div>
+    </Transition>
 
     <!-- main card: TabStrip → Toolbar → content -->
     <div class="fp-main-card">
@@ -223,19 +231,20 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
 /* ── 全局网络错误 toast ── */
 .fp-net-toast { position:fixed; left:50%; bottom:28px; transform:translateX(-50%); z-index:400;
   display:flex; align-items:center; gap:10px; max-width:min(560px,90vw); padding:10px 14px;
-  background:var(--ink-900); color:#fff; border-radius:var(--radius-md); box-shadow:0 12px 32px rgba(28,28,28,.32); font-size:13px;
+  background:var(--toast-bg); color:var(--text-on-solid); border-radius:var(--radius-md); box-shadow:var(--shadow-toast); font-size:13px;
   /* 入场只淡不 rise:元素自身 translateX(-50%) 居中,rise 的 transform 帧会盖掉它,
      forwards 停在 translateY(0) scale(1) 会把整条永久钉到右半边。关闭仍是 v-if 瞬时。 */
   opacity:0; animation:fp-fade-in var(--dur-base) var(--ease-out) forwards; }
 .fp-net-toast .msg { min-width:0; }
-.fp-net-toast .act { flex:0 0 auto; height:26px; padding:0 10px; border:1px solid rgba(255,255,255,.35); border-radius:var(--radius-sm);
-  background:transparent; color:#fff; font-size:12px; cursor:pointer; }
-.fp-net-toast .act:hover { background:rgba(255,255,255,.14); }
+/* 按钮白边 45%:原 35% 在暗色提示条底上不到 3:1(DARK-MODE-SPEC §5) */
+.fp-net-toast .act { flex:0 0 auto; height:26px; padding:0 10px; border:1px solid color-mix(in srgb, var(--text-on-solid) 45%, transparent); border-radius:var(--radius-sm);
+  background:transparent; color:var(--text-on-solid); font-size:12px; cursor:pointer; }
+.fp-net-toast .act:hover { background:color-mix(in srgb, var(--text-on-solid) 14%, transparent); }
 .fp-net-toast .act.ghost { border-color:transparent; padding:0 6px; }
 
 /* 版本更新提示条:永远在最上面一格。--lift 是它下面还有几条(0/1/2),一条 56px。 */
 .fp-upd-toast { bottom: calc(28px + var(--lift, 0) * 56px); }
-.fp-upd-toast .sub { color: rgba(255, 255, 255, 0.62); }
+.fp-upd-toast .sub { color: color-mix(in srgb, var(--text-on-solid) 62%, transparent); }
 
 /* ── nav card ── */
 .fp-nav-card {
@@ -266,15 +275,37 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
   left: calc(12px + 68px + 4px); /* stage padding + 轨卡(66 轨 + 2 边框) + 4 间隙 */
   z-index: var(--z-popover);
   display: flex;
-  background: var(--surface-white);
+  background: var(--surface-raised);   /* 贴附浮层:暗色下比底下的主卡亮一层 */
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-pop);
   overflow: hidden;
-  /* C5-15 ②:入场只淡 —— fp-pop-in 是纵向 −4px,而这块从左侧轨上水平长出,方向不对;
-     不为它新加横向关键帧。关闭仍是 v-if 瞬时。 */
+}
+/* 浮层侧栏打开 / 关闭:从左侧轨上水平滑出 8px + 淡入,关闭反着走(2026-09-20 用户要求;原先只有 120ms 淡入、关闭瞬时) */
+.fp-sbf-enter-active,
+.fp-sbf-leave-active {
+  transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+.fp-sbf-enter-from,
+.fp-sbf-leave-to {
   opacity: 0;
-  animation: fp-fade-in var(--dur-fast) var(--ease-out) forwards;
+  transform: translateX(-8px);
+}
+
+/* 宽屏内联侧栏(分隔线 1 + 面板 234):收起 / 打开时宽度过渡,主卡跟着让出 / 收回位置 */
+.fp-sb-inline {
+  display: flex;
+  flex: 0 0 auto;
+  width: 235px;
+  overflow: hidden;
+}
+.fp-sb-enter-active,
+.fp-sb-leave-active {
+  transition: width var(--dur-base) var(--ease-standard);
+}
+.fp-sb-enter-from,
+.fp-sb-leave-to {
+  width: 0;
 }
 
 /* ── main card ── */

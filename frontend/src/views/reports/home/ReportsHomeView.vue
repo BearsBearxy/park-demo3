@@ -12,7 +12,7 @@ import Segmented from '@/components/ds/Segmented.vue'
 import Badge from '@/components/ds/Badge.vue'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
-import Select from '@/components/ds/Select.vue'
+import DatePicker from '@/components/ds/DatePicker.vue'
 
 const router = useRouter()
 const view = ref('目录')
@@ -34,10 +34,9 @@ onMounted(async () => {
   await load()
 })
 
-function setYear(y: number) { year.value = y; load() }
-// ds/Select 只吃字符串值,进出各转一次
-const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1} 月` }))
-function onMonth(v: string) { month.value = +v; load() }
+// 年份步进 + 月下拉合成一个月份字段(DATE-PICKER-SPEC D1):值 YYYY-MM,年不设上下限(同改前步进)
+const ym = computed(() => (year.value ? `${year.value}-${String(month.value).padStart(2, '0')}` : ''))
+function setYm(v: string) { year.value = +v.slice(0, 4); month.value = +v.slice(5, 7); load() }
 // 「去做事」显式导航 → 全新状态(openFresh,复审:非侧边栏入口语义)
 const tabsStore = useTabsStore()
 // 点卡带上本屏选好的期(设计稿 §3.2b)。改前是干净的 push('/' + v),
@@ -89,14 +88,8 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
     </div>
 
     <div class="rh-toolbar">
-      <span class="fin-ypill">
-        <button title="上一年" @click="setYear(year - 1)"><component :is="iconFor('chevron-left')" :size="15" /></button>
-        <span class="v">{{ year }}</span>
-        <button title="下一年" @click="setYear(year + 1)"><component :is="iconFor('chevron-right')" :size="15" /></button>
-      </span>
-      <!-- 期间选择器定宽:LIST-PAGE-SPEC §2 月 92px(触发器 width:100%,宽度全靠外层) -->
-      <div style="width:92px">
-        <Select size="sm" :options="monthOpts" :model-value="String(month)" @update:model-value="onMonth" />
+      <div style="width:120px">
+        <DatePicker mode="month" size="sm" :model-value="ym" aria-label="期间" @update:model-value="setYm" />
       </div>
       <div class="rh-toolbar-right">
         <Segmented v-model="view" :options="['目录', '期间']" size="sm" />
@@ -275,13 +268,6 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
 .rh-tie-tile-v { font-size:20px; font-weight:var(--fw-semibold); font-family:var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-primary); }
 .rh-tie-tile-src { font-size:var(--fs-micro); color:var(--text-disabled); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .rh-tie-tile-foot { display:flex; align-items:center; justify-content:space-between; gap:8px; padding-top:10px; border-top:1px solid var(--divider); }
-
-/* 年份胶囊(fin-ypill scoped 复刻,同 ReconView) */
-.fin-ypill { display:inline-flex; align-items:center; gap:2px; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:var(--radius-full); padding:3px; }
-.fin-ypill button { width:28px; height:28px; border:none; background:transparent; border-radius:var(--radius-full); cursor:pointer; color:var(--text-secondary); display:grid; place-items:center; transition:background var(--dur-fast) var(--ease-standard); }
-.fin-ypill button:hover:not(:disabled) { background:var(--bg-hover); color:var(--text-primary); }
-.fin-ypill button:disabled { opacity:.4; cursor:not-allowed; }
-.fin-ypill .v { font-size:13.5px; font-weight:var(--fw-semibold); color:var(--text-primary); font-family:var(--font-mono); font-variant-numeric:tabular-nums; padding:0 8px; white-space:nowrap; }
 
 /* ── S 档(≤600,宽档规则在前)──
    勾稽表 6 列 + nowrap 胶囊的自然宽 ~600px(最长胶囊「利润表·营业收入(本月)」~170px)。

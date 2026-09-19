@@ -117,10 +117,13 @@ const floors = computed(() => {
 }
 .fp-unit:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(28,28,28,.10); }
 
-.fp-unit.occupied { background:var(--accent-slate); color:rgb(64,84,124); }
+.fp-unit.occupied { background:var(--accent-slate); color:var(--slate-text); }
 .fp-unit.occupied .u-no { color:rgb(48,66,104); }
 .fp-unit.expiring  { background:rgba(255,149,0,.16); color:rgb(168,98,0); }
 .fp-unit.reserved  { background:var(--accent-cyan); color:rgb(22,118,160); border:1px dashed rgba(50,173,230,.5); }
+:root[data-theme="dark"] .fp-unit.occupied .u-no { color:var(--text-primary); }
+:root[data-theme="dark"] .fp-unit.expiring { color:var(--hue-orange); }
+:root[data-theme="dark"] .fp-unit.reserved { color:var(--hue-cyan); }
 .fp-unit.vacant    { background:transparent; color:var(--text-disabled); border:1px dashed var(--border-strong); }
 .fp-unit.sel       { outline:2px solid var(--ink-900); outline-offset:1px; }
 

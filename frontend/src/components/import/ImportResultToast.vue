@@ -87,7 +87,7 @@ const matchStats = computed(() => {
 </template>
 
 <style scoped>
-.ir-scrim { position:fixed; inset:0; z-index:340; background:rgba(28,28,28,.32); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; opacity:0; animation:fp-fade-in var(--dur-base) var(--ease-out) forwards; }
+.ir-scrim { position:fixed; inset:0; z-index:340; background:color-mix(in srgb, var(--scrim) 94.12%, transparent); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; opacity:0; animation:fp-fade-in var(--dur-base) var(--ease-out) forwards; }   /* 浅色 = rgba(28,28,28,.32):--scrim(.34)× 94.12% */
 .ir-card { width:min(420px,94vw); background:var(--surface-white); border-radius:var(--radius-lg); box-shadow:0 24px 60px rgba(28,28,28,.22); display:flex; flex-direction:column; overflow:hidden; animation:fp-rise-in var(--dur-base) var(--ease-out) both; }
 .ir-h { display:flex; align-items:center; gap:10px; padding:18px 20px 12px; }
 .ir-h h3 { margin:0; flex:1; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }

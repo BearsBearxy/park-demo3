@@ -42,6 +42,26 @@
    ⚠ 这里不能写 animation: none。上面那些入场动画靠 forwards / both 停在终态，
    取消动画会让元素永远停在**起始帧**（opacity: 0），内容直接看不见。
    正确做法是把时长压到 1ms，让它瞬间走完抵达终态。 */
+/* 外观切换(DARK-MODE-SPEC §3.1):整页渐变。关掉 View Transitions 自带的动画,
+   由 stores/appearance.ts 让新外观那层从透明渐显(旧外观原样垫在下面,不跟着淡出 = 中途不会整页发灰)。 */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+/* 渐变真正开始之前新外观那层先透明,不会整页先闪一下新外观 */
+:root[data-theme-switching]::view-transition-new(root) {
+  opacity: 0;
+}
+/* 换外观期间关掉颜色过渡、暂停页面里的循环动画(骨架微光、转圈…):新外观那层是实时画面,
+   页面上只要有东西在动就得每帧整页重画,大屏上渐变会掉帧(appearance.ts 过渡结束就拿掉,动画接着播) */
+:root[data-theme-switching] *,
+:root[data-theme-switching] *::before,
+:root[data-theme-switching] *::after {
+  transition: none !important;
+  animation-play-state: paused !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

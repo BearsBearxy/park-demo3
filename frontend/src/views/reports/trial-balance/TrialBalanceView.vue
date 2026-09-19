@@ -371,13 +371,13 @@ const canManageCo = computed(() => useAuthStore().can('master:edit'))
       </div>
 
       <div class="fin-kpis">
-        <KpiCard tint="slate" label="期末借方合计"><span class="fin-kval">{{ finMoney(totals.endDr) }}</span><template #icon><component :is="iconFor('trending-up')" :size="18" /></template></KpiCard>
-        <KpiCard tint="blue" label="期末贷方合计"><span class="fin-kval">{{ finMoney(totals.endCr) }}</span><template #icon><component :is="iconFor('trending-down')" :size="18" /></template></KpiCard>
-        <KpiCard tint="cyan" label="试算平衡差(借−贷)">
-          <span class="fin-kval" :style="{ color: balanced ? 'var(--hue-green)' : 'var(--hue-red)' }">{{ balanced ? '已平' : finMoney(kpiDiff) }}</span>
+        <KpiCard tint="slate" label="期末借方合计" :value="finMoney(totals.endDr)"><template #icon><component :is="iconFor('trending-up')" :size="18" /></template></KpiCard>
+        <KpiCard tint="blue" label="期末贷方合计" :value="finMoney(totals.endCr)"><template #icon><component :is="iconFor('trending-down')" :size="18" /></template></KpiCard>
+        <KpiCard tint="sky" label="试算平衡差(借−贷)">
+          <span :style="{ color: balanced ? 'var(--delta-up-text)' : 'var(--delta-down-text)' }">{{ balanced ? '已平' : finMoney(kpiDiff) }}</span>
           <template #icon><component :is="iconFor(balanced ? 'check-circle-2' : 'alert-triangle')" :size="18" /></template>
         </KpiCard>
-        <KpiCard tint="sky" label="科目数"><span class="fin-kval">{{ accounts.length }}</span><template #icon><component :is="iconFor('list')" :size="18" /></template></KpiCard>
+        <KpiCard tint="cyan" label="科目数" :value="String(accounts.length)"><template #icon><component :is="iconFor('list')" :size="18" /></template></KpiCard>
       </div>
 
       <div class="fin-toolbar">
@@ -525,17 +525,16 @@ const canManageCo = computed(() => useAuthStore().can('master:edit'))
 .fin-page { display:flex; flex-direction:column; gap:16px; width:100%; height:100%; min-height:0; box-sizing:border-box; font-family:var(--font-sans); color:var(--text-primary); }
 .fin-head { flex:0 0 auto; display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; }
 .fin-head-l { display:flex; align-items:center; gap:12px; min-width:0; }
-.fin-back { width:34px; height:34px; flex:0 0 auto; border:1px solid var(--border-subtle); background:var(--surface-white); border-radius:var(--radius-md); cursor:pointer; display:grid; place-items:center; color:var(--text-secondary); transition:background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
+.fin-back { width:34px; height:34px; flex:0 0 auto; border:1px solid var(--border-control); background:var(--surface-white); border-radius:var(--radius-md); cursor:pointer; display:grid; place-items:center; color:var(--text-secondary); transition:background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
 .fin-back:hover { background:var(--bg-hover); color:var(--text-primary); }
 .fin-title { margin:0; font:var(--type-h2); font-size:var(--fs-h2); font-weight:var(--fw-semibold); color:var(--text-primary); }
 .fin-sub { margin:4px 0 0; font-size:var(--fs-label); color:var(--text-muted); }
 .fin-sub .mono { font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
 .fin-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .fin-tag { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:var(--radius-full); background:var(--surface-sunken); color:var(--text-secondary); font-size:12.5px; font-weight:var(--fw-medium); }
-.fin-tag.edit { background:rgb(255,243,230); color:var(--hue-orange); }
+.fin-tag.edit { background:var(--warn-bg); color:var(--hue-orange); }
 .fin-tag.ro { background:var(--accent-sky); color:var(--hue-blue); }
 .fin-kpis { flex:0 0 auto; display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; }
-.fin-kpis .fin-kval { white-space:nowrap; font-size:clamp(14px, 1.5vw, 22px); }
 .fin-toolbar { flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 .fin-toolbar-note { font-size:12px; color:var(--text-muted); }
 .tb-tools { display:flex; align-items:center; gap:10px; }
@@ -558,8 +557,8 @@ const canManageCo = computed(() => useAuthStore().can('master:edit'))
 }
 
 /* 新增科目弹窗 — 1:1 FinDialogs .fin-mask/.fin-dlg(scoped 不跨组件,故本屏自带一份,遵 PAGE-BEHAVIOR-SPEC §2) */
-.fin-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:300; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
-.fin-dlg { width:min(440px,92vw); max-height:88vh; overflow-y:auto; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); animation:fp-rise-in var(--dur-base) var(--ease-standard) both; }
+.fin-mask { position:fixed; inset:0; background:var(--scrim); z-index:300; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
+.fin-dlg { width:min(440px,92vw); max-height:88vh; overflow-y:auto; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:var(--shadow-dialog); animation:fp-rise-in var(--dur-base) var(--ease-standard) both; }
 .fin-dlg-h { padding:20px 22px 0; }
 .fin-dlg-h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .fin-dlg-h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
@@ -568,7 +567,7 @@ const canManageCo = computed(() => useAuthStore().can('master:edit'))
 /* 高度对齐设计系统 md=36(ds/Input 与 ds/Select 同档):此前 38/40px,而同一表单网格里的
    下拉已是 ds/Select 的 36px,并排就差 2~4px。改这里而不是改 Select —— 36 是三个 ds 控件
    (Button/Input/Select)共同的 md 档,38/40 才是各表单自己发明的。 */
-.fin-in { width:100%; box-sizing:border-box; height:36px; padding:0 12px; font-size:var(--fs-body); color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
+.fin-in { width:100%; box-sizing:border-box; height:36px; padding:0 12px; font-size:var(--fs-body); color:var(--text-primary); border:1px solid var(--border-control); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
 .fin-in:focus { border-color:var(--hue-blue); }
 .fin-in.err { border-color:var(--hue-red); }
 .fin-erm { font-size:11.5px; color:var(--hue-red); margin-top:-6px; min-height:14px; }

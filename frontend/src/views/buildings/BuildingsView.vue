@@ -127,7 +127,7 @@ const TABLE_COLUMNS = computed(() => [
       ]),
       h('span', { style: { display: 'flex', flexDirection: 'column' } }, [
         h('span', { style: { fontWeight: 'var(--fw-medium)', color: 'var(--text-primary)', whiteSpace: 'nowrap' } }, b.name),
-        h('span', { style: { fontSize: 'var(--fs-micro)', color: 'var(--text-disabled)' } }, b.kind),
+        h('span', { style: { fontSize: 'var(--fs-micro)', color: 'var(--text-muted)' } }, b.kind),
       ]),
     ]),
   },
@@ -138,7 +138,7 @@ const TABLE_COLUMNS = computed(() => [
     key: 'units', header: '在租/单元', width: '100px', align: 'right' as const, mono: true, sortValue: (b: BuildingDTO) => b.occupiedCount,
     render: (b: BuildingDTO) => h('span', null, [
       h('b', { style: { fontWeight: 'var(--fw-semibold)' } }, String(b.occupiedCount)),
-      h('span', { style: { color: 'var(--text-disabled)' } }, ` / ${b.unitCount}`),
+      h('span', { style: { color: 'var(--text-muted)' } }, ` / ${b.unitCount}`),
     ]),
   },
   { key: 'totalArea', header: '总面积 ㎡', width: '104px', align: 'right' as const, mono: true, sortValue: (b: BuildingDTO) => b.totalArea,
@@ -240,19 +240,19 @@ const occSub = computed(() => {
     <div class="mx-body">
     <!-- 2. KPI 左栏(§3 统一样式) -->
     <aside class="mx-kpirail">
-      <KpiCard label="楼栋总数" :value="summary ? String(summary.buildingCount) : ''" :loading="!summary" :delta="`${stoppedCount} 栋停用`" tint="slate" :style="{ padding: '20px' }">
+      <KpiCard label="楼栋总数" :value="summary ? String(summary.buildingCount) : ''" :loading="!summary" :sub="`${stoppedCount} 栋停用`" tint="slate">
         <template #icon><component :is="iconFor('building-2')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="可租面积" :value="summary ? `${(summary.rentableArea / 10000).toFixed(2)} 万㎡` : ''" :loading="!summary" tint="sky" :style="{ padding: '20px' }">
+      <KpiCard label="可租面积" :value="summary ? `${(summary.rentableArea / 10000).toFixed(2)} 万㎡` : ''" :loading="!summary" sub="" tint="sky">
         <template #icon><component :is="iconFor('ruler')" :size="16" /></template>
       </KpiCard>
       <KpiCard
-        label="园区出租率" :value="summary ? occPct(summary.occRate) : ''" :loading="!summary" :sub="occSub" tint="blue"
-        :title="summary && summary.occRate == null ? OCC_NULL_WHY : undefined" :style="{ padding: '20px' }"
+        label="园区出租率" :value="summary ? occPct(summary.occRate) : ''" :loading="!summary" :sub="occSub ?? ''" tint="blue"
+        :title="summary && summary.occRate == null ? OCC_NULL_WHY : undefined"
       >
         <template #icon><component :is="iconFor('trending-up')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="空置单元" :value="summary ? String(summary.vacantCount) : ''" :loading="!summary" delta="待招商" trend="down" tint="cyan" :style="{ padding: '20px' }">
+      <KpiCard label="空置单元" :value="summary ? String(summary.vacantCount) : ''" :loading="!summary" sub="待招商" tint="cyan">
         <template #icon><component :is="iconFor('door-open')" :size="16" /></template>
       </KpiCard>
     </aside>

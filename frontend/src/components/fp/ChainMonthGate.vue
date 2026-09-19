@@ -221,7 +221,7 @@ const edge = (first: boolean) => {
 .cmg-legend .lp.on { background: var(--hue-blue); }
 .cmg-legend .lw {
   width: 14px; height: 10px; border-radius: 3px;
-  background: rgb(255, 247, 235);
+  background: var(--warn-soft);
   box-shadow: inset 0 0 0 1px var(--hue-orange);
 }
 </style>

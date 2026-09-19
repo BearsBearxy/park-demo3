@@ -211,11 +211,11 @@ function renderSortHeader(col: SortableColumn) {
             borderBottom: '1px solid var(--divider)',
             transition: 'background var(--dur-fast) var(--ease-standard)',
             cursor: 'pointer',
-            background: isSel(r) ? 'rgba(24,134,254,0.10)' : 'transparent',
+            background: isSel(r) ? 'var(--row-selected)' : 'transparent',
           }"
           @click="$emit('rowClick', r)"
           @mouseenter="rowHover && (($event.currentTarget as HTMLElement).style.background = 'var(--bg-panel)')"
-          @mouseleave="rowHover && (($event.currentTarget as HTMLElement).style.background = isSel(r) ? 'rgba(24,134,254,0.10)' : 'transparent')"
+          @mouseleave="rowHover && (($event.currentTarget as HTMLElement).style.background = isSel(r) ? 'var(--row-selected)' : 'transparent')"
         >
           <td
             v-for="c in columns"

@@ -75,7 +75,7 @@ const effText = (c: ParamChangeDTO) => c.action === 'recalc' ? (c.ym ?? '')
 
 <style scoped>
 .pc-tools { display: flex; align-items: center; gap: 10px; }
-.pc-q { flex: 1 1 auto; height: 32px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-primary); outline: none; }
+.pc-q { flex: 1 1 auto; height: 32px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--border-control); border-radius: var(--radius-sm); font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-primary); outline: none; }
 .pc-q:focus { border-color: var(--hue-blue); }
 .pc-cnt { font-size: var(--fs-label); color: var(--text-muted); }
 .pc-err { color: var(--hue-red); font-size: var(--fs-label); }

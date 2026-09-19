@@ -9,7 +9,7 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
-import { fnum, mean, sgn } from '@/components/ana/anaFmt'
+import { fnum, hues, inkA, mean, sgn } from '@/components/ana/anaFmt'
 import {
   buildEnergyMonths, fetchBudgetAll, fetchChargingYear, fetchElecYear, fetchPvAll, fetchS10Rows, fetchUtilitiesYear,
   type EnergyMonth,
@@ -136,7 +136,7 @@ function covAgg(key: NumKey): number | null {
 // ── KPI 条(值与 v1 statItems 完全一致) ──
 // 首进/失败期不清空整排瓦片(C6-01):瓦片消失 = 下方整片先上提再下推。标签常驻、值写 '—'。
 const KPI_LABELS = ['园区购电', '购电成本', '光伏发电', '光伏消纳占供电', '单位购电成本', '售电(转供)收入'] as const
-const kpis = computed(() => (!shown.value || failed.value ? KPI_LABELS.map((label) => ({ label, value: '—', note: ' ' })) : [
+const kpis = computed(() => (!shown.value || failed.value ? KPI_LABELS.map((label) => ({ label, value: '—', note: ' ', loading: !shown.value && !failed.value })) : [
   { label: '园区购电', value: buyKwh.value != null ? fnum(buyKwh.value / 10000, 1) + '万kWh' : '—', delta: mom('buyKwh'), kind: '环比', invert: true, note: isMonth.value ? undefined : '全年' },
   { label: '购电成本', value: buyCost.value != null ? '¥' + fnum(buyCost.value / 10000, 1) + '万' : '—', note: isMonth.value ? '本月' : '全年' },
   { label: '光伏发电', value: pvGen.value != null ? fnum(pvGen.value / 10000, 1) + '万kWh' : '—', note: pvGen.value ? '消纳 ' + ((pvSelf.value ?? 0) / pvGen.value * 100).toFixed(0) + '%' : undefined },
@@ -146,10 +146,11 @@ const kpis = computed(() => (!shown.value || failed.value ? KPI_LABELS.map((labe
 ]))
 
 // ── 主图:能量流桑基(金额;点边/节点 → 下方板块趋势切换) ──
-const NODE_COLOR: Record<string, string> = {
-  购电: '#378ADD', 光伏消纳: '#5DCAA5', [HUB]: '#85B7EB', '售电(转供)': '#185FA5',
-  办公: '#B5D4F4', 充电桩: '#F0997B', 损耗差额: '#E24B4A', 转供毛差: '#EF9F27',
-}
+// 节点色按当前外观取(暗色深蓝换灰蓝)
+const nodeColor = (h: ReturnType<typeof hues>): Record<string, string> => ({
+  购电: h.blue, 光伏消纳: h.teal, [HUB]: h.mid, '售电(转供)': h.deep,
+  办公: h.pale, 充电桩: h.coral, 损耗差额: h.red, 转供毛差: h.amber,
+})
 // §五策略2 桑基月锚:所选月无 s10 → 回退 ≤所选的最近 s10 月并横幅显式(年粒度沿用覆盖月同口径)。
 // 板块损益/KPI 仍锚所选月(各自空态/「附表10缺本月」已显式,不混月)。
 const s10Yms = computed(() => amt.value.filter((m) => m.s10Elec != null).map((m) => m.ym))
@@ -162,6 +163,7 @@ const sankeyReading = computed(() => (sankey.value ? buildSankeyReading(sankey.v
 const sankeyOption = computed(() => {
   const s = sankey.value
   if (!s) return null
+  const h = hues(), NODE_COLOR = nodeColor(h)
   return {
     tooltip: {
       formatter: (p: { dataType?: string; name?: string; value?: number; data?: { source?: string; target?: string; value?: number } }) =>
@@ -173,9 +175,9 @@ const sankeyOption = computed(() => {
       type: 'sankey', left: 10, right: 96, top: 10, bottom: 10,
       nodeWidth: 14, nodeGap: 20, nodeAlign: 'justify', draggable: false,
       emphasis: { focus: 'adjacency' },
-      label: { fontSize: 11.5, color: 'rgba(28,28,28,.8)' },
+      label: { fontSize: 11.5, color: inkA(.8) },
       lineStyle: { color: 'gradient', opacity: 0.32, curveness: 0.55 },
-      data: s.nodes.map((n) => ({ ...n, itemStyle: { color: NODE_COLOR[n.name] ?? '#B5D4F4' } })),
+      data: s.nodes.map((n) => ({ ...n, itemStyle: { color: NODE_COLOR[n.name] ?? h.pale } })),
       links: s.links,
     }],
   }
@@ -196,7 +198,7 @@ const trendOption = computed(() => ({
   series: [{
     type: 'bar', barMaxWidth: 26, name: BOARD_ZH[board.value],
     data: boardTrend.value.values.map((v) => +(v / 10000).toFixed(2)),
-    itemStyle: { color: board.value === 'residual' ? '#EF9F27' : '#378ADD', borderRadius: [3, 3, 0, 0] },
+    itemStyle: { color: board.value === 'residual' ? hues().amber : hues().blue, borderRadius: [3, 3, 0, 0] },
   }],
 }))
 
@@ -224,11 +226,11 @@ const unitOption = computed(() => ({
   yAxis: { type: 'value', scale: true },
   series: [{
     type: 'line', name: '单位购电成本', data: unitSeries.value.map((v) => +v.toFixed(4)),
-    symbol: 'circle', symbolSize: 6, itemStyle: { color: '#378ADD' }, lineStyle: { width: 2, color: '#378ADD' },
-    areaStyle: { opacity: 0.08, color: '#378ADD' },
+    symbol: 'circle', symbolSize: 6, itemStyle: { color: hues().blue }, lineStyle: { width: 2, color: hues().blue },
+    areaStyle: { opacity: 0.08, color: hues().blue },
     markLine: {
       silent: true, symbol: 'none',
-      lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.35)' },
+      lineStyle: { type: 'dashed', color: inkA(.35) },
       // 默认 end 位置把标签画在线尾右侧,grid.right 只有 14px → 「均值 x.xx」被绘图区右缘裁掉一半;
       // 改 insideEndTop 让标签落在线内上方,读得出阈值
       label: { position: 'insideEndTop', fontSize: 11, formatter: '均值 ' + unitAvg.value.toFixed(2) },
@@ -255,7 +257,7 @@ const segsOption = computed(() => ({
     type: 'bar', barMaxWidth: 22,
     data: [...segs.value].reverse().map((s) => ({
       value: +(s.profit / 10000).toFixed(1),
-      itemStyle: { color: s.profit < 0 ? '#E24B4A' : '#378ADD', borderRadius: 3 },
+      itemStyle: { color: s.profit < 0 ? hues().red : hues().blue, borderRadius: 3 },
     })),
     label: { show: true, position: 'right', fontSize: 11, formatter: (p: { value: number }) => (p.value < 0 ? '−' : '') + '¥' + fnum(Math.abs(p.value), 1) + '万' },
   }],

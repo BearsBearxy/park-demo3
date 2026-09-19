@@ -18,16 +18,17 @@ const ordinal = (key: string) => Number(props.gran === 'month' ? key.slice(8, 10
 const dateText = (key: string) =>
   props.gran === 'month' ? `${Number(key.slice(5, 7))} 月 ${ordinal(key)} 日` : `${ordinal(key)} 月`
 
-const OUT = {
+// computed:切外观时跟着换(页签常驻不重挂载;琥珀字暗色下是 --warn-text)
+const OUT = computed(() => ({
   '-1': { text: '低于下沿', bar: C.BELOW, ink: C.BELOW },
   '1': { text: '高于上沿', bar: C.ABOVE, ink: C.AMBER_TEXT },
-} as Record<string, { text: string; bar: string; ink: string }>
+}) as Record<string, { text: string; bar: string; ink: string }>)
 
 const view = computed(() => props.rows.map((r: DetailRow) => {
   // 有记录但发电 ≤ 0(比值算不出,state 也是 missing)≠ 没抄表:发电照写,不标「没抄表」(V4 §0 gen=0 与离线分开)
   const miss = r.state === 'missing' && r.gen == null
   const noRatio = r.state === 'missing'
-  const o = r.out ? OUT[String(r.out)] : null
+  const o = r.out ? OUT.value[String(r.out)] : null
   return {
     key: r.key, miss, bar: o?.bar ?? null, ink: o?.ink ?? null,
     date: dateText(r.key),

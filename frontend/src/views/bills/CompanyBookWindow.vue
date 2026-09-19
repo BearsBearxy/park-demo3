@@ -358,7 +358,7 @@ function onClose() {
 .cw-f.chk { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 7px; color: var(--text-secondary); font-size: 12px; cursor: pointer; }
 .cw-f.chk input { accent-color: var(--hue-blue); cursor: pointer; }
 .cw-f em { color: var(--hue-red); font-style: normal; }
-.cw-f input { height: 32px; padding: 0 10px; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); font-family: var(--font-sans); }
+.cw-f input { height: 32px; padding: 0 10px; box-sizing: border-box; border: 1px solid var(--border-control); border-radius: var(--radius-sm); font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); font-family: var(--font-sans); }
 .cw-f input:focus { outline: none; border-color: var(--hue-blue); }
 .cw-f input:disabled { background: var(--surface-sunken); color: var(--text-muted); }
 .cw-f-act { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
@@ -379,8 +379,11 @@ function onClose() {
 .cw-kind.bank { background: rgba(10, 132, 255, 0.12); color: rgb(10, 90, 170); }
 .cw-kind.wechat { background: rgba(52, 199, 89, 0.14); color: rgb(21, 108, 60); }
 .cw-kind.alipay { background: rgba(0, 122, 255, 0.10); color: rgb(0, 82, 170); }
-.cw-kind.personal { background: rgba(255, 149, 0, 0.14); color: rgb(178, 100, 0); }
-.cw-mini { height: 22px; min-width: 22px; padding: 0 6px; margin: 0 1px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-white); color: var(--text-muted); font-size: 11px; cursor: pointer; vertical-align: middle; }
+/* 半透明底暗色下照样是暗的,只有深色字要换 */
+:root[data-theme="dark"] .cw-kind.bank, :root[data-theme="dark"] .cw-kind.alipay { color: var(--hue-blue); }
+:root[data-theme="dark"] .cw-kind.wechat { color: var(--delta-up-text); }
+.cw-kind.personal { background: rgba(255, 149, 0, 0.14); color: var(--orange-text); }
+.cw-mini { height: 22px; min-width: 22px; padding: 0 6px; margin: 0 1px; border: 1px solid var(--border-control); border-radius: var(--radius-sm); background: var(--surface-white); color: var(--text-muted); font-size: 11px; cursor: pointer; vertical-align: middle; }
 .cw-mini:hover:not(:disabled) { background: var(--surface-card); color: var(--text-primary); }
 .cw-mini:disabled { cursor: default; opacity: .55; }
 .cw-mini.on { border-color: var(--hue-blue); color: var(--hue-blue); background: rgba(10, 132, 255, 0.08); }

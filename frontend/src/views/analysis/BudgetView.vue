@@ -21,7 +21,7 @@ import { fetchBudgetAll, fetchPnlSummary, fetchPnlYear } from '@/analysis/anaDat
 import { bulletOption, extractS5GroupTotals, matchBudgetKey, pnlKeyTotals, PNL_SOT_FROM_YEAR, type BudgetKey } from '@/analysis/budget'
 import type { BudgetRowDTO } from '@/api/budget'
 import { finMoney, finFmt, finWan } from '@/utils/finFmt'
-import { sgn, NEG, POS } from '@/components/ana/anaFmt'
+import { hues, sgn, NEG, POS } from '@/components/ana/anaFmt'
 import { comboBarData, comboBudgetData, keyRoute } from './budgetView.logic'
 
 const router = useRouter()
@@ -93,14 +93,17 @@ const bandGroups = computed(() => {
     { name: '利润', cols: mk(y => keyActual(y, 'profit'), y => keyBudget(y, 'profit')) },
   ]
 })
-const COMBO_COLOR: Record<string, string> = { 收入: '#378ADD', 成本费用: '#85B7EB', 利润: '#185FA5' }
-const comboOpt = computed<object>(() => bulletOption(
-  years.value.map(String),
-  bandGroups.value.map(g => ({
-    name: g.name, color: COMBO_COLOR[g.name],
-    bars: comboBarData(g.cols), budget: comboBudgetData(g.cols),
-  })),
-))
+const comboOpt = computed<object>(() => {
+  const h = hues()   // 按当前外观取(暗色深蓝换灰蓝)
+  const COMBO_COLOR: Record<string, string> = { 收入: h.blue, 成本费用: h.mid, 利润: h.deep }
+  return bulletOption(
+    years.value.map(String),
+    bandGroups.value.map(g => ({
+      name: g.name, color: COMBO_COLOR[g.name],
+      bars: comboBarData(g.cols), budget: comboBudgetData(g.cols),
+    })),
+  )
+})
 
 // ── 卡2 当年达成率 bullets(成本超预算红 invert;SVG 保留) ──
 const bulletItems = computed(() => {
@@ -339,7 +342,7 @@ const kpiOutlook = computed(() => {
 
 <style scoped>
 .bv2-page { display: flex; flex-direction: column; gap: 10px; width: 100%; box-sizing: border-box; }
-.bv2-gran-hint { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--hue-orange); background: rgb(255,243,230); border-radius: var(--radius-full); padding: 5px 13px; white-space: nowrap; }
+.bv2-gran-hint { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--hue-orange); background: var(--warn-bg); border-radius: var(--radius-full); padding: 5px 13px; white-space: nowrap; }
 
 /* 达成明细行 */
 .bv2-ach-rows { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; border-top: 1px solid var(--divider); padding-top: 12px; }

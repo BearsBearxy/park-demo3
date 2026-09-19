@@ -31,13 +31,14 @@ defineEmits<{ (e: 'open'): void }>()
   display: inline-flex; align-items: center; gap: 5px;
   height: 30px; padding: 0 11px;
   border: 1px solid var(--status-warning); border-radius: var(--radius-full);
-  background: rgb(252, 243, 232);
+  background: var(--warn-soft);
   cursor: pointer;
   font-family: var(--font-sans); font-size: var(--fs-label); font-weight: var(--fw-medium);
   color: var(--status-warning); white-space: nowrap;
   transition: background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast);
 }
 .fac:hover { background: rgb(250, 236, 218); }
+:root[data-theme="dark"] .fac:hover { background: color-mix(in srgb, var(--warn-soft), var(--ink-900) 8%); }
 /* 静默态:同尺寸同位置,只换色——切换有无告警时工具条不挪一像素 */
 .fac.quiet {
   border-color: var(--border-subtle); background: transparent; color: var(--text-disabled);

@@ -112,7 +112,8 @@ function handleClick(val: string) {
               color var(--dur-fast) var(--ease-standard),
               box-shadow var(--dur-fast) var(--ease-standard);
 }
-.ds-seg-item[data-on] { --ds-seg-bg: var(--surface-white); --ds-seg-fg: var(--text-primary); box-shadow: var(--shadow-pill); }
+/* 选中格 --surface-raised:暗色下比卡片亮一层,对轨道才分得开(稿 Components ③) */
+.ds-seg-item[data-on] { --ds-seg-bg: var(--surface-raised); --ds-seg-fg: var(--text-primary); box-shadow: var(--shadow-pill); }
 .ds-seg-item:hover:not([data-on]) { --ds-seg-fg: var(--text-secondary); }
 /* 按压:底色换一档,0ms 瞬到;选中项不压(已是选中态)。背景写在内联 style 里读的是
    --ds-seg-bg,所以换变量而不是写 background。 */

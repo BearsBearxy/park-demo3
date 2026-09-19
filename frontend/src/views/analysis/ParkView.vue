@@ -16,7 +16,8 @@ import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
-import { fint, fnum } from '@/components/ana/anaFmt'
+import { fint, fnum, hues } from '@/components/ana/anaFmt'
+import { anaPalette } from '@/components/ana/anaTheme'
 import { fetchBuildings, fetchBuildingSummary, fetchContracts, fetchTenants } from '@/analysis/anaData'
 import { buildBuildingRows, buildPhaseRows, liveContracts, splitLogPoints } from './park.logic'
 import { iconFor } from '@/components/ds/icon'
@@ -54,8 +55,8 @@ onMounted(reload)
 onReactivated(() => { void reload() })
 
 // fpAnaTheme 蓝族字面色(ECharts canvas 不认 CSS 变量;分期 1~4 取主题前 4 色)
-const PHASE_COLOR = ['#378ADD', '#185FA5', '#85B7EB', '#B5D4F4']
-const phaseColor = (p: number) => PHASE_COLOR[(p - 1) % PHASE_COLOR.length]
+// 蓝族四色,按当前外观取(暗色深蓝换灰蓝);在 computed / 模板里调才跟着切外观
+const phaseColor = (p: number) => { const h = hues(), pal = [h.blue, h.deep, h.mid, h.pale]; return pal[(p - 1) % pal.length] }
 
 const live = computed(() => liveContracts(contracts.value))
 const rows = computed(() => buildBuildingRows(buildings.value, live.value))
@@ -70,7 +71,7 @@ const byUnit = computed(() => (bSummary.value ? occByUnit(bSummary.value) : null
 // ── KPI 条(spec §二.3:楼栋/在租/合同/月租总额;值与 v1 statItems 一致) ──
 // 首进/失败期不清空整排瓦片(C6-01):瓦片消失 = 下方整片先上提再下推。标签常驻、值写 '—'。
 const KPI_LABELS = ['楼栋数', '在租租户', '有效合同', '合同月租合计'] as const
-const kpis = computed(() => (loading.value || failed.value ? KPI_LABELS.map((label) => ({ label, value: '—', note: ' ' })) : [
+const kpis = computed(() => (loading.value || failed.value ? KPI_LABELS.map((label) => ({ label, value: '—', note: ' ', loading: loading.value })) : [
   { label: '楼栋数', value: rows.value.length + ' 栋' },
   { label: '在租租户', value: fint(activeTenants.value) + ' 户' },
   { label: '有效合同', value: fint(live.value.length) + ' 份' },
@@ -90,7 +91,7 @@ const treemapOption = computed(() => ({
     type: 'treemap', roam: false, nodeClick: false, breadcrumb: { show: false },
     left: 0, right: 0, top: 0, bottom: 0,
     label: { show: true, formatter: (p: { name: string; value: number }) => `${p.name}\n¥${fnum(p.value, 1)}万`, fontSize: 11, lineHeight: 16 },
-    itemStyle: { borderColor: '#fff', borderWidth: 2, gapWidth: 2 },
+    itemStyle: { borderColor: anaPalette().calloutCore, borderWidth: 2, gapWidth: 2 },   // 缝 = 卡片色
     data: rows.value.map((r) => ({
       name: r.name, value: +r.rentWan.toFixed(2),
       itemStyle: { color: phaseColor(r.phase), opacity: selected.value && selected.value !== r.name ? 0.4 : 1 },
@@ -116,7 +117,7 @@ const donutOption = computed(() => ({
   series: [{
     type: 'pie', radius: ['48%', '74%'], center: ['50%', '50%'],
     label: { fontSize: 11, formatter: '{b}\n{d}%' },
-    itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
+    itemStyle: { borderRadius: 6, borderColor: anaPalette().calloutCore, borderWidth: 2 },   // 缝 = 卡片色
     data: phases.value.map((p) => ({ name: p.name, value: +p.rentWan.toFixed(2), itemStyle: { color: phaseColor(p.phase) } })),
   }],
 }))
@@ -174,7 +175,7 @@ const areaRows = computed(() => buildings.value.map((b) => {
     rent: cs.reduce((s, c) => s + c.rentArea, 0),
   }
 }).filter((r) => r.building > 0).sort((a, b) => b.building - a.building))
-const AREA_COLOR = { building: '#185FA5', rent: '#85B7EB' }   // 蓝族字面色(同 PHASE_COLOR 取法)
+const AREA_COLOR = computed(() => ({ building: hues().deep, rent: hues().mid }))   // 蓝族(同 phaseColor 取法)
 const areaBarOption = computed(() => ({
   tooltip: {
     trigger: 'axis', axisPointer: { type: 'shadow' },
@@ -195,8 +196,8 @@ const areaBarOption = computed(() => ({
   },
   yAxis: { type: 'value', name: '面积(㎡)', nameTextStyle: { fontSize: 11 } },
   series: [
-    { name: '建筑面积', type: 'bar', barMaxWidth: 26, itemStyle: { color: AREA_COLOR.building, borderRadius: [3, 3, 0, 0] }, data: areaRows.value.map((r) => +r.building.toFixed(2)) },
-    { name: '租赁面积', type: 'bar', barMaxWidth: 26, itemStyle: { color: AREA_COLOR.rent, borderRadius: [3, 3, 0, 0] }, data: areaRows.value.map((r) => +r.rent.toFixed(2)) },
+    { name: '建筑面积', type: 'bar', barMaxWidth: 26, itemStyle: { color: AREA_COLOR.value.building, borderRadius: [3, 3, 0, 0] }, data: areaRows.value.map((r) => +r.building.toFixed(2)) },
+    { name: '租赁面积', type: 'bar', barMaxWidth: 26, itemStyle: { color: AREA_COLOR.value.rent, borderRadius: [3, 3, 0, 0] }, data: areaRows.value.map((r) => +r.rent.toFixed(2)) },
   ],
 }))
 </script>

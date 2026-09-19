@@ -2,7 +2,7 @@
 // CVP 模型(固定/变动拆分系数假设)+ ECharts option(CVP 线 markPoint 保本/markArea 盈利区、
 // 敏感性龙卷风横条、固定/变动逐月堆叠)。锚点(2026-07-08 dev 库,2025-10):rev 9,301,530.81 / cost 6,142,810.17。
 import type { AnalysisS10Row } from '@/api/analysis'
-import { fnum } from '@/components/ana/anaFmt'
+import { fnum, hues, inkA } from '@/components/ana/anaFmt'
 import { CALLOUT, calloutMark } from '@/components/ana/anaTheme'
 import { isOutlierMonth } from '@/analysis/anaData'
 
@@ -81,7 +81,6 @@ export function tornadoItems(be: BeModel, s10Used: S10Used | null): TornadoItem[
   return items.sort((a, b) => b.delta - a.delta)
 }
 
-const INK = '#185FA5', RED = '#E24B4A', WARN = '#EF9F27', BLUE = '#378ADD', SLATE = 'rgba(28,28,28,.4)'   // 复审:统一主题语义红/墨灰
 const wan0 = (v: number) => (v / 10000).toFixed(0) + '万'
 
 /** C6-15:只有拖滑杆那一次重算传 instant —— 顶层 0 经 motionize 吸收进每个系列与 marker(经宿主),图不落后手指;
@@ -90,6 +89,7 @@ const slide = (instant: boolean) => (instant ? { animationDurationUpdate: 0 } : 
 
 /** CVP 线:x=收入达成率 0~120%,收入/总成本两线;markPoint 保本点、markArea 盈利区、markLine 当前 100%。 */
 export function cvpOption(be: BeModel, instant = false): object {
+  const { deep: INK, red: RED, amber: WARN, teal } = hues()   // 复审:统一主题语义红/墨灰;按当前外观取(DARK-MODE-SPEC §6)
   const revPts: [number, number][] = [], costPts: [number, number][] = []
   for (let x = 0; x <= 120; x += 10) {
     revPts.push([x, be.rev * x / 100])
@@ -113,16 +113,16 @@ export function cvpOption(be: BeModel, instant = false): object {
         lineStyle: { width: 2.4, color: INK }, itemStyle: { color: INK },
         markLine: {
           silent: true, symbol: 'none',
-          lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.45)', width: 1 },
-          label: { fontSize: 11, color: 'rgba(28,28,28,.62)', formatter: '当前 100%' },
+          lineStyle: { type: 'dashed', color: inkA(.45), width: 1 },
+          label: { fontSize: 11, color: inkA(.62), formatter: '当前 100%' },
           data: [{ xAxis: 100 }],
         },
         ...(showBe ? {
           // 气泡放保本点上方:保本点左边两条线都比它低,上方只有往右上走的收入线
           markPoint: calloutMark(CALLOUT.amber, WARN, [{ coord: [be.bePct, be.beRev], lines: [`保本 ${be.bePct!.toFixed(0)}%`] }]),
           markArea: {
-            silent: true, itemStyle: { color: 'rgba(93,202,165,.10)' },
-            label: { show: true, position: 'insideTop', color: 'rgba(28,28,28,.45)', fontSize: 11, formatter: '盈利区' },
+            silent: true, itemStyle: { color: teal, opacity: 0.1 },
+            label: { show: true, position: 'insideTop', color: inkA(.45), fontSize: 11, formatter: '盈利区' },
             data: [[{ xAxis: be.bePct }, { xAxis: 120 }]],
           },
         } : {}),
@@ -134,6 +134,7 @@ export function cvpOption(be: BeModel, instant = false): object {
 
 /** 龙卷风横条:红=下行(取负)、蓝=上行,同类目对称;类目倒序(影响最大在顶)。 */
 export function tornadoOption(items: TornadoItem[], instant = false): object {
+  const { red: RED, blue: BLUE } = hues()
   const rev = [...items].reverse()
   return {
     ...slide(instant),   // C6-15 同 cvpOption:一拖滑杆三张图同时重算
@@ -148,7 +149,7 @@ export function tornadoOption(items: TornadoItem[], instant = false): object {
       { name: '净利 ↓(−10%)', type: 'bar', stack: 'tor', barWidth: '52%', itemStyle: { color: RED, borderRadius: [3, 0, 0, 3] }, data: rev.map((i) => -+i.delta.toFixed(1)) },
       {
         name: '净利 ↑(+10%)', type: 'bar', stack: 'tor', itemStyle: { color: BLUE, borderRadius: [0, 3, 3, 0] },
-        label: { show: true, position: 'right', fontSize: 11, color: 'rgba(28,28,28,.62)', formatter: (p: { value: number }) => '¥' + p.value.toFixed(1) + '万' },
+        label: { show: true, position: 'right', fontSize: 11, color: inkA(.62), formatter: (p: { value: number }) => '¥' + p.value.toFixed(1) + '万' },
         data: rev.map((i) => +i.delta.toFixed(1)),
       },
     ],
@@ -169,6 +170,7 @@ export function splitData(months: number[], cost: (number | null)[], fr: number)
 
 /** 固定/变动逐月堆叠柱 option。 */
 export function splitOption(d: SplitData, instant = false): object {
+  const { blue: BLUE } = hues()
   return {
     ...slide(instant),   // C6-15 同 cvpOption:一拖滑杆三张图同时重算
     grid: { left: 48, right: 16, top: 30, bottom: 26 },
@@ -181,7 +183,7 @@ export function splitOption(d: SplitData, instant = false): object {
     xAxis: { type: 'category', data: d.periods },
     yAxis: { type: 'value', axisLabel: { formatter: '{value}万' } },
     series: [
-      { name: '固定成本', type: 'bar', stack: 'c', barWidth: '46%', itemStyle: { color: SLATE }, data: d.fixed },
+      { name: '固定成本', type: 'bar', stack: 'c', barWidth: '46%', itemStyle: { color: inkA(.4) }, data: d.fixed },
       { name: '变动成本', type: 'bar', stack: 'c', itemStyle: { color: BLUE, borderRadius: [3, 3, 0, 0] }, data: d.vari },
     ],
   }

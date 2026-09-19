@@ -131,7 +131,7 @@ function onDragEnd() { dragFrom.value = -1; dragOver.value = -1 }
   gap: 10px;
   padding: 0 12px 0 18px;
   border-radius: var(--radius-full);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-control);
   background: var(--surface-card);
   color: var(--text-muted);
   font-family: var(--font-sans);
@@ -176,7 +176,7 @@ function onDragEnd() { dragFrom.value = -1; dragOver.value = -1 }
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-standard);
 }
-.hm-tile:hover { background: rgb(240, 240, 241); }
+.hm-tile:hover { background: color-mix(in srgb, var(--ink-900) 4.05%, var(--surface-card)); }
 .hm-tile.over { box-shadow: inset 0 0 0 2px var(--hue-blue); }
 .hm-tile.dragging { opacity: .5; }
 .hm-tile .ti {

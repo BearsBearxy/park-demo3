@@ -91,7 +91,7 @@ defineEmits<{ (e: 'close'): void }>()
 .fap-gh .t { font-size: var(--fs-body); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .fap-gh .n {
   font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: var(--fw-semibold);
-  color: var(--status-warning); background: rgb(252, 243, 232);
+  color: var(--status-warning); background: var(--warn-soft);
   border-radius: var(--radius-full); padding: 1px 8px;
 }
 .fap-g.info .fap-gh .n { color: var(--hue-blue); background: var(--accent-blue); }

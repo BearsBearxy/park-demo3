@@ -98,7 +98,7 @@ async function commitRename(e: Event) {
 .s10-bind-fld span { font-size: 13px; color: var(--text-primary); }
 .s10-bind-in {
   height: 32px; padding: 0 10px; font-size: 13px; color: var(--text-primary);
-  background: var(--surface-page); border: 1px solid var(--border-subtle);
+  background: var(--surface-page); border: 1px solid var(--border-control);
   border-radius: var(--radius-sm); outline: none; width: 100%;
 }
 .s10-bind-in:focus { border-color: var(--hue-blue); }

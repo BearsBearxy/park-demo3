@@ -751,3 +751,24 @@ describe('光伏分栋抄表 · 期间深链(SIDEBAR-UX-REDESIGN §4.2)', () => 
     expect(pvMeterApi.readings).toHaveBeenCalledWith(2025, 4)
   })
 })
+
+// 2026-09-19:抽屉表格行内的原生日期框换成 ds/DatePicker 行内格(DATE-PICKER-SPEC §5 第 2 节)。
+describe('光伏分栋抄表 · 行内日期格', () => {
+  it('❗只开当月(min/max = 本月首尾)、格子只写 月/日,选的日写回表单', async () => {
+    const w = await open()
+    await w.findAll('.bmm-card')[2].trigger('click')
+    await flushPromises()
+    const vm = w.vm as unknown as { editMode: boolean; adding: boolean; form: { readDate: string } }
+    vm.editMode = true
+    await flushPromises()
+    await w.findAll('.pm-table tbody tr')[0].trigger('click')
+    await flushPromises()
+    vm.adding = true
+    await flushPromises()
+    const dp = w.findComponent({ name: 'DatePicker' })
+    expect([dp.props('variant'), dp.props('short'), dp.props('min'), dp.props('max')]).toEqual(['cell', true, '2025-03-01', '2025-03-31'])
+    dp.vm.$emit('update:modelValue', '2025-03-09')
+    await flushPromises()
+    expect(vm.form.readDate).toBe('2025-03-09')
+  })
+})

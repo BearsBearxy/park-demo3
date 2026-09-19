@@ -85,7 +85,7 @@ onBeforeUnmount(() => {
   position: fixed;
   inset: 0;
   z-index: var(--fp-dwr-z, var(--z-modal));
-  background: rgba(28, 28, 28, .34);
+  background: var(--scrim);
   /* iOS ≤17 只认带前缀的写法,无前缀在真机上等于没有模糊 */
   -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
@@ -103,10 +103,10 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   max-height: min(85vh, 760px);
-  background: var(--surface-white);
+  background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
   border-radius: 16px;
-  box-shadow: 0 24px 64px rgba(28, 28, 28, .28);
+  box-shadow: var(--shadow-dialog);
   overflow: hidden;
   transform: translateY(8px) scale(.985);
   opacity: 0;

@@ -38,8 +38,8 @@ const emit = defineEmits<{ jump: [ContractDTO] }>()
 .cc-chip:hover:not(:disabled) { background:var(--surface-card); }
 .cc-chip.cur { border-color:var(--hue-blue); background:var(--surface-card); cursor:default; }
 .cc-seq { width:20px; height:20px; flex:0 0 auto; border-radius:50%; display:grid; place-items:center;
-  background:var(--border-strong); color:#fff; font-size:11.5px; font-weight:var(--fw-semibold); }
-.cc-chip.cur .cc-seq { background:var(--hue-blue); }
+  background:var(--border-strong); color:var(--text-on-solid); font-size:11.5px; font-weight:var(--fw-semibold); }
+.cc-chip.cur .cc-seq { background:var(--hue-blue); color:var(--control-solid-text); }
 .cc-body { display:flex; flex-direction:column; min-width:0; }
 .cc-no { font-size:12.5px; font-weight:var(--fw-medium); color:var(--text-primary); }
 .cc-range { font-size:11px; color:var(--text-muted); font-family:var(--font-mono); }

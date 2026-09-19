@@ -90,6 +90,23 @@ describe('MobileNavDrawer 手机导航抽屉', () => {
     await w.find('.mnav-logout').trigger('click')
     expect(push).toHaveBeenCalledWith('/login')
   })
+
+  // 外观(DARK-MODE-SPEC §3,稿 Mobile):「版本更新」上面一行,三格都点得着;点了不关抽屉
+  it('❗外观一行在「版本更新」上面,点「深色」立刻生效、抽屉不关', async () => {
+    useAuthStore().me = 'zhou'
+    const w = mountDrawer()
+    const ver = w.find('.mnav-ver').html()
+    expect(ver.indexOf('外观')).toBeGreaterThan(-1)
+    expect(ver.indexOf('外观')).toBeLessThan(ver.indexOf('版本更新'))
+    const seg = w.findAll('.mnav-appr-seg button')
+    expect(seg.map((b) => b.text())).toEqual(['浅色', '深色', '跟随系统'])
+    await seg[1].trigger('click')
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(localStorage.getItem('fp-appearance:zhou')).toBe('dark')
+    expect(w.emitted('close')).toBeUndefined()
+    await w.findAll('.mnav-appr-seg button')[0].trigger('click')
+  })
+
 })
 
 describe('MobileBottomNav 手机底栏', () => {

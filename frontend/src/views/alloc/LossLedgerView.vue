@@ -324,7 +324,7 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
 .ll-table tbody tr:hover .ll-fix { background: var(--surface-card); }
 
 .ll-lbl { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.ll-var { flex: 0 0 auto; font-size: var(--fs-micro); font-weight: var(--fw-regular); color: var(--hue-blue); background: rgb(232, 240, 254); border-radius: var(--radius-full); padding: 1px 7px; cursor: help; }
+.ll-var { flex: 0 0 auto; font-size: var(--fs-micro); font-weight: var(--fw-regular); color: var(--hue-blue); background: var(--info-soft); border-radius: var(--radius-full); padding: 1px 7px; cursor: help; }
 .ll-var.dim { color: var(--text-muted); background: var(--bg-sunken); }
 
 .ll-nv { display: block; text-align: right; font-size: 12px; padding: 0 8px; color: var(--text-secondary); font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -335,12 +335,12 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
 .ll-pv { cursor: pointer; display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
 .ll-pv:hover { color: var(--hue-blue); }
 .ll-badge { flex: 0 0 auto; font-family: var(--font-sans); font-size: 10px; line-height: 14px; border-radius: var(--radius-full); padding: 0 5px; background: var(--bg-sunken); color: var(--text-muted); }
-.ll-badge.month { background: rgb(255, 247, 235); color: rgb(180, 83, 9); }
-.ll-badge.from { background: rgb(232, 240, 254); color: var(--hue-blue); }
+.ll-badge.month { background: var(--warn-soft); color: var(--amber-text); }
+.ll-badge.from { background: var(--info-soft); color: var(--hue-blue); }
 .ll-rate { display: block; text-align: right; font-size: 12px; padding: 0 8px; font-weight: var(--fw-semibold); color: var(--hue-blue); font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ll-rate.empty { color: var(--text-disabled); font-weight: var(--fw-regular); }
 /* 手工率覆盖:「手工」小标 + 手工率(主)+ 公式率(灰,并排备查) */
-.ll-manual { font-family: var(--font-sans); font-size: 10px; font-weight: var(--fw-regular); border-radius: var(--radius-full); padding: 0 5px; margin-right: 4px; background: rgb(255, 247, 235); color: rgb(180, 83, 9); vertical-align: 1px; }
+.ll-manual { font-family: var(--font-sans); font-size: 10px; font-weight: var(--fw-regular); border-radius: var(--radius-full); padding: 0 5px; margin-right: 4px; background: var(--warn-soft); color: var(--amber-text); vertical-align: 1px; }
 .ll-formula { font-size: 10.5px; font-weight: var(--fw-regular); color: var(--text-muted); }
 .ll-txt { display: block; text-align: left; font-size: 12px; padding: 0 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 

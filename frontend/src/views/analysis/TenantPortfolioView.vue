@@ -11,6 +11,8 @@ import { fetchContracts, fetchTenants } from '@/analysis/anaData'
 import type { ContractDTO } from '@/types/contract'
 import type { TenantDTO } from '@/types/tenant'
 import { iconFor } from '@/components/ds/icon'
+import { hues, inkA } from '@/components/ana/anaFmt'
+import { anaPalette } from '@/components/ana/anaTheme'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
@@ -48,8 +50,8 @@ onMounted(reload)
 onReactivated(() => { void reload() })
 
 const phaseName = (p: number): string => (p === 0 ? '未标注' : PHASES.find((x) => x.phase === p)?.short ?? `期区${p}`)
-// ECharts canvas 不识别 CSS 变量 → fpAnaTheme 蓝族字面值(HTML 图例同源保持一致)
-const HEX = ['#378ADD', '#85B7EB', '#185FA5', '#5DCAA5', '#B5D4F4', 'rgba(28,28,28,.4)']
+// ECharts canvas 不识别 CSS 变量 → 从 anaTheme 按当前外观取(HTML 图例同源保持一致);在 computed 里调才跟着切外观
+const phasePal = (): string[] => { const h = hues(); return [h.blue, h.mid, h.deep, h.teal, h.pale, inkA(.4)] }
 
 // ── 租金份额(在租租户,月租金=生效合同Σ;v1 口径不变) ──
 const activeTenants = computed(() => tenantList.value.filter((t) => t.status === 1))
@@ -88,14 +90,14 @@ const paretoOption = computed<object>(() => {
       { type: 'value', min: 0, max: 100, axisLabel: { formatter: '{value}%' }, splitLine: { show: false } },
     ],
     series: [
-      { name: '月租金占比', type: 'bar', barWidth: 14, data: p.shares, itemStyle: { color: '#85B7EB' } },
+      { name: '月租金占比', type: 'bar', barWidth: 14, data: p.shares, itemStyle: { color: hues().mid } },
       {
         name: '累计占比', type: 'line', yAxisIndex: 1, data: p.cums, symbolSize: 5,
-        lineStyle: { color: '#1C1C1C', width: 2 }, itemStyle: { color: '#1C1C1C' },
+        lineStyle: { color: inkA(1), width: 2 }, itemStyle: { color: inkA(1) },
         markLine: p.names.length >= 5 ? {
           silent: true, symbol: 'none',
-          lineStyle: { type: 'dashed', color: '#EF9F27' },
-          label: { formatter: `Top5 ${top5Share.value}%`, color: '#EF9F27', fontSize: 11 },
+          lineStyle: { type: 'dashed', color: hues().amber },
+          label: { formatter: `Top5 ${top5Share.value}%`, color: hues().amber, fontSize: 11 },
           data: [{ xAxis: p.names[4] }],
         } : undefined,
       },
@@ -108,6 +110,7 @@ const phaseFilter = ref<number | null>(null)
 const donutData = computed(() => {
   const byPhase = new Map<number, number>()
   for (const t of shares.value) byPhase.set(t.phase, (byPhase.get(t.phase) ?? 0) + t.rent)
+  const HEX = phasePal()
   return [...byPhase.entries()].sort((a, b) => b[1] - a[1]).map(([p, rent], i) => ({
     phase: p, label: phaseName(p), rent,
     share: totalRent.value ? +((rent / totalRent.value) * 100).toFixed(1) : 0,
@@ -129,7 +132,7 @@ const donutOption = computed<object>(() => ({
       name: d.label, value: +d.rent.toFixed(2), share: d.share, phase: d.phase,
       itemStyle: {
         color: d.color,
-        borderColor: phaseFilter.value === d.phase ? '#1C1C1C' : '#fff',
+        borderColor: phaseFilter.value === d.phase ? inkA(1) : anaPalette().calloutCore,   // 未选 = 卡片色缝
         borderWidth: phaseFilter.value === d.phase ? 2 : 1,
       },
     })),
@@ -206,13 +209,13 @@ const boxOption = computed<object>(() => ({
   series: [
     {
       type: 'scatter', symbolSize: 7,
-      itemStyle: { color: 'rgba(133,183,235,.55)', borderColor: '#378ADD', borderWidth: 1 },
+      itemStyle: { color: 'rgba(133,183,235,.55)', borderColor: hues().blue, borderWidth: 1 },
       // C6-16 契约:scatter 数据项必须带 name(稳定实体键)—— 无 name 时按 rawIndex diff,换期/换筛选会把第 i 个点从租户 A 形变到租户 B
       data: stripPts.value.flatMap((pts) => pts.map((pt) => ({ name: pt.tenant, value: [pt.x, pt.y] }))),
     },
     {   // 中位横线(rect 扁标记)
       type: 'scatter', symbol: 'rect', symbolSize: [34, 3],
-      itemStyle: { color: '#1C1C1C' },
+      itemStyle: { color: inkA(1) },
       data: boxRows.value.map((r, i) => ({ name: r.name, value: [i, r.stats[2]] })),   // 同上:中位横线按期区名对齐
     },
   ],

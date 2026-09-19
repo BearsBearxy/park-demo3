@@ -162,7 +162,7 @@ function go(s: Step) {
 .fss-step.on {
   background: var(--surface-white);
   color: var(--text-primary);
-  box-shadow: var(--shadow-pill, 0 1px 4px rgba(28, 28, 28, .12));
+  box-shadow: var(--shadow-pill);
   cursor: default;
 }
 

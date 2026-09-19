@@ -10,7 +10,7 @@ const color = computed(() =>
   : props.tone === 'legal' ? 'var(--hue-cyan)'
   : props.tone === 'ops' ? 'var(--fill-slate)'
   : 'var(--text-muted)')
-const bg = computed(() => (props.tone === 'warn' ? 'rgb(255,243,230)' : 'var(--surface-sunken)'))
+const bg = computed(() => (props.tone === 'warn' ? 'var(--warn-bg)' : 'var(--surface-sunken)'))
 </script>
 
 <template>

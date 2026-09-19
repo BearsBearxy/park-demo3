@@ -466,7 +466,7 @@ td.ct { text-align:center; }
    于是全部收缩都落在名字上 —— 列一窄名字就只剩一个字。min-width:0 是让 ellipsis 生效的前提) */
 .mlg-tname .nm { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .mlg-tname .mlg-st { flex:0 0 auto; }
-.mlg-tname.coral .nm { color:rgb(202, 66, 41); }
+.mlg-tname.coral .nm { color:var(--coral-text); }
 .mlg-tname.dim .nm { color:var(--text-disabled); font-weight:var(--fw-regular); }
 .mlg-tname .ch { opacity:0; flex:0 0 auto; color:var(--text-disabled); transition:opacity var(--dur-fast); }
 .mlg-table tbody tr:hover .mlg-tname .ch { opacity:1; }
@@ -495,18 +495,22 @@ td.ct { text-align:center; }
 /* 状态徽标(语义色迁自旧 MeterGrid):已抄绿/未抄amber/倒走·时段不符红/待核·待绑定coral/占位灰 */
 .mlg-st { display:inline-block; font-size:var(--fs-micro); font-family:var(--font-sans); font-weight:var(--fw-regular); border-radius:var(--radius-full); padding:2px 9px; cursor:help; white-space:nowrap; }
 .mlg-st.sm { padding:1px 7px; }
-.mlg-st.ok { color:rgb(21, 128, 61); background:rgb(222, 244, 229); }
-.mlg-st.amber { color:rgb(138, 97, 0); background:rgb(255, 244, 214); }
-.mlg-st.bad { color:var(--hue-red); background:rgb(255, 238, 237); }
-.mlg-st.coral { color:rgb(202, 66, 41); background:rgb(255, 235, 228); }
+.mlg-st.ok { color:var(--ok-text); background:var(--ok-soft); }
+.mlg-st.amber { color:var(--caution-text); background:rgb(255, 244, 214); }
+.mlg-st.bad { color:var(--hue-red); background:var(--danger-soft); }
+.mlg-st.coral { color:var(--coral-text); background:rgb(255, 235, 228); }
 .mlg-st.dim { color:var(--text-muted); background:var(--bg-sunken); }
 
 /* 存疑行(V75 §E3/§F1):shadow 浅红底(已被踢出Σ)/ incomplete 浅黄底(仍在Σ内,只是档案没填全);
    sticky 固定列同步上色(否则横滚露白) */
-.mlg-table tbody tr.mlg-sus td, .mlg-table tbody tr.mlg-sus td.mlg-fix { background:rgb(255, 244, 243); }
-.mlg-table tbody tr.mlg-sus:hover td, .mlg-table tbody tr.mlg-sus:hover td.mlg-fix { background:rgb(255, 236, 234); }
-.mlg-table tbody tr.mlg-inc td, .mlg-table tbody tr.mlg-inc td.mlg-fix { background:rgb(255, 250, 235); }
+/* 可疑行 = 浅红 60% 叠在卡片上(浅色 ≈ 原 rgb(255,244,243),ΔE00 0.4);悬停整格浅红 */
+.mlg-table tbody tr.mlg-sus td, .mlg-table tbody tr.mlg-sus td.mlg-fix { background:color-mix(in srgb, var(--danger-soft) 60%, var(--surface-white)); }
+.mlg-table tbody tr.mlg-sus:hover td, .mlg-table tbody tr.mlg-sus:hover td.mlg-fix { background:var(--danger-soft); }
+.mlg-table tbody tr.mlg-inc td, .mlg-table tbody tr.mlg-inc td.mlg-fix { background:var(--caution-soft); }
 .mlg-table tbody tr.mlg-inc:hover td, .mlg-table tbody tr.mlg-inc:hover td.mlg-fix { background:rgb(255, 246, 222); }
+:root[data-theme="dark"] .mlg-st.amber { background:var(--caution-soft); }
+:root[data-theme="dark"] .mlg-st.coral { background:var(--danger-bg); }
+:root[data-theme="dark"] .mlg-table tbody tr.mlg-inc:hover td, :root[data-theme="dark"] .mlg-table tbody tr.mlg-inc:hover td.mlg-fix { background:color-mix(in srgb, var(--caution-soft), var(--ink-900) 8%); }
 
 /* 楼栋分组汇总行(§7.6,2026-07-28 加强):Excel 同款重分隔带——加高 40px+深底+上下 2px 粗边;
    sticky 格背景同步,横滚不露馅 */

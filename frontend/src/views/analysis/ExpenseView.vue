@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 费用与报销(fin-expense)— spec 2026-07-12 §T1:附表5 全域费用分析(员工报销/办公类设专区)。
-// KPI 6 瓦 + 主图 s8 四组堆叠柱+运营费用总计线(环比开=总计上月灰虚线 CMP_BASELINE)
+// KPI 6 瓦 + 主图 s8 四组堆叠柱+运营费用总计线(环比开=总计上月灰虚线 cmpBaseline())
 // + s4 本期费用结构环 + 第二排 s4×3:科目Top10(条色随组)/环比异动榜(费用降是好事)/报销办公专区。
 // 数据零新端点:fetchPnlYear('s5') 组带自带总计行不重算 + fetchPnlSummary 的 revenue(费用占收入比);
 // 纯函数见 expense.logic.ts;期间口径同驾驶舱(atPeriod:月=当月,年=Σ;月锚回退横幅显式)。
@@ -13,7 +13,8 @@ import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaBarRow from '@/components/ana/AnaBarRow.vue'
 import AnaBarRows from '@/components/ana/AnaBarRows.vue'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
-import { CMP_BASELINE, fnum, sgn } from '@/components/ana/anaFmt'
+import { cmpBaseline, fnum, hues, sgn } from '@/components/ana/anaFmt'
+import { anaPalette } from '@/components/ana/anaTheme'
 import { DUR, EASE } from '@/components/ana/anaMotion'
 import { usePeriod, ymOf } from '@/analysis/usePeriod'
 import { useCompare } from '@/analysis/useCompare'
@@ -87,26 +88,27 @@ const reimRows = computed(() => {
 })
 
 // ── 主图:四组堆叠柱 + 总计线(四色同驾驶舱 COMPO 策略;环比开=总计上月灰虚线) ──
+// 色按名字存、画时按当前外观取
 const GROUP_DEFS = [
-  { key: 'sales', name: '销售费用', color: '#378ADD' },
-  { key: 'admin', name: '管理费用', color: '#5DCAA5' },
-  { key: 'fin', name: '财务费用', color: '#EF9F27' },
-  { key: 'repair', name: '修缮改造', color: '#F0997B' },
+  { key: 'sales', name: '销售费用', hue: 'blue' },
+  { key: 'admin', name: '管理费用', hue: 'teal' },
+  { key: 'fin', name: '财务费用', hue: 'amber' },
+  { key: 'repair', name: '修缮改造', hue: 'coral' },
 ] as const
 const mainOpt = computed<object>(() => {
   const g = groups.value
   const totalWan = wanSeries(g.total)
   const series: object[] = GROUP_DEFS.map((d) => ({
-    name: d.name, type: 'bar', stack: 'exp', data: wanSeries(g[d.key]), barMaxWidth: 26, itemStyle: { color: d.color },
+    name: d.name, type: 'bar', stack: 'exp', data: wanSeries(g[d.key]), barMaxWidth: 26, itemStyle: { color: hues()[d.hue] },
   }))
   series.push({
     name: '运营费用总计', type: 'line', data: totalWan, symbolSize: 5, connectNulls: true,
-    itemStyle: { color: '#185FA5' }, lineStyle: { width: 2 },
+    itemStyle: { color: hues().deep }, lineStyle: { width: 2 },
   })
   if (cmp.mode.value === 'mom') {
     series.push({
       name: '总计(上月)', type: 'line', data: totalWan.map((_, i) => (i > 0 ? totalWan[i - 1] : null)), symbol: 'none',
-      lineStyle: { type: 'dashed', width: 1.5, color: CMP_BASELINE }, itemStyle: { color: CMP_BASELINE },
+      lineStyle: { type: 'dashed', width: 1.5, color: cmpBaseline() }, itemStyle: { color: cmpBaseline() },
       // C6-09 对比虚线:系列级 200/quarticOut 压过注入的 update 0 → clip 从左擦入;关掉是视图 dispose 瞬时(不淡出)
       animationDuration: DUR.update, animationEasing: EASE.enter,
     })
@@ -123,7 +125,7 @@ const mainOpt = computed<object>(() => {
 
 // ── 本期费用结构环(图例带占比,同驾驶舱环样式) ──
 const structItems = computed(() => GROUP_DEFS
-  .map((d) => ({ name: d.name, color: d.color, value: atPeriod(groups.value[d.key], isMonth.value, usedMi.value) ?? 0 }))
+  .map((d) => ({ name: d.name, color: hues()[d.hue], value: atPeriod(groups.value[d.key], isMonth.value, usedMi.value) ?? 0 }))
   .filter((d) => d.value > 0))
 const donutOpt = computed<object>(() => {
   const items = structItems.value
@@ -136,17 +138,18 @@ const donutOpt = computed<object>(() => {
     legend: { bottom: 0, formatter: (name: string) => `${name} ${sum > 0 ? ((byName.get(name) ?? 0) / sum * 100).toFixed(1) : '0.0'}%` },
     series: [{
       type: 'pie', radius: ['50%', '74%'], center: ['50%', '42%'],
-      label: { show: false }, itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
+      label: { show: false }, itemStyle: { borderRadius: 6, borderColor: anaPalette().calloutCore, borderWidth: 2 },   // 缝 = 卡片色
       data: items.map((d) => ({ name: d.name, value: +(d.value / 10000).toFixed(2) })),
     }],
   }
 })
 
 // ── 科目 Top10 横条(本期金额降序,条色随组;修缮无明细行故只有三组色) ──
-const GROUP_COLOR: Record<string, string> = { 销售费用: '#378ADD', 管理费用: '#5DCAA5', 财务费用: '#EF9F27' }
 const tops = computed(() => topSubjects(rows.value, isMonth.value, usedMi.value, 10))
 const topOpt = computed<object>(() => {
   const items = [...tops.value].reverse()   // ECharts 类目轴自下而上
+  const h = hues()
+  const GROUP_COLOR: Record<string, string> = { 销售费用: h.blue, 管理费用: h.teal, 财务费用: h.amber }
   return {
     grid: { left: 8, right: 52, top: 6, bottom: 6, containLabel: true },
     tooltip: { trigger: 'axis', valueFormatter: (v: number) => '¥' + fnum(v) + '万' },
@@ -154,7 +157,7 @@ const topOpt = computed<object>(() => {
     yAxis: { type: 'category', data: items.map((d) => d.label), axisLabel: { fontSize: 11, width: 108, overflow: 'truncate' } },
     series: [{
       type: 'bar', barMaxWidth: 13,
-      data: items.map((d) => ({ value: +(d.value / 10000).toFixed(2), itemStyle: { color: GROUP_COLOR[d.group] ?? '#B5D4F4', borderRadius: [0, 3, 3, 0] } })),
+      data: items.map((d) => ({ value: +(d.value / 10000).toFixed(2), itemStyle: { color: GROUP_COLOR[d.group] ?? h.pale, borderRadius: [0, 3, 3, 0] } })),
       label: { show: true, position: 'right', fontSize: 11, formatter: '{c}万' },
     }],
   }
@@ -173,10 +176,10 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
            由外壳 .anx-kpis 随 busy 同拍退让(C5-02) -->
       <template v-if="!empty">
         <AnaKpiTile label="运营费用总计" :value="money(total)"
-          :delta="momOf(groups.total, isMonth, usedMi)" kind="环比" invert :trend="groups.total" />
-        <AnaKpiTile label="管理费用" :value="money(admin)" :trend="groups.admin" />
-        <AnaKpiTile label="销售费用" :value="money(sales)" :trend="groups.sales" />
-        <AnaKpiTile label="财务费用+修缮" :value="money(finRepair)" :trend="finRepairSeries" />
+          :delta="momOf(groups.total, isMonth, usedMi)" kind="环比" invert />
+        <AnaKpiTile label="管理费用" :value="money(admin)" />
+        <AnaKpiTile label="销售费用" :value="money(sales)" />
+        <AnaKpiTile label="财务费用+修缮" :value="money(finRepair)" />
         <AnaKpiTile label="员工报销与办公" :value="reim.sum == null ? '—' : money(reim.sum)"
           :note="reimShare != null ? '占运营费用 ' + reimShare.toFixed(1) + '%' : undefined" />
         <AnaKpiTile label="费用占收入比" :value="expRatio == null ? '—' : expRatio.toFixed(1) + '%'"
@@ -301,7 +304,7 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
             <AnaBarRows class="ex-reim-rows" :style="{ height: reimRows.length * REIM_PITCH - REIM_GAP + 'px' }">
               <AnaBarRow v-for="r in reimRows" :key="r.it.label" :style="{ transform: `translateY(${r.y}px)` }" :name="r.it.label"
                 :value="+(r.it.value / 10000).toFixed(2)" :max="+(reim.items[0].value / 10000).toFixed(2)"
-                fill="#5DCAA5" suffix="万" />
+                :fill="hues().teal" suffix="万" />
             </AnaBarRows>
             <!-- 条形仅列前7,合计含全部命中科目——余量必须披露,否则条形与合计对不上账(复审①) -->
             <p v-if="reim.items.length > 7" class="ex-reim-more">

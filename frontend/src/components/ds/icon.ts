@@ -3,7 +3,7 @@
 import {
   Database, BookMarked, PieChart, Command, LayoutDashboard,
   Building2, Users, FileText, BookOpen, Receipt, Landmark,
-  Sun, Car, Bike, Coins, Zap, Wallet, Plug, Upload,
+  Sun, SunMoon, Car, Bike, Coins, Zap, Wallet, Plug, Upload,
   TrendingUp, TrendingDown, Scale, Table2, Home, Droplets, Wrench, Banknote,
   GitCompare, Gauge, Activity, BarChart3, Siren, CalendarClock,
   Scale3d, Layers, BellRing, PanelLeft, Star, History, Bell,
@@ -42,6 +42,7 @@ const MAP: Record<string, Component> = {
   'receipt': Receipt,
   'landmark': Landmark,
   'sun': Sun,
+  'sun-moon': SunMoon,
   'car': Car,
   'bike': Bike,
   'coins': Coins,

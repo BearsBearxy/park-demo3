@@ -109,12 +109,12 @@ const metaByMonth = computed<Record<number, MonthMeta>>(() => {
 .lg-title { margin:0; font:var(--type-h2); color:var(--text-primary); }
 .lg-sub { margin:4px 0 0; font-size:var(--fs-label); color:var(--text-muted); }
 .lg-sub .mono { font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
-.lg-back { width:34px; height:34px; flex:0 0 auto; border:1px solid var(--border-subtle); background:var(--surface-white); border-radius:var(--radius-md); cursor:pointer; display:grid; place-items:center; color:var(--text-secondary); transition:background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
+.lg-back { width:34px; height:34px; flex:0 0 auto; border:1px solid var(--border-control); background:var(--surface-white); border-radius:var(--radius-md); cursor:pointer; display:grid; place-items:center; color:var(--text-secondary); transition:background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
 .lg-back:hover { background:var(--bg-hover); color:var(--text-primary); }
 .lg-head-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 
 /* 年份切换胶囊 */
-.lg-ypill { display:inline-flex; align-items:center; gap:2px; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:var(--radius-full); padding:3px; }
+.lg-ypill { display:inline-flex; align-items:center; gap:2px; background:var(--surface-white); border:1px solid var(--border-control); border-radius:var(--radius-full); padding:3px; }
 .lg-ypill button { width:28px; height:28px; border:none; background:transparent; border-radius:var(--radius-full); cursor:pointer; color:var(--text-secondary); display:grid; place-items:center; transition:background var(--dur-fast) var(--ease-standard); }
 .lg-ypill button:hover { background:var(--bg-hover); color:var(--text-primary); }
 .lg-ypill button:disabled { opacity:.4; cursor:not-allowed; }
@@ -141,7 +141,7 @@ const metaByMonth = computed<Record<number, MonthMeta>>(() => {
 .lg-mc-month { font-size:23px; font-weight:var(--fw-semibold); letter-spacing:-0.02em; line-height:1; color:var(--text-primary); }
 .lg-mc-month .u { font-size:13px; font-weight:var(--fw-medium); color:var(--text-muted); margin-left:3px; }
 .lg-mc-dot { width:7px; height:7px; border-radius:50%; background:var(--status-info); flex:0 0 auto; margin-top:6px; }
-.lg-mc-tag { font-size:10.5px; font-weight:var(--fw-semibold); padding:2px 9px; border-radius:var(--radius-full); background:var(--ink-900); color:#fff; }
+.lg-mc-tag { font-size:10.5px; font-weight:var(--fw-semibold); padding:2px 9px; border-radius:var(--radius-full); background:var(--ink-900); color:var(--control-solid-text); }
 .lg-mc-amt { margin-top:auto; font-size:17px; font-weight:var(--fw-semibold); letter-spacing:-0.01em; font-family:var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-primary); }
 .lg-mc-sub { font-size:11.5px; color:var(--text-muted); margin-top:5px; }
 .lg-mc-empty { margin-top:auto; font-size:12.5px; color:var(--text-disabled); }

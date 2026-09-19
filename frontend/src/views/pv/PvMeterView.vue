@@ -30,6 +30,7 @@ import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
 import Select from '@/components/ds/Select.vue'
+import DatePicker from '@/components/ds/DatePicker.vue'
 import Input from '@/components/ds/Input.vue'
 import FPPhaseTabs from '@/components/fp/FPPhaseTabs.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
@@ -720,7 +721,7 @@ async function onTemplate() {
             <template v-for="r in drawerRows" :key="r.id">
               <!-- 行编辑态:日期+三量+备注可改;收益按原快照价预览(改量不改快照) -->
               <tr v-if="editId === r.id" class="editing">
-                <td class="l"><input v-model="form.readDate" class="pm-din" type="date" :min="monthFirst" :max="monthLast" /></td>
+                <td class="l"><DatePicker v-model="form.readDate" variant="cell" short :min="monthFirst" :max="monthLast" field-id="pv-read-date" aria-label="日期" /></td>
                 <td><input v-model="form.genTotal" class="pm-din num" type="number" min="0" step="0.01" /></td>
                 <td><input v-model="form.selfUse" class="pm-din num" type="number" min="0" step="0.01" /></td>
                 <td><input v-model="form.gridFeed" class="pm-din num" type="number" min="0" step="0.01" /></td>
@@ -752,7 +753,7 @@ async function onTemplate() {
             <!-- 新增行:新录将快照当前站单价 -->
             <template v-if="adding">
               <tr class="editing">
-                <td class="l"><input v-model="form.readDate" class="pm-din" type="date" :min="monthFirst" :max="monthLast" /></td>
+                <td class="l"><DatePicker v-model="form.readDate" variant="cell" short :min="monthFirst" :max="monthLast" field-id="pv-read-date" aria-label="日期" /></td>
                 <td><input v-model="form.genTotal" class="pm-din num" type="number" min="0" step="0.01" /></td>
                 <td><input v-model="form.selfUse" class="pm-din num" type="number" min="0" step="0.01" /></td>
                 <td><input v-model="form.gridFeed" class="pm-din num" type="number" min="0" step="0.01" /></td>
@@ -846,7 +847,7 @@ async function onTemplate() {
 .pm-headl { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .pm-permonth {
   display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto;
-  padding: 5px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  padding: 5px 10px; border: 1px solid var(--border-control); border-radius: var(--radius-sm);
   background: var(--surface-white); cursor: pointer;
   font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-muted);
   transition: color var(--dur-fast), border-color var(--dur-fast);
@@ -887,7 +888,7 @@ async function onTemplate() {
 /* 行内编辑输入:静默融入单元格,hover/聚焦显边框 */
 .pm-edit { width: 100%; box-sizing: border-box; height: 32px; padding: 0 8px; text-align: right; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-body); color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard); appearance: textfield; -moz-appearance: textfield; }
 .pm-edit::-webkit-outer-spin-button, .pm-edit::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.pm-edit:hover { border-color: var(--border-subtle); background: var(--surface-white); }
+.pm-edit:hover { border-color: var(--border-control); background: var(--surface-white); }
 .pm-edit:focus { outline: none; border-color: var(--hue-blue); background: var(--surface-white); }
 .pm-edit::placeholder { color: var(--text-disabled); }
 .pm-edit.l { text-align: left; font-family: var(--font-sans); }
@@ -908,17 +909,17 @@ async function onTemplate() {
 /* height 在表格单元格上即最小高度:空着也占恰好一行,警示进出不顶行(LAYOUT-STABILITY-SPEC §4.2) */
 .pm-dtable tr.warnrow td { font-family: var(--font-sans); font-size: 11.5px; color: var(--hue-orange); background: var(--surface-card); padding-top: 0; height: 16px; line-height: 16px; }
 .pm-dtable td.ops { white-space: nowrap; }
-.pm-din { width: 100%; box-sizing: border-box; height: 30px; padding: 0 8px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-sans); font-size: 12.5px; color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard); }
+.pm-din { width: 100%; box-sizing: border-box; height: 30px; padding: 0 8px; border: 1px solid var(--border-control); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-sans); font-size: 12.5px; color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard); }
 .pm-din.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield; }
 .pm-din.num::-webkit-outer-spin-button, .pm-din.num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .pm-din:focus { outline: none; border-color: var(--hue-blue); }
 .pm-iop { width: 26px; height: 26px; border: none; background: transparent; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-muted); display: inline-grid; place-items: center; transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
 .pm-iop:hover { background: var(--bg-hover); color: var(--text-primary); }
 .pm-iop.ok:hover { color: var(--hue-blue); }
-.pm-iop.danger:hover { background: rgb(255, 238, 237); color: var(--hue-red); }
+.pm-iop.danger:hover { background: var(--danger-soft); color: var(--hue-red); }
 
 /* ── 新增电站弹窗(样式同 SchedYearGate sm-ydlg 家族) ── */
-.pm-mask { position: fixed; inset: 0; background: rgba(28, 28, 28, .34); z-index: 140; display: grid; place-items: center; }
+.pm-mask { position: fixed; inset: 0; background: var(--scrim); z-index: 140; display: grid; place-items: center; }
 .pm-dlg { width: min(420px, 90vw); background: var(--surface-white); border-radius: var(--radius-xl); box-shadow: 0 16px 48px rgba(28, 28, 28, .22); overflow: hidden; }
 .pm-dlg-h { padding: 20px 22px 0; }
 .pm-dlg-h h3 { margin: 0; font-size: 16px; font-weight: var(--fw-semibold); color: var(--text-primary); }

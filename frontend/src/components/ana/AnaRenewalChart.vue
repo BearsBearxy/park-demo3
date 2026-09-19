@@ -3,6 +3,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { renewalGeo, type RenewalBox } from '@/views/analysis/renewalChart.logic'
 import { useEnterPhase, useMorphHold } from './anaMotion'
+import { anaSvgVars } from './anaTheme'
 import './ana.css'   // @keyframes fp-wipe · .ana-morph
 
 const props = withDefaults(defineProps<{
@@ -70,7 +71,7 @@ const tipX = computed(() => {
 </script>
 
 <template>
-  <div ref="host" class="arn-host" @mousemove="onMove" @mouseleave="hover = null">
+  <div ref="host" class="arn-host" :style="anaSvgVars()" @mousemove="onMove" @mouseleave="hover = null">
     <svg v-if="geo" class="arn" :width="box.width" :height="box.height" :viewBox="`0 0 ${box.width} ${box.height}`" role="img">
       <!-- 数轴的尺子部分:区间色块 + 轴线 + 刻度。留在擦入组外先在(C6-25);色块随数变,单包一层形变 -->
       <g class="ana-morph" :class="{ hold }">
@@ -109,17 +110,17 @@ const tipX = computed(() => {
 .arn { display: block; }
 /* 擦入:数据组自左擦出(首进 / 切回页签);fp-wipe 在 ana.css,不能写进 scoped(名字会被加 hash) */
 .arn-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
-.arn-track { fill: #E9EBEF; }
-.arn-hit { fill: #2E7CD6; }
-.arn-hitlab { fill: #fff; font-size: 12px; font-weight: 600; }
-.arn-hitlab-out { fill: #185FA5; font-size: 12px; font-weight: 600; }
-.arn-misslab { fill: #6B7280; font-size: 12px; }
-.arn-band { fill: #BFD8F5; fill-opacity: 0.6; }
-.arn-axis { stroke: #D7DBE2; stroke-width: 1; }
-.arn-marker { stroke: #185FA5; stroke-width: 2; }
-.arn-tick { fill: #94A3B8; font-size: 11px; text-anchor: middle; font-variant-numeric: tabular-nums; }
-.arn-tick-strong { fill: #1C1C1C; font-weight: 600; font-size: 12px; }
-.arn-tip { fill: #1E293B; }
-.arn-tiptext { fill: #E2E8F0; font-size: 11px; font-variant-numeric: tabular-nums; }
-.arn-tiptitle { fill: #fff; font-weight: 600; font-size: 12px; }
+.arn-track { fill: var(--sv-grid); }
+.arn-hit { fill: var(--sv-line); }
+.arn-hitlab { fill: var(--text-on-solid); font-size: 12px; font-weight: 600; }
+.arn-hitlab-out { fill: var(--sv-deep); font-size: 12px; font-weight: 600; }
+.arn-misslab { fill: var(--sv-label-strong); font-size: 12px; }
+.arn-band { fill: var(--sv-band); fill-opacity: 0.6; }
+.arn-axis { stroke: var(--sv-axis); stroke-width: 1; }
+.arn-marker { stroke: var(--sv-deep); stroke-width: 2; }
+.arn-tick { fill: var(--sv-label); font-size: 11px; text-anchor: middle; font-variant-numeric: tabular-nums; }
+.arn-tick-strong { fill: var(--text-primary); font-weight: 600; font-size: 12px; }
+.arn-tip { fill: var(--sv-tip-bg); }
+.arn-tiptext { fill: var(--sv-tip-text); font-size: 11px; font-variant-numeric: tabular-nums; }
+.arn-tiptitle { fill: var(--text-on-solid); font-weight: 600; font-size: 12px; }
 </style>

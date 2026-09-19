@@ -7,6 +7,7 @@ import type { TenantCategoryDTO, TenantDTO } from '@/types/tenant'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
+import DatePicker from '@/components/ds/DatePicker.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 
 const props = defineProps<{ initial?: TenantDTO | null }>()
@@ -141,7 +142,7 @@ async function submit() {
             </div>
             <div class="fin-field">
               <div class="lab">入驻年月</div>
-              <input class="fin-in" type="month" v-model="since" @keydown.enter="submit" />
+              <DatePicker class="fin-dp" v-model="since" mode="month" clearable aria-label="入驻年月" align="end" @keydown.enter="submit" />
             </div>
           </div>
           <div class="fin-row" v-if="isEdit">
@@ -187,8 +188,8 @@ async function submit() {
 
 <style scoped>
 /* 1:1 FinDialogs.vue .fin-mask/.fin-dlg(居中弹窗,遵 PAGE-BEHAVIOR-SPEC §2) */
-.fin-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:300; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
-.fin-dlg { width:min(480px,92vw); max-height:88vh; overflow-y:auto; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); animation:fp-rise-in var(--dur-base) var(--ease-standard) both; }
+.fin-mask { position:fixed; inset:0; background:var(--scrim); z-index:300; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
+.fin-dlg { width:min(480px,92vw); max-height:88vh; overflow-y:auto; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:var(--shadow-dialog); animation:fp-rise-in var(--dur-base) var(--ease-standard) both; }
 .fin-dlg-h { padding:20px 22px 0; }
 .fin-dlg-h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .fin-dlg-h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
@@ -199,13 +200,14 @@ async function submit() {
 /* 高度对齐设计系统 md=36(ds/Input 与 ds/Select 同档):此前 38/40px,而同一表单网格里的
    下拉已是 ds/Select 的 36px,并排就差 2~4px。改这里而不是改 Select —— 36 是三个 ds 控件
    (Button/Input/Select)共同的 md 档,38/40 才是各表单自己发明的。 */
-.fin-in { width:100%; box-sizing:border-box; height:36px; padding:0 12px; font-size:var(--fs-body); color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
+.fin-in { width:100%; box-sizing:border-box; height:36px; padding:0 12px; font-size:var(--fs-body); color:var(--text-primary); border:1px solid var(--border-control); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
 .fin-in:focus { border-color:var(--hue-blue); }
 .fin-in.err { border-color:var(--hue-red); }
+.fin-dp { --dp-r: var(--radius-md); }
 .fin-erm { font-size:11.5px; color:var(--hue-red); margin-top:-6px; min-height:14px; }
 /* 关联主租户:选择器 + 清除小按钮(回到「不关联」) */
 .fin-parent-row { display:flex; align-items:center; gap:8px; }
-.fin-clear { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--surface-white); color:var(--text-muted); cursor:pointer; transition:border-color var(--dur-fast) var(--ease-standard); }
-.fin-clear:hover { border-color:var(--border-strong); color:var(--text-secondary); }
+.fin-clear { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; border:1px solid var(--border-control); border-radius:var(--radius-sm); background:var(--surface-white); color:var(--text-muted); cursor:pointer; transition:border-color var(--dur-fast) var(--ease-standard); }
+.fin-clear:hover { border-color:var(--border-control-strong); color:var(--text-secondary); }
 .fin-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:16px 22px 20px; }
 </style>

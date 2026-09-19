@@ -302,21 +302,22 @@ const bsTable = computed<BsTblRow[]>(() => {
             <span class="hint">ROE = 净利率 × 总资产周转率 × 权益乘数</span>
           </div>
           <div v-if="R.roe != null && R.netMargin != null" style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap">
-            <div style="flex: 0 0 auto; text-align: center; padding: 14px 22px; background: var(--accent-blue); border-radius: 16px">
-              <div style="font-size: 12px; color: var(--text-muted)">净资产收益率 ROE</div>
-              <div style="font-size: var(--fs-display); font-weight: 600; font-family: var(--font-mono); color: var(--text-primary); letter-spacing: -0.02em">{{ (R.roe * 100).toFixed(1) }}%</div>
-              <div style="font-size: 11px; color: var(--text-muted)">ROA {{ R.roa == null ? '—' : R.roa.toFixed(1) + '%' }}</div>
+            <!-- KPI-CARD-SPEC §4 杜邦(稿 KpiFormula A .dup.a):ROE 大格 --accent-blue 数 28;三因子各一格浅底 sky / slate / cyan 数 20 -->
+            <div style="flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; text-align: center; padding: 16px 28px; background: var(--accent-blue); border-radius: var(--radius-lg)">
+              <div style="font-size: var(--fs-label); line-height: 18px; color: var(--text-primary)">净资产收益率 ROE</div>
+              <div style="font-size: var(--fs-display); line-height: 36px; font-weight: var(--fw-semibold); font-family: var(--font-mono); color: var(--text-primary); letter-spacing: -0.02em">{{ (R.roe * 100).toFixed(1) }}%</div>
+              <div style="font-size: var(--fs-micro); line-height: 16px; color: var(--text-muted-tint)">ROA {{ R.roa == null ? '—' : R.roa.toFixed(1) + '%' }}</div>
             </div>
             <span style="font-size: var(--fs-h2); color: var(--text-muted)">=</span>
             <template v-for="(f, i) in [
-              { k: '净利率', v: R.netMargin.toFixed(1) + '%', note: '赚钱能力' },
-              { k: '总资产周转率', v: (R.assetTurn ?? 0).toFixed(2) + '次', note: '资产效率' },
-              { k: '权益乘数', v: R.equityMult == null ? '—' : R.equityMult.toFixed(1) + '×', note: '杠杆倍数' },
+              { k: '净利率', v: R.netMargin.toFixed(1) + '%', note: '赚钱能力', t: 'var(--accent-sky)' },
+              { k: '总资产周转率', v: (R.assetTurn ?? 0).toFixed(2) + '次', note: '资产效率', t: 'var(--accent-slate)' },
+              { k: '权益乘数', v: R.equityMult == null ? '—' : R.equityMult.toFixed(1) + '×', note: '杠杆倍数', t: 'var(--accent-cyan)' },
             ]" :key="f.k">
-              <div style="flex: 1 1 120px; min-width: 110px; text-align: center; padding: 14px 16px; background: var(--surface-card); border-radius: 14px">
-                <div style="font-size: var(--fs-micro); color: var(--text-muted)">{{ f.k }}</div>
-                <div style="font-size: var(--fs-h2); font-weight: var(--fw-semibold); font-family: var(--font-mono); color: var(--text-primary)">{{ f.v }}</div>
-                <div style="font-size: var(--fs-micro); color: var(--text-muted)">{{ f.note }}</div>
+              <div :style="{ flex: '1 1 120px', minWidth: '110px', display: 'flex', flexDirection: 'column', gap: '2px', textAlign: 'center', padding: '14px 16px', background: f.t, borderRadius: 'var(--radius-lg)' }">
+                <div style="font-size: var(--fs-label); line-height: 18px; color: var(--text-primary)">{{ f.k }}</div>
+                <div style="font-size: var(--fs-h2); line-height: 26px; font-weight: var(--fw-semibold); font-family: var(--font-mono); color: var(--text-primary)">{{ f.v }}</div>
+                <div style="font-size: var(--fs-micro); line-height: 16px; color: var(--text-muted-tint)">{{ f.note }}</div>
               </div>
               <span v-if="i < 2" style="font-size: var(--fs-h2); color: var(--text-muted)">×</span>
             </template>

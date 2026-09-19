@@ -20,6 +20,23 @@ import type { ReleaseNote } from '@/types/changelog'
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: '0.15.0',
+    date: '2026-09-20',
+    headline: '能换深色外观，日期选择器和指标卡换了样子',
+    feature: {
+      icon: 'sun-moon',
+      title: '深色外观',
+      desc: '点左下角头像，在「外观」里选浅色、深色或跟随系统，点一下整页渐变过去。手机上在导航抽屉里。每个账号记自己的选择，默认浅色。',
+    },
+    added: [],
+    improved: [
+      { icon: 'calendar', title: '日期选择器', desc: '原来点开是系统自带的日历，现在换成统一的日历，能直接打字，年和月合成一个框。' },
+      { icon: 'layout-grid', title: '指标卡', desc: '屏幕顶部的数字卡片换成浅色底，分析屏小卡去掉了迷你折线。' },
+      { icon: 'panel-left', title: '收起导航', desc: '原来点「收起导航」侧栏一下子消失，现在会平滑收起和展开。' },
+    ],
+    fixed: [],
+  },
+  {
     version: '0.14.1',
     date: '2026-09-19',
     headline: '更新记录里也能看到重点卡',

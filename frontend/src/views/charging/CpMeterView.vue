@@ -27,6 +27,7 @@ import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
 import Select from '@/components/ds/Select.vue'
+import DatePicker from '@/components/ds/DatePicker.vue'
 import Input from '@/components/ds/Input.vue'
 import FPPhaseTabs from '@/components/fp/FPPhaseTabs.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
@@ -705,7 +706,7 @@ async function onTemplate() {
             <template v-for="r in drawerRows" :key="r.id">
               <!-- 行编辑态:日期(限当月)+三金额+备注可改 -->
               <tr v-if="editId === r.id" class="editing">
-                <td class="l"><input v-model="form.readDate" class="cm-din" type="date" :min="monthFirst" :max="monthLast" /></td>
+                <td class="l"><DatePicker v-model="form.readDate" variant="cell" short :min="monthFirst" :max="monthLast" field-id="cp-read-date" aria-label="日期" /></td>
                 <td><input v-model="form.chargeKwh" class="cm-din num" type="number" min="0" step="0.01" /></td>
                 <td><input v-model="form.fee" class="cm-din num" type="number" min="0" step="0.01" /></td>
                 <td><input v-model="form.revenue" class="cm-din num" type="number" min="0" step="0.01" /></td>
@@ -730,7 +731,7 @@ async function onTemplate() {
             </template>
             <!-- 新增行 -->
             <tr v-if="adding" class="editing">
-              <td class="l"><input v-model="form.readDate" class="cm-din" type="date" :min="monthFirst" :max="monthLast" /></td>
+              <td class="l"><DatePicker v-model="form.readDate" variant="cell" short :min="monthFirst" :max="monthLast" field-id="cp-read-date" aria-label="日期" /></td>
               <td><input v-model="form.chargeKwh" class="cm-din num" type="number" min="0" step="0.01" /></td>
               <td><input v-model="form.fee" class="cm-din num" type="number" min="0" step="0.01" /></td>
               <td><input v-model="form.revenue" class="cm-din num" type="number" min="0" step="0.01" /></td>
@@ -807,7 +808,7 @@ async function onTemplate() {
 /* 骨架与 PvMeterView pm-* 同构(cm- 前缀);差异:主表下多「电表与损耗」小节 */
 .cm-permonth {
   display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto;
-  padding: 5px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  padding: 5px 10px; border: 1px solid var(--border-control); border-radius: var(--radius-sm);
   background: var(--surface-white); cursor: pointer;
   font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-muted);
   transition: color var(--dur-fast), border-color var(--dur-fast);
@@ -852,7 +853,7 @@ async function onTemplate() {
 /* 行内编辑输入:静默融入单元格,hover/聚焦显边框(数字右对齐;.l=文本左对齐) */
 .cm-edit { width: 100%; box-sizing: border-box; height: 32px; padding: 0 8px; text-align: right; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-body); color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard); appearance: textfield; -moz-appearance: textfield; }
 .cm-edit::-webkit-outer-spin-button, .cm-edit::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.cm-edit:hover { border-color: var(--border-subtle); background: var(--surface-white); }
+.cm-edit:hover { border-color: var(--border-control); background: var(--surface-white); }
 .cm-edit:focus { outline: none; border-color: var(--hue-blue); background: var(--surface-white); }
 .cm-edit::placeholder { color: var(--text-disabled); }
 .cm-edit.l { text-align: left; font-family: var(--font-sans); }
@@ -883,17 +884,17 @@ async function onTemplate() {
 .cm-sim { margin-right: 6px; font-family: var(--font-sans); font-size: var(--fs-micro); color: var(--text-muted); background: var(--bg-sunken); border-radius: var(--radius-full); padding: 1px 7px; cursor: help; }
 .cm-dtable tr.editing td { background: var(--surface-card); }
 .cm-dtable td.ops { white-space: nowrap; }
-.cm-din { width: 100%; box-sizing: border-box; height: 30px; padding: 0 8px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-sans); font-size: 12.5px; color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard); }
+.cm-din { width: 100%; box-sizing: border-box; height: 30px; padding: 0 8px; border: 1px solid var(--border-control); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-sans); font-size: 12.5px; color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard); }
 .cm-din.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield; }
 .cm-din.num::-webkit-outer-spin-button, .cm-din.num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .cm-din:focus { outline: none; border-color: var(--hue-blue); }
 .cm-iop { width: 26px; height: 26px; border: none; background: transparent; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-muted); display: inline-grid; place-items: center; transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
 .cm-iop:hover { background: var(--bg-hover); color: var(--text-primary); }
 .cm-iop.ok:hover { color: var(--hue-blue); }
-.cm-iop.danger:hover { background: rgb(255, 238, 237); color: var(--hue-red); }
+.cm-iop.danger:hover { background: var(--danger-soft); color: var(--hue-red); }
 
 /* ── 新增充电桩弹窗(样式同 PvMeterView pm-dlg 家族) ── */
-.cm-mask { position: fixed; inset: 0; background: rgba(28, 28, 28, .34); z-index: 140; display: grid; place-items: center; }
+.cm-mask { position: fixed; inset: 0; background: var(--scrim); z-index: 140; display: grid; place-items: center; }
 .cm-dlg { width: min(420px, 90vw); background: var(--surface-white); border-radius: var(--radius-xl); box-shadow: 0 16px 48px rgba(28, 28, 28, .22); overflow: hidden; }
 .cm-dlg-h { padding: 20px 22px 0; }
 .cm-dlg-h h3 { margin: 0; font-size: 16px; font-weight: var(--fw-semibold); color: var(--text-primary); }

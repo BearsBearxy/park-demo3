@@ -88,9 +88,11 @@ const elevWhat = computed(() => auth.grants.map((g) => g.permLabel).join('、'))
   position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   padding: 10px 18px; box-sizing: border-box;
-  background: var(--warn-bg, #FAEDE7); border-bottom: 1px solid var(--hue-red);
+  /* 浅色 = master 上实际画出来的 #FAEDE7(那时 --warn-bg 还没定义,吃的是逗号后面这个);红边横幅,暗色走出错底 */
+  background: #FAEDE7; border-bottom: 1px solid var(--hue-red);
   font-family: var(--font-sans); font-size: var(--fs-label);
 }
+:root[data-theme="dark"] .app-drift { background: var(--danger-bg); }
 .app-drift-t { font-weight: var(--fw-semibold); color: var(--hue-red); }
 .app-drift-d { color: var(--text-secondary); }
 .app-drift-b {
@@ -98,7 +100,7 @@ const elevWhat = computed(() => auth.grants.map((g) => g.permLabel).join('、'))
   color: var(--hue-red); border-radius: var(--radius-full); padding: 4px 14px;
   font-family: var(--font-sans); font-size: var(--fs-label); cursor: pointer;
 }
-.app-drift-b:hover { background: var(--hue-red); color: #fff; }
+.app-drift-b:hover { background: var(--hue-red); color: var(--control-solid-text); }
 
 /* 提权横幅：和漂移横幅同一层，但语气不同 —— 那个是出事了，这个是「你现在有一份临时权限」。
    用中性的蓝而不是警示色：它不是错误，只是一个必须一直看得见的状态。 */

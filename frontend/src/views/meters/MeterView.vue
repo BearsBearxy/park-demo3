@@ -888,7 +888,7 @@ const emptyText = computed(() => {
 .mt-title .ic { width: 34px; height: 34px; border-radius: 10px; background: var(--surface-sunken); display: grid; place-items: center; color: var(--text-secondary); flex: 0 0 auto; }
 .mt5-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 /* 编辑中改动数 tag(lg-tag.edit 同款) */
-.mt5-tag { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: var(--radius-full); background: rgb(252, 243, 232); color: var(--hue-orange); font-size: 12.5px; font-weight: var(--fw-medium); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mt5-tag { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: var(--radius-full); background: var(--warn-soft); color: var(--hue-orange); font-size: 12.5px; font-weight: var(--fw-medium); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* 抄表进度条(已抄/租户表数,随 kind/zone) */
 .mt5-prog { display: flex; align-items: center; gap: 8px; cursor: help; }
@@ -901,13 +901,14 @@ const emptyText = computed(() => {
 .mt5-card { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 12px 14px; min-width: 0; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); cursor: pointer; text-align: left; font: inherit; transition: border-color var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard); }
 .mt5-card:hover { border-color: var(--border-strong); }
 .mt5-card.on { border-color: var(--hue-blue); background: rgb(240, 246, 255); box-shadow: 0 0 0 1px var(--hue-blue) inset; }
+:root[data-theme="dark"] .mt5-card.on { background: var(--row-selected); }
 .mt5-card .lab { font: var(--type-label); color: var(--text-muted); white-space: nowrap; }
 .mt5-card .val { font-size: 21px; font-weight: var(--fw-semibold); letter-spacing: var(--ls-tight); color: var(--text-primary); font-variant-numeric: tabular-nums; line-height: 1.1; white-space: nowrap; }
 .mt5-card .sub { font-size: var(--fs-micro); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.mt5-card.ok .val { color: rgb(21, 128, 61); }
-.mt5-card.amber .val { color: rgb(190, 110, 0); }
+.mt5-card.ok .val { color: var(--ok-text); }
+.mt5-card.amber .val { color: var(--badge-orange-text); }
 .mt5-card.bad .val { color: var(--hue-red); }
-.mt5-card.coral .val { color: rgb(202, 66, 41); }
+.mt5-card.coral .val { color: var(--coral-text); }
 
 /* 筛选条:单行 */
 .mt5-filters { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -920,13 +921,14 @@ const emptyText = computed(() => {
 /* 加载失败条(借空态条骨架换红):提示 + 重试入口 */
 /* 隐藏表出口说明条:蓝调=这不是错误,是「你正在看平时不显示的那批」 */
 .mt-hidbar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; border: 1px solid rgb(206, 223, 252); border-radius: var(--radius-md); background: rgb(238, 244, 255); font-size: 12px; color: rgb(28, 84, 168); }
+:root[data-theme="dark"] .mt-hidbar { border-color: color-mix(in srgb, var(--hue-blue) 35%, transparent); background: var(--info-soft); color: var(--hue-blue); }
 .mt-hidbar-em { font-weight: var(--fw-semibold); }
 .mt-empty .msg { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 /* 首载失败占满 gate 的位置(与 .page-loading 同为整页态,顶部起排不居中) */
 .mt-gate-fail { padding: 24px 0; max-width: 1600px; margin: 0 auto; width: 100%; box-sizing: border-box; }
 
 /* 新增表弹窗(v4 mt-dlg 家族) */
-.mt-mask { position: fixed; inset: 0; background: rgba(28, 28, 28, .34); z-index: 140; display: grid; place-items: center; }
+.mt-mask { position: fixed; inset: 0; background: var(--scrim); z-index: 140; display: grid; place-items: center; }
 .mt-dlg { width: min(460px, 90vw); background: var(--surface-white); border-radius: var(--radius-xl); box-shadow: 0 16px 48px rgba(28, 28, 28, .22); overflow: visible; }
 .mt-dlg-h { padding: 20px 22px 0; }
 .mt-dlg-h h3 { margin: 0; font-size: 16px; font-weight: var(--fw-semibold); color: var(--text-primary); }

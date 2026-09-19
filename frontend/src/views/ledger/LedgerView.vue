@@ -967,7 +967,7 @@ function gotoTenants() {
   .lgw-chip {
     flex:0 0 auto; display:inline-flex; align-items:center;
     height:36px; padding:0 14px; border-radius:var(--radius-full);
-    border:1px solid var(--border-subtle); background:var(--surface-white);
+    border:1px solid var(--border-control); background:var(--surface-white);
     color:var(--text-secondary); font-family:var(--font-sans);
     font-size:var(--fs-label); font-weight:var(--fw-medium);
     cursor:pointer; white-space:nowrap;

@@ -1,13 +1,13 @@
 // fin-balance v2 纯函数(spec §二.8):资产/负债双环 + 比率仪表(gauge ≤2,勿仪表盘泛滥)。
 // option 为纯 JSON(canvas 无法用 CSS 变量 → fpAnaTheme 字面色板)。单测 finBalance.logic.spec.ts。
-import { FP_ANA_THEME } from '@/components/ana/anaTheme'
-import { fint } from '@/components/ana/anaFmt'
+import { FP_ANA_THEME, anaPalette } from '@/components/ana/anaTheme'
+import { fint, hues, inkA } from '@/components/ana/anaFmt'
 
 export interface DonutSlice { label: string; value: number }
 
-// 环图色板 = fpAnaTheme 主题色(HTML 图例与 canvas 同源取色)
+// 环图色板 = fpAnaTheme 主题色(HTML 图例与 canvas 同源取色);sliceColor 按当前外观取(暗色第 4 位换灰蓝)
 export const DONUT_PAL: string[] = FP_ANA_THEME.color
-export const sliceColor = (i: number): string => DONUT_PAL[i % DONUT_PAL.length]
+export const sliceColor = (i: number): string => { const pal = anaPalette().seq; return pal[i % pal.length] }
 
 /** 双环之一:donut option(中心值文本 + 白描边;金额 元,tooltip 折万)。 */
 export function donutOption(slices: DonutSlice[], centerValue: string, centerLabel: string): object {
@@ -19,27 +19,27 @@ export function donutOption(slices: DonutSlice[], centerValue: string, centerLab
     },
     title: {
       text: centerValue, subtext: centerLabel, left: 'center', top: '38%',
-      textStyle: { fontSize: 20, fontWeight: 600, color: 'rgba(28,28,28,.92)' },
-      subtextStyle: { fontSize: 11, color: 'rgba(28,28,28,.62)' },
+      textStyle: { fontSize: 20, fontWeight: 600, color: inkA(.92) },
+      subtextStyle: { fontSize: 11, color: inkA(.62) },
       itemGap: 2,
     },
     series: [{
       type: 'pie', radius: ['60%', '84%'], center: ['50%', '50%'],
       label: { show: false }, labelLine: { show: false },
-      itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 1.5 },
+      itemStyle: { borderRadius: 6, borderColor: anaPalette().calloutCore, borderWidth: 1.5 },   // 缝 = 卡片色
       data: slices.map((s, i) => ({ name: s.label, value: s.value, itemStyle: { color: sliceColor(i) } })),
     }],
   }
 }
 
 // gauge 语义色(与屏内 RatioArc tone 同口径:好=蓝/关注=橙/风险=红)
-const TONE = { good: '#378ADD', warn: '#EF9F27', risk: '#E24B4A' } as const
+type Tone = 'good' | 'warn' | 'risk'
 // 负数出现在总资产或总负债为负的期间(录错或科目缺行),不是「负债很低」,不给好色。
-export function debtTone(debtRatio: number): keyof typeof TONE {
+export function debtTone(debtRatio: number): Tone {
   if (debtRatio < 0) return 'risk'
   return debtRatio < 60 ? 'good' : debtRatio < 85 ? 'warn' : 'risk'
 }
-export function currentTone(current: number): keyof typeof TONE {
+export function currentTone(current: number): Tone {
   return current >= 1 ? 'good' : 'warn'
 }
 
@@ -50,18 +50,20 @@ export function currentTone(current: number): keyof typeof TONE {
  * 两个刻度 —— 让「画满」读得出是超出量程,而不是正好 100%。量程本身不跟着数据走,公司之间才可比。
  */
 export function gaugesOption(debtRatio: number, current: number | null): object {
+  const { blue, amber, red } = hues()
+  const TONE: Record<Tone, string> = { good: blue, warn: amber, risk: red }   // 轨道浅底拼 hex 透明度(color + '26'),色板里这三个都是 hex
   const mk = (center: [string, string], value: number, max: number, name: string, fmt: string, color: string): object => {
     const over = value > max || value < 0
     return {
       type: 'gauge', center, radius: '82%', startAngle: 210, endAngle: -30,
       min: 0, max, splitNumber: over ? 1 : 4,
       progress: { show: true, width: 10, itemStyle: { color } },
-      axisLine: { lineStyle: { width: 10, color: [[1, over ? color + '26' : 'rgba(28,28,28,.08)']] } },
+      axisLine: { lineStyle: { width: 10, color: [[1, over ? color + '26' : inkA(.08)]] } },
       pointer: { show: false }, axisTick: { show: false }, splitLine: { show: false },
-      axisLabel: over ? { show: true, distance: -1, fontSize: 10, color: 'rgba(28,28,28,.4)' } : { show: false },
-      title: { offsetCenter: [0, '32%'], fontSize: 11.5, color: 'rgba(28,28,28,.62)' },
+      axisLabel: over ? { show: true, distance: -1, fontSize: 10, color: inkA(.4) } : { show: false },
+      title: { offsetCenter: [0, '32%'], fontSize: 11.5, color: inkA(.62) },
       detail: {
-        offsetCenter: [0, 0], fontSize: 21, fontWeight: 600, color: 'rgba(28,28,28,.92)',
+        offsetCenter: [0, 0], fontSize: 21, fontWeight: 600, color: inkA(.92),
         formatter: fmt,
       },
       data: [{ value, name }],

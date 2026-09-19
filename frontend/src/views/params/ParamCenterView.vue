@@ -907,6 +907,7 @@ const FIXED_RULES = [
 .pm-table tbody tr { height: var(--mx-row-h, 56px); border-bottom: 1px solid var(--divider); }
 .pm-table tbody tr:last-child { border-bottom: none; }
 .pm-table tbody tr.hl td { background: rgb(255, 250, 225); }
+:root[data-theme="dark"] .pm-table tbody tr.hl td { background: var(--caution-soft); }
 .pm-table td { padding: 0 14px; vertical-align: middle; font-size: 12.5px; color: var(--text-primary); white-space: nowrap; }
 .pm-table td.lbl { font-weight: var(--fw-medium); white-space: normal; line-height: 1.3; }
 .pm-table td.lbl2 { white-space: normal; line-height: 1.3; min-width: 150px; }
@@ -929,7 +930,7 @@ const FIXED_RULES = [
 .pm-exfield .pm-unit { display: inline; margin: 0 0 0 6px; }
 .pm-ib { width: 26px; height: 26px; border: none; background: transparent; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-muted); display: inline-grid; place-items: center; }
 .pm-ib:hover { background: var(--bg-hover); color: var(--text-primary); }
-.pm-ib.danger:hover { background: rgb(255, 238, 237); color: var(--hue-red); }
+.pm-ib.danger:hover { background: var(--danger-soft); color: var(--hue-red); }
 
 /* ③ 口径:按栋分组的人话句子行 */
 .pm-rules { display: flex; flex-direction: column; }
@@ -941,10 +942,10 @@ const FIXED_RULES = [
 .pm-rtxt { flex: 0 1 auto; min-width: 0; white-space: normal; line-height: 1.4; }
 .pm-rnote { font-size: var(--fs-micro); color: var(--text-disabled); }
 .pm-rops { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
-.pm-chip { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 4px 0 9px; border-radius: var(--radius-full); background: rgb(232, 240, 254); color: var(--hue-blue); font-size: var(--fs-micro); }
+.pm-chip { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 4px 0 9px; border-radius: var(--radius-full); background: var(--info-soft); color: var(--hue-blue); font-size: var(--fs-micro); }
 .pm-chip.off { background: var(--bg-sunken); color: var(--text-muted); }
 .pm-chipx { width: 18px; height: 18px; border: none; background: transparent; border-radius: 50%; cursor: pointer; color: inherit; display: inline-grid; place-items: center; opacity: .7; }
-.pm-chipx:hover { opacity: 1; background: rgba(0, 0, 0, .06); }
+.pm-chipx:hover { opacity: 1; background: color-mix(in srgb, var(--ink-900) 6%, transparent); }
 
 /* ⑤ 固定规则 */
 .pm-fixed summary { list-style: none; cursor: pointer; }
@@ -957,7 +958,7 @@ const FIXED_RULES = [
 .pm-exform { display: flex; flex-direction: column; gap: 14px; }
 .pm-exfield { display: flex; flex-direction: column; gap: 6px; }
 .pm-exfield .k { font-size: var(--fs-label); color: var(--text-secondary); font-weight: var(--fw-medium); }
-.pm-exin { height: 34px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-body); color: var(--text-primary); outline: none; }
+.pm-exin { height: 34px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--border-control); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-body); color: var(--text-primary); outline: none; }
 .pm-exin.txt { font-family: var(--font-sans); }
 .pm-exin:focus { border-color: var(--hue-blue); }
 .pm-exin::-webkit-outer-spin-button, .pm-exin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }

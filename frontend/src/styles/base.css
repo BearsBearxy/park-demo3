@@ -72,8 +72,9 @@ img, svg {
      免得把「多高」这件事从版式里偷走。 */
 .fp-shim {
   border-radius: 4px;
+  /* 两端 --ink-040(半透明墨):暗色下是半透明的浅色,不会像 --surface-sunken 那样在卡片上压成黑块(DARK-MODE-SPEC §4) */
   background: linear-gradient(90deg,
-    var(--surface-sunken) 0%, var(--border-subtle) 50%, var(--surface-sunken) 100%);
+    var(--ink-040) 0%, var(--border-subtle) 50%, var(--ink-040) 100%);
   background-size: 200% 100%;
   animation: fp-shim 1.4s linear infinite;
 }

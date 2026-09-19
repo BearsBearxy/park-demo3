@@ -46,7 +46,7 @@ defineEmits<{ retry: [] }>()
   padding: 10px 14px;
   border: 1px solid var(--hue-red);
   border-radius: var(--radius-md);
-  background: rgb(255, 238, 237);
+  background: var(--danger-soft);
   color: var(--hue-red);
   font-size: var(--fs-label);
   flex-wrap: wrap;

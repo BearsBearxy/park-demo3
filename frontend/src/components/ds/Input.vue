@@ -117,7 +117,7 @@ const wrapStyle = computed(() => ({
 /* 聚焦态。<input> 自身**保留** outline:none —— base.css 的全局焦点环画在 input 上会
    套进外框里变成「框中框」,这正是当初写 outline:none 的原因。改为让外框响应聚焦:
    :has(:focus-visible) 同样只在键盘聚焦时命中,鼠标点击不触发,与全局环行为一致。 */
-.ds-in-field { --ds-in-border: var(--border-subtle); --ds-in-fs: var(--fs-body); }
+.ds-in-field { --ds-in-border: var(--border-control); --ds-in-fs: var(--fs-body); }
 /* iOS 对 <16px 的输入框聚焦会自动放大整页;字号走变量桥,因为媒体查询盖不住内联 style */
 @media (max-width: 600px) {
   .ds-in-field { --ds-in-fs: var(--fs-input-m); }

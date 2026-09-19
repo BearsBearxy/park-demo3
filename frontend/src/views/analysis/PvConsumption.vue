@@ -54,7 +54,8 @@ const bars = computed(() => props.data.ticks.map((t, i) => {
   return { i, x, segs }
 }).filter(b => b.segs.length))
 
-const SEG_FILL: Record<string, string> = { self: PV_COLORS.FOCUS, grid: PV_COLORS.MID, loss: PV_COLORS.LOSS }
+// computed:切外观时损耗段的墨色跟着换(页签常驻不重挂载)
+const SEG_FILL = computed<Record<string, string>>(() => ({ self: PV_COLORS.FOCUS, grid: PV_COLORS.MID, loss: PV_COLORS.LOSS }))
 function roundTop(x: number, y: number, w: number, h: number): string {
   const r = Math.min(3, h), yb = y + h
   return `M${x},${yb} L${x},${y + r} Q${x},${y} ${x + r},${y} L${x + w - r},${y} Q${x + w},${y} ${x + w},${y + r} L${x + w},${yb} Z`

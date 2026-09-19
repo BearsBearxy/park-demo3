@@ -22,7 +22,7 @@ import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
-import { NEG, WARN, fint } from '@/components/ana/anaFmt'
+import { NEG, WARN, fint, hues, inkA } from '@/components/ana/anaFmt'
 import { bandSeries } from '@/components/ana/anaTheme'
 import { PHASES } from '@/views/sales-income/layout'
 import { buildFamilyMap } from '@/analysis/anaFamily'
@@ -61,8 +61,8 @@ onReactivated(() => { void reload() })
 
 // ── 期区标签/配色(ECharts canvas 不识别 CSS 变量 → fpAnaTheme 蓝族字面值) ──
 const phaseName = (p: number): string => PHASES.find((x) => x.phase === p)?.short ?? `期区${p}`
-const PHASE_HEX = ['#378ADD', '#85B7EB', '#185FA5', '#5DCAA5']
-const phaseHex = (p: number): string => PHASE_HEX[(p - 1 + PHASE_HEX.length) % PHASE_HEX.length]
+// 按当前外观取(暗色深蓝换灰蓝);在 computed / 模板里调才跟着切外观
+const phaseHex = (p: number): string => { const h = hues(), pal = [h.blue, h.mid, h.deep, h.teal]; return pal[(p - 1 + pal.length) % pal.length] }
 
 // ── 期间锚定:本期 = ≤ 所选期间的最近 s10 月(v1 口径不变) ──
 const s10Months = computed(() => {
@@ -184,8 +184,8 @@ const trendOption = computed<object>(() => {
       // 带无条件画;下沿被 0 截断时读数句闭嘴(见 bandReadout)。
       ...bandSeries(band.lo, band.hi, { name: '跨户波动范围带' }),
       // spec §C 规则4:稀疏序列缺月不连线蒙混 → connectNulls:false 断点呈现(hint 注明断点含义)
-      { name: '园区均值', type: 'line', connectNulls: false, data: band.mean, symbol: 'none', lineStyle: { type: 'dashed', width: 1.5, color: 'rgba(28,28,28,.4)' }, itemStyle: { color: 'rgba(28,28,28,.4)' } },
-      { name, type: 'line', connectNulls: false, data: tenantSeries(selRow.value, months), symbolSize: 7, lineStyle: { width: 2.5, color: '#378ADD' }, itemStyle: { color: '#378ADD' } },
+      { name: '园区均值', type: 'line', connectNulls: false, data: band.mean, symbol: 'none', lineStyle: { type: 'dashed', width: 1.5, color: inkA(.4) }, itemStyle: { color: inkA(.4) } },
+      { name, type: 'line', connectNulls: false, data: tenantSeries(selRow.value, months), symbolSize: 7, lineStyle: { width: 2.5, color: hues().blue }, itemStyle: { color: hues().blue } },
     ],
   }
 })
@@ -209,8 +209,8 @@ const payOption = computed<object>(() => ({
   xAxis: { type: 'category', data: selPay.value.map((x) => x.ym) },
   yAxis: { type: 'value', axisLabel: { formatter: (v: number) => (v / 10000).toFixed(0) + '万' } },
   series: [
-    { name: '应收', type: 'bar', barWidth: 22, data: selPay.value.map((x) => +x.recv.toFixed(2)), itemStyle: { color: '#B5D4F4' } },
-    { name: '实收', type: 'bar', barWidth: 22, data: selPay.value.map((x) => +x.coll.toFixed(2)), itemStyle: { color: '#378ADD' } },
+    { name: '应收', type: 'bar', barWidth: 22, data: selPay.value.map((x) => +x.recv.toFixed(2)), itemStyle: { color: hues().pale } },
+    { name: '实收', type: 'bar', barWidth: 22, data: selPay.value.map((x) => +x.coll.toFixed(2)), itemStyle: { color: hues().blue } },
     // C6-16 ⑤:name 恒定、'YYYY-MM' 类目随租户漂移 → 换租户按 name 形变是假中间数据;id 带租户键(+序号防撞 idMap)瞬换
   ].map((s, i) => ({ ...s, id: `pay-${i}-${selRow.value?.name ?? ''}` })),
 }))
@@ -226,7 +226,7 @@ const topOption = computed<object>(() => ({
     name: `本期${metricLabel.value}`, type: 'bar', barWidth: 12,
     data: topRows.value.map((r) => ({
       value: +r.cur.toFixed(0),
-      itemStyle: { color: r.name === selRow.value?.name ? '#185FA5' : '#85B7EB' },
+      itemStyle: { color: r.name === selRow.value?.name ? hues().deep : hues().mid },
     })),
   }],
 }))
@@ -261,13 +261,13 @@ const scatterOption = computed<object>(() => {
         symbolSize: 6 + Math.sqrt(r.winTotal / maxTotal) * 18,
         itemStyle: {
           color: phaseHex(r.phase), opacity: r.name === selRow.value?.name ? 1 : 0.55,
-          borderColor: r.name === selRow.value?.name ? '#1C1C1C' : 'transparent', borderWidth: 1.5,
+          borderColor: r.name === selRow.value?.name ? inkA(1) : 'transparent', borderWidth: 1.5,
         },
       })),
       markLine: {
         silent: true, symbol: 'none',
-        lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.4)' },
-        label: { formatter: '户均', color: 'rgba(28,28,28,.4)', fontSize: 11 },
+        lineStyle: { type: 'dashed', color: inkA(.4) },
+        label: { formatter: '户均', color: inkA(.4), fontSize: 11 },
         data: [{ yAxis: +crossMean.value.toFixed(0) }],
       },
     }],

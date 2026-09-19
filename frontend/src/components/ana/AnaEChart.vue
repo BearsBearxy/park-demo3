@@ -85,9 +85,10 @@ export function keepView(opt: Rec, k: ViewKeep): Rec {
 // ⚠ 新增图表类型要改的是 echartsBundle.ts,不是这里。
 // jsdom 无 canvas:组件测试 vi.mock('../echartsBundle')(见 __tests__/anaEChart.spec.ts 契约)。
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { calloutsOf, placeCallout, registerFpAnaTheme, type CalloutSide, type CalloutSpec } from './anaTheme'
+import { anaThemeName, calloutsOf, placeCallout, registerFpAnaTheme, type CalloutSide, type CalloutSpec } from './anaTheme'
 import { DUR, inViewport, motionize, onReactivated } from './anaMotion'
 import { chartHeightFor, isSViewport } from './anaChartHeight'
+import { resolvedTheme } from '@/stores/appearance'
 
 // 最小实例形状(不顶层 import echarts 类型,保住懒加载;mock 也按此契约)
 interface ChartInst {
@@ -143,6 +144,9 @@ const el = ref<HTMLDivElement | null>(null)
 const ready = ref(false)
 let chart: ChartInst | null = null
 let ro: ResizeObserver | null = null
+// 动态 import 回来的装配包与 DPR:切外观重建实例时要再 init 一次
+let ec: typeof import('./echartsBundle') | null = null
+let dpr = 2
 
 // 只画看得见的:离屏 / 后台标签页那次 setOption 关动画瞬到,滚到时已画好,不补播(不加 IntersectionObserver)。
 // KeepAlive 停用的页签 rect 全 0,也走这条。
@@ -191,7 +195,7 @@ async function layoutCallouts() {
 onMounted(async () => {
   // 一次动态 import 拉整个装配好的包:单请求 + 摇树两头都要到(理由见 echartsBundle.ts 头注释)。
   // ⚠ 切忌把它提到文件顶层 import —— 那会把 echarts 拉回主包,连懒加载一起废掉。
-  const ec = await import('./echartsBundle')
+  ec = await import('./echartsBundle')
   registerFpAnaTheme(ec)
   if (!el.value) return   // 懒加载期间已卸载
   // devicePixelRatio 向上取整、且不低于 2(2026-08-20 用户报障「每个图都很糊,像素不高」)。
@@ -208,12 +212,9 @@ onMounted(async () => {
   // (矢量,任何 DPR 都锐利,且文字走浏览器排版引擎),但那要动 echartsBundle 的渲染器装配。
   // —— S 档(≤600)已走这条出路:echartsBundle 按档装配 SVG(DPR 照传不降,SVG 根本不看它),
   //    canvas 路径(>600)零变化。选择收口在 echartsBundle,这里不用感知。
-  const dpr = Math.max(2, Math.ceil(window.devicePixelRatio || 1))
-  chart = ec.init(el.value, 'fpAnaTheme', { devicePixelRatio: dpr }) as unknown as ChartInst
+  dpr = Math.max(2, Math.ceil(window.devicePixelRatio || 1))
+  initChart()
   apply(props.option)
-  chart.on('click', (params) => emit('chart-click', params))
-  chart.on('finished', () => { void layoutCallouts() })
-  chart.on('datazoom', hideCallouts)
   // 尺寸**真变**才 resize:observe 之后引擎会立刻空回调一次,resize() 以 animation:{duration:0}
   // 的 payload 走 update(echarts.js:998-1003),payload 优先级最高(basicTransition.js:80-84)→
   // el.attr 直设终态,首绘在首帧被截断为零。真窗口缩放仍会截断动画,接受,不补播。
@@ -233,6 +234,24 @@ onMounted(async () => {
 })
 
 watch(() => props.option, (o) => apply(o), { deep: true })   // 不直接传 apply:第二参是 oldValue,会被当成 keep
+
+/** init + 挂事件(首次挂载与切外观重建共用一处,别只改一边)。主题按当前外观取(DARK-MODE-SPEC §6)。 */
+function initChart() {
+  chart = ec!.init(el.value!, anaThemeName(), { devicePixelRatio: dpr }) as unknown as ChartInst
+  chart.on('click', (params) => emit('chart-click', params))
+  chart.on('finished', () => { void layoutCallouts() })
+  chart.on('datazoom', hideCallouts)
+}
+
+// 切外观:ECharts 主题只在 init 时生效,换主题 = 按新主题重建实例。缩放窗口与点掉的图例照切回页签那样带过去;
+// 按 update 相下发(不重播入场)。flush:'post' —— 等父组件按新外观重算完 option 再画,不画两遍旧色。
+watch(resolvedTheme, () => {
+  if (!chart || !ec || !el.value) return
+  const keep = readView(chart.getOption())
+  chart.dispose()
+  initChart()
+  apply(props.option, keep)
+}, { flush: 'post' })
 
 // 切回页签:视口内的图 clear 后按 enter 相重下发,重播 320 入场。离屏 / 减动效 / entrance=false / 还没画过的不重播。
 // (挂载伴随的那次 activated 由 onReactivated 挡掉;那时 chart 也还在 await import,双保险。)
@@ -269,25 +288,25 @@ onBeforeUnmount(() => {
 <style scoped>
 .ana-echart-box { position: relative; width: 100%; min-width: 0; }
 .ana-echart { width: 100%; min-width: 0; }
-/* 深色气泡:与图表悬停提示框同一个样子(anaTheme tooltip:rgb(40,52,66) 底、白字 11) */
+/* 深色气泡:与图表悬停提示框同一个样子(anaTheme tooltip:--tip-bg 底、白字 11;暗色下 --tip-bg 提亮一层) */
 .ana-callout {
   --tip-x: 50%;   /* 行内 style 按点的像素覆盖 */
   position: absolute; left: 0; top: 0; z-index: 1; pointer-events: none;
   display: flex; flex-direction: column;
-  padding: 4px 8px; border-radius: 6px; background: rgb(40, 52, 66); color: #fff;
+  padding: 4px 8px; border-radius: 6px; background: var(--tip-bg); color: var(--text-on-solid);
   font-size: var(--fs-micro); line-height: 15px; white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-tip);
   visibility: hidden; opacity: 0;
 }
 .ana-callout.on { visibility: visible; opacity: 1; transition: opacity var(--dur-fast) var(--ease-out); }
 .ana-callout .l:first-child { font-weight: var(--fw-semibold); }
-.ana-callout .l + .l { color: rgba(255, 255, 255, 0.78); }
+.ana-callout .l + .l { color: color-mix(in srgb, var(--text-on-solid) 78%, transparent); }
 /* 尖角:12×6,横向对准点(--tip-x 相对气泡左沿) */
 .ana-callout::after {
   content: ''; position: absolute; left: calc(var(--tip-x) - 6px);
   border-left: 6px solid transparent; border-right: 6px solid transparent;
 }
-.ana-callout.top::after { top: 100%; border-top: 6px solid rgb(40, 52, 66); }
-.ana-callout.bottom::after { bottom: 100%; border-bottom: 6px solid rgb(40, 52, 66); }
-.ana-echart.loading { background: var(--surface-1, var(--surface-sunken)); border-radius: 8px; }
+.ana-callout.top::after { top: 100%; border-top: 6px solid var(--tip-bg); }
+.ana-callout.bottom::after { bottom: 100%; border-bottom: 6px solid var(--tip-bg); }
+.ana-echart.loading { background: var(--surface-sunken); border-radius: 8px; }
 </style>

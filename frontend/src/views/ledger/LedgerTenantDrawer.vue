@@ -86,7 +86,7 @@ const hasFees = computed(() => feeGroups.value.length > 0)
 
 const balTone = computed(() => {
   const b = props.row?.balanceEnd ?? 0
-  return b < 0 ? 'var(--hue-red)' : b > 0 ? 'var(--hue-orange)' : 'var(--text-primary)'
+  return b < 0 ? 'var(--delta-down-text)' : b > 0 ? 'var(--hue-orange)' : 'var(--text-primary)'
 })
 </script>
 
@@ -104,10 +104,7 @@ const balTone = computed(() => {
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
         <FPStat label="应收合计" :value="fmt0(row.totalReceivable)" tint="blue" />
         <FPStat label="本月收款" :value="fmt0(row.totalCollected)" tint="slate" />
-        <div :style="{ background: 'var(--surface-card)', borderRadius: 'var(--radius-lg)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }">
-          <span style="font-size:var(--fs-micro);color:var(--text-muted);white-space:nowrap">本月结余</span>
-          <span :style="{ fontSize: '19px', fontWeight: 'var(--fw-semibold)', fontFamily: 'var(--font-mono)', lineHeight: '1.1', color: balTone }">{{ fmt0(row.balanceEnd) }}</span>
-        </div>
+        <FPStat label="本月结余" :value="fmt0(row.balanceEnd)" :value-color="balTone" />
       </div>
 
       <!-- 租户绑定(抄表屏「表档案」同款动线:账面名/绑定都在这里改,表格不做行内编辑) -->
@@ -180,7 +177,7 @@ const balTone = computed(() => {
 .lg-dw-fld span { font-size:13px; color:var(--text-primary); }
 .lg-dw-in {
   height:32px; padding:0 10px; font-size:13px; color:var(--text-primary);
-  background:var(--surface-page); border:1px solid var(--border-subtle);
+  background:var(--surface-page); border:1px solid var(--border-control);
   border-radius:var(--radius-sm); outline:none; width:100%;
 }
 .lg-dw-in:focus { border-color:var(--hue-blue); }

@@ -7,8 +7,9 @@
 //     换走的屏当场卸载 —— 在手机上点回去、后退回去,除了这几格都是重新打开。
 import { computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { LogOut, Sparkles } from 'lucide-vue-next'
+import { LogOut, Sparkles, SunMoon } from 'lucide-vue-next'
 import { useUpdateStore } from '@/stores/update'
+import { APPEARANCE_OPTIONS, useAppearanceStore } from '@/stores/appearance'
 import { fpFindLayer, type NavLayer } from '@/nav/fpNav'
 import { visibleLayers } from '@/nav/navAccess'
 import { buildAllPages } from '@/components/shell/paletteFilter'
@@ -80,6 +81,8 @@ function onLogout() {
 
 // 版本更新:开「更新记录」并收起抽屉(与点条目后关抽屉同义——看一眼到点中目标即结束)
 const upd = useUpdateStore()
+// 外观(DARK-MODE-SPEC §3):同桌面账号菜单,点一下立刻生效,抽屉不关
+const appearance = useAppearanceStore()
 function openUpdates() {
   upd.openHistory()
   emit('close')
@@ -145,6 +148,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           </div>
           <!-- ④ 版本更新(手机顶栏放不下第四个按钮,入口在这里;SPEC §1) -->
           <div class="mnav-ver">
+            <!-- 外观在「版本更新」上面一行,段控高 44,三格都点得着(稿 Mobile / Main 第 1 节) -->
+            <div class="mnav-appr">
+              <span class="ic"><SunMoon :size="16" /></span>
+              <span class="nm">外观</span>
+              <div class="mnav-appr-seg" role="radiogroup" aria-label="外观">
+                <button
+                  v-for="o in APPEARANCE_OPTIONS" :key="o.value" type="button" role="radio"
+                  :aria-checked="appearance.shown === o.value" :class="{ on: appearance.shown === o.value }"
+                  @click="appearance.set(o.value)"
+                >{{ o.label }}</button>
+              </div>
+            </div>
             <button class="mnav-row" :class="{ unread: upd.unread }" @click="openUpdates">
               <span class="ic"><Sparkles :size="16" /></span>
               <span class="nm">版本更新</span>
@@ -174,7 +189,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   position: fixed;
   inset: 0;
   z-index: var(--z-modal);
-  background: rgba(28, 28, 28, 0.34);
+  background: var(--scrim);
 }
 
 .mnav {
@@ -185,7 +200,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   width: min(320px, 85vw);
   display: flex;
   flex-direction: column;
-  background: var(--surface-white);
+  background: var(--surface-raised);   /* 抽屉是浮起来的面(稿 Mobile) */
   box-shadow: var(--shadow-pop);
   box-sizing: border-box;
   /* safe-area 由面板自身 padding 承接(规范 §10) */
@@ -218,7 +233,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   min-height: 44px;
   padding: 0 14px;
   border-radius: var(--radius-full);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-control);
   background: var(--surface-white);
   color: var(--text-secondary);
   font-family: var(--font-sans);
@@ -226,10 +241,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   font-weight: var(--fw-medium);
   cursor: pointer;
 }
+/* 当前层 = 实底,同桌面图标栏:暗色下亮底深字 */
 .mnav-pill.on {
-  background: var(--ink-900);
-  border-color: var(--ink-900);
-  color: #fff;
+  background: var(--control-solid);
+  border-color: var(--control-solid);
+  color: var(--control-solid-text);
 }
 
 /* full-bleed 分隔线:margin 抵消父级 padding(SidebarPanel 同款) */
@@ -286,6 +302,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   border-top: 1px solid var(--divider);
 }
 .mnav-row.unread { background: var(--accent-slate); color: var(--text-primary); }
+.mnav-appr {
+  display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 10px;
+  color: var(--text-secondary); font-size: var(--fs-body); font-weight: var(--fw-medium);
+}
+.mnav-appr .ic { display: inline-flex; flex: 0 0 auto; }
+.mnav-appr-seg { display: flex; gap: 2px; height: 44px; margin-left: auto; padding: 3px; border-radius: var(--radius-full); background: var(--surface-sunken); }
+.mnav-appr-seg button {
+  padding: 0 12px; border: none; border-radius: var(--radius-full); background: transparent; color: var(--text-muted);
+  font-family: var(--font-sans); font-size: var(--fs-body); font-weight: var(--fw-medium); white-space: nowrap; cursor: pointer;
+}
+.mnav-appr-seg button.on { background: var(--surface-raised); color: var(--text-primary); box-shadow: var(--shadow-pill); }
 .mnav-row .ver {
   margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
   font-family: var(--font-mono); font-size: var(--fs-label); font-weight: var(--fw-regular); color: var(--text-muted);
@@ -318,8 +345,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   white-space: nowrap;
   margin-top: 3px;
   font-size: 11px;
-  color: var(--fill-blue);
-  background: rgba(55, 138, 221, 0.1);
+  color: var(--info-text-on-tint);   /* 同 IconRail 角色胶囊(稿 Mobile .role) */
+  background: var(--accent-blue);
   border-radius: var(--radius-full);
   padding: 2px 9px;
 }

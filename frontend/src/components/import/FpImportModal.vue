@@ -20,6 +20,7 @@ import { splitSections, type PhaseLayouts, type Section } from '@/utils/importSe
 import { splitSalarySections } from '@/utils/importSalarySections'
 import ImportSummary from './ImportSummary.vue'
 import Select from '@/components/ds/Select.vue'
+import DatePicker from '@/components/ds/DatePicker.vue'
 
 export interface ImportRec { __preview?: unknown[]; [k: string]: unknown }
 
@@ -276,7 +277,7 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
         <div v-if="fallbackPicker && notice" class="fpimp-fb">
           <div class="fpimp-fb-t"><component :is="iconFor('alert-triangle')" :size="15" />{{ notice }}</div>
           <div class="fpimp-fb-r">
-            <label>账期<input type="month" v-model="fb.ym" /></label>
+            <label>账期<DatePicker v-model="fb.ym" mode="month" size="sm" aria-label="账期" /></label>
             <label>分区<Select size="sm" :options="fallbackPicker.zones" v-model="fb.zone" /></label>
             <label>类别<Select size="sm" :options="fallbackPicker.kinds" v-model="fb.kind" /></label>
           </div>
@@ -346,8 +347,8 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
 /* 1:1 from import-excel.jsx FPImportStyles */
 /* 居中弹窗(取代原型右抽屉;参考 CommandPalette 居中卡)。见 PAGE-BEHAVIOR-SPEC §2。 */
 /* -webkit- 前缀:iOS ≤17 无前缀不识别 backdrop-filter,真机上等于没有模糊 */
-.fpimp-scrim { position:fixed; inset:0; z-index:var(--z-modal-2); background:rgba(28,28,28,.32); -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; padding:24px; box-sizing:border-box; opacity:0; animation:fp-fade-in var(--dur-base) var(--ease-out) forwards; }
-.fpimp { width:min(560px,96vw); max-height:88vh; border-radius:16px; border:1px solid var(--border-subtle); background:var(--surface-white); box-shadow:0 24px 64px rgba(28,28,28,.28); display:flex; flex-direction:column; overflow:hidden; animation:fp-rise-in var(--dur-base) var(--ease-out) both; }
+.fpimp-scrim { position:fixed; inset:0; z-index:var(--z-modal-2); background:color-mix(in srgb, var(--scrim) 94.12%, transparent); -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; padding:24px; box-sizing:border-box; opacity:0; animation:fp-fade-in var(--dur-base) var(--ease-out) forwards; }   /* 浅色 = rgba(28,28,28,.32):--scrim(.34)× 94.12% */
+.fpimp { width:min(560px,96vw); max-height:88vh; border-radius:16px; border:1px solid var(--border-subtle); background:var(--surface-white); box-shadow:var(--shadow-dialog); display:flex; flex-direction:column; overflow:hidden; animation:fp-rise-in var(--dur-base) var(--ease-out) both; }
 .fpimp-h { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:20px 22px 16px; border-bottom:1px solid var(--divider); }
 .fpimp-h h3 { margin:0; font-size:17px; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .fpimp-h p { margin:3px 0 0; font-size:12.5px; color:var(--text-muted); }
@@ -358,7 +359,7 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
 .fpimp-tabs { display:flex; gap:6px; }
 .fpimp-tab { flex:1; height:36px; border:1px solid var(--border-subtle); background:var(--surface-white); border-radius:8px; cursor:pointer; font-family:var(--font-sans); font-size:13px; color:var(--text-secondary); display:flex; align-items:center; justify-content:center; gap:7px; transition:all var(--dur-fast); }
 .fpimp-tab:hover { background:var(--surface-card); }
-.fpimp-tab.on { border-color:var(--ink-900); background:var(--ink-900); color:#fff; }
+.fpimp-tab.on { border-color:var(--ink-900); background:var(--ink-900); color:var(--control-solid-text); }
 
 .fpimp-drop { display:flex; flex-direction:column; align-items:center; gap:10px; padding:28px 20px; border:1.5px dashed var(--border-strong); border-radius:var(--radius-lg); background:var(--surface-card); cursor:pointer; text-align:center; transition:background var(--dur-fast), border-color var(--dur-fast); }
 .fpimp-drop:hover, .fpimp-drop.over { background:var(--accent-slate); border-color:var(--hue-blue); }
@@ -381,16 +382,14 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
 .fpimp-msg { display:flex; align-items:center; gap:8px; font-size:12.5px; line-height:18px; padding:10px 12px; border-radius:8px; }
 .fpimp-msg.ok { background:var(--accent-sky); color:var(--hue-blue); }
 .fpimp-msg.ok b { margin:0 3px; font-family:var(--font-mono); }
-.fpimp-msg.err { background:rgb(252,235,233); color:var(--hue-red); }
-.fpimp-msg.warn { background:rgb(255,243,230); color:var(--hue-orange); }
+.fpimp-msg.err { background:var(--danger-soft); color:var(--hue-red); }
+.fpimp-msg.warn { background:var(--warn-bg); color:var(--hue-orange); }
 
 /* 补录条:醒目(橙)提示 + 账期/分区/类别选择器 */
-.fpimp-fb { border:1px solid var(--hue-orange); border-radius:8px; background:rgb(255,243,230); padding:10px 12px; display:flex; flex-direction:column; gap:9px; }
+.fpimp-fb { border:1px solid var(--hue-orange); border-radius:8px; background:var(--warn-bg); padding:10px 12px; display:flex; flex-direction:column; gap:9px; }
 .fpimp-fb-t { display:flex; align-items:flex-start; gap:8px; font-size:12.5px; line-height:1.5; color:var(--hue-orange); }
 .fpimp-fb-r { display:flex; gap:10px; }
 .fpimp-fb-r label { flex:1; display:flex; flex-direction:column; gap:4px; font-size:11.5px; color:var(--text-secondary); }
-.fpimp-fb-r input { height:32px; border:1px solid var(--border-subtle); border-radius:7px; padding:0 8px; font-size:12.5px; font-family:var(--font-sans); color:var(--text-primary); background:var(--surface-white); outline:none; }
-.fpimp-fb-r input:focus { border-color:var(--border-strong); }
 
 .fpimp-preview { border:1px solid var(--border-subtle); border-radius:var(--radius-md); overflow:hidden; }
 .fpimp-preview-h { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:var(--surface-card); border-bottom:1px solid var(--divider); font-size:12px; color:var(--text-muted); }

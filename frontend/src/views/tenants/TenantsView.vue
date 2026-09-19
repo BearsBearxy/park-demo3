@@ -216,22 +216,22 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
     <!-- 2. KPI 左栏 + 主内容(spec 表格溢出治理 §3,三屏统一样式) -->
     <div class="mx-body">
     <aside class="mx-kpirail">
-      <KpiCard label="在租租户" :value="summary ? String(summary.tenantActive) : ''" :loading="!summary" tint="slate" :style="{ padding: '20px' }">
+      <KpiCard label="在租租户" :value="summary ? String(summary.tenantActive) : ''" :loading="!summary" sub="" tint="slate">
         <template #icon><component :is="iconFor('users')" :size="16" /></template>
       </KpiCard>
       <!-- 算不出来只给缺因:TenantSummaryDTO 没有 unitCount/vacantCount,楼栋屏那句「按单元 x/y」这里给不了。
            ponytail: 为一句副标多发一次 /api/buildings/summary 不划算 -->
       <KpiCard
         label="园区出租率" :value="summary ? occPct(summary.occRate) : ''" :loading="!summary"
-        :sub="summary && summary.occRate == null ? OCC_NULL_WHY : undefined"
-        :title="summary && summary.occRate == null ? OCC_NULL_WHY : undefined" tint="sky" :style="{ padding: '20px' }"
+        :sub="summary && summary.occRate == null ? OCC_NULL_WHY : ''"
+        :title="summary && summary.occRate == null ? OCC_NULL_WHY : undefined" tint="sky"
       >
         <template #icon><component :is="iconFor('building-2')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="月租金合计" :value="summary ? fpWan(summary.monthlyRent) : ''" :loading="!summary" tint="blue" :style="{ padding: '20px' }">
+      <KpiCard label="月租金合计" :value="summary ? fpWan(summary.monthlyRent) : ''" :loading="!summary" sub="" tint="blue">
         <template #icon><component :is="iconFor('coins')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="合同将到期" :value="summary ? String(summary.expiringTenants) : ''" :loading="!summary" delta="户需续签" trend="down" tint="cyan" :style="{ padding: '20px' }">
+      <KpiCard label="合同将到期" :value="summary ? String(summary.expiringTenants) : ''" :loading="!summary" sub="户需续签" tint="cyan">
         <template #icon><component :is="iconFor('clock')" :size="16" /></template>
       </KpiCard>
     </aside>

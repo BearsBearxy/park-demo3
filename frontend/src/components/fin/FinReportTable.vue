@@ -126,7 +126,7 @@ function inputVal(r: FinTableRow, field: string): string {
 .fin-rowlabel.subtotal { font-weight:var(--fw-semibold); color:var(--text-primary); }
 .fin-rowlabel .custom-x { width:20px; height:20px; flex:0 0 auto; border:none; background:transparent; border-radius:var(--radius-sm); color:var(--text-disabled); cursor:pointer; display:none; place-items:center; }
 .fin-table tbody tr:hover .fin-rowlabel .custom-x { display:grid; }
-.fin-rowlabel .custom-x:hover { background:rgb(255,238,237); color:var(--hue-red); }
+.fin-rowlabel .custom-x:hover { background:var(--danger-soft); color:var(--hue-red); }
 .fin-rowlabel .addchild { width:20px; height:20px; flex:0 0 auto; border:none; background:transparent; border-radius:var(--radius-sm); color:var(--text-disabled); cursor:pointer; display:none; place-items:center; margin-left:auto; }
 .fin-table tbody tr:hover .fin-rowlabel .addchild { display:grid; }
 .fin-rowlabel .addchild:hover { background:var(--accent-blue); color:var(--hue-blue); }

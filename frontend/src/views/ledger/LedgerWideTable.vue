@@ -452,15 +452,15 @@ function onBack() {
   background:var(--surface-sunken); color:var(--text-muted);
   font-size:var(--fs-label); line-height:1; white-space:nowrap; cursor:not-allowed;
 }
-.lg-lockbtn.held { border-color:var(--hue-orange); background:rgb(252,243,232); color:var(--hue-orange); }
-.lg-lockav { width:18px; height:18px; flex:0 0 auto; border-radius:50%; display:grid; place-items:center; background:var(--fill-blue); color:#fff; font-size:9.5px; font-weight:var(--fw-semibold); }
+.lg-lockbtn.held { border-color:var(--hue-orange); background:var(--warn-soft); color:var(--hue-orange); }
+.lg-lockav { width:18px; height:18px; flex:0 0 auto; border-radius:50%; display:grid; place-items:center; background:var(--fill-blue); color:var(--text-on-solid); font-size:9.5px; font-weight:var(--fw-semibold); }
 .lg-lockav.dim { opacity:.55; }
 
 /* 1:1 from screen-ledger.jsx LgStyles 70-81, 140-141, 149-151, 175-178, 217-218 */
 .lg-page { display:flex; flex-direction:column; gap:16px; width:100%; height:100%; min-height:0; box-sizing:border-box; font-family:var(--font-sans); color:var(--text-primary); }
 .lg-head { flex:0 0 auto; display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; }
 .lg-head-l { display:flex; align-items:center; gap:12px; min-width:0; }
-.lg-back { width:34px; height:34px; flex:0 0 auto; border:1px solid var(--border-subtle); background:var(--surface-white); border-radius:var(--radius-md); cursor:pointer; display:grid; place-items:center; color:var(--text-secondary); transition:background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
+.lg-back { width:34px; height:34px; flex:0 0 auto; border:1px solid var(--border-control); background:var(--surface-white); border-radius:var(--radius-md); cursor:pointer; display:grid; place-items:center; color:var(--text-secondary); transition:background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
 .lg-back:hover { background:var(--bg-hover); color:var(--text-primary); }
 .lg-title { margin:0; font:var(--type-h2); color:var(--text-primary); }
 /* 模板版本徽标(账册头,BOOK-WORKBENCH §5) */
@@ -470,7 +470,7 @@ function onBack() {
 .lg-head-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 
 .lg-tag { display:inline-flex; align-items:center; height:28px; padding:0 12px; border-radius:var(--radius-full); background:var(--surface-sunken); color:var(--text-secondary); font-size:12.5px; font-weight:var(--fw-medium); }
-.lg-tag.edit { background:rgb(252,243,232); color:var(--hue-orange); }
+.lg-tag.edit { background:var(--warn-soft); color:var(--hue-orange); }
 /* 段间分隔(SPEC §5.1 细竖线断档) */
 .lg-sep { flex:0 0 auto; width:1px; height:18px; background:var(--border-subtle); }
 /* 「添加租户」单按钮弹选择器:触发器对齐 ds/Button sm(高28/胶囊/12px 字),浮层右对齐定宽不随按钮收窄 */
@@ -478,8 +478,8 @@ function onBack() {
 .lg-addbtn :deep(.fp-tp-trigger .txt.ph) { color:var(--text-primary); }
 .lg-addbtn :deep(.fp-tp-pop) { width:260px; left:auto; right:0; }
 /* 批量删除确认弹窗(1:1 LedgerNewCompanyDialog .lg-dlg 风格) */
-.lg-bulk-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:320; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); }
-.lg-bulk-dlg { width:min(420px,92vw); background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); }
+.lg-bulk-mask { position:fixed; inset:0; background:var(--scrim); z-index:320; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); }
+.lg-bulk-dlg { width:min(420px,92vw); background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:var(--shadow-dialog); }
 .lg-bulk-dlg .h { padding:20px 22px 4px; }
 .lg-bulk-dlg .h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .lg-bulk-dlg .h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
@@ -496,7 +496,7 @@ function onBack() {
   cursor:pointer; white-space:nowrap;
 }
 .lg-issues:hover { background:var(--bg-hover); }
-.lg-issues.quiet { border-color:var(--border-subtle); color:var(--text-muted); }
+.lg-issues.quiet { border-color:var(--border-control); color:var(--text-muted); }
 
 .lg-foot { flex:0 0 auto; margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
 

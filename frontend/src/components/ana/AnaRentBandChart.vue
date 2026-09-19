@@ -5,6 +5,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { rentBandGeo, type GapInput, type RentBandCol } from '@/views/analysis/rentBandChart.logic'
 import type { ChartBox } from '@/views/analysis/forecastChart.logic'
 import { useEnterPhase, useMorphHold } from './anaMotion'
+import { anaSvgVars } from './anaTheme'
 import './ana.css'   // @keyframes fp-wipe · .ana-morph
 
 const props = withDefaults(defineProps<{
@@ -90,7 +91,7 @@ const tipX = computed(() => {
 </script>
 
 <template>
-  <div ref="host" class="arb-host" @mousemove="onMove" @mouseleave="hoverIdx = null">
+  <div ref="host" class="arb-host" :style="anaSvgVars()" @mousemove="onMove" @mouseleave="hoverIdx = null">
     <svg v-if="geo" class="arb" :width="box.width" :height="box.height" :viewBox="`0 0 ${box.width} ${box.height}`" role="img">
       <!-- 预测段底色:稿上右半边整片浅灰,一眼分出「已经发生」与「还没发生」 -->
       <rect v-if="geo.shade" :x="geo.shade.x" :y="box.padT" :width="geo.shade.w" :height="box.height - box.padT - box.padB" class="arb-shade" />
@@ -153,28 +154,28 @@ const tipX = computed(() => {
 .arb { display: block; }
 /* 擦入:数据组自左擦出(首进 / 切回页签);fp-wipe 在 ana.css,不能写进 scoped(名字会被加 hash) */
 .arb-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
-.arb-shade { fill: #F5F6F9; }
-.arb-grid { stroke: #E9EBEF; stroke-width: 1; }
-.arb-ylab { fill: #94A3B8; font-size: 11px; text-anchor: end; font-variant-numeric: tabular-nums; }
-.arb-unit { fill: #94A3B8; font-size: 10px; text-anchor: end; }
-.arb-xlab { fill: #94A3B8; font-size: 11px; text-anchor: middle; }
-.arb-band { fill: #BFD8F5; fill-opacity: 0.55; }
-.arb-real { fill: none; stroke: #2E7CD6; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
-.arb-mid { fill: none; stroke: #2E7CD6; stroke-width: 2; stroke-dasharray: 5 4; }
-.arb-locked { fill: none; stroke: #98A2B3; stroke-width: 1.6; }
-.arb-dot { fill: #2E7CD6; stroke: #fff; stroke-width: 2; }
-.arb-startnum { fill: #1C1C1C; font-size: 12px; font-weight: 600; text-anchor: end; font-variant-numeric: tabular-nums; }
-.arb-split { stroke: #C6CCD6; stroke-width: 1; stroke-dasharray: 3 3; }
-.arb-splitlab { fill: #94A3B8; font-size: 10px; }
-.arb-gapline { stroke: #D97757; stroke-width: 1.6; }
-.arb-gaptext { fill: #8A9099; font-size: 10px; text-anchor: end; }
-.arb-gapnum { fill: #D97757; font-size: 11px; font-weight: 600; }
+.arb-shade { fill: var(--sv-shade); }
+.arb-grid { stroke: var(--sv-grid); stroke-width: 1; }
+.arb-ylab { fill: var(--sv-label); font-size: 11px; text-anchor: end; font-variant-numeric: tabular-nums; }
+.arb-unit { fill: var(--sv-label); font-size: 10px; text-anchor: end; }
+.arb-xlab { fill: var(--sv-label); font-size: 11px; text-anchor: middle; }
+.arb-band { fill: var(--sv-band); fill-opacity: 0.55; }
+.arb-real { fill: none; stroke: var(--sv-line); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.arb-mid { fill: none; stroke: var(--sv-line); stroke-width: 2; stroke-dasharray: 5 4; }
+.arb-locked { fill: none; stroke: var(--sv-locked); stroke-width: 1.6; }
+.arb-dot { fill: var(--sv-line); stroke: var(--surface-white); stroke-width: 2; }
+.arb-startnum { fill: var(--text-primary); font-size: 12px; font-weight: 600; text-anchor: end; font-variant-numeric: tabular-nums; }
+.arb-split { stroke: var(--sv-split); stroke-width: 1; stroke-dasharray: 3 3; }
+.arb-splitlab { fill: var(--sv-label); font-size: 10px; }
+.arb-gapline { stroke: var(--sv-gap); stroke-width: 1.6; }
+.arb-gaptext { fill: var(--sv-gap-text); font-size: 10px; text-anchor: end; }
+.arb-gapnum { fill: var(--sv-gap); font-size: 11px; font-weight: 600; }
 .arb-end { font-size: 11px; font-variant-numeric: tabular-nums; }
-.arb-end-hi, .arb-end-lo { fill: #94A3B8; }
-.arb-end-mid { fill: #1C1C1C; font-weight: 600; }
-.arb-end-locked { fill: #98A2B3; }
-.arb-hair { stroke: #C7D2FE; stroke-width: 1; }
-.arb-tip { fill: #1E293B; }
-.arb-tiptext { fill: #E2E8F0; font-size: 11px; font-variant-numeric: tabular-nums; }
-.arb-tiptitle { fill: #fff; font-weight: 600; font-size: 12px; }
+.arb-end-hi, .arb-end-lo { fill: var(--sv-label); }
+.arb-end-mid { fill: var(--text-primary); font-weight: 600; }
+.arb-end-locked { fill: var(--sv-locked); }
+.arb-hair { stroke: var(--sv-hair); stroke-width: 1; }
+.arb-tip { fill: var(--sv-tip-bg); }
+.arb-tiptext { fill: var(--sv-tip-text); font-size: 11px; font-variant-numeric: tabular-nums; }
+.arb-tiptitle { fill: var(--text-on-solid); font-weight: 600; font-size: 12px; }
 </style>

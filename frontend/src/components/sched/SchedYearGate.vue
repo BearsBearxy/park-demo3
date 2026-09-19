@@ -186,9 +186,9 @@ function submit() {
 .sm-yc-head { display:flex; align-items:flex-start; justify-content:space-between; }
 .sm-yc-year { font-size:34px; font-weight:var(--fw-semibold); letter-spacing:-0.02em; line-height:1; color:var(--text-primary); font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
 .sm-yc-year .u { font-size:14px; font-weight:var(--fw-medium); color:var(--text-muted); margin-left:4px; font-family:var(--font-sans); }
-.sm-yc-tag { font-size:10.5px; font-weight:var(--fw-semibold); padding:2px 9px; border-radius:var(--radius-full); background:var(--ink-900); color:#fff; }
+.sm-yc-tag { font-size:10.5px; font-weight:var(--fw-semibold); padding:2px 9px; border-radius:var(--radius-full); background:var(--ink-900); color:var(--control-solid-text); }
 .sm-yc-go { position:absolute; top:21px; right:21px; width:30px; height:30px; border-radius:50%; display:grid; place-items:center; color:var(--text-disabled); background:var(--surface-card); opacity:0; transform:translateX(-4px); transition:opacity var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
-.sm-ycard:hover .sm-yc-go { opacity:1; transform:translateX(0); background:var(--ink-900); color:#fff; }
+.sm-ycard:hover .sm-yc-go { opacity:1; transform:translateX(0); background:var(--ink-900); color:var(--control-solid-text); }
 .sm-yc-who { position:absolute; top:15px; right:15px; z-index:3; display:flex; pointer-events:none; }
 .sm-yc-who > * { margin-left:-6px; }
 .sm-yc-who > *:first-child { margin-left:0; }
@@ -196,7 +196,8 @@ function submit() {
 .sm-yc-more { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--surface-sunken); color:var(--text-muted); font-family:var(--font-mono); font-size:9.5px; font-weight:var(--fw-semibold); box-shadow:0 0 0 2px var(--surface-white); }
 .sm-yc-del { position:absolute; top:16px; right:16px; z-index:4; width:30px; height:30px; border:1px solid var(--border-subtle); border-radius:50%; background:var(--surface-white); color:var(--text-secondary); cursor:pointer; display:grid; place-items:center; opacity:0; transition:opacity var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard); }
 .sm-ycard:hover .sm-yc-del { opacity:1; }
-.sm-yc-del:hover { background:rgb(255,238,237); color:var(--hue-red); border-color:rgb(255,210,206); }
+.sm-yc-del:hover { background:var(--danger-soft); color:var(--hue-red); border-color:rgb(255,210,206); }
+:root[data-theme="dark"] .sm-yc-del:hover { border-color:color-mix(in srgb, var(--hue-red) 45%, transparent); }
 /* 触屏无 hover:两个 hover 显形入口常显(RESPONSIVE-LAYOUT-SPEC §6.1)。
    删除钮是「移除空年」唯一入口,不常显在触屏就是功能丢失;箭头弱化到 .55 只作可点暗示。
    本组件被 6 个附表屏共享,P3 年账迁移时两个屏组都点名此处,一处修全收益。 */
@@ -213,13 +214,13 @@ function submit() {
 .sm-ynew { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:11px; min-height:152px; box-sizing:border-box; cursor:pointer; background:transparent; border:1px dashed var(--border-strong); border-radius:var(--radius-lg); color:var(--text-secondary); transition:background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard); }
 .sm-ynew:hover { background:var(--accent-blue); color:var(--hue-blue); border-color:var(--hue-blue); }
 .sm-ynew .ic { width:42px; height:42px; border-radius:50%; background:var(--surface-card); display:grid; place-items:center; transition:background var(--dur-fast) var(--ease-standard); }
-.sm-ynew:hover .ic { background:#fff; }
+.sm-ynew:hover .ic { background:var(--surface-white); }
 .sm-ynew .t { font-size:13.5px; font-weight:var(--fw-semibold); }
 
 .sm-foot { flex:0 0 auto; margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
 
 /* 新增年份弹窗 */
-.sm-ymask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:140; display:grid; place-items:center; }
+.sm-ymask { position:fixed; inset:0; background:var(--scrim); z-index:140; display:grid; place-items:center; }
 .sm-ydlg { width:min(384px,90vw); background:var(--surface-white); border-radius:var(--radius-xl); box-shadow:0 16px 48px rgba(28,28,28,.22); overflow:hidden; }
 .sm-ydlg-h { padding:20px 22px 0; }
 .sm-ydlg-h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
@@ -233,6 +234,6 @@ function submit() {
 .sm-ybtn { height:34px; padding:0 16px; border-radius:var(--radius-full); border:none; cursor:pointer; font-family:var(--font-sans); font-size:13px; font-weight:var(--fw-medium); display:inline-flex; align-items:center; gap:6px; transition:background var(--dur-fast) var(--ease-standard), filter var(--dur-fast) var(--ease-standard); }
 .sm-ybtn.gray { background:var(--surface-sunken); color:var(--text-secondary); }
 .sm-ybtn.gray:hover { background:var(--ink-100); }
-.sm-ybtn.filled { background:var(--ink-900); color:#fff; }
-.sm-ybtn.filled:hover { background:rgb(58,58,58); }
+.sm-ybtn.filled { background:var(--ink-900); color:var(--control-solid-text); }
+.sm-ybtn.filled:hover { background:var(--control-solid-hover); }
 </style>

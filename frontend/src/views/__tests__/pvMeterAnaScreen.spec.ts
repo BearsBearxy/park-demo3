@@ -183,7 +183,8 @@ const groups = (w: VueWrapper) => w.findComponent(PvChips).props('groups') as Ch
 const kpi = (w: VueWrapper, label: string) => {
   const t = w.findAll('.av2-kpi').find(k => k.find('.l').text() === label)
   expect(t, `KPI 瓦「${label}」不在`).toBeTruthy()
-  return { v: t!.find('.v').text(), d: t!.find('.d').text(), style: t!.find('.d').attributes('style') ?? '' }
+  // 副行颜色 2026-09-19 起由 AnaKpiTile 的样式表按 .warn 类给(灰 --text-muted-tint / 警示 --warn-text),不再内联
+  return { v: t!.find('.v').text(), d: t!.find('.d').text(), warn: t!.find('.d').classes().includes('warn') }
 }
 /** 屏自己写的字:KPI 行 + 主体 + 抽屉(不含 AnaShell 工具条) */
 const bodyText = (w: VueWrapper) =>
@@ -726,13 +727,13 @@ describe('光伏分栋分析 · 0 命中', () => {
     expect(w.findAll('.anx-kpis .av2-kpi').map(k => k.find('.l').text())).toEqual(KPI_LABELS)
     const out = kpi(w, '本段出范围栋数')
     expect(out.v).toBe('0 栋')
-    expect(out.style).toContain('var(--text-muted)')
+    expect(out.warn, '0 命中副行该是灰字').toBe(false)
     expect(groups(w).shown.some(c => c.kind === 'hit')).toBe(false)
     expect(w.find('.pdc svg').exists()).toBe(true)
 
     boot()
     const hit = kpi(await mountScreen(), '本段出范围栋数')
-    expect(hit.style, '命中时副行没转警示色').not.toContain('var(--text-muted)')
+    expect(hit.warn, '命中时副行没转警示色').toBe(true)
   })
 })
 

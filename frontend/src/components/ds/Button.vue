@@ -112,9 +112,10 @@ const resolvedVariantKey = computed(() => VARIANT_ALIAS[props.variant] ?? props.
    组件再定义一遍只会两套规则打架。 */
 .ds-btn[data-variant="borderless"] { --ds-btn-bg: transparent;          --ds-btn-fg: var(--text-primary);       --ds-btn-border: transparent; }
 .ds-btn[data-variant="gray"]       { --ds-btn-bg: var(--surface-card);  --ds-btn-fg: var(--text-primary);       --ds-btn-border: transparent; }
-.ds-btn[data-variant="outline"]    { --ds-btn-bg: var(--surface-white); --ds-btn-fg: var(--text-primary);       --ds-btn-border: var(--border-subtle); }
+.ds-btn[data-variant="outline"]    { --ds-btn-bg: var(--surface-white); --ds-btn-fg: var(--text-primary);       --ds-btn-border: var(--border-control); }
 .ds-btn[data-variant="filled"]     { --ds-btn-bg: var(--control-solid); --ds-btn-fg: var(--control-solid-text); --ds-btn-border: transparent; }
-.ds-btn[data-variant="danger"]     { --ds-btn-bg: var(--status-danger); --ds-btn-fg: var(--text-on-solid);      --ds-btn-border: transparent; }
+/* 危险按钮是实底:字跟 filled 一样引 --control-solid-text(暗色下红底提亮,白字只剩 2.3:1,DARK-MODE-SPEC §4) */
+.ds-btn[data-variant="danger"]     { --ds-btn-bg: var(--status-danger); --ds-btn-fg: var(--control-solid-text); --ds-btn-border: transparent; }
 
 .ds-btn[data-variant="borderless"]:hover:not(:disabled) { --ds-btn-bg: var(--surface-card); }
 .ds-btn[data-variant="gray"]:hover:not(:disabled)       { --ds-btn-bg: var(--ink-100); }

@@ -153,7 +153,13 @@ describe('本次更新弹窗', () => {
     const w = mount(WhatsNewDialog, { attachTo: document.body })
     // 弹窗那版里第一条能跳的:可能是重点卡(点它的「去看看」),也可能是新增 / 改进里的一行(按标题精确找行 ——
     // 别的条目说明里也可能出现这几个字)。写死「新增里那条」的话,换一版内容这条就坏(0.14.0 两次撞上)。
-    const first = [POP.feature, ...POP.added, ...POP.improved].find((i) => i?.to)!
+    const first = [POP.feature, ...POP.added, ...POP.improved].find((i) => i?.to)
+    if (!first) {
+      // 这一版没有能跳的条目(0.15.0:外观是设置、不是一屏):那就一个「去看看」都不许出。能跳的正路径在 releaseCard.spec 用假数据钉
+      expect(document.querySelector('.rfc-lnk')).toBeNull()
+      w.unmount()
+      return
+    }
     const el = first === POP.feature
       ? document.querySelector('.rfc .rfc-lnk')!
       : [...document.querySelectorAll('.wn-row')].find((r) => r.querySelector('.t')?.textContent === first.title)!

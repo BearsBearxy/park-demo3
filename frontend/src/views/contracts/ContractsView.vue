@@ -8,10 +8,12 @@ import { fpSortRows } from '@/components/fp/fpSort'
 import type { SortState } from '@/components/fp/fpSort'
 import type { ContractDTO, ContractSummaryDTO } from '@/types/contract'
 import { fpMoney } from '@/utils/money'
+import { resolvedTheme } from '@/stores/appearance'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
 import Avatar from '@/components/ds/Avatar.vue'
 import Select from '@/components/ds/Select.vue'
+import DatePicker from '@/components/ds/DatePicker.vue'
 import FPPhaseTabs from '@/components/fp/FPPhaseTabs.vue'
 import FPSortableTable from '@/components/fp/FPSortableTable.vue'
 import { useFitRows } from '@/components/fp/useFitRows'
@@ -265,11 +267,12 @@ const TABLE_COLUMNS = computed(() => [
                  padding: '2px 8px', borderRadius: '999px', color: fg, background: bg, whiteSpace: 'nowrap' },
       }, text)
       if (r.status === 'draft')       return h('span', { style: { color: 'var(--text-disabled)', fontSize: '12px' } }, '—')
-      if (r.status === 'expired')     return pill('已到期', 'var(--hue-red)', 'oklch(0.95 0.03 20)')
+      if (r.status === 'expired')     return pill('已到期', 'var(--hue-red)', 'var(--danger-bg)')
       if (r.status === 'terminated')  return h('span', { style: { color: 'var(--text-disabled)', fontSize: '12px' } }, '已终止')
       const d = r.daysToEnd ?? 0
-      if (d <= 30)                    return pill(`${d} 天`, 'var(--hue-red)', 'oklch(0.95 0.03 20)')
-      if (d <= 90)                    return pill(`${d} 天`, 'rgb(168,98,0)', 'oklch(0.95 0.045 78)')
+      if (d <= 30)                    return pill(`${d} 天`, 'var(--hue-red)', 'var(--danger-bg)')
+      // 浅色照旧;暗色换令牌(行内样式挂不了 [data-theme] 选择器)
+      if (d <= 90)                    return resolvedTheme.value === 'dark' ? pill(`${d} 天`, 'var(--hue-orange)', 'var(--warn-bg)') : pill(`${d} 天`, 'rgb(168,98,0)', 'oklch(0.95 0.045 78)')
       return h('span', { style: { fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-secondary)' } }, `${d} 天`)
     },
   },
@@ -338,13 +341,8 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
     <div class="mx-toolbar mx-toolbar-top">
       <FPPhaseTabs v-model="statusFilter" :counts="lifecycleCounts" :tabs="LIFECYCLE" />
       <div class="mx-toolbar-right">
-        <label class="mx-asof" :class="{ on: !!activeOn }" title="只看某日期仍在执行中的合同">
-          <component :is="iconFor('calendar-check')" :size="15" />
-          <input type="date" v-model="activeOn" />
-          <button v-if="activeOn" type="button" class="mx-asof-x" title="清除日期筛选" @click.prevent="activeOn = ''">
-            <component :is="iconFor('x')" :size="13" />
-          </button>
-        </label>
+        <DatePicker v-model="activeOn" variant="chip" icon="calendar-check" clearable align="end" placeholder="按某天查看"
+                    field-id="contracts-asof" aria-label="按某天查看" title="只看某日期仍在执行中的合同" />
         <label v-if="!activeOn" class="mx-hist-toggle" :class="{ on: showHistory }" title="显示被续签取代的历史期">
           <input type="checkbox" v-model="showHistory" />
           含历史续签
@@ -449,22 +447,17 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
 
 <!-- .mx-* 布局样式收编于全局 styles/mx-list.css(LIST-PAGE-SPEC 单一事实源);下方仅本屏工具栏新增控件 -->
 <style scoped>
-/* 某日在租日期选择器 + 含历史续签开关(§5.2/§5.3):贴合工具栏右侧既有控件高度 */
-.mx-asof { display:inline-flex; align-items:center; gap:6px; height:34px; padding:0 8px; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:var(--surface-white); color:var(--text-muted); cursor:pointer; }
-.mx-asof.on { border-color:var(--hue-blue); color:var(--hue-blue); }
-.mx-asof input[type="date"] { border:none; outline:none; background:none; font-size:12.5px; font-family:var(--font-mono); color:var(--text-primary); cursor:pointer; }
-.mx-asof-x { display:grid; place-items:center; width:20px; height:20px; border:none; background:none; border-radius:var(--radius-sm); color:var(--text-muted); cursor:pointer; }
-.mx-asof-x:hover { background:var(--bg-hover); color:var(--hue-red); }
-.mx-hist-toggle { display:inline-flex; align-items:center; gap:6px; height:34px; padding:0 10px; border:1px solid var(--border-subtle); border-radius:var(--radius-md); font-size:12.5px; color:var(--text-secondary); cursor:pointer; white-space:nowrap; }
+/* 含历史续签开关(§5.3):贴合工具栏右侧既有控件高度(左边的「按某天查看」是 ds/DatePicker 胶囊,34 高同档) */
+.mx-hist-toggle { display:inline-flex; align-items:center; gap:6px; height:34px; padding:0 10px; border:1px solid var(--border-control); border-radius:var(--radius-md); font-size:12.5px; color:var(--text-secondary); cursor:pointer; white-space:nowrap; }
 .mx-hist-toggle.on { border-color:var(--hue-blue); color:var(--hue-blue); }
 .mx-hist-toggle input { accent-color:var(--hue-blue); }
 
 /* 缺口筛选条(2026-08-14):橙色=有档案要补,不是错误;补完整条消失 */
-.mx-gapbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:7px 12px; border:1px dashed var(--hue-orange); border-radius:var(--radius-md); background:rgb(255,250,235); color:rgb(138,97,0); font-size:12px; }
+.mx-gapbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:7px 12px; border:1px dashed var(--hue-orange); border-radius:var(--radius-md); background:var(--caution-soft); color:var(--caution-text); font-size:12px; }
 .mx-gaplbl { font-weight:var(--fw-semibold); }
-.mx-gapchip { height:26px; padding:0 10px; border:1px solid rgba(138,97,0,.28); border-radius:var(--radius-full); background:var(--surface-white); font-size:12px; color:rgb(138,97,0); cursor:pointer; white-space:nowrap; }
+.mx-gapchip { height:26px; padding:0 10px; border:1px solid rgba(138,97,0,.28); border-radius:var(--radius-full); background:var(--surface-white); font-size:12px; color:var(--caution-text); cursor:pointer; white-space:nowrap; }
 .mx-gapchip:hover { border-color:var(--hue-orange); }
-.mx-gapchip.on { background:var(--hue-orange); border-color:var(--hue-orange); color:#fff; }
+.mx-gapchip.on { background:var(--hue-orange); border-color:var(--hue-orange); color:var(--control-solid-text); }
 .mx-gapchip b { font-variant-numeric:tabular-nums; }
 .mx-gaphint { color:var(--text-muted); font-size:11.5px; }
 
@@ -478,6 +471,6 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
 }
 @media (max-width: 600px) { /* S */
   /* iOS 聚焦缩放三件套之一(spec §6.5):S 档输入 16px。裸 input 屏侧自扛(ds 组件已各自处理) */
-  .mx-search input, .mx-asof input[type="date"] { font-size: var(--fs-input-m); }
+  .mx-search input { font-size: var(--fs-input-m); }
 }
 </style>

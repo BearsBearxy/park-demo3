@@ -200,7 +200,7 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
 .pt-total td.pt-c-sub, .pt-total td.pt-c-grp { color:var(--text-primary); }
 
 /* 编辑态单元格 */
-.pt-in { width:92px; height:28px; box-sizing:border-box; border:1px solid var(--border-subtle); border-radius:7px; padding:0 8px; text-align:right; font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:12px; color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard); }
+.pt-in { width:92px; height:28px; box-sizing:border-box; border:1px solid var(--border-control); border-radius:7px; padding:0 8px; text-align:right; font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:12px; color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard); }
 .pt-in:focus { border-color:var(--hue-blue); box-shadow:0 0 0 3px var(--accent-blue); }
 .pt-in::placeholder { color:var(--text-disabled); }
 
@@ -209,10 +209,10 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
 /* 派生对照(P2-G):徽标三态 + diff 月橙底 + 填入按钮 */
 .pt-badge { display:inline-flex; align-items:center; margin-left:8px; height:18px; padding:0 7px; border-radius:var(--radius-full); font-family:var(--font-sans); font-size:11px; font-weight:var(--fw-medium); white-space:nowrap; vertical-align:1px; }
 .pt-badge.ok { background:var(--accent-blue); color:var(--hue-blue); }
-.pt-badge.diff { background:rgb(255,243,230); color:var(--hue-orange); cursor:help; }
+.pt-badge.diff { background:var(--warn-bg); color:var(--hue-orange); cursor:help; }
 .pt-badge.empty { background:var(--surface-sunken); color:var(--text-muted); }
-.pt-table tbody td.pt-cell-diff { background:rgb(255,243,230); }   /* 同 fin-tag.edit 先例,置于分带规则后覆盖 */
-.pt-fillbtn { height:24px; padding:0 9px; border:1px solid var(--border-subtle); background:var(--surface-white); border-radius:var(--radius-full); font-family:var(--font-sans); font-size:11.5px; font-weight:var(--fw-medium); color:var(--hue-blue); cursor:pointer; transition:background var(--dur-fast) var(--ease-standard); }
+.pt-table tbody td.pt-cell-diff { background:var(--warn-bg); }   /* 同 fin-tag.edit 先例,置于分带规则后覆盖 */
+.pt-fillbtn { height:24px; padding:0 9px; border:1px solid var(--border-control); background:var(--surface-white); border-radius:var(--radius-full); font-family:var(--font-sans); font-size:11.5px; font-weight:var(--fw-medium); color:var(--hue-blue); cursor:pointer; transition:background var(--dur-fast) var(--ease-standard); }
 .pt-fillbtn:hover { background:var(--accent-blue); }
 
 /* ── S 档(≤600):sticky 收敛为「科目细分」单列(RESPONSIVE-LAYOUT-SPEC §5.3)──

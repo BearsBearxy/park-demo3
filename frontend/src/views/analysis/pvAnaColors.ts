@@ -25,8 +25,17 @@
 //   5. **墨阶** —— 参照线(锚点 / y=x / β=1)一律墨阶虚线,不用橙:橙让给三期与损耗 / 缺抄。
 //      损耗是废掉的那部分,走墨阶,不是第三种蓝。
 // 方向 / 状态不能只靠颜色:▲▼、位置、点半径三档、字重照旧保留。
+//
+// ── 暗色(DARK-MODE-SPEC §6)──────────────────────────────────────────────────────
+//   PV_COLORS 按当前外观取值(读 resolvedTheme:在模板 / computed / CSS v-bind 里读会跟着切外观重画)。
+//   期别色、焦点蓝、带、红、琥珀、提示框里的浅色字在暗底上本来就够对比,两种外观同值(同 anaTheme 分类色);
+//   变的只有:墨阶(墨色反过来 = 暗色 --ink-900 × 同一透明度)、网格 / 轴字 / 提示框底(= ANA_DARK)、琥珀字(= --warn-text)。
+//   ⚠ 别在 setup 里一次性拷成常量:页签在 KeepAlive 里常驻、切外观不重挂载,拷走的值停在旧外观。
+//     要成表就包 computed(PvDetailTable 的 OUT、PvQualityGrid 的 KIND_FILL、PvConsumption 的 SEG_FILL)。
+import { resolvedTheme } from '@/stores/appearance'
+import { ANA_DARK } from '@/components/ana/anaTheme'
 
-export const PV_COLORS = {
+const LIGHT = {
   /** 期别三色。一期与 FOCUS 同值,见头注第 2 条 */
   PHASE1: '#378ADD',
   PHASE2: '#5DCAA5',
@@ -73,6 +82,19 @@ export const PV_COLORS = {
   TIP_ABOVE: '#F6C77A',
   TIP_BELOW: '#F58B8A',
 } as const
+
+type PvColors = { readonly [K in keyof typeof LIGHT]: string }
+const dk = (a: string) => `rgba(236,236,238,${a})`   // 暗色 --ink-900 × a
+const DARK: PvColors = {
+  ...LIGHT,
+  AMBER_TEXT: 'var(--warn-text)',   // 只落在 DOM(SVG 属性 / 行内样式),引得了令牌
+  REF: dk('.45'), REF_DIAG: dk('.35'), LOSS: dk('.30'), CROWD_B9: dk('.22'), CROWD_B10: dk('.28'), DROP: dk('.10'), FUTURE: dk('.03'),
+  GRID: ANA_DARK.grid, AXIS_TEXT: ANA_DARK.label, TIP_BG: ANA_DARK.tipBg,
+}
+
+export const PV_COLORS: PvColors = new Proxy(LIGHT, {
+  get: (light, k) => (resolvedTheme.value === 'dark' ? DARK : light)[k as keyof PvColors],
+})
 
 /** 期别 → 色。未知期别不给色,调用方退回墨阶 */
 export const PHASE_COLORS: Readonly<Record<number, string>> = {

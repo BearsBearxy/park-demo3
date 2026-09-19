@@ -294,7 +294,7 @@ const onExport = () => guard('导出失败', async () => {
 .ut-seg2 { flex:0 0 auto; display:flex; gap:6px; padding:4px; background:var(--surface-sunken); border-radius:var(--radius-full); width:max-content; }
 .ut-seg2-b { display:inline-flex; align-items:center; gap:7px; height:34px; padding:0 16px; border:none; background:transparent; border-radius:var(--radius-full); cursor:pointer; font-family:var(--font-sans); font-size:13px; font-weight:var(--fw-medium); color:var(--text-secondary); transition:all var(--dur-fast); }
 .ut-seg2-b:hover { color:var(--text-primary); }
-.ut-seg2-b.on { background:var(--surface-white); color:var(--text-primary); box-shadow:0 1px 4px rgba(28,28,28,.10); }
+.ut-seg2-b.on { background:var(--surface-raised); color:var(--text-primary); box-shadow:0 1px 4px rgba(28,28,28,.10); }
 
 .ut-toolbar { flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 .ut-toolbar-l { display:flex; align-items:center; gap:12px; flex-wrap:wrap; min-width:0; }

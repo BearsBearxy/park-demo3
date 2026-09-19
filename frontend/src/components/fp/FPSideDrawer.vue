@@ -55,13 +55,14 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
 .fp-sdw-mask {
   position: fixed; inset: 0;
   z-index: var(--z-modal);
-  background: rgba(28, 28, 28, 0.28);
+  /* 这层遮罩原来是 28% 墨(比全站 --scrim 的 34% 浅一档):浅色逐位不变 = --scrim × 0.28/0.34 */
+  background: color-mix(in srgb, var(--scrim) 82.353%, transparent);
   display: flex; justify-content: flex-end;
 }
 .fp-sdw {
   height: 100%;
   max-width: 92vw;
-  background: var(--surface-page);
+  background: var(--surface-raised);   /* 浮起的面;原 --surface-page 暗色下是画布色,比卡片还暗 */
   box-shadow: -8px 0 32px rgba(0, 0, 0, 0.12);
   display: flex; flex-direction: column;
 }

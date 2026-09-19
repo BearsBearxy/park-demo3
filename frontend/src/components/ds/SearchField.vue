@@ -100,6 +100,6 @@ const wrapperStyle = computed(() => ({
    内部 <input> 又是 outline:none —— 用键盘 Tab 进来时屏幕上没有任何变化,
    键盘用户无法知道自己停在哪。焦点环不能直接画在 input 上(会套在外框里成为
    「框中框」),故改由外框响应。 */
-.ds-searchfield { --ds-sf-border: var(--border-subtle); }
+.ds-searchfield { --ds-sf-border: var(--border-control); }
 .ds-searchfield:has(:focus-visible) { --ds-sf-border: var(--status-info); }
 </style>

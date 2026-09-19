@@ -69,8 +69,9 @@ defineEmits(['update:modelValue'])
   color: var(--text-secondary);
 }
 
+/* 选中格 --surface-raised:暗色下比轨道亮一层才分得开(DARK-MODE-SPEC §4 段控) */
 .fp-phasetab.on {
-  background: var(--surface-white);
+  background: var(--surface-raised);
   color: var(--text-primary);
   box-shadow: 0 1px 4px rgba(28, 28, 28, 0.12);
 }
@@ -79,7 +80,7 @@ defineEmits(['update:modelValue'])
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: var(--fw-semibold);
-  color: var(--text-disabled);
+  color: var(--text-muted);   /* 数量是内容不是禁用:--text-disabled 浅色下只有 1.6:1(DARK-MODE-SPEC §4) */
 }
 
 .fp-phasetab.on .ct {

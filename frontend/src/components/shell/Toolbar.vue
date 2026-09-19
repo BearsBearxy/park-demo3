@@ -275,17 +275,17 @@ button.fp-crumb-grp.lk:hover {
   position: absolute; top: calc(100% + 8px); left: -12px; z-index: var(--z-popover);
   display: inline-flex; align-items: center; gap: 10px;
   padding: 8px 12px; border-radius: var(--radius-md);
-  background: var(--ink-900); color: #fff;
+  background: var(--toast-bg); color: var(--text-on-solid);
   font-size: var(--fs-label); line-height: 18px; white-space: nowrap;
-  box-shadow: 0 12px 32px rgba(28, 28, 28, 0.32);
+  box-shadow: var(--shadow-toast);   /* 待加的 --shadow-toast:暗色下多一圈 1px 亮边 */
   animation: fp-pop-in var(--dur-fast) var(--ease-out);
 }
 .fp-star-note .act {
   height: 24px; padding: 0 9px;
-  border: 1px solid rgba(255, 255, 255, 0.35); border-radius: var(--radius-sm);
-  background: transparent; color: #fff; font-size: var(--fs-label); cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--text-on-solid) 45%, transparent); border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-on-solid); font-size: var(--fs-label); cursor: pointer;
 }
-.fp-star-note .act:hover { background: rgba(255, 255, 255, 0.14); }
+.fp-star-note .act:hover { background: color-mix(in srgb, var(--text-on-solid) 14%, transparent); }
 
 .fp-toolbar-right {
   margin-left: auto;
@@ -301,7 +301,7 @@ button.fp-crumb-grp.lk:hover {
   height: 34px;
   padding: 0 8px 0 12px;
   border-radius: var(--radius-full);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-control);
   background: var(--surface-card);
   cursor: pointer;
   font-family: var(--font-sans);
@@ -329,16 +329,16 @@ button.fp-crumb-grp.lk:hover {
 .fp-upd-coach {
   position: absolute; top: calc(100% + 10px); right: -8px; z-index: var(--z-popover);
   padding: 7px 10px; border-radius: var(--radius-xs);
-  background: rgb(40, 52, 66); color: #fff;
+  background: var(--tip-bg); color: var(--text-on-solid);
   font-size: var(--fs-label); line-height: 18px; white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-tip);
   pointer-events: none;
   animation: fp-pop-in var(--dur-fast) var(--ease-out);
 }
 .fp-upd-coach::after {
   content: ""; position: absolute; top: -6px; right: 20px;
   border-left: 6px solid transparent; border-right: 6px solid transparent;
-  border-bottom: 6px solid rgb(40, 52, 66);
+  border-bottom: 6px solid var(--tip-bg);
 }
 
 .fp-bell { position: relative; display: inline-flex; }
@@ -346,7 +346,7 @@ button.fp-crumb-grp.lk:hover {
   position: absolute; top: 1px; right: 1px;
   min-width: 14px; height: 14px; padding: 0 3px;
   border-radius: var(--radius-full);
-  background: var(--hue-red); color: #fff;
+  background: var(--hue-red); color: var(--control-solid-text);   /* 实底上的字:暗色下红提亮,字反深 */
   font-family: var(--font-mono); font-size: 9.5px; font-weight: var(--fw-semibold);
   display: grid; place-items: center;
   box-shadow: 0 0 0 1.5px var(--surface-white);
