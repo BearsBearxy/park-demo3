@@ -160,3 +160,14 @@ img, svg {
   .fin-table thead th, .fin-table tfoot td { position: static !important; }
   .fin-toolbar, .fin-actions, .fin-back { display: none !important; }
 }
+
+/* ── 密码框字体(2026-09-20 手机实测修)──
+   iPhone Safari 上密码框显示成一排黑竖条:iOS WebKit 用 U+25CF 画掩码点,自托管的
+   Roboto Mono 子集里没有这个字形,而掩码字符不走逐字回退 ⇒ 画 .notdef 方框。
+   见 tokens.css 里 --font-ui 的注释。
+
+   为什么带 !important:密码框都在 <style scoped> 的组件里,那边的选择器自带 [data-v-xxx]、
+   特异度天然比这条全局规则高;不加就只有「哪个 <style> 后插入」说了算,建出来的包不保证顺序。
+   ⚠ type="text" + -webkit-text-security 遮罩的那几个框(FPElevateDialog / FPTakeoverDrawer /
+   FPApprovalDrawer,为躲开浏览器密码管理器)选不中,它们在各自的遮罩规则里单独写了同一行。 */
+input[type="password"] { font-family: var(--font-ui) !important; }

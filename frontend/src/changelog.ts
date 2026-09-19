@@ -20,6 +20,16 @@ import type { ReleaseNote } from '@/types/changelog'
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: '0.15.1',
+    date: '2026-09-20',
+    headline: '手机上密码框不再显示成黑条',
+    added: [],
+    improved: [],
+    fixed: [
+      '登录、修改密码、用户管理、主管授权：手机上圆点显示成一排黑竖条',
+    ],
+  },
+  {
     version: '0.15.0',
     date: '2026-09-20',
     headline: '能换深色外观，日期选择器和指标卡换了样子',

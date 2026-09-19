@@ -315,6 +315,9 @@ async function submit() {
 .ev-mask :deep(input) {
   -webkit-text-security: disc;
   text-security: disc;
+  /* 掩码点不能走自托管子集(iOS 上是一排黑竖条),见 tokens.css 的 --font-ui。
+     这里是 type="text",选不中 base.css 那条 input[type="password"],得自己写。 */
+  font-family: var(--font-ui);
 }
 .ev-err {
   /* 常驻占位：min-height 恰好一行，空着时不可见但占着地方 */
