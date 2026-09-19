@@ -12,10 +12,12 @@ import AnaUnitRentHist from '../AnaUnitRentHist.vue'
 import AnaBullet from '../AnaBullet.vue'
 import AnaTrend from '../AnaTrend.vue'
 import AnaBarRows from '../AnaBarRows.vue'
-import AnaKpiTile from '../AnaKpiTile.vue'
 import { rollingForecastRows } from '@/views/analysis/forecastChart.logic'
 import type { RentBandCol } from '@/views/analysis/rentBandChart.logic'
 import type { PnlSummary } from '@/analysis/anaData'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { resolvedTheme } from '@/stores/appearance'
 
 // jsdom 无 ResizeObserver:桩记下回调,手动改宽
 let ros: ResizeObserverCallback[] = []
@@ -81,6 +83,29 @@ const CHARTS = [
 
 const inMorph = (el: Element) => el.closest('.ana-morph') != null
 
+// 暗色(对抗复查 2026-09-20):四张自绘 SVG 图原来整套写死浅色(阴影区 #F5F6F9 在暗卡片上一块亮白、预测图中位数字
+// #1E293B 对卡片 1.02:1、提示框和卡片同色)。颜色挪进 anaTheme 的两套 --sv-* 变量,挂在图的根上,切外观不用重挂载。
+describe('自绘图 · 切外观', () => {
+  afterEach(() => { resolvedTheme.value = 'light' })
+  it.each(CHARTS.slice(0, 4))('❗$name:根上挂 --sv-* 两套色,浅色是原来的 Figma 取色,切深色当场换', async ({ mk }) => {
+    const w = mk()
+    const host = () => (w.element as HTMLElement).style
+    expect(host().getPropertyValue('--sv-tip-bg')).toBe('#1E293B')
+    expect(host().getPropertyValue('--sv-label')).toBe('#94A3B8')
+    resolvedTheme.value = 'dark'
+    await nextTick()
+    expect(host().getPropertyValue('--sv-tip-bg'), '暗色提示框底 = 暗色 --tip-bg').toBe('rgb(62,77,95)')
+    expect(host().getPropertyValue('--sv-label')).toBe('rgba(236,236,238,.62)')
+    w.unmount()
+  })
+  it('❗样式里不再有写死的颜色:四张图的 <style> 只引 --sv-* 与令牌', () => {
+    for (const f of ['AnaRentBandChart', 'AnaForecastChart', 'AnaRenewalChart', 'AnaUnitRentHist']) {
+      const css = readFileSync(join(__dirname, '..', f + '.vue'), 'utf8').split('<style')[1].replace(/\/\*[\s\S]*?\*\//g, '')
+      expect(css.match(/#[0-9a-fA-F]{3,8}\b|rgba?\(/g), f).toBeNull()
+    }
+  })
+})
+
 describe('自绘图擦入 / 改宽', () => {
   // KeepAlive 停用由 useEnterPhase 当场摘;这里是另一条路:动画被别的原因取消(元素被挪走、clip-path 被覆盖),
   // 只发 animationcancel —— 不摘的话 first 卡在真,hold 跟着卡死,这张图此后换期永远不形变。
@@ -144,19 +169,6 @@ describe('AnaBarRows', () => {
 })
 
 describe('自绘图换数同键形变', () => {
-  it('❗AnaKpiTile 迷你线:同结构换数 → 同一个 path 换 d(在形变组里);缺月断点一变结构 → 换新节点', async () => {
-    const w = mount(AnaKpiTile, { props: { label: '营收', value: '1', trend: [3, 5, 4, 6, 2, 7] } })
-    const p = w.find('svg.spk path').element
-    expect(inMorph(p)).toBe(true)
-    const d0 = p.getAttribute('d')
-    await w.setProps({ trend: [4, 2, 6, 5, 7, 3] })
-    expect(w.find('svg.spk path').element, '换数重建了节点 = 没有过渡').toBe(p)
-    expect(p.getAttribute('d')).not.toBe(d0)
-    await w.setProps({ trend: [4, 2, null, 5, 7, 3] })
-    expect(w.find('svg.spk path').element, '拆成两段子路径还复用旧节点 = d 直接跳').not.toBe(p)
-    w.unmount()
-  })
-
   it('❗AnaForecastChart:同结构换数 → 同一批节点换 d / cy;点数一变 → 整组换新节点(不让点在线外滑)', async () => {
     const w = mount(AnaForecastChart, { props: { rows: fRows(REV6) } })
     const line = w.find('path.afc-line').element

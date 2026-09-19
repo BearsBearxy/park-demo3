@@ -112,7 +112,7 @@ function mmss(ms: number): string {
 @media (max-width: 1280px) { /* L↓ */
   .pb {
     width: 76px; height: 34px; padding: 0; justify-content: center;
-    border: 1px solid var(--border-subtle); background: var(--surface-white);
+    border: 1px solid var(--border-control); background: var(--surface-white);
   }
   .pb-stack, .pb > .fp-tipw, .pb-n { display: none; }
   .pb-count {
@@ -128,7 +128,7 @@ function mmss(ms: number): string {
 }
 .pp-h b { color: var(--text-primary); font-weight: var(--fw-semibold); font-size: var(--fs-body); }
 .pp-row { display: flex; align-items: center; gap: 12px; padding: 9px 16px; }
-.pp-row + .pp-row { border-top: 1px solid rgba(28, 28, 28, .05); }
+.pp-row + .pp-row { border-top: 1px solid var(--ink-050); }
 .pp-row:hover { background: var(--surface-card); }
 .pp-row.fade { opacity: .6; }
 .pp-nm { flex: 1; min-width: 0; }
@@ -142,10 +142,10 @@ function mmss(ms: number): string {
   border-radius: var(--radius-full); padding: 0 6px; line-height: 16px; font-weight: var(--fw-regular);
 }
 .pp-you {
-  font-size: 11px; background: var(--ink-900); color: #fff;
+  font-size: 11px; background: var(--control-solid); color: var(--control-solid-text);
   border-radius: var(--radius-full); padding: 0 6px; line-height: 16px; font-weight: var(--fw-semibold);
 }
 .pp-st { flex: 0 0 auto; font-size: var(--fs-label); font-family: var(--font-mono); white-space: nowrap; }
 .pp-st.e { color: var(--hue-orange); font-weight: var(--fw-semibold); }
-.pp-st.v { color: var(--text-disabled); }
+.pp-st.v { color: var(--text-muted); }   /* 「浏览中」是内容不是禁用 */
 </style>

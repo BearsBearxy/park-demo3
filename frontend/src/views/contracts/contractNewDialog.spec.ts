@@ -85,6 +85,67 @@ describe('合同弹窗 · 期限原文三件套(V2-SPEC §6)', () => {
   })
 })
 
+// 日期字段 2026-09-19 由原生日期框换成 ds/DatePicker(DATE-PICKER-SPEC §5 第 1 节)。
+describe('合同弹窗 · 日期字段', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(contractApi.detail).mockResolvedValue({
+      contract: initial,
+      tenant: { companyName: '周兴', contactName: '', contactPhone: '', businessType: '', status: 1 },
+      billingLines: [],
+      extraUnitIds: [],
+    })
+    vi.mocked(contractApi.update).mockResolvedValue(initial)
+  })
+  const pickerOf = (w: ReturnType<typeof mountEdit>, label: string) =>
+    w.findAllComponents({ name: 'DatePicker' }).find((c) => c.props('ariaLabel') === label)!
+
+  it('❗免租期起止合成一个区间字段:下限 = 合同开始日、上限 = 结束日,选完两头一起进提交', async () => {
+    const w = mountEdit()
+    await flushPromises()
+    await w.findAll('button').find((b) => b.text().includes('添加免租期'))!.trigger('click')
+    const rf = pickerOf(w, '免租期起止')
+    expect(rf.props('mode')).toBe('range')
+    expect([rf.props('min'), rf.props('max')]).toEqual(['2023-08-10', '2026-08-09'])
+    rf.vm.$emit('update:modelValue', ['2023-08-10', '2023-10-31'])
+    await flushPromises()
+    await w.findAll('.ct-dlg-f button')[1].trigger('click')
+    await flushPromises()
+    const [, req] = vi.mocked(contractApi.update).mock.calls[0] as [number, ContractCreateReq]
+    expect(req.rentFree).toEqual([{ start: '2023-08-10', end: '2023-10-31' }])
+  })
+
+  it('❗合同起止倒着填(开始晚于结束)时免租期不设上下限:不然 42 格全灰、打字全红,又没有提示', async () => {
+    const w = mountEdit()
+    await flushPromises()
+    pickerOf(w, '开始日期').vm.$emit('update:modelValue', '2026-10-01')
+    pickerOf(w, '结束日期').vm.$emit('update:modelValue', '2026-09-01')
+    await w.findAll('button').find((b) => b.text().includes('添加免租期'))!.trigger('click')
+    const rf = () => pickerOf(w, '免租期起止')
+    expect([rf().props('min'), rf().props('max')]).toEqual([undefined, undefined])
+    pickerOf(w, '结束日期').vm.$emit('update:modelValue', '2026-12-31')
+    await flushPromises()
+    expect([rf().props('min'), rf().props('max')], '起止正常后照旧收在合同期内').toEqual(['2026-10-01', '2026-12-31'])
+    w.unmount()
+  })
+
+  it('❗点格子选日期也算「在编辑」(格子是按钮,收不进弹窗的 @input.capture),选的值进提交', async () => {
+    const w = mountEdit()
+    await flushPromises()
+    const auth = useAuthStore()
+    expect(auth.editing).toBe(false)
+    pickerOf(w, '签订日期').vm.$emit('update:modelValue', '2023-07-30')
+    await flushPromises()
+    expect(auth.editing, '选了日期却没登记在编辑').toBe(true)
+    await w.findAll('.ct-dlg-f button')[1].trigger('click')
+    await flushPromises()
+    const [, req] = vi.mocked(contractApi.update).mock.calls[0] as [number, ContractCreateReq]
+    expect(req.signDate).toBe('2023-07-30')
+    expect([req.startDate, req.endDate]).toEqual(['2023-08-10', '2026-08-09'])
+    w.unmount()
+  })
+})
+
 // 空地 infra 条件项(2026-08-07 旭化成消防通道 179.70㎡×1.80=323.46):per_sqm 形态填面积×单价;
 // 存坏行(月额进 override 而 billMode=per_sqm→月额0)回读标「待定」,补齐面积×单价保存即清 override。
 describe('合同弹窗 · per_sqm 条件项(空地基础设施维护费)', () => {

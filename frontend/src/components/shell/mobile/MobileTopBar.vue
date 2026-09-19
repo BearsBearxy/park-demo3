@@ -95,7 +95,7 @@ const pendingCount = computed(() =>
   position: absolute; top: 5px; right: 5px;
   min-width: 14px; height: 14px; padding: 0 3px;
   border-radius: var(--radius-full);
-  background: var(--hue-red); color: #fff;
+  background: var(--hue-red); color: var(--control-solid-text);   /* 实底上的字,暗色下反深 */
   font-family: var(--font-mono); font-size: 9.5px; font-weight: var(--fw-semibold);
   display: grid; place-items: center;
   box-shadow: 0 0 0 1.5px var(--surface-white);

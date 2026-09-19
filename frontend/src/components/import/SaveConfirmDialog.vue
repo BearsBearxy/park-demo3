@@ -35,7 +35,7 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
-.scd-scrim { position:fixed; inset:0; z-index:350; background:rgba(28,28,28,.32); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; }
+.scd-scrim { position:fixed; inset:0; z-index:350; background:color-mix(in srgb, var(--scrim) 94.12%, transparent); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; }   /* 浅色 = rgba(28,28,28,.32):--scrim(.34)× 94.12% */
 .scd-card { width:min(400px,94vw); background:var(--surface-white); border-radius:var(--radius-lg); box-shadow:0 24px 60px rgba(28,28,28,.22); display:flex; flex-direction:column; overflow:hidden; }
 .scd-h { display:flex; align-items:center; gap:10px; padding:18px 20px 8px; }
 .scd-h h3 { margin:0; flex:1; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }

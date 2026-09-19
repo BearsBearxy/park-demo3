@@ -19,20 +19,22 @@ const props = withDefaults(defineProps<AvatarProps>(), {
 });
 
 /**
- * 8 色，且**都是能配白字的深度**。
+ * 8 色身份色,白字对每一个都 ≥4.5(2026-09-19 DARK-MODE-SPEC §5 / M4,tokens.spec 断言)。
  *
- * 原色板里的 `--fill-cyan`(rgb 160,205,232) 配白字对比度约 1.9:1 —— 白字发虚。
- * 之前只在静态头像上用、看不太出来；在场头像组里它要和另外七个并排比，一眼就露。
+ * 是身份色,两种外观一样 —— 所以写字面量不引令牌:原来引的 --brand-deep 暗色下变成浅灰蓝,
+ * 白字只剩 1.6:1。原值多数只有 2.3–3.9:1,同色相压暗到 4.6 左右;偏紫的 rgb(163,124,178)
+ * 换成绿(全站不用紫)。原 --fill-blue 压暗后和第 8 格几乎同色,色相挪向青蓝 225°。
+ * 顺序不动:hash 落到第几格不变,每个人还是原来那个色相。
  */
 const PALETTE = [
-  "var(--fill-blue)",
-  "var(--fill-slate)",
-  "var(--brand-deep)",
-  "var(--brand-accent)",
-  "rgb(93,150,140)",
-  "rgb(163,124,178)",
-  "rgb(196,124,92)",
-  "rgb(90,132,178)",
+  "rgb(42, 126, 155)",   // 原 --fill-blue
+  "rgb(97, 116, 151)",   // 原 --fill-slate
+  "rgb(31, 95, 191)",    // 原 --brand-deep 的浅色值
+  "rgb(79, 112, 205)",   // 原 --brand-accent
+  "rgb(69, 126, 116)",
+  "rgb(85, 127, 76)",    // 原偏紫 rgb(163,124,178)
+  "rgb(168, 99, 67)",
+  "rgb(78, 120, 165)",
 ];
 
 function initials(name: string): string {
@@ -72,7 +74,7 @@ const spanStyle = computed(() => ({
   borderRadius: "50%",
   overflow: "hidden",
   background: props.src ? "var(--bg-sunken)" : bg.value,
-  color: "#fff",
+  color: "var(--text-on-solid)",   // 身份色两种外观都是深色,字恒白
   fontFamily: "var(--font-sans)",
   fontSize: `${Math.max(9, Math.round(props.size * 0.38))}px`,
   fontWeight: "var(--fw-semibold)",

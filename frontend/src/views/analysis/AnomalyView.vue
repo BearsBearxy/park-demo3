@@ -16,7 +16,7 @@ import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import { chartHeightFor } from '@/components/ana/anaChartHeight'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import { iconFor } from '@/components/ds/icon'
-import { STATUS, fint, fnum } from '@/components/ana/anaFmt'
+import { STATUS, fint, fnum, hues } from '@/components/ana/anaFmt'
 import { bandSeries } from '@/components/ana/anaTheme'
 import { anaSettings } from '@/analysis/anaSettings'
 import { buildAnomalies, fetchAnomalyInputs, type AnaAnomaly, type AnomalyInputs } from '@/analysis/anaData'
@@ -72,6 +72,7 @@ const energyOption = computed<object | null>(() => {
   const mkPts = (series: 'elec' | 'water', vals: number[]): object[] =>
     t.spikes.filter((s) => s.series === series).map((s) => ({ coord: [s.idx, vals[s.idx]] }))
   interface TipRow { seriesName?: string; axisValueLabel?: string; value?: number | null; marker?: string }
+  const { blue, teal, red } = hues()
   return {
     grid: { left: 58, right: 16, top: 30, bottom: 26 },
     legend: { top: 0, data: ['电费', '水费'] },
@@ -91,10 +92,10 @@ const energyOption = computed<object | null>(() => {
       // 它的宽**就是**结论——实测该比值逐月 0.75~0.82,门一挂上就是每个月都不画,而下面那句
       // 「电费落在全园区间 ¥…~¥…」还在指着它。带无条件画,宽窄交给读者自己看。
       ...bandSeries(p25, p75, { name: '园区P25~P75' }),
-      { name: '电费', type: 'line', data: t.elec, smooth: true, symbolSize: 5, itemStyle: { color: '#378ADD' },
-        markPoint: { symbol: 'circle', symbolSize: 9, itemStyle: { color: '#E24B4A' }, label: { show: false }, data: mkPts('elec', t.elec) } },
-      { name: '水费', type: 'line', data: t.water, smooth: true, symbolSize: 5, itemStyle: { color: '#5DCAA5' },
-        markPoint: { symbol: 'circle', symbolSize: 9, itemStyle: { color: '#E24B4A' }, label: { show: false }, data: mkPts('water', t.water) } },
+      { name: '电费', type: 'line', data: t.elec, smooth: true, symbolSize: 5, itemStyle: { color: blue },
+        markPoint: { symbol: 'circle', symbolSize: 9, itemStyle: { color: red }, label: { show: false }, data: mkPts('elec', t.elec) } },
+      { name: '水费', type: 'line', data: t.water, smooth: true, symbolSize: 5, itemStyle: { color: teal },
+        markPoint: { symbol: 'circle', symbolSize: 9, itemStyle: { color: red }, label: { show: false }, data: mkPts('water', t.water) } },
       // C6-16 ④:系列 name 恒定('电费'/'水费'/灰带)、月类目跨租户共享 → 换租户会按 name 形变出假中间数据。
       // id 带租户键 → 新视图瞬换;序号是必需的,同 id 会撞 echarts idMap(Duplicated id),灰带底条 name 还是空串。
     ].map((s, i) => ({ ...s, id: `elec-${i}-${t.name}` })),
@@ -130,8 +131,8 @@ const ledgerOption = computed<object | null>(() => {
     xAxis: { type: 'category', data: d.yms },
     yAxis: { type: 'value', axisLabel: { formatter: (v: number) => wanF(v) } },
     series: [
-      { name: '应收', type: 'bar', data: d.recv, barMaxWidth: 34, itemStyle: { color: '#85B7EB', borderRadius: [3, 3, 0, 0] } },
-      { name: '实收', type: 'bar', data: d.coll, barMaxWidth: 34, itemStyle: { color: '#378ADD', borderRadius: [3, 3, 0, 0] } },
+      { name: '应收', type: 'bar', data: d.recv, barMaxWidth: 34, itemStyle: { color: hues().mid, borderRadius: [3, 3, 0, 0] } },
+      { name: '实收', type: 'bar', data: d.coll, barMaxWidth: 34, itemStyle: { color: hues().blue, borderRadius: [3, 3, 0, 0] } },
     ].map((s, i) => ({ ...s, id: `led-${i}-${t.name}` })),   // C6-16 ⑤ 同 energyOption:name 恒定,'YYYY-MM' 类目随租户漂移
   }
 })
@@ -149,8 +150,8 @@ const hitRules = computed<HitRule[]>(() => {
 // ── 处置状态(沿 v1:localStorage 'fp-ana-anom',规则 id 稳定 → 跨会话/跨版本保留) ──
 type TrackStatus = 'open' | 'doing' | 'done'
 const STATUSES: { k: TrackStatus; l: string; c: string; bg: string }[] = [
-  { k: 'open', l: '待处理', c: 'var(--hue-red)', bg: 'rgb(255,238,237)' },
-  { k: 'doing', l: '处理中', c: 'var(--hue-orange)', bg: 'rgb(255,243,230)' },
+  { k: 'open', l: '待处理', c: 'var(--hue-red)', bg: 'var(--danger-soft)' },
+  { k: 'doing', l: '处理中', c: 'var(--hue-orange)', bg: 'var(--warn-bg)' },
   { k: 'done', l: '已解决', c: 'var(--hue-blue)', bg: 'var(--accent-blue)' },
 ]
 const LS_KEY = 'fp-ana-anom'

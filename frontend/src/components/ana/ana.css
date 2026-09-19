@@ -15,7 +15,7 @@
 .anx-seg button:hover:not(.on):not(:disabled) { color: var(--text-primary); }
 /* C2-03 ④ 按压:底色换一档,0ms 瞬到;当前档不压(它已经是选中态)。 */
 .anx-seg button:active:not(.on):not(:disabled) { background: var(--ink-100); transition-duration: 0ms; }
-.anx-seg button.on { background: var(--surface-white); color: var(--text-primary); box-shadow: 0 1px 3px rgba(28,28,28,.10); }
+.anx-seg button.on { background: var(--surface-raised); color: var(--text-primary); box-shadow: 0 1px 3px color-mix(in srgb, var(--ink-900) 10%, transparent); }
 .anx-seg button:disabled { opacity: .4; cursor: default; }
 /* 占位不可见(C5-01 ④):工具条上按粒度插拔的控件改挂这个类 —— 宽度照留,后面的控件零位移。
    visibility(不是 opacity)才会把它一起移出 tab 序与命中区。 */
@@ -28,7 +28,7 @@
 
 /* ── ana-charts.jsx ChartStyles(cz-*) ── */
 .cz-grid { display:grid; gap:16px; }
-.cz-tip { position:absolute; pointer-events:none; background:rgb(40,52,66); color:#fff; border-radius:9px; padding:8px 11px; box-shadow:0 8px 24px rgba(0,0,0,.18); z-index:5; font-size: var(--fs-micro); }
+.cz-tip { position:absolute; pointer-events:none; background:var(--tip-bg); color:var(--text-on-solid); border-radius:9px; padding:8px 11px; box-shadow:var(--shadow-tooltip); z-index:5; font-size: var(--fs-micro); }
 .cz-tip .h { opacity:.62; font-size:var(--fs-micro); margin-bottom:5px; }
 .cz-tip .r { display:flex; align-items:center; gap:8px; margin-top:3px; white-space:nowrap; }
 .cz-tip .r .nm { opacity:.82; }
@@ -100,7 +100,7 @@
 .ak-seg2 { display:inline-flex; background:var(--surface-sunken); border-radius:var(--radius-full); padding:3px; gap:2px; }
 .ak-seg2 button { border:none; background:transparent; cursor:pointer; font-family:var(--font-sans); font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); padding:5px 13px; border-radius:var(--radius-full); transition:background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard); white-space:nowrap; }
 .ak-seg2 button:active:not(.on):not(:disabled) { background:var(--ink-100); transition-duration:0ms; }
-.ak-seg2 button.on { background:var(--surface-white); color:var(--text-primary); box-shadow:0 1px 3px rgba(28,28,28,.10); }
+.ak-seg2 button.on { background:var(--surface-raised); color:var(--text-primary); box-shadow:0 1px 3px color-mix(in srgb, var(--ink-900) 10%, transparent); }
 
 /* analyst-only 区块淡入 */
 .ak-analyst { animation:akFade var(--dur-slow) var(--ease-standard); }

@@ -67,14 +67,14 @@ const todayPct = computed(() => {
 
 <style scoped>
 .ctl { display:flex; flex-direction:column; gap:6px; }
-.ctl-bar { position:relative; height:12px; border-radius:var(--radius-full); background:color-mix(in srgb, var(--hue-blue) 28%, white); overflow:hidden; }
-.ctl-free { position:absolute; top:0; bottom:0; background:color-mix(in srgb, var(--hue-red) 32%, white); }
+.ctl-bar { position:relative; height:12px; border-radius:var(--radius-full); background:color-mix(in srgb, var(--hue-blue) 28%, var(--surface-white)); overflow:hidden; }
+.ctl-free { position:absolute; top:0; bottom:0; background:color-mix(in srgb, var(--hue-red) 32%, var(--surface-white)); }
 .ctl-today { position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:var(--ink-900); }
 .ctl-legend { display:flex; gap:14px; font-size:var(--fs-micro); color:var(--text-muted); }
 .ctl-legend span { display:inline-flex; align-items:center; gap:4px; }
 .ctl-dot { display:inline-block; width:9px; height:9px; border-radius:3px; }
-.ctl-dot.rent  { background:color-mix(in srgb, var(--hue-blue) 28%, white); }
-.ctl-dot.free  { background:color-mix(in srgb, var(--hue-red) 32%, white); }
+.ctl-dot.rent  { background:color-mix(in srgb, var(--hue-blue) 28%, var(--surface-white)); }
+.ctl-dot.free  { background:color-mix(in srgb, var(--hue-red) 32%, var(--surface-white)); }
 .ctl-dot.today { width:2px; height:10px; border-radius:0; background:var(--ink-900); }
 .ctl-empty { font-size:var(--fs-label); color:var(--text-disabled); padding:4px 0; }
 </style>

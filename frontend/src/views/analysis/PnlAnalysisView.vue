@@ -19,7 +19,8 @@ import { useCompare } from '@/analysis/useCompare'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import { fetchPnlSummary, type PnlSummary } from '@/analysis/anaData'
 import { finMoney, finWan } from '@/utils/finFmt'
-import { fnum } from '@/components/ana/anaFmt'
+import { FILL, fnum, hues, inkA } from '@/components/ana/anaFmt'
+import { anaPalette } from '@/components/ana/anaTheme'
 import { DUR, EASE } from '@/components/ana/anaMotion'
 import { momShift, schedMonthly, schedSpark, schedTotals, structStack } from './pnlAnalysis.logic'
 
@@ -93,19 +94,20 @@ const mainOpt = computed<object>(() => {
   const band = summary.value?.bySchedule[sel.value]
   if (!c || !band) return {}
   const d = schedMonthly(band, c.isExp, covMonths.value)
+  const h = hues()
   const series: object[] = c.isExp
-    ? [{ name: '费用', type: 'bar', data: d.cost, barMaxWidth: 26, itemStyle: { color: '#85B7EB' } }]
+    ? [{ name: '费用', type: 'bar', data: d.cost, barMaxWidth: 26, itemStyle: { color: h.mid } }]
     : [
-        { name: '收入', type: 'bar', data: d.rev, barMaxWidth: 20, itemStyle: { color: '#378ADD' } },
-        { name: '成本', type: 'bar', data: d.cost, barMaxWidth: 20, itemStyle: { color: '#B5D4F4' } },
-        { name: '损益', type: 'line', data: d.pnl, symbolSize: 6, lineStyle: { width: 2 }, itemStyle: { color: '#185FA5' } },
+        { name: '收入', type: 'bar', data: d.rev, barMaxWidth: 20, itemStyle: { color: h.blue } },
+        { name: '成本', type: 'bar', data: d.cost, barMaxWidth: 20, itemStyle: { color: h.pale } },
+        { name: '损益', type: 'line', data: d.pnl, symbolSize: 6, lineStyle: { width: 2 }, itemStyle: { color: h.deep } },
       ]
   if (cmp.mode.value === 'mom') {
     series.push({
       name: c.isExp ? '费用(上月)' : '损益(上月)', type: 'line',
       data: momShift(c.isExp ? d.cost : d.pnl), symbol: 'none',
-      lineStyle: { type: 'dashed', width: 1.5, color: 'rgba(28,28,28,.35)' },
-      itemStyle: { color: 'rgba(28,28,28,.35)' },
+      lineStyle: { type: 'dashed', width: 1.5, color: inkA(.35) },
+      itemStyle: { color: inkA(.35) },
       // C6-09 对比虚线:系列级 200/quarticOut 压过注入的 update 0 → clip 从左擦入;关掉是视图 dispose 瞬时(不淡出)
       animationDuration: DUR.update, animationEasing: EASE.enter,
     })
@@ -133,7 +135,7 @@ const structOpt = computed<object>(() => {
     yAxis: { type: 'value', axisLabel: { formatter: '{value} 万' } },
     series: structStack(ps.bySchedule, covMonths.value).map((s, i) => ({
       name: s.name, type: 'bar', stack: 'rev', data: s.values, barMaxWidth: 22,
-      itemStyle: { color: ['#378ADD', '#85B7EB', '#B5D4F4', '#185FA5'][i] },
+      itemStyle: { color: anaPalette().seq[i] },   // 主题顺序色板前 4 位(蓝族渐变)
     })),
   }
 })
@@ -148,7 +150,7 @@ const structOpt = computed<object>(() => {
       <template v-if="recordedCount">
         <AnaKpiTile label="分项收入合计" :value="finWan(sumIncome)" :note="loadedYear + ' 年全年口径'" />
         <AnaKpiTile label="分项成本合计" :value="finWan(sumCost)" :note="'附表1-4 成本'" />
-        <AnaKpiTile label="分项损益合计" :value="finWan(sumPnl)" :note="'损益率 ' + pct(sumPnl, sumIncome)" />
+        <AnaKpiTile label="分项损益合计" profit :value="finWan(sumPnl)" :note="'损益率 ' + pct(sumPnl, sumIncome)" />
         <AnaKpiTile label="费用支出合计" :value="expCost == null ? '—' : finWan(expCost)" note="附表5 · 不计入分项损益" />
         <AnaKpiTile label="附表覆盖" :value="recordedCount + ' / 5'" :note="covMonths.length + ' 个月有数据'" />
       </template>
@@ -216,7 +218,7 @@ const structOpt = computed<object>(() => {
               <div><div class="no">{{ c.no }}</div><div class="nm">{{ c.name }}</div></div>
               <span v-if="!c.isExp" class="rate" :class="{ neg: c.data.pnl < 0 }">{{ pct(c.data.pnl, c.data.income) }}</span>
             </div>
-            <AnaSpark :series="c.spark" :w="150" :h="26" :color="c.isExp ? 'rgb(150,170,205)' : 'var(--hue-blue)'" />
+            <AnaSpark :series="c.spark" :w="150" :h="26" :color="c.isExp ? FILL[5] : 'var(--hue-blue)'" />
             <div class="ft">
               <span class="l">{{ c.isExp ? '全年支出' : '全年损益' }}</span>
               <span class="v" :class="{ neg: !c.isExp && c.data.pnl < 0 }">{{ finMoney(c.isExp ? c.data.cost : c.data.pnl) }}</span>
@@ -264,7 +266,7 @@ const structOpt = computed<object>(() => {
 .pa2-mini .no { font-size: var(--fs-micro); font-weight: var(--fw-semibold); color: var(--text-muted); font-family: var(--font-mono); }
 .pa2-mini .nm { font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .pa2-mini .rate { margin-left: auto; font-size: 11px; font-weight: var(--fw-semibold); font-family: var(--font-mono); padding: 2px 8px; border-radius: var(--radius-full); background: var(--accent-sky); color: var(--hue-blue); white-space: nowrap; }
-.pa2-mini .rate.neg { background: rgb(252, 235, 233); color: var(--hue-red); }
+.pa2-mini .rate.neg { background: var(--danger-soft); color: var(--hue-red); }
 .pa2-mini .ft { display: flex; align-items: baseline; gap: 6px; }
 .pa2-mini .ft .l { font-size: var(--fs-micro); color: var(--text-muted); white-space: nowrap; }
 .pa2-mini .ft .v { font-size: var(--fs-label); font-weight: var(--fw-semibold); font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

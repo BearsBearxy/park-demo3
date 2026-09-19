@@ -41,9 +41,10 @@ function tint(hex: string, a: number): string {
   const n = parseInt(hex.slice(1), 16)
   return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`
 }
-const KIND_FILL: Record<CalCell['kind'], string> = {
+// computed 而不是 setup 时拷一份:页签在 KeepAlive 里常驻,切外观不重挂载,拷走的墨色(DROP)会停在旧外观
+const KIND_FILL = computed<Record<CalCell['kind'], string>>(() => ({
   full: tint(PV_COLORS.FOCUS, 0.16), miss: tint(PV_COLORS.ABOVE, 0.3), drop: PV_COLORS.DROP, todo: 'transparent',
-}
+}))
 
 /** 月档 = 自然月铺满,最多 6 列;超过就是年档 */
 const compact = computed(() => props.data.weeks > 6)

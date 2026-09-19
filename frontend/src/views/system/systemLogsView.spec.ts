@@ -124,4 +124,20 @@ describe('SystemLogsView', () => {
     expect(logs).toHaveBeenCalledTimes(3)
     expect(logs.mock.calls[2][0]).toMatchObject({ src: 'auth', page: 2 })
   })
+
+  // 2026-09-19:起 / 止两个原生日期框合成一颗 ds/DatePicker 区间胶囊。两头同一拍写入,只重拉一次。
+  it('❗起止区间胶囊:两头一起进请求参数,只多发一次;清空两头都撤', async () => {
+    const w = mountView()
+    await flushPromises()
+    const dp = w.findComponent({ name: 'DatePicker' })
+    expect(dp.props('mode')).toBe('range')
+    dp.vm.$emit('update:modelValue', ['2026-09-01', '2026-09-19'])
+    await flushPromises()
+    expect(logs).toHaveBeenCalledTimes(2)
+    expect(logs.mock.calls[1][0]).toMatchObject({ from: '2026-09-01', to: '2026-09-19', page: 1 })
+    dp.vm.$emit('update:modelValue', ['', ''])
+    await flushPromises()
+    expect(logs).toHaveBeenCalledTimes(3)
+    expect(logs.mock.calls[2][0]).toMatchObject({ from: undefined, to: undefined })
+  })
 })

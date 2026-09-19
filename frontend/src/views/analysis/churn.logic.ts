@@ -3,6 +3,7 @@
 //    已流失 = 台账首期在租 ∩ 末期缺席;s10 逐月出现/消失 = 相邻有数月名单对比。
 // ② ECharts option 构建(风险象限散点 / 出现·消失正负柱)— 纯函数,jsdom 单测友好。
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
+import { hues, inkA } from '@/components/ana/anaFmt'
 
 export type Tier = 'high' | 'mid' | 'low'
 
@@ -142,8 +143,9 @@ export function buildChurnModel(ledgerRows: AnalysisLedgerRow[], s10Rows: Analys
 }
 
 // ── ECharts option 构建(主题色字面值:fpAnaTheme 无法引用 CSS 变量) ──
-export const TIER_ECOLOR: Record<Tier, string> = { high: '#E24B4A', mid: '#EF9F27', low: '#378ADD' }
-const RED = '#E24B4A'   // 复审:统一主题语义红
+// ponytail: 红 / 琥珀 / 蓝两种外观同值(anaTheme 暗色只换 deep),模块级取一次;哪天暗色换了这三色,改成按调用取
+const { red: RED, amber: AMBER, blue: BLUE } = hues()   // 复审:统一主题语义红
+export const TIER_ECOLOR: Record<Tier, string> = { high: RED, mid: AMBER, low: BLUE }
 
 /** C5 散点 x 限幅:超界点钉在边界并记 clamped(真值仍在 revMom,tooltip 显示用)。 */
 export function clampPts<T extends { revMom: number | null }>(pts: T[], lo = -100, hi = 300): (T & { x: number; clamped: boolean })[] {
@@ -179,12 +181,12 @@ export function churnScatterOption(list: ChurnRow[], overallRate: number): objec
         score: t.score, recv: t.recv,
         symbol: t.clamped ? 'triangle' : 'circle',
         symbolSize: 7 + Math.sqrt(t.recv / rMax) * 20,
-        itemStyle: { color: TIER_ECOLOR[t.tier], opacity: 0.72, ...(t.clamped ? { borderColor: 'rgba(28,28,28,.8)', borderWidth: 1.2 } : {}) },
+        itemStyle: { color: TIER_ECOLOR[t.tier], opacity: 0.72, ...(t.clamped ? { borderColor: inkA(.8), borderWidth: 1.2 } : {}) },
       })),
       markLine: {
         silent: true, symbol: 'none',
-        lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.35)', width: 1.2 },
-        label: { fontSize: 11, color: 'rgba(28,28,28,.62)' },
+        lineStyle: { type: 'dashed', color: inkA(.35), width: 1.2 },
+        label: { fontSize: 11, color: inkA(.62) },
         // 标签画在图内防裁切:x 均值线(竖)insideStartTop 避开顶部轴名;y 均值线(横)insideEndTop 不贴右缘
         data: [
           { xAxis: xMean, label: { position: 'insideStartTop', formatter: `均值 ${xMean >= 0 ? '+' : ''}${xMean}%` } },
@@ -208,7 +210,7 @@ export function churnFlowOption(flows: ChurnFlow[]): object {
     xAxis: { type: 'category', data: flows.map((f) => f.label) },
     yAxis: { type: 'value', axisLabel: { formatter: (v: number) => String(Math.abs(v)) } },
     series: [
-      { name: '新出现', type: 'bar', stack: 'flow', barWidth: '46%', itemStyle: { color: '#378ADD', borderRadius: [3, 3, 0, 0] }, data: flows.map((f) => f.appeared) },
+      { name: '新出现', type: 'bar', stack: 'flow', barWidth: '46%', itemStyle: { color: BLUE, borderRadius: [3, 3, 0, 0] }, data: flows.map((f) => f.appeared) },
       { name: '消失', type: 'bar', stack: 'flow', itemStyle: { color: RED, borderRadius: [0, 0, 3, 3] }, data: flows.map((f) => -f.disappeared) },
     ],
   }

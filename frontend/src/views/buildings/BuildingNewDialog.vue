@@ -124,7 +124,7 @@ function submit() {
 
 <style scoped>
 /* 1:1 from ledger/LedgerNewCompanyDialog.vue */
-.lg-dlg-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:var(--z-modal); display:grid; place-items:center; opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
+.lg-dlg-mask { position:fixed; inset:0; background:var(--scrim); z-index:var(--z-modal); display:grid; place-items:center; opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
 /* 嵌套态(编辑楼栋从抽屉里打开)升一档,与同场景的 ContractNewDialog .ct-mask 同档。
    层级是结构问题不是实例问题,故用 class 切档,不用内联 :style 打补丁(见 PAGE-BEHAVIOR-SPEC §3)。
    与 BuildingDrawer 的 .bd-mask(同 320)不会同屏:那三个小弹窗都由抽屉内按钮触发,
@@ -138,7 +138,7 @@ function submit() {
 .lg-dlg-b { padding:18px 22px 4px; }
 .lg-dlg-lab { font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); margin-bottom:7px; }
 .lg-dlg-in { width:100%; box-sizing:border-box; height:40px; padding:0 12px; font-size:13.5px; color:var(--text-primary);
-  border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white);
+  border:1px solid var(--border-control); border-radius:var(--radius-md); outline:none; background:var(--surface-white);
   font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
 .lg-dlg-in:focus { border-color:var(--hue-blue); }
 .lg-dlg-in.err { border-color:var(--hue-red); }

@@ -388,7 +388,7 @@ function onClose() {
 
 .pb-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .pb-lbl { font-size: 12px; color: var(--text-muted); }
-.pb-search { width: 170px; height: 32px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: var(--radius-full); font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); }
+.pb-search { width: 170px; height: 32px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--border-control); border-radius: var(--radius-full); font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); }
 .pb-search:focus { outline: none; border-color: var(--hue-blue); }
 .pb-chk { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); cursor: pointer; }
 .pb-chk input { accent-color: var(--hue-blue); cursor: pointer; }
@@ -414,7 +414,7 @@ function onClose() {
 .pb-noro { text-align: center !important; padding: 40px 16px !important; color: var(--text-disabled); font-size: var(--fs-label); }
 
 .pb-tname { display: block; font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pb-dot { font-style: normal; margin-left: 5px; font-size: 9px; color: var(--hue-orange, rgb(255, 149, 0)); cursor: help; }
+.pb-dot { font-style: normal; margin-left: 5px; font-size: 9px; color: var(--hue-orange); cursor: help; }
 .pb-txt { display: block; text-align: left; font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pb-txt.dim { color: var(--text-muted); }
 .pb-txt.ct-r { text-align: right; color: var(--text-disabled); }
@@ -422,7 +422,7 @@ function onClose() {
 .pb-num { display: block; text-align: right; font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .pb-val { display: block; text-align: right; font-size: 12px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pb-val.dim { color: var(--text-muted); }
-.pb-val.none { color: rgb(178, 100, 0); }
+.pb-val.none { color: var(--orange-text); }
 .pb-val em { font-style: normal; margin-left: 5px; font-size: 10.5px; color: var(--text-muted); }
 .pb-stash { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
 .pb-stash b { font-size: 12px; color: var(--hue-blue); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

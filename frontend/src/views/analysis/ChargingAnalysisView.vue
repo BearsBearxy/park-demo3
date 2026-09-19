@@ -13,10 +13,11 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
-import Select from '@/components/ds/Select.vue'
+import DatePicker from '@/components/ds/DatePicker.vue'
 import { iconFor } from '@/components/ds/icon'
-import { fnum, STATUS, type AnaStatusLevel } from '@/components/ana/anaFmt'
-import { CAT_COLORS } from '@/components/ana/anaTheme'
+import { fnum, hues, inkA, STATUS, type AnaStatusLevel } from '@/components/ana/anaFmt'
+import { anaPalette } from '@/components/ana/anaTheme'
+import { resolvedTheme } from '@/stores/appearance'
 import { cpMeterApi, type CpPowerUsageDTO, type CpReadingDTO, type CpStationDTO } from '@/api/cpMeter'
 import { buildYearOptions } from '@/utils/yearGate'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
@@ -33,9 +34,8 @@ const TAB_ZH: Record<'car' | 'ebike', string> = { car: '汽车', ebike: '电动�
 const today = new Date()
 const year = ref(today.getFullYear())
 const dataYears = ref<number[]>([])
-const yearOpts = computed(() =>
-  buildYearOptions(dataYears.value, today).map((y) => ({ value: String(y), label: `${y}年` })),
-)
+// 年份字段可选范围 = 改前年下拉的年份区间(buildYearOptions,连续)
+const yearSpan = computed(() => buildYearOptions(dataYears.value, today))
 
 // ── 取数:桩库一次 + 该年整年 readings/power-usage(month 缺省=全年,§4 新口);竞态守卫同 CpMeterView ──
 const stations = ref<CpStationDTO[]>([])
@@ -130,7 +130,11 @@ const conclusion = computed<{ text: string; tone: AnaStatusLevel }[]>(() => {
 // ── 图1 桩月度量收:各桩充电量堆叠柱 + 月收益线(双轴) ──
 const M_LABELS = Array.from({ length: 12 }, (_, i) => `${i + 1}月`)
 const sm = computed(() => stationMonthly(myStations.value, myReadings.value))
-const chart1Opt = computed<object>(() => ({
+const chart1Opt = computed<object>(() => {
+  const cat = anaPalette().cat
+  // 收益线深灰在暗底上 1.2:1 看不见 → 暗色换中性浅灰(同暗色图例字);稿上没单列这条线
+  const net = resolvedTheme.value === 'dark' ? inkA(.8) : '#334155'
+  return {
   // null 显「未抄表」而不是 0 —— tooltip 是用户求证「这月到底是 0 还是没数」的地方
   tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (v == null ? '未抄表' : String(v)) },
   legend: { top: 0, type: 'scroll' },
@@ -145,20 +149,21 @@ const chart1Opt = computed<object>(() => ({
     // 前 4 位的蓝族渐变(顺序色板),三根柱子全是深浅不同的蓝,读不出哪根是哪个桩。
     ...sm.value.stations.map((s, i) => ({
       name: s.name, type: 'bar', stack: 'chg', barMaxWidth: 30,
-      itemStyle: { color: CAT_COLORS[i % CAT_COLORS.length] },
+      itemStyle: { color: cat[i % cat.length] },
       data: s.charge.map((v) => (v == null ? null : +v.toFixed(1))),   // null 保持 null:该月没抄表,柱子不画
     })),
     {
       // 收益线走中性深灰:它是与柱子**不同量纲**的第二轴,不该混进桩的类目色里。
       // 改前写死 #185FA5,正是色板第 4 位 —— 站点数一旦到 4,第四根柱会与收益线同色。
       name: '收益', type: 'line', yAxisIndex: 1, symbol: 'circle', symbolSize: 5,
-      itemStyle: { color: '#334155' }, lineStyle: { width: 2, color: '#334155' },
+      itemStyle: { color: net }, lineStyle: { width: 2, color: net },
       // connectNulls 默认 false → 没抄表的月线断开,而不是掉到 0 再拉回来
       connectNulls: false,
       data: sm.value.revenue.map((v) => (v == null ? null : +v.toFixed(0))),
     },
   ],
-}))
+  }
+})
 
 // ── 图2 运营商结构:收益占比环图 + 手续费率横条 ──
 const ops = computed(() => operatorTotals(myStations.value, myReadings.value))
@@ -184,7 +189,7 @@ const feeOpt = computed<object>(() => ({
   series: [{
     name: '手续费率', type: 'bar', barMaxWidth: 20,
     data: [...feeRows.value].reverse().map((o) => +(o.feeRate! * 100).toFixed(2)),
-    itemStyle: { color: '#85B7EB', borderRadius: [0, 3, 3, 0] },
+    itemStyle: { color: hues().mid, borderRadius: [0, 3, 3, 0] },
     label: { show: true, position: 'right', fontSize: 11, formatter: '{c}%' },
   }],
 }))
@@ -201,7 +206,7 @@ const lossOpt = computed<object>(() => ({
   series: loss.value.map((l) => ({
     name: l.operator, type: 'line', connectNulls: false, symbol: 'circle', symbolSize: 6, lineStyle: { width: 2 },
     data: l.rates.map((v) =>
-      v == null ? null : { value: +(v * 100).toFixed(1), itemStyle: v < 0 ? { color: '#E24B4A' } : undefined }),
+      v == null ? null : { value: +(v * 100).toFixed(1), itemStyle: v < 0 ? { color: hues().red } : undefined }),
   })),
 }))
 </script>
@@ -214,8 +219,9 @@ const lossOpt = computed<object>(() => ({
         <button :class="{ on: tab === 'car' }" @click="tab = 'car'">汽车</button>
         <button :class="{ on: tab === 'ebike' }" @click="tab = 'ebike'">电动车</button>
       </span>
-      <div style="width: 110px">
-        <Select :options="yearOpts" :model-value="String(year)" size="sm" @update:model-value="year = +$event" />
+      <div style="width: 120px">
+        <DatePicker mode="year" size="sm" :model-value="String(year)" :min="String(yearSpan[0])"
+                    :max="String(yearSpan[yearSpan.length - 1])" aria-label="年份" @update:model-value="year = +$event" />
       </div>
     </template>
 

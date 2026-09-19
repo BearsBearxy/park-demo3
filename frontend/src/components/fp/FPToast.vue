@@ -82,13 +82,15 @@ function close() { clear(); emit('update:modelValue', '') }
      Height Hug 36 · Radius 16 · Padding 8/12/8/12 · Gap 8 · Colors Black/80%
      36 = 8(上) + 20(图标与行高) + 8(下)；87(「Done」态宽) = 12 + 20 + 8 + 35 + 12。
      Black/80% 在本仓的语言里就是 --ink-700 = rgba(28,28,28,.8)
-     —— 近黑而非纯黑 #000（readme「never pure #000 for body」）。 */
+     —— 近黑而非纯黑 #000（readme「never pure #000 for body」）。
+     2026-09-19 暗色模式:改引 --toast-bg(与底部刷新条同一个底;--ink-700 暗色下会翻成浅灰),
+     取它的 80%:浅色 = 原 --ink-700(28,28,28,.8)逐位不变(DARK-MODE-SPEC §5)。 */
   display: flex; align-items: center; gap: 8px;
   padding: 8px 12px;
   border-radius: var(--radius-lg);
-  background: var(--ink-700);
+  background: color-mix(in srgb, var(--toast-bg) 80%, transparent);
   color: var(--text-on-solid);
-  box-shadow: 0 12px 32px rgba(28, 28, 28, .32);
+  box-shadow: var(--shadow-toast);   /* 待加的 --shadow-toast:暗色下多一圈 1px 亮边 */
   font-family: var(--font-sans);
   /* 设计稿的字号落在 13px，但 13 不在字号阶梯里（UI-CONSISTENCY-SPEC §2 禁阶梯外/禁小数）。
      取 --fs-body(14px)：行高 20px 正好凑满 36px 高，总宽也回到设计稿的 87px。 */
@@ -110,7 +112,7 @@ function close() { clear(); emit('update:modelValue', '') }
   border: none; background: none; border-radius: var(--radius-full);
   color: inherit; opacity: .65; cursor: pointer;
 }
-.fpt-x:hover { opacity: 1; background: rgba(255, 255, 255, .14); }
+.fpt-x:hover { opacity: 1; background: color-mix(in srgb, var(--text-on-solid) 14%, transparent); }
 
 /* 语气只由图标区分，底色恒定 —— 这是与 jfen 设计稿一致的地方，也是与旧版浅色语义底最大的差别。
    CSS 的 fill 会覆盖 lucide 根 svg 的 presentation attribute fill="none"（作者样式表优先级更高），
@@ -122,17 +124,20 @@ function close() { clear(); emit('update:modelValue', '') }
    canvas 实测对比度 green 2.21 / red 1.79 / blue 1.85 —— 全部不过 WCAG SC 1.4.11 的
    图形元素 3:1，info 那档几乎与底色同亮度、等于看不见。
    故按同色相把 L 提到 ~0.72–0.78 另取一组；--hue-yellow 本就亮（实测 4.75）直接引用。
-   ⚠ 将来做暗色模式时，这组应提升为全局的「深底语义色」令牌，届时把这里换掉。 */
+   2026-09-19 暗色模式:这组就是暗色 --hue-green / --hue-red / --hue-blue 的值(tokens.css 暗色块由此而来)。
+   提示条两种外观都是深底,所以这里不引令牌(浅色下的令牌是给白底调的),写同值字面量;
+   红原来是 0.72 0.16,跟全站新红统一成 0.75 0.14(M4)。 */
 .fpt {
   --fpt-success: oklch(0.78 0.150 150);
   --fpt-warning: var(--hue-yellow);
-  --fpt-error:   oklch(0.72 0.160 27);
+  --fpt-error:   oklch(0.75 0.140 27);
   --fpt-info:    oklch(0.74 0.120 250);
 }
-.fpt--success .fpt-i { fill: var(--fpt-success); color: var(--ink-900); }
-.fpt--warning .fpt-i { fill: var(--fpt-warning); color: var(--ink-900); }
-.fpt--error   .fpt-i { fill: var(--fpt-error);   color: var(--ink-900); }
-.fpt--info    .fpt-i { fill: var(--fpt-info);    color: var(--ink-900); }
+/* 图标里的勾 / 叉 = 提示条底色(镂空):原来引 --ink-900,暗色下会翻成浅色 */
+.fpt--success .fpt-i { fill: var(--fpt-success); color: var(--toast-bg); }
+.fpt--warning .fpt-i { fill: var(--fpt-warning); color: var(--toast-bg); }
+.fpt--error   .fpt-i { fill: var(--fpt-error);   color: var(--toast-bg); }
+.fpt--info    .fpt-i { fill: var(--fpt-info);    color: var(--toast-bg); }
 
 /* 只动 opacity/transform，不动尺寸 —— 进出场都不得引起任何重排 */
 

@@ -685,17 +685,17 @@ const bookingRows = computed(() => shown('booking'))
 .dh-sup { height: 32px; flex: 0 0 auto; display: flex; align-items: center; gap: 10px; }
 .dh-sup-inbox {
   flex: 0 0 auto; font-size: var(--fs-label); color: var(--text-primary);
-  background: var(--surface-card); border: 1px solid var(--border-subtle);
+  background: var(--surface-card); border: 1px solid var(--border-control);
   border-radius: var(--radius-full); padding: 4px 12px; cursor: pointer;
 }
 .dh-sup-who { flex: 1; min-width: 0; overflow: hidden; display: flex; align-items: center; gap: 6px; }
 /* 审核条:复用主管条的定高与胶囊,只把计数推到右边 */
 .dh-rvbar .dh-rvcount { margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text-secondary); }
 .dh-rvfilter { font-size: var(--fs-micro); color: var(--text-muted); }
-.dh-sup-inbox[data-on="true"] { border-color: var(--hue-orange); color: var(--hue-orange); background: rgb(252, 243, 232); }
+.dh-sup-inbox[data-on="true"] { border-color: var(--hue-orange); color: var(--hue-orange); background: var(--warn-soft); }
 .dh-sup-chip {
   flex: 0 0 auto; font-size: var(--fs-micro); color: var(--text-secondary);
-  background: var(--surface-card); border: 1px solid var(--border-subtle);
+  background: var(--surface-card); border: 1px solid var(--border-control);
   border-radius: var(--radius-full); padding: 2px 10px; cursor: pointer; white-space: nowrap;
 }
 
@@ -710,8 +710,8 @@ const bookingRows = computed(() => shown('booking'))
 
 .dh-blocker {
   display: flex; align-items: center; gap: 10px; padding: 10px 14px;
-  background: color-mix(in srgb, var(--hue-orange) 8%, white);
-  border: 1px solid color-mix(in srgb, var(--hue-orange) 24%, white);
+  background: color-mix(in srgb, var(--hue-orange) 8%, var(--surface-white));
+  border: 1px solid color-mix(in srgb, var(--hue-orange) 24%, var(--surface-white));
   border-radius: var(--radius-sm); color: var(--hue-orange);
 }
 .dh-bt { flex: 1; font-size: var(--fs-label); color: var(--text-primary); }
@@ -767,7 +767,7 @@ const bookingRows = computed(() => shown('booking'))
 .dh-racts { flex: 0 0 auto; width: 96px; display: flex; justify-content: flex-end; gap: 4px; }
 .dh-abtn {
   font-size: var(--fs-micro); line-height: 1; padding: 3px 7px;
-  border: 1px solid var(--border-subtle); border-radius: var(--radius-full);
+  border: 1px solid var(--border-control); border-radius: var(--radius-full);
   background: var(--surface-white); color: var(--text-secondary); cursor: pointer; white-space: nowrap;
   transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
 }

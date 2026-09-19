@@ -321,7 +321,7 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
 .s10-del:hover { background:rgba(255,59,48,.1); color:var(--hue-red); }
 
 /* 编辑输入 */
-.s10-input { width:100%; box-sizing:border-box; height:28px; border:1px solid var(--border-subtle); border-radius:6px; padding:0 8px; font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:12.5px; text-align:right; color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
+.s10-input { width:100%; box-sizing:border-box; height:28px; border:1px solid var(--border-control); border-radius:6px; padding:0 8px; font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:12.5px; text-align:right; color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
 .s10-input:focus { border-color:var(--hue-blue); }
 .s10-input.note { font-family:var(--font-sans); text-align:left; }
 .s10-input.name { font-family:var(--font-sans); height:30px; font-weight:var(--fw-medium); }
@@ -341,8 +341,8 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
 .s10-empty-ic { width:52px; height:52px; border-radius:16px; background:var(--surface-card); display:grid; place-items:center; color:var(--text-muted); }
 .s10-empty-t { font-size:15px; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .s10-empty-s { font-size:13px; color:var(--text-muted); max-width:420px; line-height:1.5; }
-.s10-emptybtn { display:inline-flex; align-items:center; gap:7px; height:38px; padding:0 18px; border:none; border-radius:var(--radius-full); background:var(--ink-900); color:#fff; cursor:pointer; font-family:var(--font-sans); font-size:13.5px; font-weight:var(--fw-medium); }
-.s10-emptybtn:hover { background:rgb(58,58,58); }
+.s10-emptybtn { display:inline-flex; align-items:center; gap:7px; height:38px; padding:0 18px; border:none; border-radius:var(--radius-full); background:var(--ink-900); color:var(--control-solid-text); cursor:pointer; font-family:var(--font-sans); font-size:13.5px; font-weight:var(--fw-medium); }
+.s10-emptybtn:hover { background:var(--control-solid-hover); }
 
 /* 深链定位行:2s 高亮渐隐(结束后还原表格自身背景) */
 tr.row-flash td { animation: s10-row-flash var(--dur-highlight) var(--ease-standard); }

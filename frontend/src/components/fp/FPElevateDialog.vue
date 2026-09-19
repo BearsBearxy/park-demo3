@@ -338,7 +338,7 @@ async function submit() {
 .ev-cands { border: 1px solid var(--border-subtle); border-radius: 10px; overflow: hidden; }
 .ev-cand { display: flex; align-items: center; gap: 10px; padding: 9px 11px;
            background: var(--surface-white); cursor: pointer; }
-.ev-cand + .ev-cand { border-top: 1px solid rgba(28, 28, 28, .06); }
+.ev-cand + .ev-cand { border-top: 1px solid color-mix(in srgb, var(--ink-900) 6%, transparent); }
 .ev-cand.on { background: var(--accent-blue); }
 .ev-cand.off { opacity: .45; cursor: not-allowed; }
 .ev-cand input { accent-color: var(--hue-blue); }
@@ -357,12 +357,12 @@ async function submit() {
 .ev-ringav { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
 .ev-pill { position: absolute; bottom: -3px; left: 50%; transform: translateX(-50%);
            font-family: var(--font-mono); font-size: 11px; font-weight: var(--fw-semibold);
-           font-variant-numeric: tabular-nums; background: var(--ink-900); color: #fff;
+           font-variant-numeric: tabular-nums; background: var(--ink-900); color: var(--control-solid-text);
            border-radius: var(--radius-full); padding: 2px 8px; white-space: nowrap;
            box-shadow: 0 0 0 2px var(--surface-white); }
 .ev-wt { font-size: 14.5px; font-weight: var(--fw-semibold); }
 .ev-ws { font-size: 12px; color: var(--text-muted); max-width: 36ch; line-height: 1.6; }
-.rs-track { stroke: rgba(28, 28, 28, .08); }
+.rs-track { stroke: color-mix(in srgb, var(--ink-900) 8%, transparent); }
 .rs-b { stroke: var(--hue-blue); }
 .rs-o { stroke: var(--hue-orange); }
 .rs-r { stroke: var(--hue-red); }

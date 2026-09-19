@@ -67,7 +67,7 @@ function onConfirm() {
 </template>
 
 <style scoped>
-.rvd-scrim { position: fixed; inset: 0; z-index: var(--z-confirm); background: rgba(28, 28, 28, .34);
+.rvd-scrim { position: fixed; inset: 0; z-index: var(--z-confirm); background: var(--scrim);
              display: grid; place-items: center;
              opacity: 0; animation: fp-fade-in var(--dur-base) var(--ease-out) forwards; }
 .rvd-card { width: min(432px, 92vw); background: var(--surface-white); border-radius: var(--radius-xl);

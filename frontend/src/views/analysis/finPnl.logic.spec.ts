@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PnlSummary } from '@/analysis/anaData'
 import type { BudgetRowDTO } from '@/api/budget'
-import { CMP_BASELINE, CMP_BUDGET } from '@/components/ana/anaFmt'
+import { cmpBaseline, cmpBudget } from '@/components/ana/anaFmt'
 import {
   budgetMonthlyWan, momOverlay, pnlChain, subjectMonthly, subjectTrendOption, waterfallOption, waterfallParts,
   type WfItem,
@@ -110,14 +110,14 @@ describe('subjectTrendOption(环比虚线/预算 markLine)', () => {
     const o = subjectTrendOption(['1月', '3月'], [1, 3], '营业收入', { mom: [null, 1], budget: 772.5 }) as TrendOpt
     expect(o.series).toHaveLength(2)
     expect(o.series[0].markLine!.data[0].yAxis).toBe(772.5)
-    expect(o.series[0].markLine!.lineStyle.color).toBe(CMP_BUDGET)
+    expect(o.series[0].markLine!.lineStyle.color).toBe(cmpBudget())
     // 图表清晰化 §1:标签画图内(insideEndTop)+「预算月均 X万」+ 预算语义色
     expect(o.series[0].markLine!.label.position).toBe('insideEndTop')
     expect(o.series[0].markLine!.label.formatter).toBe('预算月均 773万')
-    expect(o.series[0].markLine!.label.color).toBe(CMP_BUDGET)
+    expect(o.series[0].markLine!.label.color).toBe(cmpBudget())
     expect(o.series[1].name).toBe('上期')
     expect(o.series[1].lineStyle!.type).toBe('dashed')
-    expect(o.series[1].lineStyle!.color).toBe(CMP_BASELINE)
+    expect(o.series[1].lineStyle!.color).toBe(cmpBaseline())
   })
   it('无对比 → 单系列无 markLine', () => {
     const o = subjectTrendOption(['1月'], [1], '营业收入', {}) as TrendOpt

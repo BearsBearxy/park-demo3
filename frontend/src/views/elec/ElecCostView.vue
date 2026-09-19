@@ -828,7 +828,7 @@ function fmtMetric(mt: ElecMetricDTO): string {
 /* 页面:纵排两卡,壳层 main.fp-content 自带滚动,不做视口定高(行数=电表×费项 固定量级,不分页不裁行) */
 .ec-permonth {
   display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto;
-  padding: 5px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  padding: 5px 10px; border: 1px solid var(--border-control); border-radius: var(--radius-sm);
   background: var(--surface-white); cursor: pointer;
   font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-muted);
   transition: color var(--dur-fast), border-color var(--dur-fast);
@@ -898,6 +898,7 @@ function fmtMetric(mt: ElecMetricDTO): string {
 
 /* 合计/拆分并存黄警 */
 .ec-warn { font-size: var(--fs-micro); color: var(--hue-orange); background: rgb(255, 247, 232); border-radius: var(--radius-full); padding: 1px 7px; cursor: help; }
+:root[data-theme="dark"] .ec-warn { background: var(--warn-soft); }
 
 /* 来源列:模拟=灰徽标(title=推导来源),手工/导入=灰文本 */
 .ec-sim { font-size: var(--fs-micro); color: var(--text-muted); background: var(--bg-sunken); border-radius: var(--radius-full); padding: 1px 7px; cursor: help; }
@@ -907,16 +908,16 @@ function fmtMetric(mt: ElecMetricDTO): string {
 /* 编辑态行内输入(金额/备注;静默融入单元格,hover/聚焦显边框,同 PvMeterView .pm-edit 家族) */
 .ec-in { width: 100%; min-width: 0; box-sizing: border-box; height: 30px; padding: 0 8px; text-align: right; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-body); color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard); appearance: textfield; -moz-appearance: textfield; }
 .ec-in::-webkit-outer-spin-button, .ec-in::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.ec-in:hover { border-color: var(--border-subtle); background: var(--surface-white); }
+.ec-in:hover { border-color: var(--border-control); background: var(--surface-white); }
 .ec-in:focus { outline: none; border-color: var(--hue-blue); background: var(--surface-white); }
 .ec-in::placeholder { color: var(--text-disabled); }
 .ec-in.txt { text-align: left; font-family: var(--font-sans); font-size: 12.5px; }
 
 /* 电表名行内编辑(编辑态;同 .pm-edit.l 家族) */
-.ec-nameedit { box-sizing: border-box; height: 30px; padding: 0 8px; max-width: 220px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-sans); font-size: 12.5px; font-weight: var(--fw-medium); color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard); }
+.ec-nameedit { box-sizing: border-box; height: 30px; padding: 0 8px; max-width: 220px; border: 1px solid var(--border-control); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-sans); font-size: 12.5px; font-weight: var(--fw-medium); color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard); }
 .ec-nameedit:focus { outline: none; border-color: var(--hue-blue); }
 .ec-del { width: 26px; height: 26px; flex: 0 0 auto; border: none; background: transparent; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-muted); display: inline-grid; place-items: center; transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
-.ec-del:hover { background: rgb(255, 238, 237); color: var(--hue-red); }
+.ec-del:hover { background: var(--danger-soft); color: var(--hue-red); }
 
 /* ── 派生指标表:缺源行置灰;公式列 fs-label 灰 ── */
 .ec-table td.mval { font-weight: var(--fw-semibold); }
@@ -928,7 +929,7 @@ function fmtMetric(mt: ElecMetricDTO): string {
 .ec-table tbody tr.miss td.lbl { color: var(--text-muted); }
 
 /* ── 电价参数小节输入/生效值 ── */
-.ec-cfgin { width: 100%; box-sizing: border-box; height: 30px; padding: 0 8px; text-align: right; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-body); color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard); appearance: textfield; -moz-appearance: textfield; }
+.ec-cfgin { width: 100%; box-sizing: border-box; height: 30px; padding: 0 8px; text-align: right; border: 1px solid var(--border-control); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-body); color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard); appearance: textfield; -moz-appearance: textfield; }
 .ec-cfgin::-webkit-outer-spin-button, .ec-cfgin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .ec-cfgin:focus { outline: none; border-color: var(--hue-blue); }
 .ec-cfgin::placeholder { color: var(--text-disabled); }
@@ -936,7 +937,7 @@ function fmtMetric(mt: ElecMetricDTO): string {
 .ec-cfgsrc { margin-left: 6px; font-size: var(--fs-micro); font-family: var(--font-sans); color: var(--text-muted); background: var(--bg-sunken); border-radius: var(--radius-full); padding: 1px 7px; }
 
 /* ── 新增电表弹窗(同 PvMeterView .pm-dlg 家族) ── */
-.ec-mask { position: fixed; inset: 0; background: rgba(28, 28, 28, .34); z-index: 140; display: grid; place-items: center; }
+.ec-mask { position: fixed; inset: 0; background: var(--scrim); z-index: 140; display: grid; place-items: center; }
 .ec-dlg { width: min(440px, 90vw); background: var(--surface-white); border-radius: var(--radius-xl); box-shadow: 0 16px 48px rgba(28, 28, 28, .22); overflow: hidden; }
 .ec-dlg-h { padding: 20px 22px 0; }
 .ec-dlg-h h3 { margin: 0; font-size: 16px; font-weight: var(--fw-semibold); color: var(--text-primary); }

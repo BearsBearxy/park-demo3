@@ -112,7 +112,7 @@ function onFr(e: Event) {
           :note="'当月收入 ¥' + wan(be.rev) + '万'" />
         <AnaKpiTile label="收入留存率" :value="(be.cm * 100).toFixed(0) + '%'" note="扣除随收入变动的成本后剩余(边际贡献率)" />
         <AnaKpiTile label="月固定成本" :value="'¥' + wan(be.fixed) + '万'" :note="'系数 ' + be.fr.toFixed(2) + '(滑杆可调)'" />
-        <AnaKpiTile label="月净利" :value="(be.profit >= 0 ? '¥' : '−¥') + wan(Math.abs(be.profit)) + '万'" :note="'口径月 ' + ymUsed" />
+        <AnaKpiTile label="月净利" profit :value="(be.profit >= 0 ? '¥' : '−¥') + wan(Math.abs(be.profit)) + '万'" :note="'口径月 ' + ymUsed" />
         <AnaKpiTile label="s10 开票收入" :value="s10Used ? '¥' + wan(s10Used.total) + '万' : '—'"
           :note="s10Used ? '口径月 ' + s10Used.ym : '附表10 未录入'" />
       </template>

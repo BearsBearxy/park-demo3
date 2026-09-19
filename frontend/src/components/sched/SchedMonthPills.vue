@@ -39,7 +39,7 @@ const months = Array.from({ length: 12 }, (_, i) => i + 1)
 .lc-mpills { display:grid; grid-template-columns:repeat(12, minmax(0,1fr)); gap:2px; padding:3px; background:var(--bg-sunken, var(--surface-sunken)); border-radius:var(--radius-full); box-sizing:border-box; }
 .lc-mpill { position:relative; height:30px; border:none; background:transparent; border-radius:var(--radius-full); cursor:pointer; font-family:var(--font-sans); font-size:12.5px; color:var(--text-muted); display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; transition:background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
 .lc-mpill:hover:not(.on) { color:var(--text-primary); }
-.lc-mpill.on { background:var(--surface-white); color:var(--text-primary); font-weight:var(--fw-semibold); box-shadow:var(--shadow-pill, 0 1px 4px rgba(28,28,28,.12)); }
+.lc-mpill.on { background:var(--surface-white); color:var(--text-primary); font-weight:var(--fw-semibold); box-shadow:var(--shadow-pill); }
 .lc-mpill.empty { color:var(--text-disabled); }
 /* 6px 橙点,绝对定位 —— 有人编辑和没人编辑,胶囊尺寸一模一样 */
 .lc-mdot { position:absolute; top:4px; right:7px; width:6px; height:6px; border-radius:50%; background:var(--hue-orange); box-shadow:0 0 0 1.5px var(--surface-white); }

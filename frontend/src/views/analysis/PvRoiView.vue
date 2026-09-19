@@ -13,7 +13,7 @@ import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import { fetchPvAll, fetchPvPhases } from '@/analysis/anaData'
 import { anaSettings } from '@/analysis/anaSettings'
 import { finWan } from '@/utils/finFmt'
-import { fnum } from '@/components/ana/anaFmt'
+import { fnum, hues } from '@/components/ana/anaFmt'
 import { CALLOUT, calloutMark } from '@/components/ana/anaTheme'
 import type { PvPhaseDTO, PvRecordDTO } from '@/types/pv'
 import { buildRamp, cumSeries, phaseMonthly, phaseSummaries } from './pvRoi.logic'
@@ -64,8 +64,9 @@ const rampOpt = computed<object>(() => {
   const investW = invest.value / 1e4
   const w = (a: (number | null)[]): (number | null)[] => a.map((v) => (v == null ? null : +(v / 1e4).toFixed(1)))
   const actualW = w(r.actual), projW = w(r.projected)
+  const { blue, red, mid } = hues()
   const markPoint = r.hitIdx != null
-    ? calloutMark(CALLOUT.blue, '#378ADD', [{ coord: [r.hitIdx, (actualW[r.hitIdx] ?? projW[r.hitIdx]) as number], lines: ['回收 ' + r.labels[r.hitIdx]] }])
+    ? calloutMark(CALLOUT.blue, blue, [{ coord: [r.hitIdx, (actualW[r.hitIdx] ?? projW[r.hitIdx]) as number], lines: ['回收 ' + r.labels[r.hitIdx]] }])
     : undefined
   const yMax = Math.max(investW * 1.1, ...actualW.map((v) => v ?? 0), ...projW.map((v) => v ?? 0))
   return {
@@ -79,20 +80,20 @@ const rampOpt = computed<object>(() => {
     series: [
       {
         name: '累计收益', type: 'line', data: actualW, symbol: 'circle', symbolSize: 4,
-        itemStyle: { color: '#378ADD' }, lineStyle: { width: 2 }, areaStyle: { color: 'rgba(55,138,221,.08)' },
+        itemStyle: { color: blue }, lineStyle: { width: 2 }, areaStyle: { color: blue, opacity: 0.056 },   // = 改前 rgba(…,.08) × 引擎默认面积 opacity 0.7
         markLine: {
           silent: true, symbol: 'none',
-          lineStyle: { type: 'dashed', color: '#E24B4A', width: 1.5 },
+          lineStyle: { type: 'dashed', color: red, width: 1.5 },
           // 图表清晰化 §1:标签画在绘图区内,不许被图边裁切(默认 end 落图外右缘被裁,同 CockpitView 预算线)。
           // 放左端:回收点落在这条线上,右端要留给「回收」签(2026-09-17 放右端时两者叠了 1.4px)
-          label: { position: 'insideStartTop', formatter: '投资额 ' + fnum(investW, 0) + ' 万', fontSize: 11, color: '#E24B4A' },
+          label: { position: 'insideStartTop', formatter: '投资额 ' + fnum(investW, 0) + ' 万', fontSize: 11, color: red },
           data: [{ yAxis: investW }],
         },
         markPoint: r.hitIdx != null && actualW[r.hitIdx] != null ? markPoint : undefined,
       },
       {
         name: '外推(年化口径)', type: 'line', data: projW, symbol: 'none',
-        lineStyle: { type: 'dashed', width: 1.5, color: '#85B7EB' }, itemStyle: { color: '#85B7EB' },
+        lineStyle: { type: 'dashed', width: 1.5, color: mid }, itemStyle: { color: mid },
         markPoint: r.hitIdx != null && actualW[r.hitIdx] == null ? markPoint : undefined,
       },
     ],
@@ -113,11 +114,11 @@ const phaseOpt = computed<object>(() => {
     series: [
       {
         name: '自消纳', type: 'bar', stack: 'fee', barMaxWidth: 46,
-        data: rs.map((x, i) => ({ value: +(x.selfAmt / 1e4).toFixed(1), itemStyle: { color: '#378ADD', opacity: dim(i) } })),
+        data: rs.map((x, i) => ({ value: +(x.selfAmt / 1e4).toFixed(1), itemStyle: { color: hues().blue, opacity: dim(i) } })),
       },
       {
         name: '上网', type: 'bar', stack: 'fee',
-        data: rs.map((x, i) => ({ value: +(x.gridAmt / 1e4).toFixed(1), itemStyle: { color: '#B5D4F4', opacity: dim(i) } })),
+        data: rs.map((x, i) => ({ value: +(x.gridAmt / 1e4).toFixed(1), itemStyle: { color: hues().pale, opacity: dim(i) } })),
       },
     ],
   }

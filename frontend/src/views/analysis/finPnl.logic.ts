@@ -4,14 +4,12 @@
 import type { PnlSummary } from '@/analysis/anaData'
 import { matchBudgetKey, type BudgetKey } from '@/analysis/budget'
 import type { BudgetRowDTO } from '@/api/budget'
-import { CMP_BASELINE, CMP_BUDGET, fnum } from '@/components/ana/anaFmt'
+import { cmpBaseline, cmpBudget, fnum, hues, inkA } from '@/components/ana/anaFmt'
 import { DUR, EASE } from '@/components/ana/anaMotion'
 
 export interface WfItem { name: string; value: number; type: 'start' | 'end' | 'inc' | 'dec' }
 
-const C_POS = '#378ADD'   // 加项/起点(蓝)
-const C_NEG = '#E24B4A'   // 减项(语义红)
-const C_END = '#185FA5'   // 终点(深蓝)
+// 加项/起点 = 蓝、减项 = 语义红、终点 = 深蓝;按当前外观取(暗色深蓝换灰蓝)
 const wanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
 
 /** 瀑布垫底柱分解:pad=该柱底部累计,bar=|value|(fin-pnl / fin-cashflow 共用;导出供单测)。 */
@@ -35,6 +33,7 @@ export function waterfallParts(items: WfItem[]): { pads: number[]; bars: number[
 /** 瀑布 ECharts option(透明垫底柱;第二系列可点击,name=科目)。 */
 export function waterfallOption(items: WfItem[], height?: { barWidth?: string }): object {
   const { pads, bars } = waterfallParts(items)
+  const { blue: C_POS, red: C_NEG, deep: C_END } = hues()
   return {
     grid: { left: 8, right: 12, top: 30, bottom: 4, containLabel: true },
     tooltip: {
@@ -59,7 +58,7 @@ export function waterfallOption(items: WfItem[], height?: { barWidth?: string })
           itemStyle: { color: items[i].type === 'dec' ? C_NEG : items[i].type === 'end' ? C_END : C_POS, borderRadius: 3 },
         })),
         label: {
-          show: true, position: 'top', fontSize: 11, color: 'rgba(28,28,28,.62)',
+          show: true, position: 'top', fontSize: 11, color: inkA(.62),
           formatter: (p: { dataIndex: number }) => {
             const it = items[p.dataIndex]
             return (it.value < 0 ? '−' : '') + fnum(Math.abs(it.value), 0)
@@ -126,13 +125,13 @@ export function subjectTrendOption(
 ): object {
   const series: object[] = [{
     name: subject, type: 'bar', data: values, barWidth: '46%',
-    itemStyle: { color: C_POS, borderRadius: 3 },
+    itemStyle: { color: hues().blue, borderRadius: 3 },
     markLine: cmp.budget != null
       ? {
           silent: true, symbol: 'none',
-          lineStyle: { type: 'dashed', color: CMP_BUDGET, width: 1.5 },
+          lineStyle: { type: 'dashed', color: cmpBudget(), width: 1.5 },
           // 图表清晰化 §1:insideEndTop 画图内防裁切;文案/色与驾驶舱主图同规则
-          label: { position: 'insideEndTop', formatter: '预算月均 ' + fnum(cmp.budget, 0) + '万', fontSize: 11, color: CMP_BUDGET },
+          label: { position: 'insideEndTop', formatter: '预算月均 ' + fnum(cmp.budget, 0) + '万', fontSize: 11, color: cmpBudget() },
           data: [{ yAxis: cmp.budget }],
         }
       : undefined,
@@ -140,8 +139,8 @@ export function subjectTrendOption(
   if (cmp.mom) {
     series.push({
       name: '上期', type: 'line', data: cmp.mom,
-      lineStyle: { type: 'dashed', color: CMP_BASELINE, width: 1.5 },
-      itemStyle: { color: CMP_BASELINE }, symbol: 'circle', symbolSize: 4,
+      lineStyle: { type: 'dashed', color: cmpBaseline(), width: 1.5 },
+      itemStyle: { color: cmpBaseline() }, symbol: 'circle', symbolSize: 4,
       // C6-09 对比虚线:系列级 200/quarticOut 压过注入的 update 0 → clip 从左擦入;关掉是视图 dispose 瞬时。
       // 上面那条预算 markLine 不在此列 —— 它读 mlModel 自身、回落全局 0,瞬现(C6-14)。
       animationDuration: DUR.update, animationEasing: EASE.enter,

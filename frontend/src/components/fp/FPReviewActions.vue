@@ -316,6 +316,7 @@ onBeforeUnmount(() => {
 /* C2-08:只补 transition,**不加 :active** —— 点开的理由浮层(C5-15 pop-in)就是回应,
    红底再深一档得造一个新色值。 */
 .rva-chip:hover, .rva-chip.on { background: rgb(253, 240, 240); }
+:root[data-theme="dark"] .rva-chip:hover, :root[data-theme="dark"] .rva-chip.on { background: var(--danger-soft); }   /* 浅色那一格是一处一个的浅红,暗色换令牌 */
 .rva-pop {
   position: absolute; top: calc(100% + 4px); left: 0; z-index: var(--z-popover);
   width: 320px; padding: 10px 12px;
@@ -328,7 +329,7 @@ onBeforeUnmount(() => {
 .rva-pop-b { margin: 0; font-size: var(--fs-label); color: var(--text-primary); line-height: 1.6; }
 
 /* 确认卡:与 FPReviewDialog 同一套尺寸/阴影,只是没有输入框(PAGE-BEHAVIOR-SPEC §2 居中弹卡)。 */
-.rva-scrim { position: fixed; inset: 0; z-index: var(--z-confirm); background: rgba(28, 28, 28, .34);
+.rva-scrim { position: fixed; inset: 0; z-index: var(--z-confirm); background: var(--scrim);
              display: grid; place-items: center;
              opacity: 0; animation: fp-fade-in var(--dur-base) var(--ease-out) forwards; }
 .rva-card { width: min(432px, 92vw); padding: 20px; box-sizing: border-box;

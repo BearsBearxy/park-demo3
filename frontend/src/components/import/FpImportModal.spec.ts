@@ -120,7 +120,9 @@ describe('FpImportModal', () => {
     await w.find('.fpimp-ta + div button').trigger('click')
     expect(parseWorkbook.mock.calls[0][1]).toEqual({ ym: '2099-07', zone: 'p1', kind: 'elec' })
     expect(w.find('.fpimp-fb').text()).toContain('按 2099-07 导入')
-    await w.find('.fpimp-fb input').setValue('2099-08')
+    // 账期是 ds/DatePicker 月份字段(2026-09-19 换掉原生月份框):点开、点 8 月
+    await w.find('.fpimp-fb .dp-box').trigger('click')
+    await w.find('.fpimp-fb [data-k="2099-08"]').trigger('click')
     expect(parseWorkbook.mock.calls[1][1]).toMatchObject({ ym: '2099-08' })
     expect(w.find('.fpimp-fb').text()).toContain('按 2099-08 导入')
   })

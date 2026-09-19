@@ -7,6 +7,7 @@ import { mount } from '@vue/test-utils'
 import PvDetailTable from '../PvDetailTable.vue'
 import type { DetailRow } from '../pvAnaV4.logic'
 import { PV_COLORS as C } from '../pvAnaColors'
+import { resolvedTheme } from '@/stores/appearance'
 
 function monthRows(): DetailRow[] {
   return Array.from({ length: 28 }, (_, i) => {
@@ -34,6 +35,17 @@ const mountTable = (rows: DetailRow[] = monthRows(), gran: 'month' | 'year' = 'm
 const cells = (tr: ReturnType<ReturnType<typeof mountTable>['findAll']>[number]) => tr.findAll('td').map(td => td.text())
 
 describe('PvDetailTable(B12)', () => {
+  it('❗切外观不用重挂载:高于上沿那行的琥珀字跟着换成暗色 --warn-text(页签在 KeepAlive 里常驻)', async () => {
+    const w = mountTable()
+    const ink = () => w.findAll('tbody tr')[21].findAll('td')[3].attributes('style') ?? ''
+    expect(ink()).not.toContain('var(--warn-text)')
+    resolvedTheme.value = 'dark'
+    try {
+      await nextTick()
+      expect(ink(), '切成深色后还是浅色外观的琥珀字 #854F0B').toContain('var(--warn-text)')
+    } finally { resolvedTheme.value = 'light' }
+  })
+
   it('五列表头与列宽 108 / 104 / 84 / 96 / 余宽;可见 8 行 = 表头 24 + 8 × 32 = 280 内滚', () => {
     const w = mountTable()
     const th = w.findAll('th')

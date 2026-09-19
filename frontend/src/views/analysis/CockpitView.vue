@@ -20,7 +20,8 @@ import { rollingForecastRows, prevYearUsable } from './forecastChart.logic'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import { iconFor } from '@/components/ds/icon'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
-import { STATUS, fint, fnum, sgn } from '@/components/ana/anaFmt'
+import { STATUS, fint, fnum, hues, inkA, sgn } from '@/components/ana/anaFmt'
+import { anaPalette } from '@/components/ana/anaTheme'
 import { usePeriod, ymOf } from '@/analysis/usePeriod'
 import { anaSettings } from '@/analysis/anaSettings'
 import { useCompare } from '@/analysis/useCompare'
@@ -215,19 +216,19 @@ const compo = computed(() => compoData(pnl.value, isMonth.value, usedMi.value, y
 const compoTotal = computed(() => compo.value.reduce((s, d) => s + d.value, 0))
 // 名义分类(租金/用电/用水/运管)须异色:主题色板前 4 位是蓝族渐变(给「分期收入堆叠」这类有序量用的),
 // 4 扇区环恰好取满前 4 位 → 全蓝难辨。此处局部指定 4 个可区分色相,不动全局主题。
-const COMPO_COLORS = ['#378ADD', '#5DCAA5', '#EF9F27', '#F0997B']
 const donutOption = computed<object>(() => {
+  const { blue, teal, amber, coral } = hues()
   const total = compoTotal.value
   const pct = (v: number): string => (total > 0 ? ((v / total) * 100).toFixed(1) : '0.0')
   const byLabel = new Map(compo.value.map((d) => [d.label, d.value]))
   return {
-    color: COMPO_COLORS,
+    color: [blue, teal, amber, coral],
     tooltip: { trigger: 'item', valueFormatter: (v: number) => fnum(v) + '万' },
     // 图例带占比:静态也能读出各板块比重,不必悬停(扇区上不加标签,避免细扇区如「用水」标签重叠)
     legend: { bottom: 0, formatter: (name: string) => `${name} ${pct(byLabel.get(name) ?? 0)}%` },
     series: [{
       type: 'pie', radius: ['50%', '74%'], center: ['50%', '42%'],
-      label: { show: false }, itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
+      label: { show: false }, itemStyle: { borderRadius: 6, borderColor: anaPalette().calloutCore, borderWidth: 2 },   // 缝 = 卡片色
       data: compo.value.map((d) => ({ name: d.label, value: +(d.value / 10000).toFixed(2) })),
     }],
   }
@@ -275,7 +276,7 @@ function onPhaseClick(p: unknown): void {
 }
 
 // ── 收缴率横条 vs 目标(点击 → 该期欠费清单弹层) ──
-// 只显近 6 期(2026-07-20 用户反馈:全年 10+ 期横条在小卡里过度拥挤);全期趋势看 KPI sparkline
+// 只显近 6 期(2026-07-20 用户反馈:全年 10+ 期横条在小卡里过度拥挤)
 // 先按所选年过滤再取近6期(2026-07-21 用户反馈:此前全局切片,台账跨年时选2025却混入2024期)
 const collShown = computed(() => collects.value.filter((c) => c.ym.startsWith(year.value + '-')).slice(-6))
 const collectOption = computed<object | null>(() => {
@@ -288,9 +289,9 @@ const collectOption = computed<object | null>(() => {
     yAxis: { type: 'category', data: collShown.value.map((c) => `${+c.ym.slice(5)}月`) },
     series: [{
       name: '收缴率', type: 'bar', barMaxWidth: 20,
-      data: collShown.value.map((c) => ({ value: +c.rate.toFixed(1), itemStyle: { color: c.rate >= target ? '#378ADD' : '#EF9F27', borderRadius: [0, 3, 3, 0] } })),
+      data: collShown.value.map((c) => ({ value: +c.rate.toFixed(1), itemStyle: { color: c.rate >= target ? hues().blue : hues().amber, borderRadius: [0, 3, 3, 0] } })),
       label: { show: true, position: 'right', fontSize: 11, formatter: '{c}%' },
-      markLine: { silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.45)' }, label: { position: 'insideEndTop', formatter: `目标 ${target}%`, fontSize: 11 }, data: [{ xAxis: target }] },
+      markLine: { silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: inkA(.45) }, label: { position: 'insideEndTop', formatter: `目标 ${target}%`, fontSize: 11 }, data: [{ xAxis: target }] },
     }],
   }
 })
@@ -340,16 +341,16 @@ const conclusion = computed(() => buildConclusion(
       <!-- I4:年粒度三瓦与「预算达成」同批月份,覆盖区间印在 note 上(月粒度 pnlRange 为空,note 不出现) -->
       <!-- F3(修复轮1):年粒度标题/note 按稿改「N-M 月收入」/「N 期,已剔 M 月」(revNote,见上方计算属性头注) -->
       <AnaKpiTile :label="isMonth ? '营业收入' : pnlRange + '收入'" :value="money(rev)"
-        :delta="momOf(pnl?.revenue, isMonth, usedMi)" kind="环比" :trend="pnl?.revenue" :note="revNote" />
-      <AnaKpiTile label="成本费用" :value="money(cost)" :delta="momOf(pnl?.cost, isMonth, usedMi)" kind="环比" invert :trend="pnl?.cost" :note="pnlRange || undefined" />
+        :delta="momOf(pnl?.revenue, isMonth, usedMi)" kind="环比" :note="revNote" />
+      <AnaKpiTile label="成本费用" :value="money(cost)" :delta="momOf(pnl?.cost, isMonth, usedMi)" kind="环比" invert :note="pnlRange || undefined" />
       <!-- 数值失真门(普查稿 §2.5):基数过小时利润率会被放大成失真的大百分比,上限守卫不印具体数 -->
-      <AnaKpiTile label="园区利润" :value="money(prof)"
-        :note="(margin != null ? (margin > 300 ? '利润率 — 基数过小' : '利润率 ' + margin.toFixed(1) + '%') : '当期无损益数据') + (pnlRange ? ' · ' + pnlRange : '')" :trend="pnl?.profit" />
+      <AnaKpiTile label="园区利润" :value="money(prof)" profit
+        :note="(margin != null ? (margin > 300 ? '利润率 — 基数过小' : '利润率 ' + margin.toFixed(1) + '%') : '当期无损益数据') + (pnlRange ? ' · ' + pnlRange : '')" />
       <!-- 副文案人话化(2026-07-20 用户反馈):delta=−15.5pt + kind=距目标96%,口径区间挪 note 行 -->
       <AnaKpiTile label="收缴率" :value="cp ? cp.rate.toFixed(1) + '%' : '—'"
         :delta="cp ? +(cp.rate - anaSettings.collectTarget).toFixed(1) : null"
         :kind="cp ? `距目标${anaSettings.collectTarget}%` : ''" unit="pt"
-        :note="cp ? `${cp.ym}累计实收/应收` : '台账未录入'" :trend="collects.map((c) => c.rate)" />
+        :note="cp ? `${cp.ym}累计实收/应收` : '台账未录入'" />
       <!-- 未闭月护栏(FORECAST §2.7):分母排除离群月,副标题印 usedMonths 覆盖区间(不写「已闭月」) -->
       <!-- N2:达成率是年度口径,覆盖区间用 achNote(不借 pnlRange —— 那个在月粒度下是空的) -->
       <AnaKpiTile :label="achLabel" :value="ach ? ach.rate.toFixed(1) + '%' : '—'" :note="achNote" />
@@ -420,7 +421,7 @@ const conclusion = computed(() => buildConclusion(
         <div class="av2-card av2-s4">
           <div class="av2-card-h">
             <span class="t">收缴率 vs 目标</span>
-            <span class="hint">{{ year }}年近 6 期(台账共 <span class="ana-hole">00</span> 期,趋势见 KPI)<span class="hint-desk">· 点击看欠费清单</span></span>
+            <span class="hint">{{ year }}年近 6 期(台账共 <span class="ana-hole">00</span> 期)<span class="hint-desk">· 点击看欠费清单</span></span>
           </div>
           <AnaSkelChart :height="250" />
         </div>
@@ -535,7 +536,7 @@ const conclusion = computed(() => buildConclusion(
       <div class="av2-card av2-s4">
         <div class="av2-card-h">
           <span class="t">收缴率 vs 目标</span>
-          <span class="hint">{{ year }}年近 6 期(台账共 {{ collects.length }} 期,趋势见 KPI)<span class="hint-desk">· 点击看欠费清单</span></span>
+          <span class="hint">{{ year }}年近 6 期(台账共 {{ collects.length }} 期)<span class="hint-desk">· 点击看欠费清单</span></span>
         </div>
         <AnaEChart v-if="collectOption" :option="collectOption" :height="250" @chart-click="onCollectClick" />
         <AnaEmpty v-else label="台账数据未录入" hint="收缴率 = 台账 Σ实收 / Σ应收" to="/ledger" to-text="去台账录入" />

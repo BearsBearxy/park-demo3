@@ -195,7 +195,7 @@ onUnmounted(() => {
         width: 'max-content',
         maxWidth: '280px',
         zIndex: 'var(--z-popover)',   /* 改前是字面量 60(PAGE-BEHAVIOR-SPEC §3:新增覆盖层一律用令牌) */
-        background: 'var(--surface-white)',
+        background: 'var(--surface-raised)',
         border: '1px solid var(--border-subtle)',
         borderRadius: 'var(--radius-md)',
         boxShadow: 'var(--shadow-pop)',
@@ -260,7 +260,7 @@ onUnmounted(() => {
    ⚠ 展开态原本用 --border-strong,与默认的 --border-subtle 实测只有 1.24:1 ——
    WCAG 2.4.11 要求 3:1,等于展开时边框几乎没变化(同 Input 的老问题)。
    现改 --status-info(对默认态 3.96:1)。invalid 规则放在最后,红框优先于展开蓝框。 */
-.ds-sel-trigger { --ds-sel-border: var(--border-subtle); --ds-sel-fs: var(--fs-body); }
+.ds-sel-trigger { --ds-sel-border: var(--border-control); --ds-sel-fs: var(--fs-body); }
 /* iOS 对 <16px 的输入控件聚焦会自动放大整页;字号走变量桥,因为媒体查询盖不住内联 style */
 @media (max-width: 600px) {
   .ds-sel-trigger { --ds-sel-fs: var(--fs-input-m); }

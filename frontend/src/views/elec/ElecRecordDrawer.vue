@@ -8,6 +8,7 @@ import { iconFor } from '@/components/ds/icon'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
+import DatePicker from '@/components/ds/DatePicker.vue'
 import { phaseTint } from '@/components/sched/tints'
 import type { ElecPhaseDTO, ElecRecordReq } from '@/types/elec'
 
@@ -25,8 +26,7 @@ const DEFAULT_RATE = '0.13'   // jsx D.rate
 
 const type = ref<'energy' | 'basic'>(props.initType)
 const phase = ref(props.phases[0]?.id ?? '')
-const acctY = ref(String(props.initYear))
-const acctM = ref('1')
+const acct = ref(`${props.initYear}-01`)   // 记账月 YYYY-MM(改前是年下拉 + 月下拉,月默认 1 月)
 const invDate = ref('')
 const period = ref('峰')
 const cat = ref('大工业用电')
@@ -35,9 +35,9 @@ const price = ref('')
 const demand = ref('')
 const rate = ref(DEFAULT_RATE)
 
-const months = Array.from({ length: 12 }, (_, i) => String(i + 1))
-const yearOpts = computed(() => props.years.map(y => ({ value: String(y), label: y + '年' })))
-const monthOpts = months.map(m => ({ value: m, label: m + '月' }))
+// 可选范围 = overview 年份范围的首年 1 月 … 末年 12 月(改前年下拉只列这些年,月 1–12 随便选)
+const acctMin = computed(() => props.years.length ? `${Math.min(...props.years)}-01` : undefined)
+const acctMax = computed(() => props.years.length ? `${Math.max(...props.years)}-12` : undefined)
 
 const num = (v: string) => { const n = parseFloat(v); return isNaN(n) ? 0 : n }
 const fee = computed(() => type.value === 'energy' ? num(qty.value) * num(price.value) : num(demand.value) * num(price.value))
@@ -49,11 +49,10 @@ const eNum = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2
 
 function save() {
   if (!valid.value) return
-  const acct = acctY.value + '-' + acctM.value.padStart(2, '0')
   const base = {
     type: type.value,
     phase: phase.value,
-    acctMonth: acct,
+    acctMonth: acct.value,
     invDate: invDate.value || null,
     price: num(price.value),
     rate: num(rate.value),
@@ -99,14 +98,11 @@ function save() {
     <div class="e11-frow">
       <div class="e11-fgrp">
         <span class="e11-flabel">记账月份</span>
-        <div class="e11-frow">
-          <Select :options="yearOpts" v-model="acctY" />
-          <Select :options="monthOpts" v-model="acctM" />
-        </div>
+        <DatePicker v-model="acct" mode="month" :min="acctMin" :max="acctMax" aria-label="记账月份" />
       </div>
       <div class="e11-fgrp">
         <span class="e11-flabel">开票日期</span>
-        <input class="e11-input" type="date" v-model="invDate" />
+        <DatePicker v-model="invDate" field-id="elec-inv-date" clearable aria-label="开票日期" align="end" />
       </div>
     </div>
 
@@ -164,16 +160,16 @@ function save() {
 .e11-frow { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .e11-frow3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
 .e11-seg { display:flex; gap:6px; }
-.e11-chip { flex:1; height:38px; border:1px solid var(--border-subtle); background:var(--surface-white); border-radius:8px; cursor:pointer; font-family:var(--font-sans); font-size:13px; color:var(--text-secondary); display:flex; align-items:center; justify-content:center; gap:6px; transition:all var(--dur-fast); }
+.e11-chip { flex:1; height:38px; border:1px solid var(--border-control); background:var(--surface-white); border-radius:8px; cursor:pointer; font-family:var(--font-sans); font-size:13px; color:var(--text-secondary); display:flex; align-items:center; justify-content:center; gap:6px; transition:all var(--dur-fast); }
 .e11-chip:hover { background:var(--surface-card); }
-.e11-chip.on { border-color:var(--ink-900); background:var(--ink-900); color:#fff; }
+.e11-chip.on { border-color:var(--ink-900); background:var(--ink-900); color:var(--control-solid-text); }
 .e11-cdot { width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
 /* 高度对齐设计系统 md=36(ds/Input 与 ds/Select 同档):此前 38/40px,而同一表单网格里的
    下拉已是 ds/Select 的 36px,并排就差 2~4px。改这里而不是改 Select —— 36 是三个 ds 控件
    (Button/Input/Select)共同的 md 档,38/40 才是各表单自己发明的。 */
-.e11-input { height:36px; width:100%; box-sizing:border-box; border:1px solid var(--border-subtle); border-radius:8px; padding:0 12px; font-family:var(--font-sans); font-size:var(--fs-body); color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
+.e11-input { height:36px; width:100%; box-sizing:border-box; border:1px solid var(--border-control); border-radius:8px; padding:0 12px; font-family:var(--font-sans); font-size:var(--fs-body); color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
 .e11-input.mono { font-family:var(--font-mono); text-align:right; }
-.e11-input:focus { border-color:var(--border-strong); }
+.e11-input:focus { border-color:var(--border-control-strong); }
 .e11-input::placeholder { color:var(--text-disabled); }
 .e11-sub2 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; padding:13px 14px; background:var(--surface-card); border-radius:var(--radius-md); }
 .e11-sub2 .k { font-size:11px; color:var(--text-muted); }

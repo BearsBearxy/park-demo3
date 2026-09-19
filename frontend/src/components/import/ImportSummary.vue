@@ -217,7 +217,7 @@ function confirm() {
 /* 年/月输入框跟 ds/Select size="sm" 同高,否则一行里三个控件参差 */
 .isum-in { width:100%; box-sizing:border-box; height:32px; border:1px solid var(--border-subtle); border-radius:6px; padding:0 8px; font-family:var(--font-sans); font-size:12.5px; color:var(--text-primary); background:var(--surface-white); outline:none; }
 .isum-in:focus { border-color:var(--hue-blue); }
-.isum-in.bad { border-color:var(--hue-red); background:rgb(252,235,233); }
+.isum-in.bad { border-color:var(--hue-red); background:var(--danger-soft); }
 /* 期非法(未识别到)照样要标红,但 ds/Select 的边框写在内部按钮的 inline style 上、CSS 覆不掉,
    所以红环画在外层包裹上 —— 少了这圈,缺期的段跟合法段长得一样,用户会直接点「全部导入」 */
 .isum-sel { display:block; }

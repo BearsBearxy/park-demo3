@@ -243,12 +243,12 @@ async function decide(p: Pending, approve: boolean) {
 .ap-role { font-size: 10px; color: var(--text-muted); border: 1px solid var(--border-subtle);
            border-radius: var(--radius-full); padding: 0 6px; line-height: 15px; font-weight: var(--fw-regular); }
 .ap-perm { font-size: 10.5px; padding: 1px 8px; border-radius: var(--radius-full);
-           background: rgb(255, 243, 230); color: var(--hue-orange); font-weight: var(--fw-semibold); }
+           background: var(--warn-bg); color: var(--hue-orange); font-weight: var(--fw-semibold); }
 .ap-left { flex: 0 0 auto; font-family: var(--font-mono); font-size: 11.5px;
            font-weight: var(--fw-semibold); color: var(--hue-red); font-variant-numeric: tabular-nums; }
 .ap-ctx { margin-top: 10px; border: 1px solid var(--border-subtle); border-radius: 8px; overflow: hidden; }
 .ap-r { display: grid; grid-template-columns: 44px 1fr; gap: 10px; padding: 6px 10px; font-size: 12px; }
-.ap-r + .ap-r { border-top: 1px solid rgba(28, 28, 28, .06); }
+.ap-r + .ap-r { border-top: 1px solid color-mix(in srgb, var(--ink-900) 6%, transparent); }
 .ap-r .k { color: var(--text-muted); font-size: var(--fs-micro); }
 .ap-r .v { font-weight: var(--fw-medium); word-break: break-all; }
 .ap-r .v.mono { font-family: var(--font-mono); font-size: 11.5px; }

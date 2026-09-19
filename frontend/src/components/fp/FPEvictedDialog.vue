@@ -97,16 +97,16 @@ async function copy() {
 
 <style scoped>
 /* z 用 --z-confirm：这条消息必须盖住一切弹窗与抽屉(他可能正开着导入窗) */
-.evd-scrim { position: fixed; inset: 0; z-index: var(--z-confirm); background: rgba(28, 28, 28, .34);
+.evd-scrim { position: fixed; inset: 0; z-index: var(--z-confirm); background: var(--scrim);
              display: grid; place-items: center;
              opacity: 0; animation: fp-fade-in var(--dur-base) var(--ease-out) forwards; }
-.evd-card { width: min(432px, 92vw); background: var(--surface-white); border-radius: var(--radius-xl);
+.evd-card { width: min(432px, 92vw); background: var(--surface-raised); border-radius: var(--radius-xl);
             box-shadow: 0 18px 52px rgba(28, 28, 28, .24); overflow: hidden; font-family: var(--font-sans);
             animation: fp-rise-in var(--dur-base) var(--ease-out) both; }
 .evd-h { display: flex; align-items: center; gap: 9px; padding: 20px 22px 0; }
 .evd-h h3 { margin: 0; font-size: var(--fs-h3); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .evd-ic { width: 30px; height: 30px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center;
-          background: rgb(255, 238, 237); color: var(--hue-red); }
+          background: var(--danger-soft); color: var(--hue-red); }   /* = 原 rgb(255,238,237) */
 .evd-b { padding: 14px 22px 4px; display: flex; flex-direction: column; gap: 12px; }
 .evd-lead { margin: 0; font-size: 13.5px; line-height: 1.65; color: var(--text-primary); }
 .evd-lead b { font-weight: var(--fw-semibold); }

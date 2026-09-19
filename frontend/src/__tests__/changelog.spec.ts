@@ -107,10 +107,11 @@ describe('更新公告规范(RELEASE-NOTES-SPEC §9)', () => {
     }
   })
 
-  it('有新增就必须有重点卡,没有新增就不许有(重点卡的标签写死是「新增」)', () => {
+  // §3:重点卡 = 最重要的那条新增,其余新增进 added。只有一条新增时 added 为空、只有重点卡(0.15.0 暗色外观)。
+  it('有新增就必须有重点卡;没有重点卡就不许有新增(重点卡的标签写死是「新增」)', () => {
     for (const n of RULED.filter((x) => num(x.version)[2] === 0)) {
-      expect(!!n.feature, `${n.version}:新增 ${n.added.length} 条,重点卡${n.feature ? '有' : '没有'}`)
-        .toBe(n.added.length > 0)
+      if (!n.feature) expect(n.added, `${n.version}:没有重点卡却有新增`).toEqual([])
+      if (n.added.length) expect(!!n.feature, `${n.version}:新增 ${n.added.length} 条,没有重点卡`).toBe(true)
     }
   })
 

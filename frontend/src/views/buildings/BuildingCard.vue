@@ -128,7 +128,7 @@ const extraCount = computed(() => Math.max(0, props.building.tenantIds.length - 
       </div>
       <span
         v-if="building.expiringCount > 0"
-        style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:rgb(168,98,0);background:rgba(255,149,0,.14);padding:3px 9px;border-radius:999px"
+        class="bc-exp"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         {{ building.expiringCount }} 单元即将到期
@@ -140,6 +140,8 @@ const extraCount = computed(() => Math.max(0, props.building.tenantIds.length - 
 </template>
 
 <style scoped>
+.bc-exp { display:inline-flex; align-items:center; gap:5px; font-size:11.5px; color:rgb(168,98,0); background:rgba(255,149,0,.14); padding:3px 9px; border-radius:999px; }
+:root[data-theme="dark"] .bc-exp { color:var(--hue-orange); }
 .bd-card {
   background: var(--surface-card);
   border-radius: var(--radius-xl);

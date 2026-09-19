@@ -148,14 +148,14 @@ function remove() {
 .pe-field { display: flex; flex-direction: column; gap: 6px; }
 .pe-k { font-size: var(--fs-label); color: var(--text-secondary); font-weight: var(--fw-medium); }
 .pe-unit { margin-left: 6px; font-size: var(--fs-micro); color: var(--text-disabled); font-weight: var(--fw-regular); }
-.pe-in { height: 34px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-body); color: var(--text-primary); outline: none; }
+.pe-in { height: 34px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--border-control); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-body); color: var(--text-primary); outline: none; }
 .pe-in.txt { font-family: var(--font-sans); }
 .pe-in:focus { border-color: var(--hue-blue); }
 .pe-in::-webkit-outer-spin-button, .pe-in::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .pe-cur { font-size: var(--fs-micro); color: var(--text-muted); }
 .pe-ways { display: flex; flex-direction: column; gap: 4px; }
-.pe-way { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); font-size: var(--fs-label); color: var(--text-primary); cursor: pointer; }
-.pe-way.on { border-color: var(--hue-blue); background: var(--accent-blue, rgb(238, 244, 255)); }
+.pe-way { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--border-control); border-radius: var(--radius-sm); font-size: var(--fs-label); color: var(--text-primary); cursor: pointer; }
+.pe-way.on { border-color: var(--hue-blue); background: var(--accent-blue); }
 .pe-way input { accent-color: var(--hue-blue); }
 .pe-hint { margin: 0; font-size: var(--fs-micro); color: var(--text-muted); line-height: 1.5; }
 </style>

@@ -1,7 +1,8 @@
 // src/views/analysis/expiry.logic.ts — expiry 屏纯数据变换(v2 抽出,口径与 v1 一致,数值不变):
 // 合同快照统计 / 金额 Pareto(TopN 柱 + 累计占比线)/ Top10 集中度环 — ECharts option 纯函数。
 // 锚点(2026-07-08 dev 库):合同 282 份、月租合计 4,671,702.21、有租金 235、日期缺失 282、Top10 55.8%。
-import { quantile } from '@/components/ana/anaFmt'
+import { hues, quantile } from '@/components/ana/anaFmt'
+import { anaPalette } from '@/components/ana/anaTheme'
 import type { ContractDTO } from '@/types/contract'
 import { isInForce } from './TenantPeer.logic'
 
@@ -57,6 +58,7 @@ export function buildPareto(cs: ContractDTO[], topN = 20): ParetoData {
 
 /** Pareto 柱线双轴 option(柱=月租金万、线=累计占比%)。 */
 export function paretoOption(p: ParetoData): object {
+  const { blue, amber } = hues()
   return {
     grid: { left: 48, right: 46, top: 30, bottom: 64 },
     tooltip: {
@@ -74,8 +76,8 @@ export function paretoOption(p: ParetoData): object {
       { type: 'value', min: 0, max: 100, splitLine: { show: false }, axisLabel: { formatter: '{value}%' } },
     ],
     series: [
-      { name: '月租金', type: 'bar', barWidth: '55%', itemStyle: { color: '#378ADD', borderRadius: [3, 3, 0, 0] }, data: p.rents.map((r) => +(r / 10000).toFixed(2)) },
-      { name: '累计占比', type: 'line', yAxisIndex: 1, symbol: 'circle', symbolSize: 5, lineStyle: { width: 2, color: '#EF9F27' }, itemStyle: { color: '#EF9F27' }, data: p.cumPct },
+      { name: '月租金', type: 'bar', barWidth: '55%', itemStyle: { color: blue, borderRadius: [3, 3, 0, 0] }, data: p.rents.map((r) => +(r / 10000).toFixed(2)) },
+      { name: '累计占比', type: 'line', yAxisIndex: 1, symbol: 'circle', symbolSize: 5, lineStyle: { width: 2, color: amber }, itemStyle: { color: amber }, data: p.cumPct },
     ],
   }
 }
@@ -130,7 +132,7 @@ export function wallOption(w: ExpiryWall): object {
     yAxis: { type: 'value', name: '万/月', axisLabel: { formatter: (v: number) => String(v) } },
     series: [{
       name: '到期月租', type: 'bar', barWidth: '55%',
-      itemStyle: { color: '#378ADD', borderRadius: [3, 3, 0, 0] },
+      itemStyle: { color: hues().blue, borderRadius: [3, 3, 0, 0] },
       data: w.quarters.map((q) => +(q.rentSum / 10000).toFixed(2)),
     }],
   }
@@ -139,15 +141,16 @@ export function wallOption(w: ExpiryWall): object {
 /** Top10 集中度环(Top10 vs 其余,值=月租金元;tooltip 折万)。 */
 export function concentrationOption(top10Sum: number, rentSum: number): object {
   const rest = Math.max(0, rentSum - top10Sum)
+  const { blue, pale } = hues()
   return {
     tooltip: { formatter: (p: { name: string; value: number; percent: number }) => `${p.name}<br/>¥${(p.value / 10000).toFixed(1)}万/月 · ${p.percent}%` },
     series: [{
       type: 'pie', radius: ['58%', '80%'], center: ['50%', '50%'],
       label: { show: false }, labelLine: { show: false },
-      itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },   // 圆角环形+白缝(数据项 color 逐片合并仍生效)
+      itemStyle: { borderRadius: 6, borderColor: anaPalette().calloutCore, borderWidth: 2 },   // 圆角环形+白缝(缝 = 卡片色;数据项 color 逐片合并仍生效)
       data: [
-        { name: 'Top10 合同', value: top10Sum, itemStyle: { color: '#378ADD' } },
-        { name: '其余合同', value: rest, itemStyle: { color: '#B5D4F4' } },
+        { name: 'Top10 合同', value: top10Sum, itemStyle: { color: blue } },
+        { name: '其余合同', value: rest, itemStyle: { color: pale } },
       ],
     }],
   }
@@ -705,6 +708,7 @@ export function renewalRateLineOption(hits: number, n: number, band: { lo: numbe
   const pct = (v: number) => +(v * 100).toFixed(1)
   const p = n > 0 ? pct(hits / n) : 0
   const lo = pct(band.lo), hi = pct(band.hi)
+  const { deep, blue } = hues(), ink = anaPalette().callout.blue   // 字用标注深蓝:浅色同 #185FA5,暗色提亮到 ≥4.5
   return {
     grid: { left: 12, right: 12, top: 34, bottom: 24 },
     xAxis: {
@@ -713,15 +717,15 @@ export function renewalRateLineOption(hits: number, n: number, band: { lo: numbe
     },
     yAxis: { type: 'value', min: 0, max: 1, show: true, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { show: false }, splitLine: { show: false } },
     series: [{
-      type: 'scatter', symbolSize: 13, itemStyle: { color: '#185FA5' }, data: [[p, 0.5]],
+      type: 'scatter', symbolSize: 13, itemStyle: { color: deep }, data: [[p, 0.5]],
       markArea: {
-        silent: true, itemStyle: { color: 'rgba(55,138,221,.16)' },
-        label: { show: true, position: 'insideTop', fontSize: 10, color: '#185FA5', formatter: `${lo}~${hi}` },
+        silent: true, itemStyle: { color: blue, opacity: 0.16 },
+        label: { show: true, position: 'insideTop', fontSize: 10, color: ink, formatter: `${lo}~${hi}` },
         data: [[{ xAxis: lo }, { xAxis: hi }]],
       },
       markLine: {
-        silent: true, symbol: 'none', lineStyle: { color: '#185FA5', width: 1.5 },
-        label: { formatter: `${p}%`, fontSize: 11, color: '#185FA5', position: 'start' },
+        silent: true, symbol: 'none', lineStyle: { color: deep, width: 1.5 },
+        label: { formatter: `${p}%`, fontSize: 11, color: ink, position: 'start' },
         data: [{ xAxis: p }],
       },
     }],

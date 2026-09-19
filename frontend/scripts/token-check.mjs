@@ -29,7 +29,8 @@ function walk(dir, out = []) {
 const files = walk(SRC)
 const defined = new Set()
 for (const f of files) {
-  for (const m of readFileSync(f, 'utf8').matchAll(/(--[a-zA-Z0-9_-]+)\s*:/g)) defined.add(m[1])
+  // 带引号的也算:JS 里给行内样式的变量表写成 { '--sv-grid': '#E9EBEF' }(anaTheme.anaSvgVars)
+  for (const m of readFileSync(f, 'utf8').matchAll(/(--[a-zA-Z0-9_-]+)['"]?\s*:/g)) defined.add(m[1])
 }
 
 // 两类合法的「看起来未定义」,必须排除,否则门禁天天误报:

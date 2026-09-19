@@ -320,7 +320,7 @@ function onImport() {
 .lc-sub { margin:4px 0 0; font-size:var(--fs-label); color:var(--text-muted); }
 .lc-head-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .lc-yearbadge { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:var(--radius-full); background:var(--accent-blue); color:var(--hue-blue); font-size:12.5px; font-weight:var(--fw-semibold); font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
-.lc-editbadge { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:var(--radius-full); background:rgb(255,243,230); color:var(--hue-orange); font-size:12.5px; font-weight:var(--fw-medium); white-space:nowrap; }
+.lc-editbadge { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:var(--radius-full); background:var(--warn-bg); color:var(--hue-orange); font-size:12.5px; font-weight:var(--fw-medium); white-space:nowrap; }
 /* 锁位:三态同宽 —— 「编辑模式」/「张三 编辑中」/「张三 空闲 23 分」/「完成」换文案不挪版 */
 .lc-lockbtn { min-width:150px; justify-content:center; }
 /* 审核药丸:逐项对齐 ds/Button 的 size="sm"(SIZES.sm = height 28 / padding 0 12px / fs-label),
@@ -339,7 +339,7 @@ function onImport() {
   background:var(--surface-sunken); color:var(--text-secondary);
   font-size:var(--fs-label); line-height:1; white-space:nowrap;
 }
-.lc-lockbtn.held { border-color:var(--hue-orange); background:rgb(252,243,232); color:var(--hue-orange); }
-.lc-lockav { width:18px; height:18px; flex:0 0 auto; border-radius:50%; display:grid; place-items:center; background:var(--fill-blue); color:#fff; font-size:9.5px; font-weight:var(--fw-semibold); }
+.lc-lockbtn.held { border-color:var(--hue-orange); background:var(--warn-soft); color:var(--hue-orange); }
+.lc-lockav { width:18px; height:18px; flex:0 0 auto; border-radius:50%; display:grid; place-items:center; background:var(--fill-blue); color:var(--text-on-solid); font-size:9.5px; font-weight:var(--fw-semibold); }
 .lc-lockav.dim { opacity:.55; }
 </style>

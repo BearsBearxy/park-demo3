@@ -12,6 +12,7 @@ import { useScreen } from '@/composables/useTabShells'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
+import DatePicker from '@/components/ds/DatePicker.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import FPUnitPicker from '@/components/fp/FPUnitPicker.vue'
 import { selectedAreaSums, prefillRentArea } from '@/components/fp/fpUnitPicker'
@@ -368,6 +369,11 @@ function monthlyTotal(): number {
 // ─── F2 免租期行编辑 ──────────────────────────────────────
 function addRentFreeRow() { rentFreeRows.value.push({ start: '', end: '', note: '' }) }
 function removeRentFreeRow(i: number) { rentFreeRows.value.splice(i, 1) }
+// 免租期区间的上下限 = 合同起止;合同起止本身倒着填时不设限,否则 42 格全灰、打字全红,又没有一句话解释
+// (选完之后 rowWarn 会写出「早于合同开始日期 / 晚于合同结束日期」)
+const rfBounds = computed(() => (startDate.value && endDate.value && startDate.value > endDate.value
+  ? { min: undefined, max: undefined }
+  : { min: startDate.value || undefined, max: endDate.value || undefined }))
 function rowWarn(r: { start: string; end: string }): string {
   if (!r.start || !r.end) return ''
   if (r.start > r.end) return '开始日期晚于结束日期'
@@ -712,15 +718,19 @@ async function submit() {
             </div>
             <div class="ct-field">
               <div class="lab">开始日期</div>
-              <input class="ct-in" type="date" v-model="startDate" @input="err = ''" @keydown.enter="submit" />
+              <!-- ds/DatePicker 的格子是按钮,不派发原生 input,收不进 @input.capture → dirty 手动置位 -->
+              <DatePicker class="ct-dp" :model-value="startDate" field-id="contract-start" clearable aria-label="开始日期"
+                          @update:model-value="startDate = $event; err = ''; dirty = true" @keydown.enter="submit" />
             </div>
             <div class="ct-field">
               <div class="lab">结束日期</div>
-              <input class="ct-in" type="date" v-model="endDate" @input="err = ''" @keydown.enter="submit" />
+              <DatePicker class="ct-dp" :model-value="endDate" field-id="contract-end" clearable aria-label="结束日期" align="end"
+                          @update:model-value="endDate = $event; err = ''; dirty = true" @keydown.enter="submit" />
             </div>
             <div class="ct-field">
               <div class="lab">签订日期</div>
-              <input class="ct-in" type="date" v-model="signDate" @input="err = ''" @keydown.enter="submit" />
+              <DatePicker class="ct-dp" :model-value="signDate" field-id="contract-sign" clearable aria-label="签订日期"
+                          @update:model-value="signDate = $event; err = ''; dirty = true" @keydown.enter="submit" />
             </div>
             <!-- 期限原文三件套(V2-SPEC §6):白纸黑字留档,多段/相对表述的唯一事实源,不参与计费 -->
             <template v-if="mode !== 'renew'">
@@ -746,9 +756,10 @@ async function submit() {
               <div class="ct-rf">
                 <div v-for="(r, i) in rentFreeRows" :key="i" class="ct-rf-item">
                   <div class="ct-rf-row">
-                    <input class="ct-in" type="date" v-model="r.start" @input="err = ''" />
-                    <span class="ct-rf-arrow">→</span>
-                    <input class="ct-in" type="date" v-model="r.end" @input="err = ''" />
+                    <!-- 起止合成一个区间字段:下限 = 合同开始日,上限 = 合同结束日(DATE-PICKER-SPEC §5 第 1 节) -->
+                    <DatePicker class="ct-dp ct-rf-dp" mode="range" :model-value="[r.start, r.end]" field-id="contract-rentfree"
+                                aria-label="免租期起止" :min="rfBounds.min" :max="rfBounds.max"
+                                @update:model-value="r.start = $event[0]; r.end = $event[1]; err = ''; dirty = true" />
                     <input class="ct-in ct-rf-note" v-model="r.note" maxlength="50" placeholder="备注,如:装修期" @input="err = ''" />
                     <button type="button" class="ct-rf-del" title="删除该段" @click="removeRentFreeRow(i)">
                       <component :is="iconFor('x')" :size="14" />
@@ -789,8 +800,8 @@ async function submit() {
 <style scoped>
 /* 1:1 FinDialogs .fin-mask/.fin-dlg(居中弹窗,遵 PAGE-BEHAVIOR-SPEC §2);两列表单为本弹窗新增 */
 /* z-index 320:高于 FPDrawer(300/301),编辑/续签态从抽屉打开时弹窗须压在抽屉之上 */
-.ct-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:320; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
-.ct-dlg { width:min(640px,92vw); max-height:88vh; overflow-y:auto; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); animation:fp-rise-in var(--dur-base) var(--ease-standard) both; }
+.ct-mask { position:fixed; inset:0; background:var(--scrim); z-index:320; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
+.ct-dlg { width:min(640px,92vw); max-height:88vh; overflow-y:auto; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:var(--shadow-dialog); animation:fp-rise-in var(--dur-base) var(--ease-standard) both; }
 .ct-dlg-h { padding:20px 22px 0; }
 .ct-dlg-h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .ct-dlg-h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
@@ -803,7 +814,7 @@ async function submit() {
 /* 高度对齐设计系统 md=36(ds/Input 与 ds/Select 同档):此前 38/40px,而同一表单网格里的
    下拉已是 ds/Select 的 36px,并排就差 2~4px。改这里而不是改 Select —— 36 是三个 ds 控件
    (Button/Input/Select)共同的 md 档,38/40 才是各表单自己发明的。 */
-.ct-in { width:100%; box-sizing:border-box; height:36px; padding:0 12px; font-size:var(--fs-body); color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
+.ct-in { width:100%; box-sizing:border-box; height:36px; padding:0 12px; font-size:var(--fs-body); color:var(--text-primary); border:1px solid var(--border-control); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
 .ct-in:focus { border-color:var(--hue-blue); }
 .ct-in.err { border-color:var(--hue-red); }
 .ct-in:disabled { background:var(--bg-sunken); color:var(--text-disabled); cursor:not-allowed; }
@@ -813,16 +824,16 @@ async function submit() {
 .ct-bl { display:flex; flex-direction:column; gap:12px; }
 .ct-bl-seg { border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:10px; display:flex; flex-direction:column; gap:8px; background:var(--surface-card); }
 .ct-bl-seghd { display:flex; align-items:center; gap:8px; }
-.ct-seg-badge { flex:0 0 auto; padding:3px 10px; border-radius:999px; background:var(--hue-blue); color:#fff; font-size:12px; font-weight:var(--fw-semibold); }
+.ct-seg-badge { flex:0 0 auto; padding:3px 10px; border-radius:999px; background:var(--hue-blue); color:var(--control-solid-text); font-size:12px; font-weight:var(--fw-semibold); }
 .ct-bl-loc { flex:1 1 auto; height:34px; font-size:12.5px; font-weight:var(--fw-medium); }
 .ct-seg-area { flex:0 0 auto; font-size:12px; font-family:var(--font-mono); color:var(--text-muted); }
 /* 段↔单元绑定 chips:未绑给橙提示(公摊会回退整栋口径),绑了就是普通选中态 */
 .ct-bl-bind { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .ct-bl-bindlab { font-size:11.5px; color:var(--text-muted); cursor:help; }
-.ct-bl-uchip { height:24px; padding:0 9px; border:1px solid var(--border-subtle); border-radius:999px; background:var(--surface-white); font-size:11.5px; font-family:var(--font-mono); color:var(--text-secondary); cursor:pointer; }
+.ct-bl-uchip { height:24px; padding:0 9px; border:1px solid var(--border-control); border-radius:999px; background:var(--surface-white); font-size:11.5px; font-family:var(--font-mono); color:var(--text-secondary); cursor:pointer; }
 .ct-bl-uchip:hover { border-color:var(--hue-blue); }
-.ct-bl-uchip.on { background:var(--hue-blue); border-color:var(--hue-blue); color:#fff; }
-.ct-bl-bindhint { font-size:11px; color:rgb(178,100,0); }
+.ct-bl-uchip.on { background:var(--hue-blue); border-color:var(--hue-blue); color:var(--control-solid-text); }
+.ct-bl-bindhint { font-size:11px; color:var(--orange-text); }
 /* 其他费用独立块:金额窄列(段头行内,高度对齐位置输入) */
 .ct-other-amt { flex:0 0 120px; height:34px; font-size:12.5px; padding:0 8px; }
 .ct-bl-row, .ct-bl-cond { display:flex; align-items:center; gap:6px; }
@@ -845,12 +856,13 @@ async function submit() {
 .ct-rf { display:flex; flex-direction:column; gap:8px; }
 .ct-rf-row { display:flex; align-items:center; gap:8px; }
 .ct-rf-row .ct-in { height:34px; font-size:12.5px; }
-.ct-rf-row input[type="date"].ct-in { flex:0 0 138px; width:138px; }
-.ct-rf-arrow { flex:0 0 auto; font-size:12px; color:var(--text-disabled); }
+.ct-dp { --dp-r: var(--radius-md); }
+.ct-rf-row .ct-rf-dp { flex:0 0 280px; width:280px; }
 .ct-rf-note { flex:1 1 auto; min-width:0; }
 .ct-rf-del { flex:0 0 auto; display:grid; place-items:center; width:28px; height:28px; border:none; background:none; border-radius:var(--radius-sm); color:var(--text-muted); cursor:pointer; }
 .ct-rf-del:hover { background:var(--bg-hover); color:var(--hue-red); }
 .ct-rf-warn { font-size:11.5px; line-height:14px; min-height:14px; color:rgb(168,98,0); margin-top:3px; }
+:root[data-theme="dark"] .ct-rf-warn { color:var(--hue-orange); }
 .ct-erm { font-size:11.5px; color:var(--hue-red); margin-top:8px; min-height:14px; }
 .ct-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:16px 22px 20px; }
 </style>

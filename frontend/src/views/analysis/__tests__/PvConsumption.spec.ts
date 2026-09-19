@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { mount, type DOMWrapper } from '@vue/test-utils'
 import PvConsumption from '../PvConsumption.vue'
+import { resolvedTheme } from '@/stores/appearance'
 import { tipWidth } from '@/components/ana/chartTip'
 import type { Consumption, ConsumptionTick } from '../pvAnaV4.logic'
 
@@ -40,6 +41,17 @@ function geo(d: Consumption) {
 const seg = (w: ReturnType<typeof mount>, i: number, k: string) => w.find(`.pcs-bar[data-i="${i}"] .pcs-${k}`)
 
 describe('PvConsumption 柱', () => {
+  it('❗切外观不用重挂载:损耗段的墨色跟着换(页签在 KeepAlive 里常驻)', async () => {
+    const w = mount(PvConsumption, { props: { data: monthData() } })
+    const fill = () => w.find('.pcs-loss').attributes('fill')
+    expect(fill()).toBe('rgba(28,28,28,.30)')
+    resolvedTheme.value = 'dark'
+    try {
+      await nextTick()
+      expect(fill()).toBe('rgba(236,236,238,.30)')
+    } finally { resolvedTheme.value = 'light' }
+  })
+
   it('31 个槽:1 日柱 x = padL + 0.2 槽、宽 0.6 槽;淡区从 29 日槽左沿起', () => {
     const d = monthData()
     const g = geo(d)

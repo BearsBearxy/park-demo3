@@ -17,9 +17,11 @@ const props = withDefaults(defineProps<BadgeProps>(), {
 const TONES: Record<BadgeTone, { dot: string; fill: string; text: string }> = {
   neutral: { dot: "var(--ink-500)", fill: "var(--ink-040)", text: "var(--text-secondary)" },
   blue:    { dot: "var(--hue-blue)", fill: "rgba(24,134,254,0.12)", text: "var(--hue-blue)" },
-  cyan:    { dot: "var(--hue-cyan)", fill: "rgba(50,173,230,0.14)", text: "rgb(22,140,195)" },
-  slate:   { dot: "var(--fill-slate)", fill: "rgba(120,140,176,0.14)", text: "rgb(90,110,150)" },
-  orange:  { dot: "var(--hue-orange)", fill: "rgba(255,149,0,0.14)", text: "rgb(190,110,0)" },
+  // 青 / 灰蓝 / 橙的字在暗底上不到 4.5,暗色要换(稿 Components ⑥:青 → 暗色 --hue-cyan,灰蓝 → --brand-deep,
+  // 橙 → --hue-orange)。浅色值没有同值令牌,走 --badge-*-text(浅色 = 原值 rgb(22,140,195) / rgb(90,110,150) / rgb(190,110,0))。
+  cyan:    { dot: "var(--hue-cyan)", fill: "rgba(50,173,230,0.14)", text: "var(--badge-cyan-text)" },
+  slate:   { dot: "var(--fill-slate)", fill: "rgba(120,140,176,0.14)", text: "var(--badge-slate-text)" },
+  orange:  { dot: "var(--hue-orange)", fill: "rgba(255,149,0,0.14)", text: "var(--badge-orange-text)" },
   red:     { dot: "var(--hue-red)", fill: "rgba(255,59,48,0.12)", text: "var(--hue-red)" },
 };
 

@@ -111,42 +111,43 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 /* 模态档(PAGE-BEHAVIOR-SPEC §3):遮罩 + 居中,不用 popover 档 */
 .wn-scrim {
   position: fixed; inset: 0; z-index: var(--z-modal);
-  background: rgba(28, 28, 28, 0.34);
+  background: var(--scrim);
   display: grid; place-items: center;
   opacity: 0; animation: fp-fade-in var(--dur-base) var(--ease-out) forwards;
 }
 .wn {
   width: min(560px, 92vw); height: min(720px, 86vh);
   display: flex; flex-direction: column;
-  background: var(--surface-white);
+  background: var(--surface-raised);
   border: 1px solid var(--border-subtle); border-radius: 16px;
-  box-shadow: 0 24px 64px rgba(28, 28, 28, 0.28);
+  box-shadow: var(--shadow-dialog);
   overflow: hidden; font-family: var(--font-sans);
   animation: fp-rise-in var(--dur-base) var(--ease-out) both;
 }
 
-/* ── 页头 ── */
+/* ── 页头 ──
+   页头是固定的暗色流动背景(同登录页),两种外观都一样:字用 --text-on-solid(恒白)。 */
 .wn-hero {
   position: relative; flex: 0 0 auto; height: 164px;
-  padding: 18px 22px; color: #fff; display: flex; flex-direction: column;
+  padding: 18px 22px; color: var(--text-on-solid); display: flex; flex-direction: column;
   overflow: hidden; background: #04070d;   /* WebGL 不可用时的底色 */
 }
 .wn-hero > * { position: relative; }
 .wn-wave { position: absolute; inset: 0; }
 .wn-mark { position: absolute; right: -30px; bottom: -46px; width: 190px; height: 190px; opacity: 0.14; }
 .wn-brand { display: flex; align-items: center; gap: 8px; font-size: var(--fs-label); font-weight: var(--fw-semibold); }
-.wn-brand span { font-weight: var(--fw-regular); color: rgba(255, 255, 255, 0.62); }
+.wn-brand span { font-weight: var(--fw-regular); color: color-mix(in srgb, var(--text-on-solid) 62%, transparent); }
 .wn-x {
   position: absolute; top: 14px; right: 14px; z-index: 1;
   width: 28px; height: 28px; border: none; border-radius: var(--radius-sm);
   display: grid; place-items: center; cursor: pointer;
-  color: rgba(255, 255, 255, 0.72); background: rgba(255, 255, 255, 0.08);
+  color: color-mix(in srgb, var(--text-on-solid) 72%, transparent); background: color-mix(in srgb, var(--text-on-solid) 8%, transparent);
   transition: background var(--dur-fast) var(--ease-standard);
 }
-.wn-x:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
-.wn-eb { margin-top: auto; font-size: var(--fs-label); color: rgba(255, 255, 255, 0.62); }
+.wn-x:hover { background: color-mix(in srgb, var(--text-on-solid) 18%, transparent); color: var(--text-on-solid); }
+.wn-eb { margin-top: auto; font-size: var(--fs-label); color: color-mix(in srgb, var(--text-on-solid) 62%, transparent); }
 .wn-ver { font-family: var(--font-mono); font-size: var(--fs-display); font-weight: var(--fw-semibold); line-height: 1.2; letter-spacing: var(--ls-tight); margin-top: 2px; }
-.wn-sub { font-size: var(--fs-h4); color: rgba(255, 255, 255, 0.86); margin-top: 2px; }
+.wn-sub { font-size: var(--fs-h4); color: color-mix(in srgb, var(--text-on-solid) 86%, transparent); margin-top: 2px; }
 
 /* ── 正文 ── */
 .wn-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 16px 10px; }
@@ -159,8 +160,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 .wn-sec .n { font-size: var(--fs-label); color: var(--text-muted); }
 .wn-chip { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--radius-full); font-size: var(--fs-micro); font-weight: var(--fw-semibold); }
 .wn-chip.add { color: var(--hue-blue); background: var(--accent-blue); }
-/* 绿色令牌对白底 4.05:1,过不了正文的 4.5:1(tokens.css 那条注释) —— 标签文字压暗一档再用 */
-.wn-chip.imp { color: oklch(0.47 0.1 150); background: oklch(0.58 0.13 150 / 0.12); }
+/* 绿色令牌对白底 4.05:1,过不了正文的 4.5:1(tokens.css 那条注释) —— 字用写字用的绿 --delta-up-text(暗色下提亮) */
+.wn-chip.imp { color: oklch(0.47 0.1 150); background: color-mix(in srgb, var(--hue-green) 12%, transparent); }
+:root[data-theme="dark"] .wn-chip.imp { color: var(--delta-up-text); }   /* 浅色照旧;原值暗色下看不见 */
 .wn-chip.fix { color: var(--hue-orange); background: rgba(239, 159, 39, 0.12); }
 
 .wn-row {
@@ -171,7 +173,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 }
 .wn-row.go { cursor: pointer; }
 .wn-row.go:hover { background: var(--bg-hover); }
-.wn-row.go:hover .wn-ic { background: var(--surface-white); }
+.wn-row.go:hover .wn-ic { background: var(--surface-raised); }
 .wn-row .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .wn-row .t { font-size: var(--fs-body); font-weight: var(--fw-medium); }
 .wn-row .d { font-size: var(--fs-label); line-height: 18px; color: var(--text-muted); margin-top: 1px; }

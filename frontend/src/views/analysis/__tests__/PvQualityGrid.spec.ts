@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import PvQualityGrid from '../PvQualityGrid.vue'
+import { resolvedTheme } from '@/stores/appearance'
 import type { CalCell, CalKind, QualityCalendar } from '../pvAnaV4.logic'
 
 const DAY = 86400000
@@ -96,6 +97,17 @@ describe('PvQualityGrid · 日历四态', () => {
     expect(w.find('pattern').attributes('patternTransform')).toBe('rotate(45)')
     expect(c.find('text.pqg-sub').text()).toBe('整日剔除')
     expect(w.findAll('rect.pqg-hatchbox')).toHaveLength(1)
+  })
+
+  it('❗切外观不用重挂载:整日剔除格的墨色跟着换(页签在 KeepAlive 里常驻)', async () => {
+    const w = mountIt()
+    const bg = () => g(w, '2025-08-12').find('rect.pqg-bg').attributes('fill')
+    expect(bg()).toBe('rgba(28,28,28,.10)')
+    resolvedTheme.value = 'dark'
+    try {
+      await nextTick()
+      expect(bg(), '切成深色后格子还是浅色外观的墨色').toBe('rgba(236,236,238,.10)')
+    } finally { resolvedTheme.value = 'light' }
   })
 
   it('❗还没到:透明底 + 墨 10% 虚线框,不写第二行字;没有底色', () => {

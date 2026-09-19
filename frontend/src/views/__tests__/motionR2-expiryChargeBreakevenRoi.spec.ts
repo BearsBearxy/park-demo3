@@ -45,7 +45,6 @@ import ExpiryView from '@/views/analysis/ExpiryView.vue'
 import ChargingAnalysisView from '@/views/analysis/ChargingAnalysisView.vue'
 import BreakevenView from '@/views/analysis/BreakevenView.vue'
 import PvRoiView from '@/views/analysis/PvRoiView.vue'
-import Select from '@/components/ds/Select.vue'
 import { fetchContracts, fetchPnlSummary, fetchPvAll, fetchPvPhases } from '@/analysis/anaData'
 import { cpMeterApi } from '@/api/cpMeter'
 import { usePeriod } from '@/analysis/usePeriod'
@@ -151,7 +150,7 @@ describe('充电桩分析', () => {
     expect(host.exists(), '内容宿主没挂 data-stale-host').toBe(true)
 
     open()
-    w.findComponent(Select).vm.$emit('update:modelValue', '2025')
+    w.findComponent({ name: 'DatePicker' }).vm.$emit('update:modelValue', '2025')
     await flushPromises()
     expect(w.find('.ana-skel').exists(), '换年退回了骨架').toBe(false)
     charts(w).forEach((el, i) => expect(el, `第 ${i} 张图被卸载重挂了`).toBe(before[i]))
@@ -194,7 +193,7 @@ describe('充电桩分析', () => {
     ebike.forEach((el, i) => expect(el, `第 ${i} 张图跨档复用 = 汽车桩的柱滑成电动车桩`).not.toBe(car[i]))
     expect(w.find('.ak-page[data-stale-host] .av2-grid').element).not.toBe(grid)
     // 同档换年仍是同一组节点(对照)
-    w.findComponent(Select).vm.$emit('update:modelValue', '2025')
+    w.findComponent({ name: 'DatePicker' }).vm.$emit('update:modelValue', '2025')
     await flushPromises()
     charts(w).forEach((el, i) => expect(el).toBe(ebike[i]))
     w.unmount()

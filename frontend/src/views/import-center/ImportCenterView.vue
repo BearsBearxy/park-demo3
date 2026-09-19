@@ -9,6 +9,7 @@ import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
 import Select from '@/components/ds/Select.vue'
+import DatePicker from '@/components/ds/DatePicker.vue'
 import FPSortableTable, { type SortableColumn } from '@/components/fp/FPSortableTable.vue'
 import type { SortState } from '@/components/fp/fpSort'
 import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
@@ -58,8 +59,9 @@ function defaultLf(): { companyId: number | null; year: number; month: number } 
 }
 // 初值只解析出年月:此刻 companies 还没拉,公司必落 null;真正的预填在 openImport 里 companyApi.list 之后重跑 defaultLf()
 const lf = ref(defaultLf())
-// ds/Select 只吃字符串值,数字进出各转一次(ElecCostView 同款)
-const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}月` }))
+// 年(手输)+ 月下拉合成一个月份字段(DATE-PICKER-SPEC D1):值 YYYY-MM,年不设上下限(同改前手输)
+const lfYm = computed(() => `${lf.value.year}-${String(lf.value.month).padStart(2, '0')}`)
+function setLfYm(v: string) { lf.value.year = +v.slice(0, 4); lf.value.month = +v.slice(5, 7) }
 const companyOpts = computed(() => companies.value.map(c => ({ value: String(c.id), label: c.name })))
 
 onMounted(reload)
@@ -73,9 +75,9 @@ const modalProps = computed(() => activeEntry.value ? activeEntry.value.modalPro
 // ── 每类状态(由 latestByType 派生) ─────────────────────────
 const IM_ST: Record<string, { label: string; c: string; bg: string }> = {
   done:    { label: '已是最新', c: 'var(--hue-blue)',   bg: 'var(--accent-blue)' },
-  partial: { label: '部分',     c: 'var(--hue-orange)', bg: 'rgb(252,243,232)' },
-  warn:    { label: '有告警',   c: 'var(--hue-orange)', bg: 'rgb(252,243,232)' },
-  missing: { label: '未导入',   c: 'var(--hue-red)',    bg: 'rgb(252,235,233)' },
+  partial: { label: '部分',     c: 'var(--hue-orange)', bg: 'var(--warn-soft)' },
+  warn:    { label: '有告警',   c: 'var(--hue-orange)', bg: 'var(--warn-soft)' },
+  missing: { label: '未导入',   c: 'var(--hue-red)',    bg: 'var(--danger-soft)' },
 }
 const latestByKey = computed<Record<string, ImportLogDTO>>(() => {
   const m: Record<string, ImportLogDTO> = {}
@@ -293,12 +295,9 @@ const cols: SortableColumn<ImportLogDTO>[] = [
         <Select size="sm" :options="companyOpts" :model-value="lf.companyId == null ? '' : String(lf.companyId)"
           placeholder="请选择公司" @update:model-value="lf.companyId = +$event" />
       </label>
-      <div class="im-ctx-ym">
-        <label>年<input type="number" v-model.number="lf.year" /></label>
-        <label>月
-          <Select size="sm" :options="monthOpts" :model-value="String(lf.month)" @update:model-value="lf.month = +$event" />
-        </label>
-      </div>
+      <label>年月
+        <DatePicker mode="month" size="sm" :model-value="lfYm" aria-label="年月" @update:model-value="setLfYm" />
+      </label>
       <div class="im-ctx-foot">
         <Button variant="gray" size="sm" @click="ledgerForm = false">取消</Button>
         <Button variant="filled" size="sm" :disabled="lf.companyId == null" @click="confirmLedger">下一步</Button>
@@ -352,10 +351,5 @@ const cols: SortableColumn<ImportLogDTO>[] = [
 .im-ctx { width:min(380px,92vw); background:var(--surface-white); border-radius:var(--radius-lg); padding:20px 22px; display:flex; flex-direction:column; gap:14px; box-shadow:0 12px 40px rgba(28,28,28,.18); }
 .im-ctx h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .im-ctx label { display:flex; flex-direction:column; gap:5px; font-size:12.5px; color:var(--text-secondary); }
-/* 年输入框 32px = ds/Select size="sm" 的高度,不然同一行「年/月」两个控件高低差一截 */
-.im-ctx input { height:32px; border:1px solid var(--border-subtle); border-radius:8px; padding:0 10px; font-size:13px; color:var(--text-primary); background:var(--surface-white); outline:none; }
-.im-ctx input:focus { border-color:var(--border-strong); }
-.im-ctx-ym { display:flex; gap:12px; }
-.im-ctx-ym label { flex:1; }
 .im-ctx-foot { display:flex; gap:10px; justify-content:flex-end; margin-top:4px; }
 </style>

@@ -122,7 +122,7 @@ const ellipsisStyle = {
           appearance: 'none',
           height: '32px',
           padding: '0 24px 0 12px',
-          border: '1px solid var(--border-subtle)',
+          border: '1px solid var(--border-control)',
           borderRadius: 'var(--radius-sm)',
           background: 'var(--surface-white)',
           fontFamily: 'var(--font-sans)',
@@ -178,11 +178,11 @@ const ellipsisStyle = {
    ⚠ 悬停改的是**边框**不是底色:--bg-hover(ink 5%)与当前页的 --bg-sunken
    在白底上几乎同色,用底色区分会让「悬停」和「当前页」看起来一样。 */
 .ds-pg-pill {
-  --ds-pg-border: var(--border-subtle);
+  --ds-pg-border: var(--border-control);
   transition: border-color var(--dur-fast) var(--ease-standard),
               background var(--dur-fast) var(--ease-standard);
 }
-.ds-pg-pill:hover:not(:disabled) { --ds-pg-border: var(--border-strong); }
+.ds-pg-pill:hover:not(:disabled) { --ds-pg-border: var(--border-control-strong); }
 /* 按下瞬到,松开随上面的 120 回弹;当前页不压(C2-07) */
-.ds-pg-pill:active:not(:disabled):not([aria-current='page']) { --ds-pg-border: var(--border-strong); background: var(--ink-100); transition-duration: 0ms; }
+.ds-pg-pill:active:not(:disabled):not([aria-current='page']) { --ds-pg-border: var(--border-control-strong); background: var(--ink-100); transition-duration: 0ms; }
 </style>

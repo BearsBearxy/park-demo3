@@ -188,7 +188,7 @@ function onPatch(tenantName: string, marked: boolean, note: string | null) {
 .rc-psub { margin: 4px 0 0; font-size: var(--fs-label); color: var(--text-muted); }
 
 /* 年份胶囊(fin-ypill scoped 复刻,同 FinMonthGrid) */
-.fin-ypill { display: inline-flex; align-items: center; gap: 2px; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: var(--radius-full); padding: 3px; }
+.fin-ypill { display: inline-flex; align-items: center; gap: 2px; background: var(--surface-white); border: 1px solid var(--border-control); border-radius: var(--radius-full); padding: 3px; }
 .fin-ypill button { width: 28px; height: 28px; border: none; background: transparent; border-radius: var(--radius-full); cursor: pointer; color: var(--text-secondary); display: grid; place-items: center; transition: background var(--dur-fast) var(--ease-standard); }
 .fin-ypill button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
 .fin-ypill button:disabled { opacity: .4; cursor: not-allowed; }

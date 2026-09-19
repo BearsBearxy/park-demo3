@@ -80,7 +80,7 @@ const panelStyle = computed(() => ({
   ...(props.align === "end" ? { right: "0" } : { left: "0" }),
   zIndex: 'var(--z-popover)',
   width: props.width + "px",
-  background: "var(--surface-white)",
+  background: "var(--surface-raised)",   // 浮起的面:暗色下提亮一层,和卡片分得开
   border: "1px solid var(--border-subtle)",
   borderRadius: "var(--radius-md)",
   boxShadow: "var(--shadow-pop)",

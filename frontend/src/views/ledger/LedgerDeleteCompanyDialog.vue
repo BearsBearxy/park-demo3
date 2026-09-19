@@ -89,7 +89,7 @@ function submit() {
 
 <style scoped>
 /* 1:1 LedgerNewCompanyDialog .lg-dlg 族;警示块换危险色 */
-.lg-dlg-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:80; display:grid; place-items:center; opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
+.lg-dlg-mask { position:fixed; inset:0; background:var(--scrim); z-index:80; display:grid; place-items:center; opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
 .lg-dlg { width:min(440px,90vw); background:var(--surface-white); border-radius:var(--radius-xl); box-shadow:0 16px 48px rgba(28,28,28,.22);
   overflow:hidden; animation:fp-rise-in var(--dur-base) var(--ease-standard) both; }
 .lg-dlg-h { padding:20px 22px 0; }
@@ -97,11 +97,11 @@ function submit() {
 .lg-dlg-h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
 .lg-dlg-b { padding:18px 22px 4px; }
 .lg-dlg-warn { display:flex; gap:8px; align-items:flex-start; margin-bottom:14px; padding:11px 13px; border-radius:var(--radius-md);
-  background:rgb(252,235,233); font-size:12px; line-height:1.55; color:var(--text-secondary); }
+  background:var(--danger-soft); font-size:12px; line-height:1.55; color:var(--text-secondary); }
 .lg-dlg-warn > :first-child { flex:0 0 auto; color:var(--hue-red); margin-top:1px; }
 .lg-dlg-lab { font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); margin-bottom:7px; }
 .lg-dlg-in { width:100%; box-sizing:border-box; height:40px; padding:0 12px; font-size:13.5px; color:var(--text-primary);
-  border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white);
+  border:1px solid var(--border-control); border-radius:var(--radius-md); outline:none; background:var(--surface-white);
   font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
 .lg-dlg-in:focus { border-color:var(--hue-red); }
 .lg-dlg-erm { font-size:11.5px; color:var(--hue-red); margin-top:6px; min-height:14px; }
@@ -114,7 +114,7 @@ function submit() {
 .lg-dlg-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px;
   border:none; border-radius:var(--radius-md); background:transparent; cursor:pointer; text-align:left;
   font-family:var(--font-sans); font-size:13px; color:var(--text-secondary); }
-.lg-dlg-row:hover { background:rgb(252,235,233); color:var(--hue-red); }
+.lg-dlg-row:hover { background:var(--danger-soft); color:var(--hue-red); }
 .lg-dlg-row .nm { font-weight:var(--fw-medium); }
 .lg-dlg-none { padding:18px 0; text-align:center; font-size:12px; color:var(--text-disabled); }
 </style>

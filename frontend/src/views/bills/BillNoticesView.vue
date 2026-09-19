@@ -1230,19 +1230,20 @@ const drawerSub = computed(() => {
 
 /* 提示条(pl-bar 家族) */
 .bn-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); flex-wrap: wrap; }
-.bn-bar.warn { border-color: var(--hue-orange); background: rgb(255, 250, 235); color: rgb(138, 97, 0); }
+.bn-bar.warn { border-color: var(--hue-orange); background: var(--caution-soft); color: var(--caution-text); }
 /* 各单 warn 换行合并后逐行显示 */
 .bn-warn-multi { white-space: pre-line; }
 
 /* 筛选行;批量模式下整条改蓝底操作条(视觉上宣告"你在选择态",退出即恢复) */
 .bn-toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .bn-toolbar.bulk { padding: 7px 12px; border-radius: var(--radius-md); background: rgb(238, 244, 255); border: 1px solid rgb(206, 223, 252); }
+:root[data-theme="dark"] .bn-toolbar.bulk { background: var(--info-soft); border-color: color-mix(in srgb, var(--hue-blue) 35%, transparent); }
 .bn-toolbar.bulk .bn-selc { color: var(--hue-blue); }
-.bn-bulkb { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 11px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-white); font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
+.bn-bulkb { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 11px; border: 1px solid var(--border-control); border-radius: var(--radius-sm); background: var(--surface-white); font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
 .bn-bulkb:hover { border-color: var(--hue-blue); color: var(--hue-blue); }
 .bn-chk { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
 .bn-chk input { accent-color: var(--hue-blue); }
-.bn-search { width: 230px; height: 32px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: var(--radius-full); font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); }
+.bn-search { width: 230px; height: 32px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--border-control); border-radius: var(--radius-full); font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); }
 .bn-search:focus { outline: none; border-color: var(--hue-blue); }
 
 /* ── 列表宽表(pl-table/FPLedgerTable 手法:sticky 表头/34px 行/tfoot 钉底) ── */
@@ -1256,6 +1257,8 @@ const drawerSub = computed(() => {
 .bn-table tbody tr:hover td { background: var(--surface-card); }
 /* 批量模式选中行(整行点击即切勾选,需要一眼能扫出选了哪些) */
 .bn-table tbody tr.sel td, .bn-table tbody tr.sel:hover td { background: rgb(238, 244, 255); }
+/* 暗色:表格选中行 --row-selected(DARK-MODE-SPEC §5);浅色那格照旧 */
+:root[data-theme="dark"] .bn-table tbody tr.sel td, :root[data-theme="dark"] .bn-table tbody tr.sel:hover td { background: var(--row-selected); }
 /* 账外户视觉降淡(出单不入应收) */
 .bn-table tbody tr.offbook { opacity: .55; }
 .bn-table tbody tr:last-child td { cursor: default; }
@@ -1291,14 +1294,16 @@ const drawerSub = computed(() => {
 .bn-stc { white-space: nowrap; }
 .bn-st { display: inline-block; padding: 1px 9px; border-radius: var(--radius-full); font-size: 11.5px; font-weight: var(--fw-semibold); }
 .bn-st.draft { background: var(--surface-sunken); color: var(--text-muted); }
-.bn-st.confirmed { background: rgb(230, 239, 255); color: var(--hue-blue); }
-.bn-st.exported { background: rgb(220, 242, 227); color: rgb(17, 99, 41); }
+.bn-st.confirmed { background: var(--info-soft); color: var(--hue-blue); }
+.bn-st.exported { background: var(--ok-soft); color: rgb(17, 99, 41); }
+:root[data-theme="dark"] .bn-st.exported { color: var(--ok-text); }
 .bn-st.partial { background: rgb(255, 242, 207); color: rgb(125, 92, 0); }
-.bn-gapdot { display: inline-block; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--hue-orange, #e8912d); margin-left: 5px; vertical-align: 1px; cursor: help; }
-.bn-cfm { visibility: hidden; margin-left: 8px; border: 1px solid var(--border-subtle); background: var(--surface-card); border-radius: var(--radius-sm); padding: 1px 8px; font-size: 11.5px; color: var(--text-secondary); cursor: pointer; }
+:root[data-theme="dark"] .bn-st.partial { background: var(--caution-soft); color: var(--caution-text); }
+.bn-gapdot { display: inline-block; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--hue-orange); margin-left: 5px; vertical-align: 1px; cursor: help; }
+.bn-cfm { visibility: hidden; margin-left: 8px; border: 1px solid var(--border-control); background: var(--surface-card); border-radius: var(--radius-sm); padding: 1px 8px; font-size: 11.5px; color: var(--text-secondary); cursor: pointer; }
 .bn-cfm:hover { border-color: var(--hue-blue); color: var(--hue-blue); }
 tbody tr:hover .bn-cfm { visibility: visible; }
-.bn-warn { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: var(--radius-full); background: rgb(255, 238, 237); color: var(--hue-red); font-size: 11px; font-weight: var(--fw-semibold); cursor: help; }
+.bn-warn { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: var(--radius-full); background: var(--danger-soft); color: var(--hue-red); font-size: 11px; font-weight: var(--fw-semibold); cursor: help; }
 
 /* ── 抽屉:户头 + 两 tab 明细行表(md-htable 家族) ── */
 .bn-empty { padding: 40px 12px; text-align: center; color: var(--text-disabled); font-size: var(--fs-label); }

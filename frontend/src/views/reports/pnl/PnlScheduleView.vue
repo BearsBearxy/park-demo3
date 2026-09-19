@@ -568,7 +568,7 @@ const { note: deepNote } = useDeepPeriod({
 }
 
 /* 新增行弹窗(基准 SchedYearGate .sm-ymask/.sm-ydlg) */
-.pnl-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:140; display:grid; place-items:center; }
+.pnl-mask { position:fixed; inset:0; background:var(--scrim); z-index:140; display:grid; place-items:center; }
 .pnl-dlg { width:min(408px,90vw); background:var(--surface-white); border-radius:var(--radius-xl); box-shadow:0 16px 48px rgba(28,28,28,.22); overflow:hidden; }
 .pnl-dlg-h { padding:20px 22px 0; }
 .pnl-dlg-h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
@@ -576,7 +576,7 @@ const { note: deepNote } = useDeepPeriod({
 .pnl-dlg-b { padding:16px 22px 4px; display:flex; flex-direction:column; }
 .pnl-lbl { font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); margin:0 0 6px; }
 .pnl-lbl + .pnl-in { margin-bottom:12px; }
-.pnl-in { width:100%; box-sizing:border-box; height:40px; padding:0 12px; font-size:14px; color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
+.pnl-in { width:100%; box-sizing:border-box; height:40px; padding:0 12px; font-size:14px; color:var(--text-primary); border:1px solid var(--border-control); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
 .pnl-in:focus { border-color:var(--hue-blue); }
 .pnl-in.err { border-color:var(--hue-red); }
 .pnl-kind { font-size:12px; color:var(--text-muted); margin-top:2px; }
@@ -586,8 +586,8 @@ const { note: deepNote } = useDeepPeriod({
 .pnl-btn { height:34px; padding:0 16px; border-radius:var(--radius-full); border:none; cursor:pointer; font-family:var(--font-sans); font-size:13px; font-weight:var(--fw-medium); display:inline-flex; align-items:center; gap:6px; transition:background var(--dur-fast) var(--ease-standard); }
 .pnl-btn.gray { background:var(--surface-sunken); color:var(--text-secondary); }
 .pnl-btn.gray:hover { background:var(--ink-100); }
-.pnl-btn.filled { background:var(--ink-900); color:#fff; }
-.pnl-btn.filled:hover { background:rgb(58,58,58); }
-.pnl-btn.red { background:var(--hue-red); color:#fff; }   /* 同 ds/Button danger */
-.pnl-btn.red:hover { background:rgb(224,49,39); }
+.pnl-btn.filled { background:var(--ink-900); color:var(--control-solid-text); }
+.pnl-btn.filled:hover { background:var(--control-solid-hover); }
+.pnl-btn.red { background:var(--hue-red); color:var(--control-solid-text); }   /* 同 ds/Button danger */
+.pnl-btn.red:hover { background:var(--status-danger-hover); }
 </style>

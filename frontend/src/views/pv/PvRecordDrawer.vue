@@ -6,7 +6,7 @@ import { ref, computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import Button from '@/components/ds/Button.vue'
-import Select from '@/components/ds/Select.vue'
+import DatePicker from '@/components/ds/DatePicker.vue'
 import { phaseTint } from '@/components/sched/tints'
 import type { PvPhaseDTO, PvRecordReq } from '@/types/pv'
 
@@ -20,18 +20,17 @@ const emit = defineEmits<{ close: []; save: [req: PvRecordReq] }>()
 
 // 期别:初值取当前筛选期,'all' 退回首期(jsx 166)
 const phase = ref(props.initPhase === 'all' ? props.phases[0]?.id ?? '' : props.initPhase)
-const acctY = ref(String(props.initYear))
-const acctM = ref('1')
-const occY = ref(String(props.initYear))
-const occM = ref('12')
+// 记账月 / 发生月 YYYY-MM(改前各是年下拉 + 月下拉,默认 1 月 / 12 月)
+const acct = ref(`${props.initYear}-01`)
+const occ = ref(`${props.initYear}-12`)
 const sKwh = ref('')
 const sAmt = ref('')
 const gKwh = ref('')
 const gAmt = ref('')
 
-const months = Array.from({ length: 12 }, (_, i) => String(i + 1))
-const yearOpts = computed(() => props.years.map(y => ({ value: String(y), label: y + '年' })))
-const monthOpts = months.map(m => ({ value: m, label: m + '月' }))
+// 可选范围 = overview 年份范围的首年 1 月 … 末年 12 月(改前年下拉只列这些年,月 1–12 随便选)
+const ymMin = computed(() => props.years.length ? `${Math.min(...props.years)}-01` : undefined)
+const ymMax = computed(() => props.years.length ? `${Math.max(...props.years)}-12` : undefined)
 
 const num = (v: string) => { const n = parseFloat(v); return isNaN(n) ? 0 : n }
 const gen = computed(() => num(sKwh.value) + num(gKwh.value))
@@ -46,8 +45,8 @@ function save() {
   if (!valid.value) return
   emit('save', {
     phase: phase.value,
-    acctMonth: acctY.value + '-' + acctM.value.padStart(2, '0'),
-    occurMonth: occY.value + '-' + occM.value.padStart(2, '0'),
+    acctMonth: acct.value,
+    occurMonth: occ.value,
     selfKwh: num(sKwh.value),
     selfAmt: num(sAmt.value),
     gridKwh: num(gKwh.value),
@@ -78,21 +77,15 @@ function save() {
       </div>
     </div>
 
-    <!-- 记账月 / 发生月(年 + 月) -->
+    <!-- 记账月 / 发生月(各一个月份字段) -->
     <div class="s6-frow">
       <div class="s6-fgrp">
         <span class="s6-flabel">记账月份</span>
-        <div class="s6-frow">
-          <Select :options="yearOpts" v-model="acctY" />
-          <Select :options="monthOpts" v-model="acctM" />
-        </div>
+        <DatePicker v-model="acct" mode="month" :min="ymMin" :max="ymMax" aria-label="记账月份" />
       </div>
       <div class="s6-fgrp">
         <span class="s6-flabel">发生月份</span>
-        <div class="s6-frow">
-          <Select :options="yearOpts" v-model="occY" />
-          <Select :options="monthOpts" v-model="occM" />
-        </div>
+        <DatePicker v-model="occ" mode="month" :min="ymMin" :max="ymMax" aria-label="发生月份" align="end" />
       </div>
     </div>
 
@@ -140,16 +133,16 @@ function save() {
 .s6-flabel { font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); }
 .s6-frow { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .s6-seg { display:flex; gap:6px; }
-.s6-chip { flex:1; height:38px; border:1px solid var(--border-subtle); background:var(--surface-white); border-radius:8px; cursor:pointer; font-family:var(--font-sans); font-size:13px; color:var(--text-secondary); display:flex; align-items:center; justify-content:center; gap:6px; transition:all var(--dur-fast); }
+.s6-chip { flex:1; height:38px; border:1px solid var(--border-control); background:var(--surface-white); border-radius:8px; cursor:pointer; font-family:var(--font-sans); font-size:13px; color:var(--text-secondary); display:flex; align-items:center; justify-content:center; gap:6px; transition:all var(--dur-fast); }
 .s6-chip:hover { background:var(--surface-card); }
-.s6-chip.on { border-color:var(--ink-900); background:var(--ink-900); color:#fff; }
+.s6-chip.on { border-color:var(--ink-900); background:var(--ink-900); color:var(--control-solid-text); }
 .s6-cdot { width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
 /* 高度对齐设计系统 md=36(ds/Input 与 ds/Select 同档):此前 38/40px,而同一表单网格里的
    下拉已是 ds/Select 的 36px,并排就差 2~4px。改这里而不是改 Select —— 36 是三个 ds 控件
    (Button/Input/Select)共同的 md 档,38/40 才是各表单自己发明的。 */
-.s6-input { height:36px; width:100%; box-sizing:border-box; border:1px solid var(--border-subtle); border-radius:8px; padding:0 12px; font-family:var(--font-sans); font-size:var(--fs-body); color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
+.s6-input { height:36px; width:100%; box-sizing:border-box; border:1px solid var(--border-control); border-radius:8px; padding:0 12px; font-family:var(--font-sans); font-size:var(--fs-body); color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
 .s6-input.mono { font-family:var(--font-mono); text-align:right; }
-.s6-input:focus { border-color:var(--border-strong); }
+.s6-input:focus { border-color:var(--border-control-strong); }
 .s6-input::placeholder { color:var(--text-disabled); }
 .s6-sub2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:13px 14px; background:var(--surface-card); border-radius:var(--radius-md); }
 .s6-sub2 .k { font-size:11px; color:var(--text-muted); }

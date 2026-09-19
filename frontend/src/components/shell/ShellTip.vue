@@ -86,28 +86,29 @@ export const tipState = { lastHide: 0 }
   max-width: 320px;
   padding: 6px 10px;
   border-radius: 6px;
-  background: rgb(40, 52, 66);
-  color: #fff;
+  background: var(--tip-bg);
+  color: var(--text-on-solid);
   font-size: 12px;
   line-height: 18px;
   font-weight: var(--fw-regular);
   text-align: left;
   white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  /* 暗色下要多一圈 1px 亮边(稿 Analysis:深色气泡),走 --shadow-tip(浅色 = 原值 0 4px 12px 18% 黑) */
+  box-shadow: var(--shadow-tip);
   animation: fp-pop-in var(--dur-fast) var(--ease-out);
 }
 .fp-tip b { font-weight: var(--fw-semibold); }
-.fp-tip .k { margin-left: 8px; color: rgba(255, 255, 255, 0.62); font-family: var(--font-mono); font-size: 11px; }
-.fp-tip .sub { display: block; color: rgba(255, 255, 255, 0.66); }
+.fp-tip .k { margin-left: 8px; color: color-mix(in srgb, var(--text-on-solid) 62%, transparent); font-family: var(--font-mono); font-size: 11px; }
+.fp-tip .sub { display: block; color: color-mix(in srgb, var(--text-on-solid) 66%, transparent); }
 .fp-tip::after {
   content: "";
   position: absolute;
   top: -6px;
   border-left: 6px solid transparent;
   border-right: 6px solid transparent;
-  border-bottom: 6px solid rgb(40, 52, 66);
+  border-bottom: 6px solid var(--tip-bg);
 }
-.fp-tip.up::after { top: auto; bottom: -6px; border-bottom: none; border-top: 6px solid rgb(40, 52, 66); }
+.fp-tip.up::after { top: auto; bottom: -6px; border-bottom: none; border-top: 6px solid var(--tip-bg); }
 .fp-tip.center::after { left: 50%; margin-left: -6px; }
 .fp-tip.start::after { left: 8px; }
 .fp-tip.end::after { right: 8px; }

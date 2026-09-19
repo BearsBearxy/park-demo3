@@ -103,14 +103,14 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 <style scoped>
 .cl-scrim {
   position: fixed; inset: 0; z-index: var(--z-modal);
-  background: rgba(28, 28, 28, 0.34); display: grid; place-items: center;
+  background: var(--scrim); display: grid; place-items: center;
   opacity: 0; animation: fp-fade-in var(--dur-base) var(--ease-out) forwards;
 }
 .cl {
   width: min(760px, 94vw); height: min(620px, 88vh);
   display: flex; flex-direction: column;
-  background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 16px;
-  box-shadow: 0 24px 64px rgba(28, 28, 28, 0.28); overflow: hidden; font-family: var(--font-sans);
+  background: var(--surface-raised); border: 1px solid var(--border-subtle); border-radius: 16px;
+  box-shadow: var(--shadow-dialog); overflow: hidden; font-family: var(--font-sans);
   animation: fp-rise-in var(--dur-base) var(--ease-out) both;
 }
 .cl-h { flex: 0 0 auto; height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 14px 0 20px; border-bottom: 1px solid var(--divider); }
@@ -137,9 +137,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
   transition: background var(--dur-fast) var(--ease-standard);
 }
 .cl-item:hover { background: var(--bg-hover); }
-.cl-item.on, .cl-item.on:hover { background: var(--surface-white); box-shadow: var(--shadow-pill); }
+.cl-item.on, .cl-item.on:hover { background: var(--surface-raised); box-shadow: var(--shadow-pill); }
 .cl-item .v { display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: var(--fs-body); font-weight: var(--fw-semibold); }
-.cl-new { height: 18px; padding: 0 6px; border-radius: var(--radius-full); background: var(--hue-blue); color: #fff; font-family: var(--font-sans); font-size: var(--fs-micro); font-weight: var(--fw-semibold); display: inline-flex; align-items: center; }
+.cl-new { height: 18px; padding: 0 6px; border-radius: var(--radius-full); background: var(--hue-blue); color: var(--control-solid-text); font-family: var(--font-sans); font-size: var(--fs-micro); font-weight: var(--fw-semibold); display: inline-flex; align-items: center; }
 .cl-item .dt { font-size: var(--fs-micro); color: var(--text-muted); margin-top: 3px; }
 /* 一句话标题最多 20 字(RELEASE-NOTES-SPEC §4),这一栏两行放得下:折行不截断,万一超两行才省略 */
 .cl-item .hl {
@@ -159,7 +159,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 /* 分组标签与「本次更新」弹窗同一套 */
 .wn-chip { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--radius-full); font-size: var(--fs-micro); font-weight: var(--fw-semibold); }
 .wn-chip.add { color: var(--hue-blue); background: var(--accent-blue); }
-.wn-chip.imp { color: oklch(0.47 0.1 150); background: oklch(0.58 0.13 150 / 0.12); }
+/* 改进:写字用的绿(原 oklch(0.47 0.1 150) 暗色下看不见),底 = --hue-green 12% */
+.wn-chip.imp { color: oklch(0.47 0.1 150); background: color-mix(in srgb, var(--hue-green) 12%, transparent); }
+:root[data-theme="dark"] .wn-chip.imp { color: var(--delta-up-text); }   /* 浅色照旧;原值暗色下看不见 */
 .wn-chip.fix { color: var(--hue-orange); background: rgba(239, 159, 39, 0.12); }
 
 .cl-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--divider); }
@@ -184,10 +186,10 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
   }
   .cl-item {
     flex: 0 0 auto; flex-direction: row; align-items: center; gap: 6px; width: auto;
-    min-height: 36px; padding: 0 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-full);
+    min-height: 36px; padding: 0 14px; border: 1px solid var(--border-control); border-radius: var(--radius-full);
     background: var(--surface-white);
   }
-  .cl-item.on, .cl-item.on:hover { background: var(--ink-900); border-color: var(--ink-900); color: #fff; box-shadow: none; }
+  .cl-item.on, .cl-item.on:hover { background: var(--control-solid); border-color: var(--control-solid); color: var(--control-solid-text); box-shadow: none; }
   .cl-item .dt, .cl-item .hl { display: none; }
   /* 列表底下那行说明在横排里会被压成一条窄柱、把整排胶囊撑高(0.13.0 起就有,2026-09-19 量到 133px):不折行,排在末尾 */
   .cl-foot { flex: 0 0 auto; align-self: center; margin: 0; padding: 0 4px; border-top: none; white-space: nowrap; }

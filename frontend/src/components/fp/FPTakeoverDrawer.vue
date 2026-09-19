@@ -165,7 +165,7 @@ async function submit() {
 .tk-who { display: flex; gap: 12px; align-items: center; padding: 12px;
           border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--surface-card); }
 .tk-av { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center;
-         background: var(--fill-blue); color: #fff; font-weight: var(--fw-semibold); font-size: 16px;
+         background: var(--fill-blue); color: var(--text-on-solid); font-weight: var(--fw-semibold); font-size: 16px;
          box-shadow: 0 0 0 2px var(--surface-white), 0 0 0 3.5px var(--hue-orange); }
 .tk-av.dim { opacity: .55; box-shadow: 0 0 0 2px var(--surface-white), 0 0 0 3.5px var(--text-disabled); }
 .tk-nm { font-size: 14.5px; font-weight: var(--fw-semibold); }

@@ -221,7 +221,7 @@ const allSelected = computed(() =>
 .s12-grp-wage { background:var(--accent-slate) !important; }
 .s12-grp-sub { background:var(--accent-sky) !important; color:var(--hue-blue) !important; }
 .s12-grp-att { background:var(--accent-cyan) !important; color:var(--hue-cyan) !important; }
-.s12-grp-ded { background:rgb(252,235,233) !important; color:var(--hue-red) !important; }
+.s12-grp-ded { background:var(--danger-soft) !important; color:var(--hue-red) !important; }
 .s12-cap { box-shadow:none; }   /* 对齐事实源 w12-cap(组首列抑制 box-shadow,本表无 shadow 源,等价 no-op) */
 
 /* 粘性左列:序号 + 姓名 */

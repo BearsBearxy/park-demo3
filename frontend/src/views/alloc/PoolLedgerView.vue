@@ -1433,7 +1433,7 @@ td.ct { text-align: center; }
 .pl-pname.click { cursor: pointer; }
 .pl-pname.click:hover .nm { color: var(--hue-blue); }
 .pl-pname .nm { overflow: hidden; text-overflow: ellipsis; }
-.pl-warn { flex: 0 0 auto; width: 15px; height: 15px; border-radius: var(--radius-full); background: rgb(255, 238, 237); color: var(--hue-red); font-size: 11px; font-weight: var(--fw-semibold); display: grid; place-items: center; cursor: help; }
+.pl-warn { flex: 0 0 auto; width: 15px; height: 15px; border-radius: var(--radius-full); background: var(--danger-soft); color: var(--hue-red); font-size: 11px; font-weight: var(--fw-semibold); display: grid; place-items: center; cursor: help; }
 
 /* mono 右对齐数值(空值'–' dim)/文本 */
 .pl-nv { display: block; text-align: right; font-size: 12px; padding: 0 8px; color: var(--text-secondary); font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1446,7 +1446,7 @@ td.ct { text-align: center; }
 .pl-txt { display: block; text-align: left; font-size: 12px; padding: 0 10px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pl-txt.dim { color: var(--text-muted); }
 /* §H4 挂栋却没录楼层的池:「(未录)」橙标(园区级池留空,不催补) */
-.pl-loc-todo { color: rgb(180, 83, 9); font-weight: var(--fw-medium); cursor: help; }
+.pl-loc-todo { color: var(--amber-text); font-weight: var(--fw-medium); cursor: help; }
 /* §I3 起「续行淡显(.pl-dup)」随之作废:楼层/池名称两列已改为逐行取本行电表的真值
    (原册 B/C/D 逐行写),第 2 行起不再是首行的复制品,淡显反而会误导成「这行没数据」。 */
 
@@ -1456,7 +1456,7 @@ td.ct { text-align: center; }
 .pl-pop { display: none; position: absolute; top: calc(100% - 4px); left: 50%; transform: translateX(-50%); z-index: 20; min-width: 180px; max-width: 300px; padding: 8px 10px; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); box-shadow: 0 8px 24px rgba(28, 28, 28, .16); text-align: left; }
 .pl-mcell:hover .pl-pop { display: block; }
 .pl-pop-row { font-size: 12px; color: var(--text-secondary); padding: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pl-pop-row .sgn { display: inline-block; width: 14px; color: rgb(21, 128, 61); font-family: var(--font-mono); }
+.pl-pop-row .sgn { display: inline-block; width: 14px; color: var(--ok-text); font-family: var(--font-mono); }
 .pl-pop-row .sgn.neg { color: var(--hue-red); }
 .pl-pop-row.link { color: var(--hue-blue); }
 
@@ -1474,8 +1474,8 @@ td.ct { text-align: center; }
 .pl-pv:hover { color: var(--hue-blue); }
 .pl-pv .v { flex: 0 0 auto; }
 .pl-badge { flex: 0 0 auto; font-family: var(--font-sans); font-size: 10px; line-height: 14px; border-radius: var(--radius-full); padding: 0 5px; background: var(--bg-sunken); color: var(--text-muted); }
-.pl-badge.month { background: rgb(255, 247, 235); color: rgb(180, 83, 9); }
-.pl-badge.from { background: rgb(232, 240, 254); color: var(--hue-blue); }
+.pl-badge.month { background: var(--warn-soft); color: var(--amber-text); }
+.pl-badge.from { background: var(--info-soft); color: var(--hue-blue); }
 /* 抽屉③只读一行:当月分母/加度 + 去参数页改 */
 .pl-roparam { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-sunken); font-size: 12px; color: var(--text-secondary); }
 
@@ -1495,10 +1495,10 @@ td.ct { text-align: center; }
 .pl-namebar-lbl { font-size: var(--fs-micro); color: var(--text-muted); }
 .pl-namebar-row { display: flex; align-items: center; gap: 8px; min-height: 20px; }
 .pl-namebar-name { flex: 1; min-width: 0; font-size: var(--fs-h4); font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pl-namebar-name .hi { background: rgb(255, 247, 235); color: rgb(180, 83, 9); border-radius: var(--radius-xs); padding: 0 2px; }
+.pl-namebar-name .hi { background: var(--warn-soft); color: var(--amber-text); border-radius: var(--radius-xs); padding: 0 2px; }
 /* 提示行常驻(§4.2):min-height 占住一行,内容用 <template v-if> 而不是给这个 div 本身加 v-if —— 撞名/改名提示出现或消失都不会顶动下面的卡片 */
 .pl-namehint { min-height: 16px; line-height: 16px; font-size: var(--fs-micro); color: var(--text-muted); }
-.pl-namehint.warn { color: rgb(180, 83, 9); }
+.pl-namehint.warn { color: var(--amber-text); }
 .pl-namehint.bad { color: var(--hue-red); }
 
 /* 抽屉表单 */
@@ -1511,41 +1511,41 @@ td.ct { text-align: center; }
 .pl-sectitle { font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pl-sectitle .dim { font-weight: var(--fw-regular); color: var(--text-muted); font-size: var(--fs-micro); }
 .pl-lbl { display: block; font: var(--type-label); color: var(--text-secondary); font-weight: var(--fw-medium); margin-bottom: 6px; }
-.pl-txti { width: 100%; box-sizing: border-box; height: 32px; padding: 0 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); font-size: 12.5px; background: var(--surface-white); }
-.pl-txti:focus { outline: none; border-color: var(--border-strong); }
+.pl-txti { width: 100%; box-sizing: border-box; height: 32px; padding: 0 12px; border: 1px solid var(--border-control); border-radius: var(--radius-sm); font-size: 12.5px; background: var(--surface-white); }
+.pl-txti:focus { outline: none; border-color: var(--border-control-strong); }
 /* 分摊方式分段控件(变更 4):四选一是本抽屉最重要的决定,每档带一句解释,比单选圆点更醒目 */
 .pl-methodseg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.pl-methodopt { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 48px; padding: 6px 6px; box-sizing: border-box; text-align: center; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-sunken); cursor: pointer; }
+.pl-methodopt { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 48px; padding: 6px 6px; box-sizing: border-box; text-align: center; border: 1px solid var(--border-control); border-radius: var(--radius-sm); background: var(--surface-sunken); cursor: pointer; }
 /* 视觉隐藏原生 radio(卡片本身就是可点目标),但保留 1px 尺寸以留在无障碍树/Tab 序列里 */
 .pl-methodopt input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .pl-methodopt .t { font-size: var(--fs-label); font-weight: var(--fw-medium); color: var(--text-secondary); }
 .pl-methodopt .h { font-size: var(--fs-micro); color: var(--text-muted); line-height: 1.3; }
 .pl-methodopt:hover { background: var(--bg-hover); }
-.pl-methodopt.on { background: var(--surface-white); border-color: var(--border-strong); box-shadow: var(--shadow-pill); }
+.pl-methodopt.on { background: var(--surface-raised); border-color: var(--border-control-strong); box-shadow: var(--shadow-pill); }
 .pl-methodopt.on .t { color: var(--text-primary); font-weight: var(--fw-semibold); }
 .pl-manual { font-size: 12.5px; color: var(--text-muted); padding: 5px 0; }
 .pl-chip { flex: 0 0 auto; font-size: 11px; border-radius: var(--radius-full); padding: 0 7px; background: var(--surface-sunken); color: var(--text-muted); }
-.pl-chip.infra { background: rgb(255, 250, 235); color: rgb(138, 97, 0); }
-.pl-chip.warn { background: rgb(255, 247, 235); color: rgb(180, 83, 9); }
-.pl-chip.ok { background: rgb(222, 244, 229); color: rgb(21, 128, 61); }
-.pl-chip.bad { background: rgb(255, 238, 237); color: var(--hue-red); }
+.pl-chip.infra { background: var(--caution-soft); color: var(--caution-text); }
+.pl-chip.warn { background: var(--warn-soft); color: var(--amber-text); }
+.pl-chip.ok { background: var(--ok-soft); color: var(--ok-text); }
+.pl-chip.bad { background: var(--danger-soft); color: var(--hue-red); }
 /* §G4 待补定位的池:抽屉里把楼栋/楼层/侧向三格圈出来(期区不算定位格) */
 .pl-loc-hi > :nth-child(n+2) { outline: 1px solid rgb(245, 158, 11); outline-offset: 2px; border-radius: var(--radius-sm); }
-.pl-chip.gone { background: rgb(255, 238, 237); color: var(--hue-red); }
-.pl-chip.nodate { background: rgb(255, 247, 235); color: rgb(180, 83, 9); cursor: help; }
+.pl-chip.gone { background: var(--danger-soft); color: var(--hue-red); }
+.pl-chip.nodate { background: var(--warn-soft); color: var(--amber-text); cursor: help; }
 /* 受益人楼层:蓝=解析到层;未定层=红底醒目(它们会被合摊成 1 份,是漏摊的源头) */
 .pl-chip.floor { background: var(--accent-blue); color: var(--hue-blue); cursor: help; }
-.pl-chip.nofloor { background: rgb(255, 238, 237); color: var(--hue-red); font-weight: var(--fw-medium); cursor: help; }
+.pl-chip.nofloor { background: var(--danger-soft); color: var(--hue-red); font-weight: var(--fw-medium); cursor: help; }
 /* 受益人列头 + 行内份额输入(与月度参数 pl-ni 同款透明格) */
 .pl-bindhdr { display: flex; align-items: center; gap: 8px; padding: 0 4px 4px; border-bottom: 1px dashed var(--border-subtle); font-size: var(--fs-micro); color: var(--text-muted); }
 .pl-bindhdr .nm { flex: 1; }
 .pl-bindhdr .wt { flex: 0 0 64px; text-align: right; cursor: help; text-decoration: underline dotted; }
-.pl-wi { flex: 0 0 64px; box-sizing: border-box; border: 1px solid var(--border-subtle); background: var(--surface-white); text-align: right; font-size: 12px; padding: 2px 6px; outline: none; color: var(--text-primary); font-family: var(--font-mono); border-radius: var(--radius-sm); }
+.pl-wi { flex: 0 0 64px; box-sizing: border-box; border: 1px solid var(--border-control); background: var(--surface-white); text-align: right; font-size: 12px; padding: 2px 6px; outline: none; color: var(--text-primary); font-family: var(--font-mono); border-radius: var(--radius-sm); }
 .pl-wi:focus { border-color: var(--hue-blue); }
 .pl-wi:disabled { border-color: transparent; background: transparent; }
 .pl-wi::-webkit-outer-spin-button, .pl-wi::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .pl-wi::placeholder { color: var(--text-disabled); }
-.pl-innerwarn { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: var(--radius-sm); background: rgb(255, 250, 235); color: rgb(138, 97, 0); font-size: 11.5px; }
+.pl-innerwarn { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: var(--radius-sm); background: var(--caution-soft); color: var(--caution-text); font-size: 11.5px; }
 /* 常驻一行:18px 文字行 + 上下 7px padding = 32px(border-box);无内容时只留位置不显黄底 */
 .pl-nodatewarn { min-height: 32px; line-height: 18px; font-size: var(--fs-micro); }
 .pl-nodatewarn.blank { background: transparent; }
@@ -1555,7 +1555,7 @@ td.ct { text-align: center; }
 .pl-directpick .lbl { flex: 0 0 auto; font-size: 12px; color: var(--text-secondary); }
 .pl-chkline { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-secondary); cursor: pointer; }
 .pl-bindhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.pl-bindq { height: 28px; padding: 0 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-full); font-size: 12px; }
+.pl-bindq { height: 28px; padding: 0 10px; border: 1px solid var(--border-control); border-radius: var(--radius-full); font-size: 12px; }
 .pl-bindq:focus { outline: none; border-color: var(--hue-blue); }
 .pl-bindlist { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; }
 .pl-bindlist.tall { max-height: 240px; }
@@ -1565,10 +1565,10 @@ td.ct { text-align: center; }
 .pl-bindrow .nm { font-weight: var(--fw-medium); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pl-bindrow .meta { flex: 1; color: var(--text-muted); font-size: var(--fs-micro); overflow: hidden; text-overflow: ellipsis; }
 .pl-bindempty { text-align: center; color: var(--text-disabled); font-size: var(--fs-label); padding: 12px 0; }
-.pl-sign { flex: 0 0 auto; border: 1px solid var(--border-subtle); background: rgb(222, 244, 229); color: rgb(21, 128, 61); font-family: var(--font-mono); font-size: 11.5px; border-radius: var(--radius-full); padding: 1px 9px; cursor: pointer; }
-.pl-sign.neg { background: rgb(255, 238, 237); color: var(--hue-red); }
+.pl-sign { flex: 0 0 auto; border: 1px solid var(--border-subtle); background: var(--ok-soft); color: var(--ok-text); font-family: var(--font-mono); font-size: 11.5px; border-radius: var(--radius-full); padding: 1px 9px; cursor: pointer; }
+.pl-sign.neg { background: var(--danger-soft); color: var(--hue-red); }
 .pl-linkrow { display: flex; align-items: center; gap: 8px; }
 .pl-iconbtn { width: 26px; height: 26px; border: none; background: transparent; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-muted); display: inline-grid; place-items: center; }
 .pl-iconbtn:hover { background: var(--bg-hover); color: var(--text-primary); }
-.pl-iconbtn.danger:hover { background: rgb(255, 238, 237); color: var(--hue-red); }
+.pl-iconbtn.danger:hover { background: var(--danger-soft); color: var(--hue-red); }
 </style>

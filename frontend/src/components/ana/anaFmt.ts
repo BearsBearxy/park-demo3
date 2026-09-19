@@ -1,5 +1,7 @@
 // src/components/ana/anaFmt.ts — 分析层格式化/动态标签/统计工具(移植 ana-charts.jsx 头部工具)。
 // 全部纯函数,一切标签由数据算出(峰值/趋势),无写死结论。
+import { anaPalette } from './anaTheme'
+import { resolvedTheme } from '@/stores/appearance'
 
 export const fnum = (v: number, d = 1): string =>
   Number(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })
@@ -10,7 +12,7 @@ export const sgn = (v: number, d = 1, u = '%'): string =>
   (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d) + u
 
 // ── 图表填充族(墨蓝+蓝族,无紫无绿) ──
-export const INK = 'rgb(28,28,28)'
+export const INK = 'var(--ink-900)'
 export const FILL = ['var(--fill-slate)', 'var(--fill-blue)', 'var(--fill-cyan)', 'var(--fill-sky)', 'rgb(180,200,228)', 'rgb(150,170,205)']
 export const POS = 'var(--hue-blue)'
 export const NEG = 'var(--hue-red)'
@@ -18,12 +20,21 @@ export const WARN = 'var(--hue-orange)'
 
 // ── 对比开关叠加线语义色(spec 2026-07-11 §E) ──
 // 曾用 #185FA5 画预算线(与利润线同色不可分)、#85B7EB 画上月线(与数据柱同蓝族难辨)。
-// ECharts option 为纯 JSON 不能引用 CSS 变量 → 字面值。仅用于「对比参照线」,数据系列不用。
-// 对比线语义色。2026-08-20 压暗:原 #A78BFA 对白底仅 2.72:1、#94A3B8 仅 2.56:1 ——
-// 连图形元素的 3:1 都不到,而它们还要给 markLine 标签当**文字色**(那档要 4.5:1)。
-// 用户原话「这个紫色的线看不清楚」。同色系下压到达标,「紫=预算 / 灰=基线」的语义区分不变。
-export const CMP_BUDGET = '#7C3AED'     // 预算基准(紫) 5.70:1
-export const CMP_BASELINE = '#64748B'   // 环比上月/同期基线(灰) 4.76:1
+// 仅用于「对比参照线」,数据系列不用;「紫=预算 / 灰=基线」。值在 anaTheme 两套色板的 cmp 里(浅色 5.70 / 4.76,
+// 暗色 5.26 / 5.59,都够 markLine 标签当字色的 4.5)。按当前外观取:在 computed / option 构建里调。
+export const cmpBudget = (): string => anaPalette().cmp.budget
+export const cmpBaseline = (): string => anaPalette().cmp.baseline
+
+// ── 图表 option 里的颜色(DARK-MODE-SPEC §6) ──
+// option 交给 canvas 画,引不了 CSS 变量 → 按当前外观从 anaTheme 取。在 computed / 渲染里调,切外观时才跟着重算。
+/** 分类色板按名字取(与 CAT_COLORS 同位置);只有 deep 两种外观不同(暗色换灰蓝)。 */
+export function hues() {
+  const [blue, amber, teal, red, coral, deep, mid, pale] = anaPalette().cat
+  return { blue, amber, teal, red, coral, deep, mid, pale }
+}
+/** 墨色半透明:浅色 = --ink-900 × a(写法同改前,如 rgba(28,28,28,.45)),暗色 = 暗色 --ink-900 × a。 */
+export const inkA = (a: number): string =>
+  `rgba(${resolvedTheme.value === 'dark' ? '236,236,238' : '28,28,28'},${String(a).replace(/^0\./, '.')})`
 
 // ── 动态标签(峰值/趋势,由序列算出) ──
 export type AnaTone = 'good' | 'risk' | 'warn' | 'neutral'
@@ -56,8 +67,8 @@ export function trendTag(series: number[] | null | undefined): AnaTagData | null
 export type AnaStatusLevel = 'good' | 'watch' | 'risk' | 'info' | 'neutral'
 export const STATUS: Record<AnaStatusLevel, { color: string; soft: string; label: string }> = {
   good:    { color: 'var(--hue-blue)',   soft: 'var(--accent-blue)',    label: '良好' },
-  watch:   { color: 'var(--hue-orange)', soft: 'rgb(255,243,230)',      label: '关注' },
-  risk:    { color: 'var(--hue-red)',    soft: 'rgb(255,238,237)',      label: '异常' },
+  watch:   { color: 'var(--hue-orange)', soft: 'var(--warn-bg)',        label: '关注' },
+  risk:    { color: 'var(--hue-red)',    soft: 'var(--danger-soft)', label: '异常' },
   info:    { color: 'var(--hue-cyan)',   soft: 'var(--accent-cyan)',    label: '提示' },
   neutral: { color: 'var(--text-muted)', soft: 'var(--surface-sunken)', label: '—' },
 }
@@ -108,19 +119,3 @@ export function smoothSegs(c: Pt[]): string {
 }
 export const smoothPath = (c: Pt[]): string =>
   c.length ? `M ${c[0].x.toFixed(2)} ${c[0].y.toFixed(2)}` + smoothSegs(c) : ''
-
-/** KPI 瓦片迷你趋势线路径(spec 2026-07-11 §B):x 等距占满宽,y 按非 null 极值归一(上下留 1px,
- *  全等序列画中线);null 为断点分段(缺月诚实断开,不 connectNulls);可画段(连续 ≥2 点)全无 → ''。 */
-export function trendPath(values: (number | null)[], w: number, h: number): string {
-  const vs = values.filter((v): v is number => v != null)
-  if (vs.length < 2) return ''
-  const mn = Math.min(...vs), mx = Math.max(...vs)
-  const sx = w / (values.length - 1)
-  const y = (v: number): number => (mx === mn ? h / 2 : 1 + (1 - (v - mn) / (mx - mn)) * (h - 2))
-  let d = ''
-  let seg: Pt[] = []
-  const flush = (): void => { if (seg.length >= 2) d += (d ? ' ' : '') + smoothPath(seg); seg = [] }
-  values.forEach((v, i) => { if (v == null) flush(); else seg.push({ x: i * sx, y: y(v) }) })
-  flush()
-  return d
-}

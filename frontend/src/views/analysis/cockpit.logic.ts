@@ -14,7 +14,7 @@ import { matchBudgetKey } from '@/analysis/budget'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
 import type { CompareMode } from '@/analysis/useCompare'
-import { CMP_BASELINE, CMP_BUDGET, fint, fnum } from '@/components/ana/anaFmt'
+import { cmpBaseline, cmpBudget, fint, fnum, hues } from '@/components/ana/anaFmt'
 import { DUR, EASE } from '@/components/ana/anaMotion'
 import { CALLOUT, calloutMark } from '@/components/ana/anaTheme'
 
@@ -462,11 +462,11 @@ export function fitBandAt(fit: RevenueFit | null, month: number): FitBand | null
  * 对象,vitest/tsc/anaCopyLint 全绿情况下整段删掉、markArea 的 formatter 清空、markPoint 退回
  * 固定文案都不会被抓到。抽成纯函数后,cockpit.logic.spec.ts 直接测 option 对象里的三块交付物。
  */
-const OUTLIER_RED = '#E24B4A'   // 同 breakeven.logic.ts RED(统一主题语义红)
 export function mainChartOption(
   d: MainChartData | null, outlierResByMonth: Map<number, number>, cmpMode: CompareMode,
 ): object | null {
   if (!d || !d.covered) return null
+  const { red: OUTLIER_RED, deep } = hues()   // 同 breakeven.logic.ts RED(统一主题语义红);按当前外观取
   const yMin = d.yMin
   const revData = d.rev.map((v, i) => (d.outlierMonths.includes(i + 1) ? { value: v, itemStyle: { color: OUTLIER_RED } } : v))
   const series: object[] = [
@@ -485,20 +485,20 @@ export function mainChartOption(
         'bottom',
       ) : undefined,
       markLine: d.budgetAvgWan != null ? {
-        silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: CMP_BUDGET },
+        silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: cmpBudget() },
         // 图表清晰化 §1:标签画在绘图区内,不许被图边裁切
-        label: { position: 'insideEndTop', formatter: `预算月均 ${d.budgetAvgWan}万`, fontSize: 11, color: CMP_BUDGET },
+        label: { position: 'insideEndTop', formatter: `预算月均 ${d.budgetAvgWan}万`, fontSize: 11, color: cmpBudget() },
         data: [{ yAxis: d.budgetAvgWan }],
       } : undefined,
     },
-    { name: '利润', type: 'line', data: d.profit, smooth: true, symbolSize: 5, connectNulls: true, itemStyle: { color: '#185FA5' } },
+    { name: '利润', type: 'line', data: d.profit, smooth: true, symbolSize: 5, connectNulls: true, itemStyle: { color: deep } },
   ]
   if (cmpMode === 'mom') {
     // C6-09 对比虚线:系列级 200/quarticOut 压过注入的 update 0 → 新 name 新视图,clip 从左擦入;关掉是视图 dispose 瞬时(不淡出)
-    series.push({ name: '上月收入', type: 'line', data: d.prevRev, lineStyle: { type: 'dashed', width: 1.5 }, itemStyle: { color: CMP_BASELINE }, symbol: 'none', connectNulls: true, animationDuration: DUR.update, animationEasing: EASE.enter })
+    series.push({ name: '上月收入', type: 'line', data: d.prevRev, lineStyle: { type: 'dashed', width: 1.5 }, itemStyle: { color: cmpBaseline() }, symbol: 'none', connectNulls: true, animationDuration: DUR.update, animationEasing: EASE.enter })
   }
   if (cmpMode === 'budget' && d.budgetAvgWan != null) {
-    series.push({ name: '预算月均', type: 'line', data: d.labels.map(() => d.budgetAvgWan), lineStyle: { type: 'dashed', width: 1.5, color: CMP_BUDGET }, itemStyle: { color: CMP_BUDGET }, symbol: 'none', animationDuration: DUR.update, animationEasing: EASE.enter })   // C6-09 同上(同一 cmp 开关下的独立 line 系列)
+    series.push({ name: '预算月均', type: 'line', data: d.labels.map(() => d.budgetAvgWan), lineStyle: { type: 'dashed', width: 1.5, color: cmpBudget() }, itemStyle: { color: cmpBudget() }, symbol: 'none', animationDuration: DUR.update, animationEasing: EASE.enter })   // C6-09 同上(同一 cmp 开关下的独立 line 系列)
   }
   // 趋势线与拟合区间 2026-09-12 搬去 trendChartOption(用户:「现在完全看不见」)——
   // 这张图是 0 起的柱图,三条线只能挤在柱顶那一小段里。理由见那个函数的头注。

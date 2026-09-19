@@ -6,7 +6,7 @@
 //   <0(真实库即此:售电按转供加价计费,收入>成本)→ 流入侧「转供毛差」。
 // 中枢节点「园区电力」使每条边都是真实 SQL 可验数字(不做两源×四汇的比例假分摊)。
 
-import { CMP_BASELINE, CMP_BUDGET, fnum } from '@/components/ana/anaFmt'
+import { cmpBaseline, cmpBudget, fnum, hues } from '@/components/ana/anaFmt'
 import { DUR, EASE } from '@/components/ana/anaMotion'
 
 // ── 结构化最小输入类型(真实 DTO 为其超集,单测夹具可极小) ──
@@ -143,15 +143,16 @@ export function comboSeries(
   mode: 'none' | 'mom' | 'yoy' | 'budget',
   budgetCost: number | null,
 ): object[] {
+  const { mid, deep } = hues()
   const series: object[] = [
-    { type: 'bar', name: '购电成本', data: buy, barMaxWidth: 20, itemStyle: { color: '#85B7EB', borderRadius: [3, 3, 0, 0] } },
-    { type: 'bar', name: '售电收入', data: sell, barMaxWidth: 20, itemStyle: { color: '#185FA5', borderRadius: [3, 3, 0, 0] } },
+    { type: 'bar', name: '购电成本', data: buy, barMaxWidth: 20, itemStyle: { color: mid, borderRadius: [3, 3, 0, 0] } },
+    { type: 'bar', name: '售电收入', data: sell, barMaxWidth: 20, itemStyle: { color: deep, borderRadius: [3, 3, 0, 0] } },
   ]
   // C6-09 对比虚线:系列级 200/quarticOut 压过注入的 update 0 → 新 name 新视图,clip 从左擦入;关掉是视图 dispose 瞬时(不淡出)
   if (mode === 'mom')
-    series.push({ type: 'line', name: '购电成本·上月', data: [null, ...buy.slice(0, -1)], symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: CMP_BASELINE }, animationDuration: DUR.update, animationEasing: EASE.enter })
+    series.push({ type: 'line', name: '购电成本·上月', data: [null, ...buy.slice(0, -1)], symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: cmpBaseline() }, animationDuration: DUR.update, animationEasing: EASE.enter })
   if (mode === 'budget' && budgetCost != null)
-    series.push({ type: 'line', name: '购电预算·月均', data: buy.map(() => +(budgetCost / 12 / 10000).toFixed(2)), symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: CMP_BUDGET }, animationDuration: DUR.update, animationEasing: EASE.enter })
+    series.push({ type: 'line', name: '购电预算·月均', data: buy.map(() => +(budgetCost / 12 / 10000).toFixed(2)), symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: cmpBudget() }, animationDuration: DUR.update, animationEasing: EASE.enter })
   return series
 }
 

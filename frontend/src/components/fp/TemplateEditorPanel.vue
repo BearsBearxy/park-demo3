@@ -407,14 +407,14 @@ function fmtTime(s: string): string {
 /* 遮罩/弹窗壳:对齐 FinDialogs .fin-mask/.fin-dlg(居中,PAGE-BEHAVIOR-SPEC §2) */
 .te-mask {
   position: fixed; inset: 0; z-index: var(--z-modal);
-  background: rgba(28, 28, 28, 0.34);
+  background: var(--scrim);
   display: grid; place-items: center; padding: 24px; box-sizing: border-box;
 }
 .te-dlg {
   width: min(1080px, 94vw); max-height: 88vh;
   display: flex; flex-direction: column;
   background: var(--surface-white); border: 1px solid var(--border-subtle);
-  border-radius: 16px; box-shadow: 0 24px 64px rgba(28, 28, 28, 0.28);
+  border-radius: 16px; box-shadow: var(--shadow-dialog);
   overflow: hidden;
 }
 

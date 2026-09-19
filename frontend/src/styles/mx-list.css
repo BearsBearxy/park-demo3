@@ -23,7 +23,7 @@
   height: 36px;
   padding: 0 12px 0 34px;
   border-radius: var(--radius-full);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-control);
   background: var(--surface-card);
   font-family: var(--font-sans);
   font-size: 13px;
@@ -86,7 +86,7 @@
 .cl-scroll { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
 .cl-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border: none; border-bottom: 1px solid var(--divider); background: transparent; cursor: pointer; text-align: left; font: inherit; transition: background var(--dur-fast, .12s) var(--ease-standard); }
 .cl-item:hover { background: var(--surface-card); }
-.cl-item.sel { background: rgba(24,134,254,0.08); }
+.cl-item.sel { background: color-mix(in srgb, var(--row-selected) 80%, transparent); }   /* 浅色 = rgba(24,134,254,.08) */
 .cl-main { flex: 1; min-width: 0; }
 .cl-l1 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .cl-name { font-size: 13.5px; font-weight: var(--fw-medium); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -95,10 +95,10 @@
 .cl-no { font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* V59 整体承租徽标(合同列表项):批发性质,不计出租率/KPI */
 .cl-master { flex: 0 0 auto; font-size: 10px; padding: 0 5px; border-radius: 999px; background: rgba(214,138,42,0.14); color: var(--hue-orange); }
-.cl-empty { text-align: center; padding: 40px 12px; color: var(--text-disabled); font-size: 13px; }
+.cl-empty { text-align: center; padding: 40px 12px; color: var(--text-muted); font-size: 13px; }
 .mx-md-detail { min-height: 0; display: flex; }
 .mx-md-detail > * { flex: 1 1 auto; min-height: 0; }
-.mx-md-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-disabled); border: 1px dashed var(--divider); border-radius: var(--radius-lg); }
+.mx-md-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-muted); border: 1px dashed var(--divider); border-radius: var(--radius-lg); }
 @media (max-width: 1100px) {
   .mx-md { grid-template-columns: 1fr; }
 }
@@ -128,7 +128,7 @@
   transition: background var(--dur-fast) var(--ease-standard);
 }
 .mx-rowcard:active { background: var(--bg-panel); }              /* 触屏无 hover,点按反馈用 :active */
-.mx-rowcard.is-selected { background: rgba(24,134,254,0.10); }   /* 与表格分支选中底色同值 */
+.mx-rowcard.is-selected { background: var(--row-selected); }   /* 与表格分支选中底色同值 */
 .mx-rowcard-main { font: var(--type-body); font-weight: var(--fw-medium); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-rowcard-sub { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 12px; color: var(--text-muted); }
 .mx-rowcard-sub > * { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

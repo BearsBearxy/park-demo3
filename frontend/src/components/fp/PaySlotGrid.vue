@@ -99,8 +99,8 @@ function apply() {
 .psg-co { font-size: 12px; color: var(--text-primary); }
 .psg-co.inh { color: var(--text-muted); }
 .psg-co.inh em { font-style: normal; font-size: 10.5px; }
-.psg-co.none { color: rgb(178, 100, 0); }
-.psg-tag { align-self: flex-start; padding: 1px 6px; border-radius: var(--radius-full); background: rgba(255, 149, 0, 0.14); font-size: 10.5px; color: rgb(178, 100, 0); }
+.psg-co.none { color: var(--orange-text); }
+.psg-tag { align-self: flex-start; padding: 1px 6px; border-radius: var(--radius-full); background: rgba(255, 149, 0, 0.14); font-size: 10.5px; color: var(--orange-text); }
 .psg-tag.alt { background: var(--surface-sunken); color: var(--text-muted); }
 
 .psg-bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-card); font-size: 12.5px; color: var(--text-secondary); flex-wrap: wrap; }

@@ -16,6 +16,7 @@ import type { AuditRowDTO } from '@/types/system'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
 import Select from '@/components/ds/Select.vue'
+import DatePicker from '@/components/ds/DatePicker.vue'
 import Badge from '@/components/ds/Badge.vue'
 import FPPager from '@/components/fp/FPPager.vue'
 import { useFitRows } from '@/components/fp/useFitRows'
@@ -173,12 +174,10 @@ const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.va
         <div style="width:150px">
           <Select :options="actorOpts" v-model="actor" size="sm" />
         </div>
-        <label class="lg-range" :class="{ on: !!(from || to) }" title="按时间范围筛,止日含当天全天">
-          <component :is="iconFor('calendar')" :size="15" />
-          <input type="date" v-model="from" aria-label="起始日期" />
-          <span class="lg-range-sep">至</span>
-          <input type="date" v-model="to" aria-label="结束日期" />
-        </label>
+        <!-- 起–止合成一颗区间胶囊(DATE-PICKER-SPEC §5 第 3 节);两头同一拍写入,watch 只重拉一次 -->
+        <DatePicker mode="range" variant="chip" clearable align="end" :model-value="[from, to]" field-id="logs-range"
+                    aria-label="起止日期" title="按时间范围筛,止日含当天全天"
+                    @update:model-value="from = $event[0]; to = $event[1]" />
       </div>
     </div>
 
@@ -226,12 +225,6 @@ const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.va
 /* 失败条在定高卡片里垂直居中 —— 原 .lg-bar 靠 `margin: auto 0` 做到,
    换成 FPLoadError 之后由这一条接手(组件只管自己的样子,不管宿主怎么摆)。 */
 .lg-center { margin: auto 0; }
-/* 日期范围(1:1 ContractsView .mx-asof,贴合工具栏其它控件高度) */
-.lg-range { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-white); color: var(--text-muted); cursor: pointer; }
-.lg-range.on { border-color: var(--hue-blue); color: var(--hue-blue); }
-.lg-range input[type="date"] { width: 118px; border: none; outline: none; background: none; font-size: var(--fs-label); font-family: var(--font-mono); color: var(--text-primary); cursor: pointer; }
-.lg-range-sep { font-size: var(--fs-label); color: var(--text-muted); }
-
 /* 时间线容器:高度由布局链撑满,禁止滚动条 —— 每页行数由 useFitRows 保证恰好放满(LIST-PAGE-SPEC §6)。
    竖向 flex 是为了首载/失败态(.page-loading / FPLoadError 都靠 flex 与 auto margin)在卡片里居中 */
 .lg-wrap { flex: 1 1 auto; overflow: hidden; padding: 10px 16px 0; display: flex; flex-direction: column; }
@@ -258,7 +251,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.va
 .lg-target { flex: 0 1 auto; font-size: var(--fs-body); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lg-detail { flex: 1 1 auto; min-width: 0; font-size: var(--fs-label); color: var(--text-muted); font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* 授权人:审计的第二个人,给足对比度别当装饰淡化掉 */
-.lg-auth { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: var(--radius-full); background: rgba(255, 149, 0, 0.12); color: rgb(190, 110, 0); font-size: var(--fs-label); font-weight: var(--fw-medium); white-space: nowrap; }
+.lg-auth { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: var(--radius-full); background: rgba(255, 149, 0, 0.12); color: var(--badge-orange-text); font-size: var(--fs-label); font-weight: var(--fw-medium); white-space: nowrap; }
 
 .lg-empty { margin: auto 0; text-align: center; padding: 40px; color: var(--text-disabled); font-size: var(--fs-body); }
 

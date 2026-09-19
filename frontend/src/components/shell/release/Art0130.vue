@@ -19,7 +19,7 @@ import { Bell, Check } from 'lucide-vue-next'
 .bell { position: relative; display: inline-flex; color: var(--text-secondary); }
 .bell i {
   position: absolute; top: -6px; right: -8px; min-width: 14px; height: 14px; padding: 0 3px;
-  border-radius: var(--radius-full); background: var(--hue-red); color: #fff;
+  border-radius: var(--radius-full); background: var(--hue-red); color: var(--control-solid-text);
   font-family: var(--font-mono); font-size: var(--fs-micro); font-style: normal; font-weight: var(--fw-semibold);
   display: grid; place-items: center; box-shadow: 0 0 0 1.5px var(--surface-white);
 }
@@ -28,7 +28,7 @@ import { Bell, Check } from 'lucide-vue-next'
 .s.ok { color: var(--status-success); }
 .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; background: var(--hue-orange); }
 .btn {
-  height: 24px; padding: 0 10px; border-radius: var(--radius-full); background: var(--ink-900); color: #fff;
+  height: 24px; padding: 0 10px; border-radius: var(--radius-full); background: var(--control-solid); color: var(--control-solid-text);
   font-size: var(--fs-micro); display: inline-flex; align-items: center;
 }
 </style>

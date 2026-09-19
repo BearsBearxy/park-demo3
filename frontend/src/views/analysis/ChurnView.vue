@@ -32,7 +32,7 @@ onMounted(async () => {
 })
 
 const tierColor = (t: Tier) => (t === 'high' ? 'var(--hue-red)' : t === 'mid' ? 'var(--hue-orange)' : 'var(--fill-blue)')
-const tierBg = (t: Tier) => (t === 'high' ? 'rgb(255,238,237)' : t === 'mid' ? 'rgb(255,243,230)' : 'var(--surface-sunken)')
+const tierBg = (t: Tier) => (t === 'high' ? 'var(--danger-soft)' : t === 'mid' ? 'var(--warn-bg)' : 'var(--surface-sunken)')
 const tierZh = (t: Tier) => (t === 'high' ? '高' : t === 'mid' ? '中' : '低')
 const wan = (v: number) => fnum(v / 10000, 1)
 

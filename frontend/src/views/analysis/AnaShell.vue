@@ -17,7 +17,7 @@ import AnaPill from '@/components/ana/AnaPill.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import '@/components/ana/ana.css'
-import Select from '@/components/ds/Select.vue'
+import DatePicker from '@/components/ds/DatePicker.vue'
 
 const props = defineProps<{
   compare?: CompareMode[]                 // 屏声明的对比支持集(不传 = 不显示开关)
@@ -28,9 +28,9 @@ const props = defineProps<{
   busy?: boolean
   // 首进占位瓦片数(= 本屏数据到了之后会出几张;**只在首进取数途中传,取完传 0** —— 取完仍没数据的屏
   // 是空态,不该摆一排「—」)。#kpis 槽还一张瓦都没渲染时,摆这么多张「—」瓦:
-  // 与真瓦同一栅格、同一组件,所以任何视口宽度下换行出来的行数都与真版式一致。
+  // 与真瓦同一栅格、同一组件,所以任何视口宽度下换行出来的行数都与真版式一致。占位瓦 = 加载态(数字位 / 副行微光,KPI-CARD-SPEC §3)。
   // 只靠 min-height 兜一行的量,手机两列时真版式是 3~5 行,数据一到整页下推 170~780px(2026-09-16 实测)。
-  // 也可以直接给每张瓦的副行占位字(隐形):副行在窄瓦里会折两三行的屏(盈亏、光伏)用它,折行数与真瓦一致。
+  // 也可以给每张瓦的副行占位字(旧写法;副行 2026-09 起固定两行高 32,字已不影响瓦高,只用来数张数)。
   kpiHold?: number | string[]
 }>()
 
@@ -73,6 +73,27 @@ function stepYear(dir: 1 | -1) {
   if (!ys.length) return
   const ni = Math.min(ys.length - 1, Math.max(0, (yearIdx.value < 0 ? ys.length - 1 : yearIdx.value) + dir))
   period.setYear(ys[ni])
+}
+
+// ── 期间字段(DATE-PICKER-SPEC §5 第 5 节):按月 → 月份面板,按年 / 只按年的屏 → 年份面板 ──
+// 可选的只有注入的有数据月份 / 年份(改前两个下拉也只列这些):首尾给 min/max,中间缺的月由 hasData 灰掉不可点。
+const byMonth = computed(() => pmode.value === 'full' && period.sel.value.gran === 'month')
+const pValue = computed(() => {
+  if (!period.years.value.length) return ''
+  const { year, month } = period.sel.value
+  return byMonth.value ? `${year}-${String(month).padStart(2, '0')}` : String(year)
+})
+const pMin = computed(() => (byMonth.value ? period.months.value[0] : period.years.value[0] != null ? String(period.years.value[0]) : undefined))
+const pMax = computed(() => {
+  const ms = period.months.value, ys = period.years.value
+  return byMonth.value ? ms[ms.length - 1] : ys.length ? String(ys[ys.length - 1]) : undefined
+})
+const pHas = (v: string) => (v.length === 7 ? period.months.value.includes(v) : period.years.value.includes(+v))
+function onPeriod(v: string) {
+  if (v.length === 4) { period.setYear(+v); return }
+  // setYear 在按月时会落到该年同月(没有就落该年最后一月),再 setMonth 钉到点的那一月
+  period.setYear(+v.slice(0, 4))
+  period.setMonth(+v.slice(5, 7))
 }
 
 // ── 设置弹层 ──
@@ -128,23 +149,12 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
           <button :class="{ on: period.sel.value.gran === 'month' }" @click="period.setGran('month')">按月</button>
           <button :class="{ on: period.sel.value.gran === 'year' }" @click="period.setGran('year')">按年</button>
         </div>
-        <!-- 期间年/月:ds/Select。改前是原生 <select> 把**触发器**画成了药丸+自绘箭头,
-             但点开的**面板由操作系统渲染**,CSS 管不到 —— 用户从抄表屏(ds/Select,白底圆角浮层带对勾)
-             切到任一分析屏,同样是「选年月」却是两个控件。本组件被 18 个分析屏共用,故改这一处 = 18 屏受益。
-             宽度按 LIST-PAGE-SPEC §2 的 110 / 92px(给窄了会把「2024年」截成「202…」)。 -->
-        <div class="anx-selw" style="width: 110px">
-          <Select size="sm" :disabled="!period.years.value.length"
-                  :options="period.years.value.map(y => ({ value: String(y), label: `${y}年` }))"
-                  :model-value="String(period.sel.value.year)"
-                  @update:model-value="period.setYear(+$event)" />
-        </div>
-        <!-- 按年时月下拉**占位不可见**而不是 v-if 插拔:拔掉它右边的步进钮会整组左移 92px,
-             换一次粒度抖一次(C5-01 ④)。visibility:hidden 同时把它移出 tab 序。 -->
-        <div v-if="pmode === 'full'" class="anx-selw" :class="{ 'anx-hid': period.sel.value.gran !== 'month' }" style="width: 92px">
-          <Select size="sm" :disabled="!period.years.value.length"
-                  :options="period.monthNumsOf(period.sel.value.year).map(m => ({ value: String(m), label: `${m}月` }))"
-                  :model-value="String(period.sel.value.month)"
-                  @update:model-value="period.setMonth(+$event)" />
+        <!-- 期间:一个 ds/DatePicker 字段(改前是年下拉 110 + 月下拉 92,稿 PickerInPlace 第 5 节)。
+             按月 / 按年只换面板,字段宽 120 不变 —— 换粒度时右边的步进钮不挪位(C5-01 ④)。 -->
+        <div class="anx-selw" style="width: 120px">
+          <DatePicker :mode="byMonth ? 'month' : 'year'" size="sm" :disabled="!period.years.value.length"
+                      :model-value="pValue" :min="pMin" :max="pMax" :has-data="pHas" aria-label="期间"
+                      @update:model-value="onPeriod" />
         </div>
         <div class="anx-nav">
           <button :disabled="pmode === 'year' ? yAtStart : period.atStart.value"
@@ -215,9 +225,9 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
          退场才是 200 而不是硬切),busy 时挂 .fp-stale。首进(还没有瓦片)仍由 min-height 94 兜空行。 -->
     <div v-if="$slots.kpis" class="anx-kpis av2-kpis" data-stale-host :class="{ 'fp-stale': busy }">
       <slot name="kpis" />
-      <!-- 占位瓦:标签与副行用不换行空格占住行盒(纯空格会被折叠成零高) -->
+      <!-- 占位瓦 = 加载态(稿 KpiA④「小卡 · 加载」):数字位和副行是微光条;标签用不换行空格占住行盒 -->
       <template v-if="holdNotes.length && kpisEmpty()">
-        <AnaKpiTile v-for="(n, i) in holdNotes" :key="'hold' + i" class="anx-kpi-hold" label=" " value="—" :note="n" />
+        <AnaKpiTile v-for="i in holdNotes.length" :key="'hold' + i" class="anx-kpi-hold" label=" " value="" loading />
       </template>
     </div>
 
@@ -251,8 +261,9 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
    S 档 .av2-kpis 定两列(ana.css §5.2 块)与 auto-fit 换行同理:行数是「视口档 × 瓦片数」的
    静态函数,挂载即终态,min-height 仍只须兜一行的量——多行自然超过下限,不必随档改值。
    2026-09-16:副行改为固定留两行(.d min-height 2 × 14.85),瓦片 82.85 → 97.7,故 94 → 109。
+   2026-09-19:KPI 卡照 KPI-CARD-SPEC 重排,一行小卡 108,故 109 → 120。
    多行的情况改由 kpiHold 占位瓦兜(见上),这里仍只兜不传 kpiHold 的屏的一行。 */
-.anx-kpis { flex: 0 0 auto; padding: 12px 24px 0; min-height: 109px; }
+.anx-kpis { flex: 0 0 auto; padding: 12px 24px 0; min-height: 120px; }
 .anx-selw { flex: 0 0 auto; }
 /* 工具条三个分组(改前是内联 style——媒体查询盖不住内联,M/S 收纳只能先收编成类;数值照抄零变化) */
 .anx-period { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -279,9 +290,8 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
   .anx-right { flex-basis: 100%; justify-content: flex-end; gap: 8px; }
 }
 /* S(≤600):期间行按 390 视口做减法(可用宽 390−12×2=366)。定宽项全是确定值:
-   seg 88(CJK 24×2+padding 16×2+缝 2+框 6)+ 年 110 + 月 92(LIST-PAGE-SPEC §2 下限,
-   ≤600 下 Select 字号升 16px 防 iOS 聚焦缩放,再窄必截)+ 步进 58 + 缝 15 = 363。
-   为此隐掉「期间/对比」字样(控件自明)——「数据截至」是数据信息,保留。
+   seg 88(CJK 24×2+padding 16×2+缝 2+框 6)+ 期间字段 120 + 步进 58 + 缝 10 = 276。
+   隐掉「期间/对比」字样(控件自明)——「数据截至」是数据信息,保留。
    seg 收窄只动本组件模板里的两条(scoped 带 data-v),#tools 插槽/卡头 mini seg 不受影响。 */
 @media (max-width: 600px) {
   .anx-tools { padding: 9px 12px; }

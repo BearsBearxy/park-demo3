@@ -464,25 +464,27 @@ const PV_READINGS: PvReadingDTO[] = range(243).flatMap((d) => {
 // 且逐屏对过模板:每张图卡都走到了有数分支。掉到下限以下 = 有卡片退成了空态 / 空白 —— 本文件要挡的就是这个。
 // 实测时屏上仍有 .ana-empty 的三处都是模板里无条件的占位卡,不是夹具没喂到:
 // FinBalance「趋势数据待录入」、FinCashflow「现金流量表数据待录入」、TenantPortfolio「续约风险」。
+// 2026-09-19:期间条的年 / 月 ds/Select 换成 ds/DatePicker。Select 的下拉箭头是裸 <svg>(不带 .lucide),
+// 原先被当内容块算进去了:按月按年的屏 2 个、只按年的屏 1 个、充电桩分析工具条 1 个,下限各减掉这几个。
 const SCREENS: { name: string; comp: Component; min: number }[] = [
   { name: 'AnomalyView', comp: AnomalyView, min: 2 },
-  { name: 'BreakevenView', comp: BreakevenView, min: 5 },
-  { name: 'BudgetView', comp: BudgetView, min: 8 },
-  { name: 'ChargingAnalysisView', comp: ChargingAnalysisView, min: 5 },
+  { name: 'BreakevenView', comp: BreakevenView, min: 3 },
+  { name: 'BudgetView', comp: BudgetView, min: 7 },
+  { name: 'ChargingAnalysisView', comp: ChargingAnalysisView, min: 4 },
   { name: 'ChurnView', comp: ChurnView, min: 31 },
-  { name: 'CockpitView', comp: CockpitView, min: 17 },
-  { name: 'ElecAnalysisView', comp: ElecAnalysisView, min: 4 },
-  { name: 'ExpenseView', comp: ExpenseView, min: 9 },
+  { name: 'CockpitView', comp: CockpitView, min: 11 },   // 2026-09-19 KPI 瓦去掉迷你趋势线(4 条 svg),17 → 13;期间条 2 个下拉箭头,→ 11
+  { name: 'ElecAnalysisView', comp: ElecAnalysisView, min: 3 },
+  { name: 'ExpenseView', comp: ExpenseView, min: 3 },   // 同上,KPI 瓦 4 条迷你线,9 → 5;期间条 2 个下拉箭头,→ 3
   { name: 'ExpiryView', comp: ExpiryView, min: 57 },
-  { name: 'FinBalanceView', comp: FinBalanceView, min: 64 },
+  { name: 'FinBalanceView', comp: FinBalanceView, min: 62 },
   { name: 'FinCashflowView', comp: FinCashflowView, min: 4 },
-  { name: 'FinPnlView', comp: FinPnlView, min: 37 },
-  { name: 'ParkEnergyView', comp: ParkEnergyView, min: 7 },
+  { name: 'FinPnlView', comp: FinPnlView, min: 36 },
+  { name: 'ParkEnergyView', comp: ParkEnergyView, min: 5 },
   { name: 'ParkView', comp: ParkView, min: 33 },
-  { name: 'PnlAnalysisView', comp: PnlAnalysisView, min: 8 },
-  { name: 'PvMeterAnaView', comp: PvMeterAnaView, min: 5 },
+  { name: 'PnlAnalysisView', comp: PnlAnalysisView, min: 7 },
+  { name: 'PvMeterAnaView', comp: PvMeterAnaView, min: 3 },
   { name: 'PvRoiView', comp: PvRoiView, min: 22 },
-  { name: 'TenantEnergyView', comp: TenantEnergyView, min: 6 },
+  { name: 'TenantEnergyView', comp: TenantEnergyView, min: 4 },
   { name: 'TenantPeerView', comp: TenantPeerView, min: 10 },
   { name: 'TenantPortfolioView', comp: TenantPortfolioView, min: 15 },
 ]

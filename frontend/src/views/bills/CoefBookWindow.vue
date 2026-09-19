@@ -24,6 +24,7 @@ import { useScreen } from '@/composables/useTabShells'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
+import DatePicker from '@/components/ds/DatePicker.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
@@ -118,9 +119,10 @@ const coefOpts = COEF_KEYS.map(k => ({
 const enumOpts = computed(() =>
   Object.entries(curMeta.value.enumOptions ?? {}).map(([v, l]) => ({ value: v, label: l })))
 const enumText = (v: number) => curMeta.value.enumOptions?.[v] ?? String(v)
-const yearOpts = computed(() =>
-  buildYearOptions(props.years, today).map(y => ({ value: String(y), label: `${y}年` })))
-const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}月` }))
+// 生效月可选范围 = 改前年下拉的年份区间(buildYearOptions,连续)的首年 1 月 … 末年 12 月
+const effYears = computed(() => buildYearOptions(props.years, today))
+const effMin = computed(() => `${effYears.value[0]}-01`)
+const effMax = computed(() => `${effYears.value[effYears.value.length - 1]}-12`)
 
 // ── 数据:价目键站在生效月的生效行(后端已级联解析) + 当月池快照(层份成员) + p2 规则(池费项在 rule 上);竞态守卫 ──
 const PRICE_KEY_PARAM = COEF_KEYS.filter(k => !k.floorShare).map(k => k.id).join(',')
@@ -284,14 +286,11 @@ function setCoef(v: string) {
   coefId.value = v
   selected.value.clear()
 }
-function setEffYear(v: string) {
-  if (+v === effYear.value || !guardDrop()) return
-  effYear.value = +v
-  load()
-}
-function setEffMonth(v: string) {
-  if (+v === effMonth.value || !guardDrop()) return
-  effMonth.value = +v
+// 年月合成一个月份字段(改前年下拉、月下拉各走一遍同样的 guardDrop + load)
+function setEffYm(v: string) {
+  if (v === effYm.value || !guardDrop()) return
+  effYear.value = +v.slice(0, 4)
+  effMonth.value = +v.slice(5, 7)
   load()
 }
 
@@ -392,12 +391,10 @@ function onClose() {
           <Select :options="coefOpts" :model-value="coefId" size="sm" @update:model-value="setCoef" />
         </div>
         <span class="cb-lbl">生效月</span>
-        <!-- 期间选择器宽度按 LIST-PAGE-SPEC §2:年 110 / 月 92。96/84 会把「2024年」截成「202…」 -->
-        <div style="width:110px">
-          <Select :options="yearOpts" :model-value="String(effYear)" size="sm" @update:model-value="setEffYear" />
-        </div>
-        <div style="width:92px">
-          <Select :options="monthOpts" :model-value="String(effMonth)" size="sm" @update:model-value="setEffMonth" />
+        <!-- 年下拉 + 月下拉 → 一个月份字段 120 宽(DATE-PICKER-SPEC §5 第 6 节) -->
+        <div style="width:120px">
+          <DatePicker mode="month" size="sm" align="end" :model-value="effYm" :min="effMin" :max="effMax"
+                      aria-label="生效月" @update:model-value="setEffYm" />
         </div>
       </div>
       <!-- 位置常驻(LAYOUT-STABILITY-SPEC §4.2):切系数时提示有无都占一行,不许把下面的表格顶走 -->
@@ -538,7 +535,7 @@ function onClose() {
 /* 控制行 */
 .cb-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .cb-lbl { font-size: 12px; color: var(--text-muted); }
-.cb-search { width: 180px; height: 32px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: var(--radius-full); font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); }
+.cb-search { width: 180px; height: 32px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--border-control); border-radius: var(--radius-full); font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); }
 .cb-search:focus { outline: none; border-color: var(--hue-blue); }
 .cb-hint { flex: 0 0 auto; margin-top: -14px; min-height: 16px; line-height: 16px; font-size: 11.5px; color: var(--text-muted); }
 
@@ -546,7 +543,7 @@ function onClose() {
 .cb-unibar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-card); font-size: 12.5px; color: var(--text-secondary); flex-wrap: wrap; }
 .cb-unibar b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .cb-sep { color: var(--text-disabled); }
-.cb-uni-in { width: 120px; height: 30px; padding: 0 10px; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); }
+.cb-uni-in { width: 120px; height: 30px; padding: 0 10px; box-sizing: border-box; border: 1px solid var(--border-control); border-radius: var(--radius-sm); text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); }
 .cb-uni-in:focus { outline: none; border-color: var(--hue-blue); }
 .cb-uni-in:disabled { background: var(--surface-sunken); color: var(--text-disabled); }
 .cb-uni-in::placeholder { color: var(--text-disabled); font-family: var(--font-sans); }
@@ -578,7 +575,7 @@ function onClose() {
 .cb-val { display: block; text-align: right; font-size: 12px; color: var(--text-primary); font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; }
 .cb-val.dim { color: var(--text-muted); }
 .cb-eff { font-style: normal; font-size: 10.5px; color: var(--text-muted); margin-left: 4px; font-family: var(--font-sans); }
-.cb-ex { margin-left: 5px; padding: 1px 5px; border-radius: var(--radius-full); background: rgba(255, 149, 0, 0.14); font-style: normal; font-size: 10.5px; color: rgb(178, 100, 0); font-family: var(--font-sans); }
+.cb-ex { margin-left: 5px; padding: 1px 5px; border-radius: var(--radius-full); background: rgba(255, 149, 0, 0.14); font-style: normal; font-size: 10.5px; color: var(--orange-text); font-family: var(--font-sans); }
 .cb-zwarn { margin-left: 5px; padding: 1px 5px; border-radius: var(--radius-full); background: rgba(120, 120, 120, 0.14); font-style: normal; font-size: 10.5px; color: var(--text-muted); font-family: var(--font-sans); }
 
 /* 暂存新值(只读)+单行撤销 */

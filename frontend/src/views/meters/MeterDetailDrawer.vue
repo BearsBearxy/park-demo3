@@ -24,6 +24,7 @@ import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 import Select from '@/components/ds/Select.vue'
+import DatePicker from '@/components/ds/DatePicker.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 
@@ -494,23 +495,27 @@ async function doBind(contractId: number | null) {
       </div>
       <div class="md-fld">
         <label>停用账期</label>
-        <input v-if="editProfile" class="mt-edit md-in" type="month" :value="m.retiredYm ?? ''"
-               title="自该账期起停用(含当月不计):不进抄表进度、不进公摊/损耗分母、不参与合同绑定。留空=在用"
-               @change="commitRetiredYm(m, ($event.target as HTMLInputElement).value)" />
+        <!-- 空着时占位直接写读态的话(稿 PickerInPlace 第 4 节);有值时悬停出 × 清空 = 改前清空原生框 -->
+        <DatePicker v-if="editProfile" mode="month" variant="inline" clearable placeholder="在用" aria-label="停用账期"
+                    :model-value="m.retiredYm ?? ''"
+                    title="自该账期起停用(含当月不计):不进抄表进度、不进公摊/损耗分母、不参与合同绑定。留空=在用"
+                    @change="commitRetiredYm(m, $event)" />
         <span v-else :class="{ dim: !m.retiredYm }">{{ m.retiredYm ? `${m.retiredYm} 起停用` : '在用' }}</span>
       </div>
       <div class="md-fld">
         <label>退场账期</label>
-        <input v-if="editProfile" class="mt-edit md-in" type="month" :value="m.removedYm ?? ''"
-               title="退租/拆表:自该账期起(含当月)不再显示在任何月份视图;历史月照常显示与计账。留空=未退场"
-               @change="commitRemovedYm(m, ($event.target as HTMLInputElement).value)" />
+        <DatePicker v-if="editProfile" mode="month" variant="inline" clearable placeholder="未退场" aria-label="退场账期" align="end"
+                    :model-value="m.removedYm ?? ''"
+                    title="退租/拆表:自该账期起(含当月)不再显示在任何月份视图;历史月照常显示与计账。留空=未退场"
+                    @change="commitRemovedYm(m, $event)" />
         <span v-else :class="{ dim: !m.removedYm }">{{ m.removedYm ? `${m.removedYm} 起退场` : '未退场' }}</span>
       </div>
       <div class="md-fld">
         <label>启用账期</label>
-        <input v-if="editProfile" class="mt-edit md-in" type="month" :value="m.activeFromYm ?? ''"
-               title="该账期前不在服务中(某月导入才出现的表不回溯早月);导入更早月份源册含此表时自动放宽。留空=一直在册"
-               @change="commitActiveFromYm(m, ($event.target as HTMLInputElement).value)" />
+        <DatePicker v-if="editProfile" mode="month" variant="inline" clearable placeholder="一直在册" aria-label="启用账期"
+                    :model-value="m.activeFromYm ?? ''"
+                    title="该账期前不在服务中(某月导入才出现的表不回溯早月);导入更早月份源册含此表时自动放宽。留空=一直在册"
+                    @change="commitActiveFromYm(m, $event)" />
         <span v-else :class="{ dim: !m.activeFromYm }">{{ m.activeFromYm ? `${m.activeFromYm} 起在册` : '一直在册' }}</span>
       </div>
       <!-- §G5 存疑标:只在有标时出现;shadow 表不进分表Σ,给一个显式的人工解除入口 -->
@@ -562,7 +567,7 @@ async function doBind(contractId: number | null) {
             <template v-for="r in drawerRows" :key="r.id">
               <template v-if="editId === r.id">
                 <tr class="editing">
-                  <td class="l"><input v-model="form.ym" class="md-din" type="month" /></td>
+                  <td class="l"><DatePicker v-model="form.ym" mode="month" variant="cell" aria-label="月份" /></td>
                   <td><input v-model="form.prevTotal" class="md-din num" type="number" step="0.01" placeholder="—" /></td>
                   <td><input v-model="form.currTotal" class="md-din num" type="number" step="0.01" placeholder="—" /></td>
                   <td class="ro" :title="`按原倍率快照 ${r.factorSnap} 计`">{{ previewUsage }}</td>
@@ -612,7 +617,7 @@ async function doBind(contractId: number | null) {
             </template>
             <template v-if="adding">
               <tr class="editing">
-                <td class="l"><input v-model="form.ym" class="md-din" type="month" /></td>
+                <td class="l"><DatePicker v-model="form.ym" mode="month" variant="cell" aria-label="月份" /></td>
                 <td><input v-model="form.prevTotal" class="md-din num" type="number" step="0.01" placeholder="—" /></td>
                 <td><input v-model="form.currTotal" class="md-din num" type="number" step="0.01" placeholder="—" /></td>
                 <td class="ro" :title="`按当前表倍率 ${m?.factor ?? 1} 预览,保存时快照`">{{ previewUsage }}</td>
@@ -734,14 +739,16 @@ async function doBind(contractId: number | null) {
 .md-fld .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .md-fld .dim { color: var(--text-disabled); }
 .md-fld.ro span { color: var(--text-secondary); }
-.md-warn { margin-left: 8px; font-size: var(--fs-micro); border-radius: var(--radius-full); padding: 1px 7px; color: rgb(202, 66, 41); background: rgb(255, 235, 228); }
-.md-in { height: 32px; border-color: var(--border-subtle); background: var(--surface-white); }
+.md-warn { margin-left: 8px; font-size: var(--fs-micro); border-radius: var(--radius-full); padding: 1px 7px; color: var(--coral-text); background: rgb(255, 235, 228); }
+.md-in { height: 32px; border-color: var(--border-control); background: var(--surface-white); }
 /* §G5 存疑标一行(整宽):徽标 + 解除按钮 */
 .md-fld.span2 { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .md-fld.span2 label { margin-bottom: 0; }
 .md-susp { font-size: var(--fs-micro); border-radius: var(--radius-full); padding: 2px 9px; }
-.md-susp.shadow { color: rgb(202, 66, 41); background: rgb(255, 235, 228); }
+.md-susp.shadow { color: var(--coral-text); background: rgb(255, 235, 228); }
 .md-susp.incomplete { color: rgb(146, 100, 0); background: rgb(255, 246, 219); }
+:root[data-theme="dark"] .md-warn, :root[data-theme="dark"] .md-susp.shadow { background: var(--danger-bg); }
+:root[data-theme="dark"] .md-susp.incomplete { color: var(--caution-text); background: var(--caution-soft); }
 .md-fld.span2 .susp-hint { font-size: var(--fs-label); }
 .md-fld.pick :deep(.fp-tp-trigger) { height: 32px; font-size: 12.5px; }
 .md-del { color: var(--hue-red); }
@@ -763,12 +770,12 @@ async function doBind(contractId: number | null) {
 .md-htable tr.tourow td { background: var(--surface-card); padding-top: 0; }
 .md-htable td.ops { white-space: nowrap; padding-left: 6px; padding-right: 6px; }   /* 70px 列装下两个 26px 按钮,原 10px 边距会把取消钮裁成省略号 */
 .md-dim { color: var(--text-disabled); }
-.md-din { width: 100%; box-sizing: border-box; height: 30px; padding: 0 8px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-sans); font-size: 12.5px; color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard); }
+.md-din { width: 100%; box-sizing: border-box; height: 30px; padding: 0 8px; border: 1px solid var(--border-control); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-sans); font-size: 12.5px; color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard); }
 .md-din.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield; }
 .md-din.num::-webkit-outer-spin-button, .md-din.num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .md-din:focus { outline: none; border-color: var(--hue-blue); }
-.md-toulink { border: 1px solid var(--border-subtle); background: var(--surface-white); border-radius: var(--radius-full); padding: 2px 10px; font-family: var(--font-sans); font-size: 11px; color: var(--text-secondary); cursor: pointer; transition: border-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
-.md-toulink:hover { border-color: var(--border-strong); color: var(--text-primary); }
+.md-toulink { border: 1px solid var(--border-control); background: var(--surface-white); border-radius: var(--radius-full); padding: 2px 10px; font-family: var(--font-sans); font-size: 11px; color: var(--text-secondary); cursor: pointer; transition: border-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
+.md-toulink:hover { border-color: var(--border-control-strong); color: var(--text-primary); }
 .md-toulink.on { border-color: var(--hue-blue); color: var(--hue-blue); }
 .md-tougrid { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 0 6px; }
 .md-tougrid .lab { font-family: var(--font-sans); font-size: 11px; color: var(--text-muted); flex: 0 0 auto; }
@@ -781,9 +788,9 @@ async function doBind(contractId: number | null) {
 .md-bstat .val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 13px; color: var(--text-primary); }
 .md-bstat .val.stale { color: var(--hue-red); }
 .md-bstat .tag { font-size: var(--fs-micro); color: var(--text-muted); background: var(--bg-sunken); border-radius: var(--radius-full); padding: 1px 8px; }
-.md-bstat .tag.bad { color: var(--hue-red); background: rgb(255, 238, 237); }
+.md-bstat .tag.bad { color: var(--hue-red); background: var(--danger-soft); }
 .md-bstat .reason { flex-basis: 100%; font-size: var(--fs-label); color: var(--text-secondary); }
-.md-bstat .reason.ok { color: rgb(21, 128, 61); }
+.md-bstat .reason.ok { color: var(--ok-text); }
 .md-bstat .locs { flex-basis: 100%; font-size: var(--fs-label); color: var(--text-secondary); }
 .md-bpend { display: flex; flex-direction: column; gap: 8px; }
 .md-bpend .lab { font-size: var(--fs-label); color: var(--text-secondary); }
@@ -795,6 +802,7 @@ async function doBind(contractId: number | null) {
 .bc-item:hover:not(:disabled) { border-color: var(--border-strong); background: var(--bg-hover); }
 .bc-item:disabled { cursor: default; }
 .bc-item.on { border-color: var(--hue-blue); background: rgb(240, 246, 255); }
+:root[data-theme="dark"] .bc-item.on { background: var(--row-selected); }
 .bc-item .no { font-family: var(--font-mono); font-size: 12.5px; color: var(--text-primary); }
 .bc-item .sub { font-size: var(--fs-micro); color: var(--text-muted); }
 .bc-item .sub.locs { color: var(--text-secondary); }

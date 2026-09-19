@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { unitRentHistGeo, type HistBinIn } from '@/views/analysis/unitRentHistChart.logic'
 import type { ChartBox } from '@/views/analysis/forecastChart.logic'
 import { useEnterPhase, useMorphHold } from './anaMotion'
+import { anaSvgVars } from './anaTheme'
 import './ana.css'   // @keyframes fp-wipe · .ana-morph
 
 const props = withDefaults(defineProps<{
@@ -76,7 +77,7 @@ const tipX = computed(() => {
 </script>
 
 <template>
-  <div ref="host" class="auh-host" @mousemove="onMove" @mouseleave="hoverI = null">
+  <div ref="host" class="auh-host" :style="anaSvgVars()" @mousemove="onMove" @mouseleave="hoverI = null">
     <svg v-if="geo" class="auh" :width="box.width" :height="box.height" :viewBox="`0 0 ${box.width} ${box.height}`" role="img">
       <line v-for="t in geo.yTicks" :key="'g' + t.v" :x1="box.padL" :x2="box.width - box.padR" :y1="t.y" :y2="t.y" class="auh-grid" />
       <text v-for="t in geo.yTicks" :key="'y' + t.v" :x="box.padL - 8" :y="t.y + 4" class="auh-ylab">{{ t.label }}</text>
@@ -128,22 +129,22 @@ const tipX = computed(() => {
 /* 线 + 字整组平移(换租户 200);hold = 改宽 / 擦入中,瞬到 */
 .auh-slide { transition: transform var(--dur-base) var(--ease-out); }
 .auh-slide.hold { transition: none; }
-.auh-grid { stroke: #EEF0F4; stroke-width: 1; }
-.auh-ylab { fill: #94A3B8; font-size: 11px; text-anchor: end; font-variant-numeric: tabular-nums; }
-.auh-bandrect { fill: #DCEAFB; fill-opacity: 0.55; }
-.auh-bar-in { fill: #6AA9E9; }
-.auh-bar-out { fill: #C8CDD6; }
-.auh-bar-of { fill: #C8CDD6; }
-.auh-bar-hot { fill: #185FA5; }
-.auh-mark { stroke: #9AA4B2; stroke-width: 1; stroke-dasharray: 3 3; }
-.auh-marklab { fill: #94A3B8; font-size: 11px; text-anchor: middle; font-variant-numeric: tabular-nums; }
-.auh-marklab-mid { fill: #6B7280; }
-.auh-self { stroke: #1C1C1C; stroke-width: 1.5; }
-.auh-selfdot { fill: #1C1C1C; }
-.auh-selflab { fill: #1C1C1C; font-size: 12px; font-weight: 600; text-anchor: middle; }
-.auh-cap { fill: #4F79A8; font-size: 11px; text-anchor: middle; }
-.auh-of { fill: #94A3B8; font-size: 11px; text-anchor: end; }
-.auh-tip { fill: #1E293B; }
-.auh-tiptext { fill: #E2E8F0; font-size: 11px; font-variant-numeric: tabular-nums; }
-.auh-tiptitle { fill: #fff; font-weight: 600; font-size: 12px; }
+.auh-grid { stroke: var(--sv-grid-soft); stroke-width: 1; }
+.auh-ylab { fill: var(--sv-label); font-size: 11px; text-anchor: end; font-variant-numeric: tabular-nums; }
+.auh-bandrect { fill: var(--sv-band-hist); fill-opacity: 0.55; }
+.auh-bar-in { fill: var(--sv-bar-in); }
+.auh-bar-out { fill: var(--sv-bar-muted); }
+.auh-bar-of { fill: var(--sv-bar-muted); }
+.auh-bar-hot { fill: var(--sv-deep); }
+.auh-mark { stroke: var(--sv-mark); stroke-width: 1; stroke-dasharray: 3 3; }
+.auh-marklab { fill: var(--sv-label); font-size: 11px; text-anchor: middle; font-variant-numeric: tabular-nums; }
+.auh-marklab-mid { fill: var(--sv-label-strong); }
+.auh-self { stroke: var(--ink-900); stroke-width: 1.5; }
+.auh-selfdot { fill: var(--ink-900); }
+.auh-selflab { fill: var(--text-primary); font-size: 12px; font-weight: 600; text-anchor: middle; }
+.auh-cap { fill: var(--sv-cap); font-size: 11px; text-anchor: middle; }
+.auh-of { fill: var(--sv-label); font-size: 11px; text-anchor: end; }
+.auh-tip { fill: var(--sv-tip-bg); }
+.auh-tiptext { fill: var(--sv-tip-text); font-size: 11px; font-variant-numeric: tabular-nums; }
+.auh-tiptitle { fill: var(--text-on-solid); font-weight: 600; font-size: 12px; }
 </style>

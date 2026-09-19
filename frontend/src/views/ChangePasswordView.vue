@@ -130,7 +130,7 @@ function onLogout() {
   height: 36px;
   box-sizing: border-box;
   padding: 0 12px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-sm);
   background: var(--surface-white);
   color: var(--text-primary);
@@ -138,7 +138,7 @@ function onLogout() {
   font-size: var(--fs-body);
   transition: border-color var(--dur-fast) var(--ease-standard);
 }
-.cp-field input:focus { outline: none; border-color: var(--border-strong); }
+.cp-field input:focus { outline: none; border-color: var(--border-control-strong); }
 .cp-field input:disabled { background: var(--bg-sunken); opacity: 0.6; }
 
 /* 常驻一行:空着也占位,错误出现时下面的按钮不动 */

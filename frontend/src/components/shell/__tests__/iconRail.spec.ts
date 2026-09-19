@@ -57,4 +57,39 @@ describe('IconRail · 角色行(P5)', () => {
     expect(t.text()).toBe('财务专员')
     expect(t.text()).not.toContain('管理员')
   })
+
+  // ══════════ 外观(DARK-MODE-SPEC §3,稿 Main 第 1 节) ══════════
+  it('❗外观一行在「版本更新」上面:三格 浅色 / 深色 / 跟随系统,默认浅色选中', () => {
+    const w = openRail()
+    const menu = w.find('.fp-user-menu').html()
+    expect(menu.indexOf('外观')).toBeGreaterThan(-1)
+    expect(menu.indexOf('外观')).toBeLessThan(menu.indexOf('版本更新'))
+    const seg = w.findAll('.fp-appr-seg button')
+    expect(seg.map((b) => b.text())).toEqual(['浅色', '深色', '跟随系统'])
+    expect(seg.map((b) => b.attributes('aria-checked'))).toEqual(['true', 'false', 'false'])
+  })
+
+  it('❗点「深色」立刻生效(写 data-theme、按账号存),菜单还在', async () => {
+    useAuthStore().me = 'zhou'
+    const w = openRail()
+    await w.findAll('.fp-appr-seg button')[1].trigger('click')
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(localStorage.getItem('fp-appearance:zhou')).toBe('dark')
+    expect(w.findAll('.fp-appr-seg button')[1].classes()).toContain('on')
+    expect(w.find('.fp-user-menu').exists()).toBe(true)
+    await w.findAll('.fp-appr-seg button')[0].trigger('click')   // 还原,不串到别的用例
+  })
+
+  it('❗账号菜单用 fixed 贴在头像正上方(左对齐、隔 8px):导航卡 overflow:hidden,窄屏只剩 66 宽图标栏时 absolute 会被裁', async () => {
+    const w = mount(IconRail, { attachTo: document.body, global: { stubs: { PopoverItem: true, Avatar: true } } })
+    const btn = w.find('.fp-rail-user').element as HTMLElement
+    btn.getBoundingClientRect = () => ({ left: 17, top: 900, width: 32, height: 32, right: 49, bottom: 932, x: 17, y: 900, toJSON() {} }) as DOMRect
+    await w.find('.fp-rail-user').trigger('click')
+    const panel = w.find('.ds-popover-panel').element as HTMLElement
+    expect(panel.style.position).toBe('fixed')
+    expect(panel.style.left).toBe('17px')
+    expect(panel.style.bottom).toBe(`${window.innerHeight - 900 + 8}px`)
+    w.unmount()
+  })
+
 })

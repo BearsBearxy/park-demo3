@@ -86,19 +86,19 @@ const idleMin = computed(() => Math.floor((held.value?.idleMs ?? 0) / 60000))
 /* 他人活跃占着:橙描边,一眼看出握在别人手上 */
 .fp-emb.held {
   border-color: var(--hue-orange);
-  background: rgb(252, 243, 232);
+  background: var(--warn-soft);   /* = 原 rgb(252,243,232)(--warn-bg 浅色是 255,243,230,不是同一个) */
   color: var(--hue-orange);
 }
 /* 他人空闲 ≥20 分钟:同尺寸,只褪成灰 —— 「他在改」和「他人不在了」的接管门槛不一样 */
 .fp-emb.held.idle {
-  border-color: var(--border-strong);
+  border-color: var(--border-control-strong);
   background: var(--surface-white);
   color: var(--text-muted);
 }
 .fp-emb-av {
   width: 18px; height: 18px; flex: 0 0 auto; border-radius: 50%;
   display: grid; place-items: center;
-  background: var(--fill-blue); color: #fff;
+  background: var(--fill-blue); color: var(--text-on-solid);
   font-size: 9.5px; font-weight: var(--fw-semibold);
 }
 .fp-emb-av.dim { opacity: .55; }

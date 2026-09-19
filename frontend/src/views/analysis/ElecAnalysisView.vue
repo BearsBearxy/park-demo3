@@ -13,7 +13,7 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import { iconFor } from '@/components/ds/icon'
-import { fnum, STATUS } from '@/components/ana/anaFmt'
+import { fnum, hues, STATUS } from '@/components/ana/anaFmt'
 import { finWan } from '@/utils/finFmt'
 import { usePeriod } from '@/analysis/usePeriod'
 import {
@@ -127,12 +127,13 @@ function onChartClick(p: unknown): void {
 }
 
 // ── 图1:收益四指标月度趋势(万元;缺月断点) ──
+// 色按名字存、画时按当前外观取(暗色深蓝换灰蓝)
 const TREND = [
-  { key: 'parkElecProfit', color: '#185FA5' },
-  { key: 'pvInvestIncome', color: '#5DCAA5' },
-  { key: 'basicElecProfit', color: '#378ADD' },
-  { key: 'sellAgreementPnl', color: '#EF9F27' },
-]
+  { key: 'parkElecProfit', hue: 'deep' },
+  { key: 'pvInvestIncome', hue: 'teal' },
+  { key: 'basicElecProfit', hue: 'blue' },
+  { key: 'sellAgreementPnl', hue: 'amber' },
+] as const
 const trendHasData = computed(() => TREND.some(({ key }) => metricSeries(key).some((v) => v != null)))
 const trendOption = computed<object>(() => ({
   tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (typeof v === 'number' ? '¥' + fnum(v, 1) + '万' : '—') },
@@ -140,9 +141,9 @@ const trendOption = computed<object>(() => ({
   grid: { left: 56, right: 16, top: 32, bottom: 26 },
   xAxis: { type: 'category', data: MLABELS, boundaryGap: false },
   yAxis: { type: 'value', axisLabel: { formatter: '{value} 万' } },
-  series: TREND.map(({ key, color }) => ({
+  series: TREND.map(({ key, hue }) => ({
     name: metricLabel(key, key), type: 'line', symbol: 'circle', symbolSize: 4,
-    itemStyle: { color }, lineStyle: { width: 2, color },
+    itemStyle: { color: hues()[hue] }, lineStyle: { width: 2, color: hues()[hue] },
     data: metricSeries(key).map((v) => (v == null ? null : +(v / 1e4).toFixed(2))),
   })),
 }))
@@ -177,14 +178,14 @@ function opsNet(rows: ElecCostEntryDTO[]): number | null {
   return u == null && a == null ? null : (u ?? 0) - (a ?? 0)
 }
 interface Seg { name: string; color: string; of: (rows: ElecCostEntryDTO[]) => number | null }
-const SEGS: Seg[] = [
-  { name: '一期·分时', color: '#185FA5', of: (rows) => feeAmt(rows, (r) => mk(r) === 'master' && !isP2(r) && r.feeKey === 'tou_industrial') },
-  { name: '一期·基本', color: '#378ADD', of: (rows) => feeAmt(rows, (r) => mk(r) === 'master' && !isP2(r) && r.feeKey === 'basic_industrial') },
-  { name: '一期·商业', color: '#85B7EB', of: (rows) => feeAmt(rows, (r) => mk(r) === 'master' && !isP2(r) && r.feeKey === 'commercial') },
-  { name: '二期·分时', color: '#5DCAA5', of: (rows) => feeAmt(rows, (r) => mk(r) === 'master' && isP2(r) && r.feeKey === 'tou_industrial') },
+const SEGS = (h: ReturnType<typeof hues>): Seg[] => [   // 画时按当前外观取色
+  { name: '一期·分时', color: h.deep, of: (rows) => feeAmt(rows, (r) => mk(r) === 'master' && !isP2(r) && r.feeKey === 'tou_industrial') },
+  { name: '一期·基本', color: h.blue, of: (rows) => feeAmt(rows, (r) => mk(r) === 'master' && !isP2(r) && r.feeKey === 'basic_industrial') },
+  { name: '一期·商业', color: h.mid, of: (rows) => feeAmt(rows, (r) => mk(r) === 'master' && !isP2(r) && r.feeKey === 'commercial') },
+  { name: '二期·分时', color: h.teal, of: (rows) => feeAmt(rows, (r) => mk(r) === 'master' && isP2(r) && r.feeKey === 'tou_industrial') },
   { name: '二期·基本', color: '#B7E2D2', of: (rows) => feeAmt(rows, (r) => mk(r) === 'master' && isP2(r) && r.feeKey === 'basic_industrial') },
-  { name: '宿舍', color: '#EF9F27', of: (rows) => feeAmt(rows, (r) => mk(r) === 'dorm' && r.feeKey === 'usage') },
-  { name: '运营净额', color: '#F0997B', of: opsNet },
+  { name: '宿舍', color: h.amber, of: (rows) => feeAmt(rows, (r) => mk(r) === 'dorm' && r.feeKey === 'usage') },
+  { name: '运营净额', color: h.coral, of: opsNet },
   // 抵减段(负向):录入为正金额,展示取负 — 奖励与上网收益冲减当月总表电费
   { name: '功率因数奖励(抵减)', color: '#94A3B8', of: (rows) => neg(feeAmt(rows, (r) => r.feeKey === 'pf_reward')) },
   { name: '光伏上网收益(抵减)', color: '#CBD5E1', of: (rows) => neg(feeAmt(rows, (r) => r.feeKey === 'pv_grid_income')) },
@@ -195,7 +196,7 @@ const structOption = computed<object>(() => ({
   grid: { left: 56, right: 16, top: 56, bottom: 26 },
   xAxis: { type: 'category', data: MLABELS },
   yAxis: { type: 'value', axisLabel: { formatter: '{value} 万' } },
-  series: SEGS.map((s) => ({
+  series: SEGS(hues()).map((s) => ({
     name: s.name, type: 'bar', stack: 'st', barMaxWidth: 30, itemStyle: { color: s.color },
     data: entryMonths.value.map((rows) => {
       const v = s.of(rows)
@@ -231,16 +232,16 @@ const spreadOption = computed<object>(() => ({
     {
       name: '售电协议月损益', type: 'bar', yAxisIndex: 0, barMaxWidth: 26,
       data: sellPnl.value.map((v) => (v == null ? null
-        : { value: +(v / 1e4).toFixed(2), itemStyle: { color: v < 0 ? '#E24B4A' : '#B5D4F4', borderRadius: [3, 3, 0, 0] } })),
+        : { value: +(v / 1e4).toFixed(2), itemStyle: { color: v < 0 ? hues().red : hues().pale, borderRadius: [3, 3, 0, 0] } })),
     },
     {
       name: '公告价', type: 'line', yAxisIndex: 1, symbol: 'circle', symbolSize: 4,
-      itemStyle: { color: '#185FA5' }, lineStyle: { width: 2, color: '#185FA5' },
+      itemStyle: { color: hues().deep }, lineStyle: { width: 2, color: hues().deep },
       data: posted.value.map((v) => (v == null ? null : +v.toFixed(4))),
     },
     {
       name: '执行价', type: 'line', yAxisIndex: 1, symbol: 'circle', symbolSize: 4,
-      itemStyle: { color: '#EF9F27' }, lineStyle: { width: 2, type: 'dashed', color: '#EF9F27' },
+      itemStyle: { color: hues().amber }, lineStyle: { width: 2, type: 'dashed', color: hues().amber },
       data: execP.value.map((v) => (v == null ? null : +v.toFixed(4))),
     },
   ],

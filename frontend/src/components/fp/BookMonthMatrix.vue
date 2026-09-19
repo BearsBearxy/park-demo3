@@ -310,8 +310,9 @@ const nextYear = computed(() =>
 .bmm-pip.on { background: var(--hue-blue); }
 
 /* 需重算:只换底色。加边框会让格子跳 1px,加角标会和在场头像抢右上角 */
-.bmm-card.has.stale { background: rgb(255, 247, 235); }
+.bmm-card.has.stale { background: var(--warn-soft); }
 .bmm-card.has.stale:hover { background: rgb(253, 240, 220); }
+:root[data-theme="dark"] .bmm-card.has.stale:hover { background: color-mix(in srgb, var(--warn-soft), var(--ink-900) 8%); }
 .bmm-card.has.stale .bmm-pip.on { background: var(--hue-orange); }
 
 /* 移除槽:常驻 44px 占位;hover 行才显按钮 */
@@ -330,7 +331,7 @@ const nextYear = computed(() =>
   padding: 3px 6px;
 }
 .bmm-yrow:hover .bmm-rm { display: inline-flex; }
-.bmm-rm:hover { background: rgb(252, 235, 233); }
+.bmm-rm:hover { background: var(--danger-soft); }
 
 .bmm-addrow { margin-top: calc(-1 * var(--space-1)); }
 

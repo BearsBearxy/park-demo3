@@ -125,7 +125,8 @@ function onQueryInput(e: Event) {
   position: fixed;
   inset: 0;
   z-index: 200;
-  background: rgba(28, 28, 28, 0.32);
+  /* 原 32% 墨:浅色逐位不变 = --scrim × 0.32/0.34 */
+  background: color-mix(in srgb, var(--scrim) 94.118%, transparent);
   /* iOS ≤17 只认带前缀的写法,无前缀在真机上等于没有模糊 */
   -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
@@ -140,10 +141,10 @@ function onQueryInput(e: Event) {
   max-height: 70vh;
   display: flex;
   flex-direction: column;
-  background: var(--surface-white);
+  background: var(--surface-raised);
   border-radius: 16px;
   border: 1px solid var(--border-subtle);
-  box-shadow: 0 24px 64px rgba(28, 28, 28, 0.28);
+  box-shadow: var(--shadow-dialog);
   overflow: hidden;
 }
 
@@ -189,7 +190,7 @@ function onQueryInput(e: Event) {
 .fp-pal-empty {
   padding: 28px 16px;
   text-align: center;
-  color: var(--text-disabled);
+  color: var(--text-muted);
   font-size: 14px;
 }
 
@@ -197,7 +198,7 @@ function onQueryInput(e: Event) {
   padding: 6px 10px 4px;
   font-size: 11px;
   font-weight: var(--fw-semibold);
-  color: var(--text-disabled);
+  color: var(--text-muted);   /* 分组名是内容不是禁用:--text-disabled 浅色下只有 1.6:1(DARK-MODE-SPEC §4) */
   letter-spacing: 0.02em;
 }
 
@@ -210,8 +211,10 @@ function onQueryInput(e: Event) {
   cursor: pointer;
   background: transparent;
 }
+/* 选中行:暗色下 --accent-slate 和浮层几乎同色,改用 --row-selected(DARK-MODE-SPEC §5 / M4)。
+   浅色仍是 --accent-slate,所以走 --row-selected-raised(浅色 = --accent-slate,暗色 = --row-selected) */
 .fp-pal-row.on {
-  background: var(--accent-slate);
+  background: var(--row-selected-raised);
 }
 
 .fp-pal-ic {
@@ -225,7 +228,7 @@ function onQueryInput(e: Event) {
   color: var(--text-secondary);
 }
 .fp-pal-row.on .fp-pal-ic {
-  background: var(--surface-white);
+  background: var(--surface-raised);
 }
 
 .fp-pal-name {
@@ -267,7 +270,7 @@ function onQueryInput(e: Event) {
 }
 .fp-pal-foot-hint {
   margin-left: auto;
-  color: var(--text-disabled);
+  color: var(--text-muted);
 }
 
 /* 触屏没有 Esc/方向键/回车可按,快捷键提示留着只会让人找键盘(RESPONSIVE-LAYOUT-SPEC §4.3) */
