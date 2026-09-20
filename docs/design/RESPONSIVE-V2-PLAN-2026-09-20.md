@@ -169,6 +169,13 @@ Import 那 27 条整块退出计划（§4 第 11 条），`:318` 与 §10-P3 排
 | 10 | hint 棘轮先拍板「减字 vs 抬基线」 | 不阻塞。按门禁同一取法实测：全仓 103 段 hint，当前超 24 字 19 处，余 12 处；8 屏内含「点击」的 hint 里只有 `ElecAnalysisView.vue`(23 字)、`ParkView.vue`(24 字) 两处会因 +4~6 字跨线，`CockpitView.vue` 那条 30 字本来就超。做完跑一次 anaCopyLint，真红了再减那两处的字 |
 | 11 | **导入中心手机版整块（27 条块级要求）** | 2026-09-20 拍板：不推翻 `RESPONSIVE-LAYOUT-SPEC.md:318`「不再迁移：导入中心」。它继续只挂 800px 地板横滚兜底——全站唯一没摘地板的屏（`ImportCenterView.vue` 全文 355 行零 `@media` 零 `.fp-fluid`），保持现状 |
 | 12 | **三大报表行→卡片** | 2026-09-20 拍板：从拍板③名单划掉（§1.1）。本轮只给它做首列 sticky |
+| 13 | S 档宽表分页（稿 WideCardVariants §2 硬条件⑤「每页固定 10 张，FPPager 留在卡列底部」） | P3 实测：六张宽表桌面端**一处分页器都没有**（`grep -c "Pagination\|FPPager\|useFitRows"` 在 LedgerWideTable / S10Table / SalaryTable / ElecTable / PnlTable / TbTable 上全为 0）。只在手机加分页 = 手机看到的行数和桌面不一样，与 §3.5-pre「M 档不许删内容」同一条理由。稿这条是从 §5.1 mx 列表页抄过来的——那边桌面本来就有分页器 |
+| 14 | 附表11 的「带收缴条 96」 | 稿给 96 的理由是「这屏有一个天然的 0–100% 比值（损耗率 / 分摊占比）」，**实测不成立**：`types/elec.ts:25` 的 `ElecRecordDTO` 是对外电费进项发票（期别 / 时段 / 用电类别 / qty / price / amount / tax / total），既没有楼栋也没有损耗率；分母（供电侧电量）在楼栋损耗那一屏（`/alloc/loss`），跨屏取数是另一件活。降 88 无条，96 档实现保留待用 |
+| 15 | 台账抽屉脚部「在桌面端编辑」按钮（稿 WideCardPhone §3 侧卡⑤） | 稿写的是「点了复制当前行的深链」——台账没有行级深链格式，要新定一个。**「关闭」那一颗同样没加**：FPDrawer 右上角已有 ✕，底部再来一颗是同一件事说两遍 |
+| 16 | 台账 S 档那个 126px 日期字段点开 DatePicker 底部 sheet | 要新开一个期间 emit 送回 `LedgerView.vue`，而它不在 P3 的文件清单内。现用的是这一屏换期的既有唯一出口（返回月份矩阵），动线不变、不多一个入口。**收口时连同 FormPhone 的底部面板一起做** |
+| 17 | 租户卡第二行的「在租单元数」（稿 ListPhone §3） | `types/tenant.ts:6-7` 的 `TenantDTO` 没有任何单元数字段，桌面表也没有这一列。卡上改写「合同 N」（`contractCount`）。要照稿得后端补一根列 |
+| 18 | P5 落地页的「最近看过」3 行带上下文 | `stores/tabs.ts:84` 的 `recent` 是 `ref<string[]>`，`touchRecent` 只 push 路由 value；唯一带上下文的 `ctx`（`:93`）注释写着「只在内存」，`close()` 调 `clearCtx` 当场清空。稿要的「三期 B栋 · 2026-08」拼不出来——要它得给 `recent` 换一个持久化结构，那是新机制不是复用现有字段。**首版落地页只出「常查的数」三枚 + 搜索框** |
+| 19 | P5 落地页的「# 锚到那张卡」与期间深链 | 卡级锚点**全仓不存在**（只有 `PvMeterAnaView` 有自己的 `#st=`）；更要紧的是 `cockpit.logic.ts:357` 原话「落分析屏的三条 p 今天不被消费（usePeriod 单例，spec §12 遗留）」。照稿做的结果是「瓦上写本月营收，点进去看到的是你上次留在驾驶舱的那一期」。改法：落地页读**同一个** `usePeriod` 单例，瓦与目标屏按构造同期，零新机制 |
 
 ## 5. 验收（沿用 `RESPONSIVE-LAYOUT-SPEC.md` §9，加两条）
 

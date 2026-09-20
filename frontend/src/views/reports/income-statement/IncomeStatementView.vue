@@ -406,6 +406,13 @@ async function onExport() {
         <span class="fin-toolbar-note">{{ isAll ? '全部汇总为跨公司只读求和,如需录入请在公司选择页进入单家公司' : edit ? '点击单元格录入金额;悬停明细行可「+」添加子类,父项自动汇总;空项留空即可' : canEdit ? '只读 · 点击「编辑」录入 · 深色行为公式自动计算' : '只读 · 深色行为公式自动计算' }}</span>
       </div>
 
+      <!-- ≤600 行内录入提示(稿 ReportPhone §1 右栏 box4 条3;§5.3/§11.2 裁定:
+           录入不禁止、不隐藏、不优化,只荐桌面):编辑按钮留在上面那行工具行不拦不藏,
+           这一行**常驻定高 20px**,只在编辑态换文案 —— 出错才出现会把下面整张表顶下去
+           (撞 LAYOUT-STABILITY-SPEC §4.2)。几何/文案 1:1 抄 TrialBalanceView .tb-s-hint。 -->
+      <div class="is-s-hint">
+        <span v-if="edit">编辑模式 · 小屏可录入,建议在桌面端操作</span>
+      </div>
       <IncomeStatementTable
         :rows="flatRows"
         :value-of="valueOf"
@@ -517,10 +524,16 @@ async function onExport() {
 .fin-toolbar-note { font-size:12px; color:var(--text-muted); }
 .fin-foot { flex:0 0 auto; margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
 
+/* S 档提示行:桌面档整行不存在(display:none,不占位不留 gap),窄档媒体块内再显——宽档规则在前(§1) */
+.is-s-hint { display:none; }
+
 /* ── S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5.3):KPI repeat(4) 在 390 上每格 <90px,
-   金额放不下——定两列(挂载即终态,不随内容抖)。表格窄了走 .fin-wrap 内横滚,列宽不动 ── */
+   金额放不下——定两列(挂载即终态,不随内容抖)。表格窄了走 .fin-wrap 内横滚,
+   列宽不动,首列 sticky 在 FinReportTable 自己那份 ≤600 块里 ── */
 @media (max-width: 600px) {
   .fin-kpis { grid-template-columns:repeat(2, minmax(0,1fr)); }
+  /* 宽表编辑荐桌面提示(§11.2 预留位):行常驻定高 20px,进出编辑只换文案不挪版 */
+  .is-s-hint { display:flex; align-items:center; flex:0 0 20px; height:20px; font-size:12px; color:var(--hue-orange); }
 }
 /* 批量删除确认弹窗 — 1:1 FinDialogs .fin-mask/.fin-dlg(scoped 不跨组件,故本屏自带一份,遵 PAGE-BEHAVIOR-SPEC §2) */
 .fin-mask { position:fixed; inset:0; background:var(--scrim); z-index:300; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }

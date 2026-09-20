@@ -29,6 +29,12 @@ import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
+import { useViewport } from '@/composables/useViewport'
+
+// 列表项第二行在 S 档(≤600)多一格起止日期(稿 §3 栅格套用规则·合同管理)。
+// 判 tier 而不是写 @media:多的是一个 DOM 节点不是一条样式,宽档必须一个节点都不变
+// (RESPONSIVE-LAYOUT-SPEC §9 桌面 1440 零差异)。jsdom 无 matchMedia → 恒 'xl',既有桌面断言不受影响。
+const { tier } = useViewport()
 
 // ─── state ───────────────────────────────────────────────
 const contracts = ref<ContractDTO[]>([])
@@ -384,6 +390,7 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
                 </div>
                 <div class="cl-l2">
                   <span class="cl-no" :title="c.contractNo">{{ c.contractNo }}</span>
+                  <span v-if="tier === 's'" class="cl-no cl-range">{{ c.startDate ? `${c.startDate} → ${c.endDate}` : '待签约' }}</span>
                   <span v-if="c.kind === 'master_lease'" class="cl-master" title="整体承租,不计出租率与月租金KPI">整租</span>
                   <FPContractStatus :status="c.status" />
                 </div>

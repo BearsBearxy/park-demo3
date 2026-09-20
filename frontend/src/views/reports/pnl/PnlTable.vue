@@ -5,10 +5,13 @@
 // 月值 null=未录(显 –,区分真 0);编辑态单元格 input(空↔null),值由父 draft 合并后下发,本组件无状态。
 // 派生对照(P2-G G2/G3):行首徽标 已证√蓝/差异N月橙(hover 逐月差额)/编辑态灰「可填入」,无映射不显;
 // diff 月单元格橙底;编辑态行尾「填入」emit fill(rowKey),读态只显对照不显填入。
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedNoteCell from '@/components/sched/SchedNoteCell.vue'
+import FPWideCards, { type WideCard } from '@/components/fp/FPWideCards.vue'
+import PnlRowDrawer from './PnlRowDrawer.vue'
+import { useViewport } from '@/composables/useViewport'
 import { rowYearTotal } from '@/reports/pnlSchedules'
 import { finSigned } from '@/utils/finFmt'
 import type { PnlRowDTO, PnlKind } from '@/types/pnl'
@@ -66,6 +69,32 @@ const fillable = (r: PnlRowDTO) => {
 }
 const showFill = computed(() => props.edit && Object.keys(props.derive ?? {}).length > 0)
 
+// ── S 档(≤600)卡片化(响应式稿 WideCardVariants 板 §3,紧凑 64 档)────────────
+// 稿的诊断:本表的病是**标签太宽**,两根标签列吃掉三分之一屏,剩下放不下一个月;
+// 收敛 sticky 救不了(sticky 那根本身最宽),所以 S 档换成一行科目一张卡,12 个月进抽屉。
+// 不删列、不改列宽:宽档那张横滚表原样留着,只是多了一条 v-else-if 分支。
+//
+// ⚠ 行结构是**平铺**的:分组是一根列(groupLabel,桌面靠同值省略造出合并观感),不是分组行;
+// 每一行都自带 12 个月值 —— kind=subtotal/pnl/total 那几行存的是母册原值(见 .pnl-foot 那句),
+// 点开照样有 12 个月。所以这里没有「点开没数」的行,全部行都出卡、都可点,
+// 分组名按稿落进末行小字,不另画小节头。
+//
+// 编辑态不卡片化:卡上不能放 input(FPWideCards 硬条件②「整卡一个点击目标」),
+// 小屏录入照旧走横滚表 —— .pnl-s-hint 那句「小屏可录入,建议在桌面端操作」说的就是这个形态。
+const { tier } = useViewport()
+const cardMode = computed(() => tier.value === 's' && !props.edit)
+const openRow = ref<PnlRowDTO | null>(null)
+watch(() => props.edit, () => { openRow.value = null })   // 进/出编辑态切回表格,别留个会自己弹回来的抽屉
+
+const cardOf = (r: PnlRowDTO): WideCard => {
+  const t = rowYearTotal(r.m)
+  return {
+    name: r.label,                                       // 科目细分
+    amount: t === null ? '–' : finSigned(t),             // 本年合计(64 档贴第一行右端 mono 14)
+    sub: r.groupLabel || undefined,                      // 分组名作小字
+  }
+}
+
 // 单元格提交:空 → null(未录);扛千分位;非数字视同清空。
 function onCell(rowKey: string, monthIdx: number, e: Event) {
   const raw = (e.target as HTMLInputElement).value.replace(/[,\s]/g, '')
@@ -87,6 +116,16 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
         新增行
       </Button>
     </div>
+
+    <!-- S 档读态:一行科目一张 64 紧凑卡,12 个月进抽屉(宽档 cardMode 恒 false,走下面原表) -->
+    <FPWideCards
+      v-else-if="cardMode"
+      :rows="rows"
+      :row-key="'rowKey'"
+      :fields="cardOf"
+      :density="64"
+      @row-click="openRow = $event"
+    />
 
     <table v-else class="pt-table" :class="{ 'pt-editmode': edit, 'pt-hasfill': showFill }">
       <thead>
@@ -152,6 +191,15 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
         </tr>
       </tbody>
     </table>
+
+    <!-- 卡片的第二形态:12 个月 + 本年合计。v-if=cardMode → 宽档连挂都不挂 -->
+    <PnlRowDrawer
+      v-if="cardMode"
+      :row="openRow"
+      :group-col="groupCol"
+      :year="year"
+      @close="openRow = null"
+    />
   </div>
 </template>
 
@@ -216,6 +264,7 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
 .pt-fillbtn:hover { background:var(--accent-blue); }
 
 /* ── S 档(≤600):sticky 收敛为「科目细分」单列(RESPONSIVE-LAYOUT-SPEC §5.3)──
+   (S 档读态已换成 FPWideCards 卡列,这一段现在只在 S 档**编辑态**的横滚表上生效)
    桌面左三根 36+118+216=370px 在 390px 视口会占满屏(spec 点名的实测教训);S 档分组列与
    右侧 合计/备注/填入 全部**原位退成普通列**——列序/列宽零变动,只去 sticky,随表横滚。
    科目细分收到最左(编辑态 36px 复选列照旧 sticky,细分列贴其右);边缘描边本就长在

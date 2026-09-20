@@ -4,6 +4,8 @@
 // 按 phase 分组(组头小计 + tfoot 本年合计);energy 时段有色点(峰红/平蓝/谷青)。
 // 派生 amount/tax/total 后端下发,前端只回显;manual 角标、seed 锁。
 import { computed } from 'vue'
+import { useViewport } from '@/composables/useViewport'
+import FPWideCards, { type WideCard } from '@/components/fp/FPWideCards.vue'
 import { iconFor } from '@/components/ds/icon'
 import Segmented from '@/components/ds/Segmented.vue'
 import Button from '@/components/ds/Button.vue'
@@ -33,6 +35,8 @@ const emit = defineEmits<{
   // 批量删除选择(seed/manual/import 同等可选)
   'toggleSelect': [row: ElecRecordDTO]
   'selectAll': [checked: boolean]
+  // S 档卡片:整卡一个点击目标 → 只读行抽屉(宽档点行无行为,这条动线只在 S 档存在)
+  'row': [row: ElecRecordDTO]
 }>()
 
 // 全选状态(本类全部行可选,seed/manual/import 同等)
@@ -77,6 +81,30 @@ const groups = computed(() =>
       }
     }),
 )
+
+// ── S 档(≤600)行→卡片(响应式稿 WideCardVariants 板 §3 行5)────────────────────
+// jsdom 无 matchMedia → tier 恒 'xl',既有桌面断言自动走下面两张表,DOM 零差异。
+const { tier } = useViewport()
+
+// 稿给的四个字段是「楼栋(或链路) · 本月电费 · 用电量 · 损耗率条」,密度 96(带条)。
+// 对着源码点两处对不上,按「不虚构」处理:
+//  ① 楼栋/链路:本表是**对外电费进项台账**,行身份是(记账月 × 期别 × 时段),
+//     ElecRecordDTO 里根本没有楼栋维度 → name 用行身份本身,不编一个楼栋名。
+//  ② 损耗率:损耗 =(供电侧 − 分表侧)/ 供电侧,供电侧电量在这套 DTO 里没有
+//     (types/elec.ts 只有 qty 一根电量,是发票上的购入电量),也算不出来
+//     → 不画 bar,密度从 96 降 88。虚构一根条比没有条更糟。
+function card(r: ElecRecordDTO): WideCard {
+  return {
+    // 一行一个身份:2026年3月 · 一期厂房 · 峰(basic 无时段,两段)
+    name: [mLabel(r.acctMonth), r.phaseName, r.period].filter(Boolean).join(' · '),
+    // 「本月电费」取价税合计 —— 桌面这一列是加粗的那根(.e11-c-total)
+    amount: '¥' + num(r.total),
+    // 只写测量:电量/需量按桌面表头的口径(度 / kVA),外加不含税金额
+    sub: energy.value
+      ? `电量 ${num(r.qty ?? 0, 0)} 度 · 不含税 ¥${num(r.amount)}`
+      : `需量 ${num(r.demand ?? 0, 0)} kVA · 不含税 ¥${num(r.amount)}`,
+  }
+}
 </script>
 
 <template>
@@ -106,6 +134,18 @@ const groups = computed(() =>
           编辑表格
         </Button>
       </div>
+
+      <!-- S 档查看态:一行一张卡(稿 §3 行5)。编辑态回落原表 —— 勾选框/行删除/整年合计
+           在卡上没有位置,而 §5.3 写的是「查看不拦、编辑入口不藏」:手机上删一条记录
+           不能因为换了形态就没了。宽档两条分支都不进这里,渲染出来的 DOM 一个字节不变。 -->
+      <FPWideCards
+        v-else-if="tier === 's' && !edit"
+        :rows="rows"
+        :row-key="'id'"
+        :fields="card"
+        :density="88"
+        @row-click="emit('row', $event)"
+      />
 
       <!-- ── 电量电费(energy) ── -->
       <table v-else-if="energy" class="e11-table">
