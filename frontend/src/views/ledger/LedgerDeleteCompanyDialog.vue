@@ -6,6 +6,11 @@
 import { ref, computed, nextTick } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
+import { useFormSheet } from '@/composables/useFormSheet'
+
+// 步② 有输入(要打出公司名原文)→ S 档全屏 sheet;步① 只是一列可选账册,没有输入控件,
+// 按判据仍是居中小卡(styles/form-sheet.css)。
+const sheet = useFormSheet()
 
 export interface DeletableBook { id: number; name: string; companyName: string }
 
@@ -30,7 +35,7 @@ function submit() {
 </script>
 
 <template>
-  <div class="lg-dlg-mask" @click="emit('close')">
+  <div class="lg-dlg-mask" :class="{ 'fp-fsheet': sheet && !!picked }" @click="emit('close')">
     <div class="lg-dlg" role="dialog" aria-modal="true" @click.stop>
       <!-- 步① 选册 -->
       <template v-if="!picked">
@@ -58,7 +63,7 @@ function submit() {
           <h3>删除公司「{{ picked.companyName }}」</h3>
           <p>将删除该公司,<b>连同全部台账/报表数据,不可恢复</b>。</p>
         </div>
-        <div class="lg-dlg-b">
+        <div class="lg-dlg-b fp-fsheet-bd">
           <div class="lg-dlg-warn">
             <component :is="iconFor('alert-triangle')" :size="15" />
             <span>此操作立即生效且无法撤销:该公司名下所有月份的台账行与报表数据将一并删除。</span>
@@ -71,7 +76,7 @@ function submit() {
             <template v-if="typed.trim() && !ok">名称与「{{ picked.companyName }}」不一致</template>
           </div>
         </div>
-        <div class="lg-dlg-f">
+        <div class="lg-dlg-f fp-fsheet-ft">
           <button class="lg-dlg-back" @click="back">
             <component :is="iconFor('arrow-left')" :size="13" />重新选择
           </button>

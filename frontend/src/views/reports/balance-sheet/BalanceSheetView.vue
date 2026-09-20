@@ -564,13 +564,14 @@ async function onExport() {
 
 /* ── M/S 档(≤960,RESPONSIVE-LAYOUT-SPEC §5.3 明文):双表并排是报表层最先坏的点——
    降单列上下堆叠。.fin-side 放开 height:100%:单列后行高由内容定,定高会把两张表
-   挤进同一屏各自内滚;改自然流整页滚动(查看态可用优先)。宽档规则在前(§1)。 ── */
+   挤进同一屏各自内滚;改自然流整页滚动(查看态可用优先)。
+   KPI 同档定两列,坏的是**标签**不是金额:768 上 repeat(4) 每格 151,扣 .kc 的 padding 40
+   只剩 111 内容宽;「所有者权益合计」≈98 + 图标 18 + 缝 8 = 124 > 111,被 .kc-l 的 ellipsis 截断,
+   而 ds/KpiCard 的 .kc-l 没有 :title(useFitDown 只管数值不管标签),悬停也看不全——补缺陷不是偏好。
+   宽档规则在前(§1)。 ── */
 @media (max-width: 960px) {
   .fin-two { grid-template-columns:1fr; }
   .fin-side { height:auto; }
-}
-/* ── S 档(≤600):KPI repeat(4) 在 390 上每格 <90px,金额放不下——定两列 ── */
-@media (max-width: 600px) {
   .fin-kpis { grid-template-columns:repeat(2, minmax(0,1fr)); }
 }
 /* 批量删除确认弹窗 — 1:1 FinDialogs .fin-mask/.fin-dlg(scoped 不跨组件,故本屏自带一份,遵 PAGE-BEHAVIOR-SPEC §2) */

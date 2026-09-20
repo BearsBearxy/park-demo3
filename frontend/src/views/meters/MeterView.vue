@@ -33,6 +33,7 @@ import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useFormSheet } from '@/composables/useFormSheet'
 import { useZonesStore } from '@/stores/zones'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
@@ -57,6 +58,9 @@ import MeterDetailDrawer from './MeterDetailDrawer.vue'
 import './meter-shared.css'
 
 const auth = useAuthStore()
+// 新增表弹卡带输入 → S 档全屏 sheet;批量删除预览只是复述 + 勾选,按判据仍是居中小卡
+// (styles/form-sheet.css)。
+const sheet = useFormSheet()
 // RBAC v2(读全开写分权):抄读数与改表档案是两把权限,别一刀切 ——
 // 读数(录入/导入/批量删本期)= meter-reading:edit;表档案(新增表/一键挂/抽屉里的倍率绑定删表)= meter-master:edit。
 // 无权只是不出写按钮,数据照常全显。
@@ -772,13 +776,13 @@ const emptyText = computed(() => {
     <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
 
     <!-- 新增表轻量弹窗(v4 原样) -->
-    <div v-if="meterDlg" class="mt-mask" @mousedown="meterDlg = false">
+    <div v-if="meterDlg" class="mt-mask" :class="{ 'fp-fsheet': sheet }" @mousedown="meterDlg = false">
       <div class="mt-dlg" @mousedown.stop>
         <div class="mt-dlg-h">
           <h3>新增表</h3>
           <p>手工建档一块水/电表;楼栋/租户/归属可留空或后补,导入整册抄表工作簿时会自动匹配/刷新。</p>
         </div>
-        <div class="mt-dlg-b">
+        <div class="mt-dlg-b fp-fsheet-bd">
           <div class="mt-dlg-row">
             <Select v-model="mForm.kind" label="类别" :options="KIND_OPTS" size="sm" />
             <Select v-model="mForm.zone" label="分区" :options="ZONE_OPTS" size="sm" />
@@ -813,7 +817,7 @@ const emptyText = computed(() => {
           </div>
           <div class="mt-dlg-err">{{ mErr }}</div>
         </div>
-        <div class="mt-dlg-f">
+        <div class="mt-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="meterDlg = false">取消</Button>
           <Button variant="filled" size="sm" @click="submitMeter">
             <template #leading><component :is="iconFor('check')" :size="14" /></template>

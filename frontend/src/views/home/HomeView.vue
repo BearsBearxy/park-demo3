@@ -2,12 +2,15 @@
 // 首页 / 新标签页(TAB-BAR-SPEC §5)。同一个组件,两条路由:/home(登录后第一屏,固定页签)与 /newtab(点 + 开的)。
 // 两者只差「点了一页之后」:首页上开在新页签(首页永远是首页),新标签页上这一格变成那一页 ——
 // 这条规则在 tabs.open() 里判(看当前页签是不是首页),这里只管调 open + push。
-import { computed, ref } from 'vue'
+import { computed, ref, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { X, Search } from 'lucide-vue-next'
+import { X, Search, ChevronRight } from 'lucide-vue-next'
 import { useTabsStore } from '@/stores/tabs'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useUiStore } from '@/stores/ui'
+import { useViewport } from '@/composables/useViewport'
+import { useBillingPeriodStore } from '@/stores/billingPeriod'
+import { CHAIN, chainStepsOf } from '@/nav/billingChain'
 import { fpBuildRoutes } from '@/nav/fpNav'
 import { iconFor } from '@/components/ds/icon'
 import { BRAND } from '@/brand'
@@ -34,6 +37,31 @@ const hint = computed(() => {
 })
 
 const recent = computed(() => tabs.recent.filter(v => ROUTES[v]))
+
+// ── 本月出账入口条(S 档)。副行是实测数,数在 billingPeriod 里 ──
+const period = useBillingPeriodStore()
+const { tier } = useViewport()
+// loadChain 幂等、会话内只打一趟;拉不到副行就退回「5 道工序」,不阻断首页。
+// ⚠ 只在 S 档打:它喂的副行 entrySub 只在 ≤600 上屏(.hm-entry 在宽档 display:none),
+//   无条件调等于桌面 1440 登录落地后凭空多一轮请求,画面上一个像素都不用它 ——
+//   §9 的零差异不只是像素那半。转屏 / 缩窗进 S 时 watchEffect 会补拉。
+watchEffect(() => { if (tier.value === 's') void period.loadChain().catch(() => { /* noop */ }) })
+
+// 「本月」:手选优先,没选过用日历当月 —— 与 data-home 的 shownYm 同序。
+const entryYm = computed(() => {
+  if (period.ym) return period.ym
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+})
+// ⚠ 不走 cellOf:它取不到时返回 EMPTY,而 chainStepsOf(EMPTY) 的计费参数恒 done ——
+//   副行就会写出一个没人测过的「已完成 1」。取不到就一个数都不写。
+const entrySub = computed(() => {
+  const c = period.cells.get(entryYm.value)
+  if (!c) return `${CHAIN.length} 道工序`
+  const done = chainStepsOf(c).filter(s => s.state === 'done').length
+  // 稿逐字:「工序没开始就写「未开始」,不写 0」——「已完成 0」读着像出了错,而它只是还没干
+  return `${CHAIN.length} 道工序 · ${done === 0 ? '未开始' : `已完成 ${done}`}`
+})
 
 // ── 格子拖动换序(HTML5 拖放;首页上的收藏不跟页签条共用那套跟手动效)──
 const dragFrom = ref(-1)
@@ -63,6 +91,17 @@ function onDragEnd() { dragFrom.value = -1; dragOver.value = -1 }
       <Search :size="18" />
       <span>搜索页面 / 分组…</span>
       <kbd class="hm-kbd">Ctrl K</kbd>
+    </button>
+
+    <!-- 本月出账入口条:S 档才出 —— M↑ 有图标轨与页签条,这条是它们在手机上的替身。
+         整条 68 是一个点击目标,右端 › 只是个图标,不单独可点。 -->
+    <button type="button" class="hm-entry" @click="go('data-home')">
+      <span class="ei"><component :is="iconFor(ROUTES['data-home']?.icon ?? '')" :size="20" /></span>
+      <span class="et">
+        <b>{{ ROUTES['data-home']?.page }} · {{ entryYm }}</b>
+        <small>{{ entrySub }}</small>
+      </span>
+      <ChevronRight :size="20" class="ec" />
     </button>
 
     <section class="hm-sec">
@@ -151,6 +190,13 @@ function onDragEnd() { dragFrom.value = -1; dragOver.value = -1 }
   border-radius: 6px;
   padding: 2px 7px;
 }
+/* 触屏没有 Ctrl 可按,提示留着只会让人找键盘(照 CommandPalette 的同款规则) */
+@media (hover: none) {
+  .hm-kbd { display: none; }
+}
+
+/* 入口条只在 S 档出;M↑ 一个像素都不画 */
+.hm-entry { display: none; }
 
 .hm-sec { width: 760px; max-width: 100%; margin-top: 36px; }
 .hm-sec-rec { margin-top: 28px; }
@@ -262,5 +308,36 @@ function onDragEnd() { dragFrom.value = -1; dragOver.value = -1 }
   .hm-tiles { grid-template-columns: repeat(3, 1fr); }
   .hm-rec { grid-template-columns: 1fr; }
   .hm-rec-r { min-height: 44px; }
+
+  .hm-entry {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 68px;
+    margin-top: 20px;
+    padding: 12px 14px;
+    border: none;
+    border-radius: 16px;
+    background: var(--accent-blue);
+    font-family: var(--font-sans);
+    text-align: left;
+    cursor: pointer;
+  }
+  /* 40 不是 44:整条 68 才是那个点击目标,图标不单独可点,不用凑触达下限(稿 .hm-bill .bi) */
+  .hm-entry .ei {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+    border-radius: 12px;
+    background: var(--surface-white);
+    display: grid;
+    place-items: center;
+    color: var(--info-text-on-tint);
+  }
+  .hm-entry .et { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .hm-entry .et b { font-size: 15px; font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hm-entry .et small { font-size: 12px; color: var(--text-muted-tint); }
+  .hm-entry .ec { flex: 0 0 auto; color: var(--info-text-on-tint); }
 }
 </style>

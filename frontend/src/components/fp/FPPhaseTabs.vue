@@ -86,4 +86,15 @@ defineEmits(['update:modelValue'])
 .fp-phasetab.on .ct {
   color: var(--hue-blue);
 }
+
+/* M 档(601–960)胶囊 34 → 32(TabletContent §① delta 行3)。触屏可达面积按**整组**算:
+   外框 .fp-phasetabs padding 4,32 + 4×2 = 40,与稿的算法一致。
+   下面的 600 块把 S 档原样退回 34 —— 稿只改 M 档一行,手机那档不在本次范围内。
+   (CSS 断点只能写字面量,允许值 600/960/1280 见 styles/breakpoints.ts) */
+@media (max-width: 960px) { /* M↓ */
+  .fp-phasetab { height: 32px; }
+}
+@media (max-width: 600px) { /* S:不动 */
+  .fp-phasetab { height: 34px; }
+}
 </style>

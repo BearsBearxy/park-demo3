@@ -24,8 +24,11 @@ import BuildingDrawer from './BuildingDrawer.vue'
 import BuildingNewDialog from './BuildingNewDialog.vue'
 import { iconFor } from '@/components/ds/icon'
 import { useAuthStore } from '@/stores/auth'
+import { useViewport } from '@/composables/useViewport'
 
 const auth = useAuthStore()
+// M 档(601–960)只压列宽/表头写法,一列都不删(TabletContent §① 黄框)
+const { tier } = useViewport()
 
 // ─── state ───────────────────────────────────────────────
 const buildings = ref<BuildingDTO[]>([])
@@ -143,7 +146,8 @@ const TABLE_COLUMNS = computed(() => [
   },
   { key: 'totalArea', header: '总面积 ㎡', width: '104px', align: 'right' as const, mono: true, sortValue: (b: BuildingDTO) => b.totalArea,
     render: (b: BuildingDTO) => h('span', null, b.totalArea.toLocaleString('en-US')) },
-  { key: 'rentableArea', header: '可租面积 ㎡', width: '116px', align: 'right' as const, mono: true, sortValue: (b: BuildingDTO) => b.rentableArea,
+  // M 档表头缩写成「可租 ㎡」(TabletContent §① delta 行7):同一列、同一份数据,只换表头写法
+  { key: 'rentableArea', header: tier.value === 'm' ? '可租 ㎡' : '可租面积 ㎡', width: '116px', align: 'right' as const, mono: true, sortValue: (b: BuildingDTO) => b.rentableArea,
     render: (b: BuildingDTO) => h('span', null, b.rentableArea.toLocaleString('en-US')) },
   // 建筑面积=栋内在租合同建筑面积汇总(只读,BILL-FORWARD 刀1 面积链路)
   { key: 'tenantBuildingArea', header: '建筑面积 ㎡', width: '110px', align: 'right' as const, mono: true, sortValue: (b: BuildingDTO) => b.tenantBuildingArea,
@@ -152,7 +156,8 @@ const TABLE_COLUMNS = computed(() => [
     key: 'occRate', header: '出租率', width: '132px', sortValue: (b: BuildingDTO) => b.occRate,
     // 本列有 render,FPSortableTable 的自动 title 不生效(c.render ? undefined : …),缺因 tooltip 得自己挂
     render: (b: BuildingDTO) => h('span', { style: { display: 'flex', alignItems: 'center', gap: '9px' }, title: b.occRate == null ? OCC_NULL_WHY : undefined }, [
-      h('span', { style: { flex: '1', minWidth: '54px' } }, [OccBar(b.occRate, 5)]),
+      // 条 54 → 36(M 档,TabletContent §① delta 行6):只条变短,右侧 40px 数字列与百分数不动
+      h('span', { style: { flex: '1', minWidth: tier.value === 'm' ? '36px' : '54px' } }, [OccBar(b.occRate, 5)]),
       h('span', { style: { fontFamily: 'var(--font-mono)', fontSize: '12px', fontWeight: 'var(--fw-semibold)', width: '40px', textAlign: 'right' } }, occPct(b.occRate)),
     ]),
   },

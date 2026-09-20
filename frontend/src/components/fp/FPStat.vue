@@ -40,4 +40,11 @@ const { small, tip } = useFitDown(numEl)
 .fs-n .u { font-family: var(--font-sans); font-size: var(--fs-body); font-weight: var(--fw-medium); }
 .fs-s { font-size: var(--fs-micro); line-height: 16px; color: var(--text-muted-tint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fs-sk { display: block; width: 80px; height: 20px; margin: 3px 0; }
+/* S 档(≤600,响应式稿 KpiNarrow 板 §3):圆角 16 → 12(--radius-md),与同屏 AnaKpiTile 的
+   .av2-kpi 对齐 —— 小卡配小圆角,卡缩了圆角不跟着缩,角看起来发胖。
+   只动圆角:列数与降字号稿判为零代码(.fs-n 的 useFitDown 已在跑)。
+   宽档规则在前(§1),>600 一个像素不动。 */
+@media (max-width: 600px) {
+  .fs { border-radius: var(--radius-md); }
+}
 </style>

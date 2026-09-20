@@ -6,6 +6,11 @@ import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import type { FinCompany } from './useFinStatementScreen'
+import { useFormSheet } from '@/composables/useFormSheet'
+
+// company / addrow 两态带输入 → S 档全屏 sheet;delco 只有一句话 + 两个钮,按判据仍是居中小卡
+// (styles/form-sheet.css)。
+const sheet = useFormSheet()
 
 // 单一 dlg 描述符,null = 不显示。company: 新建/重命名;delco: 确认删除;addrow: 加子类。
 export type FinDialog =
@@ -61,14 +66,14 @@ function submitRow() {
 
 <template>
   <Teleport to="body">
-    <div v-if="dlg" class="fin-mask" @mousedown="emit('close')">
+    <div v-if="dlg" class="fin-mask" :class="{ 'fp-fsheet': sheet && dlg.type !== 'delco' }" @mousedown="emit('close')">
       <!-- 公司新建 / 重命名 -->
       <div v-if="dlg.type === 'company'" class="fin-dlg" role="dialog" aria-modal="true" @mousedown.stop>
         <div class="fin-dlg-h">
           <h3>{{ dlg.mode === 'edit' ? '重命名公司' : '新增管理公司' }}</h3>
           <p>{{ dlg.mode === 'edit' ? '修改该管理公司的显示名称。' : '为新管理公司创建一份独立报表,结构与现有报表一致,各项金额初始为空。' }}</p>
         </div>
-        <div class="fin-dlg-b">
+        <div class="fin-dlg-b fp-fsheet-bd">
           <div class="fin-field">
             <div class="lab">公司名称</div>
             <input ref="inputRef" class="fin-in" :class="{ err }" v-model="name" placeholder="如:园区资产管理有限公司"
@@ -76,7 +81,7 @@ function submitRow() {
           </div>
           <div class="fin-erm">{{ err }}</div>
         </div>
-        <div class="fin-dlg-f">
+        <div class="fin-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="emit('close')">取消</Button>
           <Button variant="filled" size="sm" @click="submitCompany">
             <template #leading><component :is="iconFor('check')" /></template>
@@ -106,7 +111,7 @@ function submitRow() {
           <h3>{{ dlg.heading || '添加子类' }}</h3>
           <p>在「<b style="color:var(--text-secondary)">{{ dlg.parentLabel }}</b>」下新增一个明细子类,金额随该子类逐期录入,父项自动汇总。</p>
         </div>
-        <div class="fin-dlg-b">
+        <div class="fin-dlg-b fp-fsheet-bd">
           <div class="fin-field">
             <div class="lab">子类名称</div>
             <input ref="inputRef" class="fin-in" :class="{ err }" v-model="name" :placeholder="dlg.placeholder || '如:一期租户'"
@@ -115,7 +120,7 @@ function submitRow() {
           <div class="fin-erm">{{ err }}</div>
           <div v-if="dlg.hint" class="fin-dlg-note"><component :is="iconFor('info')" :size="15" /><span>{{ dlg.hint }}</span></div>
         </div>
-        <div class="fin-dlg-f">
+        <div class="fin-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="emit('close')">取消</Button>
           <Button variant="filled" size="sm" @click="submitRow">
             <template #leading><component :is="iconFor('check')" /></template>

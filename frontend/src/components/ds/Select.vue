@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onUnmounted, useId } from "vue";
+import { ref, computed, nextTick, onMounted, onUnmounted, useId, type CSSProperties } from "vue";
+import { useViewport } from "@/composables/useViewport";
 
 export interface SelectOption {
   value: string;
@@ -69,6 +70,36 @@ const activeId = computed(() =>
 );
 
 const height = computed(() => ({ sm: 32, md: 36, lg: 44 }[props.size] ?? 36));
+
+// ── S 档底部面板(RESPONSIVE-LAYOUT-SPEC §4.4;壳同 ds/DatePicker.vue:665-685)──
+// 贴附 popover 在 390 上会出屏:字段在右半屏时(工具条「全部状态」就是)面板宽 220 从 left 214
+// 起算 = 右缘 434 > 视口 390,右边 44px 看不见也点不着。≤600 改成从底部升起的面板。
+// 壳与定位全在 .ds-sel-sheet 的 CSS 里,**贴附分支一条不动** —— 桌面零差异(§9)。
+const vp = useViewport();
+const sheet = computed(() => vp.tier.value === "s");
+const sheetTitle = computed(() => props.label || props.placeholder || "请选择");
+// 贴附面板的定位/尺寸原先写在模板的内联 :style 里。底部面板要把它整套换掉,而内联样式只有
+// !important 压得住 —— 与其在 CSS 里堆 !important,不如让 sheet 档干脆不出这套内联样式。
+// 对象字面量逐字搬过来,XL 档渲染出的 style 属性与改前一致。
+const popStyle = computed<CSSProperties>(() => ({
+  position: "absolute",
+  top: "calc(100% + 6px)",
+  left: "0",
+  /* 面板宽度贴内容不贴触发器:窄触发器(如 92px 月份选择)下选项文本+勾不再截断 */
+  minWidth: "100%",
+  width: "max-content",
+  maxWidth: "280px",
+  zIndex: "var(--z-popover)", /* 改前是字面量 60(PAGE-BEHAVIOR-SPEC §3:新增覆盖层一律用令牌) */
+  background: "var(--surface-raised)",
+  border: "1px solid var(--border-subtle)",
+  borderRadius: "var(--radius-md)",
+  boxShadow: "var(--shadow-pop)",
+  padding: "6px",
+  /* 12 项(年月选择)整列可见不滚动:12×36px 行高 + 上下 padding */
+  maxHeight: "456px",
+  overflowY: "auto",
+  boxSizing: "border-box",
+}));
 
 const items = computed<SelectOption[]>(() =>
   props.options.map((o) =>
@@ -179,7 +210,12 @@ function onFocusOut(e: FocusEvent) {
 }
 
 function onDoc(e: MouseEvent) {
-  if (containerRef.value && !containerRef.value.contains(e.target as Node)) {
+  const t = e.target as Node;
+  // S 档面板 teleport 到 body,已不在 containerRef 里:少了 panelRef 这一判,点选项时
+  // capture 阶段先把 open 置 false → 面板卸载 → click 永远派不出来,一项都选不中。
+  // XL 档面板本就在 containerRef 内,这一判恒为假,行为不变。
+  if (panelRef.value?.contains(t)) return;
+  if (containerRef.value && !containerRef.value.contains(t)) {
     open.value = false;
   }
 }
@@ -287,32 +323,30 @@ onUnmounted(() => {
       </svg>
     </button>
 
+    <Teleport to="body" :disabled="!sheet">
+    <div v-if="open && sheet" class="ds-sel-scrim" />
     <div
       v-if="open"
       ref="panelRef"
       :id="panelId"
       class="ds-sel-panel"
+      :class="{ 'ds-sel-sheet': sheet }"
       role="listbox"
-      :style="{
-        position: 'absolute',
-        top: 'calc(100% + 6px)',
-        left: '0',
-        /* 面板宽度贴内容不贴触发器:窄触发器(如 92px 月份选择)下选项文本+勾不再截断 */
-        minWidth: '100%',
-        width: 'max-content',
-        maxWidth: '280px',
-        zIndex: 'var(--z-popover)',   /* 改前是字面量 60(PAGE-BEHAVIOR-SPEC §3:新增覆盖层一律用令牌) */
-        background: 'var(--surface-raised)',
-        border: '1px solid var(--border-subtle)',
-        borderRadius: 'var(--radius-md)',
-        boxShadow: 'var(--shadow-pop)',
-        padding: '6px',
-        /* 12 项(年月选择)整列可见不滚动:12×36px 行高 + 上下 padding */
-        maxHeight: '456px',
-        overflowY: 'auto',
-        boxSizing: 'border-box',
-      }"
+      :style="sheet ? undefined : popStyle"
     >
+      <!-- S 档:把手 + 标题行(左标题右 ✕),同 ds/DatePicker 的底部面板 -->
+      <template v-if="sheet">
+        <div class="ds-sel-hdl" />
+        <div class="ds-sel-sh">
+          <span>{{ sheetTitle }}</span>
+          <button type="button" class="ds-sel-shx" aria-label="关闭" @click="open = false">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      </template>
       <button
         v-for="(it, i) in items"
         :key="it.value"
@@ -362,6 +396,7 @@ onUnmounted(() => {
         </svg>
       </button>
     </div>
+    </Teleport>
   </div>
 </template>
 
@@ -389,4 +424,33 @@ onUnmounted(() => {
 .ds-sel-opt:hover { background: var(--bg-hover); }
 /* 键盘活动项:和 hover 同一个底色 —— 键盘走到哪要看得见,否则 ↑↓ 等于盲按 */
 .ds-sel-opt[data-active] { background: var(--bg-hover); }
+
+/* ── S 档:从底部升起的面板(壳同 ds/DatePicker.vue:665-685 的 .dp-sheet)── */
+.ds-sel-scrim { position: fixed; inset: 0; z-index: var(--z-confirm); background: var(--scrim); opacity: 0; animation: fp-fade-in var(--dur-base) forwards; }
+.ds-sel-panel.ds-sel-sheet {
+  position: fixed; top: auto; left: 0; right: 0; bottom: 0; width: auto; max-width: none;
+  z-index: var(--z-confirm);   /* 与 DatePicker 底部面板同档:宿主弹窗(modal/modal-2)之上 */
+  background: var(--surface-raised); border: none;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0; box-shadow: var(--shadow-pop);
+  padding: 0 8px 34px;         /* 34 = iOS 手势条安全区,同 .dp-sheet */
+  /* 选项多时内滚;不铺满整屏,下面那截还看得见「我是从哪个字段点开的」 */
+  max-height: 60dvh; overflow-y: auto; box-sizing: border-box;
+  animation: ds-sel-sheet-in var(--dur-base) var(--ease-out);
+}
+@keyframes ds-sel-sheet-in { from { transform: translateY(100%); } }
+.ds-sel-hdl { width: 36px; height: 5px; margin: 8px auto 0; border-radius: 3px; background: var(--ink-300); }
+/* 标题行钉在面板顶:选项超出 60dvh 时滚的是选项,✕ 不能跟着滚出去 */
+.ds-sel-sh {
+  position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between;
+  height: 52px; padding: 0 4px 0 12px; background: var(--surface-raised);
+  font-size: var(--fs-h3); font-weight: var(--fw-semibold); color: var(--text-primary);
+}
+.ds-sel-shx { width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: none; background: none; color: var(--text-secondary); cursor: pointer; }
+/* 选项行:52 高(>44,一排选项要好戳)/ 16px 字。三条都盖内联 style,只有 !important 压得住。 */
+.ds-sel-sheet .ds-sel-opt {
+  height: 52px !important;
+  padding: 0 12px !important;
+  font-size: var(--fs-input-m) !important;
+  border-radius: var(--radius-sm);
+}
 </style>

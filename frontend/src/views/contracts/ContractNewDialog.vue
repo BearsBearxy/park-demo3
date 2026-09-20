@@ -9,6 +9,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useScreen } from '@/composables/useTabShells'
+import { useFormSheet } from '@/composables/useFormSheet'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
@@ -110,6 +111,8 @@ const DETAIL_FAIL = '计费明细加载失败,请关闭重开——此时保存�
 const dirty = ref(false)
 // 填过东西 = 在编辑:登记进 auth.editors —— 页签条不把这一格换掉、关浏览器先确认(TAB-BAR-SPEC §2)
 const auth = useAuthStore()
+// 带输入的居中弹卡 → S 档全屏 sheet(styles/form-sheet.css)
+const sheet = useFormSheet()
 const meId = Symbol('contract-dialog')
 const screen = useScreen()
 watch(dirty, (on) => { if (on) auth.openEditor(meId, screen); else auth.closeEditor(meId) })
@@ -514,7 +517,7 @@ async function submit() {
 
 <template>
   <Teleport to="body">
-    <div class="ct-mask" @mousedown="onMaskDown">
+    <div class="ct-mask" :class="{ 'fp-fsheet': sheet }" @mousedown="onMaskDown">
       <!-- dirty 靠 capture 阶段收弹窗内所有原生输入/勾选(含 picker 内部),不逐字段挂标记 -->
       <div class="ct-dlg" role="dialog" aria-modal="true" @mousedown.stop
            @input.capture="dirty = true" @change.capture="dirty = true">
@@ -524,7 +527,7 @@ async function submit() {
           <p v-else-if="mode === 'edit'">修改该合同的字段并保存(全量提交)。</p>
           <p v-else>录入一份租赁合同。执行中/即将到期的合同将计入月租金、占用所选单元并派生楼栋出租率。</p>
         </div>
-        <div class="ct-dlg-b">
+        <div class="ct-dlg-b fp-fsheet-bd">
           <div class="ct-grid">
             <div class="ct-field">
               <div class="lab">合同号 <i>*</i></div>
@@ -784,7 +787,7 @@ async function submit() {
           </div>
           <div class="ct-erm">{{ err }}</div>
         </div>
-        <div class="ct-dlg-f">
+        <div class="ct-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="emit('close')">取消</Button>
           <!-- 计费明细没到位时保存=清空计费行,按钮直接点不动(不只靠 submit 里 return) -->
           <Button variant="filled" size="sm" :disabled="submitting || (mode === 'edit' && !detailLoaded)" @click="submit">

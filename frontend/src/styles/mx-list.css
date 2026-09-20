@@ -16,6 +16,38 @@
 .mx-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .mx-toolbar-right { display: flex; align-items: center; gap: 10px; }
 
+/* M↓(≤960)工具行固定两行(TabletContent §① delta 行4):第一行期区胶囊,第二行段控+搜索+状态下拉。
+   用 grid 两行而不是让上面那条 flex-wrap 自己撞 —— wrap 的行数跟着胶囊文案走(计数从 4 变 13 就多一位),
+   在 1 行与 2 行之间跳,sticky 工具条高度跟着跳。grid 下 flex-wrap 失效,行组成由结构定死。
+   XL 档仍走上面的单行 flex,一个像素不变(RESPONSIVE-LAYOUT-SPEC §9)。 */
+/* ⚠ 本块写在下面两个 1100 存量豁免块**之前**(:99 / :133),与「宽档在前窄档在后」相反。
+   今天不出事的唯一理由是两边选择器零重叠:1100 管 .mx-body / .mx-kpirail / master-detail,
+   本块管 .mx-toolbar 系与 .mx-pagerbar 系。tabletContent.spec 有一条断言钉住这个「零重叠」——
+   哪天有人往两边加了同一个选择器,那条会红。要往本块加规则,先看一眼那条。 */
+@media (max-width: 960px) { /* M↓ */
+  /* 单列 grid 的隐式行就够用。**不写 grid-template-rows: auto auto** ——
+     显式第二轨在只有一个子节点时也会生成,白吃一份 12px 的 row-gap。 */
+  .mx-toolbar { display: grid; grid-template-columns: 1fr; justify-items: start; }
+  /* grid 项默认 justify-self:stretch,而 flex 项是 hug 内容。不写这两条的话:
+     .fp-phasetabs 那条 999px 圆角灰底会铺满整行、胶囊缩在左端;右组也被拉满、内容从贴右变贴左
+     —— 撞 LIST-PAGE-SPEC §2「筛选靠右」。2026-09-20 对抗复查实测到的。 */
+  .mx-toolbar-right { justify-self: end; }
+  /* 空占位子节点不生成轨道。三屏(SystemLogsView / SystemUsersView / ElecCostView)
+     靠「空 span/div + space-between」把右组推到右边 —— 那是 flex 的机制,grid 下已经失效,
+     留着只会凭空多一行 0 高 + 一份 12px 缝。有内容的第一段(如 .ec-simhint)不受影响。 */
+  .mx-toolbar > :empty { display: none; }
+
+  /* 分页器触达(稿 TabletContent §① delta 行8:M 768 那一列写的就是「36 / 窄」,不是 32)。
+     判据是触屏不是视口 —— 平板也是触屏,所以这一档从 600 提到 960。
+     跳页钮 36 高(稿 ListPhone §2:分页条定高 52 = 36 + 上下 padding 8×2)。
+     0-3-0 压过 FPPager 的 scoped .fp-jump-trigger(0-2-0),不用 !important。 */
+  .mx-pagerbar .fp-pager .fp-jump-trigger { height: 36px; }
+  /* pill 尺寸是 ds/Pagination 内联 pillStyle 写死的(该组件不在本次改动范围),
+     只能 !important 压过内联 —— 作用域锁死在 .mx-pagerbar 内,不外溢到其他分页场景。
+     高 32→36、宽 32→26:手指比鼠标粗,但 390 上放不下 4 个 32 宽的圆,是高增宽收不是两个都增。 */
+  .mx-pagerbar .ds-pg-pill { min-width: 26px !important; height: 36px !important; padding: 0 6px !important; }
+}
+
 /* 搜索框:固定宽 230px,radius-full,左内嵌放大镜(样式 1:1 迁自 TenantsView 内联) */
 .mx-search { position: relative; width: 230px; }
 .mx-search input {
@@ -160,12 +192,4 @@
      选择器叠三层类是为压过 FPPager 的 scoped 样式(同 0-2-0 会输给后注入的组件样式); */
   .mx-pagerbar { padding: 8px 10px; }
   .mx-pagerbar .fp-pager .fp-jump-wrap { min-width: 0; }
-  /* 跳页钮 36 高(稿 §2 分页条定高 52 = 36 + 上下 padding 8×2)。0-3-0 压过 FPPager 的
-     scoped .fp-jump-trigger(0-2-0),不用 !important;同样锁死在 .mx-pagerbar 内。 */
-  .mx-pagerbar .fp-pager .fp-jump-trigger { height: 36px; }
-  /* pill 尺寸是 ds/Pagination 内联 pillStyle 写死的(该组件不在本次改动范围),
-     只能 !important 压过内联——作用域锁死在 .mx-pagerbar 内,不外溢到其他分页场景。
-     高 32→36、宽 32→26(稿 §2 触达账):手指比鼠标粗,但 390 上放不下 4 个 32 宽的圆,
-     所以是高增宽收,不是两个都增。 */
-  .mx-pagerbar .ds-pg-pill { min-width: 26px !important; height: 36px !important; padding: 0 6px !important; }
 }

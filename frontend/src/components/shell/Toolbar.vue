@@ -20,6 +20,7 @@ import { useUpdateStore } from '@/stores/update'
 import { useFavoritesStore, MAX_FAVS } from '@/stores/favorites'
 import { fpBuildRoutes, fpFindLayer } from '@/nav/fpNav'
 import ShellTip from '@/components/shell/ShellTip.vue'
+import { useViewport } from '@/composables/useViewport'
 
 const emit = defineEmits<{ 'open-command': [] }>()
 
@@ -68,6 +69,16 @@ const ROUTES = fpBuildRoutes()
 const layerHome = computed(() => fpFindLayer(activeValue.value).home)
 const crumbLink = computed(() => !homeLike.value && !!activeValue.value && activeValue.value !== layerHome.value)
 const crumbTip = computed(() => `回到 ${crumbGroup.value} · ${ROUTES[layerHome.value]?.page ?? ''}`)
+/**
+ * M↓(≤960,RESPONSIVE-LAYOUT-SPEC §3.3):面包屑只留屏名段,层名由图标轨高亮承担。
+ * 收编在 JS 不在 CSS 是因为「可点」这条(§6.2,2026-09-18 拍板)不许退化成纯文字 ——
+ * 层名段是原来那个按钮,CSS 把它 display:none 掉,剩下的 span 就点不动了;
+ * 所以窄档改由屏名段接过「回到本层第一屏」这个入口,元素类型必须换。
+ * XL/L 走 else 分支,渲染出的 DOM 与收编前一字不差。
+ */
+const { tier } = useViewport()
+const crumbNarrow = computed(() => tier.value === 'm' || tier.value === 's')
+
 function goLayerHome() {
   if (!crumbLink.value) return
   tabs.open(layerHome.value)
@@ -117,6 +128,13 @@ const ctxText = computed(() => {
     <span class="fp-crumb">
       <template v-if="homeLike">
         <span class="fp-crumb-page">{{ crumbPage }}</span>
+      </template>
+      <!-- M↓ 收编(§3.3):只剩屏名一段,但它接过层名段那个可点入口(§6.2) -->
+      <template v-else-if="crumbNarrow">
+        <ShellTip v-if="crumbLink" :title="crumbTip" align="start">
+          <button type="button" class="fp-crumb-page lk" @click="goLayerHome">{{ crumbPage }}</button>
+        </ShellTip>
+        <span v-else class="fp-crumb-page">{{ crumbPage }}</span>
       </template>
       <template v-else>
         <ShellTip v-if="crumbLink" :title="crumbTip" align="start">
@@ -232,7 +250,21 @@ button.fp-crumb-grp.lk {
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-standard);
 }
-button.fp-crumb-grp.lk:hover {
+/* M↓ 收编后由屏名段接手同一个入口(§3.3):只清 UA 样式,字号/字重/字色仍走 .fp-crumb-page */
+button.fp-crumb-page.lk {
+  height: 26px;
+  max-width: 100%;
+  margin: 0 -6px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+button.fp-crumb-grp.lk:hover,
+button.fp-crumb-page.lk:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
   text-decoration: underline;
@@ -368,8 +400,9 @@ button.fp-crumb-grp.lk:hover {
 }
 
 /* M 档收纳（RESPONSIVE-LAYOUT-SPEC §3.3）：960 以下容不下 200px 搜索框。
-   收成 40px 图标钮——占位文字与 Ctrl K 藏掉,提示转入按钮 title;
-   面包屑只留屏名段,层名由图标轨高亮承担。
+   收成 40px 图标钮——占位文字与 Ctrl K 藏掉,提示转入按钮 title。
+   面包屑的收编不在这儿:层名段 display:none 会把那个可点入口一起藏掉(§6.2),
+   改由上面 crumbNarrow 换元素,见那段注释。
    各按钮在本档内尺寸恒定,铃铛红点仍 absolute 贴在定宽按钮上,机制不动。 */
 @media (max-width: 960px) { /* M↓ */
   .fp-search-btn {
@@ -380,7 +413,5 @@ button.fp-crumb-grp.lk:hover {
   }
   .fp-search-btn span,
   .fp-search-btn .fp-kbd { display: none; }
-  .fp-crumb-grp,
-  .fp-crumb-sep { display: none; }
 }
 </style>

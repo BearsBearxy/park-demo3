@@ -214,17 +214,22 @@ describe('宽档零差异(RESPONSIVE-LAYOUT-SPEC §9)', () => {
   })
 })
 
-describe('分页条 pill(稿 §2 触达账)', () => {
+describe('分页条 pill(稿 §2 触达账 + TabletContent §① delta 行8)', () => {
   const css = readFileSync(join(__dirname, '../../styles/mx-list.css'), 'utf8').replace(/\r\n/g, '\n')
-  // ≤600 **块内**。⚠ 不许写 slice(indexOf(...)):那只验到「写在 600 块之后的任意位置」,
+  // ⚠ 按块取,不许写 slice(indexOf(...)):那只验到「写在某个块之后的任意位置」,
   // 把 pill 规则挪出块外(全站桌面分页器跟着变 36 高)十条照样全绿 —— 实跑验证过。
+  const mBlock = mediaBlock(css, '@media (max-width: 960px)')
   const sBlock = mediaBlock(css, '@media (max-width: 600px)')
 
-  it('❗pill 在 S 档高 36 宽 26,且作用域锁死在 .mx-pagerbar 内', () => {
-    expect(sBlock).toMatch(/\.mx-pagerbar \.ds-pg-pill \{[^}]*height: 36px !important/)
-    expect(sBlock).toMatch(/\.mx-pagerbar \.ds-pg-pill \{[^}]*min-width: 26px !important/)
+  it('❗pill 高 36 宽 26 写在 M 档(触屏判据,平板也是触屏),且锁死在 .mx-pagerbar 内', () => {
+    // 稿 TabletContent §① delta 行8 的 M 768 那一列写的就是「36 / 窄」,不是 32 ——
+    // 这一行的理由是触屏不是视口,所以档位是 960 不是 600。
+    expect(mBlock).toMatch(/\.mx-pagerbar \.ds-pg-pill \{[^}]*height: 36px !important/)
+    expect(mBlock).toMatch(/\.mx-pagerbar \.ds-pg-pill \{[^}]*min-width: 26px !important/)
+    // 反向:别在 600 块里再写一份(两份会漂)
+    expect(sBlock, 'pill 规则在 600 块里留了第二份').not.toMatch(/\.ds-pg-pill/)
     // 高增宽收:宽不许也跟着涨(390 上放不下 4 个 32 宽的圆)
-    expect(sBlock).not.toMatch(/\.ds-pg-pill \{[^}]*min-width: 3\dpx/)
+    expect(mBlock).not.toMatch(/\.ds-pg-pill \{[^}]*min-width: 3\dpx/)
     // 全文件里碰 .ds-pg-pill 的规则只有这一条,且必须以 .mx-pagerbar 打头 ——
     // 裸的 .ds-pg-pill 会让全站每个分页器都跟着变高
     const pillRules = (css.match(/[^\n{}]*\.ds-pg-pill[^\n{}]*\{/g) ?? []).map(s => s.trim())
@@ -232,9 +237,10 @@ describe('分页条 pill(稿 §2 触达账)', () => {
     expect(pillRules[0].startsWith('.mx-pagerbar ')).toBe(true)
   })
 
-  it('❗跳页钮 36 高(与 pill 同排 → 分页条 36 + 8×2 = 52)', () => {
-    expect(sBlock).toMatch(/\.mx-pagerbar \.fp-pager \.fp-jump-trigger \{ height: 36px; \}/)
+  it('❗跳页钮 36 高在 M 档;分页条收 padding 仍只在 S 档(那是 390 才有的宽度问题)', () => {
+    expect(mBlock).toMatch(/\.mx-pagerbar \.fp-pager \.fp-jump-trigger \{ height: 36px; \}/)
     expect(sBlock).toMatch(/\.mx-pagerbar \{ padding: 8px 10px; \}/)
+    expect(mBlock, 'padding 收窄是 390 的事,别一起抬到平板').not.toMatch(/\.mx-pagerbar \{ padding/)
   })
 
   it('❗ds/Pagination 的桌面默认仍是 32 —— S 档的 36 是压过来的,不是改了组件', () => {
