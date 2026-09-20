@@ -53,6 +53,27 @@ const emit = defineEmits<{
 // 冻结说明:一个没解释的灰控件等于没提示
 const frozenHint = '本月已录入,模板已定稿;清空本月数据后可改'
 
+// 版本下拉的选项。值是版本号字符串(ds/Select 只认字符串),回调里再转回数字。
+const verOptions = computed(() => props.versions.map((v) => ({
+  value: String(v.ver),
+  label: `v${v.ver}${v.ver === props.book?.latestVer ? ' · 最新' : ''}${v.note ? ' — ' + v.note : ''}`,
+})))
+
+/**
+ * 选版本 → emit('pin') → booksApi.pin() **真写服务端**。两道闸都在这里,不在下拉上:
+ * ① 选中的还是当前这版 = 什么都没变,不发。原生 select 选同值不触发 change,ds/Select 会 ——
+ *    不挡的话「点开看看又点回去」= 一次 POST + 一次整月重载 + 一条「已切到模板 vN」的误导提示。
+ * ② 把 :disabled 的三个条件再判一遍。:disabled 只管触发器按钮,面板一旦展开就和它脱钩了 ——
+ *    heldByOther 是 3 秒轮询的 computed(presence.ts PING_MS),A 开着下拉不动、B 这时进本月模板
+ *    编辑态,A 再点一项照样能切,锁就白上了(EDIT-MODE-SPEC v4:写入口不许绕过编辑态)。
+ */
+function pickVer(v: string) {
+  const ver = Number(v)
+  if (!props.book || ver === props.book.ver) return
+  if (props.monthHasData || !props.canSwitch || heldByOther.value) return
+  emit('pin', ver)
+}
+
 const mode = ref<'view' | 'edit'>('view')
 const draft = ref<BookDef | null>(null)
 const note = ref('')
@@ -270,16 +291,14 @@ function fmtTime(s: string): string {
           <!-- ⚠ heldByOther 也要挡:这个下拉的 @change 会走 booksApi.pin(册,版本,年,月),
                是**真写服务端**,而它长在编辑态之外 —— 不挡的话 A 正握着本月模板锁在编辑,
                B 能同时把这个月切到别的版本,锁形同虚设(EDIT-MODE-SPEC v4:写入口不许绕过编辑态)。 -->
-          <select class="te-verpick" :disabled="monthHasData || !canSwitch || !!heldByOther"
+          <Select class="te-verpick" size="sm"
+                  :disabled="monthHasData || !canSwitch || !!heldByOther"
                   :value="String(book.ver)"
+                  :options="verOptions"
                   :title="monthHasData ? frozenHint
                           : heldByOther ? `${heldByOther.displayName} 正在改本月模板,改完才能切版本`
                           : '选择本月使用的账册版本'"
-                  @change="emit('pin', Number(($event.target as HTMLSelectElement).value))">
-            <option v-for="v in versions" :key="v.id" :value="String(v.ver)">
-              v{{ v.ver }}{{ v.ver === book.latestVer ? ' · 最新' : '' }}{{ v.note ? ' — ' + v.note : '' }}
-            </option>
-          </select>
+                  @change="(_e, v) => pickVer(v)" />
           <span v-if="monthHasData" class="te-frozen">本月已录入,模板已定稿</span>
           <!-- 与全站同一颗按钮:四态定宽 + 锁态显示。
                作用域锁到**账册**不锁到期 —— 模板改动影响这本账册所有月份。
@@ -424,15 +443,11 @@ function fmtTime(s: string): string {
 .te-head p { margin: 6px 0 0; font-size: var(--fs-label); line-height: 1.5; color: var(--text-muted); }
 .te-editbtn, .te-donebtn { flex: 0 0 auto; }
 /* 版本选择器(P7):恒在编辑按钮左边,两态同款;本月已录入时置灰,旁边一句为什么 */
-.te-verpick {
-  flex: 0 0 auto; max-width: 220px; height: 28px; padding: 0 8px;
-  font-size: var(--fs-label); font-family: var(--font-sans); color: var(--text-primary);
-  background: var(--surface-white); border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm); cursor: pointer;
-  transition: border-color var(--dur-fast) var(--ease-standard);
-}
-.te-verpick:hover:not(:disabled) { border-color: var(--border-strong); }
-.te-verpick:disabled { color: var(--text-disabled); background: var(--surface-sunken); cursor: not-allowed; }
+/* 只剩「占多宽」:高度/底色/边框/hover/禁用态都由 ds/Select 自己管(改前是原生 select,那些得自己写)。
+   basis 220 而不是 width 220:触发器的字自带省略号截断,宽度跟着选中项变会抖版,所以要一个固定基准;
+   但 .te-head 里的几个盒子都不压缩,真写死 220 时窄视口下总宽会超过 .te-dlg(overflow:hidden),
+   右端的关闭 ✕ 直接被裁掉。0 1 220px = 宽时恒 220、窄时自己让位;min-width:0 让它真能缩。 */
+.te-verpick { flex: 0 1 220px; min-width: 0; }
 .te-frozen { flex: 0 0 auto; align-self: center; font-size: var(--fs-micro); color: var(--text-muted); }
 .te-x {
   flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;

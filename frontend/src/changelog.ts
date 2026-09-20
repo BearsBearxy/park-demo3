@@ -20,6 +20,16 @@ import type { ReleaseNote } from '@/types/changelog'
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: '0.15.2',
+    date: '2026-09-20',
+    headline: '账册模板切版本不再弹系统滚轮',
+    added: [],
+    improved: [
+      { icon: 'layers', title: '账册模板切版本', desc: '原来用的是浏览器自带的下拉，在 iPhone 上会弹出系统滚轮；现在和别处的下拉一样。' },
+    ],
+    fixed: [],
+  },
+  {
     version: '0.15.1',
     date: '2026-09-20',
     headline: '手机上密码框不再显示成黑条',

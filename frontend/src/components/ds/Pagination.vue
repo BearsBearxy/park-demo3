@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import Select from "./Select.vue";
 
 export interface PaginationProps {
   page?: number;
@@ -65,11 +66,13 @@ function goToPage(p: number) {
   props.onPage?.(p);
 }
 
-function handlePageSizeChange(e: Event) {
-  const size = Number((e.target as HTMLSelectElement).value);
+/** 每页条数。ds/Select 只认字符串,进来转回数字;对外的事件与回调一字未改。 */
+function handlePageSizeChange(value: string) {
+  const size = Number(value);
   emit("pageSizeChange", size);
   props.onPageSize?.(size);
 }
+const PAGE_SIZES = ["10", "20", "50", "100"];
 
 const pillBase = {
   minWidth: "32px",
@@ -116,24 +119,18 @@ const ellipsisStyle = {
       v-if="showMeta"
       :style="{ display: 'flex', alignItems: 'center', gap: '12px', marginRight: 'auto' }"
     >
-      <select
-        :value="pageSize"
-        :style="{
-          appearance: 'none',
-          height: '32px',
-          padding: '0 24px 0 12px',
-          border: '1px solid var(--border-control)',
-          borderRadius: 'var(--radius-sm)',
-          background: 'var(--surface-white)',
-          fontFamily: 'var(--font-sans)',
-          fontSize: 'var(--fs-body)',
-          color: 'var(--text-primary)',
-          cursor: 'pointer',
-        }"
-        @change="handlePageSizeChange"
-      >
-        <option v-for="n in [10, 20, 50, 100]" :key="n" :value="n">{{ n }}</option>
-      </select>
+      <!-- 每页条数。改前是原生 <select>:iOS 上弹系统滚轮、各平台长相不一、暗色不跟令牌
+           (UI-CONSISTENCY-SPEC 禁原生 select)。定宽 80:S 档(≤600)输入控件字号会被抬到 16px 防 iOS
+           聚焦缩放,实测「100」这一档在 16px 下要 79px 才不截断(桌面 14px 下富余)。
+           写定宽而不是让它跟内容走,是因为触发器的字自带省略号,宽度跟着选中项变会抖版。 -->
+      <Select
+        size="sm"
+        :value="String(pageSize)"
+        :options="PAGE_SIZES"
+        :style="{ width: '80px', flex: '0 0 auto' }"
+        title="每页显示多少条"
+        @change="(_e, v) => handlePageSizeChange(v)"
+      />
       <span
         v-if="total != null"
         :style="{ font: 'var(--type-body)', color: 'var(--text-muted)' }"

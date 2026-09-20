@@ -6,6 +6,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import TemplateEditorPanel from './TemplateEditorPanel.vue'
 import { booksApi } from '@/api/books'
 import { locksApi } from '@/api/locks'
+import Select from '@/components/ds/Select.vue'
 import { usePresenceStore } from '@/stores/presence'
 import type { Book, BookDef, TemplateVersion } from '../../types/book'
 
@@ -327,7 +328,7 @@ describe('TemplateEditorPanel · 编辑锁的作用域与旁路', () => {
     const w = mountPanel({ year: 2026, month: 3, book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
     await flushPromises()
 
-    expect(w.find('.te-verpick').attributes('disabled'),
+    expect(verTrigger(w).attributes('disabled'),
            '别人在改本月模板,不许绕过锁切版本').toBeDefined()
     w.unmount()
   })
@@ -343,31 +344,80 @@ describe('TemplateEditorPanel · 编辑锁的作用域与旁路', () => {
     const w = mountPanel({ year: 2026, month: 3, book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
     await flushPromises()
 
-    expect(w.find('.te-verpick').attributes('disabled')).toBeUndefined()
+    expect(verTrigger(w).attributes('disabled')).toBeUndefined()
     w.unmount()
   })
 })
+
+/** 版本选择器的触发器。`.te-verpick` 现在是 ds/Select 的根 div(2026-09-20 从原生 select 换来),
+ *  禁用态与当前值都在里面那颗按钮上 —— 对 div 断言 disabled 会恒为 undefined,那是假绿。 */
+const verTrigger = (w: ReturnType<typeof mountPanel>) => w.find('.te-verpick button.ds-sel-trigger')
 
 // 版本选择器(spec P7):编辑按钮旁一个下拉,列全链、选中即钉本月;红点/升级按钮/链尾编辑门全部退场
 describe('TemplateEditorPanel · 版本选择器', () => {
   it('版本选择器列出全链,最新那版带「最新」标记', async () => {
     const w = mountPanel({ book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
-    const opts = w.findAll('.te-verpick option')
+    await verTrigger(w).trigger('click')
+    const opts = w.findAll('.te-verpick .ds-sel-opt')
     expect(opts.length).toBe(chain.length)
     expect(opts.map(o => o.text()).join(' ')).toContain('最新')
-    expect((w.find('.te-verpick').element as HTMLSelectElement).value).toBe('2')
+    expect(verTrigger(w).text()).toContain('v2')
   })
 
   it('选一个版本 emit pin(该版本号)', async () => {
     const w = mountPanel({ book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
-    await w.find('.te-verpick').setValue('3')
+    await verTrigger(w).trigger('click')
+    const v3 = w.findAll('.te-verpick .ds-sel-opt').find(o => o.text().startsWith('v3'))
+    expect(v3, '下拉里要有 v3 这一项').toBeDefined()
+    await v3!.trigger('click')
     expect(w.emitted('pin')?.[0]).toEqual([3])
+  })
+
+  // 下面两条守的是 ds/Select 和原生 select 的两处语义差(2026-09-20 换组件时对抗复查抓出来的):
+  // 原生 select 选同值不派发 change、弹层是系统级的、禁用后弹层根本开不出来;自绘的这三条都不成立。
+  it('❗点中的还是当前这一版:不 emit pin(pin 是真写服务端,原生 select 选同值不触发 change)', async () => {
+    const w = mountPanel({ book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
+    await verTrigger(w).trigger('click')
+    const v2 = w.findAll('.te-verpick .ds-sel-opt').find(o => o.text().startsWith('v2'))
+    expect(v2, '下拉里要有当前这版 v2').toBeDefined()
+    await v2!.trigger('click')
+    expect(w.emitted('pin'), '选的就是当前这版,什么都没变,不许写服务端').toBeUndefined()
+    w.unmount()
+  })
+
+  it('❗下拉发来了 change,但别人正握着本月模板锁:写口自己再判一次,不切', async () => {
+    // 为什么不是“开着面板再点”：实测锁翻转后面板会自己关掉。但面板开不开是 ds/Select 的内部实现，
+    // pin 是真写服务端（EDIT-MODE-SPEC v4：写入口不许绕过编辑态），不能把防线寄在别人的内部状态上。
+    // 所以这里直接从子组件发一个 change，钓的是写口自己那道闸。
+    const presence = usePresenceStore()
+    presence.users = [{
+      sid: 's1', user: 'zhangsan', displayName: '张三', role: null,
+      scope: 'book-template:ledger:1:2026-03', label: '账册模板', mode: 'edit',
+      editScopes: ['book-template:ledger:1:2026-03'], sinceMs: 1000, idleMs: 0, self: false,
+    }]
+    const w = mountPanel({ year: 2026, month: 3, book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
+    await flushPromises()
+    w.findComponent(Select).vm.$emit('change', { target: { value: '3' } }, '3')
+    await flushPromises()
+    expect(w.emitted('pin'), '别人正握着本月模板锁,不许绕过锁切版本').toBeUndefined()
+    w.unmount()
+  })
+
+  it('❗没人持锁时同样走子组件的 change:这次要真的切(上一条不是恒真)', async () => {
+    const presence = usePresenceStore()
+    presence.users = []
+    const w = mountPanel({ year: 2026, month: 3, book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
+    await flushPromises()
+    w.findComponent(Select).vm.$emit('change', { target: { value: '3' } }, '3')
+    await flushPromises()
+    expect(w.emitted('pin')?.[0]).toEqual([3])
+    w.unmount()
   })
 
   // 第17权限点 book-template:switch。与第16点互不代替(spec P8):无换版权仍可编辑模板
   it('canSwitch=false:选择器置灰、编辑态不出「切到此版」,但编辑门照开', async () => {
     const w = mountPanel({ canSwitch: false, book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
-    expect(w.find('.te-verpick').attributes('disabled')).toBeDefined()
+    expect(verTrigger(w).attributes('disabled')).toBeDefined()
     await w.find('button.te-editbtn').trigger('click')
     expect(w.find('input.te-name').exists()).toBe(true)   // 第16点没被第17点连坐
     expect(w.find('.te-adopt').exists()).toBe(false)
@@ -376,13 +426,13 @@ describe('TemplateEditorPanel · 版本选择器', () => {
 
   it('canSwitch=true:选择器可用(与上一条对照,置灰不是恒真)', () => {
     const w = mountPanel({ book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
-    expect(w.find('.te-verpick').attributes('disabled')).toBeUndefined()
+    expect(verTrigger(w).attributes('disabled')).toBeUndefined()
     w.unmount()
   })
 
   it('已录入月份:选择器与编辑门都置灰,并说明为什么', async () => {
     const w = mountPanel({ book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain, monthHasData: true })
-    expect(w.find('.te-verpick').attributes('disabled')).toBeDefined()
+    expect(verTrigger(w).attributes('disabled')).toBeDefined()
     expect(w.find('.te-editbtn').attributes('disabled')).toBeDefined()
     expect(w.text()).toContain('已录入')
   })
