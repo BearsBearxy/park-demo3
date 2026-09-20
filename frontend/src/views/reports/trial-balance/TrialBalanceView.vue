@@ -6,6 +6,8 @@
 //   · KPI:期末借合计/期末贷合计/平衡差(非0红,0显「已平」)/科目数。
 import { ref, computed } from 'vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
+import FPWideCards, { type WideCard } from '@/components/fp/FPWideCards.vue'
+import { useViewport } from '@/composables/useViewport'
 import type { ReportCell } from '@/types/report'
 import { TB_FIELDS, tbTotals, tbBalanceDiff, visibleRows, type TbAccount, type TbAmounts, type TbFieldKey } from '@/reports/trialBalance'
 import { parserProps } from '@/utils/importRegistry'
@@ -84,11 +86,15 @@ const liveOf = (rowKey: string, field: TbFieldKey): number | string => {
 }
 
 // ── 折叠/搜索行 + 合计/KPI ────────────────────────────────
-const parents = computed(() => {
-  const s = new Set<string>()
-  for (const a of accounts.value) if (a.parentKey != null) s.add(a.parentKey)
-  return s
+// 每个父节点的直接子级数。改前这里只攒一个 parents 集合(有没有下级);S 档卡片上没有 ▸ 箭头,
+// 末行要标「下级 N」才知道这张卡点得开,于是同一趟循环顺手数个数,parents 由它的键推出 ——
+// 判定与改前逐字等价(parentKey 非空的键都算父)。
+const childCount = computed(() => {
+  const m = new Map<string, number>()
+  for (const a of accounts.value) if (a.parentKey != null) m.set(a.parentKey, (m.get(a.parentKey) ?? 0) + 1)
+  return m
 })
+const parents = computed(() => new Set(childCount.value.keys()))
 const rows = computed(() => visibleRows(accounts.value, expanded.value, query.value))
 function toggle(rowKey: string) {
   const next = new Set(expanded.value)
@@ -96,6 +102,40 @@ function toggle(rowKey: string) {
   else next.add(rowKey)
   expanded.value = next
 }
+
+// ── S 档 行→卡片(稿 ReportPhone §2 表第3行:标准 88 档;6 根数值列的 B 级宽表) ──
+// 只在**查看态**换卡片:卡片上没有输入格,而 §11.2(2026-08-30 用户拍板)写的是手机录入
+// 「不禁止、不隐藏、不优化」—— 所以编辑态继续渲原表(8 列行内录入 + TbTable 自己的首列 sticky),
+// 上面那行 .tb-s-hint 照旧荐桌面。jsdom 无 matchMedia → tier 恒 'xl',桌面与既有测试零差异。
+const editable = computed(() => edit.value && !isAll.value)
+const { tier } = useViewport()
+const asCards = computed(() => tier.value === 's' && !editable.value)
+
+// 卡面字段,逐个标明来自 TbTable 的哪一列:
+//   name   ← 科目代码列(colgroup 第 1 根)+ 科目名称列(第 2 根)
+//   amount ← 期末余额:TB_FIELDS 的 endDr(期末借方)非零取它,否则 endCr(期末贷方)
+//   pill   ← 这个数落在借方还是贷方。「期末借方/期末贷方」是 TB_FIELDS[].side 的表头字面,
+//            不是对数的定性;两方都是 0 的行不画胶囊。色调一律 info —— 源码里没有任何判据
+//            说借方余额比贷方余额「好」,用 ok/warn 就是凭空发明一个判定
+//   sub    ← 期初余额(openDr 非零取它,否则 openCr)+ 本期发生额借/贷(periodDr/periodCr);
+//            有下级的行再缀「下级 N」(childCount),卡片档没有 ▸,这个数是「点得开」的唯一提示
+function tbCard(r: TbAccount): WideCard {
+  const v = (f: TbFieldKey) => getLeaf(r.rowKey, f)
+  const endDr = v('endDr'), endCr = v('endCr')
+  const onDr = endDr !== 0
+  const openDr = v('openDr')
+  const kids = childCount.value.get(r.rowKey) ?? 0
+  return {
+    name: r.code ? `${r.code} ${r.label}` : r.label,
+    amount: finMoney(onDr ? endDr : endCr),
+    pill: endDr === 0 && endCr === 0 ? null : { text: onDr ? '期末借方' : '期末贷方', tone: 'info' },
+    sub: `期初 ${finMoney(openDr !== 0 ? openDr : v('openCr'))} · 本期借 ${finMoney(v('periodDr'))}`
+      + ` · 本期贷 ${finMoney(v('periodCr'))}` + (kids ? ` · 下级 ${kids}` : ''),
+  }
+}
+// 整卡点击 = 表上那颗 ▸(展开/收起下级)。折叠是本屏既有行为(spec C6 默认折叠到一级),
+// 卡片档不给它入口的话,手机上除了搜索再也看不到下级科目。叶子行点了不动。
+function onCardTap(r: TbAccount) { if (parents.value.has(r.rowKey)) toggle(r.rowKey) }
 
 // 实时金额面(服务端快照 + draft 覆盖),供合计/KPI/导出
 const effAmounts = computed<TbAmounts>(() => {
@@ -399,18 +439,28 @@ const canManageCo = computed(() => useAuthStore().can('master:edit'))
         <span v-if="edit">编辑模式 · 小屏可录入,建议在桌面端操作</span>
       </div>
       <TbTable
+        v-if="!asCards"
         :rows="rows"
         :expanded="expanded"
         :parents="parents"
         :totals="totals"
         :value-of="valueOf"
-        :editable="edit && !isAll"
+        :editable="editable"
         :live-of="liveOf"
         :selected="selected"
         @toggle="toggle"
         @input="onInput"
         @remove="removeAccount"
         @select="toggleSelect"
+      />
+      <!-- S 档查看态:行→卡片(标准 88)。合计尾行不跟着走 —— 期末借/贷合计就在上面 KPI 那两张卡上 -->
+      <FPWideCards
+        v-else
+        :rows="rows"
+        row-key="rowKey"
+        :fields="tbCard"
+        :density="88"
+        @row-click="onCardTap"
       />
 
       <p class="fin-foot"><component :is="iconFor('info')" :size="13" />单位:元 · 合计行 = 一级科目逐列求和(下级明细已含在一级科目内);期末借方合计应等于期末贷方合计(试算平衡)。</p>

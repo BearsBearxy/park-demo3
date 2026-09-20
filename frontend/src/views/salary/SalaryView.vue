@@ -41,6 +41,7 @@ import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { parserProps, runImport } from '@/utils/importRegistry'
 import SalaryTable from './SalaryTable.vue'
 import SalaryRecordDrawer from './SalaryRecordDrawer.vue'
+import SalaryRowDrawer from './SalaryRowDrawer.vue'
 
 // ── 本屏状态(通用部分见 useSchedScreen) ─────────────────
 // null = 月份矩阵态(§7-1 明确选期门);有值 = 该月宽表
@@ -138,8 +139,13 @@ onMounted(reloadOverview)
 // 编辑态**就地**转假(SchedHeader 被接管/提权到期/换期 exitEdit)要关写浮层 ——
 // 它们的 v-if 只判自己的 ref,留着的话失锁后「保存」「导入」照样落库(后端写口不校验锁)。
 watch(edit, v => { if (!v) { drawer.value = false; importing.value = false } })
+// S 档点卡看整行(§5.3)。存的是**那一行的快照**,所以换期就得关 —— 否则新月的表里没有这个人,
+// 抽屉还顶着上个月的一行。与 edit 无关(只读,不占锁,所以不进上面那条 watch(edit))。
+const rowDetail = ref<SalaryRecordDTO | null>(null)
+watch(() => `${year.value}-${month.value}`, () => { rowDetail.value = null })
+
 // 抽屉是 FPDrawer(Teleport to body):KeepAlive 切页签子树停用,它留在 body 上飘在别的屏顶上
-onDeactivated(() => { drawer.value = false; importing.value = false })
+onDeactivated(() => { drawer.value = false; importing.value = false; rowDetail.value = null })
 
 async function pickMonth(m: number) {
   month.value = m
@@ -383,8 +389,12 @@ const onExport = () => guard('导出失败', async () => {
           @note="onNote"
           @toggle-select="toggleSelect"
           @select-all="selectAll"
+          @row="rowDetail = $event"
         />
       </div>
+
+      <!-- S 档卡片点开的只读整行(§5.3);宽档没有这条动线 -->
+      <SalaryRowDrawer v-if="rowDetail" :row="rowDetail" @close="rowDetail = null" />
 
       <SalaryRecordDrawer
         v-if="drawer"

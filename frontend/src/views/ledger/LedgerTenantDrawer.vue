@@ -8,6 +8,8 @@ import FPSectionLabel from '@/components/fp/FPSectionLabel.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import type { FPTenantOption } from '@/components/fp/fpTenantPicker'
 import Button from '@/components/ds/Button.vue'
+import Segmented from '@/components/ds/Segmented.vue'
+import { useViewport } from '@/composables/useViewport'
 import { lgColumns } from '@/utils/ledgerColumns'
 import { toLedgerColumns } from '@/utils/bookTemplate'
 import type { ArchivedCol, Book } from '@/types/book'
@@ -70,19 +72,58 @@ const fmt0 = (v: number | null | undefined) => lgFmt(v) || '0.00'
 const groups = computed(() =>
   (props.book ? toLedgerColumns(props.book.definition, props.prevMonth, props.archived) : lgColumns(props.prevMonth)).groups)
 
-// 仅非零费用,按组分组并算组内小计 (jsx 693-705)
+// 一个口袋的值。模板里定义了、但本行 extraFees 没这个键时 row[c_xxx] 是 undefined
+// (mergeExtras 只平铺口袋里有的键)→ Number() 得 NaN。当 0 处理;否则下面的 `!== 0`
+// 会把它当成「有值」列出来,屏上写出 NaN。
+function feeVal(r: LedgerRowDTO, key: string): number {
+  const n = Number((r as any)[key])
+  return Number.isFinite(n) ? n : 0
+}
+
+// 「有值 N / 全部 M」段控(稿 §3 屏样4/5):默认有值 = 改前的行为。段控只在 S 档出,宽档恒 'has'。
+const feeScope = ref<'has' | 'all'>('has')
+function pickScope(v: string) { feeScope.value = v === 'all' ? 'all' : 'has' }
+
+// 按组分组并算组内小计 (jsx 693-705)。
+// ⚠ 判据从 `> 0` 改成 `!== 0`:负数口袋(抵减 / 退补)此前和空口袋一起被整条藏掉 ——
+//   屏上任何地方都看不到它,而它照样进 totalReceivable,明细之和与应收合计对不上。
+// ⚠⚠ 这一条**不在任何档位门控里,宽档也在跑** —— 本轮唯一一处有意的桌面行为变更:
+//   桌面抽屉从此会多列出负数口袋行,组内小计随之变值。段控与一行上下文才是 S 档独有的。
 const feeGroups = computed(() => {
   const r = props.row
   if (!r) return []
   return groups.value
     .map(g => {
-      const items = g.cols.filter(c => Number((r as any)[c.key]) > 0)
-      const gsum = items.reduce((s, c) => s + Number((r as any)[c.key]), 0)
-      return { name: g.name, items, gsum }
+      const hit = g.cols.filter(c => feeVal(r, c.key) !== 0)
+      const items = feeScope.value === 'all' ? g.cols : hit
+      const gsum = hit.reduce((s, c) => s + feeVal(r, c.key), 0)
+      // 稿 §3 屏样4:「有值」档每组末尾一行灰字,写清这组还折了几个空口袋 ——
+      // 否则屏上看不出「租金」下面到底是只有 2 项还是藏了 4 项。「全部」档不出这行。
+      // 只在 S 档出:宽档没有段控,没有「被折掉了几项」这个问题,加上就破 §9 零差异
+      const rest = isS.value && feeScope.value === 'has' ? g.cols.length - hit.length : 0
+      return { name: g.name, items, gsum, rest }
     })
     .filter(g => g.items.length > 0)
 })
 const hasFees = computed(() => feeGroups.value.length > 0)
+// 段控上的两个数:有值 N / 全部 M(稿上写的是「有值 12 / 全部 21」)
+const feeCounts = computed(() => {
+  const r = props.row
+  const all = groups.value.reduce((n, g) => n + g.cols.length, 0)
+  const has = r ? groups.value.reduce((n, g) => n + g.cols.filter(c => feeVal(r, c.key) !== 0).length, 0) : 0
+  return { has, all }
+})
+const feeOptions = computed(() => [
+  { value: 'has', label: `有值 ${feeCounts.value.has}` },
+  { value: 'all', label: `全部 ${feeCounts.value.all}` },
+])
+// 「全部」档里空口袋写「—」;「有值」档取值恒非零,走不到这个兜底(宽档恒 'has',不出「—」)
+const cellText = (v: unknown) => lgFmt(v as number) || '—'
+
+// 段控、一行上下文、「另 N 项无金额」三件只在 S 档出(稿 §3 画在一行上下文的右端)。
+// ⚠ 宽档 DOM **不是**逐字不变 —— 上面 `!== 0` 那条是全档判据,负数口袋在桌面也会多出来。
+const { tier } = useViewport()
+const isS = computed(() => tier.value === 's')
 
 const balTone = computed(() => {
   const b = props.row?.balanceEnd ?? 0
@@ -147,8 +188,14 @@ const balTone = computed(() => {
         </div>
       </div>
 
+      <!-- S 档一行上下文(稿 §3 侧卡②):{prev}月结余 · 备注 · 右端「有值 N / 全部 M」段控。
+           这两个字段上不了卡(稿 §2 第5/6行),抽屉是它们唯一的落点;备注在这里给全文不截。 -->
+      <div v-if="isS" class="lg-dw-ctx">
+        <p class="t">{{ prevMonth }} 月结余 {{ fmt0(row.balancePrev) }} · 备注 {{ row.note || '—' }}</p>
+        <Segmented size="lg" :options="feeOptions" :model-value="feeScope" @change="pickScope" />
+      </div>
       <!-- 结转:上月结余 jsx 686-689 -->
-      <div>
+      <div v-else>
         <FPSectionLabel icon="corner-down-right">结转</FPSectionLabel>
         <div class="lg-dw-row"><span class="fee">{{ prevMonth }} 月结余</span><span class="amt">{{ fmt0(row.balancePrev) }}</span></div>
       </div>
@@ -158,12 +205,14 @@ const balTone = computed(() => {
       <div v-for="g in feeGroups" :key="g.name">
         <div class="lg-dw-gt"><span>{{ g.name }}</span><b>{{ lgFmt(g.gsum) }}</b></div>
         <div v-for="c in g.items" :key="c.key" class="lg-dw-row">
-          <span class="fee">{{ c.label }}</span><span class="amt">{{ lgFmt((row as any)[c.key]) }}</span>
+          <span class="fee">{{ c.label }}</span><span class="amt">{{ cellText((row as any)[c.key]) }}</span>
         </div>
+        <!-- 稿 §3 屏样4:这组折了几个空口袋,写出来(只在「有值」档,g.rest 已按档算好) -->
+        <div v-if="g.rest > 0" class="lg-dw-row rest"><span class="fee">另 {{ g.rest }} 项无金额</span></div>
       </div>
 
-      <!-- 备注 jsx 706-711 -->
-      <div v-if="row.note">
+      <!-- 备注 jsx 706-711(S 档已并进上面那行上下文,不出第二份) -->
+      <div v-if="!isS && row.note">
         <FPSectionLabel icon="sticky-note">备注</FPSectionLabel>
         <p style="margin:0;font-size:13px;color:var(--text-secondary);line-height:1.6">{{ row.note }}</p>
       </div>
@@ -191,6 +240,10 @@ const balTone = computed(() => {
   padding:2px 6px; border-radius:var(--radius-full); margin-right:6px;
   color:var(--status-warning); border:1px solid var(--status-warning);
 }
+/* S 档一行上下文 + 段控(稿 §3 侧卡②)。整块挂在 v-if="isS" 上,宽档里 DOM 不存在 */
+.lg-dw-ctx { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+/* 备注给全文不截:文字块自己换行,段控定宽顶在右上角 */
+.lg-dw-ctx .t { flex:1 1 auto; min-width:0; margin:0; font-size:var(--fs-label); line-height:1.6; color:var(--text-secondary); overflow-wrap:anywhere; }
 /* 1:1 from screen-ledger.jsx LgStyles 241-249 */
 .lg-dw-empty { padding:40px 0; text-align:center; color:var(--text-disabled); font-size:13px; }
 .lg-dw-gt { font-size:11.5px; font-weight:var(--fw-semibold); color:var(--text-muted); margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; }
@@ -198,6 +251,8 @@ const balTone = computed(() => {
 .lg-dw-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 0; border-bottom:1px solid var(--divider); font-size:12px; }
 .lg-dw-row:last-child { border-bottom:none; }
 .lg-dw-row .fee { color:var(--text-secondary); }
+/* 「另 N 项无金额」:同 .lg-dw-row 的行高与分隔线,只把字调弱——它不是一条明细 */
+.lg-dw-row.rest .fee { color:var(--text-muted); }
 .lg-dw-row .amt { font-family:var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-primary); font-weight:var(--fw-medium); }
 /* 记住账面名:默认不勾。说明文字压小压灰 —— 它是后果告知,不是招徕 */
 .lg-dw-remember { display:flex; align-items:flex-start; gap:7px; margin-top:8px; cursor:pointer; font-size:var(--fs-label); color:var(--text-secondary); }

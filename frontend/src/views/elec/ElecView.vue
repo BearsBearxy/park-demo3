@@ -27,6 +27,7 @@ import FpImportModal from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import ElecTable from './ElecTable.vue'
 import ElecRecordDrawer from './ElecRecordDrawer.vue'
+import ElecRowDrawer from './ElecRowDrawer.vue'
 import ElecCostView from './ElecCostView.vue'
 
 // ── 一屏两本账(2026-08-29 设计稿 §②):左栏常驻「报送台账 / 园区电费模型」,记住上次 ──
@@ -71,6 +72,9 @@ async function loadYear(y: number) {
 async function reloadOverview() {
   overview.value = await elecApi.overview()
 }
+
+// S 档卡片点开的那一行(只读抽屉)。宽档点行无行为,这个 ref 恒为 null。
+const rowDetail = ref<ElecRecordDTO | null>(null)
 
 const {
   year, edit, drawer, importing, importResult, selectedIds, importedCount, lockedMonths, reviewKeys,
@@ -258,8 +262,12 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
           @note="onNote"
           @toggle-select="toggleSelect"
           @select-all="selectAll"
+          @row="rowDetail = $event"
         />
       </div>
+
+      <!-- S 档卡片点开的只读行抽屉(§5.3「点开抽屉看整行」);宽档不会有 row 事件 -->
+      <ElecRowDrawer v-if="rowDetail" :row="rowDetail" @close="rowDetail = null" />
 
       <ElecRecordDrawer
         v-if="drawer"

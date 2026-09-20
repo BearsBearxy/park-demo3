@@ -64,7 +64,9 @@ function inputVal(r: FinTableRow, field: string): string {
 
 <template>
   <div class="fin-wrap">
-    <table class="fin-table">
+    <!-- has-ck:编辑态多出的 34px 复选列,只用来给 S 档首列 sticky 让出那 34px(见下方 ≤600 块);
+         宽档没有任何规则吃这个类,桌面渲染零差异。 -->
+    <table class="fin-table" :class="{ 'has-ck': selectable }">
       <colgroup>
         <col v-if="selectable" style="width:34px" />
         <col style="width:auto" />
@@ -74,7 +76,7 @@ function inputVal(r: FinTableRow, field: string): string {
       <thead>
         <tr>
           <th v-if="selectable"></th>
-          <th style="text-align:left;padding-left:12px">项　目</th>
+          <th class="fin-c1" style="text-align:left;padding-left:12px">项　目</th>
           <th>行次</th>
           <th v-for="c in columns" :key="c.key">{{ c.label }}</th>
         </tr>
@@ -84,7 +86,7 @@ function inputVal(r: FinTableRow, field: string): string {
           <td v-if="selectable" class="fin-ckcell">
             <input v-if="canSelect(r)" class="fin-ck" type="checkbox" :checked="selected?.has(r.key)" @change="emit('toggleSelect', r)" />
           </td>
-          <td>
+          <td class="fin-c1">
             <span class="fin-rowlabel" :class="['lv' + r.level, { label: r.type === 'label', subtotal: r.type === 'subtotal' }]" :title="r.label">
               {{ r.label }}
               <span v-if="r.parentAuto && r.childCount" class="chip">{{ r.childCount }} 子类</span>
@@ -146,5 +148,27 @@ function inputVal(r: FinTableRow, field: string): string {
    半透明弱化不抢视线——hover 显形在触屏等于不可达,编辑入口不得只藏在 hover 里。 */
 @media (hover: none) {
   .fin-rowlabel .custom-x, .fin-rowlabel .addchild { display:grid; opacity:.6; }
+}
+
+/* ── S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5.3):查看优先,sticky 只留一根首列 + 表头 ──
+   首列 = 「项目」列(.fin-c1)。三大报表不卡片化(§5.3 名单),横滚时要有一根锚,
+   否则滚到最右不知道在看哪一行。
+   编辑态前面多一根 34px 复选列(colgroup 第一根,只在 selectable 时渲),
+   此时「项目」列的 left 正好是那根的宽度 34 —— .has-ck 给的就是这一个偏移,
+   数值与上面 <col style="width:34px"> 同源,改一处必须改另一处(finStickyS.spec 钉住两者相等)。
+   复选列自己不粘:§5.3 写的是「sticky 只留一根首列」,两根在 390 上就吃掉视口。
+   代价说清楚:编辑态横滚超过「项目」列宽之后,那 34px 空档里会掠过后面几列的数
+   (复选列已滚出去,而它不粘)。只发生在「手机 + 编辑态 + 已横滚」这一格 ——
+   §11.2 正是把手机录入判成「不禁止但荐桌面」的那一格;查看态没有复选列,left 恒 0,不存在这个空档。
+   z-index 沿全仓表内 sticky 阶梯(TbTable.vue 已备案口径):thead 4 / 双轴(顶+左)表头格 8 /
+   体内 sticky 列 3。桌面档不进本块(thead 3 现状不动),抬阶只发生在多了一根竖向 sticky 的 S 档。
+   背景不补:.fin-table tbody td 本来就有底色,行态(.lbl/.sub/:hover)也都写在 td 上,
+   粘住的格子跟着整行换色,不会透出滚到它下面的数。 */
+@media (max-width: 600px) {
+  .fin-table thead th { z-index:4; }
+  .fin-table thead th.fin-c1 { left:0; z-index:8; }
+  .fin-table tbody td.fin-c1 { position:sticky; left:0; z-index:3; }
+  .fin-table.has-ck thead th.fin-c1 { left:34px; }
+  .fin-table.has-ck tbody td.fin-c1 { left:34px; }
 }
 </style>

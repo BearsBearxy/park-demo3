@@ -6,6 +6,8 @@ import Button from '@/components/ds/Button.vue'
 import SearchField from '@/components/ds/SearchField.vue'
 import FPMoreMenu from '@/components/fp/FPMoreMenu.vue'
 import FPLedgerTable from '@/components/fp/FPLedgerTable.vue'
+import FPWideCards, { type WideCard } from '@/components/fp/FPWideCards.vue'
+import { useViewport } from '@/composables/useViewport'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import type { FPTenantOption } from '@/components/fp/fpTenantPicker'
 import { lgColumns } from '@/utils/ledgerColumns'
@@ -205,6 +207,47 @@ const view = computed(() =>
   rows.value.filter(r => !q.value.trim() || r.tenantName.includes(q.value.trim())),
 )
 
+// ── S 档(≤600)行→卡片(响应式稿 WideCardPhone §1 屏样2 + §2 字段表) ─────────────
+// 档位判定走 useViewport(jsdom/SSR 无 matchMedia 恒 'xl'),宽档分支一个字不动。
+const { tier } = useViewport()
+const isS = computed(() => tier.value === 's')
+
+// 稿 §3「横滚宽表不删,降级成第二形态」:S 档 ⋯ 里多一条「按表格查看」,点开就是现在那张表。
+const asTable = ref(false)
+
+// 负号必须是 U+2212(FPWideCards 硬条件④);utils/money.ts 的 fpMoney 走的是 ASCII '-',用不了。
+// 卡上取整:稿上四张卡全是整元(¥148,620),桌面表里的两位小数仍由 FPLedgerTable 给。
+// ⚠ 有意与另外五屏不同:它们用 finFmt.finMoney(两位小数)。判据是「这个数是不是主角」——
+//   台账卡的应收是 mono 20 独占一行的主数,整元扫起来快,精确值点开抽屉就有;
+//   工资实发 / 电费价税合计那几屏的分位是要对账的。改成统一两位小数前先看一眼稿上那四张卡。
+const yuan = (n: number) => (n < 0 ? '−¥' : '¥') + Math.abs(Math.round(n)).toLocaleString('en-US')
+
+/** 卡上 4 个字段 = fixedLeft[0] + fixedRight[0..2](ledgerColumns.ts:29/68/69/70)。 */
+function cardOf(r: LedgerRowDTO): WideCard {
+  const due = Number(r.totalReceivable) || 0
+  const got = Number(r.totalCollected) || 0
+  const bal = Number(r.balanceEnd) || 0
+  return {
+    name: r.tenantName,
+    amount: yuan(due),
+    // 应收 0 时 got/due 是 NaN(0/0)或 Infinity —— 写「—」,不写一个算出来的假百分比
+    sub: `已收 ${yuan(got)} · 收缴 ${due > 0 ? Math.round((got / due) * 100) + '%' : '—'}`,
+    // balanceEnd = 上月结余 + 应收 − 收款(.lg-foot 那句):>0 = 还欠着,<0 = 多交了。
+    // 桌面 .lg-sumc 是「正橙(pos)负红(neg)」;卡上没有 red 档(WideCardTone 只有 ok/warn/info),
+    // 负数取 info —— 它是「余款」不是故障,与稿 §2 字段表画的蓝色胶囊一致。
+    pill: bal === 0 ? { text: '已结清', tone: 'ok' as const }
+      : bal < 0 ? { text: '余 ' + yuan(-bal), tone: 'info' as const }
+        : { text: '欠 ' + yuan(bal), tone: 'warn' as const },
+  }
+}
+
+// 副标题「N 户 · 27 列」:列数按当前列模型数叶子(模板改了列它跟着走),不写死 27。
+const colCount = computed(() =>
+  cols.value.fixedLeft.length
+  + cols.value.groups.reduce((n, g) => n + g.cols.length, 0)
+  + cols.value.fixedRight.length)
+const sTitle = computed(() => (props.book ? `${props.book.name} · ${props.companyName}` : props.companyName))
+
 // KPI 卡整排已取消(EDIT-MODE-SPEC §5.3,2026-08-24 拍板):合计一律看表内 tfoot。
 // 记账/结转两计数(结转虚行=只带上月结余的未记账户,2026-08-24 拍板)
 const activeTenants = computed(() => rows.value.filter(r => !r.carried && (Number(r.totalReceivable) || 0) > 0).length)
@@ -230,11 +273,20 @@ async function onExport() {
   }
 }
 
-// 编辑态 ⋯ 溢出菜单分发(导出 / 账册模板)
+// 编辑态 ⋯ 溢出菜单分发(导出 / 账册模板);S 档多一条形态切换
 function onMore(key: string) {
   if (key === 'export') void onExport()
   else if (key === 'template') emit('edit-template')
+  else if (key === 'view') asTable.value = !asTable.value
 }
+// 宽档恒为现状那两条(数组逐字不变);第三条只在 S 档追加。
+const moreItems = computed(() => [
+  { key: 'export', label: '导出 Excel', icon: 'download' },
+  { key: 'template', label: '账册模板', icon: 'table-2' },
+  ...(isS.value
+    ? [{ key: 'view', label: asTable.value ? '按卡片查看' : '按表格查看', icon: asTable.value ? 'layout-grid' : 'table' }]
+    : []),
+])
 
 // draft 是 month.rows 的浅拷贝(LedgerView.vue:181),所以直接 JSON 比对即可判脏。
 // 不另立 dirty 计数器 —— 计数器要在 onCellEdit / 添加行 / 批删三处同步维护,漏一处就骗人。
@@ -272,8 +324,38 @@ function onBack() {
 
 <template>
   <div class="lg-page" ref="pageEl">
-    <div class="lg-head">
-      <div class="lg-head-l">
+    <div class="lg-head" :class="{ s: isS }">
+      <!-- S 档第一行(稿 §1 注释①):屏名 16/600 省略号 + 副标题「N 户 · 27 列」+ 右端 126 定宽日期字段。
+           日期字段点开 = 换期(回月份矩阵)—— 与桌面「换期」按钮同一条动线,这一屏换期的唯一出口。 -->
+      <div v-if="isS" class="lg-s-h1">
+        <div class="tt">
+          <div class="nm" :title="sTitle">{{ sTitle }}</div>
+          <div class="sub">{{ view.length }} 户 · {{ colCount }} 列</div>
+        </div>
+        <button class="lg-s-date" type="button" title="换期(返回月份矩阵)" @click="onBack">
+          <span class="v">{{ year }}-{{ String(monthNo).padStart(2, '0') }}</span>
+          <component :is="iconFor('calendar')" :size="18" />
+        </button>
+      </div>
+      <!-- S 档第二行(稿 §1 注释②③):搜索撑满 + 编辑锁按钮 + ⋯。
+           编辑锁**不进 ⋯** —— 规范 §11.2「不禁止、不隐藏、不优化」,同 :394 那条常驻理由。 -->
+      <div v-if="isS" class="lg-s-h2">
+        <SearchField class="sf" placeholder="搜索租户" shortcut="" :value="q" :width="180" @change="q = $event" />
+        <span v-if="edit" class="lg-s-lock on">
+          <component :is="iconFor('lock')" :size="16" />编辑中
+        </span>
+        <span v-else-if="auth.can('entry:edit') && reviewNote" class="lg-s-lock ro"
+              :title="reviewBlock?.tip ?? undefined">
+          <component :is="iconFor('lock')" :size="16" />{{ reviewNote }}
+        </span>
+        <button v-else-if="auth.can('entry:edit')" type="button" class="lg-s-lock"
+                :class="{ held: !!heldByOther }" @click="onEnterEdit">
+          <component :is="iconFor(heldByOther ? 'lock' : 'pencil')" :size="16" />
+          {{ heldByOther ? heldByOther.displayName : '编辑' }}
+        </button>
+        <FPMoreMenu class="mm" :items="moreItems" @select="onMore" />
+      </div>
+      <div v-if="!isS" class="lg-head-l">
         <button class="lg-back" @click="onBack" title="换期(返回月份矩阵)"><component :is="iconFor('arrow-left')" :size="16" /></button>
         <div>
           <h2 class="lg-title">{{ book?.name ?? companyName }} <span v-if="book" class="lg-ver">v{{ book.ver }}</span> · {{ year }} 年 {{ monthNo }} 月</h2>
@@ -313,15 +395,14 @@ function onBack() {
             empty-hint="本月已有台账行的租户不在候选,请直接在表格中查找该行"
             @update:model-value="onAddTenant"
           />
-          <span class="lg-sep" aria-hidden="true" />
+          <!-- S 档的 ⋯ 长在第二行工具行里(稿 §1 注释②),这里不再出第二颗 -->
+          <span v-if="!isS" class="lg-sep" aria-hidden="true" />
           <!-- ④ 溢出:导出/账册模板编辑态收进 ⋯ 不消失 -->
-          <FPMoreMenu
-            :items="[{ key: 'export', label: '导出 Excel', icon: 'download' }, { key: 'template', label: '账册模板', icon: 'table-2' }]"
-            @select="onMore"
-          />
+          <FPMoreMenu v-if="!isS" :items="moreItems" @select="onMore" />
         </template>
 
-        <template v-else>
+        <!-- S 档浏览态:换期→日期字段、导出/账册模板→⋯,都在上面两行里,这一支整条不出 -->
+        <template v-else-if="!isS">
           <!-- 浏览态:[换期][导出] | [编辑模式](主控位与编辑态取消/保存同一右锚) -->
           <Button variant="outline" size="sm" @click="onBack">
             <template #leading><component :is="iconFor('calendar')" :size="14" /></template>
@@ -357,7 +438,8 @@ function onBack() {
           </Button>
         </template>
 
-        <template v-else>
+        <!-- S 档:这颗锁按钮长在第二行工具行里(稿 §1 注释③),这里不再出第二颗 -->
+        <template v-else-if="!isS">
           <!-- ⚠ 编辑模式入口带权限门:无 entry:edit 不显示(2026-08-22 v-else 语义坑,勿改回 v-else 兜底) -->
           <!-- 锁位就长在这颗按钮上(设计稿 §05):min-width 定死,三态换文案不换宽度。 -->
           <!-- 审核闸(§7.5):已审核 / 待审核时按钮位换成同尺寸禁用药丸(与 .lg-lockbtn 同 min-width)。 -->
@@ -390,7 +472,8 @@ function onBack() {
 
     <div class="lg-toolbar">
       <div class="lg-toolbar-l">
-        <SearchField placeholder="搜索租户" shortcut="" :value="q" :width="180" @change="q = $event" />
+        <!-- S 档的搜索在第二行工具行里(稿 §1 注释②),这里不再出第二个 -->
+        <SearchField v-if="!isS" placeholder="搜索租户" shortcut="" :value="q" :width="180" @change="q = $event" />
         <!-- 未绑定问题入口:紧贴搜索框、**常驻**(LAYOUT-STABILITY:入口随月份出现/消失会挪动工具条;
              0 问题时置灰,点开是空态说明,用户 2026-08-23 反馈「入口找不到」后定为常驻) -->
         <button class="lg-issues" :class="{ quiet: (issueCount ?? 0) === 0 }" @click="emit('open-issues')">
@@ -405,7 +488,18 @@ function onBack() {
       <span class="lg-toolbar-note">{{ edit ? '点击单元格编辑数值,不收的费用列留空即可,应收/结余自动计算;勾选行可批量删除' : auth.can('entry:edit') ? '只读 · 点击「编辑模式」录入 · 点击租户名查看明细' : '只读 · 点击租户名查看明细' }}</span>
     </div>
 
+    <!-- S 档默认卡片列表(稿 §1 屏样2);⋯ 的「按表格查看」把这张横滚表调回来(稿 §3) -->
+    <FPWideCards
+      v-if="isS && !asTable"
+      class="lg-cards"
+      :rows="view"
+      :row-key="ledgerRowKey"
+      :fields="cardOf"
+      :density="88"
+      @row-click="emit('tenant-click', $event)"
+    />
     <FPLedgerTable
+      v-else
       :columns="cols"
       :rows="view"
       :edit="edit"
@@ -499,6 +593,56 @@ function onBack() {
 .lg-issues.quiet { border-color:var(--border-control); color:var(--text-muted); }
 
 .lg-foot { flex:0 0 auto; margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
+
+/* ── S 档(≤600)两行顶栏 + 卡片列(稿 WideCardPhone §1)。
+      这些块整条挂在 v-if="isS" 上(JS 档位),宽档里 DOM 不存在 —— 故不再套 @media,
+      避免同一件事两处判据(CSS 断点 + JS tier)分叉。 ── */
+.lg-head.s { flex-direction:column; align-items:stretch; gap:10px; }
+.lg-s-h1 { display:flex; align-items:center; gap:8px; }
+.lg-s-h1 .tt { flex:1; min-width:0; }
+.lg-s-h1 .nm { font-size:var(--fs-h3); font-weight:var(--fw-semibold); color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lg-s-h1 .sub { margin-top:2px; font-size:var(--fs-label); color:var(--text-muted); }
+/* 126 定宽:年月是定长文本,给它固定一格,屏名的省略号才不会随月份长短跳 */
+.lg-s-date {
+  flex:0 0 126px; width:126px; box-sizing:border-box;
+  display:flex; align-items:center; justify-content:space-between; gap:6px;
+  height:44px; padding:0 12px;
+  border:1px solid var(--border-control); border-radius:var(--radius-md);
+  background:var(--surface-white); color:var(--text-primary); cursor:pointer;
+  font-family:var(--font-sans); font-size:var(--fs-body);
+}
+.lg-s-date .v { font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+
+.lg-s-h2 { display:flex; align-items:center; gap:8px; }
+/* ds/SearchField 的尺寸写在内联 :style 上(SearchField.vue:39-50),CSS 盖不住 —— 只能 !important。
+   同 TrialBalanceView.vue:554 的先例。16px 字是 iOS 聚焦不缩放的门槛,这里是真 <input>,必须抬。 */
+.lg-s-h2 .sf { flex:1 1 auto; min-width:0; }
+.lg-s-h2 :deep(.ds-searchfield) {
+  width:100% !important; height:44px !important;
+  border-radius:var(--radius-full) !important; background:var(--surface-card) !important;
+}
+.lg-s-h2 :deep(.ds-searchfield input) { font-size:var(--fs-input-m) !important; }
+.lg-s-h2 :deep(.fp-more-btn) { width:44px; height:44px; border-radius:var(--radius-md); }
+/* 编辑锁:这一行里唯一带文字的按钮(稿 §1 注释③) */
+.lg-s-lock {
+  flex:0 0 auto; box-sizing:border-box;
+  display:inline-flex; align-items:center; gap:6px;
+  height:44px; padding:0 14px; max-width:148px;
+  border:1px solid var(--border-control); border-radius:var(--radius-md);
+  background:var(--surface-white); color:var(--text-primary); cursor:pointer;
+  font-family:var(--font-sans); font-size:var(--fs-body); white-space:nowrap; overflow:hidden;
+}
+.lg-s-lock.on { border-color:var(--hue-orange); background:var(--warn-soft); color:var(--hue-orange); cursor:default; }
+.lg-s-lock.ro { background:var(--surface-sunken); color:var(--text-muted); cursor:not-allowed; }
+.lg-s-lock.held { border-color:var(--hue-orange); background:var(--warn-soft); color:var(--hue-orange); }
+
+/* 卡片列:接管 .lg-wrap 在宽档里的那份弹性填充 + 圆角容器,换期时整屏不多滚一截 */
+.lg-cards {
+  flex:1 1 auto; min-height:0; overflow:auto; box-sizing:border-box;
+  padding:4px 8px 0;
+  border:1px solid var(--border-subtle); border-radius:var(--radius-lg);
+  background:var(--surface-white);
+}
 
 /* 深链定位行:2s 高亮渐隐(行在子组件 FPLedgerTable 内,须 :deep;结束后还原表格自身背景) */
 :deep(tr.row-flash > td) { animation: lg-row-flash var(--dur-highlight) var(--ease-standard); }
