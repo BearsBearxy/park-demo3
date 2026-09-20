@@ -83,6 +83,10 @@ describe('首进骨架与真版式对齐', () => {
 
   // 块高序列(灰条的写死高 + AnaSkelChart 的档位)。数值是 2026-09-16 在浏览器 390 / 1366 宽下
   // 逐屏对过真版式的结果;这里只钉「别被顺手改了」,改的时候先去浏览器量,再更新快照。
+  //
+  // 2026-09-20 起序列里会出现「同一块两个数」:真版式的图在窄档换了几何(画布高、行高),
+  // 一个写死的高顶不住两档。门禁读的是源码里字面的 style="…height: NNNpx",高度绑成变量就扫不到,
+  // 所以骨架按 v-if="tier === 's'" / v-else 各写一份字面高,两个数按 s / 非 s 的顺序挨着进序列。
   it.each(SCREENS)('%s:骨架块高序列(浏览器实测过)', (name) => {
     const { skel } = parts(name)
     const seq = [...skel.matchAll(/class="fp-shim[^"]*" style="[^"]*?height: (\d+)px|<AnaSkelChart :height="(\d+)"/g)]

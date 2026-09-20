@@ -53,7 +53,9 @@ describe('自绘图的窄容器档', () => {
 
   it('❗阈值只有一个值，12 个组件写的是同一个数', () => {
     const withNarrow = comps().filter((c) => c.hasNarrow)
-    expect(withNarrow.length, '这一轮给 12 个自绘图加了窄档分支').toBe(12)
+    // 12 个自绘图 + PvMeterAnaView 自己 —— 它的首进骨架也要按同一个容器宽判档，
+    // 否则骨架与图会在视口 488–600 那一段分叉（2026-09-20 对抗复查实测：B7 差 42、B8 差 39）。
+    expect(withNarrow.length, '12 个自绘图 + PvMeterAnaView 的骨架').toBe(13)
     for (const c of withNarrow) {
       expect(
         c.src,

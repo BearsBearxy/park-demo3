@@ -534,7 +534,9 @@ const conclusion = computed(() => buildConclusion(
           <p class="ana-ref">{{ forecastRef }}</p>
         </template>
         <!-- 没有下月可预测时说清楚为什么,不留一张光秃秃的图让人以为功能坏了。 -->
-        <p v-else class="ana-ref">本年 12 个月已录满，没有下月可预测</p>
+        <!-- hold:这一支本来就不会塌(两支都出字,v-else 这支还是个定长句)——加 hold 只是把
+             「条件出句的读数句一律占位」这条规矩钉在这行上,视觉零差异(句子自己就够 1lh)。 -->
+        <p v-else class="ana-ref hold">本年 12 个月已录满，没有下月可预测</p>
       </div>
 
       <!-- 第二排 s4×3 -->
@@ -601,8 +603,11 @@ const conclusion = computed(() => buildConclusion(
           </tbody>
         </table>
         <AnaEmpty v-else label="回测需要拟合" hint="滚动起点回测依赖至少 3 个可用月才能起步" />
-        <p v-if="backRead" class="ana-read">{{ backRead }}</p>
-        <p v-if="backRead" class="ana-ref">{{ backRef }}</p>
+        <!-- hold:表画得出来而句子算不出来是真会发生的 —— 回测每一站的「实际」取下一个月的收入,
+             录入有缺口时全部站点都是「待验」(hit 全 null),backtestSummary.scored=0,两句同时闭嘴。
+             骨架那两行是无条件画的,不占位就会在数据到的那一帧反向塌两行。 -->
+        <p class="ana-read hold"><template v-if="backRead">{{ backRead }}</template></p>
+        <p class="ana-ref hold"><template v-if="backRead">{{ backRef }}</template></p>
       </div>
 
       <div class="av2-s12">

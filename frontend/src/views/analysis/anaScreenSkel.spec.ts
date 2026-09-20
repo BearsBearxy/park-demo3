@@ -79,10 +79,12 @@ describe('分析屏首进骨架 · 文本行按行盒 20 钉,不按字号(C6-01)
   }
   it('❗同类对标:四张卡的读数句 / 参照系,骨架与真版式一样多,不再手写灰条高', () => {
     const { skel, real } = halves(read('TenantPeerView.vue'))
+    // 类名不钉到收尾引号:2026-09-20 起真版式那几句可能写成 `class="ana-ref hold"`(常驻占位),
+    // 句子还是那一句、行盒还是 20 —— 钉死引号会把它漏数,两侧就假性对不上。
     expect((real.match(/class="ana-read/g) ?? []).length).toBe(4)
-    expect((real.match(/class="ana-ref"/g) ?? []).length).toBe(4)
+    expect((real.match(/class="ana-ref/g) ?? []).length).toBe(4)
     expect((skel.match(/class="ana-read/g) ?? []).length).toBe(4)
-    expect((skel.match(/class="ana-ref"/g) ?? []).length).toBe(4)
+    expect((skel.match(/class="ana-ref/g) ?? []).length).toBe(4)
     expect(skel.match(/height: 1[45]px/g), '读数句骨架还按字号写(15 / 14)').toBeNull()
   })
 

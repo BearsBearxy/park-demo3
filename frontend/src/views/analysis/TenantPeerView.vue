@@ -285,8 +285,10 @@ const TABS: { k: TabKey; l: string; on: boolean }[] = [
               </tr>
             </tbody>
           </table>
-          <p v-if="elecRead" class="ana-read">{{ elecRead }}</p>
-          <p v-if="elecRead" class="ana-ref">{{ elecRef }}</p>
+          <!-- hold:表的门槛是 elecSpread 有值,而句子多一条 p10>0 —— 最新一期里一半以上的户电费为 0
+               时 p10=0,倍数算不出来,表照画两句闭嘴。骨架那两行无条件画,不占位就反向塌两行。 -->
+          <p class="ana-read hold"><template v-if="elecRead">{{ elecRead }}</template></p>
+          <p class="ana-ref hold"><template v-if="elecRead">{{ elecRef }}</template></p>
         </template>
         <AnaEmpty v-else label="附表10 未导入" hint="录入销售收入(附表10)后,此处按最新一期呈现电费分布宽度" />
       </div>

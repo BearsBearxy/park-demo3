@@ -289,23 +289,50 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
   .anx-period { gap: 6px; }
   .anx-right { flex-basis: 100%; justify-content: flex-end; gap: 8px; }
 }
-/* S(≤600):期间行按 390 视口做减法(可用宽 390−12×2=366)。定宽项全是确定值:
-   seg 88(CJK 24×2+padding 16×2+缝 2+框 6)+ 期间字段 120 + 步进 58 + 缝 10 = 276。
+/* S(≤600):工具条四个全屏层控件(粒度 seg / 期间字段 / 步进钮 / 设置钮)全部抬到 44 触点。
+   seg 走「整组 44」:外框 padding 3 + 按钮 38 —— 与同排 44 方钮、44 日期框上下齐平;
+   按钮本身做满 44 的话整组变 50,会比同排所有东西都高一截,且每行再多占 6px。
+   字号:稿写 13px,不在阶梯上(28/24/20/16/15/14/12/11),取相邻的 14 = var(--fs-body)。
    隐掉「期间/对比」字样(控件自明)——「数据截至」是数据信息,保留。
-   seg 收窄只动本组件模板里的两条(scoped 带 data-v),#tools 插槽/卡头 mini seg 不受影响。 */
+   seg 规则带 .anx-tools 前缀且 scoped 带 data-v,只中本组件模板里的两条(粒度 / 对比);
+   #tools 插槽与屏内 / 卡头 mini seg 归 components/ana/ana.css 的 S 档块分别判。
+
+   ── 两行宽度账(逐控件;下面的数是 2026-09-20 在浏览器里量的,不是估的) ──
+   第一行 .anx-period(缝 5):粒度 seg 96(CJK 28×2 + padding 16×2 + 缝 2 + 框 6)
+     + 期间字段 120 + 步进 90(44×2 + 缝 2)+ 缝 10 = 316。
+   第二行 .anx-right(缝 6,取最宽屏 = 带对比开关的驾驶舱 / 园区用能):
+     对比 seg 174(「无」30 + 环比/同比/预算 44×3 + 缝 6 + 框 6)
+     + 「截至 2026-08」86.6(图标 12 + 缝 5 + CJK 11×2 + 数字走 sans 比 mono 窄)
+     + 设置钮 44 + 缝 12 = 316.6。
+   可用宽 = 视口 − padding 12×2:390 → 366(两行各余 50 / 49);375 iPhone SE → 351(各余 35 / 34)。
+   两个宽度下都仍是两行:实测条高 113 = 9 + 44 + 缝 6 + 44 + 9 + 下边框 1。
+   改前同式 91(两行 32 / 34),即 sticky 条每屏多占 22px —— 稿 §1 写的是「多占 24」,
+   对得上;稿那两个绝对值 74 / 98 与源码量不出来,别拿它们当校验。
+   ⚠ 再往这两行里加控件前先回来重算 —— 375 上只剩 34px,不够再塞一个 44 的钮。
+   (TenantEnergyView 的 #tools seg 挂在第一行,那一屏本来就是三行,见该文件注释。)
+
+   ⚠ 稿 §3 表还给日期框写了「16px」,这里没做:那 16 是为「iOS 聚焦输入框时整页缩放」,
+   而真正被聚焦的是 ds/DatePicker.vue:626 的 .dp-in-el,它早就写着 var(--fs-input-m),
+   隐患在组件里已经堵死;露在外面的 .dp-trg 是 button,不触发缩放。
+   且实测这一格的文字盒 65 / 可用 74,按 16/14 放大后 74.3 > 74 会打省略号 ——
+   要 16 就得同时把字段从 120 加宽(稿没画这一改)。 */
 @media (max-width: 600px) {
   .anx-tools { padding: 9px 12px; }
   .anx-period { gap: 5px; }
   .anx-period > .anx-lbl, .anx-cmp > .anx-lbl { display: none; }
-  .anx-tools .anx-seg button { padding: 5px 8px; }
+  .anx-tools .anx-seg button { height: 38px; padding: 0 8px; font-size: var(--fs-body); }
+  .anx-selw { --dp-h: 44px; }          /* ds/DatePicker 已预留该变量,不动那个组件 */
+  .anx-nav button { width: 44px; height: 44px; }
+  .anx-icobtn { width: 44px; height: 44px; }
   .anx-right { gap: 6px; }
   /* §06 第二行(.anx-right,≤960 已定死 flex-basis:100%)组成固定:对比 seg + 截至 + 设置钮。
-     「数据」二字藏掉省 ~22px(390 预算下对比四钮 + 截至 + 34 钮 ≈ 300,留余量);
-     行高由行内 34px 设置钮恒定撑住,文案增减不改行数、不跳高度。 */
+     「数据」二字藏掉省 22px(CJK 11×2;留着的话第二行 338.6,375 上只剩 12);
+     行高由行内 44px 设置钮恒定撑住,文案增减不改行数、不跳高度。 */
   .anx-asof-prefix { display: none; }
   /* §06 弹层钳视口:锚点(设置钮)右缘距视口右 ≥12(工具条 padding),右对齐 + 宽不超
-     min(268px,92vw) ⇒ 左缘在 ≥280px 视口内恒 ≥0,无需 JS 测溢出改位。top:42 沿用基档。 */
-  .anx-pop { width: min(268px, 92vw); }
+     min(268px,92vw) ⇒ 左缘在 ≥280px 视口内恒 ≥0,无需 JS 测溢出改位。
+     top 跟着锚点走:基档 34 钮配 42(下缘留 8),S 档钮抬到 44 → 52,缝还是 8。 */
+  .anx-pop { top: 52px; width: min(268px, 92vw); }
 }
 @media print { .anx-tools { display: none !important; } .anx-body { padding: 0; } }
 </style>
