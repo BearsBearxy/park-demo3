@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // B3 · 等效小时轨迹(PV-ANALYSIS-SCREEN-V4 §3.5;画布 ../运维文档/设计稿/已实现/光伏分栋分析v4定稿-2026-09-13/Abs.dc.html)。
-// 画布 卡内宽 × 250,padL 44 / padR 62 / padT 12 / padB 24;x = 刻度落点(首尾贴边),月档逐日、年档逐月;
+// 画布 卡内宽 × 250(容器 < 420 时 210),padL 44 / padR 62 / padT 12 / padB 24;x = 刻度落点(首尾贴边),月档逐日、年档逐月;
 // y = 数据极值各外扩 18%,4 条横网格;线尾直标最小间距 13。
 // 数据口径(分母、在网 < 3 栋留空、漏抄置空)全在 pvAnaV4.logic.ts 的 yieldBand(),这里只画。
 import { computed, ref } from 'vue'
@@ -13,9 +13,13 @@ import type { PvYieldBandProps } from './pvAnaV4.logic'
 
 const props = defineProps<PvYieldBandProps>()
 
-const H = 250, PL = 44, PR = 62, PT = 12, PB = 24, GAP = 13
-const IH = H - PT - PB
+const PL = 44, PR = 62, PT = 12, PB = 24, GAP = 13
 const { el, width } = useWidth(999)
+// 窄容器换几何(手机屏,和桌面 .av2-s4 窄栏 —— 同一张图两处都只有 300 多):高 250→210,年档月标签隔一标。
+// 判容器宽不判视口宽;点数、字号、线宽一个都不动。
+const narrow = computed(() => width.value < 420)
+const H = computed(() => (narrow.value ? 210 : 250))
+const IH = computed(() => H.value - PT - PB)
 // 切到「绝对水平」挂上来时在视口内擦入 320;换栋 / 换期 200 同键形变(线段与带按刻度作键),擦入中 / 改宽时 hold 关掉
 const first = useEnterPhase(el)
 const hold = useMorphHold(width, first)
@@ -35,13 +39,13 @@ const dom = computed(() => {
 })
 const yOf = (v: number) => {
   const d = dom.value!
-  return PT + IH - ((v - d.min) / (d.max - d.min)) * IH
+  return PT + IH.value - ((v - d.min) / (d.max - d.min)) * IH.value
 }
 
 const grid = computed(() => {
   const d = dom.value
   if (!d) return []
-  return [0, 1, 2, 3].map(k => ({ y: PT + IH - (k / 3) * IH, label: (d.min + (k / 3) * (d.max - d.min)).toFixed(1) }))
+  return [0, 1, 2, 3].map(k => ({ y: PT + IH.value - (k / 3) * IH.value, label: (d.min + (k / 3) * (d.max - d.min)).toFixed(1) }))
 })
 
 const shade = computed(() => {
@@ -53,9 +57,9 @@ const shade = computed(() => {
 
 const xLabels = computed(() => {
   const L = props.data.labels
-  // 月档:1 日、逢 5 的日、最后一日(离最后一日不足 3 天的逢 5 日让位,31 日月份不标 30);年档逐月全标
+  // 月档:1 日、逢 5 的日、最后一日(离最后一日不足 3 天的逢 5 日让位,31 日月份不标 30);年档逐月全标,窄容器隔一标(12 个月标 1/3/5/7/9/11)
   const keep = props.data.gran === 'year'
-    ? L.map((_, i) => i)
+    ? L.map((_, i) => i).filter(i => !narrow.value || i % 2 === 0)
     : L.map((_, i) => i).filter(i => i === 0 || i === L.length - 1 || (Number(L[i]) % 5 === 0 && L.length - 1 - i >= 3))
   return keep.map(i => ({ x: xOf(i), text: L[i] }))
 })

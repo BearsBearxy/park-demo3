@@ -157,8 +157,9 @@ describe('PvQualityGrid · 悬停', () => {
     expect(w.find('.cz-tip').findAll('span').map(s => s.text())).toEqual(['8 月 4 日', '11 栋都抄齐了'])
   })
 
-  it('❗卡内宽不够时气泡翻到格左 8px(宽 400:第 5 列格右放是 347 + 86 > 400)', async () => {
-    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 400 })
+  // 430 而不是 400:< 420 是窄容器档(格 44×48),那儿的翻边坐标是另一套;这条钉的是桌面档
+  it('❗卡内宽不够时气泡翻到格左 8px(宽 430:第 5 列格右放是 347 + 86 > 430)', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 430 })
     const w = mountIt()
     await g(w, '2025-08-31').find('rect.pqg-hit').trigger('mouseenter')
     const tip = w.find('.cz-tip')
@@ -241,6 +242,59 @@ describe('PvQualityGrid · 年档小格', () => {
     const edge = mar31.find('line.pqg-todo-edge')
     expect([edge.attributes('x1'), edge.attributes('x2'), edge.attributes('y1')]).toEqual(['210', '222', '29.5'])
     expect(w.find('.pqg-leg .per').text()).toBe('2025 年')
+  })
+})
+
+// PvCharts2 稿 §9:窄容器(手机 336、桌面 .av2-s4 窄栏)月档只缩格,不缩字、不整幅缩放、不换图种。
+// 判据是容器宽 < 420,不是视口宽
+describe('PvQualityGrid · 窄容器月档', () => {
+  // useWidth 在 onMounted 里量宽,首帧还是初始宽 —— 读 DOM 前要等一拍
+  const narrow = async (data = MONTH) => {
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 336 })
+    const w = mountIt(data)
+    await nextTick()
+    return w
+  }
+
+  it('❗格 44×48、行头 22:画布 22 + 5 × 48 − 4 = 258 ≤ 336,横向不滚;字号一个都没动', async () => {
+    const w = await narrow()
+    expect(w.find('section.pqg').classes()).toContain('narrow')
+    const svg = w.find('svg.pqg-svg')
+    expect([svg.attributes('width'), svg.attributes('height')]).toEqual(['258', '378'])
+    // 6 周满月也只有 22 + 6 × 48 − 4 = 306
+    const bg = g(w, '2025-08-01').find('rect.pqg-bg')           // 周五 = 第 0 列第 4 行
+    expect([bg.attributes('x'), bg.attributes('y'), bg.attributes('width'), bg.attributes('height'), bg.attributes('rx')])
+      .toEqual(['22', '226', '44', '48', '5'])
+    // 触点 = 格本身,44 × 48 ≥ 30
+    const hit = g(w, '2025-08-01').find('rect.pqg-hit')
+    expect([hit.attributes('width'), hit.attributes('height')]).toEqual(['44', '48'])
+    const rh = w.findAll('text.pqg-rowh')
+    expect(rh.map(t => t.text())).toEqual(['一', '二', '三', '四', '五', '六', '日'])
+    expect(rh.map(t => t.attributes('x'))).toEqual(Array(7).fill('14'))     // 22 − 8,行头右缘贴着格
+    expect(rh.map(t => t.attributes('y'))).toEqual(['46', '98', '150', '202', '254', '306', '358'])
+    // 不许整幅缩放:渲染宽恒等于 viewBox 宽
+    expect(svg.attributes('viewBox')).toBe('0 0 258 378')
+    expect(svg.attributes('transform')).toBeUndefined()
+    expect(svg.attributes('preserveAspectRatio')).toBeUndefined()
+  })
+
+  it('❗格内第二行去量词(44 宽放得下 4 个半角);日期与第二行还在原来的位置,不缩字', async () => {
+    const w = await narrow()
+    expect(g(w, '2025-08-19').find('text.pqg-sub').text()).toBe('缺 2')
+    expect(g(w, '2025-08-06').find('text.pqg-sub').text()).toBe('缺 1')
+    expect(g(w, '2025-08-12').find('text.pqg-sub').text()).toBe('剔除')
+    // 划痕照旧在,与字两路
+    expect(g(w, '2025-08-12').find('rect.pqg-hatchbox').exists()).toBe(true)
+    const day = g(w, '2025-08-01').find('text.pqg-day')
+    expect([day.attributes('x'), day.attributes('y')]).toEqual(['30', '244'])   // 22 + 8、226 + 18
+    expect(day.attributes('font-size')).toBeUndefined()                         // 字号只走 CSS 阶梯
+  })
+
+  it('❗年档不受窄容器影响:还是 12×12 小格(换图种是下一轮)', async () => {
+    const Q1 = calendar('2025-01-01', 90, () => ({ kind: 'full' }))
+    const w = await narrow({ ...MONTH, cells: Q1, weeks: 14 })
+    const jan1 = g(w, '2025-01-01').find('rect.pqg-bg')
+    expect([jan1.attributes('x'), jan1.attributes('width'), jan1.attributes('height')]).toEqual(['28', '12', '12'])
   })
 })
 

@@ -106,6 +106,36 @@ describe('PvRevenueBars 几何', () => {
   })
 })
 
+// 2026-09-20 手机版(PvCharts2 稿 §6):判容器宽,不判视口宽 —— 桌面 .av2-s4 窄栏同样吃这一档
+describe('PvRevenueBars 窄容器', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+  // useWidth 在 onMounted 里量宽,量到的宽要等一次 tick 才进 DOM
+  const mountAt = async (w: number) => {
+    vi.spyOn(Element.prototype, 'clientWidth', 'get').mockReturnValue(w)
+    const wrapper = mount(PvRevenueBars, { props: { data: data(), selId: null } })
+    await nextTick()
+    return wrapper
+  }
+
+  it('❗容器 360:行高 30(触点)、栋名列 76;字号不动、不整幅缩放(渲染宽 = viewBox 宽)', async () => {
+    const w = await mountAt(360)
+    expect(num(rect(w, 'self', 2), 'x')).toBe(76)
+    // 条在行里居中:(30 − 16) / 2 = 7。原先这里写的是 5.5(27 行的居中值) ——
+    // 行距抬到 30 而行内 y 没跟着动,整行内容上偏 3px,断言反而把这个错钉住了。
+    expect(absY(rect(w, 'self', 1))).toBe(6 + 30 + 7)
+    expect(num(w.find('svg'), 'height')).toBe(6 + 6 * 30 + 26)
+    expect(w.findAll('.prb-row').map(r => attr(r, 'style'))).toContain('top: 36px; height: 30px; background: transparent;')
+    expect(attr(w.find('svg'), 'viewBox')).toBe(`0 0 360 ${6 + 6 * 30 + 26}`)
+    expect(num(w.find('svg'), 'width')).toBe(360)
+  })
+
+  it('❗容器 420 还是桌面档:行高 27、栋名列 104(边界只在 420 以下翻)', async () => {
+    const w = await mountAt(420)
+    expect(num(rect(w, 'self', 2), 'x')).toBe(PL)
+    expect(num(w.find('svg'), 'height')).toBe(6 + 6 * 27 + 26)
+  })
+})
+
 describe('PvRevenueBars 悬停与图注', () => {
   it('悬停上半行:行底 4% 墨,气泡五行,放在行下 30、条尾右 60', async () => {
     const w = mount(PvRevenueBars, { props: { data: data(), selId: null } })

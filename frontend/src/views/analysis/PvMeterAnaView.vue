@@ -39,6 +39,7 @@ import PvBetaChart from './PvBetaChart.vue'
 import PvDetailTable from './PvDetailTable.vue'
 import { usePeriod } from '@/analysis/usePeriod'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
+import { useViewport } from '@/composables/useViewport'
 import { fnum } from '@/components/ana/anaFmt'
 import { pvMeterApi, type PvReadingDTO, type PvStationDTO } from '@/api/pvMeter'
 import { paramsApi } from '@/api/params'
@@ -84,6 +85,12 @@ let seq = 0
 
 // 默认停在**账面量** —— 板数录进来之前只有这一档是全真数。第三档「高级分析」要点才进得去。
 const section = ref<'abs' | 'ledger' | 'lab'>('ledger')
+
+// 大图那一块的高:图头 24 + PvDayChart 画布(桌面 236 / 窄档 200)。
+// 骨架占位、无可画栋时的占位块、真图三者必须同高 —— 写死 260 的时候窄档真版式只有 224,差 36px。
+// 这里用视口档而不是容器宽:大图住在整幅内容宽里,两者等价(601–960 平板档容器仍 ≥420,走桌面值)。
+const { tier } = useViewport()
+const mainBlockH = computed(() => (tier.value === 's' ? '224px' : '260px'))
 
 const CRIT_KEYS = [
   'pv_yield_anchor_h', 'pv_crit_cover_month', 'pv_crit_ledger',
@@ -376,6 +383,11 @@ onDeactivated(() => { drawerOpen.value = false })
           <button type="button" class="pma-lk ana-hole" disabled>看 00栋 的整年 →</button>
         </div>
         <div class="pma-skel-chips"><div class="fp-shim" style="height: 26px; width: 260px"></div></div>
+        <!-- 与 .pma-nochart 同一笔账:图头 24 + PvDayChart 画布(桌面 236 / 窄档 200)。
+             ⚠ 这里**写死桌面值 260**:anaSkeletonParity 那道门禁读的是本文件源码里字面的
+             style="…height: NNNpx",写成绑定它就看不见这一块了,而那道门禁的价值正是
+             「没人能悄悄改骨架高」。代价是窄档真版式只有 224,首进会跳 36px ——
+             这笔账连同下面 374 / 483 两处一起,要等门禁能分两档、且能在浏览器里实测块高之后再平。 -->
         <div class="fp-shim" style="height: 260px; margin-top: 12px"></div>
         <div class="pma-div"></div>
         <div class="fp-shim" style="height: 34px; width: 70%"></div>
@@ -431,7 +443,7 @@ onDeactivated(() => { drawerOpen.value = false })
           :row="selRow" :ticks="snap.ticks" :tick-labels="snap.tickLabels" :gran="snap.gran"
           :elapsed-n="snap.elapsedN" :fact="fact" :unreadable="isUnreadable(selRow, snap)"
         />
-        <div v-else class="pma-note pma-nochart">这一段没有已投产的楼栋，画不出逐刻度比值。</div>
+        <div v-else class="pma-note pma-nochart" :style="{ height: mainBlockH }">这一段没有已投产的楼栋，画不出逐刻度比值。</div>
 
         <div class="pma-div"></div>
         <!-- 判据脚固定两行,每行钉高、不折行:第一行判据原文 + 去改,第二行范围窗口(放不下省略,全文进 title)+ 末尾那句。
@@ -569,8 +581,13 @@ onDeactivated(() => { drawerOpen.value = false })
 .pma-b2-r { display: flex; align-items: baseline; gap: 14px; height: 16px; overflow: hidden; white-space: nowrap; }
 .pma-b2-r > * { flex: 0 0 auto; }
 .pma-b2-r .base { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-/* 没有可画的栋时占住大图那块的高(图头 24 + 画布 236 + 上边距 12),主卡不塌 */
-.pma-nochart { height: 260px; margin-top: 12px; box-sizing: border-box; }
+/* 没有可画的栋时占住大图那块的高(图头 24 + 画布 H + 上边距 12),主卡不塌。
+   H 跟着 PvDayChart 的档位走:桌面 236 → 260,窄档 200 → 224。
+   ⚠ 写死 260 的时候窄档真版式只有 224,差 36px,而 pvMeterAnaScreen.spec 那条
+   「占位块与大图同高」只读 CSS 文本 —— 写死多少它都绿,掩着。
+   这里用视口判据而不是容器判据:大图住在 .av2-s12(整幅内容宽),两者在这一处等价
+   (601–960 平板档容器仍 ≥420,走桌面 236,与 max-width:600 的分界一致)。 */
+.pma-nochart { margin-top: 12px; box-sizing: border-box; }   /* 高度由 mainBlockH 内联下发,与骨架同源 */
 
 .pma-seg { display: flex; align-items: center; gap: 12px; min-height: 32px; }
 .pma-seghint { font-size: 11px; line-height: 1.5; color: var(--text-muted); min-width: 0; }

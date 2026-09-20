@@ -26,6 +26,7 @@ export const CHANGELOG: ReleaseNote[] = [
     added: [],
     improved: [
       { icon: 'scroll-text', title: '图下面的结论', desc: '原来要把鼠标停在图上才看得到数，现在每张图下面直接写着最新一期是多少。' },
+      { icon: 'activity', title: '光伏分栋分析的图', desc: '原来手机上行挤在一起点不准，现在行高够点，轴上的标签也不再叠在一块。', to: 'pv-meter-analysis' },
       { icon: 'message-square', title: '分析屏图上的说明', desc: '原来手机上不写「这里能点」，现在每张能点的图都写着点哪儿、看什么。' },
     ],
     fixed: [

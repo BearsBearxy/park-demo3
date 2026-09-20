@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 抽屉 B9 · 这一年的偏离与水平变化(PV-ANALYSIS-SCREEN-V4 §3.17;画布 v2/Drawer.dc.html)。
-// 画布 宽 = 实测 × 高 300,padL 46 / padR 14 / padT 14 / padB 26;x 与 B10 同一把(pvDrawerAxis)。
+// 画布 宽 = 实测 × 高 300(容器 < 420 时 240),padL 46 / padR 14 / padT 14 / padB 26;x 与 B10 同一把(pvDrawerAxis)。
 // 趋势线照画布的平滑写法:相邻点用 Catmull-Rom(÷6)转三次贝塞尔;估计范围是直线折边的闭合面。
 // 变点区间补淡红 12% 底(实施计划 §1 #17);变点直标第二行写区间,不写「抬上去了」(§1 #18)。
 // 这里只做像素几何,数据由 pvAnaV4.logic.ts 的 driftChart 整形好传进来。
@@ -16,11 +16,15 @@ import { dayOfX, md, monthStartDays, nearestIndex, PAD_L, PAD_R, r1, xOfDay, yAx
 
 const props = defineProps<PvDriftChartProps>()
 
-const H = 300, padT = 14, padB = 26
-const iH = H - padT - padB
+const padT = 14, padB = 26
 const AXIS_LINE = FP_ANA_THEME.categoryAxis.axisLine.lineStyle.color
 
 const { el, width: W } = useWidth(646)
+// 窄容器换几何(手机稿 §1 改后①):图高 300 → 240、月标隔一标。判容器宽不判视口宽 ——
+// 同一张图也出现在桌面 .av2-s4 窄栏里(那里也只有 300 多)。字号一律不动。
+const narrow = computed(() => W.value < 420)
+const H = computed(() => (narrow.value ? 240 : 300))
+const iH = computed(() => H.value - padT - padB)
 // 抽屉里的图不擦入(只有卡片上浮,原则 7);上一栋 / 下一栋 200 同键形变(点按日作键,区间与变点竖线跟着滑)。
 // 趋势线与估计范围的点数随栋变,点数不同的那一下 d 结构变了,直接跳。改宽那两帧 hold 关掉
 const hold = useMorphHold(W, ref(false))
@@ -31,14 +35,17 @@ const axis = computed(() => {
   const vals = [0]
   for (const p of props.data.points) vals.push(p.v)
   for (const t of props.data.trend) vals.push(t.lo, t.hi)
-  return yAxis(vals, padT, H - padB, { top: 59, bottom: 37 })
+  return yAxis(vals, padT, H.value - padB, { top: 59, bottom: 37 })
 })
 const Y = (v: number) => axis.value.y(v)
 const tickLabel = (v: number) => (v > 0 ? '+' : '') + v.toFixed(2)
 
 const year = computed(() => props.data.points[0]?.date.slice(0, 4) ?? '')
 
-const months = computed(() => monthStartDays(days.value).map((d, i) => ({ m: i + 1, x: X(d) })))
+// 窄档月标隔一标(1/3/5/7/9/11):12 个标挤在 300 多宽里字会叠,当前期间那个月由图内「当前期间 N 月」认领
+const months = computed(() => monthStartDays(days.value)
+  .map((d, i) => ({ m: i + 1, x: X(d) }))
+  .filter(t => !narrow.value || t.m % 2 === 1))
 
 const future = computed(() => {
   const f = props.data.futureFromDoy

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // A2 · 年等效小时双向条(PV-ANALYSIS-SCREEN-V4 §3.6;画布 ../运维文档/设计稿/已实现/光伏分栋分析v4定稿-2026-09-13/Abs.dc.html)。
-// 画布 卡内宽 × (上 8 + 行数 × 26 + 下 34);栋名列 96(计划 §1 #19,名字右对齐于 86);右侧预留 176;
+// 画布 卡内宽 × (上 8 + 行数 × 26 + 下 34);栋名列 96(计划 §1 #19,名字右对齐于 86);右侧预留 176;(这些是桌面档,窄档见下 narrow)
 // 0 线 = 锚点,落在绘图宽 22% 处;条长 = 比锚点多几小时,条高 14、圆角 3;每 50 h 一条竖网格。
 // 行点击只选中该栋(计划 §1 #12),不开抽屉。数据口径在 pvAnaV4.logic.ts 的 anchorBars()。
 import { computed, ref } from 'vue'
@@ -14,24 +14,34 @@ import { phaseName, type AnchorRow, type PvAnchorBarsProps } from './pvAnaV4.log
 const props = defineProps<PvAnchorBarsProps>()
 const emit = defineEmits<{ pick: [id: number] }>()
 
-const PL = 96, NAME_X = 86, RIGHT = 176, TOP = 8, ROW = 26, BOTTOM = 34
+const TOP = 8, BOTTOM = 34
 const { el, width } = useWidth(999)
+// 窄容器(手机,以及桌面 .av2-s4 窄栏)换几何,不缩放、不改字号:行高抬到触点 30、栋名列 76 且左对齐、
+// 条尾两枚数改成行尾直标(RESPONSIVE-V2-PLAN §P2 §③)。判容器宽不判视口宽 —— 窄栏里视口判据失效。
+const narrow = computed(() => width.value < 420)
+const PL = computed(() => (narrow.value ? 76 : 96))
+const NAME_X = computed(() => (narrow.value ? 0 : 86))
+// 窄档右侧 160 = 值 53 + 4 + 百分比 33 + 6 + 箭头 12 + 2 + 比去年 40 + 右边距 6 + 条尾余 4(mono 11 按 6.6/字符)
+const RIGHT = computed(() => (narrow.value ? 160 : 176))
+const ROW = computed(() => (narrow.value ? 30 : 26))
+const BAR_Y = computed(() => (narrow.value ? 8 : 6))   // 条高 14 居中于行
+const TEXT_Y = computed(() => (narrow.value ? 19 : 17))
 // 切到「绝对水平」挂上来时在视口内擦入 320;换期 200 形变:条长走 rect 几何,名次变了整行走行 g 的 translateY
 const first = useEnterPhase(el)
 const hold = useMorphHold(width, first)
-const plotW = computed(() => width.value - PL - RIGHT)
-const zero = computed(() => PL + 0.22 * plotW.value)
+const plotW = computed(() => width.value - PL.value - RIGHT.value)
+const zero = computed(() => PL.value + 0.22 * plotW.value)
 const nRows = computed(() => props.data.rows.length + props.data.unborn.length)
-const H = computed(() => TOP + nRows.value * ROW + BOTTOM)
-const bottom = computed(() => TOP + nRows.value * ROW)
+const H = computed(() => TOP + nRows.value * ROW.value + BOTTOM)
+const bottom = computed(() => TOP + nRows.value * ROW.value)
 
 /** 每小时多少 px:最长的正条留 5% 余量顶到右界;有负条时左边 22% 也要装得下 */
 const scale = computed(() => {
   const ds = props.data.rows.map(r => r.delta)
   const pos = Math.max(0, ...ds), neg = Math.max(0, ...ds.map(d => -d))
   const s = Math.min(
-    pos > 0 ? (width.value - RIGHT - zero.value) / (pos * 1.05) : Infinity,
-    neg > 0 ? (zero.value - PL) / (neg * 1.05) : Infinity,
+    pos > 0 ? (width.value - RIGHT.value - zero.value) / (pos * 1.05) : Infinity,
+    neg > 0 ? (zero.value - PL.value) / (neg * 1.05) : Infinity,
   )
   return Number.isFinite(s) ? s : 1
 })
@@ -42,18 +52,19 @@ const grid = computed(() => {
   let step = 50
   while (step * s < 40) step *= 2   // 值域很宽时加大步长,刻度字不叠
   const hasNeg = props.data.rows.some(r => r.delta < 0)
-  const from = hasNeg ? Math.ceil((PL - zero.value) / s / step) : 0
-  const to = Math.floor((width.value - RIGHT - zero.value) / s / step)
+  const from = hasNeg ? Math.ceil((PL.value - zero.value) / s / step) : 0
+  const to = Math.floor((width.value - RIGHT.value - zero.value) / s / step)
   const out: { x: number; label: string }[] = []
   for (let k = from; k <= to; k++) out.push({ x: zero.value + k * step * s, label: k === 0 ? '0' : `${sign(k)}${Math.abs(k * step)}` })
   return out
 })
 
 const bars = computed(() => props.data.rows.map((r, i) => {
-  const top = TOP + i * ROW
+  const top = TOP + i * ROW.value
   const end = zero.value + r.delta * scale.value
   const hText = `${sign(r.delta)}${Math.abs(r.delta).toFixed(1)} h`
-  const labX = Math.max(end, zero.value) + 8
+  // 窄档两枚数不跟条尾跑,右对齐钉成两列(条最长只到 width − RIGHT,不会压上来)
+  const labX = narrow.value ? width.value - 103 : Math.max(end, zero.value) + 8
   const pd = r.prevDelta == null ? null : Math.round(r.prevDelta)
   return {
     r, top, end,
@@ -62,7 +73,7 @@ const bars = computed(() => props.data.rows.map((r, i) => {
     sel: r.id === props.selId,
     hText, labX,
     pctText: `${sign(r.deltaPct)}${Math.abs(Math.round(r.deltaPct))}%`,
-    pctX: labX + Math.max(58, tipWidth([hText], 0) + 5),   // 画布量得:8 个字符的「+x h」字尾后留 5px 起百分比
+    pctX: narrow.value ? width.value - 66 : labX + Math.max(58, tipWidth([hText], 0) + 5),   // 画布量得:8 个字符的「+x h」字尾后留 5px 起百分比
     arrow: pd == null || pd === 0 ? null : pd > 0 ? '▲' : '▼',
     dText: pd == null ? '—' : `${sign(pd)}${Math.abs(pd)} h`,
     dTone: pd == null ? 'none' : pd < 0 ? 'down' : 'up',
@@ -77,7 +88,7 @@ const drawn = computed(() => {
   return order.map(id => by.get(id)!)
 })
 const rowT = (top: number) => ({ transform: `translate(0px, ${top}px)` })
-const unbornRows = computed(() => props.data.unborn.map((u, k) => ({ ...u, top: TOP + (props.data.rows.length + k) * ROW })))
+const unbornRows = computed(() => props.data.unborn.map((u, k) => ({ ...u, top: TOP + (props.data.rows.length + k) * ROW.value })))
 
 // ── 悬停 ──
 const hover = ref<number | null>(null)
@@ -109,7 +120,7 @@ const tip = computed(() => {
     lines,
     left: Math.max(zero.value, Math.min(b.end - 60, width.value - tw - 70)),
     // 行命中类:上半行气泡放行下,下半行放行上
-    top: i! < bars.value.length / 2 ? b.top + ROW + 4 : Math.max(0, b.top - 88),
+    top: i! < bars.value.length / 2 ? b.top + ROW.value + 4 : Math.max(0, b.top - 88),
   }
 })
 
@@ -131,24 +142,27 @@ const anchorText = computed(() => `${props.data.anchor.toFixed(1)} h`)
         <!-- 栋名在数据组外(尺子先在,数据擦上去);两段各一组行 g,按栋作键、纵向只靠 translateY:换期名次变了整行滑到新行 -->
         <g :class="['pan-names', 'ana-morph', { hold }]">
           <g v-for="b in drawn" :key="'n' + b.r.id" class="pan-rowg" :style="rowT(b.top)">
-            <text :class="['pan-name', { 'pan-name-sel': b.sel }]" :x="NAME_X" y="17" text-anchor="end">{{ b.r.name }}</text>
+            <text :class="['pan-name', { 'pan-name-sel': b.sel }]" :x="NAME_X" :y="TEXT_Y"
+              :text-anchor="narrow ? 'start' : 'end'">{{ b.r.name }}</text>
           </g>
         </g>
         <g :class="['pan-data', 'ana-morph', { first, hold }]" @animationend.self="first = false" @animationcancel.self="first = false">
           <g v-for="b in drawn" :key="b.r.id" class="pan-rowg" :style="rowT(b.top)">
-            <rect :class="['pan-bar', { 'pan-bar-sel': b.sel }]" :data-id="b.r.id" :x="b.x" y="6" :width="b.w" height="14" rx="3"
+            <rect :class="['pan-bar', { 'pan-bar-sel': b.sel }]" :data-id="b.r.id" :x="b.x" :y="BAR_Y" :width="b.w" height="14" rx="3"
               :fill="b.fill" :fill-opacity="b.sel ? 1 : 0.85" />
-            <text class="pan-val pan-h" :x="b.labX" y="17" :font-weight="b.sel ? 600 : 400">{{ b.hText }}</text>
-            <text class="pan-val pan-pct" :x="b.pctX" y="17">{{ b.pctText }}</text>
-            <text v-if="b.arrow" :class="['pan-val', 'pan-arrow', 'pan-' + b.dTone]" :x="width - 60" y="17"
+            <text class="pan-val pan-h" :x="b.labX" :y="TEXT_Y" :text-anchor="narrow ? 'end' : undefined"
+              :font-weight="b.sel ? 600 : 400">{{ b.hText }}</text>
+            <text class="pan-val pan-pct" :x="b.pctX" :y="TEXT_Y" :text-anchor="narrow ? 'end' : undefined">{{ b.pctText }}</text>
+            <text v-if="b.arrow" :class="['pan-val', 'pan-arrow', 'pan-' + b.dTone]" :x="width - 60" :y="TEXT_Y"
               :fill="b.dTone === 'down' ? PV_COLORS.ABOVE : undefined">{{ b.arrow }}</text>
-            <text :class="['pan-val', 'pan-d', 'pan-d-' + b.dTone]" :x="width - 6" y="17" text-anchor="end"
+            <text :class="['pan-val', 'pan-d', 'pan-d-' + b.dTone]" :x="width - 6" :y="TEXT_Y" text-anchor="end"
               :fill="b.dTone === 'down' ? PV_COLORS.AMBER_TEXT : undefined">{{ b.dText }}</text>
           </g>
         </g>
         <template v-for="u in unbornRows" :key="'u' + u.id">
-          <text class="pan-name pan-name-off" :x="NAME_X" :y="u.top + 17" text-anchor="end">{{ u.name }}</text>
-          <text class="pan-val pan-off" :x="zero + 6" :y="u.top + 17">未投产 · 没有可算的年等效</text>
+          <text class="pan-name pan-name-off" :x="NAME_X" :y="u.top + TEXT_Y"
+            :text-anchor="narrow ? 'start' : 'end'">{{ u.name }}</text>
+          <text class="pan-val pan-off" :x="zero + 6" :y="u.top + TEXT_Y">未投产 · 没有可算的年等效</text>
         </template>
         <text class="pan-ax" :x="width - 6" y="9" text-anchor="end">比去年</text>
       </svg>

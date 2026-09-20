@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 抽屉 B11 · 跟全园一起涨落的程度(PV-ANALYSIS-SCREEN-V4 §3.19;画布 v2/Drawer.dc.html)。
-// 画布 宽 = 实测 × 高 200,padL 46 / padR 14 / padT 16 / padB 30;12 个等宽月槽固定,空槽不删月:
+// 画布 宽 = 实测 × 高 200(容器 < 420 时 180),padL 46 / padR 14 / padT 16 / padB 30;12 个等宽月槽固定,空槽不删月:
 // 刻度字淡(墨 28%)并在下面写原因(投产前 / 不足 / 未到),连线在空槽处断开。
 // 悬停命中每槽中心 28px 宽的竖条,气泡在竖条右侧 12px(= 槽中心 + 26),放不下翻左(画布 renderVals)。
 import { computed, ref } from 'vue'
@@ -16,8 +16,7 @@ import { PAD_L, PAD_R, r1, slotCenter, slotWidth, yAxis } from './pvDrawerAxis'
 // year:气泡首行「2025 年 8 月」要年份,BetaSlot 只带月
 const props = defineProps<PvBetaChartProps & { year: number }>()
 
-const H = 200, padT = 16, padB = 30
-const iH = H - padT - padB
+const padT = 16, padB = 30
 const AXIS_LINE = FP_ANA_THEME.categoryAxis.axisLine.lineStyle.color
 const WHY: Record<NonNullable<BetaSlot['why']>, { tick: string; tip: string }> = {
   pre: { tick: '投产前', tip: '投产前' },
@@ -26,6 +25,11 @@ const WHY: Record<NonNullable<BetaSlot['why']>, { tick: string; tip: string }> =
 }
 
 const { el, width: W } = useWidth(646)
+// 窄容器只降高 200→180(手机体验稿 §1 改后③):点数只有 12、字本来就在图上,画法一个都不动。
+// 判容器宽不判视口宽 —— 这张图也出现在桌面 .av2-s4 窄栏里,那里容器同样只有 300 多。
+const narrow = computed(() => W.value < 420)
+const H = computed(() => (narrow.value ? 180 : 200))
+const iH = computed(() => H.value - padT - padB)
 // 抽屉里的图不擦入(只有卡片上浮,原则 7);上一栋 / 下一栋 200 同键形变(点与连线段都按月作键)。
 // 改宽那两帧 hold 关掉;参照线与网格跟纵轴瞬到
 const hold = useMorphHold(W, ref(false))
@@ -33,12 +37,19 @@ const hold = useMorphHold(W, ref(false))
 const axis = computed(() => {
   const vals = [1]
   for (const s of props.slots) if (s.beta != null) vals.push(s.beta)
-  return yAxis(vals, padT, H - padB, { top: 34, bottom: 48 }, 1)
+  return yAxis(vals, padT, H.value - padB, { top: 34, bottom: 48 }, 1)
 })
 const Y = (v: number) => axis.value.y(v)
 const dec = computed(() => [1, 2, 3].find(d => Math.abs(Math.round(axis.value.step * 10 ** d) - axis.value.step * 10 ** d) < 1e-6) ?? 3)
 
-const cols = computed(() => props.slots.map(s => ({ ...s, cx: slotCenter(s.month, W.value) })))
+// whyHead:窄档槽宽只有约 21.75px(卡内 321 时 (321−60)/12),而「投产前」11px 三个全角约 33px —— 
+// 连着几个月同一个原因就会连片压字。窄档只给每一段连续相同 why 的**第一个**槽出直标,
+// 其余月的原因照旧在气泡里(WHY[..].tip),字号一个不动。桌面槽宽 48.8px,不叠,照旧全标。
+const cols = computed(() => props.slots.map((s, i, a) => ({
+  ...s,
+  cx: slotCenter(s.month, W.value),
+  whyHead: i === 0 || a[i - 1].why !== s.why,
+})))
 const cur = computed(() => {
   const s = props.slots.find(x => x.current)
   return s ? { month: s.month, cx: slotCenter(s.month, W.value), x: r1(PAD_L + (s.month - 1) * slotWidth(W.value)), w: r1(slotWidth(W.value)) } : null
@@ -118,7 +129,7 @@ const tip = computed(() => {
             :fill="c.beta == null ? 'var(--ink-900)' : c.current ? C.FOCUS : C.AXIS_TEXT"
             :fill-opacity="c.beta == null ? 0.28 : undefined" :font-weight="c.beta != null && c.current ? 600 : 400"
           >{{ c.month }}月</text>
-          <text v-if="c.why" class="ax whylab" :x="c.cx" :y="H - padB + 29" text-anchor="middle" fill="var(--ink-900)" fill-opacity="0.28">{{ WHY[c.why].tick }}</text>
+          <text v-if="c.why && (!narrow || c.whyHead)" class="ax whylab" :x="c.cx" :y="H - padB + 29" text-anchor="middle" fill="var(--ink-900)" fill-opacity="0.28">{{ WHY[c.why].tick }}</text>
         </template>
       </svg>
       <span
