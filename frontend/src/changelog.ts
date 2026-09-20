@@ -20,6 +20,18 @@ import type { ReleaseNote } from '@/types/changelog'
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: '0.15.4',
+    date: '2026-09-20',
+    headline: '手机上看得出哪张图能点',
+    added: [],
+    improved: [
+      { icon: 'message-square', title: '分析屏图上的说明', desc: '原来手机上不写「这里能点」，现在每张能点的图都写着点哪儿、看什么。' },
+    ],
+    fixed: [
+      '光伏分栋分析：手机上写着「悬停看数」，可手机没有鼠标',
+    ],
+  },
+  {
     version: '0.15.3',
     date: '2026-09-20',
     headline: '下拉不用鼠标也能选了',

@@ -284,7 +284,7 @@ const spreadOption = computed<object>(() => ({
         <div class="av2-card av2-s12">
           <div class="av2-card-h">
             <span class="t">收益四指标月度趋势 · <span class="ana-hole">0000</span>年</span>
-            <span class="hint">万元 · 缺源月断点不补 0<span class="hint-desk"> · 点击深链成本总览对应月</span></span>
+            <span class="hint">万元 · 缺源月断点不补 0<span class="hint-desk"> · 点击深链成本总览对应月</span><span class="hint-touch"> · 点图看成本总览</span></span>
           </div>
           <AnaSkelChart :height="300" />
         </div>
@@ -346,7 +346,7 @@ const spreadOption = computed<object>(() => ({
           <div class="av2-card av2-s12 av2-core">
             <div class="av2-card-h">
               <span class="t">收益四指标月度趋势 · {{ loadedYear }}年</span>
-              <span class="hint">万元 · 缺源月断点不补 0<span class="hint-desk"> · 点击深链成本总览对应月</span></span>
+              <span class="hint">万元 · 缺源月断点不补 0<span class="hint-desk"> · 点击深链成本总览对应月</span><span class="hint-touch"> · 点图看成本总览</span></span>
             </div>
             <AnaEChart v-if="trendHasData" :option="trendOption" :height="300" @chart-click="onChartClick" />
             <AnaEmpty v-else :label="loadedYear + ' 年四指标全月不可算'" hint="各指标缺失数据源见成本总览派生指标表" to="/elec-cost" to-text="去电费成本总览" />

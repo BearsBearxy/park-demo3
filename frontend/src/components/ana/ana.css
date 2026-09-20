@@ -152,6 +152,10 @@
    优先级反了 —— 标题是这张图的身份,hint 是补充说明。改为:标题永不收缩,hint 先让位。 */
 .av2-card-h .t { font-size:var(--fs-body); flex:0 0 auto; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .av2-card-h .hint { font-size:var(--fs-micro); color:var(--text-muted); min-width:0; }
+/* .hint-desk / .hint-touch 是同一句话的两套写法,永远只显一套(切换见本文件 S 档块)。
+   桌面用 .hint-desk(「点击下钻右侧明细」),手机用 .hint-touch(「点块看租户」)——
+   手机上不是把话藏掉,是换一句:藏掉只是少说一句,留着是说错。 */
+.hint-touch { display:none; }
 /* 读数句(FORECAST §3.4):≤30 字,全档常显 —— 不许收进 ⓘ 浮层,
    那是口径的位置;结论收起来等于手机上看不见结论。
    ⚠ 写法照本文件既有的 .ak-sub(:39)/.ak-bar-name(:53):font-size + color 分开写,
@@ -190,7 +194,12 @@
      宽档规则按源序压回。>600 不写 order,DOM 序即视觉序,桌面零差异。 */
   .av2-lead { order:-2; }
   .av2-s8, .av2-core { order:-1; }
-  /* 桌面交互话术(「悬停查看」「点击下钻」类,含分隔符一起包在 .hint-desk 里):
-     S 档无 hover 无光标,话术失真,整段隐藏。 */
+  /* 桌面交互话术(「点击下钻右侧明细」类,含分隔符一起包在 .hint-desk 里)在 S 档换掉,
+     不是藏掉 —— 2026-09-20 改。原来是一刀切 display:none,代价是分析层 16 个卡片处的
+     「这张图还能点」整句消失,手机上那些图看起来就是静的。现在成对写:桌面显 .hint-desk,
+     手机显 .hint-touch(去掉「点击」的「击」和「右侧/左图」这类桌面方位词)。
+     只有真的在手机上不成立的话术才继续单独藏(全仓一处:驾驶舱主图的「拖选缩放」,
+     S 档 slider 被剔,它和「点月柱切期间」原本混在同一个 .hint-desk 里,已拆成两个 span)。 */
   .hint-desk { display:none; }
+  .hint-touch { display:inline; }
 }

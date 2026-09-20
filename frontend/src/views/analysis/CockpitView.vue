@@ -388,7 +388,7 @@ const conclusion = computed(() => buildConclusion(
         <div class="av2-card av2-s8">
           <div class="av2-card-h">
             <span class="t">月度收入 · 预测护栏</span>
-            <span class="hint">覆盖 <span class="ana-hole">00</span> 期(万元)<span class="hint-desk">· 点击月柱切换期间 · 拖选缩放</span> · 紫虚线=预算月均</span>
+            <span class="hint">覆盖 <span class="ana-hole">00</span> 期(万元)<span class="hint-desk">· 点击月柱切换期间 · 拖选缩放</span><span class="hint-touch">· 点月柱切期间</span> · 紫虚线=预算月均</span>
           </div>
           <AnaPeriodBanner class="ana-hole" selected="0000-00" used="0000-00" style="margin-bottom: 8px">0000-00 收入为负,已计入年度营收/成本/利润与达成率</AnaPeriodBanner>
           <AnaSkelChart :height="300" />
@@ -398,7 +398,7 @@ const conclusion = computed(() => buildConclusion(
         <div class="av2-card av2-s4">
           <div class="av2-card-h">
             <span class="t">收入构成 · {{ isMonth ? '本月' : '本年' }}</span>
-            <span class="hint">合计 <span class="ana-hole">¥000.0万</span><span class="hint-desk"> · 点击扇区看趋势</span></span>
+            <span class="hint">合计 <span class="ana-hole">¥000.0万</span><span class="hint-desk"> · 点击扇区看趋势</span><span class="hint-touch"> · 点扇区看趋势</span></span>
           </div>
           <AnaSkelChart :height="300" />
         </div>
@@ -414,21 +414,21 @@ const conclusion = computed(() => buildConclusion(
         <div class="av2-card av2-s4">
           <div class="av2-card-h">
             <span class="t">分期收入堆叠</span>
-            <span class="hint">附表10 覆盖 <span class="ana-hole">0</span> 期<span class="hint-desk"> · 点击深链附表10</span></span>
+            <span class="hint">附表10 覆盖 <span class="ana-hole">0</span> 期<span class="hint-desk"> · 点击深链附表10</span><span class="hint-touch"> · 点图看附表10</span></span>
           </div>
           <AnaSkelChart :height="250" />
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h">
             <span class="t">收缴率 vs 目标</span>
-            <span class="hint">{{ year }}年近 6 期(台账共 <span class="ana-hole">00</span> 期)<span class="hint-desk">· 点击看欠费清单</span></span>
+            <span class="hint">{{ year }}年近 6 期(台账共 <span class="ana-hole">00</span> 期)<span class="hint-desk">· 点击看欠费清单</span><span class="hint-touch">· 点柱看欠费清单</span></span>
           </div>
           <AnaSkelChart :height="250" />
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h">
             <span class="t">异常速览</span>
-            <span class="hint">规则引擎跑真数据<span class="hint-desk"> · 点击查看</span></span>
+            <span class="hint">规则引擎跑真数据<span class="hint-desk"> · 点击查看</span><span class="hint-touch"> · 点条看详情</span></span>
           </div>
           <div class="cv2-anoms">
             <button v-for="i in 4" :key="i" type="button" class="cv2-anom ana-hole" disabled>
@@ -481,7 +481,7 @@ const conclusion = computed(() => buildConclusion(
         <div class="av2-card-h">
           <!-- F3(修复轮1):图标题按稿改「月度收入 · 预测护栏」——年份已在顶部期间选择器与下方 hint 里,标题不必重复 -->
           <span class="t">月度收入 · 预测护栏</span>
-          <span class="hint">覆盖 {{ mc?.covered ?? 0 }} 期(万元)<span class="hint-desk">· 点击月柱切换期间 · 拖选缩放</span> · 紫虚线=预算月均</span>
+          <span class="hint">覆盖 {{ mc?.covered ?? 0 }} 期(万元)<span class="hint-desk">· 点击月柱切换期间 · 拖选缩放</span><span class="hint-touch">· 点月柱切期间</span> · 紫虚线=预算月均</span>
         </div>
         <!-- 未闭月护栏(FORECAST §2.7):该年含离群月(收入<0)时提示,不写「已闭月」 -->
         <AnaPeriodBanner v-if="outlierBannerText" :selected="outlierYm" :used="pnlRange" style="margin-bottom: 8px">{{ outlierBannerText }}</AnaPeriodBanner>
@@ -499,7 +499,7 @@ const conclusion = computed(() => buildConclusion(
       <div class="av2-card av2-s4">
         <div class="av2-card-h">
           <span class="t">收入构成 · {{ isMonth ? '本月' : '本年' }}</span>
-          <span class="hint">合计 {{ money(compoTotal || null) }}<span class="hint-desk"> · 点击扇区看趋势</span></span>
+          <span class="hint">合计 {{ money(compoTotal || null) }}<span class="hint-desk"> · 点击扇区看趋势</span><span class="hint-touch"> · 点扇区看趋势</span></span>
         </div>
         <AnaEChart v-if="compo.length" :option="donutOption" :height="300" @chart-click="onDonutClick" />
         <AnaEmpty v-else label="当期无收入构成数据" hint="构成来自损益附表 1~4 各板块收入" to="/rent-pnl" to-text="去录入损益附表" />
@@ -527,7 +527,7 @@ const conclusion = computed(() => buildConclusion(
       <div class="av2-card av2-s4">
         <div class="av2-card-h">
           <span class="t">分期收入堆叠</span>
-          <span class="hint">附表10 覆盖 {{ ps?.months.length ?? 0 }} 期<span class="hint-desk"> · 点击深链附表10</span></span>
+          <span class="hint">附表10 覆盖 {{ ps?.months.length ?? 0 }} 期<span class="hint-desk"> · 点击深链附表10</span><span class="hint-touch"> · 点图看附表10</span></span>
         </div>
         <AnaEChart v-if="phaseOption" :option="phaseOption" :height="250" @chart-click="onPhaseClick" />
         <AnaEmpty v-else label="附表10 无计费数据" hint="分期收入来自附表10 租户×月计费" to="/sales-income" to-text="去录入附表10" />
@@ -536,7 +536,7 @@ const conclusion = computed(() => buildConclusion(
       <div class="av2-card av2-s4">
         <div class="av2-card-h">
           <span class="t">收缴率 vs 目标</span>
-          <span class="hint">{{ year }}年近 6 期(台账共 {{ collects.length }} 期)<span class="hint-desk">· 点击看欠费清单</span></span>
+          <span class="hint">{{ year }}年近 6 期(台账共 {{ collects.length }} 期)<span class="hint-desk">· 点击看欠费清单</span><span class="hint-touch">· 点柱看欠费清单</span></span>
         </div>
         <AnaEChart v-if="collectOption" :option="collectOption" :height="250" @chart-click="onCollectClick" />
         <AnaEmpty v-else label="台账数据未录入" hint="收缴率 = 台账 Σ实收 / Σ应收" to="/ledger" to-text="去台账录入" />
@@ -545,7 +545,7 @@ const conclusion = computed(() => buildConclusion(
       <div class="av2-card av2-s4">
         <div class="av2-card-h">
           <span class="t">异常速览</span>
-          <span class="hint">规则引擎跑真数据<span class="hint-desk"> · 点击查看</span></span>
+          <span class="hint">规则引擎跑真数据<span class="hint-desk"> · 点击查看</span><span class="hint-touch"> · 点条看详情</span></span>
         </div>
         <div v-if="anomTop.length" class="cv2-anoms">
           <button v-for="a in anomTop" :key="a.id" class="cv2-anom" @click="goAnom(a)">
