@@ -20,6 +20,29 @@ import type { ReleaseNote } from '@/types/changelog'
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: '0.16.0',
+    date: '2026-09-21',
+    headline: '手机点分析先看数，宽表一行一张卡',
+    feature: {
+      icon: 'pie-chart',
+      title: '手机上的分析首页',
+      desc: '在手机上点底栏的分析，落到一页常查的数：本月营业收入、收缴率、未来 12 月到期，值直接写在瓦上，不用进屏。点一枚瓦去那个屏，看到的是同一期。电脑上点分析仍然是经营驾驶舱。',
+    },
+    added: [
+      { icon: 'table-2', title: '宽表的手机形态', desc: '月度台账这类列多的表，在手机上一行一张卡，点开看整行。', to: 'ledger' },
+      { icon: 'list-checks', title: '首页的本月出账', desc: '首页上多了一条本月出账，写着五道工序走到哪一步。', to: 'home' },
+    ],
+    improved: [
+      { icon: 'panel-left', title: '报表横着滚的时候', desc: '原来滚到最右就不知道在看哪一行，现在第一列跟着滚不走。', to: 'income-statement' },
+      { icon: 'layout-dashboard', title: '平板上的列表页', desc: '原来筛选条会在一行两行之间跳，现在固定两行，表格一列都不删。', to: 'buildings' },
+      { icon: 'layout-grid', title: '平板上的指标卡', desc: '原来标签被截成「营业收入…」，现在降成两列，七个字写得下。' },
+      { icon: 'credit-card', title: '楼栋和租户的手机卡片', desc: '原来卡上一个钱字都没有，现在第一行右端就是月租金。', to: 'buildings' },
+    ],
+    fixed: [
+      '月度台账：租户明细里，负数的费用和空项一起被整条藏掉',
+    ],
+  },
+  {
     version: '0.15.4',
     date: '2026-09-20',
     headline: '分析屏的图不用悬停也能读',
