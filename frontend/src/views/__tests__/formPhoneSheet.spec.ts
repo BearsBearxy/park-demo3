@@ -180,7 +180,9 @@ describe('名单 · 带输入的居中弹卡', () => {
   // 一个文件里有几处**带输入的弹卡**就该有几处体/脚标记。SystemUsersView 两处(新建账号 /
   // 重置密码)、FinDialogs 两处(company / addrow,共用同一个 .fin-mask,所以壳类只写一次)。
   // 文件级 substring 在这两个文件上漏接其中一处不会红 —— 2026-09-20 对抗复查实跑验证。
-  const DIALOGS: Record<string, number> = { 'SystemUsersView.vue': 2, 'FinDialogs.vue': 2 }
+  // MeterView 第二处是 §5.10 给 S 档新开的「筛选 / 更多」底部面板(段控 ×2 + 下拉 ×3),
+  // 按本条自己的口径「一个文件里有几处带输入的弹卡就该有几处体/脚标记」,它现在就是 2 处。
+  const DIALOGS: Record<string, number> = { 'SystemUsersView.vue': 2, 'FinDialogs.vue': 2, 'MeterView.vue': 2 }
   it.each(ROSTER)('❗%s/%s/%s 接上了 useFormSheet,体/脚两个标记类逐个弹卡都在', (...p) => {
     const src = read(...p)
     const n = DIALOGS[p[p.length - 1] as string] ?? 1

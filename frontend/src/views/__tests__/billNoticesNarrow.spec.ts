@@ -1,0 +1,406 @@
+/**
+ * 催缴单屏窄档形态 —— RESPONSIVE-LAYOUT-SPEC §5.7(屏顶 KPI 卡行)+ §5.10(屏标题行 + 筛选行)。
+ *
+ * 起因(MOBILE-390-AUDIT-2026-09-21 §1-D):`BillNoticesView` 表前四块合计 572px,
+ * 390 首屏 655 只剩 83px 给表 —— 一条表头加一行数据。
+ *
+ * ── 屏顶块高逐条钉死(下面 §G 一条条断 CSS 字面量),算术 ──────────────────────
+ *   FPStepStrip  54   .fss--s 定高(§5.9,组件里本来就有,本轮没动)
+ *   gap          14   .bn-page gap
+ *   .bn-head     30   S 档屏名与期段控不进 DOM ⇒ 左只剩 FPAlertChip(.fac 30 高),
+ *                     右只剩 审核簇 28 + 编辑模式 28 + ⋯ 30 ⇒ 行高 30
+ *                     (改前 190:h2 34 + 七个入口在 358 宽里折三行)
+ *   gap          14
+ *   .bn-kpis     92   横滑一行 = 单张 FPStat 高
+ *                     (12 padding + 18 标签 + 4 + 26 数字 + 4 + 16 sub + 12 padding)
+ *                     改前 2×2 = 92×2 + 12 gap = 196
+ *   gap          14
+ *   .bn-toolbar  44   搜索 44 + 筛选钮 44,一行(改前 74:复选 + 批量确认 + 230 搜索折两行)
+ *   ──────────────
+ *   屏顶合计    262   (改前 556;体检记的 572 是 §5.9 定高落地之前量的)
+ *   表可用 = 首屏 655 − 262 = 393
+ *   表头 34(.bn-table thead th)+ tfoot 40(.bn-table tfoot th)= 74
+ *   (393 − 74) ÷ 34(tbody td 行高) = 9.38 → **9 行**
+ *   改前:(99 − 74) ÷ 34 = 0.7 → **0 行**
+ *   ⚠ 9 行是上限不是保证:真数据里每个楼栋有一条 .bn-band 分组头,也按 34 占一行。
+ *
+ * ── 为什么一半断 DOM、一半断 CSS 字面量 ───────────────────────────────────────
+ * jsdom 不做布局(每个元素宽高都是 0),@media 条件也不参与计算 —— 挂载后量尺寸只能得到恒真式。
+ * 所以:「渲染哪一支」(屏名进不进 DOM、七个入口收没收进「⋯」、筛选在不在面板里)断 DOM,
+ * 走 useViewport 的 tier;「几何与层叠顺序」断源码字面量,那正是这一轮改的东西。
+ *
+ * 两档都断:只断 S 的话,把 XL 也一起收掉同样是全绿的 —— §9 桌面零差异会被静默破掉。
+ */
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
+import { setActivePinia, createPinia } from 'pinia'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+import { mediaBlock } from '@/test-utils/mediaBlock'
+import { useAuthStore } from '@/stores/auth'
+import { useBillingPeriodStore } from '@/stores/billingPeriod'
+import { billNoticesApi, type BillNoticeDTO } from '@/api/billNotices'
+import { paramsApi, type ParamStatusDTO } from '@/api/params'
+import { contractApi } from '@/api/contract'
+import { buildingApi } from '@/api/building'
+import { companyBookApi } from '@/api/billDelivery'
+import { billsApi } from '@/api/bills'
+import { _resetViewportForTest } from '@/composables/useViewport'
+import BillNoticesView from '@/views/bills/BillNoticesView.vue'
+
+const SRC = join(__dirname, '..', '..')
+const VIEW_CSS = readFileSync(join(SRC, 'views', 'bills', 'BillNoticesView.vue'), 'utf8').replace(/\r\n/g, '\n')
+const STRIP_CSS = readFileSync(join(SRC, 'components', 'fp', 'FPStepStrip.vue'), 'utf8').replace(/\r\n/g, '\n')
+const STAT_CSS = readFileSync(join(SRC, 'components', 'fp', 'FPStat.vue'), 'utf8').replace(/\r\n/g, '\n')
+const MX_CSS = readFileSync(join(SRC, 'styles', 'mx-list.css'), 'utf8').replace(/\r\n/g, '\n')
+
+const Q960 = '@media (max-width: 960px)'
+const Q600 = '@media (max-width: 600px)'
+
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  useRoute: () => ({ query: {} }),
+}))
+vi.mock('@/api/billNotices', () => ({
+  billNoticesApi: {
+    list: vi.fn(), months: vi.fn(), detail: vi.fn(),
+    notes: vi.fn(), saveNote: vi.fn(), deleteNote: vi.fn(),
+    generate: vi.fn(), issue: vi.fn(), void: vi.fn(),
+  },
+}))
+vi.mock('@/api/review', () => ({
+  reviewApi: {
+    closedMonths: vi.fn().mockResolvedValue([]),
+    states: vi.fn().mockResolvedValue([]),
+    list: vi.fn().mockResolvedValue([]),
+    submit: vi.fn(), approve: vi.fn(), returnBack: vi.fn(), withdraw: vi.fn(),
+  },
+}))
+vi.mock('@/api/params', () => ({ paramsApi: { status: vi.fn(), list: vi.fn(), put: vi.fn() } }))
+vi.mock('@/api/contract', () => ({ contractApi: { list: vi.fn() } }))
+vi.mock('@/api/building', () => ({ buildingApi: { list: vi.fn() } }))
+vi.mock('@/api/bills', () => ({ billsApi: { paymap: vi.fn(), setPaymap: vi.fn() } }))
+vi.mock('@/api/billDelivery', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/api/billDelivery')>(),
+  companyBookApi: { list: vi.fn() },
+  billDeliveryApi: { confirm: vi.fn(), markExported: vi.fn() },
+}))
+vi.mock('@/api/locks', () => ({
+  locksApi: {
+    acquire: () => Promise.resolve({ granted: true, holder: null }),
+    release: () => Promise.resolve(),
+    heartbeat: () => Promise.resolve({ evicted: null }),
+    takeover: () => Promise.resolve({ granted: true, holder: null }),
+    releaseOnUnload: () => {},
+  },
+}))
+
+// ── 夹具:**不退化** —— 三户、两个期、金额三档互不相同、只有一户带 warn。
+//    (同期两户 + 别期一户 ⇒ 换期能看出行数变;一户带 warn ⇒「仅看有警告」能看出行数变;
+//     金额各不相同 ⇒ KPI 的「总额」与「月租金」不是同一个数,四张卡不会碰巧一样。)
+const mk = (
+  id: number, tenantId: number, tenantName: string,
+  premiseText: string, totalAmount: number, warn: string | null,
+): BillNoticeDTO => ({
+  id, ym: '2026-08', tenantId, tenantName,
+  payCompanyId: 3, payCompanyName: '甲公司', noticeKind: 'combined',
+  premiseText, totalAmount, prevDue: 0, status: 'draft', warn, lineCount: 4,
+})
+const NOTICES: BillNoticeDTO[] = [
+  mk(91, 5, '力灏', '一期 A座602室', 12345.6, null),
+  mk(92, 6, '宏远', '一期 B座101室', 8761.25, '取价缺 2026-08 单价'),
+  mk(93, 7, '晟通', '二期 C座305室', 20408.9, null),
+]
+const STATUS: ParamStatusDTO = {
+  priceOk: 6, priceTotal: 6, pendingChanges: 0, lastChangeAt: null,
+  poolSnapshotAt: '2026-08-16T16:37:51', billBatchAt: '2026-08-20T13:41:34',
+  stale: false, otherMonthsAffected: [],
+}
+
+/** 档位:useViewport 是模块级单例,换 matchMedia mock 后必须 _resetViewportForTest 重建。 */
+function setTier(tier: 's' | 'm' | 'xl') {
+  vi.stubGlobal('matchMedia', (q: string) => ({
+    media: q,
+    // 三条查询是 max-width 600 / 960 / 1280。s 命中全部;m 命中 960 与 1280;xl 一条不中。
+    matches: tier === 's' ? q.includes('max-width')
+      : tier === 'm' ? (q.includes('960') || q.includes('1280'))
+        : false,
+    addEventListener() {}, removeEventListener() {},
+  }))
+  _resetViewportForTest()
+}
+
+let w: VueWrapper | null = null
+
+beforeEach(() => {
+  setActivePinia(createPinia())
+  vi.clearAllMocks()
+  localStorage.clear()
+  useAuthStore().permissions = ['billing-run:edit', 'billing-issue:edit']
+  vi.mocked(billNoticesApi.list).mockResolvedValue(NOTICES as never)
+  vi.mocked(billNoticesApi.notes).mockResolvedValue([] as never)
+  vi.mocked(billNoticesApi.generate).mockResolvedValue({ generated: 3, lines: 12, warned: 1 } as never)
+  vi.mocked(paramsApi.status).mockResolvedValue(STATUS as never)
+  vi.mocked(contractApi.list).mockResolvedValue([] as never)
+  vi.mocked(buildingApi.list).mockResolvedValue([] as never)
+  vi.mocked(companyBookApi.list).mockResolvedValue([] as never)
+  vi.mocked(billsApi.paymap).mockResolvedValue([] as never)
+})
+afterEach(() => {
+  w?.unmount(); w = null
+  _resetViewportForTest()
+  vi.unstubAllGlobals()
+})
+
+/** 期是组级的(stores/billingPeriod):先选期再挂,否则撞出账月矩阵。 */
+async function open(tier: 's' | 'm' | 'xl') {
+  setTier(tier)
+  useBillingPeriodStore().pick(2026, 8)
+  w = mount(BillNoticesView, { global: { stubs: { Teleport: true } } })
+  await flushPromises()
+  return w
+}
+
+/** tbody 里的真租户行(排掉楼栋分组头 .bn-band 与空态 .bn-noro)。 */
+const tenantRows = (v: VueWrapper) =>
+  v.findAll('.bn-table tbody tr').filter(r => r.find('.bn-tname').exists())
+
+// ════════════════════════════════════════════════════════════════════════════
+describe('§5.7 屏顶 KPI 卡行 —— 4 张 ⇒ 横滑胶囊行,不是 2×2', () => {
+  it('S 档:4 张 FPStat 一张不少,全在 .bn-kpis 这一条轨里', async () => {
+    const v = await open('s')
+    const rail = v.find('.bn-kpis')
+    expect(rail.exists()).toBe(true)
+    const cards = rail.findAll('.fs')
+    // 「≥5 张才先砍再排」—— 本屏 4 张走横滑档,一张都不许砍
+    expect(cards).toHaveLength(4)
+    // 夹具不退化的自证:四张卡读数各不相同(全 0 / 全同的夹具写死也绿)
+    const nums = cards.map(c => c.find('.fs-n').text())
+    expect(new Set(nums).size).toBe(4)
+    // 一期两户:户数 2,总额 12345.6 + 8761.25 = 21106.85,警告 1
+    expect(nums[0]).toBe('2')
+    expect(nums[1]).toBe('21,106.85')
+    expect(nums[3]).toBe('1')
+  })
+
+  it('S 档 CSS:一行横滑 + flex:0 0 140px + 隐滚动条(照抄 mx-list 的 .mx-kpirail)', () => {
+    const s = mediaBlock(VIEW_CSS, Q600)
+    expect(s).not.toBe('')   // 取不到块 ⇒ 下面几条全成空转
+    expect(s).toContain('.bn-kpis { display: flex; flex-wrap: nowrap; overflow-x: auto;')
+    expect(s).toContain('.bn-kpis > * { flex: 0 0 140px; }')
+    expect(s).toContain('.bn-kpis::-webkit-scrollbar { display: none; }')
+    expect(s).toContain('scrollbar-width: none;')
+    // 范式同源:mx-list.css 的 .mx-kpirail S 档那段写的就是这三样
+    const mx = mediaBlock(MX_CSS, Q600)
+    expect(mx).toContain('.mx-kpirail > * { flex: 0 0 140px; }')
+    expect(mx).toContain('.mx-kpirail::-webkit-scrollbar { display: none; }')
+  })
+
+  it('S 档不走「先砍再排」:四张卡没有任何条件渲染,600 块里也不再排格子', async () => {
+    // 「先砍再排」是 ≥5 张那一档的做法,落地形态一定是给某几张卡加 v-if / display:none。
+    // 本屏 4 张走横滑,所以模板里四个 <FPStat> 一个条件都不许挂。
+    const stats = VIEW_CSS.match(/<FPStat\b[^>]*>/g) ?? []
+    expect(stats).toHaveLength(4)
+    expect(stats.filter(t => /\bv-(if|show)\b/.test(t))).toEqual([])
+    // 轨改成 flex 之后 S 档不该再留任何格子定义(留着=有人把 2×2 又写回来了)
+    expect(mediaBlock(VIEW_CSS, Q600)).not.toContain('grid-template-columns')
+    const v = await open('s')
+    expect(v.findAll('.bn-kpis .fs')).toHaveLength(4)
+  })
+
+  it('M 档仍是两列(本轮不动),XL 仍是 repeat(4, minmax(150px, 1fr))(§9 零差异)', () => {
+    expect(mediaBlock(VIEW_CSS, Q960)).toContain('.bn-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }')
+    const outside = VIEW_CSS.replace(/@media[^{]*\{(?:[^{}]|\{[^{}]*\})*\}/g, '')
+    expect(outside).toContain('.bn-kpis { flex: 0 0 auto; display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 12px; }')
+  })
+
+  it('层叠顺序:960 块写在 600 块之前(写反是静默的,S 档会被 M 档盖回两列)', () => {
+    const i960 = VIEW_CSS.indexOf(Q960)
+    const i600 = VIEW_CSS.indexOf(Q600)
+    expect(i960).toBeGreaterThan(0)
+    expect(i600).toBeGreaterThan(i960)
+    // 本轮没有新开媒体块:全文件只有 960 / 600 / hover:none 三条
+    expect(VIEW_CSS.match(/@media \(max-width: (\d+)px\)/g)).toEqual([Q960, Q600])
+  })
+
+  it('140 宽的卡上标签补了省略号(FPStat 的 .fs-l 是 nowrap 且没有 overflow,不截会压到邻卡)', () => {
+    expect(STAT_CSS).toContain('.fs-l { font-size: var(--fs-label); line-height: 18px; color: var(--text-primary); white-space: nowrap; }')
+    expect(mediaBlock(VIEW_CSS, Q600)).toContain('.bn-kpis :deep(.fs-l) { overflow: hidden; text-overflow: ellipsis; }')
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+describe('§5.10 屏标题行 —— 屏名不上屏,动作收成 1 主 +「⋯」,状态留一颗徽标', () => {
+  it('XL 档基线:h2 屏名 / 期段控 / 五颗只读动作都在,没有「⋯」(§9 零差异)', async () => {
+    const v = await open('xl')
+    expect(v.find('h2.bn-title').exists()).toBe(true)
+    expect(v.find('h2.bn-title').text()).toContain('催缴单')
+    expect(v.findAll('.bn-head-l .ds-seg-item')).toHaveLength(3)
+    const labels = v.findAll('.bn-actions .ds-btn').map(b => b.text())
+    expect(labels).toEqual(expect.arrayContaining(['收款公司', '收款簿', '系数簿', '导出通知单', '导出对账表']))
+    expect(v.find('.bn-actions .fp-more').exists()).toBe(false)
+    expect(v.find('.bn-fbtn').exists()).toBe(false)
+  })
+
+  it('S 档:h2 屏名整个不进 DOM(判据四 —— 顶栏 52px 已经写着「催缴单」)', async () => {
+    const v = await open('s')
+    expect(v.find('h2.bn-title').exists()).toBe(false)
+  })
+
+  it('M 档:屏名同样不画(§5.10「M 档」那段明文),L 档还画', async () => {
+    expect((await open('m')).find('h2.bn-title').exists()).toBe(false)
+    w?.unmount(); w = null
+    // L 档(961–1280)不在 §5.10 的收编范围,屏名照旧
+    setTier('xl')
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      media: q, matches: q.includes('1280'), addEventListener() {}, removeEventListener() {},
+    }))
+    _resetViewportForTest()
+    useBillingPeriodStore().pick(2026, 8)
+    w = mount(BillNoticesView, { global: { stubs: { Teleport: true } } })
+    await flushPromises()
+    expect(w.find('h2.bn-title').exists()).toBe(true)
+  })
+
+  it('S 档:主动作正好 1 个(编辑模式),另外五个只读入口一个不剩地进了「⋯」', async () => {
+    const v = await open('s')
+    // 主动作在:不点它一件写操作都做不成(canRun/canIssue 都 && editMode)
+    expect(v.find('.bn-actions .fp-emb').exists()).toBe(true)
+    // 行上不再有那五颗 ds-btn
+    const onRow = v.findAll('.bn-actions .ds-btn').map(b => b.text())
+    expect(onRow).not.toContain('收款公司')
+    expect(onRow).not.toContain('导出通知单')
+    // 「⋯」在,且点开之后五件一件不少(先断真的选到了菜单项,再断内容)
+    const more = v.find('.bn-actions .fp-more-btn')
+    expect(more.exists()).toBe(true)
+    await more.trigger('click')
+    const items = v.findAll('.fp-more-item').map(b => b.text())
+    expect(items.length).toBeGreaterThanOrEqual(5)
+    for (const t of ['收款公司', '收款簿', '系数簿', '导出通知单', '导出对账表']) {
+      expect(items).toContain(t)
+    }
+  })
+
+  it('S 档:状态是行上一颗徽标,不是一整行 ——「⋯」里没有它', async () => {
+    const v = await open('s')
+    // 告警入口 chip(.fac,30 高)留在标题行左组里
+    const chip = v.find('.bn-head-l .fac')
+    expect(chip.exists()).toBe(true)
+    // 左组收完只剩这一颗:屏名与期段控都走了,所以它没有把行撑成两行
+    expect(v.findAll('.bn-head-l > *')).toHaveLength(1)
+    // .bn-head 底下仍然只有左右两块,没有为状态新开一行
+    expect(v.findAll('.bn-head > *')).toHaveLength(2)
+    await v.find('.bn-actions .fp-more-btn').trigger('click')
+    const items = v.findAll('.fp-more-item').map(b => b.text())
+    expect(items.some(t => t.includes('待处理') || t.includes('审核'))).toBe(false)
+  })
+
+  it('§5.11:「⋯」里唯一不可逆的「重新生成」仍走二次确认,confirm 说不就不发请求', async () => {
+    const v = await open('s')
+    await v.find('.fp-emb').trigger('click')      // 进编辑态,generate 那条才进菜单
+    await flushPromises()
+    await v.find('.bn-actions .fp-more-btn').trigger('click')
+    const gen = v.findAll('.fp-more-item').find(b => /重新生成|生成本月/.test(b.text()))
+    expect(gen, '编辑态下菜单里应该有生成那条').toBeTruthy()
+    const confirmSpy = vi.fn().mockReturnValue(false)
+    vi.stubGlobal('confirm', confirmSpy)
+    await gen!.trigger('click')
+    await flushPromises()
+    expect(confirmSpy).toHaveBeenCalledOnce()
+    expect(confirmSpy.mock.calls[0][0]).toContain('覆盖')
+    expect(billNoticesApi.generate).not.toHaveBeenCalled()
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+describe('§5.10 筛选行 —— >2 件控件就收:搜索留外面,选择器进面板', () => {
+  it('XL 档基线:复选框与批量确认在行上,没有筛选钮、没有面板(§9 零差异)', async () => {
+    const v = await open('xl')
+    expect(v.find('.bn-toolbar .bn-chk').exists()).toBe(true)
+    expect(v.find('.bn-toolbar .bn-search').exists()).toBe(true)
+    expect(v.find('.bn-fbtn').exists()).toBe(false)
+    expect(v.find('.bn-fpanel').exists()).toBe(false)
+  })
+
+  it('S 档:行上只剩搜索 + 一颗写着当前期的筛选钮', async () => {
+    const v = await open('s')
+    expect(v.find('.bn-toolbar .bn-search').exists()).toBe(true)
+    expect(v.find('.bn-toolbar .bn-chk').exists()).toBe(false)
+    const btn = v.find('.bn-toolbar .bn-fbtn')
+    expect(btn.exists()).toBe(true)
+    expect(btn.text()).toContain('一期')
+    // 计数只数非默认的那几件:刚进屏一件都没改 ⇒ 不画计数
+    expect(v.find('.bn-fcnt').exists()).toBe(false)
+    // 批量确认是动作不是筛选,S 档跟着动作进了「⋯」
+    expect(v.findAll('.bn-toolbar .ds-btn').map(b => b.text())).not.toContain('批量确认')
+  })
+
+  it('S 档:面板里一件不少 —— 期段控 3 颗 + 仅看有警告', async () => {
+    const v = await open('s')
+    expect(v.find('.bn-fpanel').exists()).toBe(false)   // 没点之前不渲染
+    await v.find('.bn-fbtn').trigger('click')
+    const panel = v.find('.bn-fpanel')
+    expect(panel.exists()).toBe(true)
+    expect(panel.findAll('.ds-seg-item').map(b => b.text())).toEqual(['一期', '二期', '三期'])
+    expect(panel.find('.bn-chk').exists()).toBe(true)
+    expect(panel.find('.bn-chk').text()).toContain('仅看有警告')
+  })
+
+  it('S 档:面板里那份是活的 —— 换期真的换表,不是摆设', async () => {
+    const v = await open('s')
+    expect(tenantRows(v)).toHaveLength(2)              // 一期:力灏 + 宏远
+    await v.find('.bn-fbtn').trigger('click')
+    const seg = v.findAll('.bn-fpanel .ds-seg-item')
+    await seg[1].trigger('click')                      // 二期
+    await flushPromises()
+    expect(tenantRows(v)).toHaveLength(1)              // 二期:晟通
+    expect(tenantRows(v)[0].find('.bn-tname').text()).toContain('晟通')
+    expect(v.find('.bn-fbtn').text()).toContain('二期')
+  })
+
+  it('S 档:勾「仅看有警告」→ 表筛到 1 行,筛选钮长出计数 1', async () => {
+    const v = await open('s')
+    await v.find('.bn-fbtn').trigger('click')
+    const chk = v.find('.bn-fpanel .bn-chk input')
+    await chk.setValue(true)
+    await flushPromises()
+    expect(tenantRows(v)).toHaveLength(1)
+    expect(tenantRows(v)[0].find('.bn-tname').text()).toContain('宏远')
+    expect(v.find('.bn-fcnt').text()).toBe('1')
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+describe('§G 屏顶块高逐条钉死(算术见文件头,收完 0 行 → 9 行)', () => {
+  it('工序条 54(§5.9 定高,本轮没动)', () => {
+    expect(STRIP_CSS).toContain('.fss--s {\n  height: 54px;')
+  })
+
+  it('筛选条 44:筛选钮 44 高,搜索框在 960 块里跟到 44(同一行两件控件同档)', () => {
+    const outside = VIEW_CSS.replace(/@media[^{]*\{(?:[^{}]|\{[^{}]*\})*\}/g, '')
+    expect(outside).toContain('.bn-fbtn { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; height: 44px;')
+    expect(mediaBlock(VIEW_CSS, Q960)).toContain('.bn-search { height: 44px; }')
+    // 16px 是 §6.5 的 iOS 聚焦不缩放门槛,只在 S 档补
+    expect(mediaBlock(VIEW_CSS, Q600)).toContain('font-size: var(--fs-input-m);')
+  })
+
+  it('KPI 轨 92 = FPStat 的六段几何(12+18+4+26+4+16+12)', () => {
+    expect(STAT_CSS).toContain('.fs { box-sizing: border-box; min-width: 0; border-radius: var(--radius-lg); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }')
+    expect(STAT_CSS).toContain('line-height: 18px')      // .fs-l
+    expect(STAT_CSS).toContain('height: 26px;')          // .fs-n
+    expect(STAT_CSS).toContain('line-height: 16px')      // .fs-s
+  })
+
+  it('页面 gap 14、表头 34 / 行高 34 / tfoot 40(算术里的三个除数没被改掉)', () => {
+    expect(VIEW_CSS).toContain('.bn-page { position: relative; display: flex; flex-direction: column; gap: 14px;')
+    expect(VIEW_CSS).toContain('.bn-table thead th { position: sticky; top: 0; height: 34px;')
+    expect(VIEW_CSS).toContain('.bn-table tbody td { height: 34px;')
+    expect(VIEW_CSS).toContain('.bn-table tfoot th { position: sticky; bottom: 0; z-index: 5; height: 40px;')
+  })
+
+  it('§5.4 没被顺手改掉:colgroup 一根不动,窄了照旧在 .bn-wrap 内横滚', () => {
+    expect(mediaBlock(VIEW_CSS, Q960)).toContain('.bn-table { min-width: 920px; }')
+    expect(VIEW_CSS).toContain('.bn-wrap { flex: 1 1 auto; min-height: 0; overflow: auto;')
+  })
+})

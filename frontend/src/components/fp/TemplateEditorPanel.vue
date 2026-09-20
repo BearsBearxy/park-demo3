@@ -18,6 +18,7 @@
 // Esc 才能只收内层不关弹窗。不用 Vue <Transition>(repo 禁令:后台标签页 rAF 不跑会卡遮罩)。
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useEditLock } from '@/composables/useEditLock'
+import { useViewport } from '@/composables/useViewport'
 import { S } from '@/utils/lockScopes'
 import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
 import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
@@ -75,6 +76,16 @@ function pickVer(v: string) {
   emit('pin', ver)
 }
 
+// ── 版本链在窄档的形状(RESPONSIVE-LAYOUT-SPEC §5.6 第 2 类)──
+// 版本链是**纵向历史**不是平级选择:平铺成一行 chips 会把先后丢掉。
+// ≤960 折成「现行 vN · 共 M 版」一行摘要,点开底部面板,链在面板里仍是原来那条纵向链
+// (同一个 v-for、同一个 versions 数组,顺序与桌面逐条相同)。
+// 档位只能走 useViewport:摘要与面板是两套 DOM,@media 盖不掉 v-if。
+// ponytail: M 与 S 同一种形状 —— 规范 §5.6 的 M/S 两条只差「全屏 sheet」,不值第二套分支。
+const vp = useViewport()
+const versSheet = computed(() => vp.tier.value === 'm' || vp.tier.value === 's')
+const versOpen = ref(false)
+
 const mode = ref<'view' | 'edit'>('view')
 const draft = ref<BookDef | null>(null)
 const note = ref('')
@@ -100,6 +111,7 @@ watch(() => [props.open, props.book] as const, ([o, b]) => {
     previewVer.value = null
     previewDef.value = null
     aliasEditId.value = null
+    versOpen.value = false
   }
 }, { immediate: true })
 
@@ -180,6 +192,7 @@ function templateDraftAsTsv(): string {
 // ── 历史版预览 ──
 async function viewVersion(v: TemplateVersion) {
   if (mode.value === 'edit' || !props.book) return
+  versOpen.value = false   // 窄档:选完收起面板,不然预览被自己挡着(宽档 versOpen 恒 false,无影响)
   if (v.current) { backToCurrent(); return }
   previewVer.value = v.ver
   previewDef.value = null
@@ -313,6 +326,11 @@ function fmtTime(s: string): string {
         </header>
 
         <div class="te-body">
+          <!-- 窄档(≤960):版本链的入口折成一行摘要(§5.6 第 2 类)。两个数都来自组件数据:
+               现行版 = book.ver(与头部那句同一个数)、共几版 = versions.length。宽档不渲染。 -->
+          <button v-if="versSheet" type="button" class="te-versum" @click="versOpen = true">
+            现行 v{{ book.ver }} · 共 {{ versions.length }} 版
+          </button>
           <!-- 主区 -->
           <div class="te-main">
             <!-- 只读查看(默认;含历史版预览) -->
@@ -380,8 +398,13 @@ function fmtTime(s: string): string {
           </div>
 
           <!-- 右侧窄栏:版本链。只读态每项可点做历史预览;编辑态出切版按钮(钉的是本月的版本,链只追加不改写) -->
-          <aside class="te-vers">
-            <div class="te-vtitle">版本链</div>
+          <aside v-if="!versSheet || versOpen" class="te-vers" :class="{ sheet: versSheet }">
+            <div class="te-vtitle">
+              版本链
+              <button v-if="versSheet" type="button" class="te-vclose" aria-label="收起版本链" @click="versOpen = false">
+                <X :size="16" />
+              </button>
+            </div>
             <div v-for="v in versions" :key="v.id" class="te-vitem"
                  :class="{ cur: v.current, clickable: mode === 'view', viewing: previewVer === v.ver }"
                  @click="viewVersion(v)">
@@ -634,4 +657,44 @@ function fmtTime(s: string): string {
 
 .te-foot { display: flex; align-items: center; gap: 8px; padding: 10px 22px 18px; }
 .te-note { flex: 1; height: 28px; }
+
+/* 窄档摘要行:只在 versSheet 档渲染(v-if),宽档连节点都没有 —— 形状写在这里,不进媒体块 */
+.te-versum {
+  flex: 0 0 auto; align-self: flex-start;
+  display: inline-flex; align-items: center;
+  height: 44px; margin: 10px 22px 0; padding: 0 14px;
+  border: 1px solid var(--border-control); border-radius: var(--radius-full);
+  background: var(--surface-white); color: var(--text-secondary);
+  font-family: var(--font-sans); font-size: var(--fs-label);
+  cursor: pointer; white-space: nowrap;
+}
+
+/* ── M/S 档(≤960):右侧 232 定宽链 → 摘要 + 底部面板(§5.6 第 2 类)。
+      宽档规则一条没动,全在上面;这块只在窄档新增。 ── */
+@media (max-width: 960px) {
+  .te-body { flex-direction: column; }
+  .te-main { min-height: 0; }
+  .te-vtitle { display: flex; align-items: center; }
+  .te-vclose {
+    margin-left: auto; display: inline-flex; align-items: center; justify-content: center;
+    width: 44px; height: 44px; margin-right: -10px; padding: 0;
+    border: none; background: transparent; color: var(--text-muted); cursor: pointer;
+  }
+  /* 底部面板:壳同 ds/Select 的 .ds-sel-sheet(§4.4)。链本身原样 —— 同一个 v-for,顺序不动 */
+  .te-vers.sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: var(--z-modal-2);
+    flex: 0 0 auto; max-height: 60dvh;
+    border-left: none; border-top: 1px solid var(--border-subtle);
+    border-radius: 16px 16px 0 0; box-shadow: var(--shadow-dialog);
+    background: var(--surface-white);
+    padding-bottom: calc(18px + env(safe-area-inset-bottom));
+  }
+}
+
+/* ── S 档(≤600):§11.1「只读兜底」最低判据① 内容可达 ──
+   .te-dlg 是 overflow:hidden —— 比弹窗还宽的头部/列行被直接裁掉,没有任何方向的滚动条。
+   横向改 auto;纵向仍由 .te-main 自己滚(判据② 不劫持整页)。 */
+@media (max-width: 600px) {
+  .te-dlg { overflow-x: auto; }
+}
 </style>

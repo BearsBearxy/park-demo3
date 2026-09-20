@@ -38,19 +38,24 @@ describe('KpiNarrow §1 — 三个报表屏的 .fin-kpis 在 M 档(≤960)降两
     expect(mediaBlock(css, '@media (max-width: 960px)')).toContain(TWO_COL)
   })
 
-  it.each(REPORTS)('%s:降两列不再留在 600 块里(留着=档没真的改)', (_name, rel) => {
+  it.each(REPORTS)('%s:降两列在 960 块、§5.7 横滑在 600 块,两条各就各位', (_name, rel) => {
     const css = read(rel)
     const sBlock = mediaBlock(css, '@media (max-width: 600px)')
     // ⚠ 「取不到块」和「取到了但里面没有」不是一回事:mediaBlock 找不到就返回空串,
     //   空串里当然没有 .fin-kpis —— 这条对 BalanceSheetView(本轮 600 块被整段删了)是空转,
     //   2026-09-20 对抗复查抓到的。所以先断该屏该不该有 600 块,再断块内内容。
-    if (rel.includes('balance-sheet')) {
-      expect(sBlock, 'BalanceSheetView 的 600 块本轮已整段移进 960 块,不该再出现').toBe('')
-      expect(css.match(/@media \(max-width: (\d+)px\)/g)).toEqual(['@media (max-width: 960px)'])
-    } else {
-      expect(sBlock, `${rel} 的 600 块不见了 —— 那里还有别的 S 档规则,不该空`).not.toBe('')
-      expect(sBlock).not.toContain('.fin-kpis')
-    }
+    // 2026-09-21 收窄(不是放宽):§5.7 要在 600 块里给 .fin-kpis 放一条**不同**的规则
+    // (3–4 张 → 横滑胶囊)。本条禁的一直是「降两列留在 600 块」,不是「.fin-kpis 不许出现」——
+    // 原写法用整类名判,把合法的横滑规则也一起禁了。改成只禁 repeat(2,,判据更准不是更松:
+    // 「降两列退回 600 块」这个退步照样会红。
+    expect(sBlock, `${rel} 的 600 块不见了 —— §5.7 的横滑规则该在那儿`).not.toBe('')
+    expect(sBlock, '降两列退回了 600 块 —— 它该在 960 块里').not.toMatch(/\.fin-kpis[^}]*repeat\(2,/)
+    // 正向:600 块里确实有 §5.7 那条横滑(否则上面那条 not.toMatch 在空规则上也成立)
+    expect(sBlock, `${rel} 的 600 块里没有 §5.7 的 KPI 横滑`).toMatch(/\.fin-kpis[^}]*overflow-x:\s*auto/)
+    expect(sBlock).toMatch(/\.fin-kpis > \*[^}]*flex:\s*0 0 140px/)
+    // 三屏的媒体条件都必须是「960 在前、600 在后」——宽档在前窄档在后
+    expect(css.match(/@media \(max-width: (\d+)px\)/g))
+      .toEqual(['@media (max-width: 960px)', '@media (max-width: 600px)'])
   })
 
   it.each(REPORTS)('%s:桌面档仍是 repeat(4)(XL 零差异,RESPONSIVE-LAYOUT-SPEC §9)', (_name, rel) => {

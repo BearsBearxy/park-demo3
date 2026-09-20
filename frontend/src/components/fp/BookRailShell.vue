@@ -26,6 +26,15 @@ defineEmits<{
                 @select="$emit('select', $event)" />
     </aside>
 
+    <!-- ≤960 左轨收成顶部横向 chips(RESPONSIVE-LAYOUT-SPEC §5.6):选择语义与轨内点击同源
+         —— 都发同一个 select 事件,宿主只有一条处理路径。≥961 display:none,桌面零变化。
+         一处不照抄 LedgerView:本壳的 BookRail 固定 :can-manage="false",轨上根本没有新增/删除钮,
+         所以这里也不画那颗虚线管理 chip —— 那屏有是因为那屏的轨上真有。 -->
+    <div class="brs-chips">
+      <button v-for="b in books" :key="b.id" class="brs-chip" :class="{ on: b.id === activeId }"
+              :aria-pressed="b.id === activeId" @click="$emit('select', b.id)">{{ b.name }}</button>
+    </div>
+
     <div class="brs-main">
       <slot />
     </div>
@@ -42,4 +51,26 @@ defineEmits<{
 }
 .brs-rail-t { font-size: 12px; font-weight: var(--fw-medium); color: var(--text-muted); padding: 0 4px; }
 .brs-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
+
+/* 顶部 chips:桌面档不存在(display:none),窄档媒体块内再显 —— 宽档规则在前(CSS 顺序铁律) */
+.brs-chips { display: none; }
+
+/* ── M/S 档(≤960):左轨收成顶部横向 chips(RESPONSIVE-LAYOUT-SPEC §5.6)。
+      S 档「同 M」,不另开 600 块 —— 本壳的 books 恒为两项(三屏都是常量 MODES),
+      横滚区放得下,没有「选中项滚出视口」这回事,也就不需要 sheet。 */
+@media (max-width: 960px) {
+  .brs { flex-direction: column; gap: 12px; }
+  .brs-rail { display: none; }
+  .brs-chips { flex: 0 0 auto; display: flex; gap: 8px; overflow-x: auto; padding: 2px; }
+  .brs-chip {
+    flex: 0 0 auto; display: inline-flex; align-items: center;
+    height: 36px; padding: 0 14px; border-radius: var(--radius-full);
+    border: 1px solid var(--border-control); background: var(--surface-white);
+    color: var(--text-secondary); font-family: var(--font-sans);
+    font-size: var(--fs-label); font-weight: var(--fw-medium);
+    cursor: pointer; white-space: nowrap;
+  }
+  /* 选中态只换色不改尺寸(布局稳定铁律,同 BookRail .br-item.on 语义) */
+  .brs-chip.on { border-color: var(--hue-blue); background: var(--accent-blue); color: var(--text-primary); }
+}
 </style>

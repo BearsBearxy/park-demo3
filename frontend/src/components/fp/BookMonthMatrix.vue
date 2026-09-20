@@ -360,4 +360,48 @@ const nextYear = computed(() =>
   font-size: var(--fs-body);
   color: var(--text-disabled);
 }
+
+/* ─── 窄档降列(RESPONSIVE-LAYOUT-SPEC §5.8)─────────────────────────────
+   上面一行都不动 —— 宽档(L/XL)DOM 与像素零差异是 §9 的硬标准,本组件 9 个屏共用。
+
+   为什么不是「把 12 列缩窄」:`repeat(12, 1fr)` 里的 `1fr` 等价于
+   `minmax(auto, 1fr)`,**auto 这一侧隐含 min-width:auto**,列缩不到内容
+   (月份字 + 工序点)的 min-content 以下 —— 实测 12 张月卡要 748px 而 390 上
+   盒子只有 242px,右边 7~9 个月整块出屏。写 `minmax(0, 1fr)` 只是准许它缩,
+   缩到读不出字;真解法是降列,所以下面两块既换 minmax 也换列数。
+
+   ⚠ 层叠顺序铁律:960 块必须写在 600 块**之前**。写反了 S 档 4 列被 M 档 6 列
+   静默盖回 —— 不报错、不告警,只有屏上能看出来。 */
+@media (max-width: 960px) { /* M↓:6 列 × 2 行 */
+  /* 年标从 56px 左槽挪到行上方独占一行(18 高),「移除年份」跟在年标右端。
+     order 换位:源序是 年标 → 月卡 → 移除槽,这里让移除槽排到月卡之前,
+     月卡整行(100%)换到第二行。 */
+  .bmm-yrow { flex-wrap: wrap; }
+  .bmm-ylabel {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    height: 18px;
+    line-height: 18px;
+    text-align: left;
+  }
+  .bmm-rm-slot { flex: 0 0 auto; order: 1; }
+  .bmm-cells { flex: 0 0 100%; order: 2; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+
+@media (max-width: 600px) { /* S:4 列 × 3 行 */
+  /* 4 列是能同时认出五样标记的最窄一档(§5.8):格宽 ~83 − 边框 2 − padding 20
+     = 61px 内容宽;四颗工序点 4×6+3×3 = 33,「12月」~26,都装得下。
+     在场头像(右上)与审核角标(右下)是 absolute,不吃这 61。
+     6 列时格宽 ~53、内容宽 ~31,33px 的点条正好占满,期数胶囊没位置。 */
+  .bmm-cells { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* 触屏(§6.1):hover 显形的控件常显。「移除年份」是移除手工空年的唯一入口,
+   `display:none` + 行 hover 在触屏上等于这个功能整个消失。
+   桌面(hover: hover)不进这一块,仍是上面那条「行 hover 才显」。 */
+@media (hover: none) {
+  .bmm-rm { display: inline-flex; }
+}
 </style>

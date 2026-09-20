@@ -11,6 +11,7 @@ import {
 } from '@/api/billDelivery'
 import { useAuthStore } from '@/stores/auth'
 import { useScreen } from '@/composables/useTabShells'
+import { useViewport } from '@/composables/useViewport'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
@@ -23,6 +24,14 @@ const emit = defineEmits<{ close: []; saved: [] }>()
 const auth = useAuthStore()
 const canEdit = computed(() => auth.can('master:edit'))   // 收款公司/账户属主数据(RBAC-SPEC §2)
 const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
+
+// ── S 档两级推进(RESPONSIVE-LAYOUT-SPEC §5.6 第 3 类)──
+// 弹窗在 S 档已经全屏 390,里面再并一条 216px 的公司轨,右边内容只剩 116px。
+// 改成先选公司、再进内容:两级各自占满,不并置。返回上一级的入口挂在弹窗自己的顶栏
+// (§5.10 判据四:外壳已经说过的,流内不再说一遍)。
+// 只 S 档 —— M 档弹窗宽 min(1000,94vw)≈722,216 + 1fr 排得开(§3.5「平板 = 小桌面」)。
+const vp = useViewport()
+const stepped = computed(() => vp.tier.value === 's')
 
 const loading = ref(false)
 const saving = ref(false)
@@ -49,12 +58,28 @@ function fillForm(c: CompanyFullDTO | null) {
     : { name: '', short: '', fullName: '', status: 1 }
 }
 
+// 两级推进的两级:没选公司 = 第一级(只列表),选中/新建 = 第二级(只内容)。
+// 宽档 stepped=false,两块照旧并置,右边那块的条件与改前逐字相同。
+const showPane = computed(() => creating.value || !!cur.value)
+const showList = computed(() => !stepped.value || !showPane.value)
+
+function backToList() {
+  if (!guardDirty()) return
+  selId.value = null
+  creating.value = false
+  acctEdit.value = null
+}
+
 async function load(keepId?: number | null) {
   loading.value = true
   try {
     companies.value = await companyBookApi.list()
     const id = keepId ?? selId.value
-    selId.value = companies.value.some(c => c.id === id) ? id! : companies.value[0]?.id ?? null
+    // S 档停在第一级:不自动选中第一家(自动选等于跳过一级)。keepId(保存后回填)仍然认——
+    // 那是「留在刚才那家」,不是自动选。
+    selId.value = companies.value.some(c => c.id === id) ? id!
+      : stepped.value ? null
+        : companies.value[0]?.id ?? null
     creating.value = false
     fillForm(cur.value)
   } catch (e) {
@@ -189,6 +214,10 @@ function onClose() {
   <FPDrawer :open="open" title="收款公司" icon="landmark" :width="1000" :fixed-height="true"
             subtitle="管理收款主体与收款账户 —— 法定全称与账户块会印在通知单上;停用只影响以后的选择器,历史单不动"
             @close="onClose">
+    <!-- 返回上一级挂在弹窗顶栏(§5.10 判据四),不在正文里再画一行。宽档 v-if 恒假,顶栏不变 -->
+    <template #badge>
+      <button v-if="stepped && showPane" type="button" class="cw-back" @click="backToList">← 公司列表</button>
+    </template>
     <div v-if="loading" class="cw-empty">加载中…</div>
     <template v-else>
       <!-- 成功提示(4s 自消)。page 模式贴屏幕底部:弹窗 body 是 overflow:auto 滚动容器,
@@ -196,8 +225,8 @@ function onClose() {
       <FPToast v-model="okMsg" placement="page" :duration="4000" />
 
       <div class="cw-split">
-        <!-- 左:公司列表 -->
-        <div class="cw-list">
+        <!-- 左:公司列表(S 档 = 第一级,选中后让位给内容) -->
+        <div v-if="showList" class="cw-list">
           <button v-for="c in companies" :key="c.id" type="button" class="cw-item"
                   :class="{ sel: !creating && c.id === selId, off: c.status === 0 }" @click="pick(c.id)">
             <span class="cw-item-n">{{ c.name }}</span>
@@ -211,8 +240,8 @@ function onClose() {
           </button>
         </div>
 
-        <!-- 右:表单 + 账户 -->
-        <div v-if="creating || cur" class="cw-pane">
+        <!-- 右:表单 + 账户(S 档 = 第二级) -->
+        <div v-if="showPane" class="cw-pane">
           <div class="cw-form">
             <label class="cw-f">
               <span>显示名 <em>*</em></span>
@@ -325,7 +354,8 @@ function onClose() {
           </template>
         </div>
 
-        <div v-else class="cw-pane empty">左栏选一家公司,或点「新增公司」</div>
+        <!-- S 档第一级整屏都是列表,没有「左栏」可指,这句占位不画 -->
+        <div v-else-if="!stepped" class="cw-pane empty">左栏选一家公司,或点「新增公司」</div>
       </div>
     </template>
 
@@ -390,4 +420,12 @@ function onClose() {
 .cw-mini.del:hover { color: var(--hue-red); border-color: var(--hue-red); }
 
 .cw-acct { border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); padding: 12px; }
+
+/* 顶栏的返回钮:只在 S 档第二级渲染(v-if),宽档连节点都没有 */
+.cw-back { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border: 1px solid var(--border-control); border-radius: var(--radius-full); background: var(--surface-white); color: var(--text-secondary); font-family: var(--font-sans); font-size: 12px; cursor: pointer; }
+
+/* ── S 档(≤600):两级推进,一级占满一列(§5.6 第 3 类)。宽档的 216px + 1fr 原样留在上面 ── */
+@media (max-width: 600px) {
+  .cw-split { grid-template-columns: 1fr; }
+}
 </style>
