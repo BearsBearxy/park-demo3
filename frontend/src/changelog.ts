@@ -20,6 +20,18 @@ import type { ReleaseNote } from '@/types/changelog'
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: '0.15.3',
+    date: '2026-09-20',
+    headline: '下拉不用鼠标也能选了',
+    added: [],
+    improved: [
+      { icon: 'list', title: '下拉能用键盘', desc: '原来只能用鼠标点，现在按 ↑ ↓ 挑、回车选中，Home 和 End 跳到头尾。' },
+    ],
+    fixed: [
+      '账册模板切版本：点开下拉又点回原来那版，会提示切换成功',
+    ],
+  },
+  {
     version: '0.15.2',
     date: '2026-09-20',
     headline: '账册模板切版本不再弹系统滚轮',

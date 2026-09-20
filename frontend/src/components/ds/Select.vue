@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, useId } from "vue";
+import { ref, computed, nextTick, onMounted, onUnmounted, useId } from "vue";
 
 export interface SelectOption {
   value: string;
@@ -56,9 +56,17 @@ const val = computed(() =>
 
 const open = ref(props.defaultOpen);
 const containerRef = ref<HTMLElement | null>(null);
+const panelRef = ref<HTMLElement | null>(null);
+/** 键盘活动项(aria-activedescendant 指的那一项)。焦点始终留在触发器上,选项不各自可聚焦。 */
+const activeIndex = ref(-1);
 
 const autoId = useId();
 const selectId = computed(() => props.id || autoId);
+const panelId = computed(() => `${selectId.value}-listbox`);
+const optId = (i: number) => `${selectId.value}-opt-${i}`;
+const activeId = computed(() =>
+  open.value && activeIndex.value >= 0 ? optId(activeIndex.value) : undefined
+);
 
 const height = computed(() => ({ sm: 32, md: 36, lg: 44 }[props.size] ?? 36));
 
@@ -71,11 +79,103 @@ const items = computed<SelectOption[]>(() =>
 const current = computed(() => items.value.find((it) => it.value === val.value));
 
 function pick(v: string) {
-  inner.value = v;
   open.value = false;
+  // 选中的还是当前这项 = 什么都没变,不发事件。原生 <select> 就是这个语义(HTML 规范:change
+  // 只在值真的变了才派发),而调用方是照着原生的脾气写的:ParamCenterView 的 setExKey 重选同一项
+  // 会把已填的值和楼栋清空;TemplateEditorPanel 的版本切换会走一次真写服务端的 booksApi.pin()。
+  // 2026-09-20 起那两处各自挡了一道,这里是把它收到根上。
+  if (v === val.value) return;
+  inner.value = v;
   const e = { target: { value: v } };
   emit("change", e, v);
   emit("update:modelValue", v);
+}
+
+// ── 键盘:标准 combobox(2026-09-20 补)──
+// 改前只认 Esc。原生 <select> 本来给的 ↑↓ 改值、Home/End、首字母跳转、Alt+↓ 展开全没有,
+// 能用的只剩 Tab 逐个走到选项 + Enter,而且 Tab 走出去面板还不关,留一块浮层悬在内容上。
+// 焦点全程留在触发器上,活动项靠 aria-activedescendant 指——这是 combobox 的标准做法,
+// 选项各自可聚焦那种写法读屏软件会把它念成一堆按钮。
+function scrollActiveIntoView() {
+  void nextTick(() => {
+    const el = panelRef.value?.querySelector<HTMLElement>("[data-active]");
+    el?.scrollIntoView?.({ block: "nearest" });   // jsdom 没有这个方法,可选链兜住
+  });
+}
+
+/** 打开面板,活动项落在当前选中项上(没有选中值时落第一项)。 */
+function openPanel() {
+  open.value = true;
+  const i = items.value.findIndex((it) => it.value === val.value);
+  activeIndex.value = i >= 0 ? i : 0;
+  scrollActiveIntoView();
+}
+
+function moveActive(delta: number) {
+  const n = items.value.length;
+  if (!n) return;
+  activeIndex.value = (activeIndex.value + delta + n) % n;   // 到头绕回去,同原生
+  scrollActiveIntoView();
+}
+
+// 首字母跳转:600ms 内连着敲算一个串(敲 "b" "e" 找 be…),超时重新计。
+// 连敲同一个字母是特例:不当成 "bb" 去搜,而是在同首字母的项之间轮转 —— 原生就是这个手感,
+// 也是 ARIA APG 对 listbox typeahead 的规定。轮转要从下一项找起,否则原地不动。
+let typed = "";
+let typedAt = 0;
+function typeahead(ch: string) {
+  const now = Date.now();
+  typed = now - typedAt > 600 ? ch : typed + ch;
+  typedAt = now;
+  const n = items.value.length;
+  if (!n) return;
+  const cycling = /^(.)\1*$/.test(typed);       // 全是同一个字符(含刚敲第一下)
+  const needle = (cycling ? typed[0] : typed).toLowerCase();
+  const from = cycling ? activeIndex.value + 1 : activeIndex.value;
+  for (let k = 0; k < n; k++) {
+    const i = (from + k + n) % n;
+    if (items.value[i].label.toLowerCase().startsWith(needle)) {
+      activeIndex.value = i;
+      scrollActiveIntoView();
+      return;
+    }
+  }
+}
+
+function onTriggerKey(e: KeyboardEvent) {
+  if (props.disabled) return;
+  const k = e.key;
+  if (!open.value) {
+    if (k === "ArrowDown" || k === "ArrowUp" || k === "Enter" || k === " ") {
+      e.preventDefault();
+      openPanel();
+      return;
+    }
+  } else {
+    if (k === "ArrowDown") { e.preventDefault(); moveActive(1); return; }
+    if (k === "ArrowUp") { e.preventDefault(); moveActive(-1); return; }
+    if (k === "Home") { e.preventDefault(); activeIndex.value = 0; scrollActiveIntoView(); return; }
+    if (k === "End") { e.preventDefault(); activeIndex.value = items.value.length - 1; scrollActiveIntoView(); return; }
+    if (k === "Enter" || k === " ") {
+      e.preventDefault();
+      const it = items.value[activeIndex.value];
+      if (it) pick(it.value);
+      return;
+    }
+    // Tab 不拦:焦点照常往后走,顺手把面板收掉(改前会留一块浮层悬在内容上)
+    if (k === "Tab") { open.value = false; return; }
+  }
+  if (k.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    e.preventDefault();
+    if (!open.value) openPanel();
+    typeahead(k);
+  }
+}
+
+/** 焦点离开整个下拉(Tab 走掉、点到别处)就关。改前只有点外面和 Esc 会关。 */
+function onFocusOut(e: FocusEvent) {
+  const next = e.relatedTarget as Node | null;
+  if (!next || !containerRef.value?.contains(next)) open.value = false;
 }
 
 function onDoc(e: MouseEvent) {
@@ -111,6 +211,7 @@ onUnmounted(() => {
 <template>
   <div
     ref="containerRef"
+    @focusout="onFocusOut"
     :style="[
       { display: 'flex', flexDirection: 'column', gap: '6px', position: 'relative' },
       props.style as any,
@@ -135,9 +236,13 @@ onUnmounted(() => {
       :data-open="open ? '' : undefined"
       :data-invalid="invalid ? '' : undefined"
       :disabled="disabled"
+      role="combobox"
       aria-haspopup="listbox"
       :aria-expanded="open"
-      @click="open = !open"
+      :aria-controls="panelId"
+      :aria-activedescendant="activeId"
+      @keydown="onTriggerKey"
+      @click="open ? (open = false) : openPanel()"
       :style="{
         display: 'flex',
         alignItems: 'center',
@@ -184,6 +289,8 @@ onUnmounted(() => {
 
     <div
       v-if="open"
+      ref="panelRef"
+      :id="panelId"
       class="ds-sel-panel"
       role="listbox"
       :style="{
@@ -207,12 +314,16 @@ onUnmounted(() => {
       }"
     >
       <button
-        v-for="it in items"
+        v-for="(it, i) in items"
         :key="it.value"
+        :id="optId(i)"
         type="button"
         role="option"
+        tabindex="-1"
         class="ds-sel-opt"
         :aria-selected="it.value === val"
+        :data-active="i === activeIndex ? '' : undefined"
+        @mousedown.prevent
         @click="pick(it.value)"
         :style="{
           display: 'flex',
@@ -276,4 +387,6 @@ onUnmounted(() => {
    background:'transparent',那条现已移除,否则内联优先级会压过这里的 :hover。 */
 .ds-sel-opt { background: transparent; }
 .ds-sel-opt:hover { background: var(--bg-hover); }
+/* 键盘活动项:和 hover 同一个底色 —— 键盘走到哪要看得见,否则 ↑↓ 等于盲按 */
+.ds-sel-opt[data-active] { background: var(--bg-hover); }
 </style>
