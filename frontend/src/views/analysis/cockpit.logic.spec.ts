@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, t80, fitRevenueTrendUpTo, mainChart, mainChartOption, mainChartOutlierNote, nextMonthForecast, nextForecastReadout, nextForecastRefText, momOf, monthRangeLabel, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, phaseStack, pnlYearMonths, revNoteText, schedTrend,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, t80, fitRevenueTrendUpTo, mainChart, mainChartOption, mainChartOutlierNote, nextMonthForecast, nextForecastReadout, nextForecastRefText, momOf, monthRangeLabel, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, phaseStack, phaseStackLast, pnlYearMonths, revNoteText, schedTrend,
   type BacktestRow, type BudgetAch, type MainChartData, type RevenueFit,
 } from './cockpit.logic'
 import type { PnlSummary, S10PhaseMonthly, CollectRate } from '@/analysis/anaData'
@@ -123,6 +123,23 @@ describe('phaseStack(分期收入堆叠,折万;缺月 null)', () => {
     expect(d.series[1].data).toEqual([null, 64.29])
     expect(phaseStack(null)).toBeNull()
     expect(phaseStack({ months: [], phases: [], totals: {}, elec: {} })).toBeNull()
+  })
+
+  it('phaseStackLast:最新一期合计 + 最厚那段占比(缺月按 0 计,与柱高一致)', () => {
+    const ph: S10PhaseMonthly = {
+      months: ['2025-01', '2025-10'],
+      phases: [1, 3],
+      totals: { 1: { '2025-01': 10000, '2025-10': 3019915.67 }, 3: { '2025-10': 642877.11 } },
+      elec: {},
+    }
+    const last = phaseStackLast(phaseStack(ph))!
+    expect(last.m).toBe(10)
+    expect(last.total).toBeCloseTo(301.99 + 64.29, 2)   // = 柱子已经画出来的那个高度
+    expect(last.name).toBe('一期')
+    expect(last.pct).toBeCloseTo((301.99 / (301.99 + 64.29)) * 100, 1)
+    expect(phaseStackLast(null)).toBeNull()
+    // 最新一期整列没数(全 null)时闭嘴,不印「0月 合计 0万,一期占 NaN%」
+    expect(phaseStackLast({ months: ['2025-01'], series: [{ phase: 1, name: '一期', data: [null] }] })).toBeNull()
   })
 })
 

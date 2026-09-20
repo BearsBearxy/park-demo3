@@ -22,13 +22,15 @@ export const CHANGELOG: ReleaseNote[] = [
   {
     version: '0.15.4',
     date: '2026-09-20',
-    headline: '手机上看得出哪张图能点',
+    headline: '分析屏的图不用悬停也能读',
     added: [],
     improved: [
+      { icon: 'scroll-text', title: '图下面的结论', desc: '原来要把鼠标停在图上才看得到数，现在每张图下面直接写着最新一期是多少。' },
       { icon: 'message-square', title: '分析屏图上的说明', desc: '原来手机上不写「这里能点」，现在每张能点的图都写着点哪儿、看什么。' },
     ],
     fixed: [
       '光伏分栋分析：手机上写着「悬停看数」，可手机没有鼠标',
+      '经营驾驶舱：附表 10 那张图把月份数写成「期」，和旁边的「近 6 期」不是一个意思',
     ],
   },
   {

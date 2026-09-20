@@ -186,6 +186,9 @@ const boxRows = computed<BoxRow[]>(() =>
   buildBoxRows(boxGroups.value.map((g) => ({ name: g.name, values: g.items.map((i) => i.v) })), boxDiv.value))
 const stripPts = computed(() => buildStripPoints(boxGroups.value, boxDiv.value))
 const boxUnit = computed(() => (boxMode.value === 'rent' ? '万' : '㎡'))
+// 合同份数最多的那一组 —— 只是从 boxRows 里挑一行,n / 中位都是 buildBoxRows 早算完、
+// 中位横线 tooltip 早在印的数(:197)。手机上整条悬停拿不到,常驻读数句替它说一遍。
+const boxTop = computed<BoxRow | undefined>(() => boxRows.value.reduce((a, b) => (b.n > a.n ? b : a), boxRows.value[0]))
 const boxOption = computed<object>(() => ({
   grid: { left: 56, right: 18, top: 16, bottom: 26 },
   tooltip: {
@@ -261,7 +264,7 @@ const listRows = computed(() => {
     </template>
 
     <!-- 首进:版式已知就不转圈(C6-01)。图块高 = 该图 :height 字面值(帕累托 300 · 环 300 · 箱点 250;走 AnaSkelChart,与图同一张 S 档降档表),
-         卡头 20(+ .av2-card-h 下距 8 = 28)。非图块按它顶替的那块留白:环下期区清单 4 行 ×25 + gap
+         卡头 20(+ .av2-card-h 下距 8 = 28),读数句 20(.ana-read 上距 8)+ 参照小字 20(.ana-ref 上距 2)。非图块按它顶替的那块留白:环下期区清单 4 行 ×25 + gap
          (.tp2-dl :341)、续约风险空态(.ana-empty 上下各 44)、生命周期 5 行 ×20 + 4 × gap 14 = 156(行高 = .ak-bar-name / .ak-bar-val 的行盒 20:
          base.css:19 line-height var(--lh-snug),ana.css:59/63 不覆写;轨道 8 比它矮;gap 见 ana.css:57)、
          租户清单 LIST_N=12 行 ×38 + 表头 30(.ak-tbl td height 38;表头 = 行盒 20 + padding-bottom 9 + 下边框 1)。数据到了原地硬切,不做淡入、不错峰。 -->
@@ -276,6 +279,8 @@ const listRows = computed(() => {
             <span class="hint">Top <span class="ana-hole">00</span> 户(共 <span class="ana-hole">000</span> 户) · 柱=占比 · 线=累计</span>
           </div>
           <AnaSkelChart :height="300" />
+          <p class="ana-read"><span class="ana-hole">第 1 位 00.0%,前 5 位合计 00.0%</span></p>
+          <p class="ana-ref"><span class="ana-hole">共 000 户 · 占月租金总额</span></p>
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">期区结构</span><span class="hint">按月租金<span class="hint-desk"> · 点扇区过滤下方清单</span><span class="hint-touch"> · 点扇区过滤下方清单</span></span></div>
@@ -299,6 +304,8 @@ const listRows = computed(() => {
             </span>
           </div>
           <AnaSkelChart :height="250" />
+          <p class="ana-read"><span class="ana-hole">合同最多的一期 00 份,中位 00.00 万</span></p>
+          <p class="ana-ref"><span class="ana-hole">画得出来的生效合同 · 各期区分组 · 单位万</span></p>
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">续约风险</span><span class="hint">剩余天数 × 月租金 · 依赖合同起止日期</span></div>
@@ -352,6 +359,8 @@ const listRows = computed(() => {
             <span class="hint">Top {{ Math.min(PAR_N, shares.length) }} 户(共 {{ shares.length }} 户) · 柱=占比 · 线=累计</span>
           </div>
           <AnaEChart :option="paretoOption" :height="300" />
+          <p class="ana-read hold"><template v-if="shares.length >= 5">第 1 位 {{ shares[0].share.toFixed(1) }}%,前 5 位合计 {{ top5Share }}%</template></p>
+          <p class="ana-ref hold"><template v-if="shares.length >= 5">共 {{ shares.length }} 户 · 占月租金总额</template></p>
         </div>
 
         <!-- 期区结构环(点扇区→下方清单过滤) -->
@@ -390,6 +399,9 @@ const listRows = computed(() => {
             label="合同租赁面积未录入(rent_area 全部为 0)"
             hint="补录合同面积后,此处按期区呈现面积分布散点带"
             to="/contracts" toText="去合同管理补录" />
+          <!-- 面积模式全 0 走空态时 boxRows 为空 → boxTop 为 undefined,两句自己闭嘴,不必再包一层 template -->
+          <p class="ana-read hold"><template v-if="boxTop">合同最多的{{ boxTop.name }} {{ boxTop.n }} 份,中位 {{ boxTop.stats[2] }}{{ boxUnit }}</template></p>
+          <p class="ana-ref hold"><template v-if="boxTop">画得出来的生效合同 · 各期区分组 · 单位{{ boxUnit }}</template></p>
         </div>
 
         <!-- 续约风险 → 空态保留(合同日期未录) -->

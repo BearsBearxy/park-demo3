@@ -13,7 +13,7 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import { iconFor } from '@/components/ds/icon'
-import { fnum, hues, STATUS } from '@/components/ana/anaFmt'
+import { fnum, hues, sgn, STATUS } from '@/components/ana/anaFmt'
 import { finWan } from '@/utils/finFmt'
 import { usePeriod } from '@/analysis/usePeriod'
 import {
@@ -148,6 +148,34 @@ const trendOption = computed<object>(() => ({
   })),
 }))
 
+// ── 读数句:三张图各一句默认态常驻文字(不用悬停也读得到最新一期)。
+// 数全取自上面已经在算的那几条序列,不新增指标。月下标 0..11。
+const lastWhere = (ok: (i: number) => boolean): number => {
+  for (let i = 11; i >= 0; i--) if (ok(i)) return i
+  return -1
+}
+const countWhere = (ok: (i: number) => boolean): number => {
+  let n = 0
+  for (let i = 0; i < 12; i++) if (ok(i)) n++
+  return n
+}
+
+// 图1 读数:最新有数月的园区电费收益(= trendOption.series[0] 那条线)+ 与上月的差
+const trendRead = computed(() => {
+  const s = metricSeries(TREND[0].key)
+  const i = lastWhere((k) => s[k] != null)
+  if (i < 0) return null
+  const prev = i > 0 ? s[i - 1] : null
+  return {
+    mon: i + 1,
+    label: metricLabel(TREND[0].key, '园区电费收益'),
+    val: fnum(s[i]! / 1e4, 1),
+    // 上月缺源(或最新月就是 1 月)→ 整个「比上月」从句不出现,不编一个 0
+    delta: prev == null ? '' : sgn((s[i]! - prev) / 1e4, 1, ' 万'),
+    n: countWhere((k) => s[k] != null),
+  }
+})
+
 // ── 图2:总表电费结构堆叠柱(拆分口径:拆分行在场以 Σ拆分为准,否则取合计行 — ELEC-COST §3) ──
 const kindOf = computed(() => new Map(meters.value.map((m) => [m.id, m.kind])))
 const mk = (r: ElecCostEntryDTO) => kindOf.value.get(r.meterId)
@@ -205,6 +233,34 @@ const structOption = computed<object>(() => ({
   })),
 }))
 
+// 图2 读数:最新有费项月的**正向段**合计 + 最大的一段占比。
+//
+// ⚠ 分母按**符号**切,不按下标切。原先写的是 SEGS().slice(0, 7)「末两段是抵减」,两个毛病:
+//   ① 第 7 段「运营净额」自己就是带号的(opsNet = 电表费用 − 分摊额度),它为负时会把分母吃掉 ——
+//      一期·分时 100万、运营净额 −60万,分母算成 40万,占比印出 250%;
+//   ② 以后往 SEGS 中间插一段,抵减段的下标一变,这句话当场错号。
+// 取 Σ max(0, v) 之后,分母恒等于堆叠柱正向一侧的柱高,就是用户从图上读到的那个顶点。
+// 屏上因此写「正向电费」不写「电费合计」—— 净额比它低,同卡 hint 也明写那两段画在零轴下方。
+const structRead = computed(() => {
+  const segs = SEGS(hues())
+  const valsOf = (i: number) => segs.map((s) => s.of(entryMonths.value[i] ?? []))
+  const has = (i: number) => valsOf(i).some((v) => v != null)
+  const i = lastWhere(has)
+  if (i < 0) return null
+  const vs = valsOf(i)
+  const total = vs.reduce<number>((a, v) => a + Math.max(0, v ?? 0), 0)
+  if (total <= 0) return null
+  let top = segs[0].name, topV = -Infinity
+  vs.forEach((v, k) => { if ((v ?? 0) > topV) { topV = v ?? 0; top = segs[k].name } })
+  return {
+    mon: i + 1,
+    total: fnum(total / 1e4, 1),
+    top,
+    pct: Math.min(100, Math.round((Math.max(0, topV) / total) * 100)),
+    n: countWhere(has),
+  }
+})
+
 // ── 图3:购售价差双轴(公告价 vs 执行价 双线 元/kWh + 售电月损益柱 万元) ──
 function priceOf(mi: number, key: string): number | null {
   return priceMonths.value[mi]?.find((c) => c.cfgKey === key)?.value ?? null
@@ -246,6 +302,21 @@ const spreadOption = computed<object>(() => ({
     },
   ],
 }))
+
+// 图3 读数:最新两价都有数的月,执行价 + 它比公告价高/低多少(差值即卡名「购售价差」)
+const spreadRead = computed(() => {
+  const p = posted.value, e = execP.value
+  const both = (i: number) => p[i] != null && e[i] != null
+  const i = lastWhere(both)
+  if (i < 0) return null
+  const d = e[i]! - p[i]!
+  return {
+    mon: i + 1,
+    exec: e[i]!.toFixed(3),
+    diff: Math.abs(d) < 5e-4 ? '持平' : (d < 0 ? '低 ' : '高 ') + Math.abs(d).toFixed(3),
+    n: countWhere(both),
+  }
+})
 </script>
 
 <template>
@@ -254,7 +325,8 @@ const spreadOption = computed<object>(() => ({
     <!-- 首进:版式已知就不转圈(C6-01)。块高逐块照真版式钉死 ——
          页头 44;结论条 .ea-concl 一行 20(与真版式同一批类,padding / margin-bottom 由 CSS 给);
          卡头 20 + ana.css .av2-card-h margin-bottom 8 = 28(行盒 20 = base.css body line-height var(--lh-snug) = tokens.css 20px);
-         图块 = AnaSkelChart,高与各 AnaEChart 的 :height 同表降档(300 / 300 / 300,anaChartHeight.ts)。
+         图块 = AnaSkelChart,高与各 AnaEChart 的 :height 同表降档(300 / 300 / 300,anaChartHeight.ts);
+         每张图下的读数句 20(.ana-read 上距 8)+ 参照小字 20(.ana-ref 上距 2),三张卡各一对。
          .ea-simbar 随 hasSim 出没,骨架不占它的位。数据到了原地硬切,不做淡入。
          只认首进(还没有任何一年画过):换年时旧内容留在原地退让(C5-02),不退回骨架、不卸载图。 -->
     <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
@@ -287,6 +359,8 @@ const spreadOption = computed<object>(() => ({
             <span class="hint">万元 · 缺源月断点不补 0<span class="hint-desk"> · 点击深链成本总览对应月</span><span class="hint-touch"> · 点图看成本总览</span></span>
           </div>
           <AnaSkelChart :height="300" />
+          <p class="ana-read"><span class="ana-hole">00月园区电费收益 000.0 万,比上月 +00.0 万</span></p>
+          <p class="ana-ref"><span class="ana-hole">园区电费收益 00 个月有数 · 同成本总览 · 万元</span></p>
         </div>
         <div class="av2-card av2-s6">
           <div class="av2-card-h">
@@ -294,6 +368,8 @@ const spreadOption = computed<object>(() => ({
             <span class="hint">万元 · 奖励/上网收益为负向抵减段</span>
           </div>
           <AnaSkelChart :height="300" />
+          <p class="ana-read"><span class="ana-hole">00月正向电费 000.0 万,二期·基本占 00%</span></p>
+          <p class="ana-ref"><span class="ana-hole">00 个月有费项 · 合计与分母均不含抵减 · 万元</span></p>
         </div>
         <div class="av2-card av2-s6">
           <div class="av2-card-h">
@@ -301,6 +377,8 @@ const spreadOption = computed<object>(() => ({
             <span class="hint">线=双价(元/kWh,右轴) · 柱=月损益(万,左轴)</span>
           </div>
           <AnaSkelChart :height="300" />
+          <p class="ana-read"><span class="ana-hole">00月执行价 0.000 元,比公告价低 0.000</span></p>
+          <p class="ana-ref"><span class="ana-hole">00 个月有双价 · 同成本总览 · 元/kWh</span></p>
         </div>
       </div>
     </div>
@@ -350,6 +428,10 @@ const spreadOption = computed<object>(() => ({
             </div>
             <AnaEChart v-if="trendHasData" :option="trendOption" :height="300" @chart-click="onChartClick" />
             <AnaEmpty v-else :label="loadedYear + ' 年四指标全月不可算'" hint="各指标缺失数据源见成本总览派生指标表" to="/elec-cost" to-text="去电费成本总览" />
+            <!-- hold:图的门是「四条线里任一有数」,句的门只是第一条线 —— 图在句没了的情况真会出现,
+                 而骨架那两行是无条件画的,不占位就会反向塌两行(照 :501-502 CockpitView 的现成写法)。 -->
+            <p class="ana-read hold"><template v-if="trendRead">{{ trendRead.mon }}月{{ trendRead.label }} {{ trendRead.val }} 万<span v-if="trendRead.delta">,比上月 {{ trendRead.delta }}</span></template></p>
+            <p class="ana-ref hold"><template v-if="trendRead">园区电费收益 {{ trendRead.n }} 个月有数 · 同成本总览 · 万元</template></p>
           </div>
 
           <!-- 图2 s6:总表电费结构堆叠柱 -->
@@ -359,6 +441,8 @@ const spreadOption = computed<object>(() => ({
               <span class="hint">万元 · 奖励/上网收益为负向抵减段</span>
             </div>
             <AnaEChart :option="structOption" :height="300" @chart-click="onChartClick" />
+            <p class="ana-read hold"><template v-if="structRead">{{ structRead.mon }}月正向电费 {{ structRead.total }} 万,{{ structRead.top }}占 {{ structRead.pct }}%</template></p>
+            <p class="ana-ref hold"><template v-if="structRead">{{ structRead.n }} 个月有费项 · 合计与分母均不含抵减 · 万元</template></p>
           </div>
 
           <!-- 图3 s6:购售价差双轴 -->
@@ -369,6 +453,8 @@ const spreadOption = computed<object>(() => ({
             </div>
             <AnaEChart v-if="spreadHasData" :option="spreadOption" :height="300" @chart-click="onChartClick" />
             <AnaEmpty v-else label="双价参数未录" hint="公告价/执行价按月录于成本总览电价参数(或模拟填充)" to="/elec-cost" to-text="去电费成本总览" />
+            <p class="ana-read hold"><template v-if="spreadRead">{{ spreadRead.mon }}月执行价 {{ spreadRead.exec }} 元,比公告价{{ spreadRead.diff }}</template></p>
+            <p class="ana-ref hold"><template v-if="spreadRead">{{ spreadRead.n }} 个月有双价 · 同成本总览 · 元/kWh</template></p>
           </div>
         </div>
 
