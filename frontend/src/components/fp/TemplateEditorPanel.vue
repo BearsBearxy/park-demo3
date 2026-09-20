@@ -61,7 +61,8 @@ const verOptions = computed(() => props.versions.map((v) => ({
 
 /**
  * 选版本 → emit('pin') → booksApi.pin() **真写服务端**。两道闸都在这里,不在下拉上:
- * ① 选中的还是当前这版 = 什么都没变,不发。原生 select 选同值不触发 change,ds/Select 会 ——
+ * ① 选中的还是当前这版 = 什么都没变,不发。2026-09-20 起 ds/Select 根上也按原生语义挡了一道,
+ * 这里的不删 —— pin 是真写服务端的门,不把防线寄在别人的实现上。不挡的后果是 ——
  *    不挡的话「点开看看又点回去」= 一次 POST + 一次整月重载 + 一条「已切到模板 vN」的误导提示。
  * ② 把 :disabled 的三个条件再判一遍。:disabled 只管触发器按钮,面板一旦展开就和它脱钩了 ——
  *    heldByOther 是 3 秒轮询的 computed(presence.ts PING_MS),A 开着下拉不动、B 这时进本月模板
