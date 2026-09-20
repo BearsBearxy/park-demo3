@@ -34,6 +34,13 @@ function tint(hex: string, a: number): string {
 }
 
 const { el, width } = useWidth(496)
+// 窄容器(手机,以及桌面 .av2-s4 窄栏)不换图种、不减格:整表 70 + 12×30 = 430 塞不进 336,
+// 改成栋名列钉左、格区横滑 —— 一屏看得见 8 个半月,滑 94px 到底(PvCharts2 稿 §8)。
+// 格宽的 clamp 下限 28 不动:28 是「+12」这种四字符 mono 11px 放得下的最小值,调低等于让字被裁。
+const narrow = computed(() => width.value < 420)
+/** 窄档格区的横滑量:气泡按格的内容坐标算,滚了就得减掉滑走的那段 */
+const sx = ref(0)
+const onScroll = (e: Event) => { sx.value = (e.target as HTMLElement).scrollLeft }
 // 切到「高级分析」挂上来时在视口内行区擦入 320;换期格子只过渡底色 200(行序固定、格按月作键,元素复用)。
 // 格宽跟容器变,宽度不过渡;擦入中 / 改宽时 hold 关掉
 const first = useEnterPhase(el)
@@ -78,8 +85,8 @@ const tip = computed(() => {
     { t: c.sign > 0 ? '比自己常年水平多发' : c.sign < 0 ? '比自己常年水平少发' : '与常年水平持平', dim: 0.72 },
   ]
   const w = tipWidth(lines.map(l => l.t), 22)
-  // 画板:格左 72 + (m−1)·30,气泡在格右 4px;右边放不下翻到格左 4px
-  const center = 72 + (h.m - 1) * 30 + 14
+  // 画板:格左 72 + (m−1)·30,气泡在格右 4px;右边放不下翻到格左 4px。窄档格区横滑,减掉滑走的那段
+  const center = 72 + (h.m - 1) * 30 + 14 - (narrow.value ? sx.value : 0)
   return { lines, left: tipX(center, w, { width: width.value, padL: 0, padR: 0 }, 18), top: 22 + h.i * 30 - 4 }
 })
 
@@ -101,18 +108,20 @@ const legendNote = computed(() => {
       <span class="hint">格 = 该月残差中位数 % · 蓝 = 比自己常年多发，琥珀 = 少发</span>
     </div>
     <div ref="el" class="prh-grid" @mouseleave="hm = null">
-      <div class="prh-head">
-        <span class="prh-year">{{ year }}</span>
-        <span v-for="mo in months" :key="mo.m" class="prh-mo" :class="{ cur: mo.cur }"
-          :style="{ width: `${cw}px`, flexBasis: `${cw}px`, ...(mo.cur ? { background: PV_COLORS.FOCUS } : {}) }">{{ mo.m }}月</span>
-      </div>
-      <div :class="['prh-data', { first, hold }]" @animationend.self="first = false" @animationcancel.self="first = false">
-        <div v-for="(r, i) in rows" :key="r.id" class="prh-row" :data-id="r.id">
-          <span class="prh-name" :class="{ on: r.on, out: !r.inModel }"><i class="dot" :style="{ background: r.dot }" />{{ r.name }}</span>
-          <span v-for="c in r.cells" :key="c.month" class="prh-cell"
-            :class="{ ring: hm && hm.i === i && hm.m === c.month }"
-            :style="{ width: `${cw}px`, flexBasis: `${cw}px`, background: c.bg, color: c.fg, border: c.border }"
-            @mouseenter="hm = c.hover ? { i, m: c.month } : null">{{ c.t }}</span>
+      <div class="prh-scroll" :class="{ nar: narrow }" @scroll="onScroll">
+        <div class="prh-head">
+          <span class="prh-year">{{ year }}</span>
+          <span v-for="mo in months" :key="mo.m" class="prh-mo" :class="{ cur: mo.cur }"
+            :style="{ width: `${cw}px`, flexBasis: `${cw}px`, ...(mo.cur ? { background: PV_COLORS.FOCUS } : {}) }">{{ mo.m }}月</span>
+        </div>
+        <div :class="['prh-data', { first, hold }]" @animationend.self="first = false" @animationcancel.self="first = false">
+          <div v-for="(r, i) in rows" :key="r.id" class="prh-row" :data-id="r.id">
+            <span class="prh-name" :class="{ on: r.on, out: !r.inModel }"><i class="dot" :style="{ background: r.dot }" />{{ r.name }}</span>
+            <span v-for="c in r.cells" :key="c.month" class="prh-cell"
+              :class="{ ring: hm && hm.i === i && hm.m === c.month }"
+              :style="{ width: `${cw}px`, flexBasis: `${cw}px`, background: c.bg, color: c.fg, border: c.border }"
+              @mouseenter="hm = c.hover ? { i, m: c.month } : null">{{ c.t }}</span>
+          </div>
         </div>
       </div>
       <div v-if="tip" class="cz-tip pv-tip" :style="{ left: `${tip.left}px`, top: `${tip.top}px` }">
@@ -130,6 +139,14 @@ const legendNote = computed(() => {
 
 <style scoped>
 .prh-grid { position: relative; display: flex; flex-direction: column; gap: 2px; }
+/* 滚动层。桌面档它只是个壳:.prh-grid 唯一的 flex 子项(气泡是绝对定位,不算子项),单子项不产生 gap,
+   表头与行区之间的 2px 原样搬进来 —— 渲染与加这层之前逐像素相同。
+   气泡必须留在壳外:overflow-x:auto 会把 overflow-y 也算成 auto/hidden,放进来第 12 行的气泡就被切了。 */
+.prh-scroll { display: flex; flex-direction: column; gap: 2px; }
+.prh-scroll.nar { overflow-x: auto; overflow-y: hidden; }
+/* 行盒按内容撑到 430:sticky 的钉住范围是包含块,行盒只有容器那么宽的话栋名滑到一半会跟着跑 */
+.prh-scroll.nar .prh-head, .prh-scroll.nar .prh-data, .prh-scroll.nar .prh-row { width: max-content; }
+.prh-scroll.nar .prh-year, .prh-scroll.nar .prh-name { position: sticky; left: 0; z-index: 1; background: var(--surface-white); }
 /* 行区单独一层:擦入只擦格子,月份表头(尺子)先在;间距与外层同 2px */
 .prh-data { display: flex; flex-direction: column; gap: 2px; }
 .prh-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }

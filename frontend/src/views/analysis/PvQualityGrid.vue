@@ -48,16 +48,27 @@ const KIND_FILL = computed<Record<CalCell['kind'], string>>(() => ({
 
 /** 月档 = 自然月铺满,最多 6 列;超过就是年档 */
 const compact = computed(() => props.data.weeks > 6)
+// 判容器宽不判视口:这块图也出现在桌面 .av2-s4 窄栏里(那儿同样只有 300 多),媒体查询在那种场合失效。
+// 月档窄档只缩格(PvCharts2 稿 §9):59×64 → 44×48、行头 28 → 22,6 周满月 22 + 6 × 48 − 4 = 306 ≤ 336,横向不滚。
+// 字号一个都不动(日期 12px、第二行 11px、行头 12px);年档换图种是下一轮的事,这儿还是 12px 小格。
+// 窄档 body 竖排(榜挪到日历下面),日历那个 flex: 0 0 calW 在竖排里会变成「高 calW」—— 那儿不写
+const narrow = computed(() => width.value < 420)
 const G = computed(() => compact.value
-  ? { cw: 12, ch: 12, gap: 2, rx: 2, left: 28, top: 18 }
-  : { cw: 59, ch: 64, gap: 4, rx: 5, left: 28, top: 18 })
+  ? { cw: 12, ch: 12, gap: 2, rx: 2, left: 28, top: 18, hy: 10 }
+  : narrow.value
+    ? { cw: 44, ch: 48, gap: 4, rx: 5, left: 22, top: 18, hy: 28 }
+    : { cw: 59, ch: 64, gap: 4, rx: 5, left: 28, top: 18, hy: 36 })
 
 const cells = computed(() => props.data.cells.map(c => ({
   ...c,
   x: G.value.left + c.col * (G.value.cw + G.value.gap),
   y: G.value.top + c.row * (G.value.ch + G.value.gap),
-  // 全齐的格不写字:一个月 30 格重复「11 栋全齐」,底色 + 图例已经说了,59px 的格也放不下
-  sub: c.kind === 'full' ? '' : c.kind === 'miss' ? `缺 ${c.missNames.length} 栋` : c.kind === 'drop' ? '整日剔除' : '',
+  // 全齐的格不写字:一个月 30 格重复「11 栋全齐」,底色 + 图例已经说了,59px 的格也放不下。
+  // 窄档 44 宽只放得下 4 个半角(mono 11px ≈ 26px):「缺 2 栋」47px 要溢到隔壁格,去掉量词写「缺 2」、
+  // 「整日剔除」写「剔除」—— 字还在,与划痕仍是两路(合并就是把「全园没抄」和「整日剔除」说成同一个)
+  sub: c.kind === 'full' ? ''
+    : c.kind === 'miss' ? (narrow.value ? `缺 ${c.missNames.length}` : `缺 ${c.missNames.length} 栋`)
+      : c.kind === 'drop' ? (narrow.value ? '剔除' : '整日剔除') : '',
 })))
 
 const calW = computed(() => G.value.left + props.data.weeks * (G.value.cw + G.value.gap) - G.value.gap)
@@ -72,7 +83,7 @@ const colHeads = computed(() => {
     .map(c => ({ x: g.left + c.col * (g.cw + g.gap), t: `${Number(c.date.slice(5, 7))}月`, anchor: 'start' }))
 })
 const rowHeads = computed(() => WD.map((t, r) => ({ t, r })).filter(w => !compact.value || w.r % 2 === 0)
-  .map(w => ({ t: w.t, y: G.value.top + w.r * (G.value.ch + G.value.gap) + (compact.value ? 10 : 36) })))
+  .map(w => ({ t: w.t, y: G.value.top + w.r * (G.value.ch + G.value.gap) + G.value.hy })))
 
 const fullN = computed(() => Math.max(0, ...props.data.cells.filter(c => c.kind !== 'todo').map(c => c.bornN)))
 const period = computed(() => {
@@ -105,14 +116,14 @@ const tip = computed(() => {
 </script>
 
 <template>
-  <section class="av2-card pqg">
+  <section class="av2-card pqg" :class="{ narrow }">
     <div class="av2-card-h">
       <span class="t">数据质量日历</span>
       <span class="hint">哪一天、哪几栋没抄表</span>
     </div>
     <div ref="el" :class="['pqg-body', { first, hold }]" @mouseleave="hover = null"
       @animationend.self="first = false" @animationcancel.self="first = false">
-      <div ref="scroller" class="pqg-cal" :class="{ compact }" :style="compact ? undefined : { flex: `0 0 ${calW}px` }">
+      <div ref="scroller" class="pqg-cal" :class="{ compact }" :style="compact || narrow ? undefined : { flex: `0 0 ${calW}px` }">
         <svg :width="calW" :height="calH" :viewBox="`0 0 ${calW} ${calH}`" class="pqg-svg" role="img"
           :aria-label="`数据质量日历 ${period}`">
           <defs>
@@ -121,7 +132,7 @@ const tip = computed(() => {
             </pattern>
           </defs>
           <text v-for="h in colHeads" :key="h.t + h.x" class="pqg-colh" :x="h.x" y="12" :text-anchor="h.anchor">{{ h.t }}</text>
-          <text v-for="h in rowHeads" :key="h.t" class="pqg-rowh" :class="{ compact }" x="20" :y="h.y" text-anchor="end">{{ h.t }}</text>
+          <text v-for="h in rowHeads" :key="h.t" class="pqg-rowh" :class="{ compact }" :x="G.left - 8" :y="h.y" text-anchor="end">{{ h.t }}</text>
           <!-- 格位键带档位:月历 ↔ 年历的同一格位不是同一天,换档整批换新元素,不做底色淡变 -->
           <g v-for="c in cells" :key="(compact ? 'y' : 'm') + (c.col * 7 + c.row)" class="pqg-cell" :data-date="c.date" :data-kind="c.kind">
             <!-- 底色一格一个 rect,四态只换 fill(还没到:透明 + 月档虚线框),换期同一格位复用才过渡得了 -->
@@ -189,6 +200,11 @@ const tip = computed(() => {
 .pqg-sub.miss { fill-opacity: 1; }
 .pqg-sub.drop { fill-opacity: .5; }
 .pqg-ring { stroke: var(--ink-900); }
+
+/* 窄容器:日历 306 + 榜 300 并排要 622,横着放不下 —— 榜挪到日历下面铺满,图例换行 */
+.pqg.narrow .pqg-body { flex-direction: column; }
+.pqg.narrow .pqg-rank { width: 100%; flex: 0 0 auto; }
+.pqg.narrow .pqg-leg { flex-wrap: wrap; row-gap: 6px; }
 
 .pqg-rank { width: 300px; flex: 0 0 300px; }
 .pqg-rank-h { display: flex; align-items: center; height: 18px; font-size: var(--fs-micro); color: var(--text-muted); }

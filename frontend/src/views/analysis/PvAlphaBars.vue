@@ -20,16 +20,20 @@ import type { PvAlphaBarsProps } from './pvAnaV4.logic'
 const props = defineProps<PvAlphaBarsProps>()
 const emit = defineEmits<{ (e: 'pick', id: number): void }>()
 
-const ROW_H = 22
 // ponytail: 3 倍是经验线 —— 线性轴上最宽的栋占满全宽时,×⅓ 那头只剩一成宽度,其余栋挤成一条缝
 const LOG_SPREAD = 3
 const LOG_RATIOS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50]
-/** 栋名列右缘(58)+ 2:标签左端越过它才算压进栋名 */
-const NAME_R = 60
 /** 数值标签估宽:mono 11px 每字 6.6 */
 const labelW = (s: string) => s.length * 6.6
-const X0 = 66
 const { el, width } = useWidth(496)
+// 判容器宽,不判视口宽:这张图也出现在桌面 .av2-s4 窄栏里(那里也只有 300 多)
+const narrow = computed(() => width.value < 420)
+// 手机版(PvCharts2 稿 §7):行高 22→30 让条够点,栋名列右缘 58→68(绘图区起点 66→76)。字号一个不动
+const ROW_H = computed(() => (narrow.value ? 30 : 22))
+const NAME_W = computed(() => (narrow.value ? 68 : 58))
+/** 栋名列右缘 + 2:标签左端越过它才算压进栋名 */
+const NAME_R = computed(() => NAME_W.value + 2)
+const X0 = computed(() => NAME_W.value + 8)
 // 切到「高级分析」挂上来时在视口内擦入 320;换期 200 形变:条 / 淡带 / 选中描边走 clip-path(--x / --w),
 // 数值标签与整行走 transform(宽度、left 不许过渡)。擦入中 / 改宽时 hold 关掉
 const first = useEnterPhase(el)
@@ -59,8 +63,9 @@ const geo = computed(() => {
     tv = []
     for (let v = dlo; v <= dhi + step * 1e-9; v += step) tv.push(+v.toFixed(6))
   }
+  const x0 = X0.value
   const f = (v: number) => (log ? Math.log(1 + v / 100) : v)
-  const AX = (v: number) => r1(X0 + (f(v) - f(dlo)) / (f(dhi) - f(dlo)) * (x1 - X0))
+  const AX = (v: number) => r1(x0 + (f(v) - f(dlo)) / (f(dhi) - f(dlo)) * (x1 - x0))
   const zero = AX(0)
   const ticks = tv.map(v => ({ x: AX(v), label: `${v > 0 ? '+' : ''}${v}%` }))
   const bars = rows.map((r, i) => {
@@ -70,16 +75,16 @@ const geo = computed(() => {
     let neg = r.alphaPct < 0
     let lx = neg ? AX(r.ciLo) - 6 : AX(r.ciHi) + 6
     // 标签会压进栋名列 / 冲出右缘时,挪到 0 线另一侧 —— 一行只有一根条,那一侧是空的
-    if (neg && lx - labelW(label) < NAME_R) { neg = false; lx = zero + 6 }
+    if (neg && lx - labelW(label) < NAME_R.value) { neg = false; lx = zero + 6 }
     else if (!neg && lx + labelW(label) > W) { neg = true; lx = zero - 6 }
     return {
-      id: r.id, name: r.name, fill: phaseFill(r.phase), on, top: i * ROW_H,
+      id: r.id, name: r.name, fill: phaseFill(r.phase), on, top: i * ROW_H.value,
       x: Math.min(zero, ax), w: r1(Math.max(Math.abs(ax - zero), 1)),
       bandX: AX(r.ciLo), bandW: r1(AX(r.ciHi) - AX(r.ciLo)),
       label, lx: r1(lx), neg,
     }
   })
-  return { height: nRows * ROW_H + 14, plotH: nRows * ROW_H, zero, ticks, bars, log }
+  return { height: nRows * ROW_H.value + 14, plotH: nRows * ROW_H.value, zero, ticks, bars, log }
 })
 
 const sel = computed(() => props.data.rows.find(r => r.id === props.selId) ?? null)
@@ -93,7 +98,7 @@ const drawn = computed(() => {
   order = [...order.filter(id => by.has(id)), ...[...by.keys()].filter(id => !order.includes(id))]
   return order.map(id => by.get(id)!)
 })
-const rowT = (k: number) => ({ transform: `translateY(${k * ROW_H}px)` })
+const rowT = (k: number) => ({ transform: `translateY(${k * ROW_H.value}px)` })
 
 // ── L5:换一种扫描顺序重算的一句 + 88×20 迷你收敛线 + 悬停一行 ──
 const stab = computed(() => {
@@ -114,7 +119,10 @@ const stab = computed(() => {
       <span class="t">先天水平 α 排序</span>
       <span class="hint">条 = 这栋常年高于 / 低于全园中位的程度 · 淡带 = 95% 区间 · 点条换上面的图</span>
     </div>
-    <div ref="el" class="pab-plot" :style="{ height: `${geo.height}px` }">
+    <div ref="el" class="pab-plot" :class="{ narrow }" :style="{
+      height: `${geo.height}px`, '--pab-row-h': `${ROW_H}px`, '--pab-name-w': `${NAME_W}px`,
+      '--pab-hit-t': narrow ? '0px' : '4px', '--pab-hit-h': narrow ? `${ROW_H}px` : '14px',
+    }">
       <template v-for="t in geo.ticks" :key="t.label">
         <span class="pab-grid" :style="{ left: `${t.x}px`, height: `${geo.plotH}px`, background: PV_COLORS.GRID }" />
         <span class="pab-ax pab-tick" :style="{ left: `${t.x}px`, top: `${geo.plotH + 2}px` }">{{ t.label }}</span>
@@ -128,7 +136,7 @@ const stab = computed(() => {
           <span v-if="b.on" class="pab-ring" :style="{ '--x': `${b.x}px`, '--w': `${b.w}px` }" />
           <span class="pab-fill" :style="{ '--x': `${b.x}px`, '--w': `${b.w}px`, background: b.fill }" />
           <button type="button" class="pab-bar" :aria-label="`${b.name} α ${b.label}`"
-            :style="{ left: `${b.x}px`, width: `${b.w}px` }"
+            :style="narrow ? undefined : { left: `${b.x}px`, width: `${b.w}px` }"
             @click="emit('pick', b.id)" />
           <span class="pab-ax pab-val" :class="{ neg: b.neg }" :style="{ '--x': `${b.lx}px` }">{{ b.label }}</span>
         </div>
@@ -157,7 +165,13 @@ const stab = computed(() => {
 </template>
 
 <style scoped>
-.pab-plot { position: relative; width: 100%; }
+/* 几何四个量随容器宽换档(行内 :style 覆盖);这里的缺省 = 桌面档,也让令牌门禁认得它们 */
+.pab-plot {
+  position: relative; width: 100%;
+  --pab-row-h: 22px; --pab-name-w: 58px; --pab-hit-t: 4px; --pab-hit-h: 14px;
+  /* 条 / 淡带 / 数值都是 14 高,在行里居中 */
+  --pab-bar-t: calc((var(--pab-row-h) - 14px) / 2);
+}
 .pab-grid { position: absolute; top: 0; width: 1px; }
 .pab-ax {
   position: absolute; font-size: var(--fs-micro); line-height: 14px; font-family: var(--font-mono);
@@ -167,25 +181,30 @@ const stab = computed(() => {
 /* inset:0 给擦入的 clip-path 一个有高度的框(行都是绝对定位,不撑高) */
 .pab-rows { position: absolute; inset: 0; }
 .pab-rows.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
-.pab-row { position: absolute; left: 0; top: 0; width: 100%; height: 22px; transition: transform var(--dur-base) var(--ease-out); }
+.pab-row { position: absolute; left: 0; top: 0; width: 100%; height: var(--pab-row-h); transition: transform var(--dur-base) var(--ease-out); }
 .pab-name {
-  position: absolute; left: 0; top: 0; width: 58px; line-height: 22px; text-align: right;
+  position: absolute; left: 0; top: 0; width: var(--pab-name-w); line-height: var(--pab-row-h); text-align: right;
   font-size: var(--fs-label); white-space: nowrap;
 }
 .pab-name.on { font-weight: var(--fw-semibold); }
 .rest .pab-name { color: var(--ink-500); }
 /* 条 / 淡带 / 选中描边:整行宽的块裁出 [--x, --x + --w],换期 200 过渡的是裁剪,不是宽度 */
 .pab-band, .pab-fill, .pab-ring {
-  position: absolute; left: 0; top: 4px; width: 100%; height: 14px; pointer-events: none;
+  position: absolute; left: 0; top: var(--pab-bar-t); width: 100%; height: 14px; pointer-events: none;
   --x: 0px; --w: 0px;   /* 缺省(行内 :style 覆盖);也让令牌门禁认得这两个组件内变量 */
   clip-path: inset(0 calc(100% - var(--x) - var(--w)) 0 var(--x) round 3px);
   transition: clip-path var(--dur-base) var(--ease-out);
 }
 .pab-band { opacity: .3; }
 /* 选中描边 = 条后面四周大 1.5px 的墨块(原 box-shadow 0 0 0 1.5px),与条同一对 --x / --w 一起形变 */
-.pab-ring { top: 2.5px; height: 17px; background: var(--ink-900); clip-path: inset(0 calc(100% - var(--x) - var(--w) - 1.5px) 0 calc(var(--x) - 1.5px) round 4.5px); }
-.pab-bar { position: absolute; top: 4px; height: 14px; border-radius: 3px; border: 0; padding: 0; margin: 0; background: transparent; cursor: pointer; }
-.pab-val { --x: 0px; top: 4px; color: var(--ink-700); }
+.pab-ring { top: calc(var(--pab-bar-t) - 1.5px); height: 17px; background: var(--ink-900); clip-path: inset(0 calc(100% - var(--x) - var(--w) - 1.5px) 0 calc(var(--x) - 1.5px) round 4.5px); }
+/* 点击 / 焦点框是透明的:窄档整行高(≥30 触点),桌面档还是贴着条 */
+.pab-bar { position: absolute; top: var(--pab-hit-t); height: var(--pab-hit-h); border-radius: 3px; border: 0; padding: 0; margin: 0; background: transparent; cursor: pointer; }
+/* 窄档命中区是**整行**(30 高 × 全宽),不是条本身。只抬高不铺宽等于没修 ——
+   条长有个 1px 的下限(geo 里 Math.max(|ax − zero|, 1)),α 接近 0 的栋就剩这 1px,
+   手机上戳不中,而卡头还写着「点条换上面的图」。桌面档一个字不动,仍贴着条。 */
+.pab-plot.narrow .pab-bar { left: 0; width: 100%; }
+.pab-val { --x: 0px; top: var(--pab-bar-t); color: var(--ink-700); }
 .pab-row:not(.rest) .pab-val { left: 0; transform: translateX(var(--x)); transition: transform var(--dur-base) var(--ease-out); }
 .rest .pab-val { color: var(--text-muted); }
 .pab-row:not(.rest) .pab-val.neg { transform: translateX(var(--x)) translateX(-100%); }

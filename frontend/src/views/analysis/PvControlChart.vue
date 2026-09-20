@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // 抽屉 B10 · 逐日偏离与两道范围线(PV-ANALYSIS-SCREEN-V4 §3.18;画布 v2/Drawer.dc.html)。
-// 画布 宽 = 实测 × 高 250,padL 46 / padR 14 / padT 14 / padB 26;x 与 B9 同一把(pvDrawerAxis)。
+// 画布 宽 = 实测 × 高 250(容器 < 420 时 210),padL 46 / padR 14 / padT 14 / padB 26;x 与 B9 同一把(pvDrawerAxis)。
 // 两层带:里面那道 50%、更宽的那道 25%;点三档 —— 在里面 墨 28% r1.8 / 超出里面那道 琥珀 r2.8 /
-// 超出外面那道 红 r3。估计窗口画成绘图区底部 10px 墨阶底条并直标取的是哪一段。
+// 超出外面那道 红 r3(窄档 2.6 / 4 / 4)。估计窗口画成绘图区底部 10px 墨阶底条并直标取的是哪一段。
 // 参照系小字只写估计窗口与对照关系,不写「是这次变化本身,不是新的异常」(实施计划 §1 #18)。
 import { computed, ref } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
@@ -17,11 +17,15 @@ import { dayOfX, md, monthStartDays, nearestIndex, PAD_L, PAD_R, r1, xOfDay, yAx
 // segMonth:当前期间的月(轴字标蓝,与 B9 同);ControlChart 本身不带当段,由调用方传 driftChart 的 seg.month
 const props = defineProps<PvControlChartProps & { segMonth?: number | null }>()
 
-const H = 250, padT = 14, padB = 26
-const iH = H - padT - padB
+const padT = 14, padB = 26
 const AXIS_LINE = FP_ANA_THEME.categoryAxis.axisLine.lineStyle.color
 
 const { el, width: W } = useWidth(646)
+// 窄容器(手机整屏,也包括桌面 .av2-s4 窄栏)换几何:图矮一档、点大一档。判容器宽不判视口宽。
+// 字号不动(轴标签 11px);整幅不缩放 —— 渲染宽恒等于 viewBox 宽。
+const narrow = computed(() => W.value < 420)
+const H = computed(() => (narrow.value ? 210 : 250))
+const iH = computed(() => H.value - padT - padB)
 // 抽屉里的图不擦入(只有卡片上浮,原则 7);上一栋 / 下一栋 200 同键形变(点按日作键,两道带与中线跟着滑,点的档位半径也过渡)。
 // 改宽那两帧 hold 关掉;直标字瞬到
 const hold = useMorphHold(W, ref(false))
@@ -32,7 +36,7 @@ const axis = computed(() => {
   const d = props.data
   const vals = [d.center, d.outer.lo, d.outer.hi]
   for (const p of d.points) vals.push(p.v)
-  return yAxis(vals, padT, H - padB, { top: 50, bottom: 25 })
+  return yAxis(vals, padT, H.value - padB, { top: 50, bottom: 25 })
 })
 const Y = (v: number) => axis.value.y(v)
 const tickLabel = (v: number) => (v > 0 ? '+' : '') + v.toFixed(2)
@@ -69,12 +73,16 @@ const win = computed(() => {
 })
 
 const LEVEL = [
-  { r: 1.8, fill: C.CROWD_B10, text: '在里面', tip: C.TIP_IN },
-  { r: 2.8, fill: C.ABOVE, text: '超出里面那道', tip: C.TIP_ABOVE },
-  { r: 3, fill: C.BELOW, text: '超出外面那道', tip: C.TIP_BELOW },
+  { fill: C.CROWD_B10, text: '在里面', tip: C.TIP_IN },
+  { fill: C.ABOVE, text: '超出里面那道', tip: C.TIP_ABOVE },
+  { fill: C.BELOW, text: '超出外面那道', tip: C.TIP_BELOW },
 ] as const
 
-const pts = computed(() => props.data.points.map(p => ({ doy: p.doy, x: X(p.doy), y: Y(p.v), ...LEVEL[p.level] })))
+// 点半径三档。窄档按稿只给了两个数(超范围 4、其余 2.6):出范围的两档都吃 4 ——
+// 出范围才是要不靠颜色也看得见的那一档,把琥珀档留在 2.6 会让它只剩颜色表意。
+const R = computed<readonly [number, number, number]>(() => (narrow.value ? [2.6, 4, 4] : [1.8, 2.8, 3]))
+
+const pts = computed(() => props.data.points.map(p => ({ doy: p.doy, x: X(p.doy), y: Y(p.v), r: R.value[p.level], ...LEVEL[p.level] })))
 
 // ── 悬停:取最近的一天,竖线 + 三行气泡(B10 不画高亮点,照画布) ──
 const hover = ref<number | null>(null)

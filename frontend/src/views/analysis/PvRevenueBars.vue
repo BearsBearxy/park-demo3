@@ -13,17 +13,25 @@ import { phaseName, type PvRevenueBarsProps } from './pvAnaV4.logic'
 
 const props = defineProps<PvRevenueBarsProps>()
 
-const PL = 104, RIGHT = 84, TOP = 6, ROW = 27, BOTTOM = 26
+const RIGHT = 84, TOP = 6, BOTTOM = 26
 const WAN = 10000
 const { el, width } = useWidth(999)
+// 窄容器(手机,以及桌面 .av2-s4 窄栏)换几何,不缩放:行高 27→30(触点)、栋名列 104→76(§6 对照表)
+const narrow = computed(() => width.value < 420)
+const PL = computed(() => (narrow.value ? 76 : 104))
+const ROW = computed(() => (narrow.value ? 30 : 27))
+// 行内的纵向落点全部从 ROW 派生 —— 只改行距不改行内 y,窄档整行内容会上偏 3px(条高恒 16)
+const BAR_Y = computed(() => (ROW.value - 16) / 2)      // 27→5.5  30→7
+const TEXT_Y = computed(() => BAR_Y.value + 12)         // 27→17.5 30→19
+const DOT_CY = computed(() => ROW.value / 2)            // 27→13.5 30→15
 // 挂载时在视口内擦入 320,否则瞬到;换期 200 形变:条长走 rect 几何,名次变了整行走行 g 的 translateY
 const first = useEnterPhase(el)
 const hold = useMorphHold(width, first)
 const n = computed(() => props.data.rows.length)
-const H = computed(() => TOP + n.value * ROW + BOTTOM)
-const bottom = computed(() => TOP + n.value * ROW)
+const H = computed(() => TOP + n.value * ROW.value + BOTTOM)
+const bottom = computed(() => TOP + n.value * ROW.value)
 const domain = computed(() => Math.max(0, ...props.data.rows.map(r => r.total / WAN)) * 1.04 || 1)
-const s = computed(() => (width.value - RIGHT - PL) / domain.value)
+const s = computed(() => (width.value - RIGHT - PL.value) / domain.value)
 
 const niceStep = (raw: number) => {
   const p = 10 ** Math.floor(Math.log10(raw))
@@ -34,16 +42,16 @@ const grid = computed(() => {
   const step = Math.max(1, niceStep(domain.value / 8))
   const out: number[] = []
   for (let v = 0; v <= domain.value; v += step) out.push(v)
-  return out.map(v => ({ v, x: PL + v * s.value }))
+  return out.map(v => ({ v, x: PL.value + v * s.value }))
 })
 
 /** 段内写数的门槛:段宽 ≥ 估出的字宽 + 左右各 6 */
 const fits = (w: number, text: string) => w >= tipWidth([text], 0) + 12
 const bars = computed(() => props.data.rows.map((r, i) => {
-  const top = TOP + i * ROW
+  const top = TOP + i * ROW.value
   const selfW = (r.self / WAN) * s.value
   const gridW = (r.grid / WAN) * s.value
-  const selfEnd = PL + selfW
+  const selfEnd = PL.value + selfW
   const selfT = (r.self / WAN).toFixed(2), gridT = (r.grid / WAN).toFixed(2)
   return {
     r, top, selfEnd, gridW,
@@ -108,17 +116,17 @@ const price = computed(() => `¥${props.data.gridPrice.toFixed(2)}/度`)
         <!-- 期别点与栋名留在数据组外,两段各一组行 g(C6-25)。行 g 按栋作键、纵向只靠 translateY:换期名次变了整行滑到新行 -->
         <g :class="['prb-names', 'ana-morph', { hold }]">
           <g v-for="b in drawn" :key="'n' + b.r.id" class="prb-rowg" :style="rowT(b.top)">
-            <circle class="prb-dot" cx="10" cy="13.5" r="3.5" :fill="b.dot" />
-            <text :class="['prb-name', { 'prb-name-sel': b.sel }]" x="22" y="17.5">{{ b.r.name }}</text>
+            <circle class="prb-dot" cx="10" :cy="DOT_CY" r="3.5" :fill="b.dot" />
+            <text :class="['prb-name', { 'prb-name-sel': b.sel }]" x="22" :y="TEXT_Y">{{ b.r.name }}</text>
           </g>
         </g>
         <g :class="['prb-data', 'ana-morph', { first, hold }]" @animationend.self="first = false" @animationcancel.self="first = false">
           <g v-for="b in drawn" :key="b.r.id" class="prb-rowg" :style="rowT(b.top)">
-            <rect class="prb-self" :data-id="b.r.id" :x="PL" y="5.5" :width="b.selfDrawW" height="16" rx="3" :fill="PV_COLORS.FOCUS" />
-            <rect v-if="b.gridW > 0" class="prb-grid" :data-id="b.r.id" :x="b.selfEnd" y="5.5" :width="b.gridW" height="16" rx="3" :fill="PV_COLORS.MID" />
-            <text v-if="b.selfT" class="prb-val prb-in-self" :x="PL + 7" y="17.5">{{ b.selfT }}</text>
-            <text v-if="b.gridT" class="prb-val prb-in-grid" :x="b.selfEnd + 7" y="17.5">{{ b.gridT }}</text>
-            <text class="prb-val prb-tot" :data-id="b.r.id" :x="b.totEnd + 8" y="17.5">{{ b.totT }}</text>
+            <rect class="prb-self" :data-id="b.r.id" :x="PL" :y="BAR_Y" :width="b.selfDrawW" height="16" rx="3" :fill="PV_COLORS.FOCUS" />
+            <rect v-if="b.gridW > 0" class="prb-grid" :data-id="b.r.id" :x="b.selfEnd" :y="BAR_Y" :width="b.gridW" height="16" rx="3" :fill="PV_COLORS.MID" />
+            <text v-if="b.selfT" class="prb-val prb-in-self" :x="PL + 7" :y="TEXT_Y">{{ b.selfT }}</text>
+            <text v-if="b.gridT" class="prb-val prb-in-grid" :x="b.selfEnd + 7" :y="TEXT_Y">{{ b.gridT }}</text>
+            <text class="prb-val prb-tot" :data-id="b.r.id" :x="b.totEnd + 8" :y="TEXT_Y">{{ b.totT }}</text>
           </g>
         </g>
         <line class="prb-axl" :x1="PL" :x2="width - RIGHT" :y1="bottom" :y2="bottom" />

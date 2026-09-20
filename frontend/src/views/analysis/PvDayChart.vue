@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // B1 通栏逐刻度比值图(PV-ANALYSIS-SCREEN-V4 §3.2)。几何照画布 v2/Main.dc.html 的 renderVals 抄:
-// 画布 宽 = 实测 × 高 236,padL 44 / padR 14 / padT 12 / padB 24;坐标保留一位小数。
+// 画布 宽 = 实测 × 高 236(容器窄 200),padL 44 / padR 14 / padT 12 / padB 24;坐标保留一位小数。
 //
 // 三态(§03.8)是两种视觉:漏抄 = 折线断开 + 底部 2×7 琥珀刻度;未到 = 右侧淡底。不写「未到 / 漏」字(V4 §0)。
 // 量程是这栋自己的(已抄点 ∪ 带上下沿 + 12% 余量),不共用、不钳位;x 轴画满整段,带画满整宽。
@@ -17,11 +17,17 @@ import type { PvDayChartProps } from './pvAnaV4.logic'
 
 const props = defineProps<PvDayChartProps>()
 
-const H = 236, padL = 44, padR = 14, padT = 12, padB = 24
-const iH = H - padT - padB
+const padL = 44, padR = 14, padT = 12, padB = 24
 const AXIS_LINE = FP_ANA_THEME.categoryAxis.axisLine.lineStyle.color
 
 const { el, width: W } = useWidth(1025)
+// 容器窄就换几何,不整幅缩放、不动字号(PvCharts1 稿 §①)。判容器不判视口:桌面 .av2-s4 窄栏同样只有 300 多。
+const narrow = computed(() => W.value < 420)
+const H = computed(() => (narrow.value ? 200 : 236))
+const iH = computed(() => H.value - padT - padB)
+/** x 标签基线 / 缺抄刻度顶,跟着 H 走(桌面仍是 230 / 205,刻度底压在轴线上) */
+const axY = computed(() => H.value - 6)
+const missY = computed(() => H.value - padB - 7)
 // 首挂在视口内 320 擦入;换栋 / 换期 200 同键形变(2026-09-16 行为矩阵):同一刻度上的点、线段从旧值滑到新值。
 // first 在 animationend.self **与 animationcancel.self** 摘掉。擦入期间与改宽那两帧 hold 关掉形变,两个效果不叠。
 const first = useEnterPhase(el)
@@ -47,12 +53,12 @@ const dom = computed(() => {
 })
 const Y = (v: number) => {
   const { mn, mx } = dom.value!
-  return +(padT + ((mx - v) / (mx - mn)) * iH).toFixed(1)
+  return +(padT + ((mx - v) / (mx - mn)) * iH.value).toFixed(1)
 }
 
 const grid = computed(() => [0, 1, 2, 3].map(k => {
   const d = dom.value
-  if (!d) return { y: +(padT + (iH * (3 - k)) / 3).toFixed(1), label: '' }
+  if (!d) return { y: +(padT + (iH.value * (3 - k)) / 3).toFixed(1), label: '' }
   const v = d.mn + (k * (d.mx - d.mn)) / 3
   return { y: Y(v), label: v.toFixed(2) }
 }))
@@ -100,10 +106,11 @@ const future = computed(() => {
   return { x, w: +(X(n.value - 1) - x).toFixed(1) }
 })
 
-/** 月档标 1 / 5 / 10 … / 末日(末日前一格的 5 的倍数让给末日);年档 12 个月全标 */
+/** 月档标 1 / 5 / 10 … / 末日(末日前一格的 5 的倍数让给末日);容器窄改 7 天一标 = 1 / 8 / 15 / 22 / 末日共 5 个;年档 12 个月全标 */
 const xTicks = computed(() => props.tickLabels.flatMap((t, i) => {
   const d = i + 1
-  const show = props.gran === 'year' || i === 0 || i === n.value - 1 || (d % 5 === 0 && d <= n.value - 2)
+  const mid = narrow.value ? d % 7 === 1 && d <= n.value - 4 : d % 5 === 0 && d <= n.value - 2
+  const show = props.gran === 'year' || i === 0 || i === n.value - 1 || mid
   return show ? [{ x: X(i), t }] : []
 }))
 
@@ -168,7 +175,7 @@ const tip = computed(() => {
         <line v-for="(g, k) in grid" :key="'g' + k" class="gl" :x1="padL" :x2="W - padR" :y1="g.y" :y2="g.y" :stroke="C.GRID" />
         <!-- 尺子先在,数据擦上去:轴线与 x 刻度挪到数据组之前(C6-17) -->
         <line class="axl" :x1="padL" :x2="W - padR" :y1="H - padB" :y2="H - padB" :stroke="AXIS_LINE" stroke-width="1" />
-        <text v-for="t in xTicks" :key="'x' + t.t" class="ax" :x="t.x" :y="230" text-anchor="middle" :fill="C.AXIS_TEXT">{{ t.t }}</text>
+        <text v-for="t in xTicks" :key="'x' + t.t" class="ax" :x="t.x" :y="axY" text-anchor="middle" :fill="C.AXIS_TEXT">{{ t.t }}</text>
         <!-- 键全按刻度(runs 按起点刻度):换栋 / 换期元素复用才形变;悬停层(竖线 / 高亮点)在组外,0ms。
              刻度下标只在同一粒度里是同一类目 —— 组按粒度作键,按月 ↔ 按年整组换新元素瞬到,「5 日」不滑成「5 月」 -->
         <g :key="gran" :class="['pdc-data', 'ana-morph', { first, hold }]" @animationend.self="first = false"
@@ -177,7 +184,7 @@ const tip = computed(() => {
           <rect v-if="band" class="band" :x="padL" :y="band.y" :width="iW" :height="band.h" :fill="C.BAND" fill-opacity="0.4" />
           <path v-if="dom && row.center != null" class="ctr" :d="`M${padL},${Y(row.center)} H${W - padR}`" fill="none" :stroke="C.MID" stroke-width="1" stroke-dasharray="3 3" />
           <rect v-for="r in runs" :key="'r' + r.from" class="run" :x="r.x" :y="padT" :width="r.w" :height="iH" :fill="r.fill" fill-opacity="0.1" />
-          <rect v-for="m in misses" :key="'m' + m.i" class="miss" :x="m.x" :y="205" width="2" height="7" :fill="C.ABOVE" />
+          <rect v-for="m in misses" :key="'m' + m.i" class="miss" :x="m.x" :y="missY" width="2" height="7" :fill="C.ABOVE" />
           <path v-for="s in lineSegs" :key="'s' + s.i" class="line" :d="s.d" fill="none" :stroke="C.FOCUS" stroke-width="2" stroke-linecap="round" />
           <circle v-for="p in pts" :key="'p' + p.i" class="pt" :cx="p.x" :cy="p.y" r="4" :fill="p.fill" stroke="var(--surface-white)" stroke-width="1.5" />
         </g>
