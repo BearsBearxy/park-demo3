@@ -91,7 +91,8 @@ describe('到期墙与续约', () => {
     const w = mount(ExpiryView, STUBS)
     // 2026-09-16 起页头 / 结论条 / 卡头 / 读数句照抄真版式,灰条只剩图块与表块(浏览器 390 宽逐块对过)
     // 到期墙(降)· 租金带 280 · 先谈哪几户表 480 · 续签计数 112 · 敏感性表 182 · Pareto(降)· 集中度环(降)· 合同清单 480
-    expect(shims(w, '.ana-skel')).toEqual(['220px', '280px', '480px', '112px', '182px', '260px', '260px', '480px'])
+    // 2026-09-20 P2:折叠条占位 44px 插在「先谈哪几户」之后(稿 ⑦ 的折叠线位置)
+    expect(shims(w, '.ana-skel')).toEqual(['220px', '280px', '480px', '44px', '112px', '182px', '260px', '260px', '480px'])
     w.unmount()
   })
 
@@ -135,7 +136,10 @@ describe('充电桩分析', () => {
     asS()
     const w = mount(ChargingAnalysisView, STUBS)
     // 2026-09-16 起页头 / 结论条 / 卡头 / 读数句照抄真版式,灰条只剩图块与表块(浏览器 390 宽逐块对过)
-    expect(shims(w, '.ana-skel')).toEqual(['260px', '220px', '220px', '220px'])
+    // 2026-09-20 P2:这屏按稿折叠(4 图 → 2 常显 2 折),折进去的两块 S 档不进 DOM;
+    // 44 = 折叠条占位(.ana-fold 的 min-height)。图1 的 height 在 S 档下发 250,再经
+    // anaChartHeight 降到 220 —— 所以第一块也是 220,不再是 260。
+    expect(shims(w, '.ana-skel')).toEqual(['220px', '220px', '44px'])
     w.unmount()
   })
 
@@ -314,7 +318,10 @@ describe('光伏投资回收', () => {
     open()
     asS()
     const w = mount(PvRoiView, STUBS)
-    expect(shims(w, '.ana-skel')).toEqual(['260px', '260px', '210px'])
+    // 2026-09-20 P2:爬坡图按稿 260 → 220(S 档下发 250,再经 anaChartHeight 降档)。
+    // 这屏**不折叠** —— 稿的改后清单里没有「折叠」二字,全屏只有 2 张图,够不上
+    // 「一屏最多 4 张图常显」的门槛(曾经多做了一版折叠,已撤)。
+    expect(shims(w, '.ana-skel')).toEqual(['220px', '260px', '210px'])
     w.unmount()
   })
 

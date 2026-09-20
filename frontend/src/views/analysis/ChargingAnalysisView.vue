@@ -21,7 +21,16 @@ import { resolvedTheme } from '@/stores/appearance'
 import { cpMeterApi, type CpPowerUsageDTO, type CpReadingDTO, type CpStationDTO } from '@/api/cpMeter'
 import { buildYearOptions } from '@/utils/yearGate'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
+import { isSViewport } from '@/components/ana/anaChartHeight'
 import { feeRate, lossRate, lossSeries, operatorTotals, stationMonthly, yearSummary } from './chargingAnalysis.logic'
+
+// S 档(≤600)判据,与 AnaEChart / AnaSkelChart 的降档、ana.css 那块 S 档规则同一个 matchMedia('≤600')。
+// 挂载时判一次,不跟随 resize(旋屏走整页重挂载)。本屏四张图全是 AnaEChart,没有自绘图,
+// 所以没有「容器宽 vs 视口档」的分叉可言 —— 骨架、真图、折叠三者认同一个数才不会错位。
+const isS = isSViewport()
+/** S 档「更多分析」折叠:手续费率 + 电表损耗率趋势两块默认收起。>600 这个 ref 根本没人读,
+ *  两块与改前逐字相同地常显,桌面零差异。 */
+const more = ref(false)
 
 const router = useRouter()
 const tabs = useTabsStore()
@@ -163,7 +172,9 @@ const chart1Opt = computed<object>(() => {
   tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (v == null ? '未抄表' : String(v)) },
   legend: { top: 0, type: 'scroll' },
   grid: { left: 56, right: 56, top: 32, bottom: 26 },
-  xAxis: { type: 'category', data: M_LABELS },
+  // S 档隔一标(1/3/5/7/9/11 月):12 个月标在 390 宽的绘图区里靠 hideOverlap 贪心挑,
+  // 挑出来的那几个没有节奏。interval:1 钉成固定单月序;>600 'auto' = 引擎默认,桌面零差异。
+  xAxis: { type: 'category', data: M_LABELS, axisLabel: { interval: isS ? 1 : 'auto' } },
   yAxis: [
     { type: 'value', name: 'kWh', nameTextStyle: { fontSize: 11 } },
     { type: 'value', name: '元', nameTextStyle: { fontSize: 11 }, splitLine: { show: false } },
@@ -299,7 +310,10 @@ const lossOpt = computed<object>(() => ({
             <span class="t">桩月度量收 · <span class="ana-hole">0000</span>年</span>
             <span class="hint">左轴充电量 kWh(按桩堆叠)· 右轴收益 元<span class="hint-desk"> · 点图深链分桩明细</span><span class="hint-touch"> · 点图看分桩明细</span></span>
           </div>
-          <AnaSkelChart :height="300" />
+          <!-- 两档各写一份字面高:anaSkeletonParity 读的是源码里字面的 :height="NNN",绑成变量就扫不到。
+               S 档下发 250 → AnaSkelChart / AnaEChart 同表降档到 220(桌面仍 300)。 -->
+          <AnaSkelChart :height="250" v-if="isS" />
+          <AnaSkelChart :height="300" v-else />
           <p class="ana-read"><span class="ana-hole">00月充电 00,000 kWh,比上月多 0%</span></p>
           <p class="ana-ref"><span class="ana-hole">全年 0 根桩 · 月度口径 · kWh</span></p>
         </div>
@@ -312,14 +326,16 @@ const lossOpt = computed<object>(() => ({
           <p class="ana-read"><span class="ana-hole">全年收益 ¥000,000,0000 占 00%</span></p>
           <p class="ana-ref"><span class="ana-hole">0 家运营商 · 全年收益 · 元</span></p>
         </div>
-        <div class="av2-card av2-s6">
+        <!-- S 档折叠条占位:与真版式的 .ana-fold 同高(min-height 44),首进不跳 -->
+        <div v-if="isS" class="fp-shim av2-s12" style="height: 44px"></div>
+        <div v-if="!isS" class="av2-card av2-s6">
           <div class="av2-card-h">
             <span class="t">运营商手续费率</span>
             <span class="hint">手续费 ÷(收益+手续费)· 全年口径</span>
           </div>
           <AnaSkelChart :height="250" />
         </div>
-        <div class="av2-card av2-s12">
+        <div v-if="!isS" class="av2-card av2-s12">
           <div class="av2-card-h">
             <span class="t">电表损耗率趋势 · 每运营商</span>
             <span class="hint">(电表量−Σ充电量)÷电表量 · 红点=负值计量异常 · 无电表月断点不连线</span>
@@ -371,7 +387,8 @@ const lossOpt = computed<object>(() => ({
               <span class="t">桩月度量收 · {{ shownYear }}年</span>
               <span class="hint">左轴充电量 kWh(按桩堆叠)· 右轴收益 元<span class="hint-desk"> · 点图深链分桩明细</span><span class="hint-touch"> · 点图看分桩明细</span></span>
             </div>
-            <AnaEChart :option="chart1Opt" :height="300" @chart-click="goDetail" />
+            <!-- S 档下发 250 → anaChartHeight 同表降档到 220(桌面 300 不动);骨架上面两个 v-if 节点跟着 -->
+            <AnaEChart :option="chart1Opt" :height="isS ? 250 : 300" @chart-click="goDetail" />
             <p class="ana-read">{{ lastM.label }}月充电 {{ fnum(lastM.kwh, 0) }} kWh{{ lastM.delta }}</p>
             <p class="ana-ref">全年 {{ sm.stations.length }} 根桩 · 月度口径 · kWh</p>
           </div>
@@ -390,8 +407,18 @@ const lossOpt = computed<object>(() => ({
             <AnaEmpty v-else label="本年收益均为 0" hint="有充电记录但收益未填,先到分桩明细补录" :to="'/' + navValue" to-text="去补录" />
           </div>
 
+          <!-- S 档折叠条:手续费率 + 电表损耗率趋势两块收起。用 button + v-if 而不是 <details>——
+               <details> 要在桌面上「透明地」把两张卡还给 .av2-grid 得靠 display:contents,
+               而那会碰上 UA 的 ::details-content 收起机制。isS 为假时这条按钮整个不渲染,
+               下面两张卡的 DOM 与改前逐字相同,桌面零差异。 -->
+          <button v-if="isS" type="button" class="av2-s12 ana-fold" :aria-expanded="more ? 'true' : 'false'" @click="more = !more">
+            <b>更多分析</b>
+            <span class="sub">手续费率 · 电表损耗率趋势</span>
+            <span class="n">{{ more ? '收起' : '2 块' }}</span>
+          </button>
+
           <!-- 图2b s6:手续费率对比 -->
-          <div class="av2-card av2-s6">
+          <div v-if="!isS || more" class="av2-card av2-s6">
             <div class="av2-card-h">
               <span class="t">运营商手续费率</span>
               <span class="hint">手续费 ÷(收益+手续费)· 全年口径</span>
@@ -401,7 +428,7 @@ const lossOpt = computed<object>(() => ({
           </div>
 
           <!-- 图3 s12:电表损耗率月度线(负值红点=计量异常;无电表月断点) -->
-          <div class="av2-card av2-s12">
+          <div v-if="!isS || more" class="av2-card av2-s12">
             <div class="av2-card-h">
               <span class="t">电表损耗率趋势 · 每运营商</span>
               <span class="hint">(电表量−Σ充电量)÷电表量 · 红点=负值计量异常 · 无电表月断点不连线</span>
@@ -428,4 +455,19 @@ const lossOpt = computed<object>(() => ({
 .ca-cs .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 .ca-cs.lk { cursor: pointer; color: var(--text-link); }
 .ca-cs.lk:hover { text-decoration: underline; }
+
+/* S 档「更多分析」折叠条(只在 isS 时渲染,>600 没有这个节点)。
+   字号回阶梯:标签 14(--fs-body)、说明与计数 12(--fs-label);min-height 44 = 触点。 */
+.ana-fold { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; box-sizing: border-box;
+  border: 1px dashed var(--border-control); border-radius: 8px; background: var(--surface-card);
+  font-family: var(--font-sans); font-size: var(--fs-body); color: var(--text-secondary); text-align: left; cursor: pointer; }
+.ana-fold b { flex: 0 0 auto; font-weight: var(--fw-semibold); color: var(--text-primary); }
+.ana-fold .sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-label); }
+.ana-fold .n { margin-left: auto; flex: 0 0 auto; font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text-muted); }
+
+/* S 档结论条:一句一行(390 上四句本来也各占一行,钉死它),末行仍是「查看分桩明细 →」。
+   这四句是 <span> 不是 button —— 不给它们补行尾 ›,那会把不可点的句子说成可点的。 */
+@media (max-width: 600px) {
+  .ca-concl { flex-direction: column; align-items: flex-start; }
+}
 </style>

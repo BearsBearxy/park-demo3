@@ -102,12 +102,19 @@ describe('ChargingAnalysisView · C6-01 首进骨架(块高钉真版式)', () =>
     expect(src, '版式已知不许转圈').not.toContain('page-spin')
     expect(src, '骨架根节点缺 ana-skel 钩子').toContain('class="ak-page ana-skel"')
     // 顶替 AnaEChart 的块是 <AnaSkelChart :height>(与图同表降档,C6-01 ≤600),其余是写死高的 .fp-shim
-    const shim = [...src.matchAll(/class="fp-shim" style="height: (\d+)px|<AnaSkelChart :height="(\d+)"/g)].map((m) => +(m[1] ?? m[2]))
+    const shim = [...src.matchAll(/class="fp-shim[^"]*" style="height: (\d+)px|<AnaSkelChart :height="(\d+)"/g)].map((m) => +(m[1] ?? m[2]))
     // 2026-09-16 起卡头 / 页头 / 读数句照抄真版式(不再是灰条),序列里只剩图块与少数写死高的块;逐块同高已在浏览器 390 / 1366 宽实测
-    expect(shim).toEqual([300, 250, 250, 250])
-    const charts = [...src.matchAll(/<AnaEChart [^>]*:height="(\d+)"/g)].map((m) => +m[1])
-    // 四张图各留一块:300 · 250 ×3
-    expect(charts).toEqual([300, 250, 250, 250])
+    // 2026-09-20(P2 屏板)起序列里出现「同一块两个数」:图 1 在 S 档下发 250(降档后 220)、桌面 300,
+    // 两档各写一个字面高的 v-if / v-else 节点(高度绑成变量的话这道门禁就看不见这一块)。
+    // 44 = S 档「更多分析」折叠条(.ana-fold 的 min-height),手续费率与损耗率两块收进它里面,
+    // 骨架在 S 档因此也只画前两块 + 这一条 —— 它们的 250 仍写在 v-if="!isS" 的节点上,序列里照样数得到。
+    expect(shim).toEqual([250, 300, 250, 44, 250, 250])
+    // 图的 :height 现在有两种写法:字面值,和按档分叉的 `isS ? S档 : 桌面`;两种都收,
+    // 因为「图可能取到的每一个高,骨架都得有一块同高的」这条不变量对两档都要成立。
+    const charts = [...src.matchAll(/<AnaEChart [^>]*:height="(?:isS \? (\d+) : (\d+)|(\d+))"/g)]
+      .flatMap((m) => (m[3] ? [+m[3]] : [+m[1], +m[2]]))
+    // 四张图:图1 按档 250/300,其余三张 250
+    expect(charts).toEqual([250, 300, 250, 250, 250])
     expect(charts.every((h) => shim.includes(h)), '有图的高没在骨架里留位').toBe(true)
   })
 })

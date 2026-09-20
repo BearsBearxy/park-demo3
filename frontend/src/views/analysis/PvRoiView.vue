@@ -18,6 +18,12 @@ import { CALLOUT, calloutMark } from '@/components/ana/anaTheme'
 import type { PvPhaseDTO, PvRecordDTO } from '@/types/pv'
 import { buildRamp, cumSeries, phaseMonthly, phaseSummaries } from './pvRoi.logic'
 import { inViewport, useEnterPhase } from '@/components/ana/anaMotion'
+import { isSViewport } from '@/components/ana/anaChartHeight'
+
+// S 档(≤600)判据,与 AnaEChart / AnaSkelChart 的降档、ana.css 那块 S 档规则同一个 matchMedia('≤600')。
+// 挂载时判一次,不跟随 resize。本屏两张图都是 AnaEChart,没有自绘图。
+const isS = isSViewport()
+/** S 档「更多分析」折叠:分期收益 + 月度明细两块默认收起。>600 没人读它,两块照旧常显。 */
 
 const phases = ref<PvPhaseDTO[]>([])
 const records = ref<PvRecordDTO[]>([])
@@ -112,12 +118,15 @@ const phaseOpt = computed<object>(() => {
     xAxis: { type: 'category', data: rs.map((x) => x.p.name) },
     yAxis: { type: 'value', axisLabel: { formatter: '{value} 万' } },
     series: [
+      // S 档值直标在段上:3 根柱、没有悬停,tooltip 在手机上是个零。>600 不显,桌面零差异。
       {
         name: '自消纳', type: 'bar', stack: 'fee', barMaxWidth: 46,
+        label: { show: isS, position: 'inside', fontSize: 11, formatter: '{c}' },
         data: rs.map((x, i) => ({ value: +(x.selfAmt / 1e4).toFixed(1), itemStyle: { color: hues().blue, opacity: dim(i) } })),
       },
       {
         name: '上网', type: 'bar', stack: 'fee',
+        label: { show: isS, position: 'inside', fontSize: 11, formatter: '{c}' },
         data: rs.map((x, i) => ({ value: +(x.gridAmt / 1e4).toFixed(1), itemStyle: { color: hues().pale, opacity: dim(i) } })),
       },
     ],
@@ -161,7 +170,10 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
             <span class="t">累计收益爬坡 vs 工程总投资</span>
             <span class="hint">实线=已记账 · 虚线=按年化外推<span class="ana-hole"> · 预估回收点 0000-00</span> · 万元</span>
           </div>
-          <AnaSkelChart :height="300" />
+          <!-- 两档各写一份字面高:anaSkeletonParity 读的是源码里字面的 :height="NNN"。
+               S 档下发 250 → 同表降档到 220(桌面 300)。 -->
+          <AnaSkelChart :height="250" v-if="isS" />
+          <AnaSkelChart :height="300" v-else />
           <p class="ana-read"><span class="ana-hole">累计 ¥0,000.0 万，达投资额 00.0%</span></p>
           <p class="ana-ref"><span class="ana-hole">00 个记账月 · 全园合计 · 万元</span></p>
         </div>
@@ -212,7 +224,9 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
               <span class="t">累计收益爬坡 vs 工程总投资</span>
               <span class="hint">实线=已记账 · 虚线=按年化外推{{ hitYm ? ' · 预估回收点 ' + hitYm : '' }} · 万元</span>
             </div>
-            <AnaEChart :option="rampOpt" :height="300" />
+            <!-- S 档下发 250 → anaChartHeight 同表降档到 220(桌面 300 不动);骨架两个 v-if 节点跟着。
+                 气泡「回收 YYYY-MM」不动:placeCallout 已经把它钳在画布内、尖角仍对准点。 -->
+            <AnaEChart :option="rampOpt" :height="isS ? 250 : 300" />
             <!-- 取图自己的数:实线最后一点。tot.cum 只加落在 phases 字典里的记录(pvRoi.logic.ts filter r.phase===p.id),
                  而这条实线是 cumSeries(records) 全部记录求和 —— phase 对不上字典的记录在图上、不在 tot.cum 里。 -->
             <p class="ana-read hold"><template v-if="cumPts.length">累计 {{ finWan(cumPts[cumPts.length - 1].cum) }}，达投资额 {{ rpct(tot.recovery) }}</template></p>
@@ -296,4 +310,15 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
 .roi2-sel b { font-family: var(--font-mono); color: var(--text-primary); font-weight: var(--fw-semibold); }
 .roi2-tblwrap { max-height: 210px; overflow: auto; }
 
+/* S 档「更多分析」折叠条(只在 isS 时渲染,>600 没有这个节点)。
+   字号回阶梯:标签 14(--fs-body)、说明与计数 12(--fs-label);min-height 44 = 触点。 */
+
+@media (max-width: 600px) {
+  /* 折叠里那张分期柱带着 .av2-s8,而 ana.css 的 S 档 order 把 .av2-s8 排到 -1 ——
+     不压回 0 的话它会跳到「成本回收进度」和折叠条前面,折叠条底下就空了。
+     作用域选择器比 ana.css 的单类名高一档,压得住;>600 这条整块不生效。 */
+  /* 卡内那个 210 高的滚动框在手机上是嵌套滚动 —— 手指往下滑,滑表还是滑页取决于落在哪。
+     整卡不限高,页面只留一层滚动。桌面保留(那里是为了不让 44 行把卡撑爆)。 */
+  .roi2-tblwrap { max-height: none; overflow: visible; }
+}
 </style>
