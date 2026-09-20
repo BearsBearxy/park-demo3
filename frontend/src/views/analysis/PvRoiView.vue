@@ -146,7 +146,8 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
     </template>
 
     <!-- 首进:版式已知就不转圈(C6-01)。本屏无页头,块高逐块照它顶替的那块 ——
-         卡头 20(.av2-card-h 下距 8 合 28)、两张图各 300(:height 字面值);
+         卡头 20(.av2-card-h 下距 8 合 28)、两张图各 300(:height 字面值)、
+         两张图下各 1 句读数(.ana-read 上距 8)+ 1 行参照小字(.ana-ref 上距 2);
          同排的 s4 卡真内容比 300 矮,栅格行高由 s8 决定,骨架同排也留 300。
          s8 两块顶替 AnaEChart → AnaSkelChart(与图同表降档);s4 两块顶替的是进度卡 / 明细表,照旧写死。
          数据到了原地硬切,不做淡入;KPI 行由 .anx-kpis 的 min-height 94 兜位。 -->
@@ -161,6 +162,8 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
             <span class="hint">实线=已记账 · 虚线=按年化外推<span class="ana-hole"> · 预估回收点 0000-00</span> · 万元</span>
           </div>
           <AnaSkelChart :height="300" />
+          <p class="ana-read"><span class="ana-hole">累计 ¥0,000.0 万，达投资额 00.0%</span></p>
+          <p class="ana-ref"><span class="ana-hole">00 个记账月 · 全园合计 · 万元</span></p>
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">成本回收进度</span><span class="hint">全园合计口径</span></div>
@@ -175,6 +178,8 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
         <div class="av2-card av2-s8">
           <div class="av2-card-h"><span class="t">分期收益(自消纳 + 上网)</span><span class="hint"><span class="hint-desk">点击柱子查看该期月度明细</span><span class="hint-touch">点柱看该期月度明细</span></span></div>
           <AnaSkelChart :height="300" />
+          <p class="ana-read"><span class="ana-hole">全园合计 ¥0,000.0 万，自消纳占 00.0%</span></p>
+          <p class="ana-ref"><span class="ana-hole">0 期 · 柱=自消纳+上网 · 万元</span></p>
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h">
@@ -208,6 +213,10 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
               <span class="hint">实线=已记账 · 虚线=按年化外推{{ hitYm ? ' · 预估回收点 ' + hitYm : '' }} · 万元</span>
             </div>
             <AnaEChart :option="rampOpt" :height="300" />
+            <!-- 取图自己的数:实线最后一点。tot.cum 只加落在 phases 字典里的记录(pvRoi.logic.ts filter r.phase===p.id),
+                 而这条实线是 cumSeries(records) 全部记录求和 —— phase 对不上字典的记录在图上、不在 tot.cum 里。 -->
+            <p class="ana-read hold"><template v-if="cumPts.length">累计 {{ finWan(cumPts[cumPts.length - 1].cum) }}，达投资额 {{ rpct(tot.recovery) }}</template></p>
+            <p class="ana-ref hold"><template v-if="cumPts.length">{{ cumPts.length }} 个记账月 · 全园合计 · 万元</template></p>
           </div>
 
           <!-- span4:回收进度条 -->
@@ -227,6 +236,8 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
           <div class="av2-card av2-s8">
             <div class="av2-card-h"><span class="t">分期收益(自消纳 + 上网)</span><span class="hint"><span class="hint-desk">点击柱子查看该期月度明细</span><span class="hint-touch">点柱看该期月度明细</span></span></div>
             <AnaEChart :option="phaseOpt" :height="300" @chart-click="onPhaseClick" />
+            <p class="ana-read">全园合计 {{ finWan(tot.cum) }}，自消纳占 {{ tot.cum ? rpct(tot.selfAmt / tot.cum) : '—' }}</p>
+            <p class="ana-ref">{{ rows.length }} 期 · 柱=自消纳+上网 · 万元</p>
           </div>
 
           <!-- span4:选中期月度明细卡 -->

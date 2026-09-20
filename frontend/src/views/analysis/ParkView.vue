@@ -121,6 +121,12 @@ const donutOption = computed(() => ({
     data: phases.value.map((p) => ({ name: p.name, value: +p.rentWan.toFixed(2), itemStyle: { color: phaseColor(p.phase) } })),
   }],
 }))
+// 环图读数句取的那一行:月租最大的期区。不是新指标 —— 每行的值与它的占比 tooltip 里本来就在算,
+// 这里只是对已有 phases 取最大。totalRentWan<=0(无有效合同/全 0 租)时闭嘴,不渲染 NaN%。
+// 样本量只数真有合同月租的栋:rows 对全部楼栋建行(含月租 0 的空栋,与 KPI「楼栋数」同源),
+// 拿它当那个百分比的分母说明是虚的 —— 同屏散点卡头正写着「月租0楼栋 N 栋未显示」。
+const rentedCount = computed(() => rows.value.filter((r) => r.rentWan > 0).length)
+const topPhase = computed(() => (totalRentWan.value > 0 ? [...phases.value].sort((a, b) => b.rentWan - a.rentWan)[0] : undefined))
 
 // ── 楼栋×租户散点(x=租户数,y=月租万;气泡大小=合同数,颜色=分期) ──
 // spec §T2:y 轴(月租,万)默认对数(小栋与大栋同图可读);log 下月租≤0 无法取对数 → 过滤并在卡头 hint 披露计数
@@ -214,8 +220,10 @@ const areaBarOption = computed(() => ({
          图块 = AnaSkelChart,高与各 AnaEChart 的 :height 同表降档(300 / 300 / 300 / 250,anaChartHeight.ts)。
          TreeMap 卡与面积转换卡下面各有一条 .pk-legend(本文件 scoped margin-top 8 + 行盒 20 = 28;
          行盒 20 = base.css body line-height var(--lh-snug) = tokens.css 20px,与 11px 字号无关);
+         读数句 .ana-read = ana.css margin-top 8 + 行盒 20 = 28;参照小字 .ana-ref = margin-top 2 + 行盒 20 = 22
+         (TreeMap 卡与期区环卡各 28 + 22;面积转换卡只有读数句,28);
          租户明细卡 = .pk-tbl-wrap max-height 296 + .pk-sum(margin-top 8 + 行盒 20);
-         面积转换卡右栏 图 250 + legend 28 = 278 高于左栏两块指标 186(宽档左右并排,取高的那栏)。
+         面积转换卡右栏 图 250 + legend 28 + 读数句 28 = 306 高于左栏两块指标 186(宽档左右并排,取高的那栏)。
          ≤900 两栏改纵排、指标行在图上方,其高随「Σ建筑 … ÷ Σ租赁 …」折几行而变,骨架不兜。
          KPI 行由 .anx-kpis min-height 94 + 常驻 '—' 瓦片兜位。数据到了原地硬切,不做淡入。 -->
     <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
@@ -239,6 +247,8 @@ const areaBarOption = computed(() => ({
           <div class="pk-legend ana-hole">
             <span v-for="n in ['一期', '二期', '三期', '宿舍']" :key="n" class="pk-leg"><span class="sw"></span>{{ n }}</span>
           </div>
+          <p class="ana-read"><span class="ana-hole">共 ¥000.0万/月,最大 000栋 占 00.0%</span></p>
+          <p class="ana-ref"><span class="ana-hole">00 栋有合同月租 · 万元</span></p>
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h">
@@ -251,6 +261,8 @@ const areaBarOption = computed(() => ({
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">期区月租结构</span><span class="hint">有效合同月租占比</span></div>
           <AnaSkelChart :height="300" />
+          <p class="ana-read"><span class="ana-hole">最大期区 000 ¥000.0万/月,共 0 个期区</span></p>
+          <p class="ana-ref"><span class="ana-hole">000 份有效合同 · 月租 · 万元</span></p>
         </div>
         <div class="av2-card av2-s6">
           <div class="av2-card-h">
@@ -302,6 +314,7 @@ const areaBarOption = computed(() => ({
                 <span class="pk-leg"><span class="sw"></span>建筑面积</span>
                 <span class="pk-leg"><span class="sw"></span>租赁面积</span>
               </div>
+              <p class="ana-read"><span class="ana-hole">00 栋中建筑最大 000栋,该栋系数 0.00</span></p>
             </div>
           </div>
         </div>
@@ -327,6 +340,9 @@ const areaBarOption = computed(() => ({
           <div class="pk-legend">
             <span v-for="p in phases" :key="p.phase" class="pk-leg"><span class="sw" :style="{ background: phaseColor(p.phase) }"></span>{{ p.name }}</span>
           </div>
+          <!-- 常驻读数句:全园合计与「谁最大、占几成」原先只活在 tooltip 与目测里(块标签只印单栋值) -->
+          <p class="ana-read hold"><template v-if="totalRentWan > 0">共 ¥{{ fnum(totalRentWan, 1) }}万/月,最大 {{ rows[0].name }} 占 {{ fnum(rows[0].rentWan / totalRentWan * 100, 1) }}%</template></p>
+          <p class="ana-ref hold"><template v-if="totalRentWan > 0">{{ rentedCount }} 栋有合同月租 · 万元</template></p>
         </div>
 
         <div class="av2-card av2-s4">
@@ -354,6 +370,11 @@ const areaBarOption = computed(() => ({
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">期区月租结构</span><span class="hint">有效合同月租占比</span></div>
           <AnaEChart :option="donutOption" :height="300" />
+          <!-- 占比有意不写:每个扇区标签自己就印着 {b}
+{d}%,而 ECharts 默认两位小数(47.06%),
+               句里写一位就是同一张图上同一个量两个数。tooltip 里的金额才是这里唯一读不到的。 -->
+          <p class="ana-read hold"><template v-if="topPhase">最大期区 {{ topPhase.name }} ¥{{ fnum(topPhase.rentWan, 1) }}万/月,共 {{ phases.length }} 个期区</template></p>
+          <p class="ana-ref hold"><template v-if="topPhase">{{ live.length }} 份有效合同 · 月租 · 万元</template></p>
         </div>
 
         <div class="av2-card av2-s6">
@@ -418,6 +439,9 @@ const areaBarOption = computed(() => ({
                 <span class="pk-leg"><span class="sw" :style="{ background: AREA_COLOR.building }"></span>建筑面积</span>
                 <span class="pk-leg"><span class="sw" :style="{ background: AREA_COLOR.rent }"></span>租赁面积</span>
               </div>
+              <!-- 没有选中态,取建筑面积最大那一行当代表,并写出它在全体里的位置;系数即 tooltip 印的那个数;写「该栋系数」是因为左栏大字那个「全园实际换算系数」是 Σ建筑÷Σ租赁,同卡两个数不许同名。
+                   不配 .ana-ref:句里没有 %,样本量与口径同卡已常驻两处(卡头覆盖率 + 左栏 Σ 算式) -->
+              <p class="ana-read hold"><template v-if="areaRows.length">{{ areaRows.length }} 栋中建筑最大 {{ areaRows[0].name }},该栋系数 {{ fnum(areaRows[0].building / areaRows[0].rent, 2) }}</template></p>
             </div>
           </div>
         </div>

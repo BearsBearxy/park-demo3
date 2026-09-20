@@ -31,7 +31,7 @@ import {
   type AnaAnomaly, type AnomalyInputs, type CollectRate, type PnlSummary, type S10PhaseMonthly,
 } from '@/analysis/anaData'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, nextMonthForecast, nextForecastReadout, nextForecastRefText, mainChart, mainChartOption, mainChartOutlierNote, momOf, monthRangeLabel, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, phaseStack, pnlYearMonths, revNoteText, schedTrend,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, nextMonthForecast, nextForecastReadout, nextForecastRefText, mainChart, mainChartOption, mainChartOutlierNote, momOf, monthRangeLabel, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, phaseStack, phaseStackLast, pnlYearMonths, revNoteText, schedTrend,
 } from './cockpit.logic'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -214,6 +214,9 @@ function onMainClick(p: unknown): void {
 // N1(修复轮2):与 rev/cost/prof 共用 yearMonths,收入构成合计不再是另一个数(见 cockpit.logic.ts)。
 const compo = computed(() => compoData(pnl.value, isMonth.value, usedMi.value, yearMonths.value))
 const compoTotal = computed(() => compo.value.reduce((s, d) => s + d.value, 0))
+// 常驻读数句要的占比:compo 已按 value 降序且滤掉 ≤0,[0] 就是最大那块;
+// 这个百分数下面 donutOption 的图例 formatter 已经在算(pct),这里不是新指标。
+const compoTopPct = computed(() => (compoTotal.value > 0 ? ((compo.value[0].value / compoTotal.value) * 100).toFixed(1) : '0.0'))
 // 名义分类(租金/用电/用水/运管)须异色:主题色板前 4 位是蓝族渐变(给「分期收入堆叠」这类有序量用的),
 // 4 扇区环恰好取满前 4 位 → 全蓝难辨。此处局部指定 4 个可区分色相,不动全局主题。
 const donutOption = computed<object>(() => {
@@ -254,6 +257,9 @@ const segTrendOption = computed<object | null>(() => {
 
 // ── 分期收入堆叠(点击段 → 深链附表10 该期该月) ──
 const ps = computed(() => phaseStack(s10Phase.value))
+// 最新一期的堆叠合计 + 最厚那一段占比(常驻读数句;手机上这张图一个数都读不到——
+// x 轴只印「N月」、y 轴只印刻度,每段的值只活在 tooltip 里)。
+const psLast = computed(() => phaseStackLast(ps.value))
 const phaseOption = computed<object | null>(() => {
   const d = ps.value
   if (!d) return null
@@ -366,7 +372,7 @@ const conclusion = computed(() => buildConclusion(
          (主图 300 · 构成环 300 · 预测带 280 · 第二排三张 250),卡头 20 + .av2-card-h 的 8 下边距;
          KPI 行由 .anx-kpis 的 min-height 94 兜位。数据到了原地硬切,不做淡入、卡片不错峰。
          结论条与取期横幅按库里现有数据留位(见下一段注释)。
-         主图卡与预测带卡的读数句是常驻的(.ana-read/.ana-ref 行盒 20 由 --lh-snug 定,与字号无关),
+         主图 / 构成环 / 预测带 / 分期堆叠 四张卡的读数句是常驻的(.ana-read/.ana-ref 行盒 20 由 --lh-snug 定,与字号无关),
          骨架照 8+20 / 2+20 钉上,不钉的话数据到了下面整片下沉。
          **门只认首进**(!pnl):换年那一路旧年内容留在原地退让(C5-02),不许整片塌回骨架 —— 那是
          「一次交互两个动的东西」(§1.7):正文整片消失 + 工具条进度线。
@@ -401,6 +407,8 @@ const conclusion = computed(() => buildConclusion(
             <span class="hint">合计 <span class="ana-hole">¥000.0万</span><span class="hint-desk"> · 点击扇区看趋势</span><span class="hint-touch"> · 点扇区看趋势</span></span>
           </div>
           <AnaSkelChart :height="300" />
+          <p class="ana-read"><span class="ana-hole">租金 ¥000.0万,占 00.0%</span></p>
+          <p class="ana-ref"><span class="ana-hole">0 个板块 · 损益附表1~4 · 万元</span></p>
         </div>
         <div class="av2-card av2-s12">
           <div class="av2-card-h">
@@ -417,6 +425,8 @@ const conclusion = computed(() => buildConclusion(
             <span class="hint">附表10 覆盖 <span class="ana-hole">0</span> 期<span class="hint-desk"> · 点击深链附表10</span><span class="hint-touch"> · 点图看附表10</span></span>
           </div>
           <AnaSkelChart :height="250" />
+          <p class="ana-read"><span class="ana-hole">0月 合计 000万,一期占 00.0%</span></p>
+          <p class="ana-ref"><span class="ana-hole">0 个期区 · 附表10 · 万元</span></p>
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h">
@@ -503,6 +513,10 @@ const conclusion = computed(() => buildConclusion(
         </div>
         <AnaEChart v-if="compo.length" :option="donutOption" :height="300" @chart-click="onDonutClick" />
         <AnaEmpty v-else label="当期无收入构成数据" hint="构成来自损益附表 1~4 各板块收入" to="/rent-pnl" to-text="去录入损益附表" />
+        <!-- 常驻读数句:悬停才看得见的只有各扇区的金额(tooltip),占比在图例里、合计在卡头 hint 里,
+             所以这句写「最大那块的金额 + 占比」,补上唯一缺的那个数。 -->
+        <p class="ana-read hold"><template v-if="compo.length">{{ compo[0].label }} {{ money(compo[0].value) }},占 {{ compoTopPct }}%</template></p>
+        <p class="ana-ref hold"><template v-if="compo.length">{{ compo.length }} 个板块 · 损益附表1~4 · 万元</template></p>
       </div>
 
 
@@ -527,10 +541,15 @@ const conclusion = computed(() => buildConclusion(
       <div class="av2-card av2-s4">
         <div class="av2-card-h">
           <span class="t">分期收入堆叠</span>
-          <span class="hint">附表10 覆盖 {{ ps?.months.length ?? 0 }} 期<span class="hint-desk"> · 点击深链附表10</span><span class="hint-touch"> · 点图看附表10</span></span>
+          <span class="hint">附表10 覆盖 {{ ps?.months.length ?? 0 }} 个月<span class="hint-desk"> · 点击深链附表10</span><span class="hint-touch"> · 点图看附表10</span></span>
         </div>
         <AnaEChart v-if="phaseOption" :option="phaseOption" :height="250" @chart-click="onPhaseClick" />
         <AnaEmpty v-else label="附表10 无计费数据" hint="分期收入来自附表10 租户×月计费" to="/sales-income" to-text="去录入附表10" />
+        <!-- 常驻读数句:最新一期的柱子有多高、哪一段最厚(两个数都只对已画出的那一列求和/取最大)。
+             hold:图画得出来而 phaseStackLast 返回 null(最后一列 total<=0)是真会发生的,而骨架那两行
+             是无条件画的 —— 不占位就会在数据到的那一帧反向塌 50px。 -->
+        <p class="ana-read hold"><template v-if="psLast">{{ psLast.m }}月 合计 {{ fint(psLast.total) }}万,{{ psLast.name }}占 {{ psLast.pct.toFixed(1) }}%</template></p>
+        <p class="ana-ref hold"><template v-if="psLast">{{ ps?.series.length }} 个期区 · 附表10 · 万元</template></p>
       </div>
 
       <div class="av2-card av2-s4">
