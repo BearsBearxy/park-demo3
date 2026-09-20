@@ -39,6 +39,7 @@ import PvBetaChart from './PvBetaChart.vue'
 import PvDetailTable from './PvDetailTable.vue'
 import { usePeriod } from '@/analysis/usePeriod'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
+import { useViewport } from '@/composables/useViewport'
 import { useWidth } from '@/components/ana/useWidth'
 import { fnum } from '@/components/ana/anaFmt'
 import { pvMeterApi, type PvReadingDTO, type PvStationDTO } from '@/api/pvMeter'
@@ -97,6 +98,17 @@ const section = ref<'abs' | 'ledger' | 'lab'>('ledger')
 const { el: mainEl, width: mainW } = useWidth(999)
 const narrow = computed(() => mainW.value < 420)
 const mainBlockH = computed(() => (narrow.value ? '224px' : '260px'))
+
+// ⚠ 本文件有**两条**窄档判据,别混用:
+//   narrow —— 容器宽 < 420。只给「跟着自绘图几何走」的东西用(上面的 mainBlockH:大图自己量的
+//     就是这个盒子)。
+//   isS    —— 视口 ≤600。给「由 @media (max-width:600px) 决定的东西」用:判据脚的两列网格、
+//     ana.css 那整块 S 档规则(段控高、两列 KPI、order)、整屏 sheet(FPDrawer 自己的媒体查询)。
+// 混用的代价是实打实的:容器宽 = 视口 − .anx-body padding 48 − .av2-card padding 20 = 视口 − 68,
+// 所以容器 ≥420 ⟺ 视口 ≥488。骨架按 narrow 选高、而真版式由 @media 600 决定的话,
+// 视口 488–600 那一段首进会硬跳(判据脚那块差 68px)。
+const { tier } = useViewport()
+const isS = computed(() => tier.value === 's')
 
 const CRIT_KEYS = [
   'pv_yield_anchor_h', 'pv_crit_cover_month', 'pv_crit_ledger',
@@ -264,6 +276,12 @@ watch(SECTIONS, (opts) => {
   if (!opts.some(o => o.value === section.value)) section.value = 'ledger'
 }, { immediate: true })
 
+/** 高级分析六块,窄档默认只出前四块(手机排布稿 §3「三档里哪 4 块常显」:L5 / L3 / L6 / L1 常显,
+ *  L2 与逐栋核对表进「更多分析」)。桌面 isS 恒 false → 六块照旧全出,零差异。
+ *  ponytail: 不随换档 / 换栋复位 —— 点开过的人是要看的,收回去等于替他做决定。 */
+const labMore = ref(false)
+const labShowAll = computed(() => !isS.value || labMore.value)
+
 // ── 绝对水平 / 账面量 ────────────────────────────────────────────────
 const yb = computed(() => (snap.value && snapInput.value ? yieldBand(snap.value, snapInput.value.rows, selId.value) : null))
 const anchor = computed(() => (snap.value && snapInput.value
@@ -341,6 +359,31 @@ function stepStation(d: 1 | -1) {
   const nx = q[(i + d + q.length) % q.length]
   if (nx != null) { selId.value = nx; openDrawer() }
 }
+
+// ── 手机:抽屉变整屏 sheet,四块改段控一次看一块(手机稿 PvDrawer §1)────────────────
+// 竖排 240 + 210 + 180 + 表 在 390 上要滑两屏半,而「下一栋」在最底下 —— 逐栋翻看正是这个
+// 抽屉存在的理由。改成顶部四档段控(一次一块)+ 脚部常驻上一栋 / 下一栋。
+//
+// 判**视口档**不判容器宽:这块 sheet 是 FPDrawer 自己的 `@media (max-width:600px)` 撑成整屏的,
+// 它按哪条线整屏,这里就得按哪条线换排布。拿容器宽判(< 420)的话 488–600 那一段会分叉 ——
+// CSS 已经整屏、JS 还按桌面竖排。自绘图那批走容器宽是另一回事:同一张图也出现在桌面窄栏里。
+// jsdom 无 matchMedia → tier 恒 'xl' → 走桌面分支,既有用例与桌面版式零变化。
+const sheet = isS
+// 档名照产品自己的卡头取(§05「任何档都不写统计名词」):稿上写的「变点 / 控制图」是内部叫法,
+// 屏上不出现 —— B9 卡头是「这一年的偏离与水平变化」,B10 是「逐日偏离与两道范围线」。
+const DRAWER_TABS = [
+  { v: 'drift', l: '水平变化' },
+  { v: 'ctrl', l: '逐日偏离' },
+  { v: 'beta', l: '逐月' },
+  { v: 'rows', l: '明细' },
+] as const
+const tab = ref<(typeof DRAWER_TABS)[number]['v']>('drift')
+/** 脚部「下一栋 · X」写的是按芯片顺序的下一枚 —— 与 stepStation(1) 同一把序 */
+const nextName = computed(() => {
+  const q = chipOrder.value
+  const id = q[(q.indexOf(selId.value ?? -1) + 1) % q.length]
+  return snap.value?.stations.find(s => s.id === id)?.name ?? ''
+})
 // #st= 深链(C5-05 ④):挂载时只记下要开哪栋,**不立刻开** —— 数据还没到时抽屉标题是空的、
 // 正文显「这栋可用的逐日偏离不足 8 天」,那句在加载期不成立。加载期只出页面骨架(C6-01),
 // 等 snap 第一次非空、且这栋确实在本段已投产里,抽屉才 rise 上来。
@@ -396,10 +439,14 @@ onDeactivated(() => { drawerOpen.value = false })
              这笔账连同下面 374 / 483 两处一起,要等门禁能分两档、且能在浏览器里实测块高之后再平。 -->
         <div class="fp-shim" style="height: 260px; margin-top: 12px"></div>
         <div class="pma-div"></div>
-        <div class="fp-shim" style="height: 34px; width: 70%"></div>
+        <!-- 判据脚:桌面两行 16 + 行距 2 = 34;窄档两列网格 68 + 行距 2 + 范围窗口句两行 32 = 102。
+             两档各写一份字面高 —— anaSkeletonParity 读的是本文件源码里的 style="…height: NNNpx",
+             绑成变量它就扫不到这一块(算法见 <style> 里 S 档那段的空间账)。 -->
+        <div v-if="isS" class="fp-shim" style="height: 102px"></div>
+        <div v-else class="fp-shim" style="height: 34px; width: 70%"></div>
       </div>
       <div class="pma-seg">
-        <div class="fp-shim" style="border-radius: 999px"><Segmented class="ana-hole" :model-value="section" :options="[{ value: 'abs', label: '绝对水平' }, { value: 'ledger', label: '账面量' }, { value: 'lab', label: '高级分析' }]" /></div>
+        <div class="fp-shim" style="border-radius: 999px"><Segmented class="ana-hole" :model-value="section" :size="isS ? 'lg' : 'md'" :options="[{ value: 'abs', label: '绝对水平' }, { value: 'ledger', label: '账面量' }, { value: 'lab', label: '高级分析' }]" /></div>
         <span class="pma-seghint ana-hole">「高级分析」= 算法自检与口径核对，给要复算这屏数字的人看。</span>
       </div>
       <div class="pma-sec">
@@ -414,6 +461,7 @@ onDeactivated(() => { drawerOpen.value = false })
                  尾巴两档同一个数:374 本来就是 390 宽下量的(1366 宽图例与图注各只有一行,尾巴不可能有 102)。
                  高度必须是字面量 —— anaSkeletonParity 读的是本文件源码里的 style="…height: NNNpx",
                  绑成变量那道门禁就看不见这一块,所以两档各写一份节点。 -->
+            <!-- 判 narrow(容器宽)不判 isS:顶替的是 PvConsumption,它自己量的就是容器宽 -->
             <div v-if="narrow" class="fp-shim" style="height: 332px"></div>
             <div v-else class="fp-shim" style="height: 374px"></div>
           </div>
@@ -426,6 +474,7 @@ onDeactivated(() => { drawerOpen.value = false })
                  483 = 6 + 13×27 + 26 + 尾巴 100,栋数 13 与上面那条注释一致。
                  这一轮 ROW 改成桌面 27 / 窄档 30(触点),窄档这块就多 13×3 = 39。尾巴同上,两档同一个数。
                  高度同样得是字面量,两档各写一份节点。 -->
+            <!-- 同上:顶替 PvRevenueBars,判容器宽 -->
             <div v-if="narrow" class="fp-shim" style="height: 522px"></div>
             <div v-else class="fp-shim" style="height: 483px"></div>
           </div>
@@ -464,7 +513,8 @@ onDeactivated(() => { drawerOpen.value = false })
 
         <div class="pma-div"></div>
         <!-- 判据脚固定两行,每行钉高、不折行:第一行判据原文 + 去改,第二行范围窗口(放不下省略,全文进 title)+ 末尾那句。
-             折行数随选中栋 / 档位变的话主卡就跟着变高(V4 §2.1 卡高恒定) -->
+             折行数随选中栋 / 档位变的话主卡就跟着变高(V4 §2.1 卡高恒定)。
+             ≤600 换排法:第一行成两列网格(68)、第二行允许折行并显全文(32) —— 高照样两档各自钉死,见 <style> S 档块 -->
         <div v-if="foot" class="pma-b2">
           <div class="pma-b2-r">
             <span v-for="c in foot.items" :key="c.key">{{ c.text }}</span>
@@ -479,7 +529,7 @@ onDeactivated(() => { drawerOpen.value = false })
 
       <!-- ══ 段控:切档不换卡,容器高度按较高的一档钉死 ══ -->
       <div class="pma-seg">
-        <Segmented v-model="section" :options="SECTIONS" />
+        <Segmented v-model="section" :options="SECTIONS" :size="isS ? 'lg' : 'md'" />
         <span v-if="labReady" class="pma-seghint">「高级分析」= 算法自检与口径核对，给要复算这屏数字的人看。</span>
       </div>
 
@@ -523,10 +573,14 @@ onDeactivated(() => { drawerOpen.value = false })
               <div class="av2-s4 pma-stack">
                 <PvAcfBars v-if="labView.acf" :data="labView.acf" />
                 <div v-else class="av2-card"><div class="pma-note">没有够长的逐日偏差序列，画不出这张图。</div></div>
-                <PvNullHist v-if="labView.nul" :data="labView.nul" :period="labView.period" />
-                <div v-else class="av2-card"><div class="pma-note">选中的栋没有可用的观测段，画不出这张图。</div></div>
+                <template v-if="labShowAll">
+                  <PvNullHist v-if="labView.nul" :data="labView.nul" :period="labView.period" />
+                  <div v-else class="av2-card"><div class="pma-note">选中的栋没有可用的观测段，画不出这张图。</div></div>
+                </template>
               </div>
-              <PvLabTable class="av2-s12" :rows="labView.rows" :year="snap.year" />
+              <PvLabTable v-if="labShowAll" class="av2-s12" :rows="labView.rows" :year="snap.year" />
+              <!-- 窄档只留前四块,其余两块点开才出。按钮排在最后 —— 展开只往下长,已画出来的一格不动 -->
+              <button v-if="!labShowAll" type="button" class="av2-s12 pma-more" @click="labMore = true">更多分析</button>
             </template>
             <div v-else class="av2-s12 pma-note">这一档的量还没算出来。</div>
           </template>
@@ -571,12 +625,27 @@ onDeactivated(() => { drawerOpen.value = false })
 
       <div v-if="!drawer" class="pma-note">这栋可用的逐日偏离不足 8 天，画不出逐日曲线。</div>
       <div v-else class="pma-drawer">
-        <PvDriftChart v-if="drawer.drift" :data="drawer.drift" />
-        <div v-else class="av2-card"><div class="pma-note">这栋可用的逐日偏离不够画出常态线，这一块不画。</div></div>
-        <PvControlChart v-if="drawer.control" :data="drawer.control" :seg-month="drawer.drift?.seg?.month ?? null" />
-        <PvBetaChart :slots="drawer.beta" :year="snap?.year ?? year" />
-        <PvDetailTable :rows="drawer.rows" :gran="snap?.gran ?? gran" />
+        <!-- 手机:四块改段控一次看一块(手机稿 §1);桌面 sheet=false,四块照旧竖排全见,这一行不出。
+             切档只换渲染不重算:四块的数是 drawer 这一个 computed 一次算完的,换档不碰它。 -->
+        <div v-if="sheet" class="anx-seg pma-tabs" role="group" aria-label="看这栋的哪一块">
+          <button v-for="t in DRAWER_TABS" :key="t.v" :class="{ on: tab === t.v }" @click="tab = t.v">{{ t.l }}</button>
+        </div>
+        <template v-if="!sheet || tab === 'drift'">
+          <PvDriftChart v-if="drawer.drift" :data="drawer.drift" />
+          <div v-else class="av2-card"><div class="pma-note">这栋可用的逐日偏离不够画出常态线，这一块不画。</div></div>
+        </template>
+        <PvControlChart v-if="(!sheet || tab === 'ctrl') && drawer.control" :data="drawer.control" :seg-month="drawer.drift?.seg?.month ?? null" />
+        <PvBetaChart v-if="!sheet || tab === 'beta'" :slots="drawer.beta" :year="snap?.year ?? year" />
+        <PvDetailTable v-if="!sheet || tab === 'rows'" :rows="drawer.rows" :gran="snap?.gran ?? gran" />
+        <p v-if="sheet && tab !== 'rows'" class="pma-tabhint">另 3 块在上面那排里 —— 一次看一块</p>
       </div>
+
+      <!-- 手机:脚部常驻两枚 44(手机稿 §1)。逐栋翻看是这个抽屉的用处,按钮不能跟着内容滑走。
+           桌面不给这个插槽 —— FPDrawer 按 $slots.footer 出脚条,不给就一条都不出,桌面零差异。 -->
+      <template v-if="sheet" #footer>
+        <button class="pma-nav prev" @click="stepStation(-1)">上一栋</button>
+        <button class="pma-nav next" @click="stepStation(1)">下一栋 · {{ nextName }}</button>
+      </template>
     </FPDrawer>
   </AnaShell>
 </template>
@@ -590,7 +659,8 @@ onDeactivated(() => { drawerOpen.value = false })
 .pma-div { border-top: 1px solid var(--divider); margin: 8px 0 6px; }
 
 /* B2 判据脚:只读回显,mono 11px。固定两行、每行钉高 16 不折行 —— 主卡高度不随选中栋 / 档位变。
-   ponytail: 第一行按字估宽约 800(年档含划掉那条),1366 下卡内 951 放得下;卡内窄于约 820 时行尾「去改」会被裁,要顾窄屏就把第一行拆成两行 */
+   ponytail: 第一行按字估宽约 800(年档含划掉那条),1366 下卡内 951 放得下;卡内窄于约 820 时行尾「去改」会被裁
+   —— 这个缺口 2026-09-20 由本文件最下面那个 S 档块补上(≤600 改两列网格,五条全文都在),桌面这一档原样不动 */
 .pma-b2 {
   display: flex; flex-direction: column; gap: 2px;
   font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: var(--text-muted);
@@ -636,6 +706,23 @@ onDeactivated(() => { drawerOpen.value = false })
 }
 .pma-ib:active { background: var(--ink-100); transition-duration: 0ms; }
 
+/* ── 抽屉的手机件:只在 sheet(≤600)那一档渲染,桌面这三个选择器一个元素都选不到 ──
+   段控走全局 .anx-seg,高不自己写 —— ana.css 的 S 档块已经把它的按钮钉到 38(3+38+3 = 44 触点)。
+   .anx-seg 是 inline-flex,放进 .pma-drawer 这个 flex 列会被 stretch 拉成整行宽(轨道底色铺一横条),
+   align-self 收回内容宽,与 ds/Segmented 里那条 width:fit-content 同一个坑。 */
+.pma-tabs { align-self: flex-start; }
+/* 「另 3 块」压到脚条上方:一块看完还剩空白时,这句在空白的底,不贴着图注 */
+.pma-tabhint { margin: auto 0 0; font-size: var(--fs-micro); color: var(--text-muted); }
+.pma-nav {
+  flex: 1; min-width: 0; height: 44px; padding: 0 12px; border-radius: var(--radius-full);
+  border: 1px solid transparent; background: var(--surface-sunken); color: var(--text-secondary);
+  font-family: var(--font-sans); font-size: var(--fs-body); cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pma-nav.prev { flex: 0 0 100px; }
+.pma-nav.next { border-color: var(--border-subtle); background: var(--surface-white); color: var(--text-primary); }
+.pma-nav:active { background: var(--ink-100); }
+
 .pma-lk {
   background: none; border: 0; padding: 0; cursor: pointer;
   color: var(--text-link); font-size: 11px; white-space: nowrap;
@@ -644,5 +731,55 @@ onDeactivated(() => { drawerOpen.value = false })
 
 @media (max-width: 1100px) {
   .pma-sec { min-height: 0; }
+}
+
+/* ══ S 档(≤600):手机排布。桌面进不来这一块,1440 与现状零差异。 ══════════════════
+   **判据脚**(:593 那条 ponytail 注释写的缺口,这一轮补上):五条判据 + 「去改」挤在一行
+   nowrap 里约 620px,390 上卡内只有 320(390 − .anx-body 24×2 − .av2-card 10×2 − 边框 2)
+   —— 行尾「去改」直接被裁。改两列网格,五条各占一格、第六格放「去改」:
+     列宽 (320 − 列距 10) / 2 = 155。11px mono 下六格的单行宽,浏览器实测(2026-09-20,320 卡内宽):
+     范围 225 · 连续 144(年档「个月」156) · 抄表覆盖 120 · 台账差 70 · 年等效 103 · 去改 22。
+     只有第一格超 155 → 占两行,行高 32 + 16 + 16 + 行距 2×2 = **68**(实测 r1 自然高 68.00)。
+     年档那格 156 压线,超不超都落在第一行里,跟 225 那格同行 —— 68 两档都成立。
+   ⚠ 两处非写不可,否则这套排法整个失效(实测踩过):
+     ① `minmax(0, 1fr)` —— 裸 `1fr` 的下限是 min-content,而 .pma-b2-r 基档是 nowrap,
+        min-content = 整句宽,列被撑成 225 / 156、总宽 391 > 320,又被 overflow 裁回去;
+     ② `white-space: normal` —— 不解开 nowrap 谁都不折,五条照旧各自超出。
+   第二行的范围窗口句同样改允许折行:含「放宽 N 档」时 320 宽下两行 = 32(不含时只有 16)。
+   它原来全文只挂在 :title 上,而 title 在触屏上读不到 —— 折行把全文显出来,就是那个可见等价物。
+   判据脚总高 68 + 2 + 32 = **102**(实测 102.00;桌面 16 + 2 + 16 = 34 不动),骨架那两个字面高同源。
+   ⚠ 两块仍钉死高 + overflow:hidden:判据文案由计费参数下发,改得比这更长会被裁;第二行没「放宽」
+     那句时也照样占 32(空 16)。代价认了 —— 不钉的话换栋 / 换粒度就顶动下面的段控与整片档内卡片。
+   align-content:start 是必须的:容器定高 + 隐式 auto 行,默认 stretch 会把三行摊成 21.3 一行。 */
+@media (max-width: 600px) {
+  .pma-b2-r:first-child {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start;
+    column-gap: 10px; row-gap: 2px; height: 68px; white-space: normal;
+  }
+  /* 「去改」是 <button>,UA 给的 line-height:normal 在 11px 下是 16.83 —— 不钉的话第三行 16.83,
+     整块 68.83,骨架那个字面 68 就差 0.83。桌面那档不管它(那里整行 overflow:hidden 高 16) */
+  .pma-b2-r:first-child .pma-lk { line-height: 16px; }
+  .pma-b2-r:last-child { display: block; white-space: normal; height: 32px; }
+  /* display:block 之后 .base 与 .tail 是相邻 inline,flex 的 gap 不再生效 */
+  .pma-b2-r:last-child .tail { margin-left: 14px; }
+
+  /* 段控:说明另起一行 —— 一行里段控 214 + 说明 27 字,390 上把说明挤成四五行 */
+  .pma-seg { flex-direction: column; align-items: flex-start; gap: 6px; }
+
+  /* 高级分析折叠的那两块的入口。只在窄档渲染,整幅宽、44 触点 */
+  .pma-more {
+    height: 44px; border: 1px solid var(--border-subtle); border-radius: 8px;
+    background: var(--surface-white); color: var(--text-link);
+    font-family: var(--font-sans); font-size: var(--fs-label); cursor: pointer;
+  }
+  .pma-more:active { background: var(--ink-100); }
+}
+
+/* 抽屉那两处要压过桌面值的:单开一块,与上面那块各管各的(同屏两人并行改,分开写少一处撞车)。
+   .pma-drawer 撑满体区 —— 一块看完还剩空白时,「另 3 块」那句的 margin-top:auto 才有东西可推。
+   标题栏那两枚 26 → 44 触点(手机稿 §2「标题栏」行)。 */
+@media (max-width: 600px) {
+  .pma-drawer { flex: 1; }
+  .pma-ib { width: 44px; height: 44px; border-radius: 12px; }
 }
 </style>

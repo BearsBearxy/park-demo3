@@ -174,7 +174,9 @@ describe('S 档首进 · 骨架里顶替 AnaEChart 的块按降档表(300/440→
   it('❗结构与续约:帕累托 260 · 环 260 · 箱点 220;生命周期 5 行 = 156;清单 486', async () => {
     const w = mountView(TenantPortfolioView)
     await flushPromises()
-    expect(shimHeights(w, '.tp2-skel')).toEqual(['260px', '260px', '220px', '156px', '486px'])
+    // 2026-09-20 P2:租户清单在 S 档换成两行行卡(12 × 56 = 672),骨架跟着两档各写字面高。
+    // 这条用 asS() 挂载,拿到的是 S 档那一支;桌面 486 那一档由下面另一条钉。
+    expect(shimHeights(w, '.tp2-skel')).toEqual(['260px', '260px', '220px', '156px', '672px'])
   })
 
   it('❗租户对标:没有 AnaEChart,自绘直方图 280 不降档;页头 20/20,表块 = 表头 30 + 38×n', async () => {

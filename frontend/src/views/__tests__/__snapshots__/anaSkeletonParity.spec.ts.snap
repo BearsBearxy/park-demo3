@@ -28,8 +28,10 @@ exports[`首进骨架与真版式对齐 > BudgetView:骨架块高序列(浏览�
 
 exports[`首进骨架与真版式对齐 > ChargingAnalysisView:骨架块高序列(浏览器实测过) 1`] = `
 [
+  "chart250",
   "chart300",
   "chart250",
+  "44",
   "chart250",
   "chart250",
 ]
@@ -77,6 +79,7 @@ exports[`首进骨架与真版式对齐 > ExpiryView:骨架块高序列(浏览�
   "chart250",
   "280",
   "480",
+  "44",
   "112",
   "182",
   "chart300",
@@ -117,6 +120,7 @@ exports[`首进骨架与真版式对齐 > PvMeterAnaView:骨架块高序列(浏�
 [
   "26",
   "260",
+  "102",
   "34",
   "332",
   "374",
@@ -127,6 +131,7 @@ exports[`首进骨架与真版式对齐 > PvMeterAnaView:骨架块高序列(浏�
 
 exports[`首进骨架与真版式对齐 > PvRoiView:骨架块高序列(浏览器实测过) 1`] = `
 [
+  "chart250",
   "chart300",
   "chart300",
   "210",
@@ -159,6 +164,7 @@ exports[`首进骨架与真版式对齐 > TenantPortfolioView:骨架块高序列
   "chart300",
   "chart250",
   "156",
+  "672",
   "486",
 ]
 `;

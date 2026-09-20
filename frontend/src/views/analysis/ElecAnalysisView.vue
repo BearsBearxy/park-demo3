@@ -23,6 +23,14 @@ import {
 import '@/components/ana/ana.css'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
+import { isSViewport } from '@/components/ana/anaChartHeight'
+
+// S 档(≤600)几何判据。本屏三张图全是 AnaEChart —— 它自己的降档、顶替它的 AnaSkelChart、
+// 以及 ana.css 里那一整块 S 档规则(order / hint 成对 / 触点 44)都认同一个 matchMedia('≤600'),
+// 这里跟着认它:换成容器宽 <420 的话,视口 488–600 那一段会出现「图按视口降档、并档按容器宽」
+// 的分叉(PvMeterAnaView.vue:92 记的就是这个坑,只是它那屏的图是自绘的,判据方向相反)。
+// 与 AnaEChart 同法:挂载时判一次,不跟随 resize(手机不改窗宽,旋屏走整页重挂载)。
+const isS = isSViewport()
 
 const router = useRouter()
 const tabs = useTabsStore()
@@ -139,7 +147,9 @@ const trendOption = computed<object>(() => ({
   tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (typeof v === 'number' ? '¥' + fnum(v, 1) + '万' : '—') },
   legend: { top: 0 },
   grid: { left: 56, right: 16, top: 32, bottom: 26 },
-  xAxis: { type: 'category', data: MLABELS, boundaryGap: false },
+  // S 档隔一标(1/3/5/7/9/11 月):12 个月标在 390 宽的绘图区里靠 hideOverlap 挑,挑出来的那几个
+  // 是贪心的结果(可能是 1/4/7/10),读起来没有节奏。interval:1 钉成固定的单月序。>600 取 'auto' = 引擎默认,桌面零差异。
+  xAxis: { type: 'category', data: MLABELS, boundaryGap: false, axisLabel: { interval: isS ? 1 : 'auto' } },
   yAxis: { type: 'value', axisLabel: { formatter: '{value} 万' } },
   series: TREND.map(({ key, hue }) => ({
     name: metricLabel(key, key), type: 'line', symbol: 'circle', symbolSize: 4,
@@ -218,18 +228,51 @@ const SEGS = (h: ReturnType<typeof hues>): Seg[] => [   // 画时按当前外观
   { name: '功率因数奖励(抵减)', color: '#94A3B8', of: (rows) => neg(feeAmt(rows, (r) => r.feeKey === 'pf_reward')) },
   { name: '光伏上网收益(抵减)', color: '#CBD5E1', of: (rows) => neg(feeAmt(rows, (r) => r.feeKey === 'pv_grid_income')) },
 ]
+/** 真正画在屏上的那几段(金额仍是元,下标 = 月-1)。
+ *
+ *  桌面 = SEGS 原样九段。S 档并档:九段堆在 390 宽的柱子上,最小的一段只剩 2px 级,
+ *  九行图例还会把绘图区挤没。并法按**已有的分组**,不按占比乱并:
+ *    · 全年正向合计排名取前 3,单列;
+ *    · 其余里**有过正值**的并成「其余 N 项」,**有过负值**的并成「抵减 M 项」。
+ *  正负分两段并、不混加 —— 混加会把零轴下方那两段(功率因数奖励 / 光伏上网收益)吃进柱高里,
+ *  屏上读到的柱顶就不再是 structRead 印的那个分母。九项逐项要看的,走结论条深链成本总览那个月。
+ *
+ *  图与读数句共用这一份:句里点名的段,一定是图例上找得到的那一段。 */
+interface Col { name: string; color: string; vals: (number | null)[] }
+const structCols = computed<Col[]>(() => {
+  const cols: Col[] = SEGS(hues()).map((s) => ({
+    name: s.name, color: s.color, vals: entryMonths.value.map((rows) => s.of(rows)),
+  }))
+  if (!isS) return cols
+  const posSum = (vs: (number | null)[]): number => vs.reduce<number>((a, v) => a + Math.max(0, v ?? 0), 0)
+  const rank = [...cols].sort((a, b) => posSum(b.vals) - posSum(a.vals))
+  const rest = rank.slice(3)
+  if (rest.length < 2) return cols   // 并不出两段以上就别并,「其余 1 项」比原名还难读
+  const fold = (src: Col[], pick: (v: number) => number): (number | null)[] =>
+    entryMonths.value.map((_, i) => {
+      const vs = src.map((c) => c.vals[i]).filter((v): v is number => v != null)
+      return vs.length ? vs.reduce((a, v) => a + pick(v), 0) : null
+    })
+  const ups = rest.filter((c) => c.vals.some((v) => (v ?? 0) > 0))
+  const downs = rest.filter((c) => c.vals.some((v) => (v ?? 0) < 0))
+  const h = hues()
+  return [
+    ...rank.slice(0, 3),
+    ...(ups.length ? [{ name: `其余 ${ups.length} 项`, color: h.mid, vals: fold(ups, (v) => Math.max(0, v)) }] : []),
+    // 颜色取抵减段自己的(SEGS 末段「光伏上网收益(抵减)」),不再复制一份十六进制 ——
+    // 颜色字面量有门禁(colorLiterals.spec,只减不增),而且两处同色写两遍以后必然走散。
+    ...(downs.length ? [{ name: `抵减 ${downs.length} 项`, color: downs[0].color, vals: fold(downs, (v) => Math.min(0, v)) }] : []),
+  ]
+})
 const structOption = computed<object>(() => ({
   tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (typeof v === 'number' ? '¥' + fnum(v, 1) + '万' : '—') },
   legend: { top: 0, itemWidth: 12, itemHeight: 8 },
   grid: { left: 56, right: 16, top: 56, bottom: 26 },
-  xAxis: { type: 'category', data: MLABELS },
+  xAxis: { type: 'category', data: MLABELS, axisLabel: { interval: isS ? 1 : 'auto' } },
   yAxis: { type: 'value', axisLabel: { formatter: '{value} 万' } },
-  series: SEGS(hues()).map((s) => ({
+  series: structCols.value.map((s) => ({
     name: s.name, type: 'bar', stack: 'st', barMaxWidth: 30, itemStyle: { color: s.color },
-    data: entryMonths.value.map((rows) => {
-      const v = s.of(rows)
-      return v == null ? null : +(v / 1e4).toFixed(2)
-    }),
+    data: s.vals.map((v) => (v == null ? null : +(v / 1e4).toFixed(2))),
   })),
 }))
 
@@ -242,16 +285,18 @@ const structOption = computed<object>(() => ({
 // 取 Σ max(0, v) 之后,分母恒等于堆叠柱正向一侧的柱高,就是用户从图上读到的那个顶点。
 // 屏上因此写「正向电费」不写「电费合计」—— 净额比它低,同卡 hint 也明写那两段画在零轴下方。
 const structRead = computed(() => {
-  const segs = SEGS(hues())
-  const valsOf = (i: number) => segs.map((s) => s.of(entryMonths.value[i] ?? []))
+  // 段取自 structCols —— 与图例同一份。S 档并档之后还去读原始九段的话,这句会点名一个
+  // 图例上根本没有的段名(「宿舍占 12%」,而图上只有 Top3 与「其余 N 项」)。
+  const cols = structCols.value
+  const valsOf = (i: number) => cols.map((c) => c.vals[i] ?? null)
   const has = (i: number) => valsOf(i).some((v) => v != null)
   const i = lastWhere(has)
   if (i < 0) return null
   const vs = valsOf(i)
   const total = vs.reduce<number>((a, v) => a + Math.max(0, v ?? 0), 0)
   if (total <= 0) return null
-  let top = segs[0].name, topV = -Infinity
-  vs.forEach((v, k) => { if ((v ?? 0) > topV) { topV = v ?? 0; top = segs[k].name } })
+  let top = cols[0].name, topV = -Infinity
+  vs.forEach((v, k) => { if ((v ?? 0) > topV) { topV = v ?? 0; top = cols[k].name } })
   return {
     mon: i + 1,
     total: fnum(total / 1e4, 1),
@@ -279,7 +324,7 @@ const spreadOption = computed<object>(() => ({
   },
   legend: { top: 0 },
   grid: { left: 52, right: 52, top: 32, bottom: 26 },
-  xAxis: { type: 'category', data: MLABELS },
+  xAxis: { type: 'category', data: MLABELS, axisLabel: { interval: isS ? 1 : 'auto' } },
   yAxis: [
     { type: 'value', axisLabel: { formatter: '{value} 万' } },
     { type: 'value', scale: true, axisLabel: { formatter: '{value} 元' }, splitLine: { show: false } },
@@ -350,7 +395,7 @@ const spreadRead = computed(() => {
       <div class="av2-card ea-concl">
         <!-- 真版式是 button:按钮的行高不继承,用 span 会差出行盒;visibility:hidden 的按钮不进 tab 序 -->
         <button v-for="t in ['0000 年园区电费收益累计 ¥000.0 万(00 个月)', '0000 年光伏投资收益累计 ¥000.0 万(00 个月)', '0000 年基本用电费收益累计 ¥000.0 万(00 个月)', '0000 年售电协议损益累计 ¥00.0 万(00 个月)']"
-          :key="t" type="button" class="ea-cs ana-hole"><span class="dot"></span>{{ t }}</button>
+          :key="t" type="button" class="ea-cs ana-hole"><span class="dot"></span>{{ t }}<span class="ea-ar" aria-hidden="true">›</span></button>
       </div>
       <div class="av2-grid">
         <div class="av2-card av2-s12">
@@ -414,8 +459,10 @@ const spreadRead = computed(() => {
       <template v-else>
         <!-- 结论条:4 指标年累计,人话一句(cv2-concl 同款;点击深链成本总览) -->
         <div class="av2-card ea-concl">
+          <!-- 行尾那枚 › 只在 S 档出:这四句本来就是 button(点进成本总览),桌面上悬停有手型说明了
+               这件事,手机上没有悬停,于是把已有的可点性写出来。不是新功能,也不改 @click。 -->
           <button v-for="c in conclusion" :key="c.key" class="ea-cs" @click="goCost()">
-            <span class="dot" :style="{ background: STATUS[c.tone].color }"></span>{{ c.text }}
+            <span class="dot" :style="{ background: STATUS[c.tone].color }"></span>{{ c.text }}<span class="ea-ar" aria-hidden="true">›</span>
           </button>
         </div>
 
@@ -472,4 +519,18 @@ const spreadRead = computed(() => {
 .ea-cs { display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent; padding: 0; font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-primary); cursor: pointer; }
 .ea-cs:hover { text-decoration: underline; }
 .ea-cs .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+/* 行尾 ›:桌面不出(那里有悬停手型),>600 连盒子都不占 */
+.ea-ar { display: none; }
+
+/* S 档(≤600)阅读序与排布。.ak-page 是 flex column,order 对它的直接子项生效 ——
+   ana.css 那块 order 只管 .av2-grid 的格子,结论条与模拟条是 .ak-page 的兄弟,得在这里排。
+   模拟数据说明条一个字都不删(数据诚实),只是让位:它不是结论,不该占第一眼。
+   DOM 序不动,所以 >600 完全没有 order 声明,桌面零差异。 */
+@media (max-width: 600px) {
+  .ak-head { order: -2; }
+  /* 结论条提到模拟条前面,并从 wrap 成行改成一句一行(390 上四句本来也各占一行,钉死它) */
+  .ea-concl { order: -1; flex-direction: column; align-items: stretch; }
+  .ea-cs { width: 100%; text-align: left; }
+  .ea-ar { display: inline-flex; margin-left: auto; padding-left: 8px; color: var(--text-link); }
+}
 </style>
