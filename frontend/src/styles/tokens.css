@@ -67,6 +67,12 @@ U+2190-21FF,U+2200-22FF,U+0391-03A9,U+03B1-03C9 \
      原首位 "Inter" 已移除:它从未自托管过、远程也拉不到,留着只会误导后人以为在生效。 */
   --font-sans: "Roboto Mono Digits", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
   --font-mono: "Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  /* 不含 webfont 的系统字体栈,只给密码框用(base.css)。
+     2026-09-20 手机实测:iPhone Safari 上密码框显示成一排黑竖条。iOS WebKit 画掩码用的是
+     U+25CF BLACK CIRCLE,自托管子集里没有这个字形(子集 295 字,只到 U+22FF 的几段),
+     而掩码字符不走「缺字形就往后一族找」的逐字回退 ⇒ 直接画 .notdef 方框。
+     子集加字要重新生成字体文件(原始 TTF 不入库),而密码框本来也不需要等宽数字,所以换字体栈。 */
+  --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
 
   /* ---- Font weights ---- */
   --fw-regular:  400;

@@ -177,7 +177,9 @@ async function submit() {
 .tk-note { margin: 0; font-size: 11.5px; line-height: 1.6; color: var(--text-muted); }
 .tk-note.strong { color: var(--text-primary); }
 .tk-note b, .tk-lead b { font-weight: var(--fw-semibold); color: var(--text-primary); }
-.tk-mask :deep(input) { -webkit-text-security: disc; text-security: disc; }
+/* font-family:掩码点不能走自托管子集(iOS 上是一排黑竖条),见 tokens.css 的 --font-ui。
+   这里是 type="text",选不中 base.css 那条 input[type="password"],得自己写。 */
+.tk-mask :deep(input) { -webkit-text-security: disc; text-security: disc; font-family: var(--font-ui); }
 .tk-shared { margin: 0; display: flex; align-items: flex-start; gap: 6px;
              font-size: var(--fs-micro); line-height: 1.6; color: var(--text-muted); }
 .tk-err { margin: 0; min-height: 18px; display: flex; align-items: center; gap: 6px;

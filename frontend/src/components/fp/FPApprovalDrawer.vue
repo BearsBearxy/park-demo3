@@ -254,7 +254,9 @@ async function decide(p: Pending, approve: boolean) {
 .ap-r .v.mono { font-family: var(--font-mono); font-size: 11.5px; }
 .ap-f { display: flex; align-items: center; gap: 8px; margin-top: 11px; }
 .ap-pw { flex: 1; min-width: 0; }
-.ap-mask :deep(input) { -webkit-text-security: disc; text-security: disc; }
+/* font-family:掩码点不能走自托管子集(iOS 上是一排黑竖条),见 tokens.css 的 --font-ui。
+   这里是 type="text",选不中 base.css 那条 input[type="password"],得自己写。 */
+.ap-mask :deep(input) { -webkit-text-security: disc; text-security: disc; font-family: var(--font-ui); }
 .ap-err { margin: 6px 0 0; min-height: 17px; display: flex; align-items: center; gap: 5px;
           font-size: var(--fs-micro); line-height: 17px; color: var(--status-danger); }
 .ap-note { margin: 4px 0 0; font-size: var(--fs-micro); line-height: 1.6; color: var(--text-muted); }

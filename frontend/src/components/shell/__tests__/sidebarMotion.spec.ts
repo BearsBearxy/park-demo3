@@ -4,7 +4,9 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
 
-const src = readFileSync(join(__dirname, '..', 'AppShell.vue'), 'utf8')
+// 统一成 LF:下面的选择器里写死了 \n,而 Windows 上检出的工作区是 CRLF(.gitattributes 没锁),
+// 不规范化的话同一份源码在 Linux 上绿、在 Windows 上红。
+const src = readFileSync(join(__dirname, '..', 'AppShell.vue'), 'utf8').replace(/\r\n/g, '\n')
 const rule = (sel: string) => src.match(new RegExp(sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{([^}]*)\\}'))?.[1] ?? ''
 
 describe('收起 / 打开导航的动效', () => {
