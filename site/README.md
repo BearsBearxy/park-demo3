@@ -21,10 +21,12 @@ site/
 ## 本地看
 
 ```bash
-python -m http.server 8080 --directory site
+python -m http.server 8099 --directory site
 ```
 
-然后开 http://localhost:8080 。直接双击 `index.html` 也能看，只是录屏在 `file://` 下可能不自动播。
+然后开 http://localhost:8099 。`.claude/launch.json` 里也加了一条 `showcase-site`（同一条命令），在 Claude Code 里可以直接起预览。
+
+直接双击 `index.html` 也能看，但**滚动动效要用 http 才验得准**：`file://` 下录屏不自动播，无头截图也只能截到入场动画的中间帧。
 
 ## 发布（Cloudflare Pages）
 

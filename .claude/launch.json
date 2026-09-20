@@ -34,6 +34,18 @@
         "5273"
       ],
       "port": 5273
+    },
+    {
+      "name": "showcase-site",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8099",
+        "--directory",
+        "site"
+      ],
+      "port": 8099
     }
   ]
 }
