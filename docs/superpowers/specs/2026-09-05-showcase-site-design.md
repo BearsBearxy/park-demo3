@@ -462,11 +462,12 @@ v1.3 新增三条：① 设备并排用 `flex: <宽度> 1 0` 按真实像素给�
 
 ## 12. 站点实现（v1.4，2026-09-20）
 
-稿已经落成站点源码，在 `site/`。**零构建、零后端、零第三方请求**（全站 0 个外链，gsap 自带在 `vendor/`，16 个图标构建时内联成静态 SVG）。
+稿已经落成站点源码。**站点 2026-09-20 起独立成仓**：`BearsBearxy/linksight-promo`（私有），本地在 `../产品宣传页`。产品仓这边只留这份设计稿，不留站点代码 —— 宣传页跟产品不同发版节奏，混在一起只会互相牵制。**零构建、零后端、零第三方请求**（全站 0 个外链，gsap 自带在 `vendor/`，16 个图标构建时内联成静态 SVG）。
 
 ```
-site/  index.html(15 章) · styles.css · main.js · vendor/(gsap 3.12.5 两个文件)
-       assets/(素材，按 §6 编号命名) · favicon.svg · _headers · README.md
+（linksight-promo 仓根）index.html(15 章) · styles.css · main.js
+vendor/(gsap 3.12.5 两个文件) · assets/(素材，按 §6 编号命名) · favicon.svg · _headers
+docs/DESIGN.md(本文件的副本) · docs/prototype-with-notes.html(带批注的原型)
 ```
 
 ### 12.1 稿 → 站 覆盖
@@ -483,10 +484,10 @@ site/  index.html(15 章) · styles.css · main.js · vendor/(gsap 3.12.5 两个
 
 ### 12.2 上线清单
 
-1. 素材到齐（`site/assets/README.md` 那张表）。手机那三张等 `jfen/responsive-v2` 合进 master 再拍。
+1. 素材到齐（站点仓 `assets/README.md` 那张表）。手机那三张等 `jfen/responsive-v2` 合进 master 再拍。
 2. 换掉尾屏占位：`demo@example.com`、`+8600000000000`、二维码块。
 3. 底座三个数字当天重核（命令在 §4.15）。
 4. 页脚 © 主体（D3）。
 
-托管：连仓库 → build command 留空 → 输出目录 `site`。`_headers` 已写好缓存（assets / vendor 一年，HTML 不缓存）。
+托管：连 `linksight-promo` → build command 留空 → 输出目录 `/`。`_headers` 已写好缓存（assets / vendor 一年，HTML 不缓存）。
 
