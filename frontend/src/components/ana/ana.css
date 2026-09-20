@@ -202,4 +202,23 @@
      S 档 slider 被剔,它和「点月柱切期间」原本混在同一个 .hint-desk 里,已拆成两个 span)。 */
   .hint-desk { display:none; }
   .hint-touch { display:inline; }
+  /* 触点 44(分析屏手机体验稿 §3「外壳零件的 S 档尺寸表」第 5、6 行)。两条分开写,因为表上
+     也是分开的两行:屏内段控与卡头 mini 段控判法不同。
+     ⚠ 稿把「屏内段控」举的例子是光伏三档和充电桩汽车/电动车,而这两处走的**都不是** .anx-seg:
+     光伏三档是 ds/Segmented(高度内联下发,CSS 盖不到,要按档传 size);充电桩那两枚是 .ak-seg2。
+     .ak-seg2 在下面单独补了一条;ds/Segmented 那一处要改调用点,留到分析屏各屏那一轮。
+     都走「整组 44」:外框 padding 不动,只钉按钮高 —— 屏内 3+38+3、mini 2+40+2。
+     mini 字 11 → 12 = var(--fs-label);屏内那条稿上没提字号,保持 12 不动。
+     横向 padding 都没动,所以宽度只被字号推:屏内 214 不变、mini 90 → 94(两枚两字钮各 +2);
+     .av2-card-h 本来就 flex-wrap,卡头挤不下时 hint 换行,标题不会被截(见 :146 注)。
+     实测(390/375 两宽,2026-09-20):屏内 32 → 44,mini 25 → 44,>600 各自 32 / 25 不动。
+     工具条上的粒度/对比 seg 不在这里 —— 归 AnaShell.vue 的 .anx-tools .anx-seg(scoped)。 */
+  .anx-seg button { height:38px; }
+  .anx-seg.mini button { height:40px; font-size:var(--fs-label); }
+  /* 充电桩「汽车 / 电动车」那两枚走的是这套独立类(:100),整组 36 → 44 */
+  .ak-seg2 button { height:38px; }
+  /* 工具条里的日期框统一在这里下发高,而不是挂在 AnaShell 的 .anx-selw 上 ——
+     那条是 scoped 的,子屏自己插进 #tools 的 DatePicker(如充电桩 ChargingAnalysisView)选不中,
+     结果那一屏工具条上一个控件都抬不到 44。变量由 ds/DatePicker 的 .dp.sm .dp-box 读。 */
+  .anx-tools { --dp-h: 44px; }
 }

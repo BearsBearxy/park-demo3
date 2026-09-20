@@ -20,24 +20,11 @@ import { join } from 'node:path'
 const ANA = join(__dirname, '..', 'analysis')
 
 /**
- * 立档当天就存在的 13 处（都在本轮之前写的）。
- * 它们同样会反向塌，但不是这一轮碰的代码 —— 登记下来，别让它变多。
+ * 老账 **0 处**（2026-09-20 立档时 13 处，当天全部改完：驾驶舱 3、到期墙 8、租户对标 2）。
+ * 空数组不是摆设 —— 下面第二条断言钉住 `now.length === LEGACY.length`，
+ * 从此任何一处条件出句没占位都会当场红，没有「先登记再说」这条路。
  */
-const LEGACY = [
-  'CockpitView.vue :: v-else class="ana-ref"',
-  'CockpitView.vue :: v-if="backRead" class="ana-read"',
-  'CockpitView.vue :: v-if="backRead" class="ana-ref"',
-  'ExpiryView.vue :: v-if="rentRollText" class="ana-read"',
-  'ExpiryView.vue :: v-if="priorityRead" class="ana-read"',
-  'ExpiryView.vue :: v-if="priorityRead" class="ana-ref"',
-  'ExpiryView.vue :: v-if="renewalRateRead" class="ana-read"',
-  'ExpiryView.vue :: v-if="renewalRateRead" class="ana-ref"',
-  'ExpiryView.vue :: v-if="sensitivityRead" class="ana-read"',
-  'ExpiryView.vue :: v-if="sensitivityGapRead" class="ana-read"',
-  'ExpiryView.vue :: v-if="sensitivityRead" class="ana-ref"',
-  'TenantPeerView.vue :: v-if="elecRead" class="ana-read"',
-  'TenantPeerView.vue :: v-if="elecRead" class="ana-ref"',
-]
+const LEGACY: string[] = []
 
 /** 条件出句但没占位的读数句。只在「这个文件的骨架确实画了读数句占位」时才算数。 */
 function offenders(): string[] {
@@ -49,9 +36,15 @@ function offenders(): string[] {
     const tpl = m[1].replace(/<!--[\s\S]*?-->/g, '')
     // 骨架没画读数句占位的文件不成立（没有「无条件的那一半」，就不会反向塌）
     if (!/class="ana-(?:read|ref)"><span class="ana-hole"/.test(tpl)) continue
-    for (const g of tpl.matchAll(/<p\b([^>]*class="ana-(?:read|ref)"[^>]*)>/g)) {
+    // 类名要放开到 `[^"]*`：把收尾引号钉死的话，`<p v-if="x" class="ana-read hold">` 扫不出来 ——
+    // 那是纯退步（整个 <p> 照样被 v-if 摘掉，hold 等于没写），却会静默通过。
+    // 正确写法 `<p class="ana-read hold"><template v-if="x">` 的 attrs 里没有 v-if，不会误伤。
+    for (const g of tpl.matchAll(/<p\b([^>]*class="ana-(?:read|ref)[^"]*"[^>]*)>/g)) {
       const attrs = g[1].trim().replace(/\s+/g, ' ')
-      if (/\bv-if=|\bv-else/.test(attrs)) out.push(`${f} :: ${attrs.slice(0, 70)}`)
+      // 只判 `v-if`，**不判 `v-else`**：有 `v-else` 说明它的 `v-if` 那一支同时也渲染了东西，
+      // 两支都出字就不会塌（驾驶舱「本年 12 个月已录满，没有下月可预测」那句就是这个形状）。
+      // 真正的毛病是「条件为假时整个 <p> 消失、而骨架无条件画」—— 那只会由孤零零的 v-if 造成。
+      if (/\bv-if=/.test(attrs)) out.push(`${f} :: ${attrs.slice(0, 70)}`)
     }
   }
   return out

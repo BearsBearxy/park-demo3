@@ -274,7 +274,9 @@ function onParetoClick(p: unknown) {
           <div class="av2-card-h"><span class="t">合约租金带 · 未来 12 月</span>
             <span class="hint">锁定实线 + 续签区间 · 不含新招租,是下界{{ rentRollHasMaster ? ' · 另有整租未计入' : '' }}</span></div>
           <AnaRentBandChart v-if="rentRollText" :cols="bandCols" :split-idx="bandSplitIdx" :gaps="bandGaps" :height="280" />
-          <p v-if="rentRollText" class="ana-read">{{ rentRollText }}</p>
+          <!-- hold:rentRollSentence 在 months 为空时返回 null(没有任何在租合同),此时图与句子一起消失,
+               而骨架那行是无条件画的 —— 占位让这一行的有↔无不带着下面的参照系小字一起跳。 -->
+          <p class="ana-read hold"><template v-if="rentRollText">{{ rentRollText }}</template></p>
           <p class="ana-ref">{{ rentRollRef }}</p>
         </div>
 
@@ -296,8 +298,10 @@ function onParetoClick(p: unknown) {
               </tbody>
             </table>
           </div>
-          <p v-if="priorityRead" class="ana-read">{{ priorityRead }}</p>
-          <p v-if="priorityRead" class="ana-ref">{{ priorityRef }}</p>
+          <!-- hold:卡的门槛是 expiringList 非空,而句子的门槛还多一条 expiringRentSum>0 ——
+               清单里的合同月租全为 0 时表照画、两句闭嘴,这两行要占着位。 -->
+          <p class="ana-read hold"><template v-if="priorityRead">{{ priorityRead }}</template></p>
+          <p class="ana-ref hold"><template v-if="priorityRead">{{ priorityRef }}</template></p>
         </div>
 
         <!-- T7(design-boards):「续签率从哪来」—— 历史到期结果统计 + 续签率本身的区间(只抽 p,
@@ -314,8 +318,10 @@ function onParetoClick(p: unknown) {
                计数给的是 18/72,轴给的是这个比例落在哪儿、有多宽。 -->
           <AnaRenewalChart v-if="renewalRateRead" :hits="rentRoll.renewalHits" :n="rentRoll.renewalN"
             :band="renewalBand" :height="112" />
-          <p v-if="renewalRateRead" class="ana-read">{{ renewalRateRead }}</p>
-          <p v-if="renewalRateRead" class="ana-ref">历史{{ rentRoll.renewalN }}份 · 口径同历史续签率瓦</p>
+          <!-- hold:这张卡的门槛(renewalN>0)与 renewalRateReadout 闭嘴的判据(n<=0)是同一条,
+               卡在句子必在 —— 这两行不会塌。占位只为把规矩钉住,视觉零差异。 -->
+          <p class="ana-read hold"><template v-if="renewalRateRead">{{ renewalRateRead }}</template></p>
+          <p class="ana-ref hold"><template v-if="renewalRateRead">历史{{ rentRoll.renewalN }}份 · 口径同历史续签率瓦</template></p>
         </div>
 
         <!-- T7(design-boards):「续签率变一档,年末差多少」—— 固定续签率(不抽 p)下的期望值表,
@@ -336,9 +342,12 @@ function onParetoClick(p: unknown) {
               </tr>
             </tbody>
           </table>
-          <p v-if="sensitivityRead" class="ana-read">{{ sensitivityRead }}</p>
-          <p v-if="sensitivityGapRead" class="ana-read">{{ sensitivityGapRead }}</p>
-          <p v-if="sensitivityRead" class="ana-ref">与上方合约租金带同一份锁定线</p>
+          <!-- hold:第一、三行不会塌(sensitivityRows 恒返回 4 档,sensitivitySentence 只在 rows 为空时闭嘴);
+               中间那行会 —— sensitivityGapSentence 在今天的锁定租金为 0(months[0].locked<=0)时返回 null,
+               而历史续签数还在,表照画。三行一起占位,不留一行会跳的。 -->
+          <p class="ana-read hold"><template v-if="sensitivityRead">{{ sensitivityRead }}</template></p>
+          <p class="ana-read hold"><template v-if="sensitivityGapRead">{{ sensitivityGapRead }}</template></p>
+          <p class="ana-ref hold"><template v-if="sensitivityRead">与上方合约租金带同一份锁定线</template></p>
         </div>
 
         <div class="av2-card av2-s8">

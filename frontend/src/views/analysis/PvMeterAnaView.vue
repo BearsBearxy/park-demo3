@@ -39,7 +39,7 @@ import PvBetaChart from './PvBetaChart.vue'
 import PvDetailTable from './PvDetailTable.vue'
 import { usePeriod } from '@/analysis/usePeriod'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
-import { useViewport } from '@/composables/useViewport'
+import { useWidth } from '@/components/ana/useWidth'
 import { fnum } from '@/components/ana/anaFmt'
 import { pvMeterApi, type PvReadingDTO, type PvStationDTO } from '@/api/pvMeter'
 import { paramsApi } from '@/api/params'
@@ -89,8 +89,14 @@ const section = ref<'abs' | 'ledger' | 'lab'>('ledger')
 // 大图那一块的高:图头 24 + PvDayChart 画布(桌面 236 / 窄档 200)。
 // 骨架占位、无可画栋时的占位块、真图三者必须同高 —— 写死 260 的时候窄档真版式只有 224,差 36px。
 // 这里用视口档而不是容器宽:大图住在整幅内容宽里,两者等价(601–960 平板档容器仍 ≥420,走桌面值)。
-const { tier } = useViewport()
-const mainBlockH = computed(() => (tier.value === 's' ? '224px' : '260px'))
+// ⚠ 判据必须与图**同源**:图换几何看的是容器宽(useWidth 量的 clientWidth < 420),不是视口档。
+// 用 tier === 's' 的话视口 488–600 这一段会分叉 —— 容器宽 = 视口 − .anx-body padding 24×2
+// − .av2-card padding 10×2 = 视口 − 68,所以容器 ≥420 ⟺ 视口 ≥488。那一段里骨架取窄档、
+// 真图取桌面,B7 差 42、B8 差 39,比不改还偏(2026-09-20 对抗复查实测)。
+// 这里量 .pma-main 的卡内宽,与大图自己的 useWidth 量的是同一个盒子。
+const { el: mainEl, width: mainW } = useWidth(999)
+const narrow = computed(() => mainW.value < 420)
+const mainBlockH = computed(() => (narrow.value ? '224px' : '260px'))
 
 const CRIT_KEYS = [
   'pv_yield_anchor_h', 'pv_crit_cover_month', 'pv_crit_ledger',
@@ -376,7 +382,7 @@ onDeactivated(() => { drawerOpen.value = false })
       <!-- 2026-09-16 起卡头、段控行、账面量两张卡照抄真版式(手机上卡头与段控说明都会折好几行,灰条顶不住);
            栋名换成同长的隐形占位。段控说明跟「高级分析」可不可算出没,库里现有数据可算,按「有」留位;
            B8 高 = 表头 + 栋数 × 行高(PvRevenueBars),按库里现有 13 栋留。 -->
-      <div class="av2-card pma-main">
+      <div ref="mainEl" class="av2-card pma-main">
         <div class="av2-card-h">
           <span class="t">哪栋落在自己的范围外</span>
           <span class="hint">芯片 = 一栋，徽标 = 出范围{{ gran === 'month' ? '天' : '月' }}数 · 点芯片换图 · 线 = 这栋当{{ gran === 'month' ? '日' : '月' }}发电 ÷ 全园同{{ gran === 'month' ? '日' : '月' }}中位，带 = 这栋自己的范围</span>
@@ -403,14 +409,25 @@ onDeactivated(() => { drawerOpen.value = false })
               <span class="t">消纳结构与损耗率</span>
               <span class="hint">{{ gran === 'month' ? '每天' : '每月' }}发的电，多少自己用了、多少卖上网、多少路上损掉了</span>
             </div>
-            <div class="fp-shim" style="height: 374px"></div>
+            <!-- B7 = PvConsumption 画布 + 图例 + 图注。374 = 桌面画布 272 + 尾巴 102(图例 + 图注,窄容器里实测的折行);
+                 这一轮画布改成桌面 272 / 窄档 230(PvConsumption.vue:24,判容器宽 < 420),窄档这块就少 42。
+                 尾巴两档同一个数:374 本来就是 390 宽下量的(1366 宽图例与图注各只有一行,尾巴不可能有 102)。
+                 高度必须是字面量 —— anaSkeletonParity 读的是本文件源码里的 style="…height: NNNpx",
+                 绑成变量那道门禁就看不见这一块,所以两档各写一份节点。 -->
+            <div v-if="narrow" class="fp-shim" style="height: 332px"></div>
+            <div v-else class="fp-shim" style="height: 374px"></div>
           </div>
           <div class="av2-card av2-s12">
             <div class="av2-card-h">
               <span class="t">各栋消纳收益与上网收益</span>
               <span class="hint">{{ gran === 'month' ? '这个月' : '这一年' }}每栋一共挣了多少钱，自己用的和卖上网的各占多少</span>
             </div>
-            <div class="fp-shim" style="height: 483px"></div>
+            <!-- B8 = PvRevenueBars 画布 + 图例 + 图注。画布 = 上 6 + 栋数 × ROW + 下 26(PvRevenueBars.vue:20/25);
+                 483 = 6 + 13×27 + 26 + 尾巴 100,栋数 13 与上面那条注释一致。
+                 这一轮 ROW 改成桌面 27 / 窄档 30(触点),窄档这块就多 13×3 = 39。尾巴同上,两档同一个数。
+                 高度同样得是字面量,两档各写一份节点。 -->
+            <div v-if="narrow" class="fp-shim" style="height: 522px"></div>
+            <div v-else class="fp-shim" style="height: 483px"></div>
           </div>
         </div>
       </div>
@@ -430,7 +447,7 @@ onDeactivated(() => { drawerOpen.value = false })
          保存走的是旧行 id。进度线不放这里面(会被 opacity .42 + blur 一起糊掉),挂在外壳工具条上。 -->
     <div v-else class="pma-body" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown">
       <!-- ══ B1 主卡:芯片 + 单栋大图 + B2 判据脚 ══ -->
-      <div class="av2-card pma-main">
+      <div ref="mainEl" class="av2-card pma-main">
         <div class="av2-card-h">
           <span class="t">哪栋落在自己的范围外</span>
           <span class="hint">芯片 = 一栋，徽标 = 出范围{{ gran === 'month' ? '天' : '月' }}数 · 点芯片换图 · 线 = 这栋当{{ gran === 'month' ? '日' : '月' }}发电 ÷ 全园同{{ gran === 'month' ? '日' : '月' }}中位，带 = 这栋自己的范围</span>
