@@ -45,7 +45,17 @@ const REF_MAX = 28    // ana.css:132(.ana-ref 注释,F4 修复轮1 落成具名�
  * 其中 42 字那条还在本分支刚改短过的屏上。「只许改小」这条规矩的前提是量得准,
  * 量不准的时候先把尺子修好,再谈往下降。下一次改这个数只许往下。
  */
-const HINT_OVER_BASELINE = 31
+/**
+ * 2026-09-20:31 → **23**,往下拧。
+ *
+ * 这次不是有人去改短了 22 句,是换了取法(见下面 hintReadings 的注释):
+ * `.hint-desk` / `.hint-touch` 成对写之后,整段取读会把桌面那套和手机那套加起来数,
+ * 而用户永远只看得到一套。改成按档各读一遍,实测超标 23 处。
+ *
+ * 顺带一条可核的事实:这一轮给 16 个卡头加手机话术,**新增超标 0 处** ——
+ * 按档读之后,每一条超标的手机句,它对应的桌面句本来就已经超标。
+ */
+const HINT_OVER_BASELINE = 23
 
 /**
  * D2(用户 2026-09-10 拍板):统计符号跨屏禁用,口径浮层里也算屏上。
@@ -260,7 +270,15 @@ function scan(re: RegExp): { file: string; text: string; len: number }[] {
  * (`class="hint-desk"` 不会被误当成 hint —— 判据要求引号闭合的 `class="hint"`。)
  */
 function hintTexts(): { file: string; text: string; len: number }[] {
-  const out: { file: string; text: string; len: number }[] = []
+  return hintBodies()
+    .map(({ file, body }) => ({ file, text: strip(body) }))
+    .filter((x) => x.text)
+    .map((x) => ({ ...x, len: [...x.text].length }))
+}
+
+/** 每个 hint 段的**原始**内容(未剥标签)。按档取读与整体取读共用这一趟配平扫描。 */
+function hintBodies(): { file: string; body: string }[] {
+  const out: { file: string; body: string }[] = []
   for (const { dir, file: f } of vueFiles()) {
     const src = readTpl(join(dir, f), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
     for (const open of src.matchAll(/<span[^>]*class="hint"[^>]*>/g)) {
@@ -272,20 +290,45 @@ function hintTexts(): { file: string; text: string; len: number }[] {
         depth += tag[0] === '</span>' ? -1 : 1
         if (depth === 0) break
       }
-      const t = strip(src.slice(bodyStart, tag ? tag.index : src.length))
-      if (t) out.push({ file: f, text: t, len: [...t].length })
+      out.push({ file: f, body: src.slice(bodyStart, tag ? tag.index : src.length) })
     }
+  }
+  return out
+}
+
+/**
+ * ⚠ 2026-09-20 第二次修尺子(第一次是 I6 的配平取法,见上)。
+ *
+ * 这一轮给 16 个卡头话术加了 `.hint-touch` —— 同一句话的手机版,与 `.hint-desk` 成对写,
+ * **永远只显一套**(ana.css 基档藏 touch、S 档藏 desk)。而 `hintTexts()` 取的是整段,
+ * 会把两套加起来数:ElecAnalysisView 那条桌面读 23 字、手机读 19 字,两边都达标,
+ * 合起来却是 31 字 —— 按合量判它超标,可这 31 个字没有任何一个用户见过。
+ *
+ * 「≤24 可见字」管的是**用户一眼要读多少**,所以按档各读一遍:
+ * 桌面那一遍剥掉 `.hint-touch`,手机那一遍剥掉 `.hint-desk`。没配对的 hint 两遍同文,只算一条。
+ * 这比合量判更严 —— 手机那一遍是独立的一条,写长了照样抓得到。
+ */
+const DESK_SPAN = /<span class="hint-desk">[\s\S]*?<\/span>/g
+const TOUCH_SPAN = /<span class="hint-touch">[\s\S]*?<\/span>/g
+
+function hintReadings(): { file: string; tier: string; text: string; len: number }[] {
+  const out: { file: string; tier: string; text: string; len: number }[] = []
+  for (const { file, body } of hintBodies()) {
+    const desk = strip(body.replace(TOUCH_SPAN, ''))
+    const touch = strip(body.replace(DESK_SPAN, ''))
+    if (desk) out.push({ file, tier: '桌面', text: desk, len: [...desk].length })
+    if (touch && touch !== desk) out.push({ file, tier: '手机', text: touch, len: [...touch].length })
   }
   return out
 }
 
 describe('分析层文案门禁', () => {
   it(`❗卡头 hint ≤ ${HINT_MAX} 可见字 —— 超标处只许减少`, () => {
-    const over = hintTexts().filter((x) => x.len > HINT_MAX)
+    const over = hintReadings().filter((x) => x.len > HINT_MAX)
     expect(
       over.length,
       `超标 ${over.length} 处(基线 ${HINT_OVER_BASELINE}):\n` +
-        over.map((x) => `  ${x.file} ${x.len}字 ${x.text.slice(0, 30)}`).join('\n'),
+        over.map((x) => `  ${x.file} [${x.tier}] ${x.len}字 ${x.text.slice(0, 30)}`).join('\n'),
     ).toBeLessThanOrEqual(HINT_OVER_BASELINE)
   })
 
@@ -296,6 +339,38 @@ describe('分析层文案门禁', () => {
    * 且在那几处内层套了 `<span class="hint-desk">` 的 hint 上必须更长。
    * 不写死字数(那几条 hint 本来就该继续变短,写死会在做对事的时候变红)。
    */
+  /**
+   * ❗钉住「按档取读」这个取法本身 —— 照 I6 那条的先例。
+   *
+   * 上面那条是「≤ 基线」,而两种取法在当天这棵树上**恰好都数出 23 处**:
+   * 按档读把配对 hint 拆成两条(可能各自超标),合量读把它算一条(但字数翻倍),一增一减抵消了。
+   * 所以把 `hintReadings()` 换回 `hintTexts()`,上面那条照样全绿 —— 实测过。
+   * 能当场变红的判据只能钉在取法上:配对的 hint 必须产出两条读,且每一条都比合量短。
+   *
+   * 不写死处数(配对处数会随后续几期增加),只钉「拆开了、而且确实更短」这两件事。
+   */
+  it('❗按档取读:配对的 hint 产出桌面/手机两条,每条都比合量短(合量里有用户看不到的字)', () => {
+    const bodies = hintBodies()
+    const paired = bodies.filter((b) => b.body.includes('class="hint-touch"'))
+    expect(paired.length, '这一轮起分析层就有成对写的 hint,一处都找不到说明取法或选择器写错了').toBeGreaterThan(0)
+    for (const { file, body } of paired) {
+      const whole = [...strip(body)].length
+      const desk = [...strip(body.replace(TOUCH_SPAN, ''))].length
+      const touch = [...strip(body.replace(DESK_SPAN, ''))].length
+      expect(desk, `${file}: 剥掉 .hint-touch 后没变短 —— 取法没生效`).toBeLessThan(whole)
+      expect(touch, `${file}: 剥掉 .hint-desk 后没变短 —— 取法没生效`).toBeLessThan(whole)
+    }
+    // 钉一处具体的:同一段 hint 必须产出「只含桌面那句」和「只含手机那句」两条读,
+    // 一条读里同时出现两句,就说明又在数用户看不到的字了。
+    const park = hintReadings().filter((r) => r.file === 'ParkView.vue' && r.text.includes('块面积'))
+    const deskOnly = park.filter((r) => r.text.includes('点击下钻右侧明细'))
+    const touchOnly = park.filter((r) => r.text.includes('点块看租户'))
+    expect(deskOnly.length, 'ParkView TreeMap 卡头的桌面读没取到').toBeGreaterThan(0)
+    expect(touchOnly.length, 'ParkView TreeMap 卡头的手机读没取到').toBeGreaterThan(0)
+    for (const r of deskOnly) expect(r.text, '桌面那条读里混进了手机句').not.toContain('点块看租户')
+    for (const r of touchOnly) expect(r.text, '手机那条读里混进了桌面句').not.toContain('点击下钻右侧明细')
+  })
+
   it('❗I6:hint 取法必须配平 <span> —— 与非贪婪取法对照,配平版不更短,且在嵌套处更长', () => {
     const naive = scan(/class="hint"[^>]*>([\s\S]*?)<\/span>/g)
     const balanced = hintTexts()

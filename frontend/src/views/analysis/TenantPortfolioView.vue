@@ -278,7 +278,7 @@ const listRows = computed(() => {
           <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card av2-s4">
-          <div class="av2-card-h"><span class="t">期区结构</span><span class="hint">按月租金<span class="hint-desk"> · 点扇区过滤下方清单</span></span></div>
+          <div class="av2-card-h"><span class="t">期区结构</span><span class="hint">按月租金<span class="hint-desk"> · 点扇区过滤下方清单</span><span class="hint-touch"> · 点扇区过滤下方清单</span></span></div>
           <AnaSkelChart :height="300" />
           <div class="tp2-dl">
             <button v-for="n in ['一期', '二期', '未标注', '三期', '宿舍']" :key="n" type="button" class="ak-dl tp2-dlbtn ana-hole" disabled>
@@ -294,7 +294,7 @@ const listRows = computed(() => {
                 <button :class="{ on: boxMode === 'rent' }" disabled tabindex="-1">月租金</button>
                 <button :class="{ on: boxMode === 'area' }" disabled tabindex="-1">租赁面积</button>
               </span>
-              生效合同 · 点=每份合同<span class="hint-desk">(悬停看租户)</span> · 横线=中位 · 对数轴
+              生效合同 · 点=每份合同<span class="hint-desk">(悬停看租户)</span><span class="hint-touch">(点看租户)</span> · 横线=中位 · 对数轴
               <span class="ana-hole"> · 已略去 00/000 份(月租金为 0 或未录,对数轴取不到)</span>
             </span>
           </div>
@@ -356,7 +356,7 @@ const listRows = computed(() => {
 
         <!-- 期区结构环(点扇区→下方清单过滤) -->
         <div class="av2-card av2-s4">
-          <div class="av2-card-h"><span class="t">期区结构</span><span class="hint">按月租金<span class="hint-desk"> · 点扇区过滤下方清单</span></span></div>
+          <div class="av2-card-h"><span class="t">期区结构</span><span class="hint">按月租金<span class="hint-desk"> · 点扇区过滤下方清单</span><span class="hint-touch"> · 点扇区过滤下方清单</span></span></div>
           <AnaEChart :option="donutOption" :height="300" @chart-click="onDonutClick" />
           <div class="tp2-dl">
             <button v-for="d in donutData" :key="d.label" class="ak-dl tp2-dlbtn" :class="{ on: phaseFilter === d.phase }" @click="phaseFilter = phaseFilter === d.phase ? null : d.phase">
@@ -378,7 +378,7 @@ const listRows = computed(() => {
                 <button :class="{ on: boxMode === 'rent' }" @click="boxMode = 'rent'">月租金</button>
                 <button :class="{ on: boxMode === 'area' }" @click="boxMode = 'area'">租赁面积</button>
               </span>
-              生效合同 · 点=每份合同<span class="hint-desk">(悬停看租户)</span> · 横线=中位 · 对数轴
+              生效合同 · 点=每份合同<span class="hint-desk">(悬停看租户)</span><span class="hint-touch">(点看租户)</span> · 横线=中位 · 对数轴
               <template v-if="boxDropped.n > 0">
                 · <span class="tp-drop">已略去 {{ boxDropped.n }}/{{ boxDropped.total }} 份({{ boxMode === 'rent' ? '月租金' : '面积' }}为 0 或未录,对数轴取不到){{
                   boxDropped.gonePhases.length ? '，' + boxDropped.gonePhases.join('、') + ' 整期不可见' : '' }}</span>

@@ -234,7 +234,7 @@ const areaBarOption = computed(() => ({
       </div>
       <div class="av2-grid">
         <div class="av2-card av2-s8">
-          <div class="av2-card-h"><span class="t">楼栋月租 TreeMap</span><span class="hint">块面积＝月租(万)· 颜色＝分期<span class="hint-desk"> · 点击下钻右侧明细</span></span></div>
+          <div class="av2-card-h"><span class="t">楼栋月租 TreeMap</span><span class="hint">块面积＝月租(万)· 颜色＝分期<span class="hint-desk"> · 点击下钻右侧明细</span><span class="hint-touch"> · 点块看租户</span></span></div>
           <AnaSkelChart :height="300" />
           <div class="pk-legend ana-hole">
             <span v-for="n in ['一期', '二期', '三期', '宿舍']" :key="n" class="pk-leg"><span class="sw"></span>{{ n }}</span>
@@ -243,7 +243,7 @@ const areaBarOption = computed(() => ({
         <div class="av2-card av2-s4">
           <div class="av2-card-h">
             <span class="t">租户明细 · 全园区</span>
-            <span class="hint"><span class="hint-desk">点左图楼栋块过滤</span></span>
+            <span class="hint"><span class="hint-desk">点左图楼栋块过滤</span><span class="hint-touch">点楼栋块过滤</span></span>
           </div>
           <div class="fp-shim" style="height: 296px"></div>
           <div class="pk-sum"><span class="ana-hole">000 份合同 · 月租合计 ¥000.0万</span></div>
@@ -322,7 +322,7 @@ const areaBarOption = computed(() => ({
 
       <div class="av2-grid">
         <div class="av2-card av2-s8">
-          <div class="av2-card-h"><span class="t">楼栋月租 TreeMap</span><span class="hint">块面积＝月租(万)· 颜色＝分期<span class="hint-desk"> · 点击下钻右侧明细</span></span></div>
+          <div class="av2-card-h"><span class="t">楼栋月租 TreeMap</span><span class="hint">块面积＝月租(万)· 颜色＝分期<span class="hint-desk"> · 点击下钻右侧明细</span><span class="hint-touch"> · 点块看租户</span></span></div>
           <AnaEChart :option="treemapOption" :height="300" @chart-click="onTreeClick" />
           <div class="pk-legend">
             <span v-for="p in phases" :key="p.phase" class="pk-leg"><span class="sw" :style="{ background: phaseColor(p.phase) }"></span>{{ p.name }}</span>
@@ -333,8 +333,8 @@ const areaBarOption = computed(() => ({
           <div class="av2-card-h">
             <span class="t">租户明细 · {{ selected ?? '全园区' }}</span>
             <button v-if="selected" class="pk-clear" @click="selected = null">× 取消过滤</button>
-            <!-- 整句都是桌面指点话术,S 档整体隐藏(无分隔符残留) -->
-          <span v-else class="hint"><span class="hint-desk">点左图楼栋块过滤</span></span>
+            <!-- 整句都是指点话术,两档各显一套:桌面「点左图」,手机上 TreeMap 堆在上面,「左图」不成立 -->
+          <span v-else class="hint"><span class="hint-desk">点左图楼栋块过滤</span><span class="hint-touch">点楼栋块过滤</span></span>
           </div>
           <div class="pk-tbl-wrap">
             <table class="ak-tbl">

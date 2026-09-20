@@ -98,7 +98,7 @@ const legendNote = computed(() => {
   <section class="av2-card prh">
     <div class="av2-card-h">
       <span class="t">各栋残差的年内走势</span>
-      <span class="hint">格 = 该月残差中位数 % · 蓝 = 比自己常年多发，琥珀 = 少发 · 悬停看数</span>
+      <span class="hint">格 = 该月残差中位数 % · 蓝 = 比自己常年多发，琥珀 = 少发</span>
     </div>
     <div ref="el" class="prh-grid" @mouseleave="hm = null">
       <div class="prh-head">

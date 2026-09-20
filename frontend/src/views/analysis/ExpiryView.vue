@@ -185,7 +185,7 @@ function onParetoClick(p: unknown) {
           <p class="ana-ref"><span class="ana-hole">月度口径 · 万元 · 过去000份到期中0份续签</span></p>
         </div>
         <div class="av2-card av2-s12">
-          <div class="av2-card-h"><span class="t">先谈哪几户</span><span class="hint">共 <span class="ana-hole">00</span> 份 · 按到期月租排序<span class="hint-desk"> · 点行去合同屏</span></span></div>
+          <div class="av2-card-h"><span class="t">先谈哪几户</span><span class="hint">共 <span class="ana-hole">00</span> 份 · 按到期月租排序<span class="hint-desk"> · 点行去合同屏</span><span class="hint-touch"> · 点行去合同屏</span></span></div>
           <div class="fp-shim" style="height: 480px"></div>
           <p class="ana-read"><span class="ana-hole">前0份占未来12月到期租金的00%</span></p>
           <p class="ana-ref"><span class="ana-hole">其余0份合计0.0万</span></p>
@@ -209,7 +209,7 @@ function onParetoClick(p: unknown) {
           <p class="ana-ref">与上方合约租金带同一份锁定线</p>
         </div>
         <div class="av2-card av2-s8">
-          <div class="av2-card-h"><span class="t">合同金额 Pareto</span><span class="hint">Top20 · 柱=月租金(万) 线=累计占比<span class="hint-desk"> · 点柱→清单展开</span></span></div>
+          <div class="av2-card-h"><span class="t">合同金额 Pareto</span><span class="hint">Top20 · 柱=月租金(万) 线=累计占比<span class="hint-desk"> · 点柱→清单展开</span><span class="hint-touch"> · 点柱展开下面清单</span></span></div>
           <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card av2-s4">
@@ -223,7 +223,7 @@ function onParetoClick(p: unknown) {
           </div>
         </div>
         <div class="av2-card av2-s12">
-          <div class="av2-card-h"><span class="t">合同清单</span><span class="hint">共 <span class="ana-hole">000</span> 份 · 按月租金降序<span class="hint-desk"> · 点行展开该租户合同详情</span></span></div>
+          <div class="av2-card-h"><span class="t">合同清单</span><span class="hint">共 <span class="ana-hole">000</span> 份 · 按月租金降序<span class="hint-desk"> · 点行展开该租户合同详情</span><span class="hint-touch"> · 点行展开合同详情</span></span></div>
           <div class="fp-shim" style="height: 480px"></div>
         </div>
       </div>
@@ -282,7 +282,7 @@ function onParetoClick(p: unknown) {
              换成 rentRoll.expiringList(未来12月、与续签抽样同一批合同),排序从到期日改成月租金降序。
              点行去合同屏的交互原样保留。 -->
         <div v-if="rentRoll.expiringList.length > 0" class="av2-card av2-s12">
-          <div class="av2-card-h"><span class="t">先谈哪几户</span><span class="hint">共 {{ rentRoll.expiringList.length }} 份 · 按到期月租排序<span class="hint-desk"> · 点行去合同屏</span></span></div>
+          <div class="av2-card-h"><span class="t">先谈哪几户</span><span class="hint">共 {{ rentRoll.expiringList.length }} 份 · 按到期月租排序<span class="hint-desk"> · 点行去合同屏</span><span class="hint-touch"> · 点行去合同屏</span></span></div>
           <div class="exp-scroll">
             <table class="ak-tbl">
               <thead><tr><th>到期</th><th>租户</th><th>月租(万)</th><th>剩余</th></tr></thead>
@@ -342,7 +342,7 @@ function onParetoClick(p: unknown) {
         </div>
 
         <div class="av2-card av2-s8">
-          <div class="av2-card-h"><span class="t">合同金额 Pareto</span><span class="hint">Top20 · 柱=月租金(万) 线=累计占比<span class="hint-desk"> · 点柱→清单展开</span></span></div>
+          <div class="av2-card-h"><span class="t">合同金额 Pareto</span><span class="hint">Top20 · 柱=月租金(万) 线=累计占比<span class="hint-desk"> · 点柱→清单展开</span><span class="hint-touch"> · 点柱展开下面清单</span></span></div>
           <AnaEChart :option="paretoOpt" :height="300" @chart-click="onParetoClick" />
         </div>
 
@@ -363,7 +363,7 @@ function onParetoClick(p: unknown) {
         </div>
 
         <div class="av2-card av2-s12">
-          <div class="av2-card-h"><span class="t">合同清单</span><span class="hint">共 {{ listed.length }} 份 · 按月租金降序<span class="hint-desk"> · 点行展开该租户合同详情</span></span></div>
+          <div class="av2-card-h"><span class="t">合同清单</span><span class="hint">共 {{ listed.length }} 份 · 按月租金降序<span class="hint-desk"> · 点行展开该租户合同详情</span><span class="hint-touch"> · 点行展开合同详情</span></span></div>
           <div class="exp-scroll">
             <table class="ak-tbl">
               <thead><tr><th>合同号</th><th>租户</th><th>楼栋</th><th>楼层</th><th>月租金(万)</th><th>占最高</th><th>状态</th></tr></thead>

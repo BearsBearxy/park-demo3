@@ -173,7 +173,7 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
           </div>
         </div>
         <div class="av2-card av2-s8">
-          <div class="av2-card-h"><span class="t">分期收益(自消纳 + 上网)</span><span class="hint"><span class="hint-desk">点击柱子查看该期月度明细</span></span></div>
+          <div class="av2-card-h"><span class="t">分期收益(自消纳 + 上网)</span><span class="hint"><span class="hint-desk">点击柱子查看该期月度明细</span><span class="hint-touch">点柱看该期月度明细</span></span></div>
           <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card av2-s4">
@@ -225,7 +225,7 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
 
           <!-- 第二排 span8:分期收益柱(点柱→明细卡) -->
           <div class="av2-card av2-s8">
-            <div class="av2-card-h"><span class="t">分期收益(自消纳 + 上网)</span><span class="hint"><span class="hint-desk">点击柱子查看该期月度明细</span></span></div>
+            <div class="av2-card-h"><span class="t">分期收益(自消纳 + 上网)</span><span class="hint"><span class="hint-desk">点击柱子查看该期月度明细</span><span class="hint-touch">点柱看该期月度明细</span></span></div>
             <AnaEChart :option="phaseOpt" :height="300" @chart-click="onPhaseClick" />
           </div>
 
