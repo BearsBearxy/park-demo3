@@ -116,7 +116,10 @@ describe('利润表 · S 档荐桌面提示行', () => {
     expect(sBlock).toMatch(/\.is-s-hint\s*\{[^}]*flex:\s*0 0 20px/)
     // 定高不能写成 min-height:内容多一行就把表顶下去,和整行显隐一个后果
     expect(sBlock).not.toMatch(/\.is-s-hint\s*\{[^}]*min-height/)
-    // 断点只许 600(breakpoints.ts 是唯一事实源)
-    expect([...STYLE.matchAll(/@media\s*\(max-width:\s*(\d+)px\)/g)].map(m => m[1])).toEqual(['600'])
+    // 断点只许 600 / 960(breakpoints.ts 是唯一事实源;960 是 2026-09-20 KpiNarrow 板
+    // 把 .fin-kpis 降两列从 S 档抬到 M 档时加的,见 kpiNarrowTier.spec.ts)。
+    // 用有序 toEqual 而不是集合:顺序同时钉住「宽档在前窄档在后」——
+    // 写反了 600 块的 .is-s-hint 会被 960 块按源序覆盖,而那是静默的。
+    expect([...STYLE.matchAll(/@media\s*\(max-width:\s*(\d+)px\)/g)].map(m => m[1])).toEqual(['960', '600'])
   })
 })

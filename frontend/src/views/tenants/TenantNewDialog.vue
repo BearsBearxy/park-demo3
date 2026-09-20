@@ -9,6 +9,10 @@ import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import DatePicker from '@/components/ds/DatePicker.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
+import { useFormSheet } from '@/composables/useFormSheet'
+
+// 带输入的居中弹卡 → S 档全屏 sheet(styles/form-sheet.css)
+const sheet = useFormSheet()
 
 const props = defineProps<{ initial?: TenantDTO | null }>()
 const emit = defineEmits<{ close: []; created: []; updated: [] }>()
@@ -99,14 +103,14 @@ async function submit() {
 
 <template>
   <Teleport to="body">
-    <div class="fin-mask" @mousedown="emit('close')">
+    <div class="fin-mask" :class="{ 'fp-fsheet': sheet }" @mousedown="emit('close')">
       <div class="fin-dlg" role="dialog" aria-modal="true" @mousedown.stop>
         <div class="fin-dlg-h">
           <h3>{{ isEdit ? '编辑租户' : '新增租户' }}</h3>
           <p>{{ isEdit ? '修改该租户的主数据档案。月租金、面积等由合同派生,不在此编辑。'
                        : '创建一条租户主数据档案。月租金、面积等由合同派生,新租户暂为 0,签订合同后自动汇总。' }}</p>
         </div>
-        <div class="fin-dlg-b">
+        <div class="fin-dlg-b fp-fsheet-bd">
           <div class="fin-field">
             <div class="lab">企业名称 <b class="req">*</b></div>
             <input ref="inputRef" class="fin-in" :class="{ err }" v-model="companyName"
@@ -174,7 +178,7 @@ async function submit() {
           </div>
           <div class="fin-erm">{{ err }}</div>
         </div>
-        <div class="fin-dlg-f">
+        <div class="fin-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="emit('close')">取消</Button>
           <Button variant="filled" size="sm" :disabled="busy" @click="submit">
             <template #leading><component :is="iconFor('check')" :size="14" /></template>

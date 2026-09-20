@@ -10,6 +10,10 @@
 //   要是被一串空格满足了,这条约束就等于没有。
 import { ref, computed, watch } from 'vue'
 import Button from '@/components/ds/Button.vue'
+import { useFormSheet } from '@/composables/useFormSheet'
+
+// 理由是必填的多行输入 → S 档全屏 sheet(styles/form-sheet.css)
+const sheet = useFormSheet()
 
 const props = defineProps<{
   /** 非空 = 打开。带着这一把键的人话名,如「2026-09 附表12」。 */
@@ -42,20 +46,20 @@ function onConfirm() {
 <template>
   <Teleport to="body">
     <!-- 点空白处关闭:这是一个可以放弃的动作(与 FPEvictedDialog 那种「唯一一次提示」不同)。 -->
-    <div v-if="target" class="rvd-scrim" role="dialog" aria-modal="true" @mousedown.self="emit('close')">
+    <div v-if="target" class="rvd-scrim" :class="{ 'fp-fsheet': sheet }" role="dialog" aria-modal="true" @mousedown.self="emit('close')">
       <div class="rvd-card">
         <div class="rvd-head">
           <h3 class="rvd-title">{{ title }} · {{ target }}</h3>
           <p class="rvd-hint">{{ hint }}</p>
         </div>
-        <div class="rvd-body">
+        <div class="rvd-body fp-fsheet-bd">
           <label class="rvd-label" for="rvd-reason">理由（必填）</label>
           <textarea id="rvd-reason" v-model="reason" class="rvd-input" rows="3"
                     :maxlength="MAX" placeholder="写清楚哪里要改，录入方照着改就行" />
           <!-- 计数常驻(不是超了才出),否则字数一超版面会跳一下 -->
           <div class="rvd-count" :data-over="trimmed.length > MAX">{{ trimmed.length }} / {{ MAX }}</div>
         </div>
-        <div class="rvd-foot">
+        <div class="rvd-foot fp-fsheet-ft">
           <Button variant="outline" size="sm" @click="emit('close')">取消</Button>
           <Button variant="filled" size="sm" :disabled="!ok || busy" @click="onConfirm">
             {{ busy ? '提交中…' : `确认${title}` }}

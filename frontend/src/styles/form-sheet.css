@@ -1,0 +1,88 @@
+/* src/styles/form-sheet.css — 带输入控件的居中弹卡在 S 档变全屏 sheet(RESPONSIVE-LAYOUT-SPEC §4.4)。
+ *
+ * 规范 §4.4 的「S 档覆盖层全屏化」原先只覆盖三个标准件(fp/FPDrawer、import/FpImportModal、
+ * fp/FPSideDrawer);各屏自带的居中弹卡还是居中小卡,而输入控件在 390 宽的居中小卡里装不下
+ * 44 高 / 16px 字。判据不是「是不是弹窗」,是里面有没有输入控件:
+ *   有输入 → 挂本文件的 .fp-fsheet → 全屏 sheet
+ *   只有一句话 + 两个钮(import/SaveConfirmDialog 这类)→ 仍是居中小卡,不挂
+ *
+ * 壳照抄 fp/FPDrawer.vue:185-199 的 ≤600 分支:头 + 体 flex:1 内滚 + 脚贴底 + safe-area 34。
+ *
+ * 为什么档位由 JS 给(composables/useFormSheet)而不是媒体查询:十四处弹卡的遮罩/卡片类名
+ * 各不相同且都在 scoped <style> 里,媒体查询要在十几个文件里各写一遍同一段;而且同一个遮罩
+ * 下可能同时存在「带输入」和「只有一句话」两种卡(fin/FinDialogs 的 delco、
+ * views/system/SystemUsersView 的停用确认),媒体查询区分不了。XL 档根本不挂 .fp-fsheet,
+ * 桌面一个像素都不变(§9)。
+ *
+ * !important 不是偷懒:被盖的那几条写在各组件的 scoped 规则里(`.ct-dlg[data-v-x]` 等),
+ * 特异性与本文件的单类名持平而注入顺序不定 —— 同 FPDrawer.vue:188 的理由。
+ */
+
+.fp-fsheet {
+  display: block !important;
+  padding: 0 !important;
+}
+
+/* 遮罩下只有一个孩子 = 弹卡本身。不给弹卡单独发一个标记类:十四处弹卡的卡片类名各不相同,
+   而「遮罩的独子」这个结构关系在每一处都成立。 */
+.fp-fsheet > * {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  max-height: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+  /* 卡片自己不滚,滚的是 .fp-fsheet-bd —— 居中卡把 overflow-y:auto 挂在卡上(.ct-dlg/.fin-dlg),
+     照搬到全屏会连头带脚一起滚走,脚上那颗主按钮就不在拇指底下了 */
+  overflow: hidden !important;
+  box-sizing: border-box;
+}
+
+/* 头 / 脚不压缩 */
+.fp-fsheet > * > * { flex: 0 0 auto; }
+
+.fp-fsheet .fp-fsheet-bd {
+  flex: 1 1 auto !important;
+  min-height: 0;
+  overflow-y: auto !important;
+}
+
+/* 脚贴底,safe-area 34 同 ds/DatePicker.vue:669 的底部面板 */
+.fp-fsheet .fp-fsheet-ft {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px 34px !important;
+  background: var(--surface-raised);
+  border-top: 1px solid var(--divider);
+}
+
+/* 拇指够得着的是右边:主按钮 flex:1 撑满、取消定宽 108。
+   :nth-last-child(2) 限定「脚里正好两颗钮」—— 存在四件套的脚
+   (ledger/LedgerDeleteCompanyDialog 的 返回 / 占位 / 取消 / 永久删除),
+   按位置派宽度会把「重新选择」当成取消钮。 */
+.fp-fsheet .fp-fsheet-ft > :first-child:nth-last-child(2) { flex: 0 0 108px; }
+.fp-fsheet .fp-fsheet-ft > :first-child:nth-last-child(2) ~ :last-child { flex: 1 1 auto; }
+.fp-fsheet .fp-fsheet-ft > :first-child:nth-last-child(2) > button,
+.fp-fsheet .fp-fsheet-ft > :first-child:nth-last-child(2) ~ :last-child > button { width: 100%; }
+
+/* 脚部按钮 44 高 / 16 字(稿 FormPhone 原话:「主按钮 flex:1 撑满、取消定宽 108…高 44、字 16」)。
+   十三处弹卡的脚里用的是 Button size="sm" —— 28px 高 / --fs-label,比稿矮 16px,
+   也低于 §6 的 44 触达下限。ds/Button 的高度与字号是按 size 算的内联 style,只有 !important 盖得住
+   (同本文件 :77 压 .ds-sel-trigger 的理由)。 */
+.fp-fsheet .fp-fsheet-ft button {
+  height: 44px !important;
+  font-size: var(--fs-input-m) !important;
+}
+
+/* 输入控件 44 高 / 16px 字:居中卡的 34~40px 档在手机上戳不准,<16px 聚焦会被 iOS 放大整页。
+   ds/Select 的触发器高度是内联 style(组件内按 size 算),min-height 压得住,不必 !important;
+   字号是内联的 var(--ds-sel-fs),只有 !important 盖得住。 */
+.fp-fsheet input:not([type="checkbox"]):not([type="radio"]),
+.fp-fsheet textarea,
+.fp-fsheet .ds-sel-trigger {
+  min-height: 44px !important;
+  font-size: var(--fs-input-m) !important;
+}

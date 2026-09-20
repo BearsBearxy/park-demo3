@@ -8,12 +8,16 @@ import { useFavoritesStore, MAX_FAVS } from '@/stores/favorites'
 import { fpAllPages } from '@/nav/fpNav'
 import { iconFor } from '@/components/ds/icon'
 import ShellTip from '@/components/shell/ShellTip.vue'
-import { X, ChevronDown, Plus, Search } from 'lucide-vue-next'
+import { useViewport } from '@/composables/useViewport'
+import { X, ChevronDown, Plus, Pin, Search } from 'lucide-vue-next'
 
 const router = useRouter()
 const route = useRoute()
 const tabs = useTabsStore()
 const favs = useFavoritesStore()
+// 触屏(RESPONSIVE-LAYOUT-SPEC §6.1 §6.3):按**输入能力**判,不按视口宽 ——
+// iPad 接了触控板 hover:hover 会自己回来,useViewport 跟着 matchMedia change 走,禁 UA 嗅探。
+const { isTouch } = useViewport()
 
 /** value → 层 / 分组(悬停卡片第三行)。 */
 const PAGE = Object.fromEntries(fpAllPages().map(p => [p.value, p]))
@@ -46,7 +50,21 @@ const tabW = computed(() => frozenW.value ?? calcW.value)
 const overflow = computed(() => normals.value.length * tabW.value > avail.value + 1)
 
 const hoverV = ref('')
-const showX = (t: Tab) => !t.pinned && (tabW.value >= TAB.XMIN || t.value === activeValue.value || t.value === hoverV.value)
+// 触屏上 hoverV 永远是空:窄页签只剩当前签有 ×,别的一个都点不到 —— §6.1「无 hover 唯一入口」,常显兜底
+const showX = (t: Tab) =>
+  !t.pinned && (isTouch.value || tabW.value >= TAB.XMIN || t.value === activeValue.value || t.value === hoverV.value)
+/** 固定钮只给固定得了的签:首页恒固定(tabs.unpin 拒绝它)、新标签页不进固定区 —— 与右键菜单同口径。 */
+const canPin = (v: string) => v !== HOME && v !== NEWTAB
+/**
+ * 触屏固定钮**只挂当前签与已固定签**。
+ *
+ * 稿(ShellTablet)只写了一句「Pin 钮常显即唯一入口」,图上一个固定钮都没画,尺寸与落位没给。
+ * 给每个非固定签都挂一颗的代价可以算出来:TAB.MIN=96,扣图标 16 + 固定钮 20 + 关闭钮 20 +
+ * padding 16 + 三处 gap,标题只剩个位数像素 —— 页签上认不出是哪一屏,等于把标题换成了两颗钮。
+ * 「唯一入口」这条要求的是「想固定当前这一屏时有地方点」,当前签上有就够了;
+ * 已固定的签也要留着,否则取消固定就没入口了(固定签不渲标题,不抢宽)。
+ */
+const showPin = (t: Tab) => isTouch.value && canPin(t.value) && (!!t.pinned || t.value === activeValue.value)
 
 let ro: ResizeObserver | null = null
 onMounted(() => {
@@ -277,7 +295,7 @@ function flip(mutate: () => void, skip: string) {
 function onPointerDown(e: PointerEvent, v: string) {
   hideCard()
   if (e.button !== 0 || v === HOME) return
-  if ((e.target as HTMLElement).closest('.fp-tab-x')) return
+  if ((e.target as HTMLElement).closest('.fp-tab-x, .fp-tab-pin')) return
   const el = e.currentTarget as HTMLElement
   drag.value = {
     v, from: tabs.tabs.findIndex(t => t.value === v),
@@ -380,18 +398,29 @@ const dragStyle = (v: string) =>
           <span class="fp-tab-ic">
             <component :is="iconFor(tabMeta(t.value)?.icon ?? '')" :size="t.pinned ? 16 : 14" />
           </span>
-          <template v-if="!t.pinned">
-            <span class="fp-tab-label">{{ titleOf(t.value) }}</span>
-            <button
-              v-if="showX(t)"
-              type="button"
-              class="fp-tab-x"
-              aria-label="关闭页签"
-              @click.stop="closeTab(t.value, true)"
-            >
-              <X :size="14" />
-            </button>
-          </template>
+          <span v-if="!t.pinned" class="fp-tab-label">{{ titleOf(t.value) }}</span>
+          <!-- 固定钮:只在触屏渲染(桌面 DOM 不变)。触屏没有双击语义、右键菜单也不是触屏手势,
+               它是触屏上唯一的固定入口(§6.3)。桌面的双击/右键入口原样保留。 -->
+          <button
+            v-if="showPin(t)"
+            type="button"
+            class="fp-tab-pin"
+            :class="{ on: t.pinned }"
+            :aria-label="t.pinned ? '取消固定页签' : '固定页签'"
+            :aria-pressed="!!t.pinned"
+            @click.stop="t.pinned ? tabs.unpin(t.value) : tabs.pin(t.value)"
+          >
+            <Pin :size="13" />
+          </button>
+          <button
+            v-if="showX(t)"
+            type="button"
+            class="fp-tab-x"
+            aria-label="关闭页签"
+            @click.stop="closeTab(t.value, true)"
+          >
+            <X :size="14" />
+          </button>
         </div>
       </TransitionGroup>
       <ShellTip title="新建页签">
@@ -602,10 +631,29 @@ const dragStyle = (v: string) =>
   place-items: center;
 }
 .fp-tab-x:hover { background: var(--ink-100); color: var(--text-primary); }
+/* 触屏专属的固定钮(§6.3):只在 isTouch 时渲染,所以这里不需要媒体查询再藏一次。
+   固定中的签实心一档,和 × 一样弱化但可达(§6.1「可半透明弱化,不可不可达」)。 */
+.fp-tab-pin {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  opacity: 0.55;
+}
+.fp-tab-pin.on { opacity: 1; color: var(--text-primary); }
 /* 触屏无 hover:× 常显(RESPONSIVE-LAYOUT-SPEC §6.1),非激活签才关得掉 */
 @media (hover: none) {
   .fp-tab-x { opacity: 0.55; }
   .fp-tab.on .fp-tab-x { opacity: 1; }
+  /* 固定签只有 44px:图标 16 + 固定钮 20 + 间距 8 = 44 正好顶满,收到 2 才留得出左右各 3 */
+  .fp-tab.pn { gap: 2px; }
 }
 
 /* 新建 / 关闭:宽度 0 ↔ 到位,120ms(§8) */

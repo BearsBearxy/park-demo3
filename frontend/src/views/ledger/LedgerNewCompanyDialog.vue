@@ -3,6 +3,10 @@
 import { ref, onMounted } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
+import { useFormSheet } from '@/composables/useFormSheet'
+
+// 带输入的居中弹卡 → S 档全屏 sheet(styles/form-sheet.css)
+const sheet = useFormSheet()
 
 const props = defineProps<{ existingNames: string[] }>()
 const emit = defineEmits<{ close: []; create: [name: string] }>()
@@ -21,13 +25,13 @@ function submit() {
 </script>
 
 <template>
-  <div class="lg-dlg-mask" @click="emit('close')">
+  <div class="lg-dlg-mask" :class="{ 'fp-fsheet': sheet }" @click="emit('close')">
     <div class="lg-dlg" @click.stop>
       <div class="lg-dlg-h">
         <h3>新建管理公司</h3>
         <p>为新的管理公司创建一份独立台账,表格结构与现有总表完全一致。</p>
       </div>
-      <div class="lg-dlg-b">
+      <div class="lg-dlg-b fp-fsheet-bd">
         <div class="lg-dlg-lab">公司名称</div>
         <input ref="inputRef" class="lg-dlg-in" :class="{ err }" v-model="name"
                placeholder="如:园区水电管理公司"
@@ -38,7 +42,7 @@ function submit() {
           <span>新台账各列均为空白。切换到该公司后点击「编辑」,在对应费用列录入收款即可 —— 不收的费用列保持留空。</span>
         </div>
       </div>
-      <div class="lg-dlg-f">
+      <div class="lg-dlg-f fp-fsheet-ft">
         <Button variant="gray" size="sm" @click="emit('close')">取消</Button>
         <Button variant="filled" size="sm" @click="submit">
           <template #leading><component :is="iconFor('check')" :size="14" /></template>

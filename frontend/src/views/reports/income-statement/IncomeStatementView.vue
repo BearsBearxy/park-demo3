@@ -527,11 +527,18 @@ async function onExport() {
 /* S 档提示行:桌面档整行不存在(display:none,不占位不留 gap),窄档媒体块内再显——宽档规则在前(§1) */
 .is-s-hint { display:none; }
 
-/* ── S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5.3):KPI repeat(4) 在 390 上每格 <90px,
-   金额放不下——定两列(挂载即终态,不随内容抖)。表格窄了走 .fin-wrap 内横滚,
+/* ── M 档(≤960,RESPONSIVE-LAYOUT-SPEC §5.3):KPI 定两列。坏的是**标签**不是金额——
+   768 上 repeat(4) 每格 151,扣 .kc 的 padding 40 只剩 111 内容宽;
+   「营业收入(本月)」≈98 + 图标 18 + 缝 8 = 124 > 111,被 .kc-l 的 ellipsis 截成「营业收入…」。
+   而 ds/KpiCard 的 .kc-l 没有 :title(useFitDown 只管数值不管标签),悬停也看不全——
+   所以这是补缺陷,不是偏好。降两列后每格 314、内容宽 274,标签放得下。
+   (挂载即终态,不随内容抖;宽档规则在前 §1。) ── */
+@media (max-width: 960px) {
+  .fin-kpis { grid-template-columns:repeat(2, minmax(0,1fr)); }
+}
+/* ── S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5.3):表格窄了走 .fin-wrap 内横滚,
    列宽不动,首列 sticky 在 FinReportTable 自己那份 ≤600 块里 ── */
 @media (max-width: 600px) {
-  .fin-kpis { grid-template-columns:repeat(2, minmax(0,1fr)); }
   /* 宽表编辑荐桌面提示(§11.2 预留位):行常驻定高 20px,进出编辑只换文案不挪版 */
   .is-s-hint { display:flex; align-items:center; flex:0 0 20px; height:20px; font-size:12px; color:var(--hue-orange); }
 }

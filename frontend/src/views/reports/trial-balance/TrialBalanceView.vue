@@ -593,10 +593,17 @@ const canManageCo = computed(() => useAuthStore().can('master:edit'))
 /* S 档提示行:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前(§1) */
 .tb-s-hint { display:none; }
 
+/* ── M 档(≤960,RESPONSIVE-LAYOUT-SPEC §5.3):KPI 定两列。坏的是**标签**不是金额——
+   768 上 repeat(4) 每格 151,扣 .kc 的 padding 40 只剩 111 内容宽;
+   「试算平衡差(借−贷)」/「期末借方合计」≈98 + 图标 18 + 缝 8 = 124 > 111,
+   被 .kc-l 的 ellipsis 截断;而 ds/KpiCard 的 .kc-l 没有 :title(useFitDown 只管数值不管标签),
+   悬停也看不全——补缺陷不是偏好。(挂载即终态,不随内容抖;宽档规则在前 §1。) ── */
+@media (max-width: 960px) {
+  .fin-kpis { grid-template-columns:repeat(2, minmax(0,1fr)); }
+}
+
 /* ── S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5.3)── */
 @media (max-width: 600px) {
-  /* KPI repeat(4) 在 390 上每格 <90px,金额放不下——定两列(挂载即终态,不随内容抖) */
-  .fin-kpis { grid-template-columns:repeat(2, minmax(0,1fr)); }
   /* 工具行弹性收窄:搜索框吃剩余宽、可被挤压。SearchField 宽度是 ds 组件内联 style 写死
      (该组件不在本次改动范围),只能 !important 压过内联——作用域锁死 .tb-tools 内,
      不外溢到其他搜索场景(先例:mx-list.css .mx-pagerbar 压 ds-pg-pill 内联) */

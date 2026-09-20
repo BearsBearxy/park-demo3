@@ -16,6 +16,7 @@ import { pvMeterApi, type PvStationDTO } from '@/api/pvMeter'
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useFormSheet } from '@/composables/useFormSheet'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
 import FPToast from '@/components/fp/FPToast.vue'
@@ -41,6 +42,8 @@ import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 import { buildPvMeterTemplate, exportPvMeterMonth } from '@/utils/pvMeterExcel'
 
 const auth = useAuthStore()
+// 新增电站弹卡带输入 → S 档全屏 sheet(styles/form-sheet.css)
+const sheet = useFormSheet()
 
 // ── 编辑模式(EDIT-MODE-SPEC):不跨会话,组件 ref;KeepAlive 切页签回来也回浏览态(安全默认) ──
 // 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
@@ -786,13 +789,13 @@ async function onTemplate() {
     </FPDrawer>
 
     <!-- 新增电站轻量弹窗 -->
-    <div v-if="stationDlg" class="pm-mask" @mousedown="stationDlg = false">
+    <div v-if="stationDlg" class="pm-mask" :class="{ 'fp-fsheet': sheet }" @mousedown="stationDlg = false">
       <div class="pm-dlg" @mousedown.stop>
         <div class="pm-dlg-h">
           <h3>新增电站</h3>
           <p>按楼栋新增一个光伏电站;装机容量与消纳单价可留空后补,单价只影响之后新录的抄表记录。</p>
         </div>
-        <div class="pm-dlg-b">
+        <div class="pm-dlg-b fp-fsheet-bd">
           <Input v-model="stForm.name" label="电站(楼栋)名称" placeholder="如:14栋" size="sm" />
           <div style="width:120px">
             <Select v-model="stForm.phase" label="期数" :options="ST_PHASE_OPTS" size="sm" />
@@ -803,7 +806,7 @@ async function onTemplate() {
           </div>
           <div class="pm-dlg-err">{{ stErr }}</div>
         </div>
-        <div class="pm-dlg-f">
+        <div class="pm-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="stationDlg = false">取消</Button>
           <Button variant="filled" size="sm" @click="submitStation">
             <template #leading><component :is="iconFor('check')" :size="14" /></template>

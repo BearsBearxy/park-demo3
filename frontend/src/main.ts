@@ -8,6 +8,7 @@ import './styles/base.css'
 import './styles/motion.css'
 import './styles/scrollbar.css'
 import './styles/mx-list.css'
+import './styles/form-sheet.css'
 
 const app = createApp(App)
 app.use(createPinia())
