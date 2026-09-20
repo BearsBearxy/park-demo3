@@ -96,6 +96,20 @@ export interface RouteMeta { value: string; layer: string; layerLabel: string; l
 export function fpAllPages(): (NavItem & { layer: string; layerLabel: string; layerIcon: string; group?: string })[] {
   return FP_NAV.flatMap(L => L.sections.flatMap(s => s.items.map(it => ({ ...it, layer: L.id, layerLabel: L.label, layerIcon: L.icon, group: s.title }))))
 }
+/**
+ * S 档(手机)进一层落哪一屏。
+ *
+ * 分析层在手机上落「查一个数」落地页而不是驾驶舱(响应式稿 JourneyEntry):
+ * cockpit 是 7 瓦 + 9 块,三条动线里都只是路过。**桌面不变** —— `layer.home` 一个字没动,
+ * `navAccess.ts` 的登录落点也没动;只有 MobileBottomNav / MobileNavDrawer 走这里,
+ * 而那两个组件只在 tier==='s' 挂载(AppShell.vue:162-168),天然只影响手机。
+ * 写成函数而不是在两个组件里各判一次:两处判据迟早会漂。
+ */
+export const ANA_MOBILE_HOME = 'ana-home'
+export function fpMobileHomeOf(layer: NavLayer): string {
+  return layer.id === 'analysis' ? ANA_MOBILE_HOME : layer.home
+}
+
 export function fpFindLayer(value: string): NavLayer { return FP_NAV.find(L => L.sections.some(s => s.items.some(it => it.value === value))) ?? FP_NAV[0] }
 export function fpBuildRoutes(): Record<string, RouteMeta> {
   const map: Record<string, RouteMeta> = {}

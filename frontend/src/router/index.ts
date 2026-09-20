@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
-import { fpBuildRoutes } from '@/nav/fpNav'
+import { fpBuildRoutes, ANA_MOBILE_HOME } from '@/nav/fpNav'
 import { useAuthStore } from '@/stores/auth'
 import { useTabsStore } from '@/stores/tabs'
 import { useUiStore } from '@/stores/ui'
@@ -11,6 +11,8 @@ const LoginView = () => import('@/views/LoginView.vue')
 const ChangePasswordView = () => import('@/views/ChangePasswordView.vue')
 // 首页与新标签页:同一个组件,按 route.meta.value 分两种点击规则(TAB-BAR-SPEC §5.5)
 const HomeView = () => import('@/views/home/HomeView.vue')
+// 分析层手机落地页:不在导航里(桌面进分析层仍落 cockpit),只有底栏/抽屉的 goLayer 在 S 档落它
+const AnaHomeView = () => import('@/views/analysis/AnaHomeView.vue')
 // 充电桩两屏(汽车/电动车)共用同一参数化 View
 const ChargingView = () => import('@/views/charging/ChargingView.vue')
 // 损益附表 1–5:5 条路由共用同一参数化 View(P2-D spec D4)
@@ -99,6 +101,9 @@ const router = createRouter({
     // 首页与新标签页:不在导航里,但都是页签(stores/tabs.ts 的 HOME / NEWTAB)
     { path: '/home', component: HomeView, meta: { value: 'home', page: '首页' } },
     { path: '/newtab', component: HomeView, meta: { value: 'newtab', page: '新标签页' } },
+    // 分析层手机落地页(响应式稿 JourneyEntry):不进导航,否则桌面侧栏会多出一条谁也点不开的屏。
+    // 顶栏标题写**层名**「分析」不是屏名 —— 它是这一层在手机上的门厅,不是第 21 屏。
+    { path: '/' + ANA_MOBILE_HOME, component: AnaHomeView, meta: { value: ANA_MOBILE_HOME, page: '分析' } },
     // S21:价目管理退役,旧地址(书签 / 最近访问)落到计费参数页
     { path: '/price-cfg', redirect: '/params' },
     // 2026-09-03(SIDEBAR-UX-REDESIGN D4):银行流水条目删除,旧地址(书签 / 最近访问)落首页。

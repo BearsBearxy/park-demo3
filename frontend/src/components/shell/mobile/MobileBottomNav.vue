@@ -2,7 +2,7 @@
 // 手机底栏(S 档,RESPONSIVE-LAYOUT-SPEC §4.1):层级导航,IconRail 在手机上的化身。
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fpFindLayer, type NavLayer } from '@/nav/fpNav'
+import { fpFindLayer, fpMobileHomeOf, type NavLayer } from '@/nav/fpNav'
 import { visibleLayers } from '@/nav/navAccess'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
@@ -22,8 +22,10 @@ const activeLayer = computed(() =>
 // 点当前层什么都不做(§4.1,IconRail.goLayer 同语义)
 function goLayer(layer: NavLayer) {
   if (layer.id === activeLayer.value.id) return
-  tabsStore.openFresh(layer.home)
-  router.push('/' + layer.home)
+  // S 档层首页走 fpMobileHomeOf(分析层落「查一个数」落地页,其余层不变);桌面用的是 layer.home
+  const home = fpMobileHomeOf(layer)
+  tabsStore.openFresh(home)
+  router.push('/' + home)
 }
 </script>
 

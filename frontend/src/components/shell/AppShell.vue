@@ -72,6 +72,9 @@ const mnavOpen = ref(false)
 // 首次打开才挂抽屉(懒 chunk 的 v-if 门,见模板注释);之后保持挂载走进出场动效
 const mnavEverOpened = ref(false)
 watch(mnavOpen, (v) => { if (v) mnavEverOpened.value = true })
+// 页面够不着外壳的 ref,就递一个计数过来(同 ui.paletteReq 的既有写法)。
+// 目前唯一的调用方是分析层落地页那一行「全部分析 N 屏 ›」—— ☰ 仍是第一个口。
+watch(() => ui.mnavReq, () => { mnavOpen.value = true })
 
 const paletteOpen = ref(false)
 const paletteEverOpened = ref(false)

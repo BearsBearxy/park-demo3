@@ -10,7 +10,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { LogOut, Sparkles, SunMoon } from 'lucide-vue-next'
 import { useUpdateStore } from '@/stores/update'
 import { APPEARANCE_OPTIONS, useAppearanceStore } from '@/stores/appearance'
-import { fpFindLayer, type NavLayer } from '@/nav/fpNav'
+import { fpFindLayer, fpMobileHomeOf, type NavLayer } from '@/nav/fpNav'
 import { visibleLayers } from '@/nav/navAccess'
 import { buildAllPages } from '@/components/shell/paletteFilter'
 import { useTabsStore } from '@/stores/tabs'
@@ -51,8 +51,10 @@ const recentItems = computed(() =>
 // 既高亮又点不动(整期复查实测)。
 function goLayer(layer: NavLayer) {
   if (layer.id === fpFindLayer(activeValue.value).id) return
-  tabs.openFresh(layer.home)
-  router.push('/' + layer.home)
+  // 同 MobileBottomNav:S 档层首页走 fpMobileHomeOf,两处不各判各的
+  const home = fpMobileHomeOf(layer)
+  tabs.openFresh(home)
+  router.push('/' + home)
 }
 
 // 目录条目与桌面侧栏同义:恢复现场(§4.1)。触屏没有修饰键,不做 Shift。

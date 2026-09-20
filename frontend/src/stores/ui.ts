@@ -49,5 +49,10 @@ export const useUiStore = defineStore('ui', () => {
   const paletteReq = ref(0)
   function requestPalette() { paletteReq.value++ }
 
-  return { sbOpen, toggleSidebar, closeTransient, netError, reportNetError, dismissNetError, navigating, startNav, endNav, paletteReq, requestPalette }
+  // 分析层落地页的「全部分析」要打开手机导航抽屉,而抽屉长在外壳里(AppShell 的 mnavOpen)。
+  // 同 paletteReq 那一套:页面递一个计数,AppShell watch 它。☰ 仍是第一个口,这是第二个。
+  const mnavReq = ref(0)
+  function requestMobileNav() { mnavReq.value++ }
+
+  return { sbOpen, toggleSidebar, closeTransient, netError, reportNetError, dismissNetError, navigating, startNav, endNav, paletteReq, requestPalette, mnavReq, requestMobileNav }
 })

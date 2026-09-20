@@ -10,7 +10,7 @@
 // 取代 2026-09-03 的「固定页签 + 单个斜体预览槽」模型(SIDEBAR-UX-REDESIGN §4.3 / §6)。
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
-import { fpBuildRoutes } from '@/nav/fpNav'
+import { fpBuildRoutes, ANA_MOBILE_HOME } from '@/nav/fpNav'
 import { useAuthStore } from '@/stores/auth'
 import { useViewport } from '@/composables/useViewport'
 
@@ -23,10 +23,11 @@ export const HOME = 'home'
 export const NEWTAB = 'newtab'
 
 const ROUTES = fpBuildRoutes()
-/** 不在导航里、但能当页签的两屏。 */
+/** 不在导航里、但能当页签的三屏(分析落地页只在 S 档当层首页,桌面到不了它)。 */
 const EXTRA: Record<string, { page: string; icon: string }> = {
   [HOME]: { page: '首页', icon: 'home' },
   [NEWTAB]: { page: '新标签页', icon: 'plus' },
+  [ANA_MOBILE_HOME]: { page: '分析', icon: 'pie-chart' },
 }
 /** 页签能认的 value:导航里的屏 + 首页 + 新标签页。 */
 export const isTabValue = (v: string): boolean => !!ROUTES[v] || v in EXTRA

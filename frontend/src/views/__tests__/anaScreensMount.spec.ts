@@ -526,10 +526,22 @@ async function settle() {
 }
 
 describe('分析屏挂载冒烟 · 屏清单与目录一致', () => {
-  it('src/views/analysis/ 下的 *View.vue 一个不漏(新屏必须进 SCREENS)', () => {
+  /**
+   * 这套冒烟是给**数据屏**写的:②数内容块的判据是「图桩 / 自绘 svg / 表格行」,
+   * 而分析层手机落地页(AnaHomeView)一张图一行表都没有 —— 它是层门厅,不是第 21 屏。
+   * 把它塞进 SCREENS 只能把 min 写成 0,那条断言当场变恒真。
+   * 它自己有一份更严的门禁(analysis/__tests__/anaHomeTiles.spec.ts,12 条,含骨架→真瓦那一帧),
+   * 所以这里按名单豁免,并把豁免名单本身钉死:再多一个文件想绕过冒烟,这条就红。
+   */
+  const SMOKE_EXEMPT = ['AnaHomeView']
+
+  it('src/views/analysis/ 下的 *View.vue 一个不漏(新屏必须进 SCREENS,豁免要写理由)', () => {
     const files = readdirSync(join(__dirname, '..', 'analysis')).filter((f) => f.endsWith('View.vue')).map((f) => f.slice(0, -4)).sort()
-    expect(files).toHaveLength(20)
-    expect(SCREENS.map((s) => s.name).sort()).toEqual(files)
+    expect(files).toHaveLength(21)
+    expect(SCREENS.map((s) => s.name).sort()).toEqual(files.filter((f) => !SMOKE_EXEMPT.includes(f)))
+    // 豁免只许这一个,且它必须真有自己那份门禁 —— 否则「豁免」就等于没人测
+    expect(SMOKE_EXEMPT).toEqual(['AnaHomeView'])
+    expect(readdirSync(join(__dirname, '..', 'analysis', '__tests__'))).toContain('anaHomeTiles.spec.ts')
   })
 })
 
