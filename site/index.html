@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>灵睿 LinkSight · 每月出账，不再手填</title>
+<meta name="description" content="每月出账不再手填：合同、抄表、公摊算完，每户催缴单自动派生；数据录完，20 屏经营分析同时就有。灵睿 LinkSight 产品介绍。">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:title" content="灵睿 LinkSight · 每月出账，不再手填">
+<meta property="og:description" content="每月出账不再手填：合同、抄表、公摊算完，每户催缴单自动派生；数据录完，20 屏经营分析同时就有。灵睿 LinkSight 产品介绍。">
+<meta property="og:image" content="assets/og.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<!-- 默认就是静态终态：没有 JS、关掉动效、小屏，三种情况下全部文字与终态都可读；
+     桌面档由 main.js 摘掉这两个类，动效才接管。 -->
+<body class="static final">
+
+<!-- ============ 局部导航 ============ -->
+<nav class="nav" aria-label="页面导航">
+  <a class="brand" href="#top">
+    <svg viewBox="172.47 172.47 222 222" aria-hidden="true"><path fill="#F5F5F7" d="M292.29,319.02h-52.26c-6.28,0-11.96-3.76-14.41-9.54l-47.82-112.65c-2.19-5.16,1.6-10.89,7.21-10.89h40.44c6.28,0,11.96,3.76,14.41,9.54l52.44,123.54Z"/><path fill="#6E6E73" d="M266.27,380.99h61.42c5.59,0,10.76-2.98,13.56-7.83l47.46-82.2c3.01-5.22-.75-11.74-6.78-11.74h-47.86c-5.59,0-10.76,2.98-13.56,7.83l-54.24,93.94Z"/></svg>
+    <span>灵睿 LinkSight</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#chain" data-for="chain">出账链</a></li>
+    <li><a href="#bill" data-for="bill">催缴单</a></li>
+    <li><a href="#dashboard" data-for="dashboard">经营分析</a></li>
+    <li><a href="#pool" data-for="pool">公摊引擎</a></li>
+    <li><a href="#ledger" data-for="ledger">账簿报表</a></li>
+    <li><a href="#collab" data-for="collab">协作</a></li>
+    <li><a href="#mobile" data-for="mobile">手机</a></li>
+  </ul>
+  <a class="btn sm" href="#cta">预约演示</a>
+</nav>
+
+<main>
+
+<!-- ============ 0 · 首屏 ============ -->
+<section class="hero" id="top">
+  <div class="hero-copy">
+    <p class="eyebrow" style="margin:0">灵睿 LinkSight</p>
+    <h1 class="display">每月出账，不再手填。</h1>
+    <p class="intro">合同、抄表、公摊算完，每户催缴单自动派生。以前每月手填的表，核对一遍就发。</p>
+    <div class="cta-row"><a class="btn" href="#cta">预约演示</a><a class="link" href="#chain">看它怎么出账<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a></div>
+  </div>
+  <div class="hero-stage stage"><div class="slot" data-id="A" data-kind="video" data-note="录屏 · 催缴单屏：指定收款公司、核对确认、导出，1440×900，10s 循环"></div></div>
+</section>
+
+<!-- ============ 1 · 以前长这样 ============ -->
+<section class="chapter" id="before" style="padding-bottom:0">
+  <header class="ch-head">
+    <h2>一个月的账，以前长这样。</h2>
+    <p class="intro">两期园区 2024 年 3 月的真实盘点。每一格，以前都是会计每月手填的。</p>
+  </header>
+  <dl class="figs rv">
+    <div><dt>个租户 sheet</dt><dd class="num">152</dd></div>
+    <div><dt>个通知单块</dt><dd class="num">209</dd></div>
+    <div><dt>条费项行</dt><dd class="num">920</dd></div>
+  </dl>
+  <p class="caption rv" style="text-align:center;margin:-24px auto 40px;max-width:44em">209 块与 920 行出自其中 146 个版式规整的 sheet（表头 7 型），另有流水账、无通知单、混合三类共 6 户。24 种费项名归一后 13 类；48 户一张 sheet 上叠 2 到 5 张通知单。</p>
+</section>
+<div class="stack" aria-label="以前的 Excel 通知单">
+  <div class="sheet"><div class="paper"><div class="slot grid-tex" data-id="1" data-kind="img" data-note="截图 · 真实 Excel 通知单 sheet（单位置户），2024-03，脱敏"></div></div></div>
+  <div class="sheet"><div class="paper"><div class="slot grid-tex" data-id="2" data-kind="img" data-note="截图 · 真实 Excel 通知单 sheet（厂房加宿舍共用单户），2024-03，脱敏"></div></div></div>
+  <div class="sheet"><div class="paper"><div class="slot grid-tex" data-id="3" data-kind="img" data-note="截图 · 真实 Excel 通知单 sheet（一张 sheet 叠四张通知单），2024-03，脱敏"></div></div></div>
+</div>
+
+<!-- ============ 2 · 出账链 ============ -->
+<section class="chapter" id="chain" style="padding-bottom:0">
+  <header class="ch-head">
+    <h2>五道工序，算到催缴单。</h2>
+    <p class="intro">每月一次，五道。前一道的产出是后一道的输入，最后一道是每户一张催缴单。</p>
+    <p class="caption rv" style="margin-top:20px">起点是合同里的计费行。数据首页把这个月要做的事列成两栏 19 行：出账 7 行，记账 12 行。</p>
+  </header>
+</section>
+<section class="pan-wrap" aria-label="出账链五道工序">
+  <div class="pan-track">
+    <article class="step"><div class="node"><i></i><span class="seg"></span></div><h3>计费参数</h3><p>口径做成参数位，怪癖照收，不顺手修正。</p><div class="stage"><div class="slot" data-id="4" data-kind="img" data-note="截图 · 计费参数屏，1120×700"></div></div></article>
+    <article class="step"><div class="node"><i></i><span class="seg"></span></div><h3>园区抄表</h3><p>尖峰平谷四段读数，反向电量当场拦截告警。</p><div class="stage"><div class="slot" data-id="5" data-kind="img" data-note="截图 · 园区抄表屏，1120×700"></div></div></article>
+    <article class="step"><div class="node"><i></i><span class="seg"></span></div><h3>公共电核算</h3><p>公摊池逐格复算，与原册对得上。</p><div class="stage"><div class="slot" data-id="6" data-kind="img" data-note="截图 · 公共电核算屏，1120×700"></div></div></article>
+    <article class="step"><div class="node"><i></i><span class="seg"></span></div><h3>楼栋损耗</h3><p>17 行楼栋损耗，逐栋落账。</p><div class="stage"><div class="slot" data-id="7" data-kind="img" data-note="截图 · 楼栋损耗屏，1120×700"></div></div></article>
+    <article class="step last"><div class="node"><i></i><span class="seg"></span></div><h3>催缴单</h3><p>前五步的结果，在这里变成每户一张通知单。</p><div class="stage"><div class="slot" data-id="8" data-kind="img" data-note="截图 · 催缴单屏，1120×700"></div></div></article>
+  </div>
+</section>
+
+<!-- ============ 3 · 催缴单 ============ -->
+<section class="chapter pinsec" id="bill">
+  <div class="pin-inner">
+    <div class="split">
+      <div class="stage screen">
+        <div class="slot view" data-id="9" data-kind="img" data-note="截图 · 本月催缴单列表（按户一行），1440×900"><span class="tag">示例数据</span></div>
+        <div class="slot view" data-id="10" data-kind="img" data-note="截图 · 单户通知单预览（租金表加水电表），1440×900"><span class="tag">示例数据</span></div>
+        <div class="slot view grid-tex" data-id="11" data-kind="img" data-note="截图 · 导出后的 Excel 通知单与对账表（Excel 打开真实导出文件，脱敏）"><span class="tag">示例数据</span></div>
+        <div class="slot view" data-id="12" data-kind="img" data-note="截图 · 催缴单屏交审态（整月提交审核后只读），1440×900"><span class="tag">示例数据</span></div>
+      </div>
+      <div>
+        <p class="eyebrow">催缴单</p>
+        <h2>算出来，发出去。</h2>
+        <div class="caps">
+          <div class="cap"><h3>按户一行，按月派生。</h3><p>来源是合同计费行、抄表读数、计费参数。三样相乘，每户本月应收自己出来。</p></div>
+          <div class="cap"><h3>租金表加水电表，就是那张通知单。</h3><p>现实里发给租户的那份，系统按户生成。</p></div>
+          <div class="cap"><h3>指定收款公司，核对，导出就发。</h3><p>核对确认后导出 Excel 通知单与对账表。会计的活从「填」变成「核」。</p></div>
+          <div class="cap"><h3>交上去审，审完锁住。</h3><p>整月提交审核，审过的表只读。以前 152 个 sheet 逐格手填，现在核对一遍再发。</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 · 转轴 ============ -->
+<section class="chapter hinge" id="hinge">
+  <h2 class="rv">没有一格是填进去的。</h2>
+  <p class="intro rv" style="margin:18px auto 0">录入归你，派生归系统。催缴单算完，经营分析同时就有了。</p>
+  <div class="concl rv"><b>经营驾驶舱</b><span>本月应收、能耗、光伏、异常，都从这个月的录入数据派生。</span><span class="tag">示例</span></div>
+  <div class="line" aria-hidden="true"></div>
+</section>
+
+<!-- ============ 5 · 经营分析 ============ -->
+<section class="chapter pinsec" id="dashboard">
+  <div class="pin-inner">
+    <header class="ch-head">
+      <p class="eyebrow">经营分析</p>
+      <h2>数据录完，分析就有了。</h2>
+      <p class="intro">20 屏，含异常提醒中心，全由录入数据派生。每屏一条结论、一张图，点回原表。</p>
+    </header>
+    <div class="segc prog" id="dash-seg" role="tablist" data-i="0" style="--n:4" aria-label="经营分析四个维度">
+      <span class="thumb" aria-hidden="true"></span>
+      <button type="button" role="tab" aria-selected="true" data-v="0">驾驶舱</button>
+      <button type="button" role="tab" aria-selected="false" data-v="1">园区</button>
+      <button type="button" role="tab" aria-selected="false" data-v="2">租户</button>
+      <button type="button" role="tab" aria-selected="false" data-v="3">管理公司</button>
+    </div>
+    <div class="stage dash-stage">
+      <div class="slot view on" data-id="B" data-kind="video" data-note="录屏 · 经营驾驶舱，含一次维度切换，1440×900，8s 循环"></div>
+      <div class="slot view" data-id="13" data-kind="img" data-note="截图 · 出租与楼栋，1440×900"></div>
+      <div class="slot view" data-id="14" data-kind="img" data-note="截图 · 用能与缴费，1440×900"></div>
+      <div class="slot view" data-id="15" data-kind="img" data-note="截图 · 利润表分析，1440×900"></div>
+    </div>
+    <div class="dash-lines" aria-live="polite">
+      <p class="on">一眼看全园：出租、应收、能耗、光伏、异常放在一屏。</p>
+      <p>园区维度：出租与楼栋，园区能耗。</p>
+      <p>租户维度：用能与缴费，结构与续约，租户对标。</p>
+      <p>管理公司维度：利润表、资产负债、现金流、费用与报销。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5.5 · 不替你下结论 ============ -->
+<section class="chapter" id="honest">
+  <div class="honest-tile rv">
+    <h2>不替你下结论。</h2>
+    <div class="honest-cols">
+      <ul class="checks">
+        <li><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>写测量，不写定性：那笔负收入，屏上写「收入为负」</li>
+        <li><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>读数句带百分比时，同一张卡里要给出参照系</li>
+        <li><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>数据不足时显示引导，不放假数字</li>
+      </ul>
+    </div>
+    <p class="footnote">σ、置信这类词写进分析屏会被文案门禁挡下，测试跑不过。演示数据在本页标「示例」。</p>
+  </div>
+</section>
+
+<!-- ============ 6 · 专题 ============ -->
+<section class="chapter" id="topics">
+  <header class="ch-head">
+    <h2>一个专题，答一个问题。</h2>
+    <p class="intro">九个专题加一个异常提醒中心。一个专题只答一个经营问题，都能点回原表。</p>
+  </header>
+  <div class="bento">
+    <article class="tile an rv"><div class="tile-h"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M22 8c0-2.3-.8-4.3-2-6"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/><path d="M4 2C2.8 3.7 2 5.7 2 8"/></svg><h3>异常提醒中心</h3></div><div class="slot" data-id="16" data-kind="img" data-note="截图 · 异常提醒中心，裁 2:1，条目用示例数据"></div></article>
+    <article class="tile sm fl rv"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><path d="M7 18v-6a5 5 0 1 1 10 0v6"/><path d="M5 21a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-1a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2z"/><path d="M21 12h1"/><path d="M18.5 4.5 18 5"/><path d="M2 12h1"/><path d="M12 2v1"/><path d="m4.929 4.929.707.707"/><path d="M12 12v6"/></svg><h3>租户流失预警</h3></article>
+    <article class="tile sm ex rv"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h5"/><path d="M17.5 17.5 16 16.3V14"/><circle cx="16" cy="16" r="6"/></svg><h3>到期墙与续约</h3></article>
+    <article class="tile pv rv"><div class="tile-h"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg><h3>光伏分栋分析</h3><span class="tag" style="margin-left:auto">示例</span></div><svg id="pv-chart" viewBox="0 0 600 220" role="img" aria-label="某栋日发电与全园中位之比，最后九天跌出正常范围带"></svg><p class="footnote">线 = 这栋当日发电 ÷ 全园同日中位，带 = 这栋自己的范围</p></article>
+    <article class="tile sm be rv"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><path d="M5 7v11a1 1 0 0 0 1 1h11"/><path d="M5.293 18.707 11 13"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="5" r="2"/></svg><h3>盈亏平衡与敏感性</h3></article>
+    <article class="tile sm pl rv"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg><h3>损益附表分析</h3></article>
+    <article class="tile sm bu rv"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg><h3>预算对比</h3></article>
+    <article class="tile sm ro rv"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg><h3>光伏投资回收</h3></article>
+    <article class="tile sm el rv"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg><h3>电费成本分析</h3></article>
+    <article class="tile sm ch rv"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg><h3>充电桩分析</h3></article>
+  </div>
+</section>
+
+<!-- ============ 7 · 公摊引擎 ============ -->
+<section class="chapter" id="pool">
+  <div class="pool-grid">
+    <div>
+      <h2>你的 Excel，<br>逐格全等。</h2>
+      <p class="intro">2024 年 2 月原册的每一格，系统复算一遍对得上。口径怪癖做成参数位，不顺手修正。</p>
+      <dl class="figs rv">
+        <div><dt>原册池级验算</dt><dd class="num">51</dd></div>
+        <div><dt>楼栋损耗行</dt><dd class="num">17</dd></div>
+      </dl>
+    </div>
+    <div class="stage wipe">
+      <div class="slot layer excel grid-tex" data-id="17" data-kind="img" data-note="截图 · 原 Excel「公共电分摊明细」2024-02，脱敏"><span class="tag l">原 Excel 工作表</span></div>
+      <div class="slot layer sys" data-id="18" data-kind="img" data-note="截图 · 公共电核算屏（同期），构图与左图对齐"><span class="tag r">系统</span></div>
+      <div class="wipe-bar"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 8 · 账簿与报表 ============ -->
+<section class="chapter" id="ledger">
+  <header class="ch-head">
+    <h2>一套账，多家公司。</h2>
+    <p class="intro">每家管理公司各一本册，三大报表加 5 张损益附表。全部汇总，就是跨公司求和。</p>
+    <div class="co-row rv"><span class="co on">全部汇总</span><span class="co">租赁</span><span class="co">综合</span><span class="co">水电</span></div>
+  </header>
+  <div class="stage rv"><div class="slot" data-id="19" data-kind="img" data-note="截图 · 利润表（全部汇总口径），1440×900"></div></div>
+  <p class="caption rv" style="text-align:center;margin-top:18px">收入核对：月度台账各公司之和，对附表10 按期区申报。</p>
+</section>
+
+<!-- ============ 9 · 协作 ============ -->
+<section class="chapter" id="collab">
+  <header class="ch-head">
+    <h2>多人同时做账，不打架。</h2>
+    <p class="intro">读全开，写分权。要改先占锁，谁在编辑一眼可见；急事可授权接管，全程留审计。</p>
+  </header>
+  <div class="panes" role="img" aria-label="演示：陈会计点编辑模式后变为完成；王会计一侧显示陈会计正在编辑，可请求接管，全程留审计">
+    <div class="pane" id="pane-a">
+      <div class="pane-bar"><span>陈会计 的窗口</span><span class="who-row"><span class="who me">陈</span><span class="who other">王</span><span class="cnt other">2 人在线</span></span></div>
+      <div class="pane-row"><span class="pane-title">月度台账 2026-06</span><span class="lockbtn"><span class="st s0">编辑模式</span><span class="st s1">完成</span></span></div>
+      <div class="slot" data-id="20" data-kind="img" data-note="截图 · 月度台账屏（编辑态），1120×700"></div>
+    </div>
+    <div class="pane" id="pane-b">
+      <div class="pane-bar"><span>王会计 的窗口</span><span class="who-row"><span class="who me">王</span><span class="who other">陈</span><span class="cnt other">2 人在线</span></span></div>
+      <div class="pane-row"><span class="pane-title">月度台账 2026-06</span><span class="lockbtn"><span class="st s0">编辑模式</span><span class="st s1">陈会计 正在编辑</span><span class="st s2">请求接管</span></span></div>
+      <div class="slot" data-id="21" data-kind="img" data-note="截图 · 月度台账屏（浏览态），1120×700"></div>
+      <div class="toast">已向在线主管发送接管请求，授权后锁归你，双方留名审计（示例）</div>
+    </div>
+  </div>
+  <ul class="checks"><li><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>读全开</li><li><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>写按 11 个业务模块分权</li><li><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>一张表 × 一个月审核，审核后只读</li></ul>
+</section>
+
+<!-- ============ 10 · 手机与平板 ============ -->
+<section class="chapter" id="mobile">
+  <header class="ch-head">
+    <h2>手机上，也是同一套账。</h2>
+    <p class="intro">同一套系统按四档重排：桌面、平板、窄窗、手机。不是缩小，是换排法。</p>
+  </header>
+  <div class="devices">
+    <figure class="dev rv" style="flex:1440 1 0">
+      <div class="stage" style="aspect-ratio:1440/900"><div class="slot" data-id="22" data-kind="img" data-note="截图 · 月度台账，桌面 1440×900"></div></div>
+      <figcaption>桌面 1440</figcaption>
+    </figure>
+    <figure class="dev rv" style="flex:768 1 0">
+      <div class="stage" style="aspect-ratio:768/1024"><div class="slot" data-id="23" data-kind="img" data-note="截图 · 同一张月度台账，平板 768×1024"></div></div>
+      <figcaption>平板 768</figcaption>
+    </figure>
+    <figure class="dev rv" style="flex:390 1 0">
+      <div class="stage" style="aspect-ratio:390/844"><div class="slot" data-id="24" data-kind="img" data-note="截图 · 同一张台账，手机 390×844"></div></div>
+      <figcaption>手机 390</figcaption>
+    </figure>
+  </div>
+  <ul class="facts">
+    <li class="rv"><h3>手机是另一套外壳</h3><p>底部层级导航加侧滑抽屉，只在 600 以下挂载，单手能走完。</p></li>
+    <li class="rv"><h3>列表不用横拖</h3><p>28 屏摘掉了 800px 最小宽；一行折成一张 72px 的卡。</p></li>
+    <li class="rv"><h3>平板是小一号的桌面</h3><p>图标轨与页签条留着，工具条收成图标钮，表格照旧横滚不折卡。</p></li>
+  </ul>
+  <p class="footnote">断点 600 / 960 / 1280 是产品自己的四档。</p>
+</section>
+
+<!-- ============ 11 · 每天打开的样子 ============ -->
+<section class="chapter" id="daily">
+  <header class="ch-head">
+    <h2>每天打开的样子。</h2>
+    <p class="intro">装完之后，天天见的是这四样。</p>
+  </header>
+  <div class="daily-grid">
+    <article class="tile rv">
+      <div class="tile-h"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 4v4"/><path d="M2 8h20"/><path d="M6 4v4"/></svg><h3>同时开三张表</h3></div>
+      <p class="caption">台账、催缴单、利润表并排开成页签，可拖动、可固定；关掉正在编辑的那张会先问一句。登录后先落到首页：一个搜索框、12 个收藏格、最近打开的 8 屏。</p>
+      <div class="slot" data-id="C" data-kind="video" data-note="录屏 · 首页到三个页签之间来回切，1440×900，10s 循环"></div>
+    </article>
+    <article class="tile rv">
+      <div class="tile-h"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><h3>浅色 深色 跟随系统</h3></div>
+      <p class="caption">在头像菜单里选，整页渐变过去，按账号记住。分析屏的图表备了两套配色，切完按新的重画。</p>
+      <div class="slot" data-id="25" data-kind="img" data-note="截图 · 同一张分析屏浅色 / 深色对照，各 720×450"></div>
+    </article>
+    <article class="tile sm rv">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg><h3>改了什么，写给你看</h3>
+      <p class="caption">功能更新换版后第一次打开自动弹，顶栏 ✦ 随时翻。更新记录里现在有 11 个版本，从 2026-07-13 的公测到 0.15.3。</p>
+    </article>
+    <article class="tile sm rv">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/></svg><h3>不弹系统面板</h3>
+      <p class="caption">30 处日期字段共用同一个自绘日历，带「本月 / 上个月」快捷；全站零个原生下拉，键盘能从头走到尾。</p>
+    </article>
+  </div>
+</section>
+
+<!-- ============ 12 · 大小园区 ============ -->
+<section class="chapter" id="fit">
+  <div class="fit-head">
+    <h2 style="text-align:center">两个人，<br>或几十个人的园区。</h2>
+    <div class="segc" id="fit-seg" role="tablist" data-i="0" aria-label="选择园区规模">
+      <span class="thumb" aria-hidden="true"></span>
+      <button type="button" role="tab" aria-selected="true" aria-controls="fit-small" id="tab-small">一个园区，一家管理公司</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="fit-large" id="tab-large">多期园区，多家公司</button>
+    </div>
+  </div>
+  <div class="fit-panels">
+    <div class="fit-panel on" id="fit-small" role="tabpanel" aria-labelledby="tab-small">
+      <div class="qa"><p class="q">“Excel 用得挺好，为什么要换？”</p><p class="a">每月手填的 920 条费项行，以后由合同、读数、参数算出来。不再手抄，不换习惯。</p></div>
+      <div class="qa"><p class="q">“我们没有 IT 部门。”</p><p class="a">Docker Compose 私有化部署，Caddy 自动 HTTPS。数据在你自己的服务器上。</p></div>
+      <div class="qa"><p class="q">“怕系统算错，还不如自己算。”</p><p class="a">51 个公摊池、17 行损耗与原册逐格验算全等；口径做成参数位，你能看见、能改。</p></div>
+    </div>
+    <div class="fit-panel" id="fit-large" role="tabpanel" aria-labelledby="tab-large">
+      <div class="qa"><p class="q">“几个人同时录账，会不会互相覆盖？”</p><p class="a">编辑锁加在场头像，谁在改一眼看见；急事可授权接管，改动全部留审计。</p></div>
+      <div class="qa"><p class="q">“各公司的账要分开，又要合并看。”</p><p class="a">每家管理公司各一本独立册，全部汇总就是跨公司求和；收入核对把月度台账与附表10 对上。</p></div>
+      <div class="qa"><p class="q">“谁改了什么，要查得到。”</p><p class="a">写按 11 个业务模块分权，操作日志可追溯；审核过的表只读。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 11 · 底座 ============ -->
+<section class="chapter" id="base">
+  <header class="ch-head"><h2>看不见的地方，也认真做。</h2><p class="intro">私有化部署，数据留在你自己的服务器。下面这些数字，是它被验证的方式。</p></header>
+  <div class="stats">
+    <div class="stat rv"><span class="num" data-count>660</span><p>条真库集成测试</p></div>
+    <div class="stat rv"><span class="num" data-count>10,134</span><p>行前端断言</p></div>
+    <div class="stat rv"><span class="num" data-count>122</span><p>个数据库迁移版本</p></div>
+    <div class="stat text rv"><p>Docker Compose 私有化部署，Caddy 自动 HTTPS。同一账号被连刷会被锁；改了密码或在别处登录，旧令牌下一个请求就失效，退回登录页写明原因。</p></div>
+  </div>
+  <p class="caption rv" style="max-width:1200px;margin:18px auto 0">82 个测试类跑在同一个 MySQL 容器上；278 个前端测试文件；最新迁移 V125。数取自 2026-09-20 的 master。</p>
+</section>
+
+<!-- ============ 14 · CTA ============ -->
+<section class="chapter" id="cta">
+  <h2 class="rv">带上通知单，<br>来看一场演示。</h2>
+  <p class="intro rv">用示例园区，当场走一遍从抄表到催缴单，再到经营分析。</p>
+  <a class="btn lg rv" href="mailto:demo@example.com?subject=%E9%A2%84%E7%BA%A6%E6%BC%94%E7%A4%BA">预约演示</a>
+  <div class="contact rv">
+    <a href="mailto:demo@example.com">demo@example.com</a>
+    <a href="tel:+8600000000000">+86 000 0000 0000</a>
+    <span class="qr">二维码位<br>企业微信</span>
+  </div>
+  <p class="footnote rv" style="margin-top:22px">邮箱、电话与二维码是占位，上线前替换（spec §10 第 16 条）。</p>
+</section>
+</main>
+<footer>
+  <div class="row">
+    <a class="brand" href="#top"><svg viewBox="172.47 172.47 222 222" aria-hidden="true"><path fill="#F5F5F7" d="M292.29,319.02h-52.26c-6.28,0-11.96-3.76-14.41-9.54l-47.82-112.65c-2.19-5.16,1.6-10.89,7.21-10.89h40.44c6.28,0,11.96,3.76,14.41,9.54l52.44,123.54Z"/><path fill="#6E6E73" d="M266.27,380.99h61.42c5.59,0,10.76-2.98,13.56-7.83l47.46-82.2c3.01-5.22-.75-11.74-6.78-11.74h-47.86c-5.59,0-10.76,2.98-13.56,7.83l-54.24,93.94Z"/></svg><span>灵睿 LinkSight</span></a>
+    <span>© 2026 灵睿 LinkSight</span>
+  </div>
+  <p class="footnote">标注「示例」的画面与条目为演示数据。Excel 时代的工作量取自 2024 年 3 月两期通知单盘点，公摊数取自 2024 年 2 月原册。工程数字为 2026-09-20 仓内实测，上线前重核。版权主体待定（D3）。</p>
+</footer>
+<script src="vendor/gsap.min.js"></script>
+<script src="vendor/ScrollTrigger.min.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
