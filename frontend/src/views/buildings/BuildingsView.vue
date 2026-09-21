@@ -24,8 +24,11 @@ import BuildingDrawer from './BuildingDrawer.vue'
 import BuildingNewDialog from './BuildingNewDialog.vue'
 import { iconFor } from '@/components/ds/icon'
 import { useAuthStore } from '@/stores/auth'
+import { useViewport } from '@/composables/useViewport'
 
 const auth = useAuthStore()
+// M 档(601–960)只压列宽/表头写法,一列都不删(TabletContent §① 黄框)
+const { tier } = useViewport()
 
 // ─── state ───────────────────────────────────────────────
 const buildings = ref<BuildingDTO[]>([])
@@ -143,7 +146,8 @@ const TABLE_COLUMNS = computed(() => [
   },
   { key: 'totalArea', header: '总面积 ㎡', width: '104px', align: 'right' as const, mono: true, sortValue: (b: BuildingDTO) => b.totalArea,
     render: (b: BuildingDTO) => h('span', null, b.totalArea.toLocaleString('en-US')) },
-  { key: 'rentableArea', header: '可租面积 ㎡', width: '116px', align: 'right' as const, mono: true, sortValue: (b: BuildingDTO) => b.rentableArea,
+  // M 档表头缩写成「可租 ㎡」(TabletContent §① delta 行7):同一列、同一份数据,只换表头写法
+  { key: 'rentableArea', header: tier.value === 'm' ? '可租 ㎡' : '可租面积 ㎡', width: '116px', align: 'right' as const, mono: true, sortValue: (b: BuildingDTO) => b.rentableArea,
     render: (b: BuildingDTO) => h('span', null, b.rentableArea.toLocaleString('en-US')) },
   // 建筑面积=栋内在租合同建筑面积汇总(只读,BILL-FORWARD 刀1 面积链路)
   { key: 'tenantBuildingArea', header: '建筑面积 ㎡', width: '110px', align: 'right' as const, mono: true, sortValue: (b: BuildingDTO) => b.tenantBuildingArea,
@@ -152,7 +156,8 @@ const TABLE_COLUMNS = computed(() => [
     key: 'occRate', header: '出租率', width: '132px', sortValue: (b: BuildingDTO) => b.occRate,
     // 本列有 render,FPSortableTable 的自动 title 不生效(c.render ? undefined : …),缺因 tooltip 得自己挂
     render: (b: BuildingDTO) => h('span', { style: { display: 'flex', alignItems: 'center', gap: '9px' }, title: b.occRate == null ? OCC_NULL_WHY : undefined }, [
-      h('span', { style: { flex: '1', minWidth: '54px' } }, [OccBar(b.occRate, 5)]),
+      // 条 54 → 36(M 档,TabletContent §① delta 行6):只条变短,右侧 40px 数字列与百分数不动
+      h('span', { style: { flex: '1', minWidth: tier.value === 'm' ? '36px' : '54px' } }, [OccBar(b.occRate, 5)]),
       h('span', { style: { fontFamily: 'var(--font-mono)', fontSize: '12px', fontWeight: 'var(--fw-semibold)', width: '40px', textAlign: 'right' } }, occPct(b.occRate)),
     ]),
   },
@@ -304,10 +309,21 @@ const occSub = computed(() => {
           <!-- S 档行卡映射(迁移②,spec §5.1:主字段 + ≤2 次级 + 状态胶囊,72px 内):
                不映射的话兜底用第一列——它是 30px 图标+双行的 VNode,塞行卡浪费高度还挤掉次级字段 -->
           <template #card="{ row }">
-            <div class="mx-rowcard-main">{{ row.name }}</div>
+            <!-- 第一行:楼栋名吃余宽省略号 + 月租金贴右端(稿 §1「我改了两处①」:
+                 桌面表有「月租金」列,卡上原先一个钱字都没有;右端对齐是为了一列 mono 数竖着能比大小)。
+                 格式用桌面同一个 fpWan,不另写一套。 -->
+            <div class="mx-rowcard-main has-money">
+              <span class="mx-rowcard-name">{{ row.name }}</span>
+              <span class="mx-rowcard-money">{{ fpWan(row.monthlyRent) }}</span>
+            </div>
             <div class="mx-rowcard-sub">
-              <span>{{ row.phaseName }} · 在租 {{ row.occupiedCount }}/{{ row.unitCount }}</span>
-              <span>出租率 {{ occPct(row.occRate) }}</span>
+              <!-- 稿改后屏样逐字是「一期 · 8/8」,现状屏样才带「在租」两字 —— 图是规格。
+                   收这两字正是为了给同一行新加的 44 条 + 40 数腾地(稿 §1「我改了两处②」)。 -->
+              <span>{{ row.phaseName }} · {{ row.occupiedCount }}/{{ row.unitCount }}</span>
+              <!-- 出租率:条 44 + 数 40(稿 §1「我改了两处②」)。条是桌面表那根 OccBar 本体
+                   (同一个函数、同一组阈值 ≥90 蓝 / ≥75 灰蓝 / 其余橙),不新造组件也不另定阈值 -->
+              <span class="bd-occbar"><component :is="() => OccBar(row.occRate, 5)" /></span>
+              <span class="bd-occpct">{{ occPct(row.occRate) }}</span>
               <!-- flex:0 0 auto 豁免 .mx-rowcard-sub > * 的 min-width:0,胶囊不被截字 -->
               <span style="margin-left:auto;flex:0 0 auto">
                 <FPContractStatus :status="row.status === 1 ? 'active' : 'terminated'" />
@@ -376,6 +392,12 @@ const occSub = computed(() => {
 </template>
 
 <style scoped>
+/* S 档行卡第二行的出租率两格(稿 §1 几何注③:条宽 44、数宽 40)。
+   这两个节点只在 FPSortableTable 的 tier==='s' 卡片分支里进 DOM,宽档不存在,故不必包 @media。
+   定宽而不是 flex:1 —— 一列条与一列数要竖着对齐,跟着内容走就会逐行漂。 */
+.bd-occbar { flex: 0 0 44px; display: flex; }
+.bd-occpct { flex: 0 0 40px; text-align: right; font-family: var(--font-mono); font-weight: var(--fw-semibold); }
+
 /* M/S 档(≤960)工具条收纳(spec §5.1 M 行):摘掉 800px 地板后工具条要自己在窄容器里活——
    右组允许换行、搜索框放弃 230 定宽改吃满余宽;tabs 胶囊排不下时行内横滑
    (隐滚动条留触屏拖动,照抄 mx-list.css 的 .mx-kpirail 手法)。

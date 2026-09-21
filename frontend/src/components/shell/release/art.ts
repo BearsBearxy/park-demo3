@@ -5,8 +5,10 @@ import type { Component } from 'vue'
 import Art0130 from './Art0130.vue'
 import Art0140 from './Art0140.vue'
 import Art0150 from './Art0150.vue'
+import Art0160 from './Art0160.vue'
 
 export const RELEASE_ART: Record<string, Component> = {
+  '0.16.0': Art0160,
   '0.15.0': Art0150,
   '0.14.0': Art0140,
   '0.13.0': Art0130,

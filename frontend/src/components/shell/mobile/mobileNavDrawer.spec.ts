@@ -114,9 +114,9 @@ describe('MobileBottomNav 手机底栏', () => {
     const w = mount(MobileBottomNav)
     const tabs = useTabsStore()
     const btns = w.findAll('.mbn-tab')
-    expect(btns.map(b => b.text())).toEqual(['数据', '报表', '分析'])
-    expect(btns[0].classes()).toContain('on')
-    await btns[1].trigger('click')
+    expect(btns.map(b => b.text())).toEqual(['首页', '数据', '报表', '分析'])
+    expect(btns[1].classes()).toContain('on')
+    await btns[2].trigger('click')
     expect(tabs.epochOf('reports-home')).toBe(1)
     expect(push).toHaveBeenCalledWith('/reports-home')
   })
@@ -128,5 +128,40 @@ describe('MobileBottomNav 手机底栏', () => {
     await w.findAll('button').find(b => b.text().includes('数据'))!.trigger('click')
     expect(push).not.toHaveBeenCalled()
     expect(tabs.epochOf('data-home')).toBe(0)
+  })
+
+  // ── 首页格(2026-09-21 补)──────────────────────────────────────────────
+  // 补它的理由:S 档不渲染页签条,抽屉里也没有首页,而 'home' 不在 fpNav 里
+  // → buildAllPages 滤掉它 → 命令面板与「最近打开」同样搜不到。
+  // 登录落在首页,点走一次就再也回不来 —— 这三条钉的就是「回得来」。
+  it('❗首页格 = open(纪元不动,恢复现场)+ push —— 用户拍板不走 openFresh', async () => {
+    const w = mount(MobileBottomNav)
+    const tabs = useTabsStore()
+    const btn = w.findAll('.mbn-tab')[0]
+    expect(btn.text(), '第一格不是首页').toBe('首页')
+    await btn.trigger('click')
+    expect(push).toHaveBeenCalledWith('/home')
+    expect(tabs.epochOf('home'), 'openFresh 会 epoch++ 把首页的 KeepAlive 现场丢掉').toBe(0)
+  })
+
+  it('❗站在首页时只有首页高亮 —— 「数据」不许跟着亮', async () => {
+    route.meta = { value: 'home', page: '首页' }
+    const w = mount(MobileBottomNav)
+    const btns = w.findAll('.mbn-tab')
+    // 先证明选到的确实是那四格(不是空集合恒真)
+    expect(btns.map(b => b.text())).toEqual(['首页', '数据', '报表', '分析'])
+    expect(btns[0].classes()).toContain('on')
+    // 'home' 不在 fpNav 任何一层里,fpFindLayer 取不到会回落 FP_NAV[0](数据)——
+    // 不判 onHome 的话这一格会跟首页同时亮。
+    expect(btns.filter(b => b.classes().includes('on')).map(b => b.text()),
+      '两格同时高亮:fpFindLayer 回落到了数据层').toEqual(['首页'])
+  })
+
+  it('已在首页时再点首页:不 push(与点当前层同义)', async () => {
+    route.meta = { value: 'home', page: '首页' }
+    const w = mount(MobileBottomNav)
+    push.mockClear()
+    await w.findAll('.mbn-tab')[0].trigger('click')
+    expect(push).not.toHaveBeenCalled()
   })
 })

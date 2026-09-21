@@ -13,12 +13,15 @@ import { LOSS_AXIS_MAX, type PvConsumptionProps } from './pvAnaV4.logic'
 
 const props = defineProps<PvConsumptionProps>()
 
-const H = 272, PL = 46, PR = 46, PT = 22, PB = 26
-const IH = H - PT - PB
+const PL = 46, PR = 46, PT = 22, PB = 26
 const WAN = 10000
 /** V4 §3.8:损耗率到这条线,气泡里那一行转琥珀 */
 const LOSS_TIP_WARN = 3
 const { el, width } = useWidth(999)
+// 手机稿 §⑤:判容器宽(不判视口,桌面 .av2-s4 窄栏同样只有 300 多)。窄档换几何,不缩整幅、字号不动。
+const narrow = computed(() => width.value < 420)
+const H = computed(() => (narrow.value ? 230 : 272))
+const IH = computed(() => H.value - PT - PB)
 // 挂载时在视口内擦入 320,否则瞬到;换期 200 同键形变(柱按刻度、损耗线按段起点刻度),擦入中 / 改宽时 hold 关掉
 const first = useEnterPhase(el)
 const hold = useMorphHold(width, first)
@@ -33,10 +36,10 @@ const ymax = computed(() => {
   const m = Math.max(0, ...props.data.ticks.map(t => (t.self + t.grid + t.loss) / WAN))
   return m > 0 ? m * 1.12 : 1
 })
-const yLoss = (pct: number) => PT + IH - (pct / LOSS_AXIS_MAX) * IH
+const yLoss = (pct: number) => PT + IH.value - (pct / LOSS_AXIS_MAX) * IH.value
 
 const grid = computed(() => [0, 1, 2, 3].map(k => ({
-  y: PT + IH - (k / 3) * IH,
+  y: PT + IH.value - (k / 3) * IH.value,
   left: ((k / 3) * ymax.value).toFixed(1),
   right: `${(k / 3) * LOSS_AXIS_MAX}%`,
 })))
@@ -44,9 +47,9 @@ const grid = computed(() => [0, 1, 2, 3].map(k => ({
 /** 自下而上三段;最顶那段非零的画圆角顶 */
 const bars = computed(() => props.data.ticks.map((t, i) => {
   const x = cx(i) - bw.value / 2
-  const hs = [t.self, t.grid, t.loss].map(v => (v / WAN / ymax.value) * IH)
+  const hs = [t.self, t.grid, t.loss].map(v => (v / WAN / ymax.value) * IH.value)
   const top = hs.reduce((k, h, j) => (h > 0 ? j : k), -1)
-  let y = PT + IH
+  let y = PT + IH.value
   const segs = hs.map((h, j) => {
     y -= h
     return { key: ['self', 'grid', 'loss'][j], y, h, round: j === top }
@@ -86,8 +89,9 @@ const shade = computed(() => {
 
 const xLabels = computed(() => {
   const T = props.data.ticks
+  // 窄档年表隔一标(1/3/5/7/9/11 月);日表本来就只标 1 / 5 的倍数 / 末尾,已经够疏
   const keep = props.data.gran === 'year'
-    ? T.map((_, i) => i)
+    ? T.map((_, i) => i).filter(i => !narrow.value || i % 2 === 0)
     : T.map((_, i) => i).filter(i => i === 0 || i === T.length - 1 || (Number(T[i].label) % 5 === 0 && T.length - 1 - i >= 3))
   return keep.map(i => ({ x: cx(i), text: T[i].label }))
 })

@@ -15,9 +15,12 @@
  *   （字重用 font-synthesis 会撑宽，这里靠 min-width 的等宽底稿位兜住）。
  *   状态点在没有 state 时整个不渲染（报表层那组），有 state 时 todo 也占位。
  */
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import { iconFor } from '@/components/ds/icon'
+import { useViewport } from '@/composables/useViewport'
+import FPDrawer from '@/components/fp/FPDrawer.vue'
 
 export interface Step {
   /** fpNav 路由值，点击 push('/' + value) */
@@ -64,16 +67,82 @@ function go(s: Step) {
   useTabsStore().open(s.value)
   router.push(props.query ? { path: '/' + s.value, query: props.query } : '/' + s.value)
 }
+
+/**
+ * 窄档收法(RESPONSIVE-LAYOUT-SPEC §5.9)。
+ *
+ * 为什么非收不可：九颗胶囊每颗 `padding:5px 11px` 合计 653px，左轨收完主区回到 358 时
+ * 可用宽只有 334 —— `flex-wrap:wrap` 会折成 2 行（112px）。条自己得有收法。
+ *
+ * M：全条横滑 + 尾标（`n/N` 钉在滚动区外，滑到哪都知道自己是第几步）。
+ * S：只画「前 · 当前 + n/N · 后」，点当前开面板看全部步骤。
+ *
+ * ⚠ 档位走 `useViewport()` 的 tier 而不是 `@media`：S 档换的是 DOM 结构不是样式。
+ *   jsdom 无 matchMedia → tier 恒 'xl'，既有桌面断言自动走宽档分支，XL/L 渲染零差异
+ *   （`fss--m` / `fss--s` 两个类都不挂，根节点还是 `class="fss"`）。
+ */
+const { tier } = useViewport()
+
+// ponytail: 调用方都拿自己的路由值当 current，找不到只会是报表层那种 current='x' 的桩，
+// 退到第一步，不为一个线上不发生的状态开分支。
+const idx = computed(() => {
+  const i = props.steps.findIndex(s => s.value === props.current)
+  return i < 0 ? 0 : i
+})
+const cur = computed(() => props.steps[idx.value])
+/** 「第几步 / 共几步」写成字 —— 不靠数胶囊，S 档条上压根没有胶囊可数。 */
+const nn = computed(() => `${idx.value + 1}/${props.steps.length}`)
+
+const sheet = ref(false)
+
+// 首尾越界不动。箭头照样渲染（灰），不渲染会挪版 —— LAYOUT-STABILITY §1。
+function nudge(d: -1 | 1) {
+  const s = props.steps[idx.value + d]
+  if (s) go(s)
+}
+
+function pick(s: Step) {
+  sheet.value = false
+  go(s)
+}
 </script>
 
 <template>
-  <div class="fss">
+  <div class="fss" :class="{ 'fss--m': tier === 'm', 'fss--s': tier === 's' }">
     <button v-if="!hideBack" class="fss-back" @click="emit('back')">
       <component :is="iconFor('arrow-left')" :size="13" />{{ backLabel ?? '换出账月' }}
     </button>
-    <span class="fss-period">{{ period }}</span>
+    <!-- S 档不写期：标题行里已经写着同一个期，条上再写一遍是拿走 334px 里的一块 -->
+    <span v-if="tier !== 's'" class="fss-period">{{ period }}</span>
 
-    <div class="fss-steps">
+    <!-- S 档：当前 + n/N + 前后箭头 -->
+    <div v-if="tier === 's'" class="fss-nav">
+      <button
+        class="fss-arrow fss-prev"
+        :class="{ off: idx === 0 }"
+        :disabled="idx === 0"
+        aria-label="上一步"
+        @click="nudge(-1)"
+      >
+        <component :is="iconFor('chevron-left')" :size="16" />
+      </button>
+      <button class="fss-cur" :title="cur.title" @click="sheet = true">
+        <i v-if="cur.state" class="fss-pip" :class="cur.state" />
+        <span class="fss-cur-label">{{ cur.label }}</span>
+        <span class="fss-nn">{{ nn }}</span>
+      </button>
+      <button
+        class="fss-arrow fss-next"
+        :class="{ off: idx === steps.length - 1 }"
+        :disabled="idx === steps.length - 1"
+        aria-label="下一步"
+        @click="nudge(1)"
+      >
+        <component :is="iconFor('chevron-right')" :size="16" />
+      </button>
+    </div>
+
+    <div v-else class="fss-steps">
       <template v-for="(s, i) in steps" :key="s.value">
         <i v-if="i" class="fss-sep" aria-hidden="true" />
         <button
@@ -87,6 +156,27 @@ function go(s: Step) {
         </button>
       </template>
     </div>
+    <!-- M 档尾标：钉在横滑区外面，滑到哪都写着第几步 -->
+    <span v-if="tier === 'm'" class="fss-nn fss-tail">{{ nn }}</span>
+
+    <!-- 点当前那颗 → 全部步骤与状态点。壳用 FPDrawer（S 档全屏分支在它内部，调用方零改动）。
+         放在 .fss 里面是为了保住单根：它 Teleport 到 body，挂在树上哪一层都不影响版式，
+         但多根组件会改变调用方的 attr 透传语义。 -->
+    <FPDrawer v-if="tier === 's'" :open="sheet" :title="period" @close="sheet = false">
+      <div class="fss-sheet">
+        <button
+          v-for="s in steps"
+          :key="s.value"
+          class="fss-sheet-item"
+          :class="[s.state, { on: s.value === current }]"
+          :aria-current="s.value === current ? 'page' : undefined"
+          @click="pick(s)"
+        >
+          <i v-if="s.state" class="fss-pip" :class="s.state" />
+          <span class="fss-sheet-label">{{ s.title ?? s.label }}</span>
+        </button>
+      </div>
+    </FPDrawer>
   </div>
 </template>
 
@@ -176,4 +266,105 @@ function go(s: Step) {
 .fss-pip.done  { background: var(--hue-blue); }
 .fss-pip.stale { background: var(--hue-orange); }
 /* .todo 用默认灰 —— 但点位照样占,有点没点药丸一样宽 */
+
+/* ── 窄档(§5.9)。挂的是 tier 类不是 @media:S 档换的是 DOM 结构,
+      媒体查询改不了「渲染哪一支」。宽档两个类都不挂,规则一条也命不中。 ── */
+
+/* M:全条横滑。胶囊一颗不删(§3.5-pre「不许删内容」),折行换成横向滚动。 */
+.fss--m { flex-wrap: nowrap; }
+.fss--m .fss-steps {
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.fss--m .fss-steps::-webkit-scrollbar { display: none; }
+.fss-tail { flex: none; }
+
+/* S:54px 定高,条上只剩「前 · 当前 + n/N · 后」。 */
+.fss--s {
+  height: 54px;
+  box-sizing: border-box;
+  flex-wrap: nowrap;
+  padding: 0 var(--space-3);
+}
+
+.fss-nav {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 首尾步的箭头变灰**不消失** —— 不渲染会把当前步整条挪过去(LAYOUT-STABILITY §1)。 */
+.fss-arrow {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.fss-arrow.off { color: var(--border-strong); cursor: default; }
+.fss-arrow:active:not(.off) { background: var(--ink-100); }
+
+.fss-cur {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--surface-white);
+  box-shadow: var(--shadow-pill);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--fs-label);
+  color: var(--text-primary);
+}
+.fss-cur-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+/* 「第几步 / 共几步」写成字 —— 数胶囊在 S 档没有胶囊可数,在 M 档滑出视野。 */
+.fss-nn {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.fss-sheet { display: flex; flex-direction: column; gap: 2px; }
+.fss-sheet-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
+  text-align: left;
+}
+.fss-sheet-item.on { background: var(--surface-sunken); color: var(--text-primary); }
+.fss-sheet-item:active:not(.on) { background: var(--ink-050); }
+.fss-sheet-label { flex: 1 1 auto; min-width: 0; }
 </style>

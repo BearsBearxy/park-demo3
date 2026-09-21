@@ -7,6 +7,10 @@ import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import type { BuildingDTO, BuildingCreateReq, BuildingUpdateReq } from '@/types/building'
 import { useZonesStore } from '@/stores/zones'
+import { useFormSheet } from '@/composables/useFormSheet'
+
+// 带输入的居中弹卡 → S 档全屏 sheet(styles/form-sheet.css)
+const sheet = useFormSheet()
 
 const props = defineProps<{ existingNames: string[]; initial?: BuildingDTO }>()
 const emit = defineEmits<{ close: []; create: [req: BuildingCreateReq]; update: [req: BuildingUpdateReq] }>()
@@ -56,14 +60,14 @@ function submit() {
 <template>
   <Teleport to="body">
     <!-- 编辑态从楼栋抽屉(FPDrawer 300/301)的页脚按钮打开,须压过抽屉 → 升一档 --z-modal-2 -->
-    <div class="lg-dlg-mask" :class="{ nested: isEdit }" @click="emit('close')">
+    <div class="lg-dlg-mask" :class="{ nested: isEdit, 'fp-fsheet': sheet }" @click="emit('close')">
       <div class="lg-dlg" @click.stop>
         <div class="lg-dlg-h">
           <h3>{{ isEdit ? '编辑楼栋' : '新建楼栋' }}</h3>
           <p v-if="isEdit">修改楼栋基础信息与状态。单元仅在创建时生成,编辑不会增删单元。</p>
           <p v-else>录入楼栋基础资产信息。填写「每层单元数」后将按 层数 × 每层单元数 自动生成单元,面积按可租面积均摊。</p>
         </div>
-        <div class="lg-dlg-b">
+        <div class="lg-dlg-b fp-fsheet-bd">
           <div class="lg-dlg-lab">楼栋名称</div>
           <input ref="inputRef" class="lg-dlg-in" :class="{ err }" v-model="name"
                  placeholder="如:三期 G 栋"
@@ -110,7 +114,7 @@ function submit() {
           </div>
           <div class="lg-dlg-erm">{{ err }}</div>
         </div>
-        <div class="lg-dlg-f">
+        <div class="lg-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="emit('close')">取消</Button>
           <Button variant="filled" size="sm" @click="submit">
             <template #leading><component :is="iconFor('check')" :size="14" /></template>

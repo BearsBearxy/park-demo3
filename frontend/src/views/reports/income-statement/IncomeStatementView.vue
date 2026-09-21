@@ -21,6 +21,7 @@ import FPToast from '@/components/fp/FPToast.vue'
 import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFinStatementScreen } from '@/components/fin/useFinStatementScreen'
+import { useFormSheet } from '@/composables/useFormSheet'
 import FinDialogs from '@/components/fin/FinDialogs.vue'
 import type { FinTableRow } from '@/components/fin/FinReportTable.vue'
 import FpImportModal from '@/components/import/FpImportModal.vue'
@@ -61,6 +62,11 @@ const {
 // 删公司同事务级联删该公司 monthly_ledger + report_*)。这条判定原先长在 FinCompanyPicker 里,
 // 那个整屏选择器随四层动线退场,门跟着搬到左栏管理区。
 const canManageCo = computed(() => useAuthStore().can('master:edit'))
+
+// ≤960 左轨收成顶部 chips 后,轨底那三颗管理钮收成一颗虚线 chip → 点开这个面板再选动作
+// (§5.6「S:选择器点开为全屏列表 sheet」)。壳复用 styles/form-sheet.css 的 .fp-fsheet,不新造组件。
+const manageOpen = ref(false)
+const sheet = useFormSheet()
 
 // ── 计算(客户端):叶子 = 录入/持久值;自定义父项 = 子类求和;小计 = IS_FORMULA ──
 const customRows = computed<ReportCustomRowDTO[]>(() => period.value?.customRows ?? [])
@@ -296,6 +302,16 @@ async function onExport() {
       </BookRail>
     </aside>
 
+    <!-- ≤960 左轨收成顶部横向 chips(RESPONSIVE-LAYOUT-SPEC §5.6,照台账屏 LedgerView 范式):
+         选择语义与轨内点击同源 pickCompany;≥961 整行 display:none,桌面零变化(§9)。
+         轨底三颗管理钮收成最后一颗虚线 chip,点开面板再选动作——收轨不等于收权限,
+         同一道 master:edit 门不因收轨消失。 -->
+    <div class="finw-chips">
+      <button v-for="b in railItems" :key="b.id" class="finw-chip" :class="{ on: b.id === companyId }"
+              @click="pickCompany(b.id)">{{ b.name }}</button>
+      <button v-if="canManageCo" class="finw-chip mng" @click="manageOpen = true">管理</button>
+    </div>
+
     <div class="finw-main">
       <!-- 公司清单未到位 -->
       <div v-if="!companiesLoaded" class="page-loading"><span class="page-spin" /></div>
@@ -406,6 +422,13 @@ async function onExport() {
         <span class="fin-toolbar-note">{{ isAll ? '全部汇总为跨公司只读求和,如需录入请在公司选择页进入单家公司' : edit ? '点击单元格录入金额;悬停明细行可「+」添加子类,父项自动汇总;空项留空即可' : canEdit ? '只读 · 点击「编辑」录入 · 深色行为公式自动计算' : '只读 · 深色行为公式自动计算' }}</span>
       </div>
 
+      <!-- ≤600 行内录入提示(稿 ReportPhone §1 右栏 box4 条3;§5.3/§11.2 裁定:
+           录入不禁止、不隐藏、不优化,只荐桌面):编辑按钮留在上面那行工具行不拦不藏,
+           这一行**常驻定高 20px**,只在编辑态换文案 —— 出错才出现会把下面整张表顶下去
+           (撞 LAYOUT-STABILITY-SPEC §4.2)。几何/文案 1:1 抄 TrialBalanceView .tb-s-hint。 -->
+      <div class="is-s-hint">
+        <span v-if="edit">编辑模式 · 小屏可录入,建议在桌面端操作</span>
+      </div>
       <IncomeStatementTable
         :rows="flatRows"
         :value-of="valueOf"
@@ -446,6 +469,38 @@ async function onExport() {
   <div v-else class="page-loading"><span class="page-spin" /></div>
     </div>
   </div>
+
+  <!-- ≤960 管理面板(§5.6:S 档选择器点开为全屏 sheet):虚线「管理」chip 的落点,
+       轨底三颗管理钮原样搬进来 —— 点 chip 只开面板,删除仍要在面板里再点一次、再过 FinDialogs 的确认。
+       壳复用 styles/form-sheet.css 那一套(S 档 .fp-fsheet 全屏、其余档居中卡),不新造面板组件。 -->
+  <Teleport to="body">
+    <div v-if="manageOpen" class="fin-mask" :class="{ 'fp-fsheet': sheet }" @mousedown="manageOpen = false">
+      <div class="fin-dlg" role="dialog" aria-modal="true" aria-label="管理公司" @mousedown.stop>
+        <!-- ⚠ ✕ 不是装饰:S 档挂上 .fp-fsheet 之后弹卡全屏,遮罩被它 100% 盖满,
+             「点外面关」没有「外面」可点;全文件也没有 Esc 处理。没这颗就只能靠
+             「点新增再取消」绕出去(2026-09-21 对抗复查抓到)。 -->
+        <div class="fin-dlg-h">
+          <h3>管理公司</h3>
+          <button type="button" class="finw-sheet-x" aria-label="关闭" @click="manageOpen = false">
+            <component :is="iconFor('x')" :size="18" />
+          </button>
+        </div>
+        <div class="finw-sheet-b fp-fsheet-bd">
+          <div class="finw-manage">
+            <button class="finw-mbtn" @click="manageOpen = false; onNewCompany()">
+              <component :is="iconFor('plus')" :size="13" />新增
+            </button>
+            <button class="finw-mbtn" :disabled="isAll || !company" @click="manageOpen = false; onEditCompany()">
+              <component :is="iconFor('pencil')" :size="13" />重命名
+            </button>
+            <button class="finw-mbtn del" :disabled="isAll || !company" @click="manageOpen = false; onDeleteCompany()">
+              <component :is="iconFor('trash-2')" :size="13" />删除
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 
   <!-- 公司/子类弹窗(居中,自管 v-if),放最后 -->
   <FinDialogs
@@ -517,11 +572,13 @@ async function onExport() {
 .fin-toolbar-note { font-size:12px; color:var(--text-muted); }
 .fin-foot { flex:0 0 auto; margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
 
-/* ── S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5.3):KPI repeat(4) 在 390 上每格 <90px,
-   金额放不下——定两列(挂载即终态,不随内容抖)。表格窄了走 .fin-wrap 内横滚,列宽不动 ── */
-@media (max-width: 600px) {
-  .fin-kpis { grid-template-columns:repeat(2, minmax(0,1fr)); }
-}
+/* S 档提示行:桌面档整行不存在(display:none,不占位不留 gap),窄档媒体块内再显——宽档规则在前(§1) */
+.is-s-hint { display:none; }
+
+/* ⚠ 本屏两个媒体块(960/600)挪到了**本文件末尾**(2026-09-21,§5.6 收左轨):窄档要盖的
+   .finw / .finw-rail 基础规则写在下面的「工作台外壳」段里,媒体块排在它们之前是**静默**失效
+   ——同特异性按源序,`.finw-rail{display:none}` 会被后面的 `.finw-rail{display:flex}` 盖回去。
+   两块的相对次序(960 在前、600 在后)与块内内容一字未动。 */
 /* 批量删除确认弹窗 — 1:1 FinDialogs .fin-mask/.fin-dlg(scoped 不跨组件,故本屏自带一份,遵 PAGE-BEHAVIOR-SPEC §2) */
 .fin-mask { position:fixed; inset:0; background:var(--scrim); z-index:300; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
 .fin-dlg { width:min(440px,92vw); max-height:88vh; overflow-y:auto; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:var(--shadow-dialog); animation:fp-rise-in var(--dur-base) var(--ease-standard) both; }
@@ -570,4 +627,57 @@ async function onExport() {
 }
 .finw-empty .t { margin: 8px 0 0; font-size: 15px; font-weight: var(--fw-semibold); color: var(--text-muted); }
 .finw-empty .s { margin: 0; font-size: 12px; color: var(--text-disabled); }
+
+/* 顶部 chips:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前(§1) */
+/* 顶部 chips:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前(§1) */
+.finw-chips { display:none; }
+/* 管理面板体(壳走 styles/form-sheet.css 的 .fp-fsheet,S 档全屏 sheet;此处只补内边距与触达高) */
+.finw-sheet-b { padding: 18px 22px 22px; }
+.fin-dlg-h:has(.finw-sheet-x) { display: flex; align-items: center; justify-content: space-between; }
+.finw-sheet-x { flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; }
+.finw-sheet-b .finw-mbtn { min-height: 44px; }
+
+/* ── M 档(≤960,RESPONSIVE-LAYOUT-SPEC §5.3):KPI 定两列。坏的是**标签**不是金额——
+   768 上 repeat(4) 每格 151,扣 .kc 的 padding 40 只剩 111 内容宽;
+   「营业收入(本月)」≈98 + 图标 18 + 缝 8 = 124 > 111,被 .kc-l 的 ellipsis 截成「营业收入…」。
+   而 ds/KpiCard 的 .kc-l 没有 :title(useFitDown 只管数值不管标签),悬停也看不全——
+   所以这是补缺陷,不是偏好。降两列后每格 314、内容宽 274,标签放得下。
+   (挂载即终态,不随内容抖;宽档规则在前 §1。) ── */
+@media (max-width: 960px) {
+  .fin-kpis { grid-template-columns:repeat(2, minmax(0,1fr)); }
+
+  /* 左轨收成顶部横向 chips(§5.6):几何 1:1 抄台账屏 LedgerView .lgw-chips 那一份 ——
+     chip 36 高 / radius-full / 行内横滚;选中态只换色不改尺寸(布局稳定铁律)。
+     208px 定宽轨在 390 视口占掉 208/390 = 53% 的宽,主区剩不下一张表。 */
+  .finw { flex-direction:column; gap:12px; }
+  .finw-rail { display:none; }
+  .finw-chips { flex:0 0 auto; display:flex; gap:8px; overflow-x:auto; padding:2px; }
+  .finw-chip {
+    flex:0 0 auto; display:inline-flex; align-items:center;
+    height:36px; padding:0 14px; border-radius:var(--radius-full);
+    border:1px solid var(--border-control); background:var(--surface-white);
+    color:var(--text-secondary); font-family:var(--font-sans);
+    font-size:var(--fs-label); font-weight:var(--fw-medium);
+    cursor:pointer; white-space:nowrap;
+  }
+  .finw-chip.on { border-color:var(--hue-blue); background:var(--accent-blue); color:var(--text-primary); }
+  .finw-chip.mng { border-style:dashed; color:var(--text-muted); }
+}
+/* ── S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5.3):表格窄了走 .fin-wrap 内横滚,
+   列宽不动,首列 sticky 在 FinReportTable 自己那份 ≤600 块里 ── */
+@media (max-width: 600px) {
+  /* §5.7「3–4 张 → 横滑胶囊」:本屏 4 张 KpiCard。S 档从 2 列网格(2 行 = 216px)
+     换成一行横滑(≈108px),省下的 108 直接变成表格能露的行数 ——
+     §5.7 的验收标准原话:「不是卡片好不好看,而是收完之后主内容能不能进首屏」。
+     几何照 mx-list.css 的 .mx-kpirail:定宽 140、不换行、隐滚动条但留触屏拖动。
+     ⚠ M 档(960 块)仍是 2 列,那是 KpiNarrow 板实测的结论(768 上 4 列标签被截),两档各管各的。 */
+  .fin-kpis {
+    display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 12px;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  .fin-kpis::-webkit-scrollbar { display: none; }
+  .fin-kpis > * { flex: 0 0 140px; }
+  /* 宽表编辑荐桌面提示(§11.2 预留位):行常驻定高 20px,进出编辑只换文案不挪版 */
+  .is-s-hint { display:flex; align-items:center; flex:0 0 20px; height:20px; font-size:12px; color:var(--hue-orange); }
+}
 </style>

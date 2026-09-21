@@ -1,6 +1,10 @@
 // src/stores/ui.ts — sidebar open/close state + persistence; 全局网络错误提示。
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, type Component } from 'vue'
+
+/** 手机顶栏的屏级主动作(RESPONSIVE-LAYOUT-SPEC §5.10:一屏只留一个)。
+ *  label 始终上屏,也是它的无障碍名;icon 可选(顶栏另外三件都是图标,不带图标的位等于半个位)。 */
+export type TopBarAction = { label: string; icon?: Component; onClick: () => void }
 
 export const useUiStore = defineStore('ui', () => {
   // default true; "0" means closed (mirrors app.jsx toggleSb)
@@ -49,5 +53,12 @@ export const useUiStore = defineStore('ui', () => {
   const paletteReq = ref(0)
   function requestPalette() { paletteReq.value++ }
 
-  return { sbOpen, toggleSidebar, closeTransient, netError, reportNetError, dismissNetError, navigating, startNav, endNav, paletteReq, requestPalette }
+  // 屏级主动作(§5.10「动作 → 顶栏右:1 个主动作」)。走 store 不走具名插槽:
+  // 屏渲染在 AppShell 的默认 slot 里,顶栏是 AppShell 自己模板的节点 —— 屏不是顶栏的父级,
+  // 插槽递不过去;让屏 import AppShell 又成环。与 paletteReq 同一条路子。
+  // 不判档:顶栏只在 S 档挂载(AppShell.vue:168),别档设了没人渲染。
+  // ⚠ 别裸写这个字段,走 composables/useTopBarAction.ts —— 它管换屏/KeepAlive 停用时的清场。
+  const topBarAction = ref<TopBarAction | null>(null)
+
+  return { sbOpen, toggleSidebar, closeTransient, netError, reportNetError, dismissNetError, navigating, startNav, endNav, paletteReq, requestPalette, topBarAction }
 })

@@ -7,7 +7,7 @@ import { usePresenceStore } from '@/stores/presence'
 // 年份增删:「＋ 补更早年份」(右上)向前补一年,「＋ 添加 {次年} 年」(底行)向后补;
 // 手工添加且整年仍为空的年,行尾可「移除」(槽位常驻占宽,hover 行才显——布局稳定铁律)。
 // 纯展示组件,不发请求;年份范围与 removable 判定由上层用 utils/matrixYears 组好传入。
-import { computed } from 'vue'
+import { computed, ref, watchPostEffect } from 'vue'
 import { Plus, X, Lock } from 'lucide-vue-next'
 // type-only:这是纯展示组件,不给它加 stores/review 的运行时依赖。
 import type { ReviewStatus } from '@/types/review'
@@ -79,8 +79,18 @@ const props = withDefaults(defineProps<{
   years: YearRow[]      // 升序;上层负责连续补满
   /** 年份增删入口（补更早 / 添加次年 / 行尾移除）。默认开；总览屏那条年份条是导航不是账册管理,传 false。 */
   manageYears?: boolean
+  /**
+   * S 档改成「一行 12 格 + 横滚」（每年 62px），取代默认的 4 列 × 3 行（每年 226px）。
+   * **只给首页那条年份条开**（2026-09-21 用户拍板）—— 判据是这两种宿主的活不一样：
+   * 别的 8 处是「进正文前必经的那道门」，门后没有别的东西要让位，吃满首屏正常；
+   * 首页这条是导航，它下面压着出账链 7 行与附表 8 行，4 年 × 226 = 976px 会把它们全挤出屏
+   * （§5.8 留档的回头条件「库里年数 ≥ 3」已在真库上成立）。
+   * 代价是一屏只看到 4 个整月 —— 所以必须有下面那段把当前月滚进视野，否则比改之前更差。
+   */
+  scrollRow?: boolean
 }>(), {
   manageYears: true,
+  scrollRow: false,
 })
 
 // 只标编辑态(设计稿 §04):标记要回答的只有「我点进去改得了吗」,别人在看不挡你。
@@ -100,10 +110,44 @@ const emit = defineEmits<{
 
 const nextYear = computed(() =>
   props.years.length ? props.years[props.years.length - 1].year + 1 : new Date().getFullYear())
+
+// ── 横滚档:把当前月滚进视野 ─────────────────────────────────────────────
+// 不做这一下的话横滚就是纯退步:本月常落在第 9 格,每次进门都得先滑(§5.8 否掉它时记的正是这条)。
+//
+// ⚠ 不用 scrollIntoView:它的 block:'nearest' 会去滚**页面**,把在折线以下的年份行拽上来 ——
+//   四行各滚一次,首屏当场跳到最后一年。直接写 scrollLeft 只动这一个横向容器,页面一动不动。
+// ⚠ 只在首次(格子到齐那一刻)居中,之后再不动它。两个理由,后一个更硬:
+//   ① 点月之后再居中 = 手指底下的东西自己挪,而点得到的格子本来就在视野里;
+//   ② 不落锁的话这个 effect 一直活着,**任何**后续重跑(年份重算、上层换了 years 数组)都会
+//      把年份条横移一下 —— 那一下会落在用户正在按别处按钮的时刻(LAYOUT-STABILITY)。
+//   所以只要格子在了就落锁,不管这一档滚不滚得动。
+//   代价写明:先在宽窗打开、再把窗口缩进 S 档,这一次不会居中。effect 没有、也不该有
+//   视口依赖(matchMedia 监听是另一套开销),换句话说「缩窗后补居中」这条路**不存在** ——
+//   别照着写断言,那只能用 setProps 冒充 resize,测出来的是假的。
+const root = ref<HTMLElement | null>(null)
+let centered = false
+watchPostEffect(() => {
+  // years 是依赖:ov 回包之前一个格子都没有,量不出宽度。scrollRow 关着就整段不做。
+  if (centered || !props.scrollRow || !props.years.length) return
+  const cur = root.value?.querySelector<HTMLElement>('.bmm-card.cur')
+  const box = cur?.parentElement
+  if (!cur || !box) return
+  // ⚠ 落锁的判据是「量到了真宽度」,不是「格子在了」。KeepAlive 的非活动页签是 display:none,
+  //   那时 clientWidth 恒 0 —— 按「格子在了」落锁会在一个量不出东西的时刻把锁用掉,
+  //   等页签真被切到前台时已经锁死,永远不居中(单测里表现为 scrollLeft 恒 0)。
+  if (!box.clientWidth) return
+  centered = true                                  // 量到真宽度了,这一趟就是「首次」,宽档窄档一视同仁
+  if (box.scrollWidth <= box.clientWidth) return   // 宽档不溢出,没什么可滚
+  // ⚠ 必须减掉 box.offsetLeft。offsetLeft 相对的是**最近的已定位祖先**,不是滚动容器 ——
+  //   本组件自身 .bmm / .bmm-yrow / .bmm-cells 全是 static,首页那条落在 .dh(position: relative,
+  //   padding: 24px)里,于是 cur.offsetLeft 自带 24px 的左内边距。不减就恒偏 24px
+  //   (实测:错式 579 / 正式 555)。两个 offsetLeft 同一个 offsetParent,相减即得容器内坐标。
+  box.scrollLeft = cur.offsetLeft - box.offsetLeft - (box.clientWidth - cur.offsetWidth) / 2
+})
 </script>
 
 <template>
-  <div class="bmm">
+  <div ref="root" class="bmm">
     <template v-if="book && years.length">
       <div v-if="manageYears" class="bmm-top">
         <button class="bmm-addy" @click="emit('add-earlier')">
@@ -116,7 +160,7 @@ const nextYear = computed(() =>
           <div class="bmm-y">{{ y.year }}</div>
           <div v-if="y.sub" class="bmm-ysub">{{ y.sub }}</div>
         </div>
-        <div class="bmm-cells">
+        <div class="bmm-cells" :class="{ 'bmm-scroll': scrollRow }">
           <button
             v-for="m in y.months"
             :key="m.month"
@@ -359,5 +403,86 @@ const nextYear = computed(() =>
   text-align: center;
   font-size: var(--fs-body);
   color: var(--text-disabled);
+}
+
+/* ─── 窄档降列(RESPONSIVE-LAYOUT-SPEC §5.8)─────────────────────────────
+   上面一行都不动 —— 宽档(L/XL)DOM 与像素零差异是 §9 的硬标准,本组件 9 个屏共用。
+
+   为什么不是「把 12 列缩窄」:`repeat(12, 1fr)` 里的 `1fr` 等价于
+   `minmax(auto, 1fr)`,**auto 这一侧隐含 min-width:auto**,列缩不到内容
+   (月份字 + 工序点)的 min-content 以下 —— 实测 12 张月卡要 748px 而 390 上
+   盒子只有 242px,右边 7~9 个月整块出屏。写 `minmax(0, 1fr)` 只是准许它缩,
+   缩到读不出字;真解法是降列,所以下面两块既换 minmax 也换列数。
+
+   ⚠ 层叠顺序铁律:960 块必须写在 600 块**之前**。写反了 S 档 4 列被 M 档 6 列
+   静默盖回 —— 不报错、不告警,只有屏上能看出来。 */
+@media (max-width: 960px) { /* M↓:6 列 × 2 行 */
+  /* 年标从 56px 左槽挪到行上方独占一行(18 高),「移除年份」跟在年标右端。
+     order 换位:源序是 年标 → 月卡 → 移除槽,这里让移除槽排到月卡之前,
+     月卡整行(100%)换到第二行。 */
+  .bmm-yrow { flex-wrap: wrap; }
+  .bmm-ylabel {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    height: 18px;
+    line-height: 18px;
+    text-align: left;
+  }
+  .bmm-rm-slot { flex: 0 0 auto; order: 1; }
+  .bmm-cells { flex: 0 0 100%; order: 2; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+
+@media (max-width: 600px) { /* S:4 列 × 3 行;开了 scrollRow 的宿主改成一行横滚 */
+  /* 4 列是能同时认出五样标记的最窄一档(§5.8):格宽 ~83 − 边框 2 − padding 20
+     = 61px 内容宽;四颗工序点 4×6+3×3 = 33,「12月」~26,都装得下。
+     在场头像(右上)与审核角标(右下)是 absolute,不吃这 61。
+     6 列时格宽 ~53、内容宽 ~31,33px 的点条正好占满,期数胶囊没位置。 */
+  .bmm-cells { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+  /* 横滚档:一行 12 格。年行高 92(手机)/ 107(桌面窄窗,经典滚动条多占 15),
+     4 年 416 / 476 —— 原来 4 列 × 3 行是 976。只有传了 scrollRow 的宿主进这块,
+     M 档(601–960)不受影响,仍是上面那条 6 列 × 2 行。
+     ⚠ grid-template-columns 必须显式清掉:上面那条 repeat(4,…) 同在这一块里,
+       只加 grid-auto-* 的话轨道还是 4 条、第 5 格起全换行 —— 横滚一格都滚不动。
+       靠两个类的特异度(0,2,0 > 0,1,0)压住它,不靠先后顺序。 */
+  .bmm-cells.bmm-scroll {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    /* ⚠ 68 不是 76。可视宽**不是**内容带的 358:年份条在 .dh 里,而 .dh 是 padding: 24px
+       (DataHomeView.vue,窄档没覆盖),390 视口下实宽 390 − 16×2 − 24×2 = 310。
+       76 是照 358 倒推的,放进 310 只露 3 个整月 —— 正好是 §5.8 当初否掉横滚记的那条代价。
+       68 + 8 间距 = 76/格,4×68 + 3×8 = 296 ≤ 310,4 个整月保住。
+       卡内容宽 68 − 边框 2 − padding 20 = 46:四颗工序点 33、「12月」27,都还装得下。 */
+    grid-auto-columns: 68px;
+    overflow-x: auto;
+    /* 横向甩到头别把手势传给外层(不然在 iOS 上是「返回上一页」,在 Android 上是整页横移) */
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+  }
+  .bmm-cells.bmm-scroll .bmm-card { scroll-snap-align: center; }
+
+  /* ⚠ overflow 容器会把画在盒外的东西裁掉,两个环都中招,都只在横滚档改,另外 8 个宿主一字不动:
+       ① .bmm-card.cur 的 `outline: 2px; outline-offset: -1px` 仍有 1px 在盒外;
+       ② 全局键盘焦点环(base.css `outline: 2px; outline-offset: 2px`)整圈 4px 全在盒外 ——
+          在横滚容器里会被切成两条竖杠,键盘用户等于看不见焦点。
+     换成 inset 阴影:画在盒内,不占布局、不被裁。 */
+  .bmm-cells.bmm-scroll .bmm-card.cur {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--hue-blue);
+  }
+  .bmm-cells.bmm-scroll .bmm-card:focus-visible {
+    outline: none;
+    /* 先白后蓝的双环:蓝底的有数卡与透明的空月卡上都认得出,也与上面 .cur 的单环分得开 */
+    box-shadow: inset 0 0 0 2px var(--surface-white), inset 0 0 0 4px var(--hue-blue);
+  }
+}
+
+/* 触屏(§6.1):hover 显形的控件常显。「移除年份」是移除手工空年的唯一入口,
+   `display:none` + 行 hover 在触屏上等于这个功能整个消失。
+   桌面(hover: hover)不进这一块,仍是上面那条「行 hover 才显」。 */
+@media (hover: none) {
+  .bmm-rm { display: inline-flex; }
 }
 </style>

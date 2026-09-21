@@ -16,6 +16,38 @@
 .mx-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .mx-toolbar-right { display: flex; align-items: center; gap: 10px; }
 
+/* M↓(≤960)工具行固定两行(TabletContent §① delta 行4):第一行期区胶囊,第二行段控+搜索+状态下拉。
+   用 grid 两行而不是让上面那条 flex-wrap 自己撞 —— wrap 的行数跟着胶囊文案走(计数从 4 变 13 就多一位),
+   在 1 行与 2 行之间跳,sticky 工具条高度跟着跳。grid 下 flex-wrap 失效,行组成由结构定死。
+   XL 档仍走上面的单行 flex,一个像素不变(RESPONSIVE-LAYOUT-SPEC §9)。 */
+/* ⚠ 本块写在下面两个 1100 存量豁免块**之前**(:99 / :133),与「宽档在前窄档在后」相反。
+   今天不出事的唯一理由是两边选择器零重叠:1100 管 .mx-body / .mx-kpirail / master-detail,
+   本块管 .mx-toolbar 系与 .mx-pagerbar 系。tabletContent.spec 有一条断言钉住这个「零重叠」——
+   哪天有人往两边加了同一个选择器,那条会红。要往本块加规则,先看一眼那条。 */
+@media (max-width: 960px) { /* M↓ */
+  /* 单列 grid 的隐式行就够用。**不写 grid-template-rows: auto auto** ——
+     显式第二轨在只有一个子节点时也会生成,白吃一份 12px 的 row-gap。 */
+  .mx-toolbar { display: grid; grid-template-columns: 1fr; justify-items: start; }
+  /* grid 项默认 justify-self:stretch,而 flex 项是 hug 内容。不写这两条的话:
+     .fp-phasetabs 那条 999px 圆角灰底会铺满整行、胶囊缩在左端;右组也被拉满、内容从贴右变贴左
+     —— 撞 LIST-PAGE-SPEC §2「筛选靠右」。2026-09-20 对抗复查实测到的。 */
+  .mx-toolbar-right { justify-self: end; }
+  /* 空占位子节点不生成轨道。三屏(SystemLogsView / SystemUsersView / ElecCostView)
+     靠「空 span/div + space-between」把右组推到右边 —— 那是 flex 的机制,grid 下已经失效,
+     留着只会凭空多一行 0 高 + 一份 12px 缝。有内容的第一段(如 .ec-simhint)不受影响。 */
+  .mx-toolbar > :empty { display: none; }
+
+  /* 分页器触达(稿 TabletContent §① delta 行8:M 768 那一列写的就是「36 / 窄」,不是 32)。
+     判据是触屏不是视口 —— 平板也是触屏,所以这一档从 600 提到 960。
+     跳页钮 36 高(稿 ListPhone §2:分页条定高 52 = 36 + 上下 padding 8×2)。
+     0-3-0 压过 FPPager 的 scoped .fp-jump-trigger(0-2-0),不用 !important。 */
+  .mx-pagerbar .fp-pager .fp-jump-trigger { height: 36px; }
+  /* pill 尺寸是 ds/Pagination 内联 pillStyle 写死的(该组件不在本次改动范围),
+     只能 !important 压过内联 —— 作用域锁死在 .mx-pagerbar 内,不外溢到其他分页场景。
+     高 32→36、宽 32→26:手指比鼠标粗,但 390 上放不下 4 个 32 宽的圆,是高增宽收不是两个都增。 */
+  .mx-pagerbar .ds-pg-pill { min-width: 26px !important; height: 36px !important; padding: 0 6px !important; }
+}
+
 /* 搜索框:固定宽 230px,radius-full,左内嵌放大镜(样式 1:1 迁自 TenantsView 内联) */
 .mx-search { position: relative; width: 230px; }
 .mx-search input {
@@ -93,6 +125,9 @@
 .cl-money { font-size: 12.5px; font-family: var(--font-mono); font-weight: var(--fw-semibold); color: var(--text-primary); flex: 0 0 auto; }
 .cl-l2 { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 3px; }
 .cl-no { font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 起止日期格(只在 S 档进 DOM,由 ContractsView 判 tier):不参与收缩——
+   日期截掉一半读不出是哪天;要让位先让合同号,它带省略号而且点开详情看得到全文 */
+.cl-range { flex: 0 0 auto; }
 /* V59 整体承租徽标(合同列表项):批发性质,不计出租率/KPI */
 .cl-master { flex: 0 0 auto; font-size: 10px; padding: 0 5px; border-radius: 999px; background: rgba(214,138,42,0.14); color: var(--hue-orange); }
 .cl-empty { text-align: center; padding: 40px 12px; color: var(--text-muted); font-size: 13px; }
@@ -130,8 +165,16 @@
 .mx-rowcard:active { background: var(--bg-panel); }              /* 触屏无 hover,点按反馈用 :active */
 .mx-rowcard.is-selected { background: var(--row-selected); }   /* 与表格分支选中底色同值 */
 .mx-rowcard-main { font: var(--type-body); font-weight: var(--fw-medium); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-rowcard-sub { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 12px; color: var(--text-muted); }
+/* 第二行 18px 行高(ListPhone 稿 §1 几何注③):12px/18px 正是 --type-label,不另写一组数 */
+.mx-rowcard-sub { display: flex; align-items: center; gap: 12px; min-width: 0; font: var(--type-label); color: var(--text-muted); }
 .mx-rowcard-sub > * { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 第一行「名字 + 金额」两栏(稿 §1 几何注②:名字 14/500 省略号,金额 mono 14/600 贴右端)。
+   做成修饰类而不是直接改 .mx-rowcard-main —— 其余屏的行卡第一行仍是一串裸文字,
+   裸文字进了 flex 容器会变成匿名 flex 项,容器上的 text-overflow 对它不生效,省略号当场丢。 */
+.mx-rowcard-main.has-money { display: flex; align-items: baseline; gap: 8px; }
+.mx-rowcard-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mx-rowcard-money { flex: 0 0 auto; font-family: var(--font-mono); font-size: var(--fs-body); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
 
 @media (max-width: 600px) { /* S */
   /* 高度链三件套(§5.1 明文):10×72 的卡列塞不进「flex:1 + overflow:hidden」定高链,
@@ -149,7 +192,4 @@
      选择器叠三层类是为压过 FPPager 的 scoped 样式(同 0-2-0 会输给后注入的组件样式); */
   .mx-pagerbar { padding: 8px 10px; }
   .mx-pagerbar .fp-pager .fp-jump-wrap { min-width: 0; }
-  /* pill 尺寸是 ds/Pagination 内联 pillStyle 写死的(该组件不在本次改动范围),
-     只能 !important 压过内联——作用域锁死在 .mx-pagerbar 内,不外溢到其他分页场景 */
-  .mx-pagerbar .ds-pg-pill { min-width: 26px !important; padding: 0 6px !important; }
 }

@@ -18,6 +18,7 @@ import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaForecastChart from '@/components/ana/AnaForecastChart.vue'
 import { rollingForecastRows, prevYearUsable } from './forecastChart.logic'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
+import { isSViewport } from '@/components/ana/anaChartHeight'
 import { iconFor } from '@/components/ds/icon'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
 import { STATUS, fint, fnum, hues, inkA, sgn } from '@/components/ana/anaFmt'
@@ -31,7 +32,7 @@ import {
   type AnaAnomaly, type AnomalyInputs, type CollectRate, type PnlSummary, type S10PhaseMonthly,
 } from '@/analysis/anaData'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, nextMonthForecast, nextForecastReadout, nextForecastRefText, mainChart, mainChartOption, mainChartOutlierNote, momOf, monthRangeLabel, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, phaseStack, pnlYearMonths, revNoteText, schedTrend,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, nextMonthForecast, nextForecastReadout, nextForecastRefText, mainChart, mainChartOption, mainChartOutlierNote, momOf, monthRangeLabel, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, phaseStack, phaseStackLast, pnlYearMonths, revNoteText, schedTrend,
 } from './cockpit.logic'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -42,6 +43,20 @@ const router = useRouter()
 const tabs = useTabsStore()
 const period = usePeriod()
 const cmp = useCompare(['mom', 'budget'])   // 屏声明支持集(AnaShell 同集渲染开关)
+
+// ── 手机档(分析屏手机体验稿 ④ 经营驾驶舱,2026-09-20) ──
+// 判据借 AnaEChart / AnaSkelChart 那一张(anaChartHeight.isSViewport,挂载时 matchMedia 判一次、
+// 不跟随 resize)。这里要的是「渲染哪一支」,不是几何像素 —— 用视口档而不是容器宽,是为了与
+// ana.css 的 @media(max-width:600) 同一个断点:JS 支与 CSS 支永远同档,不会一个认一个不认;
+// 也因此零响应式重排,首帧即终态(LAYOUT-STABILITY §1)。自绘图那批按容器宽判的是画布几何,不是这里。
+// isS 为 false 时下面每一处 v-if 都不渲染、每一条 CSS 都在 @media 内 —— >600 逐字零差异。
+const isS = isSViewport()
+const kpiMore = ref(false)    // 稿 ②:手机上 KPI 常显 6 枚,第 7 枚(月均增速)折在「更多指标 1 枚」后面
+const foldOpen = ref(false)   // 稿 ⑨⑩⑪:预测带 / 分期堆叠 / 回测表 折在「更多分析」后面
+// 折起来的块一律写成 `v-if="!isS || 展开"`(不是 display:none):
+//  ① `!isS ||` 这一半让桌面永远渲染,零差异不依赖任何一条 CSS;
+//  ② display:none 的容器宽高是 0,里面的 AnaEChart / 自绘图会按 0 宽初始化,展开那一下是张空图。
+//     不渲染就没有这个问题,展开时是全新挂载,宽度一次量准。
 
 // ── 取数(period 无关项拉一次;pnl 随年切换;全走 anaData 缓存) ──
 const pnl = ref<PnlSummary | null>(null)
@@ -214,20 +229,39 @@ function onMainClick(p: unknown): void {
 // N1(修复轮2):与 rev/cost/prof 共用 yearMonths,收入构成合计不再是另一个数(见 cockpit.logic.ts)。
 const compo = computed(() => compoData(pnl.value, isMonth.value, usedMi.value, yearMonths.value))
 const compoTotal = computed(() => compo.value.reduce((s, d) => s + d.value, 0))
+// 常驻读数句要的占比:compo 已按 value 降序且滤掉 ≤0,[0] 就是最大那块;
+// 这个百分数下面 donutOption 的图例 formatter 已经在算(pct),这里不是新指标。
+const compoTopPct = computed(() => (compoTotal.value > 0 ? ((compo.value[0].value / compoTotal.value) * 100).toFixed(1) : '0.0'))
 // 名义分类(租金/用电/用水/运管)须异色:主题色板前 4 位是蓝族渐变(给「分期收入堆叠」这类有序量用的),
 // 4 扇区环恰好取满前 4 位 → 全蓝难辨。此处局部指定 4 个可区分色相,不动全局主题。
-const donutOption = computed<object>(() => {
+const donutColors = computed<string[]>(() => {
   const { blue, teal, amber, coral } = hues()
+  return [blue, teal, amber, coral]
+})
+// 稿 ⑥「图例行补上金额」:手机上把 ECharts 图例换成 DOM 行,一行 = 色块 + 板块名 + 占比 + 金额。
+// 两个数都不是新指标 —— 占比就是下面 donutOption 图例 formatter 在算的 pct,金额就是 series.data
+// 里那个 value(万);桌面靠图例读占比、悬停读金额,手机没有悬停,于是把同两个数直接印成行。
+// S 档 ECharts 图例被 mobilizeOption 改成 type:'scroll',5 行会被压成一条横向滚动条 —— 换成 DOM 行
+// 不是「加一份图例」,是把那条滚不动的图例换掉。
+const compoRows = computed(() => compo.value.map((d, i) => ({
+  key: d.key,
+  label: d.label,
+  color: donutColors.value[i % donutColors.value.length],
+  pct: compoTotal.value > 0 ? ((d.value / compoTotal.value) * 100).toFixed(1) : '0.0',
+  wan: fnum(d.value / 10000),
+})))
+const donutOption = computed<object>(() => {
   const total = compoTotal.value
   const pct = (v: number): string => (total > 0 ? ((v / total) * 100).toFixed(1) : '0.0')
   const byLabel = new Map(compo.value.map((d) => [d.label, d.value]))
   return {
-    color: [blue, teal, amber, coral],
+    color: donutColors.value,
     tooltip: { trigger: 'item', valueFormatter: (v: number) => fnum(v) + '万' },
     // 图例带占比:静态也能读出各板块比重,不必悬停(扇区上不加标签,避免细扇区如「用水」标签重叠)
-    legend: { bottom: 0, formatter: (name: string) => `${name} ${pct(byLabel.get(name) ?? 0)}%` },
+    // S 档图例交给上面的 DOM 行(compoRows),这里收起;环心同步回 50%,不然底下空一条图例带的位。
+    legend: { show: !isS, bottom: 0, formatter: (name: string) => `${name} ${pct(byLabel.get(name) ?? 0)}%` },
     series: [{
-      type: 'pie', radius: ['50%', '74%'], center: ['50%', '42%'],
+      type: 'pie', radius: ['50%', '74%'], center: ['50%', isS ? '50%' : '42%'],
       label: { show: false }, itemStyle: { borderRadius: 6, borderColor: anaPalette().calloutCore, borderWidth: 2 },   // 缝 = 卡片色
       data: compo.value.map((d) => ({ name: d.label, value: +(d.value / 10000).toFixed(2) })),
     }],
@@ -254,6 +288,9 @@ const segTrendOption = computed<object | null>(() => {
 
 // ── 分期收入堆叠(点击段 → 深链附表10 该期该月) ──
 const ps = computed(() => phaseStack(s10Phase.value))
+// 最新一期的堆叠合计 + 最厚那一段占比(常驻读数句;手机上这张图一个数都读不到——
+// x 轴只印「N月」、y 轴只印刻度,每段的值只活在 tooltip 里)。
+const psLast = computed(() => phaseStackLast(ps.value))
 const phaseOption = computed<object | null>(() => {
   const d = ps.value
   if (!d) return null
@@ -279,6 +316,11 @@ function onPhaseClick(p: unknown): void {
 // 只显近 6 期(2026-07-20 用户反馈:全年 10+ 期横条在小卡里过度拥挤)
 // 先按所选年过滤再取近6期(2026-07-21 用户反馈:此前全局切片,台账跨年时选2025却混入2024期)
 const collShown = computed(() => collects.value.filter((c) => c.ym.startsWith(year.value + '-')).slice(-6))
+/** 收缴率读数句点名的那一期 = **这张图自己的最后一根柱**。
+ *  ⚠ 不能用 KPI 瓦那个 cp:年档下 colPick 返回的 ym 是标签串(「1-10月」「6期」,cockpit.logic.ts),
+ *  取第 5 位起的子串是空串、转成数字就是 0,屏上会印出不存在的「0月」。
+ *  取 collShown 的最后一项还顺带让 n=collShown.length 真的成为这句的分母。 */
+const cpBar = computed(() => collShown.value.at(-1) ?? null)
 const collectOption = computed<object | null>(() => {
   if (!collShown.value.length) return null
   const target = anaSettings.collectTarget
@@ -357,8 +399,14 @@ const conclusion = computed(() => buildConclusion(
       <AnaKpiTile label="在租租户(计数口径)" :value="tenantSum ? fint(tenantSum.tenantActive) + ' 户' : '—'"
         :note="contractSum ? `在租合同 ${fint(contractSum.contractActive)} 份` : undefined" />
       <!-- T1(design-boards 2026-09-11):三个新瓦,与主图共用同一份 fit(见 fit 计算属性头注) -->
-      <AnaKpiTile label="月均增速" :value="fit ? sgn(fit.slope, 1, '万/月') : '—'"
+      <!-- 稿 ②:S 档两列 → 7 枚瓦要排 4 行,第 4 行只有一枚、右边空一格。第 7 枚折起来,常显 6 枚
+           正好 3 行满。折谁按稿上画出来的那 6 枚反推 = 第 7 枚「月均增速」(稿旁的文字清单写的是
+           「预算达成」,与它自己画的三台手机对不上 —— 三台上 88.2% 都在,不在的是月均增速)。 -->
+      <AnaKpiTile v-if="!isS || kpiMore" label="月均增速" :value="fit ? sgn(fit.slope, 1, '万/月') : '—'"
         :note="fit ? '拟合优度 ' + fit.r2.toFixed(2) : undefined" />
+      <button v-if="isS" type="button" class="cv2-kpi-more" :aria-expanded="kpiMore" @click="kpiMore = !kpiMore">
+        <component :is="iconFor('chevron-down')" :size="15" :class="{ up: kpiMore }" />{{ kpiMore ? '收起' : '更多指标 1 枚' }}
+      </button>
       <!-- 前后对照瓦(故意留着):护栏修复前的口径,12 月冲回无条件计入年度收入 -->
     </template>
 
@@ -366,7 +414,7 @@ const conclusion = computed(() => buildConclusion(
          (主图 300 · 构成环 300 · 预测带 280 · 第二排三张 250),卡头 20 + .av2-card-h 的 8 下边距;
          KPI 行由 .anx-kpis 的 min-height 94 兜位。数据到了原地硬切,不做淡入、卡片不错峰。
          结论条与取期横幅按库里现有数据留位(见下一段注释)。
-         主图卡与预测带卡的读数句是常驻的(.ana-read/.ana-ref 行盒 20 由 --lh-snug 定,与字号无关),
+         主图 / 构成环 / 预测带 / 分期堆叠 四张卡的读数句是常驻的(.ana-read/.ana-ref 行盒 20 由 --lh-snug 定,与字号无关),
          骨架照 8+20 / 2+20 钉上,不钉的话数据到了下面整片下沉。
          **门只认首进**(!pnl):换年那一路旧年内容留在原地退让(C5-02),不许整片塌回骨架 —— 那是
          「一次交互两个动的东西」(§1.7):正文整片消失 + 工具条进度线。
@@ -401,8 +449,10 @@ const conclusion = computed(() => buildConclusion(
             <span class="hint">合计 <span class="ana-hole">¥000.0万</span><span class="hint-desk"> · 点击扇区看趋势</span><span class="hint-touch"> · 点扇区看趋势</span></span>
           </div>
           <AnaSkelChart :height="300" />
+          <p class="ana-read"><span class="ana-hole">租金 ¥000.0万,占 00.0%</span></p>
+          <p class="ana-ref"><span class="ana-hole">0 个板块 · 损益附表1~4 · 万元</span></p>
         </div>
-        <div class="av2-card av2-s12">
+        <div class="av2-card av2-s12 cv2-fc" :class="{ 'cv2-hide-s': !foldOpen }">
           <div class="av2-card-h">
             <span class="t">收入趋势 · 下月预测</span>
             <span class="hint">逐月预测带 · 每月的带只用它之前的月算</span>
@@ -411,21 +461,25 @@ const conclusion = computed(() => buildConclusion(
           <div class="fp-shim" style="height: 280px"></div>
           <p class="ana-ref"><span class="ana-hole">本年 12 个月已录满，没有下月可预测</span></p>
         </div>
-        <div class="av2-card av2-s4">
+        <div class="av2-card av2-s4 cv2-ph" :class="{ 'cv2-hide-s': !foldOpen }">
           <div class="av2-card-h">
             <span class="t">分期收入堆叠</span>
             <span class="hint">附表10 覆盖 <span class="ana-hole">0</span> 期<span class="hint-desk"> · 点击深链附表10</span><span class="hint-touch"> · 点图看附表10</span></span>
           </div>
           <AnaSkelChart :height="250" />
+          <p class="ana-read"><span class="ana-hole">0月 合计 000万,一期占 00.0%</span></p>
+          <p class="ana-ref"><span class="ana-hole">0 个期区 · 附表10 · 万元</span></p>
         </div>
-        <div class="av2-card av2-s4">
+        <div class="av2-card av2-s4 cv2-coll">
           <div class="av2-card-h">
             <span class="t">收缴率 vs 目标</span>
             <span class="hint">{{ year }}年近 6 期(台账共 <span class="ana-hole">00</span> 期)<span class="hint-desk">· 点击看欠费清单</span><span class="hint-touch">· 点柱看欠费清单</span></span>
           </div>
           <AnaSkelChart :height="250" />
+          <p class="ana-read hold"><span class="ana-hole">0月 收缴 00.0%,对目标 −00.0pt</span></p>
+          <p class="ana-ref hold"><span class="ana-hole">n=0 期 · 台账 Σ实收 / Σ应收</span></p>
         </div>
-        <div class="av2-card av2-s4">
+        <div class="av2-card av2-s4 cv2-anoc">
           <div class="av2-card-h">
             <span class="t">异常速览</span>
             <span class="hint">规则引擎跑真数据<span class="hint-desk"> · 点击查看</span><span class="hint-touch"> · 点条看详情</span></span>
@@ -437,12 +491,20 @@ const conclusion = computed(() => buildConclusion(
             <button type="button" class="cv2-all ana-hole" disabled>进入监控中心 · 全部 000 条 →</button>
           </div>
         </div>
-        <div class="av2-card av2-s12">
+        <!-- 折叠条照真版式留位(手机档);桌面不渲染,与真版式同一支判据 -->
+        <div v-if="isS" class="cv2-fold av2-s12" aria-hidden="true">
+          <component :is="iconFor('chevron-down')" :size="15" />
+          <b>更多分析</b>
+          <span class="s">收入趋势·下月预测 · 分期收入堆叠 · 这条带过去准不准 · 欠费清单</span>
+          <span class="n">4 块</span>
+        </div>
+        <div class="av2-card av2-s12 cv2-bt" :class="{ 'cv2-hide-s': !foldOpen }">
           <div class="av2-card-h">
             <span class="t">这条带过去准不准</span>
             <span class="hint">滚动起点回测：每次只用当时已有的月，预测下一个月</span>
           </div>
-          <!-- 表块 258 = 表头 30 + 6 行 × 38 -->
+          <!-- 表块 258 = 表头 30 + 6 行 × 38(手机档这张卡默认折着,展开后是行卡不是表,
+               两档不同高 —— 但它在折叠线之下,首进时不占位,骨架只需顶住桌面那一档) -->
           <div class="fp-shim" style="height: 258px"></div>
           <p class="ana-read"><span class="ana-hole">这条带按80%画的，0次里只中了0次，落空的0次全是有高有低</span></p>
           <p class="ana-ref"><span class="ana-hole">参照0-00月末起点·样本0次</span></p>
@@ -503,12 +565,23 @@ const conclusion = computed(() => buildConclusion(
         </div>
         <AnaEChart v-if="compo.length" :option="donutOption" :height="300" @chart-click="onDonutClick" />
         <AnaEmpty v-else label="当期无收入构成数据" hint="构成来自损益附表 1~4 各板块收入" to="/rent-pnl" to-text="去录入损益附表" />
+        <!-- 稿 ⑥:手机图例行(见 compoRows 头注)。行数 = 板块数,与环上的扇区一一对应,不截断。 -->
+        <ul v-if="isS && compoRows.length" class="cv2-leg">
+          <li v-for="r in compoRows" :key="r.key">
+            <i :style="{ background: r.color }"></i><span class="nm">{{ r.label }}</span>
+            <b>{{ r.pct }}%</b><span class="wan">{{ r.wan }}万</span>
+          </li>
+        </ul>
+        <!-- 常驻读数句:悬停才看得见的只有各扇区的金额(tooltip),占比在图例里、合计在卡头 hint 里,
+             所以这句写「最大那块的金额 + 占比」,补上唯一缺的那个数。 -->
+        <p class="ana-read hold"><template v-if="compo.length">{{ compo[0].label }} {{ money(compo[0].value) }},占 {{ compoTopPct }}%</template></p>
+        <p class="ana-ref hold"><template v-if="compo.length">{{ compo.length }} 个板块 · 损益附表1~4 · 万元</template></p>
       </div>
 
 
       <!-- 2026-09-12(用户):收入趋势 · 下月预测 —— 从主图拆出来的独立图。主图是 0 起的柱图,
            三条线挤在柱顶那一小段里看不出斜率;这张图没有柱子,轴不从 0 起,离群月留断口。 -->
-      <div v-if="rollRows" class="av2-card av2-s12">
+      <div v-if="rollRows && (!isS || foldOpen)" class="av2-card av2-s12 cv2-fc">
         <div class="av2-card-h">
           <span class="t">收入趋势 · 下月预测</span>
           <span class="hint">逐月预测带 · 每月的带只用它之前的月算</span>
@@ -520,29 +593,42 @@ const conclusion = computed(() => buildConclusion(
           <p class="ana-ref">{{ forecastRef }}</p>
         </template>
         <!-- 没有下月可预测时说清楚为什么,不留一张光秃秃的图让人以为功能坏了。 -->
-        <p v-else class="ana-ref">本年 12 个月已录满，没有下月可预测</p>
+        <!-- hold:这一支本来就不会塌(两支都出字,v-else 这支还是个定长句)——加 hold 只是把
+             「条件出句的读数句一律占位」这条规矩钉在这行上,视觉零差异(句子自己就够 1lh)。 -->
+        <p v-else class="ana-ref hold">本年 12 个月已录满，没有下月可预测</p>
       </div>
 
       <!-- 第二排 s4×3 -->
-      <div class="av2-card av2-s4">
+      <div v-if="!isS || foldOpen" class="av2-card av2-s4 cv2-ph">
         <div class="av2-card-h">
           <span class="t">分期收入堆叠</span>
-          <span class="hint">附表10 覆盖 {{ ps?.months.length ?? 0 }} 期<span class="hint-desk"> · 点击深链附表10</span><span class="hint-touch"> · 点图看附表10</span></span>
+          <span class="hint">附表10 覆盖 {{ ps?.months.length ?? 0 }} 个月<span class="hint-desk"> · 点击深链附表10</span><span class="hint-touch"> · 点图看附表10</span></span>
         </div>
         <AnaEChart v-if="phaseOption" :option="phaseOption" :height="250" @chart-click="onPhaseClick" />
         <AnaEmpty v-else label="附表10 无计费数据" hint="分期收入来自附表10 租户×月计费" to="/sales-income" to-text="去录入附表10" />
+        <!-- 常驻读数句:最新一期的柱子有多高、哪一段最厚(两个数都只对已画出的那一列求和/取最大)。
+             hold:图画得出来而 phaseStackLast 返回 null(最后一列 total<=0)是真会发生的,而骨架那两行
+             是无条件画的 —— 不占位就会在数据到的那一帧反向塌 50px。 -->
+        <p class="ana-read hold"><template v-if="psLast">{{ psLast.m }}月 合计 {{ fint(psLast.total) }}万,{{ psLast.name }}占 {{ psLast.pct.toFixed(1) }}%</template></p>
+        <p class="ana-ref hold"><template v-if="psLast">{{ ps?.series.length }} 个期区 · 附表10 · 万元</template></p>
       </div>
 
-      <div class="av2-card av2-s4">
+      <div class="av2-card av2-s4 cv2-coll">
         <div class="av2-card-h">
           <span class="t">收缴率 vs 目标</span>
           <span class="hint">{{ year }}年近 6 期(台账共 {{ collects.length }} 期)<span class="hint-desk">· 点击看欠费清单</span><span class="hint-touch">· 点柱看欠费清单</span></span>
         </div>
         <AnaEChart v-if="collectOption" :option="collectOption" :height="250" @chart-click="onCollectClick" />
         <AnaEmpty v-else label="台账数据未录入" hint="收缴率 = 台账 Σ实收 / Σ应收" to="/ledger" to-text="去台账录入" />
+        <!-- 稿 ⑦ 画了这两行(卡内 .readrow + .ana-ref)。两个数都是上面 KPI「收缴率」瓦在用的那一个
+             (cpBar 取的是 collShown 的最后一项 —— 这张图最后一根柱),n 是这张图切出来的近 6 期,都不是新算的。
+             差额用 sgn 带符号印,不写「距目标差 N」—— 收缴率高过目标时那句话是反的。
+             hold:cpBar 为 null(台账未录入)时两句同时闭嘴,而骨架那两行是无条件画的。 -->
+        <p class="ana-read hold"><template v-if="cpBar">{{ +cpBar.ym.slice(5) }}月 收缴 {{ cpBar.rate.toFixed(1) }}%,对目标 {{ sgn(cpBar.rate - anaSettings.collectTarget, 1, 'pt') }}</template></p>
+        <p class="ana-ref hold"><template v-if="cpBar">n={{ collShown.length }} 期 · 台账 Σ实收 / Σ应收</template></p>
       </div>
 
-      <div class="av2-card av2-s4">
+      <div class="av2-card av2-s4 cv2-anoc">
         <div class="av2-card-h">
           <span class="t">异常速览</span>
           <span class="hint">规则引擎跑真数据<span class="hint-desk"> · 点击查看</span><span class="hint-touch"> · 点条看详情</span></span>
@@ -558,14 +644,41 @@ const conclusion = computed(() => buildConclusion(
         <AnaEmpty v-else label="当前规则下暂无异常" hint="收缴率/能耗环比/收入中断/负值行 四规则均未触发" />
       </div>
 
+      <!-- 稿 ⑨⑩⑪ 的折叠线:画在异常速览之后(不是「第 4 块之后」)。上面四块回答「这个月怎么样 /
+           钱从哪来 / 收没收上来 / 有什么不对」,折进去的三块回答「下个月大概多少」「三期怎么拆」
+           「这条带过去准不准」—— 后三问是坐下来才问的。摘要串与件数照稿上写的那条抄
+           (稿把「欠费清单」也算进这条摘要,虽然它是点收缴率柱出来的整屏件、不是一张卡)。
+           只在手机档渲染 —— 桌面这三块本来就并排看得见,不需要这条。 -->
+      <button v-if="isS" type="button" class="cv2-fold av2-s12" :aria-expanded="foldOpen" @click="foldOpen = !foldOpen">
+        <component :is="iconFor('chevron-down')" :size="15" :class="{ up: foldOpen }" />
+        <b>更多分析</b>
+        <span class="s">收入趋势·下月预测 · 分期收入堆叠 · 这条带过去准不准 · 欠费清单</span>
+        <span class="n">4 块</span>
+      </button>
+
       <!-- T3:这条带过去准不准——滚动起点回测,每站只用当时已有的月,不复用 T1 的单次 fit;
            六列数据比四行三列的邻卡宽得多,独占一整行不挤 -->
-      <div class="av2-card av2-s12">
+      <div v-if="!isS || foldOpen" class="av2-card av2-s12 cv2-bt">
         <div class="av2-card-h">
           <span class="t">这条带过去准不准</span>
           <span class="hint">滚动起点回测：每次只用当时已有的月，预测下一个月</span>
         </div>
-        <table v-if="backRows" class="ak-tbl">
+        <!-- 稿 ⑪「5 列回测表 → 行卡」:336 宽上每列 67px,「2026-03 月末」10 字符 ≈ 78px 放不下。
+             手机改两行行卡:第一行 月末 + 实际 + 中没中,第二行 预测 + 区间。字与桌面表逐格同源,
+             只是换了排法。桌面走下面原样的 <table>,一个字符都没动。 -->
+        <div v-if="isS && backRows" class="cv2-rc">
+          <div v-for="r in backRows" :key="r.vantageMonth" class="cv2-rc-i">
+            <span class="r1">
+              <span class="nm">{{ r.vantageMonth }}月末{{ r.isLast ? '（今天）' : '' }}</span>
+              <span class="mono">{{ r.actualWan != null ? fint(r.actualWan) + '万' : '—' }}</span>
+              <span v-if="r.hit == null" class="hz" style="color: var(--text-muted)">待验</span>
+              <span v-else-if="r.hit" class="hz" :style="{ color: STATUS.good.color }">命中</span>
+              <span v-else class="hz" :style="{ color: STATUS.watch.color }">落空 {{ r.under ? '低估' : '高估' }} {{ r.missPct?.toFixed(1) }}%</span>
+            </span>
+            <span class="r2">预测 <span class="mono">{{ fint(r.predictMid) }}万</span> · 区间 <span class="mono">{{ fint(r.lo) }}~{{ fint(r.hi) }}</span></span>
+          </div>
+        </div>
+        <table v-else-if="backRows" class="ak-tbl">
           <thead><tr><th>站在哪个月末</th><th>下月预测</th><th>区间</th><th>实际</th><th>中没中</th></tr></thead>
           <tbody>
             <tr v-for="r in backRows" :key="r.vantageMonth">
@@ -582,8 +695,11 @@ const conclusion = computed(() => buildConclusion(
           </tbody>
         </table>
         <AnaEmpty v-else label="回测需要拟合" hint="滚动起点回测依赖至少 3 个可用月才能起步" />
-        <p v-if="backRead" class="ana-read">{{ backRead }}</p>
-        <p v-if="backRead" class="ana-ref">{{ backRef }}</p>
+        <!-- hold:表画得出来而句子算不出来是真会发生的 —— 回测每一站的「实际」取下一个月的收入,
+             录入有缺口时全部站点都是「待验」(hit 全 null),backtestSummary.scored=0,两句同时闭嘴。
+             骨架那两行是无条件画的,不占位就会在数据到的那一帧反向塌两行。 -->
+        <p class="ana-read hold"><template v-if="backRead">{{ backRead }}</template></p>
+        <p class="ana-ref hold"><template v-if="backRead">{{ backRef }}</template></p>
       </div>
 
       <div class="av2-s12">
@@ -665,4 +781,63 @@ const conclusion = computed(() => buildConclusion(
 .cv2-link { border: none; background: transparent; color: var(--text-link); font-size: var(--fs-micro); cursor: pointer; font-family: var(--font-sans); }
 .cv2-link:hover { text-decoration: underline; }
 .cv2-arr-sum { margin: 10px 0 0; font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono); }
+
+/* ── 手机档零件(分析屏手机体验稿 ④ 经营驾驶舱,2026-09-20) ──
+   下面四个零件的宿主元素都挂着 v-if="isS",桌面一个都不渲染;改变既有元素的那几条一律关在
+   @media (max-width:600px) 里。两道闸叠起来 = >600 逐字零差异(RESPONSIVE-LAYOUT-SPEC §9 第一条)。
+   字号只取阶梯值(28/24/20/16/15/14/12/11):折叠条 / 更多指标瓦 / 回测行卡 那三处画的 13px
+   是越界的,落地回 14(--fs-body);11 是中文下限,照用。
+   ⚠ 本文件的 <style> 块不在 anaCopyLint 的注释剥离范围内(它只剥 HTML 注释),这里别写触发词。 */
+
+/* 稿 ②「更多指标 1 枚」:KPI 栅格里跨满两列的一枚,高 108 与 AnaKpiTile 同(那个 108 的账见该文件) */
+.cv2-kpi-more { grid-column: 1 / -1; height: 108px; display: flex; align-items: center; justify-content: center; gap: 6px; border: none; border-radius: var(--radius-md); background: var(--surface-card); color: var(--text-secondary); font-family: var(--font-sans); font-size: var(--fs-body); cursor: pointer; }
+.cv2-kpi-more svg { transition: transform var(--dur-fast) var(--ease-standard); }
+.cv2-kpi-more svg.up { transform: rotate(180deg); }
+
+/* 折叠条:园区 / 租户 / 到期墙 三屏要照抄的形状就是这 8 行 + 下面 @media 里的一条 order。
+   ⚠ 今天它住在本屏 scoped 里 —— 真要三屏共用得搬进 ana.css,那是共用文件,交主进程(见交付说明)。 */
+.cv2-fold { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px dashed var(--border-control); background: var(--surface-card); color: var(--text-secondary); font-family: var(--font-sans); font-size: var(--fs-body); text-align: left; cursor: pointer; }
+.cv2-fold b { flex: 0 0 auto; font-weight: var(--fw-semibold); color: var(--text-primary); }
+.cv2-fold .s { flex: 1; min-width: 0; font-size: var(--fs-micro); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv2-fold .n { flex: 0 0 auto; font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text-muted); }
+.cv2-fold svg { flex: 0 0 auto; transition: transform var(--dur-fast) var(--ease-standard); }
+.cv2-fold svg.up { transform: rotate(180deg); }
+
+/* 稿 ⑥ 手机图例行:色块 + 板块名 + 占比 + 金额,占比与金额右对齐成两列 */
+.cv2-leg { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.cv2-leg li { display: flex; align-items: center; gap: 6px; font-size: var(--fs-micro); color: var(--text-secondary); white-space: nowrap; }
+.cv2-leg i { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
+.cv2-leg .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cv2-leg b { margin-left: auto; font-family: var(--font-mono); font-weight: var(--fw-semibold); color: var(--text-primary); }
+.cv2-leg .wan { width: 52px; text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* 稿 ⑪ 5 列回测表 → 两行行卡 */
+.cv2-rc { display: flex; flex-direction: column; gap: 6px; }
+.cv2-rc-i { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; border-radius: 8px; background: var(--surface-card); }
+.cv2-rc-i .r1 { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-body); font-weight: var(--fw-semibold); }
+.cv2-rc-i .r1 .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cv2-rc-i .r1 .hz { flex: 0 0 auto; font-size: var(--fs-micro); font-weight: var(--fw-regular); }
+.cv2-rc-i .r2 { font-size: var(--fs-micro); color: var(--text-muted); }
+.cv2-rc-i .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 600px) {
+  /* 稿 ④:四句结论一句一行(桌面是 wrap 成一排,column-gap 20 在竖排下会变成行间的空隙,清掉) */
+  .cv2-concl { flex-direction: column; align-items: flex-start; column-gap: 0; row-gap: 7px; }
+  /* 折起来的那三块 —— **只有骨架分支走这条**。骨架里没有 AnaEChart,只有 .fp-shim / AnaSkelChart
+     两种死高的 div,display:none 不会踩「0 宽初始化」那个坑;真版式那三块走 v-if(理由见 <script>)。
+     两支分工的第二个理由:motionR2-pnl.spec.ts 钉死了骨架在 S 档的 6 块高序列,那条是
+     src/views/__tests__ 下已有的 spec —— jsdom 不跑媒体查询,display:none 它照样数得到 6 块。 */
+  .cv2-hide-s { display: none; }
+  /* 稿 ⑤⑥⑦⑧ 的块序:主图(.av2-s8 在 ana.css 已 order:-1)→ 构成环(0)→ 收缴率 → 异常 → 折叠条 → 三块折叠件。
+     折叠线画在**异常速览之后**,不是「第 4 块之后」——收缴率与异常都是站着问的,按第 4 块切会把
+     收缴率那张图切进折叠里。order 只作用于 .av2-grid 的直接子项,所以这些类都打在格子元素本身。 */
+  .cv2-coll { order: 1; }
+  .cv2-anoc { order: 2; }
+  .cv2-fold { order: 3; }
+  .cv2-fc { order: 4; }
+  .cv2-ph { order: 5; }
+  .cv2-bt { order: 6; }
+  /* 稿 ⑧:异常速览每行 40 高(桌面 9+20+9=38,手指按的行按稿抬到 40) */
+  .cv2-anom { min-height: 40px; }
+}
 </style>

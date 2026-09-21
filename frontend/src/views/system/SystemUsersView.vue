@@ -24,8 +24,12 @@ import { useFitRows } from '@/components/fp/useFitRows'
 import FPPager from '@/components/fp/FPPager.vue'
 import { iconFor } from '@/components/ds/icon'
 import { useAuthStore } from '@/stores/auth'
+import { useFormSheet } from '@/composables/useFormSheet'
 
 const auth = useAuthStore()
+// 新建账号 / 重置密码两个弹卡带输入 → S 档全屏 sheet;停用确认只有一句话 + 两个钮,
+// 按判据仍是居中小卡(styles/form-sheet.css)。
+const sheet = useFormSheet()
 const canEdit = computed(() => auth.can('system:edit'))
 
 // ─── state ───────────────────────────────────────────────
@@ -485,7 +489,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
 
     <!-- 5. 新建账号弹窗 -->
     <Teleport to="body">
-      <div v-if="newDlg" class="fin-mask" @mousedown="newDlg = false">
+      <div v-if="newDlg" class="fin-mask" :class="{ 'fp-fsheet': sheet && !nDone }" @mousedown="newDlg = false">
         <div class="fin-dlg" role="dialog" aria-modal="true" @mousedown.stop>
           <!-- 成功页:初始密码的口径必须让管理员读到,所以不关窗直接转结果态 -->
           <template v-if="nDone">
@@ -502,7 +506,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
               <h3>新建账号</h3>
               <p>设一个初始密码交给本人,他首次登录时会被要求改掉。账号建好后只能停用,不能删除。</p>
             </div>
-            <div class="fin-dlg-b">
+            <div class="fin-dlg-b fp-fsheet-bd">
               <div class="fin-row">
                 <div class="su-field">
                   <div class="lab">用户名 <b class="req">*</b></div>
@@ -531,7 +535,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
               </div>
               <div class="fin-erm">{{ nErr }}</div>
             </div>
-            <div class="fin-dlg-f">
+            <div class="fin-dlg-f fp-fsheet-ft">
               <Button variant="gray" size="sm" @click="newDlg = false">取消</Button>
               <Button variant="filled" size="sm" :disabled="nBusy" @click="submitNew">
                 <template #leading><component :is="iconFor('check')" :size="14" /></template>
@@ -545,7 +549,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
 
     <!-- 6. 重置密码弹窗 -->
     <Teleport to="body">
-      <div v-if="pwTarget" class="fin-mask" @mousedown="pwTarget = null">
+      <div v-if="pwTarget" class="fin-mask" :class="{ 'fp-fsheet': sheet && !pwDone }" @mousedown="pwTarget = null">
         <div class="fin-dlg" role="dialog" aria-modal="true" @mousedown.stop>
           <template v-if="pwDone">
             <div class="fin-dlg-h">
@@ -561,14 +565,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
               <h3>重置密码</h3>
               <p>为「{{ pwTarget.displayName }}({{ pwTarget.username }})」设一个新密码。提交后该账号下次登录须修改密码。</p>
             </div>
-            <div class="fin-dlg-b">
+            <div class="fin-dlg-b fp-fsheet-bd">
               <div class="su-field">
                 <div class="lab">新密码 <b class="req">*</b></div>
                 <input class="su-in" :class="{ err: pwErr }" type="password" v-model="pwVal" placeholder="交给本人" @input="pwErr = ''" @keydown.enter="submitReset" />
               </div>
               <div class="fin-erm">{{ pwErr }}</div>
             </div>
-            <div class="fin-dlg-f">
+            <div class="fin-dlg-f fp-fsheet-ft">
               <Button variant="gray" size="sm" @click="pwTarget = null">取消</Button>
               <Button variant="filled" size="sm" :disabled="pwBusy" @click="submitReset">
                 <template #leading><component :is="iconFor('check')" :size="14" /></template>

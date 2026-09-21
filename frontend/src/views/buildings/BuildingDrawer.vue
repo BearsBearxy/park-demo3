@@ -15,8 +15,12 @@ import { leasedAreaShow, occPct, OCC_NULL_WHY } from '@/types/building'
 import type { BuildingDTO, BuildingDetailDTO, BuildingUpdateReq, UnitDTO } from '@/types/building'
 import type { UnitDTO as MapUnit } from '@/components/fp/FPUnitMap.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useFormSheet } from '@/composables/useFormSheet'
 
 const auth = useAuthStore()
+// 编辑单元弹卡带输入 → S 档全屏 sheet;两个删除确认只有一句话 + 两个钮,按判据仍是居中小卡
+// (styles/form-sheet.css)。
+const sheet = useFormSheet()
 
 const props = defineProps<{
   open: boolean
@@ -378,13 +382,13 @@ async function onContractCreated() {
 
   <!-- 编辑单元弹窗 -->
   <Teleport to="body">
-    <div v-if="unitDlg && selUnit" class="bd-mask" @mousedown="unitDlg = false">
+    <div v-if="unitDlg && selUnit" class="bd-mask" :class="{ 'fp-fsheet': sheet }" @mousedown="unitDlg = false">
       <div class="bd-dlg" role="dialog" aria-modal="true" @mousedown.stop>
         <div class="bd-dlg-h">
           <h3>编辑单元</h3>
           <p>修改 {{ selUnit.floor }}F-{{ selUnit.unitNo }} 的单元号与面积。</p>
         </div>
-        <div class="bd-dlg-b">
+        <div class="bd-dlg-b fp-fsheet-bd">
           <div class="bd-field">
             <div class="lab">单元号 <i>*</i></div>
             <input class="bd-in" :class="{ err: uErr === '请输入单元号' }" v-model="uNo" maxlength="16"
@@ -397,7 +401,7 @@ async function onContractCreated() {
           </div>
           <div class="bd-erm">{{ uErr }}</div>
         </div>
-        <div class="bd-dlg-f">
+        <div class="bd-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="unitDlg = false">取消</Button>
           <Button variant="filled" size="sm" @click="submitUnitEdit">保存</Button>
         </div>

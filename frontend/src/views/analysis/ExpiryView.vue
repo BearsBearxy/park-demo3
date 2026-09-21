@@ -7,6 +7,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import { onReactivated } from '@/composables/onReactivated'
+import { useViewport } from '@/composables/useViewport'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
@@ -27,6 +28,13 @@ import {
   renewalRateReadout, renewalRateBand, renewalRateLineOption, sensitivityRows, sensitivitySentence, sensitivityGapSentence,
   rentRollRefText, rentRollSentence, wallOption,
 } from './expiry.logic'
+
+// S 档「更多分析」折叠(稿 ⑦「这屏 9 个块的取舍」:9 块 → 4 常显 5 折)。
+// 判视口档 —— 折叠是版面决定,配套的 .exp-more 规则也写在 @media (max-width:600px) 里,
+// 两边同一条线才不会分叉。桌面 isS 恒 false,九块照旧全出,零差异。
+const { tier } = useViewport()
+const isS = computed(() => tier.value === 's')
+const moreOpen = ref(false)
 
 const router = useRouter()
 // 到期清单点一行 → 合同管理定位这一份。页面里的链接 = 新页签紧挨本页右边(TAB-BAR-SPEC §2)
@@ -127,17 +135,19 @@ function onParetoClick(p: unknown) {
   <AnaShell period-mode="none" scope-chip="合同快照" :kpi-hold="loading ? 9 : 0">
     <template #kpis>
       <template v-if="!loading && stats">
-        <AnaKpiTile label="合同总数" :value="stats.total + ' 份'" />
+        <!-- exp-kpi-a:S 档排到前两行的四枚(手机版屏板 §2 第 1 行点名的那四枚)。桌面不写 order,
+             DOM 序即视觉序 —— 这四个 class 在 >600 完全无副作用。 -->
+        <AnaKpiTile class="exp-kpi-a" label="合同总数" :value="stats.total + ' 份'" />
         <!-- T4(design-boards):「月租金合计」改成「当前合约租金」——board 上同名瓦读的是锁定线
              第 0 月(今天)的值,不是全部合同(含早已到期/日期缺失行)原样求和,口径更准。 -->
-        <AnaKpiTile label="当前合约租金" :value="'¥' + wan(rentRoll.months[0].locked) + '万/月'"
+        <AnaKpiTile class="exp-kpi-a" label="当前合约租金" :value="'¥' + wan(rentRoll.months[0].locked) + '万/月'"
           :note="rentRoll.months[0].lockedCount + ' 份在租 · ' + asOfYm" />
         <AnaKpiTile label="有租金合同" :value="stats.withRent + ' 份'" :note="'零租金 ' + stats.zeroRent + ' 份'" />
         <AnaKpiTile label="租金中位数" :value="'¥' + wan(stats.medRent) + '万'" note="有租金口径" />
         <AnaKpiTile label="Top10 集中度" :value="stats.top10Pct + '%'" :note="'Top10 ¥' + wan(stats.top10Sum) + '万/月'" />
         <!-- T4:「日期待补录」改成「未来12月到期」——日期缺失已经在页头 AnaPill 里提示,这个位置
              换成 board 上的「2026 到期」瓦(读的是喂给续签抽样的同一批合同,见 rentRoll.expiringCount)。 -->
-        <AnaKpiTile label="未来12月到期" :value="rentRoll.expiringCount + ' 份'"
+        <AnaKpiTile class="exp-kpi-a" label="未来12月到期" :value="rentRoll.expiringCount + ' 份'"
           :note="'涉及月租 ' + wan(rentRoll.expiringRentSum) + ' 万'" />
         <AnaKpiTile label="历史续签率" :value="(rentRoll.renewalP * 100).toFixed(1) + '%'"
           :note="rentRoll.renewalN + ' 份已到期中 ' + rentRoll.renewalHits + ' 份续签'" />
@@ -145,7 +155,7 @@ function onParetoClick(p: unknown) {
              禁的是后者)。 -->
         <AnaKpiTile :label="rentRollLast.month + ' 预计'" :value="'¥' + wan(rentRollLast.locked + rentRollLast.renewalMid) + '万/月'"
           :note="'80% 在 ' + wan(rentRollLast.locked + rentRollLast.renewalLo) + '~' + wan(rentRollLast.locked + rentRollLast.renewalHi) + ' 万'" />
-        <AnaKpiTile label="最近的缺口" :value="rentRoll.gap ? rentRoll.gap.monthsAway + ' 月' : '—'"
+        <AnaKpiTile class="exp-kpi-a" label="最近的缺口" :value="rentRoll.gap ? rentRoll.gap.monthsAway + ' 月' : '—'"
           :note="rentRoll.gap ? rentRoll.gap.count + ' 份到期 · ' + wan(rentRoll.gap.totalRentSum) + ' 万' : '未来12月内无缺口'" />
       </template>
     </template>
@@ -172,7 +182,7 @@ function onParetoClick(p: unknown) {
         <AnaPill tone="legal" icon="calendar-clock">合同快照口径 · <span class="ana-hole">000</span> 份带日期</AnaPill>
       </div>
       <div class="av2-grid">
-        <div class="av2-card av2-s12">
+        <div class="av2-card av2-s12 exp-wall">
           <div class="av2-card-h"><span class="t">到期墙 · 未来 8 季</span>
             <span class="hint ana-hole">未来8季到期 00 份 · ¥000.0万/月</span></div>
           <AnaSkelChart :height="250" />
@@ -184,13 +194,15 @@ function onParetoClick(p: unknown) {
           <p class="ana-read"><span class="ana-hole">末月租金预计 000~000</span></p>
           <p class="ana-ref"><span class="ana-hole">月度口径 · 万元 · 过去000份到期中0份续签</span></p>
         </div>
-        <div class="av2-card av2-s12">
+        <div class="av2-card av2-s12 exp-priority">
           <div class="av2-card-h"><span class="t">先谈哪几户</span><span class="hint">共 <span class="ana-hole">00</span> 份 · 按到期月租排序<span class="hint-desk"> · 点行去合同屏</span><span class="hint-touch"> · 点行去合同屏</span></span></div>
           <div class="fp-shim" style="height: 480px"></div>
           <p class="ana-read"><span class="ana-hole">前0份占未来12月到期租金的00%</span></p>
           <p class="ana-ref"><span class="ana-hole">其余0份合计0.0万</span></p>
         </div>
-        <div class="av2-card av2-s6">
+        <!-- 折叠条占位:与真版式的 .ak-foldbar 同高(min-height 44),首进不跳 -->
+        <div class="fp-shim exp-foldskel" style="height: 44px"></div>
+        <div class="av2-card av2-s6 exp-more-skel">
           <div class="av2-card-h"><span class="t">续签率从哪来</span><span class="hint">历史到期结果统计</span></div>
           <div style="display: flex; flex-direction: column; gap: 9px">
             <div class="exp-kv"><span class="k">历史到期</span><span class="v ana-hole">000 份</span></div>
@@ -201,18 +213,18 @@ function onParetoClick(p: unknown) {
           <p class="ana-read"><span class="ana-hole">续签率本身80%落在0%~00%</span></p>
           <p class="ana-ref"><span class="ana-hole">历史000份 · 口径同历史续签率瓦</span></p>
         </div>
-        <div class="av2-card av2-s6">
+        <div class="av2-card av2-s6 exp-more-skel">
           <div class="av2-card-h"><span class="t">续签率变一档</span><span class="hint">年末差多少</span></div>
           <div class="fp-shim" style="height: 182px"></div>
           <p class="ana-read"><span class="ana-hole">0档都守不住今天的租金</span></p>
           <p class="ana-read"><span class="ana-hole">历史0% · 缺口00万/月,约等于00户中型厂房</span></p>
           <p class="ana-ref">与上方合约租金带同一份锁定线</p>
         </div>
-        <div class="av2-card av2-s8">
+        <div class="av2-card av2-s8 exp-pareto exp-more-skel">
           <div class="av2-card-h"><span class="t">合同金额 Pareto</span><span class="hint">Top20 · 柱=月租金(万) 线=累计占比<span class="hint-desk"> · 点柱→清单展开</span><span class="hint-touch"> · 点柱展开下面清单</span></span></div>
           <AnaSkelChart :height="300" />
         </div>
-        <div class="av2-card av2-s4">
+        <div class="av2-card av2-s4 exp-more-skel">
           <div class="av2-card-h"><span class="t">租金集中度</span><span class="hint">Top10 合同占比</span></div>
           <AnaSkelChart :height="300" />
           <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 9px">
@@ -222,7 +234,7 @@ function onParetoClick(p: unknown) {
               <span class="k">其余 <span class="ana-hole">000</span> 份合计</span><span class="v ana-hole">¥00.0万/月</span></div>
           </div>
         </div>
-        <div class="av2-card av2-s12">
+        <div class="av2-card av2-s12 exp-more-skel">
           <div class="av2-card-h"><span class="t">合同清单</span><span class="hint">共 <span class="ana-hole">000</span> 份 · 按月租金降序<span class="hint-desk"> · 点行展开该租户合同详情</span><span class="hint-touch"> · 点行展开合同详情</span></span></div>
           <div class="fp-shim" style="height: 480px"></div>
         </div>
@@ -253,7 +265,7 @@ function onParetoClick(p: unknown) {
       </div>
 
       <div class="av2-grid">
-        <div class="av2-card av2-s12">
+        <div class="av2-card av2-s12 exp-wall">
           <div class="av2-card-h"><span class="t">到期墙 · 未来 8 季</span>
             <span class="hint">{{ wall.totalCount > 0
               ? `未来8季到期 ${wall.totalCount} 份 · ¥${wan(wallRentSum)}万/月`
@@ -274,35 +286,46 @@ function onParetoClick(p: unknown) {
           <div class="av2-card-h"><span class="t">合约租金带 · 未来 12 月</span>
             <span class="hint">锁定实线 + 续签区间 · 不含新招租,是下界{{ rentRollHasMaster ? ' · 另有整租未计入' : '' }}</span></div>
           <AnaRentBandChart v-if="rentRollText" :cols="bandCols" :split-idx="bandSplitIdx" :gaps="bandGaps" :height="280" />
-          <p v-if="rentRollText" class="ana-read">{{ rentRollText }}</p>
+          <!-- hold:rentRollSentence 在 months 为空时返回 null(没有任何在租合同),此时图与句子一起消失,
+               而骨架那行是无条件画的 —— 占位让这一行的有↔无不带着下面的参照系小字一起跳。 -->
+          <p class="ana-read hold"><template v-if="rentRollText">{{ rentRollText }}</template></p>
           <p class="ana-ref">{{ rentRollRef }}</p>
         </div>
 
         <!-- T6(design-boards):「先谈哪几户」—— 既有「临期90天」卡改造:population 从 90 天窗口
              换成 rentRoll.expiringList(未来12月、与续签抽样同一批合同),排序从到期日改成月租金降序。
              点行去合同屏的交互原样保留。 -->
-        <div v-if="rentRoll.expiringList.length > 0" class="av2-card av2-s12">
+        <div v-if="rentRoll.expiringList.length > 0" class="av2-card av2-s12 exp-priority">
           <div class="av2-card-h"><span class="t">先谈哪几户</span><span class="hint">共 {{ rentRoll.expiringList.length }} 份 · 按到期月租排序<span class="hint-desk"> · 点行去合同屏</span><span class="hint-touch"> · 点行去合同屏</span></span></div>
           <div class="exp-scroll">
-            <table class="ak-tbl">
+            <table class="ak-tbl exp-rc exp-rc-p">
               <thead><tr><th>到期</th><th>租户</th><th>月租(万)</th><th>剩余</th></tr></thead>
               <tbody>
                 <tr v-for="r in rentRoll.expiringList" :key="r.id" class="exp-row" @click="goContract(r.contractNo)">
                   <td class="mono mut" style="text-align: left">{{ r.endDate.slice(2, 7) }}</td>
-                  <td style="text-align: right">{{ r.tenantName }}</td>
+                  <!-- 行内 text-align:right 去掉 —— .ak-tbl td 默认就是 right(这一格不是 first-child),
+                       桌面零差异;而 S 档行卡里它要靠左,行内样式会盖掉媒体查询。 -->
+                  <td>{{ r.tenantName }}</td>
                   <td class="mono">{{ wan(r.monthlyRent) }}</td>
                   <td class="mono">{{ r.monthsLeft }} 月</td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <p v-if="priorityRead" class="ana-read">{{ priorityRead }}</p>
-          <p v-if="priorityRead" class="ana-ref">{{ priorityRef }}</p>
+          <!-- hold:卡的门槛是 expiringList 非空,而句子的门槛还多一条 expiringRentSum>0 ——
+               清单里的合同月租全为 0 时表照画、两句闭嘴,这两行要占着位。 -->
+          <p class="ana-read hold"><template v-if="priorityRead">{{ priorityRead }}</template></p>
+          <p class="ana-ref hold"><template v-if="priorityRead">{{ priorityRef }}</template></p>
         </div>
 
         <!-- T7(design-boards):「续签率从哪来」—— 历史到期结果统计 + 续签率本身的区间(只抽 p,
              不抽哪几户续签),与「合约租金带」卡的金额区间是两件事,分开说。 -->
-        <div v-if="rentRoll.renewalN > 0" class="av2-card av2-s6">
+        <button v-if="isS" type="button" class="ak-foldbar" :aria-expanded="moreOpen" @click="moreOpen = !moreOpen">
+          <b>更多分析</b>
+          <span class="sub">续签率从哪来 · 续签率变一档 · 合同金额 Pareto · 租金集中度 · 合同清单</span>
+          <span class="n">{{ moreOpen ? '收起' : '5 块' }}</span>
+        </button>
+        <div v-if="rentRoll.renewalN > 0" class="av2-card av2-s6 exp-more" :class="{ 'is-open': moreOpen }">
           <div class="av2-card-h"><span class="t">续签率从哪来</span><span class="hint">历史到期结果统计</span></div>
           <div style="display: flex; flex-direction: column; gap: 9px">
             <div class="exp-kv"><span class="k">历史到期</span><span class="v">{{ rentRoll.renewalN }} 份</span></div>
@@ -314,8 +337,10 @@ function onParetoClick(p: unknown) {
                计数给的是 18/72,轴给的是这个比例落在哪儿、有多宽。 -->
           <AnaRenewalChart v-if="renewalRateRead" :hits="rentRoll.renewalHits" :n="rentRoll.renewalN"
             :band="renewalBand" :height="112" />
-          <p v-if="renewalRateRead" class="ana-read">{{ renewalRateRead }}</p>
-          <p v-if="renewalRateRead" class="ana-ref">历史{{ rentRoll.renewalN }}份 · 口径同历史续签率瓦</p>
+          <!-- hold:这张卡的门槛(renewalN>0)与 renewalRateReadout 闭嘴的判据(n<=0)是同一条,
+               卡在句子必在 —— 这两行不会塌。占位只为把规矩钉住,视觉零差异。 -->
+          <p class="ana-read hold"><template v-if="renewalRateRead">{{ renewalRateRead }}</template></p>
+          <p class="ana-ref hold"><template v-if="renewalRateRead">历史{{ rentRoll.renewalN }}份 · 口径同历史续签率瓦</template></p>
         </div>
 
         <!-- T7(design-boards):「续签率变一档,年末差多少」—— 固定续签率(不抽 p)下的期望值表,
@@ -323,9 +348,9 @@ function onParetoClick(p: unknown) {
         <!-- 门槛用 renewalN(有没有历史续签数据),不用 sensitivity.length —— 后者是固定 4 档,
              恒为真,拿它当门禁形同虚设(sensitivityRows 是纯算术,没有历史数据也会算出一张
              退化的表,那张表没有意义,不该露出来)。 -->
-        <div v-if="rentRoll.renewalN > 0" class="av2-card av2-s6">
+        <div v-if="rentRoll.renewalN > 0" class="av2-card av2-s6 exp-more" :class="{ 'is-open': moreOpen }">
           <div class="av2-card-h"><span class="t">续签率变一档</span><span class="hint">年末差多少</span></div>
-          <table class="ak-tbl">
+          <table class="ak-tbl exp-rc exp-rc-s">
             <thead><tr><th>续签率</th><th>{{ rentRollLast.month }} 月租(万)</th><th>对今天</th><th>够不够</th></tr></thead>
             <tbody>
               <tr v-for="row in sensitivity" :key="row.ratePct + row.tag">
@@ -336,17 +361,20 @@ function onParetoClick(p: unknown) {
               </tr>
             </tbody>
           </table>
-          <p v-if="sensitivityRead" class="ana-read">{{ sensitivityRead }}</p>
-          <p v-if="sensitivityGapRead" class="ana-read">{{ sensitivityGapRead }}</p>
-          <p v-if="sensitivityRead" class="ana-ref">与上方合约租金带同一份锁定线</p>
+          <!-- hold:第一、三行不会塌(sensitivityRows 恒返回 4 档,sensitivitySentence 只在 rows 为空时闭嘴);
+               中间那行会 —— sensitivityGapSentence 在今天的锁定租金为 0(months[0].locked<=0)时返回 null,
+               而历史续签数还在,表照画。三行一起占位,不留一行会跳的。 -->
+          <p class="ana-read hold"><template v-if="sensitivityRead">{{ sensitivityRead }}</template></p>
+          <p class="ana-read hold"><template v-if="sensitivityGapRead">{{ sensitivityGapRead }}</template></p>
+          <p class="ana-ref hold"><template v-if="sensitivityRead">与上方合约租金带同一份锁定线</template></p>
         </div>
 
-        <div class="av2-card av2-s8">
+        <div class="av2-card av2-s8 exp-pareto exp-more" :class="{ 'is-open': moreOpen }">
           <div class="av2-card-h"><span class="t">合同金额 Pareto</span><span class="hint">Top20 · 柱=月租金(万) 线=累计占比<span class="hint-desk"> · 点柱→清单展开</span><span class="hint-touch"> · 点柱展开下面清单</span></span></div>
           <AnaEChart :option="paretoOpt" :height="300" @chart-click="onParetoClick" />
         </div>
 
-        <div class="av2-card av2-s4">
+        <div class="av2-card av2-s4 exp-more" :class="{ 'is-open': moreOpen }">
           <div class="av2-card-h"><span class="t">租金集中度</span><span class="hint">Top10 合同占比</span></div>
           <div style="position: relative">
             <AnaEChart :option="concOpt" :height="300" />
@@ -362,7 +390,7 @@ function onParetoClick(p: unknown) {
           </div>
         </div>
 
-        <div class="av2-card av2-s12">
+        <div class="av2-card av2-s12 exp-more" :class="{ 'is-open': moreOpen }">
           <div class="av2-card-h"><span class="t">合同清单</span><span class="hint">共 {{ listed.length }} 份 · 按月租金降序<span class="hint-desk"> · 点行展开该租户合同详情</span><span class="hint-touch"> · 点行展开合同详情</span></span></div>
           <div class="exp-scroll">
             <table class="ak-tbl">
@@ -419,4 +447,76 @@ function onParetoClick(p: unknown) {
 .exp-ring-c { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; gap: 2px; }
 .exp-ring-c b { font-size: 20px; font-family: var(--font-mono); color: var(--text-primary); }
 .exp-ring-c span { font-size: var(--fs-micro); color: var(--text-muted); }
+
+.ak-foldbar, .exp-foldskel { display: none; }
+
+/* ── S 档(≤600)屏板:块序 + 两张 4 列表换行卡 ──────────────────────────────
+   只在 ≤600 生效,>600 一行都不写 —— 1440 与现状零差异(RESPONSIVE-LAYOUT-SPEC §9 第一条)。
+   断点值取自 breakpoints.ts 的 s=600(CSS 侧进不了自定义属性,写字面量 + 档注释)。 */
+@media (max-width: 600px) {
+  /* 阅读序:到期墙 → 先谈哪几户 → 合约租金带。名单要排在曲线之前 —— 这屏回答的是
+     「先谈哪几户」,正解是一份名单,不是一条带子。桌面 DOM 序不变,只在本档用 order 重排
+     (断点内 order 重排属规范 §7 豁免,与 ana.css 的 .av2-lead/.av2-core 同一机制)。 */
+  .exp-wall { order: -2; }
+  .exp-priority { order: -1; }
+  /* ana.css 在本档给 .av2-s8 记了 order:-1(「有 8 栏大图的屏,大图即核心图」)。
+     这屏不成立:Pareto 与「租金集中度」讲同一件事,且 Top10 集中度已经是一枚 KPI 瓦 ——
+     它该在折叠线以下,不该被抬到第一块。特异度靠 scoped 属性选择器压过 .av2-s8。 */
+  .exp-pareto { order: 0; }
+  /* 「更多分析」折叠(稿 ⑦:9 块 → 4 常显 5 折)。条排在折叠内容之上,展开只往下长 ——
+     收起/展开不挪动它上面已渲染的任何东西(LAYOUT-STABILITY)。
+     写法与园区 / 租户两屏的 .ak-foldbar 同形;三处都稳定之后再一起提进 ana.css。 */
+  .ak-foldbar {
+    display: flex; align-items: center; gap: 8px; grid-column: 1 / -1;
+    min-height: 44px; padding: 0 12px; box-sizing: border-box;
+    border: 1px solid var(--border-subtle); border-radius: 8px;
+    background: var(--surface-white); cursor: pointer; text-align: left;
+  }
+  .ak-foldbar b { flex: 0 0 auto; font-size: var(--fs-label); color: var(--text-primary); }
+  .ak-foldbar .sub { flex: 1 1 auto; min-width: 0; font-size: var(--fs-micro); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ak-foldbar .n { flex: 0 0 auto; font-size: var(--fs-micro); color: var(--text-muted); }
+  /* 折进去的五块:收起时整块不占布局。骨架同档一起收,否则首进比真版式高一大截。 */
+  .exp-more { display: none; }
+  .exp-more.is-open { display: block; }
+  .exp-more-skel { display: none; }
+  .exp-foldskel { display: block; grid-column: 1 / -1; }
+  /* 九枚瓦两列排(两列由 ana.css 下发):这四枚排前两行,其余五枚跟在后面。 */
+  .exp-kpi-a { order: -1; }
+
+  /* 4 列表 → 行卡:表头整行撤掉,每份合同占两行 ——
+     第一行「谁 / 多少钱」,第二行「什么时候 / 还剩多久」。列头撤掉之后每格自带前缀,
+     前缀写在 ::before/::after 里,模板与桌面一个字都不动。 */
+  .exp-rc, .exp-rc tbody { display: block; width: 100%; }
+  .exp-rc thead { display: none; }
+  .exp-rc tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px;
+    align-content: center; border-bottom: 1px solid var(--divider); }
+  .exp-rc td { display: block; height: auto; padding: 0; border: none; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; }
+  /* 按压/悬停反馈从格子挪到整行 —— 逐格上色会在 column-gap 那条缝上露白。 */
+  .exp-rc .exp-row:hover td, .exp-rc .exp-row.on td, .exp-rc .exp-row:active td { background: none; }
+  .exp-rc .exp-row:hover, .exp-rc .exp-row.on { background: var(--bg-hover); }
+  .exp-rc .exp-row:active:not(.on) { background: var(--ink-100); transition-duration: 0ms; }
+
+  /* 先谈哪几户:列序 到期 / 租户 / 月租 / 剩余 → 行卡 租户·月租 换行 到期·剩余。
+     整块高不变(.exp-scroll 的 max-height 480 封顶,骨架那条灰条也是 480)。 */
+  .exp-rc-p td:nth-child(1) { order: 3; }
+  .exp-rc-p td:nth-child(2) { order: 1; text-align: left; }
+  .exp-rc-p td:nth-child(3) { order: 2; }
+  .exp-rc-p td:nth-child(4) { order: 4; }
+  .exp-rc-p tbody tr { padding: 5px 2px; }
+  .exp-rc-p td:nth-child(1)::before { content: '到期 '; color: var(--text-muted); }
+  .exp-rc-p td:nth-child(3)::before { content: '¥'; }
+  .exp-rc-p td:nth-child(3)::after { content: '万/月'; font-family: var(--font-sans); color: var(--text-muted); }
+  .exp-rc-p td:nth-child(4)::before { content: '剩 '; font-family: var(--font-sans); color: var(--text-muted); }
+
+  /* 续签率变一档:列序 续签率 / 末月租金 / 对今天 / 够不够 → 每档两行(顺序不用改,
+     两列网格自然折)。行高钉死 45.5:表头撤掉后 4 档 × 45.5 = 182,等于桌面的
+     表头 30 + 4 × 38,也等于骨架里那条 182 的灰条 —— 首进硬切时这一块不跳。 */
+  .exp-rc-s tbody tr { height: 45.5px; }
+  .exp-rc-s td:nth-child(1)::before { content: '续签率 '; color: var(--text-muted); }
+  .exp-rc-s td:nth-child(2)::before { content: '¥'; }
+  .exp-rc-s td:nth-child(2)::after { content: '万'; font-family: var(--font-sans); color: var(--text-muted); }
+  .exp-rc-s td:nth-child(3) { text-align: left; }
+  .exp-rc-s td:nth-child(3)::before { content: '对今天 '; font-family: var(--font-sans); color: var(--text-muted); }
+}
 </style>

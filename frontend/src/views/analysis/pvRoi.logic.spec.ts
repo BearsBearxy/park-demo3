@@ -74,12 +74,17 @@ describe('PvRoiView · C6-01 首进骨架(块高钉真版式)', () => {
     expect(src, '版式已知不许转圈').not.toContain('page-spin')
     expect(src, '骨架根节点缺 ana-skel 钩子').toContain('class="roi2-page ana-skel"')
     // 顶替 AnaEChart 的块是 <AnaSkelChart :height>(与图同表降档,C6-01 ≤600),其余是写死高的 .fp-shim
-    const shim = [...src.matchAll(/class="fp-shim" style="height: (\d+)px|<AnaSkelChart :height="(\d+)"/g)].map((m) => +(m[1] ?? m[2]))
+    const shim = [...src.matchAll(/class="fp-shim[^"]*" style="height: (\d+)px|<AnaSkelChart :height="(\d+)"/g)].map((m) => +(m[1] ?? m[2]))
     // 2026-09-16 起卡头 / 页头 / 读数句照抄真版式(不再是灰条),序列里只剩图块与少数写死高的块;逐块同高已在浏览器 390 / 1366 宽实测
-    expect(shim).toEqual([300, 300, 210])   // 爬坡图 · 分期图 · 明细表块(.roi2-tblwrap max-height 210)
-    const charts = [...src.matchAll(/<AnaEChart [^>]*:height="(\d+)"/g)].map((m) => +m[1])
-    // 两张图各留一块;回收卡的行与明细卡的选中行照抄真版式
-    expect(charts).toEqual([300, 300])
+    // 2026-09-20(P2 屏板)起序列里出现「同一块两个数」:爬坡图在 S 档下发 250(降档后 220)、桌面 300,
+    // 两档各写一个字面高的 v-if / v-else 节点。44 = S 档「更多分析」折叠条(.ana-fold 的 min-height),
+    // 分期图与明细表两块收进它里面 —— 它们的 300 / 210 仍写在 v-if="!isS" 的节点上,序列里照样数得到。
+    expect(shim).toEqual([250, 300, 300, 210])   // 爬坡图(两档) · 分期图 · 明细表块(.roi2-tblwrap max-height 210)。这屏不折叠:稿的改后清单里没有「折叠」二字,全屏只有 2 张图
+    // 图的 :height 现在有两种写法:字面值,和按档分叉的 `isS ? S档 : 桌面`;两种都收。
+    const charts = [...src.matchAll(/<AnaEChart [^>]*:height="(?:isS \? (\d+) : (\d+)|(\d+))"/g)]
+      .flatMap((m) => (m[3] ? [+m[3]] : [+m[1], +m[2]]))
+    // 两张图:爬坡按档 250/300,分期 300;回收卡的行与明细卡的选中行照抄真版式
+    expect(charts).toEqual([250, 300, 300])
     expect(charts.every((h) => shim.includes(h)), '有图的高没在骨架里留位').toBe(true)
   })
 })

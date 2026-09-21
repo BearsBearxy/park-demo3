@@ -85,7 +85,14 @@ describe('ExpiryView · 合约租金带挂载测(D1 可执行形式)', () => {
     // 2026-09-12:这张图从 ECharts 换成自绘的 AnaRentBandChart(照设计稿实现,用户拍板)。
     // 判据不变 —— 图与句子必须受同一个 v-if 门控,只是元素名换了。
     const chartTag = src.match(/<AnaRentBandChart[^>]*\/>/)?.[0]
-    const sentenceTag = src.match(/<p[^>]*class="ana-read"[^>]*>\{\{ rentRollText \}\}<\/p>/)?.[0]
+    // 2026-09-20:句子改成常驻占位(`class="ana-read hold"`,门挪进内层 <template v-if>)——
+    // 判据不变,只是 v-if 从 <p> 上挪到了它里面,所以整段取到 </p> 再判门控。
+    // ⚠ 中间那段**不许跨 `<p>`**。写成 `[\s\S]*?` 的话，起点会落在文件里第一个 `.ana-read`
+    // （骨架占位 :184），一路吃到真版式，match 长度 6104 —— 块里本来就含图元素的
+    // `v-if="rentRollText"`，于是把句子的门整个删掉它照样绿。这条断言就废了（2026-09-20 对抗复查实测）。
+    const sentenceTag = src.match(
+      /<p[^>]*class="ana-read[^"]*"[^>]*>(?:(?!<\/?p\b)[\s\S])*?\{\{ rentRollText \}\}[\s\S]*?<\/p>/,
+    )?.[0]
     expect(chartTag, '合约租金带图元素未找到').toBeTruthy()
     expect(sentenceTag, '合约租金带句子元素未找到').toBeTruthy()
     expect(chartTag).toMatch(/v-if="rentRollText"/)
@@ -110,7 +117,9 @@ describe('ExpiryView · C6-01 首进骨架(块高钉真版式)', () => {
     const shim = w.findAll('.ana-skel .fp-shim').map((e) => parseInt((e.element as HTMLElement).style.height, 10))
     // 2026-09-16 起八张卡照抄真版式(卡头 / 读数句 / 计数行),灰条只剩图块与表块:
     // 到期墙 250 · 租金带 280 · 先谈哪几户 480 · 续签数轴 112 · 敏感性表 182 · Pareto 300 · 集中度环 300 · 合同清单 480
-    expect(shim).toEqual([250, 280, 480, 112, 182, 300, 300, 480])
+    // 2026-09-20 P2:折叠条占位(44)插在「先谈哪几户」之后 —— 稿 ⑦ 的折叠线位置。
+    // 折进去的五块在 S 档不占布局,但骨架序列读的是源码里的 fp-shim 字面高,与档位无关。
+    expect(shim).toEqual([250, 280, 480, 44, 112, 182, 300, 300, 480])
     const src = readFileSync(join(__dirname, '../analysis/ExpiryView.vue'), 'utf8')
     const tpl = src.slice(src.indexOf('<template>'))
     const real = tpl.slice(tpl.indexOf('v-else-if="!stats"'))

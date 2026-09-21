@@ -120,6 +120,21 @@ export function phaseStack(ph: S10PhaseMonthly | null): PhaseStackData | null {
   }
 }
 
+/**
+ * 分期堆叠最新一期的读数:合计 + 最大那一段的占比。
+ * 两个数都只对**已经画出来的那一列**求和/取最大 —— 没有新字段、新分母、新覆盖率,
+ * 只是把「柱子有多高」「哪一段最厚」写成字(ECharts 的 axis tooltip 逐条给值,不给总和)。
+ */
+export function phaseStackLast(d: PhaseStackData | null): { m: number; total: number; name: string; pct: number } | null {
+  if (!d?.months.length) return null
+  const i = d.months.length - 1
+  const vals = d.series.map((s) => ({ name: s.name, v: s.data[i] ?? 0 }))
+  const total = vals.reduce((s, x) => s + x.v, 0)
+  if (total <= 0) return null
+  const top = vals.reduce((a, b) => (b.v > a.v ? b : a))
+  return { m: +d.months[i].slice(5), total, name: top.name, pct: (top.v / total) * 100 }
+}
+
 // ── 收缴率取期(v1 colPick 原样抽出:月=取 ≤当前月最近一期;年=并该年各期) ──
 export function colPick(collects: CollectRate[], isMonth: boolean, year: number, ym: string | null): { ym: string; rate: number } | null {
   if (!collects.length) return null

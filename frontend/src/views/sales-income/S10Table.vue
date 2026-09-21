@@ -8,6 +8,9 @@
 // 撑高 filler 行把合计顶到卡底。CSS 全在本组件 <style scoped>，不复用别组件 scoped class。
 import { ref, computed, watch, nextTick } from 'vue'
 import { iconFor } from '@/components/ds/icon'
+import FPWideCards, { type WideCard } from '@/components/fp/FPWideCards.vue'
+import { useViewport } from '@/composables/useViewport'
+import { finMoney } from '@/utils/finFmt'
 import type { Group } from './layout'
 import type { S10RecordDTO, S10ColId } from '@/types/s10'
 
@@ -125,6 +128,42 @@ const totals = computed(() => {
 function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
   emit('cell', r, colId, s10Num(raw))
 }
+
+// ── S 档(≤600)卡列:浏览态用 FPWideCards 换掉这张 25/20 列宽表(稿 WideCardVariants §3「标准 88」)。
+// jsdom 无 matchMedia → tier 恒 'xl',桌面/既有测试照旧走 <table>,宽档 DOM 一个字节不变。
+//
+// **编辑态仍然走表格**:逐列输入框是录入的唯一入口,卡片没有;且 S10View 的小屏提示
+// 写着「编辑模式 · 小屏可录入」,换成只读卡会让那句话当场变成假话(填报不拦不藏)。
+//
+// 卡上四个字段逐个对到桌面表上的真列(不新造口径、不新增指标):
+//   name   ← 桌面首列『租户』td.s10-c-name 里的 .s10-tname  = r.tenantName
+//   amount ← 桌面最右 sticky『合计』列 td.s10-c-total       = totals.byRow(浏览态即后端 r.total)
+//   sub    ← 桌面『备注』列 td.s10-c-note                   = r.note(无备注则不画这一行)
+//   pill   ← 桌面行内**已有**的两个状态标记,按桌面的优先级复用同一判据与同一措辞:
+//              未绑定 = r.tenantId == null(.s10-unbound-dot;与工具条「未绑定 N」同一判据)
+//              手动   = r.source !== 'seed'(.s10-userbadge)
+//              两者都不成立(已绑定的种子行)= 不画胶囊,与桌面行上什么都不显示一致。
+// 稿点名的『本年合计』『当月计费』两栏:本屏一次只加载一个月(S10MonthDTO),行 DTO 上
+// 没有年累计字段,不虚构 —— amount 取的就是当月合计(= 桌面『合计』列同一个数)。
+const { tier } = useViewport()
+function s10Card(r: S10RecordDTO): WideCard {
+  return {
+    name: r.tenantName,
+    amount: finMoney(totals.value.byRow.get(r.id) ?? 0),
+    // ⚠ 有意偏离稿的一条裁定:WideCardPhone §2 把「备注」判成「上不了卡」,
+    //   理由逐字是「长度不定,折行会破 88 定高」。本模板的 sub 是**单行 ellipsis**,折不了行,
+    //   那个理由在这里不成立;而这一屏没有行抽屉(点卡开的是绑定抽屉),备注不放在这儿,
+    //   手机上就彻底读不到 —— 它是本表除租户名/合计外唯一的非数值列。
+    //   稿点名的「当月计费」已经由 amount 承担(本屏一次只拉一个月,合计 = 当月计费);
+    //   「本年合计」在 DTO 里没有对应字段(见 blocked),所以 sub 空着也没有第二个金额可放。
+    sub: r.note ?? undefined,
+    pill: r.tenantId == null
+      ? { text: '未绑定', tone: 'warn' }
+      : r.source !== 'seed'
+        ? { text: '手动', tone: 'info' }
+        : null,
+  }
+}
 </script>
 
 <template>
@@ -141,6 +180,16 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
         <component :is="iconFor('pencil')" :size="16" />编辑模式
       </button>
     </div>
+
+    <!-- S 档浏览态:卡列(整卡点击 = 桌面点租户名的同一条动线 bindRow → S10BindDrawer) -->
+    <FPWideCards
+      v-else-if="tier === 's' && !edit"
+      :rows="props.rows"
+      :row-key="'id'"
+      :fields="s10Card"
+      :density="88"
+      @row-click="emit('bindRow', $event)"
+    />
 
     <table v-else class="s10-table">
       <thead>
@@ -353,7 +402,8 @@ tr.row-flash td { animation: s10-row-flash var(--dur-highlight) var(--ease-stand
   .s10-del { opacity:.55; }
 }
 
-/* ── S 档(≤600,§5.3 查看优先):sticky 收敛只留首列(租户名)+表头——桌面左右双 sticky
+/* ── S 档(≤600)**编辑态**的表格(浏览态已换成 FPWideCards 卡列,见 <script> s10Card):
+   sticky 收敛只留首列(租户名)+表头——桌面左右双 sticky
    共 316px(188+128)在 390px 视口会占满可视区(实测教训)。合计列**原位退成普通列**:
    列序/列宽不动,只摘横向钉扎;表头/表脚的纵向 sticky(top/bottom)照旧。
    本表 sticky 全写在 CSS 类上(非内联 style),媒体块直接盖得住,

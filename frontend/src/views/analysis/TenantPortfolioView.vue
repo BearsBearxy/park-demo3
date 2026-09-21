@@ -23,8 +23,16 @@ import { contractStatusOf, contractStatusColor } from '@/components/fp/contractS
 import { buildBoxRows, buildPareto, buildStripPoints, type BoxRow } from './TenantPortfolio.logic'
 import { canReach } from '@/nav/navAccess'
 import { useAuthStore } from '@/stores/auth'
+import { useViewport } from '@/composables/useViewport'
 
 const auth = useAuthStore()
+
+// S 档(≤600)几何分支:帕累托 x 标签隔标 / 7 列表换两行行卡 / 三块进折叠,只在这一档生效,>600 原样。
+// 判视口而不判容器宽:真版式与骨架是同一处 v-if 的两支,容器挂载后才量得到,首帧按桌面几何画一遍会跳。
+const { tier } = useViewport()
+const isS = computed(() => tier.value === 's')
+// 「更多分析」折叠(S 档才存在,见 scoped .ak-foldbar):条排在折叠内容之上,展开只往下长。
+const moreOpen = ref(false)
 
 const loaded = ref(false)
 const err = ref('')
@@ -84,7 +92,16 @@ const paretoOption = computed<object>(() => {
     grid: { left: 46, right: 46, top: 30, bottom: 64 },
     legend: { top: 0 },
     tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (v == null ? '—' : (v as number).toFixed(1) + '%') },
-    xAxis: { type: 'category', data: p.names, axisLabel: { rotate: 38, fontSize: 11, width: 72, overflow: 'truncate' } },
+    // S 档减标签不减柱:20 根柱在 336 上每根 15px,柱本身看得清;糊的是 20 个斜排租户名。
+    // interval:3 = 每 4 个出 1 个(第 1 / 5 / 9 / 13 / 17 根),柱一根不减,累计折线与右轴照旧。
+    // hideOverlap 显式关掉 —— 不关的话 AnaEChart 的 mobilizeOption 会补 true,再从这 5 个里隐掉几个,
+    // 「隔 4 标」就变成了「看它心情」。宽度收到 56:5 个标签在 336 上互不压。
+    xAxis: {
+      type: 'category', data: p.names,
+      axisLabel: isS.value
+        ? { rotate: 38, fontSize: 11, width: 56, overflow: 'truncate', interval: 3, hideOverlap: false }
+        : { rotate: 38, fontSize: 11, width: 72, overflow: 'truncate' },
+    },
     yAxis: [
       { type: 'value', axisLabel: { formatter: '{value}%' } },
       { type: 'value', min: 0, max: 100, axisLabel: { formatter: '{value}%' }, splitLine: { show: false } },
@@ -186,6 +203,9 @@ const boxRows = computed<BoxRow[]>(() =>
   buildBoxRows(boxGroups.value.map((g) => ({ name: g.name, values: g.items.map((i) => i.v) })), boxDiv.value))
 const stripPts = computed(() => buildStripPoints(boxGroups.value, boxDiv.value))
 const boxUnit = computed(() => (boxMode.value === 'rent' ? '万' : '㎡'))
+// 合同份数最多的那一组 —— 只是从 boxRows 里挑一行,n / 中位都是 buildBoxRows 早算完、
+// 中位横线 tooltip 早在印的数(:197)。手机上整条悬停拿不到,常驻读数句替它说一遍。
+const boxTop = computed<BoxRow | undefined>(() => boxRows.value.reduce((a, b) => (b.n > a.n ? b : a), boxRows.value[0]))
 const boxOption = computed<object>(() => ({
   grid: { left: 56, right: 18, top: 16, bottom: 26 },
   tooltip: {
@@ -261,7 +281,7 @@ const listRows = computed(() => {
     </template>
 
     <!-- 首进:版式已知就不转圈(C6-01)。图块高 = 该图 :height 字面值(帕累托 300 · 环 300 · 箱点 250;走 AnaSkelChart,与图同一张 S 档降档表),
-         卡头 20(+ .av2-card-h 下距 8 = 28)。非图块按它顶替的那块留白:环下期区清单 4 行 ×25 + gap
+         卡头 20(+ .av2-card-h 下距 8 = 28),读数句 20(.ana-read 上距 8)+ 参照小字 20(.ana-ref 上距 2)。非图块按它顶替的那块留白:环下期区清单 4 行 ×25 + gap
          (.tp2-dl :341)、续约风险空态(.ana-empty 上下各 44)、生命周期 5 行 ×20 + 4 × gap 14 = 156(行高 = .ak-bar-name / .ak-bar-val 的行盒 20:
          base.css:19 line-height var(--lh-snug),ana.css:59/63 不覆写;轨道 8 比它矮;gap 见 ana.css:57)、
          租户清单 LIST_N=12 行 ×38 + 表头 30(.ak-tbl td height 38;表头 = 行盒 20 + padding-bottom 9 + 下边框 1)。数据到了原地硬切,不做淡入、不错峰。 -->
@@ -276,6 +296,8 @@ const listRows = computed(() => {
             <span class="hint">Top <span class="ana-hole">00</span> 户(共 <span class="ana-hole">000</span> 户) · 柱=占比 · 线=累计</span>
           </div>
           <AnaSkelChart :height="300" />
+          <p class="ana-read"><span class="ana-hole">第 1 位 00.0%,前 5 位合计 00.0%</span></p>
+          <p class="ana-ref"><span class="ana-hole">共 000 户 · 占月租金总额</span></p>
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">期区结构</span><span class="hint">按月租金<span class="hint-desk"> · 点扇区过滤下方清单</span><span class="hint-touch"> · 点扇区过滤下方清单</span></span></div>
@@ -286,7 +308,7 @@ const listRows = computed(() => {
             </button>
           </div>
         </div>
-        <div class="av2-card av2-s8">
+        <div class="av2-card av2-s8 tp-more" :class="{ 'is-open': moreOpen }">
           <div class="av2-card-h">
             <span class="t">合同{{ boxMode === 'rent' ? '月租' : '面积' }}分布(按期区)</span>
             <span class="hint">
@@ -299,8 +321,10 @@ const listRows = computed(() => {
             </span>
           </div>
           <AnaSkelChart :height="250" />
+          <p class="ana-read"><span class="ana-hole">合同最多的一期 00 份,中位 00.00 万</span></p>
+          <p class="ana-ref"><span class="ana-hole">画得出来的生效合同 · 各期区分组 · 单位万</span></p>
         </div>
-        <div class="av2-card av2-s4">
+        <div class="av2-card av2-s4 tp-more" :class="{ 'is-open': moreOpen }">
           <div class="av2-card-h"><span class="t">续约风险</span><span class="hint">剩余天数 × 月租金 · 依赖合同起止日期</span></div>
           <!-- 整块隐形:空态句里的份数还不知道,不能先摆一个假数上屏 -->
           <div class="ana-hole" aria-hidden="true">
@@ -310,17 +334,25 @@ const listRows = computed(() => {
               to="/contracts" toText="去合同管理补录" />
           </div>
         </div>
-        <div class="av2-card av2-s4">
+        <div class="av2-card av2-s4 tp-more" :class="{ 'is-open': moreOpen }">
           <div class="av2-card-h"><span class="t">合同生命周期</span><span class="hint">全部合同分布</span></div>
           <div class="fp-shim" style="height: 156px"></div>
         </div>
-        <div class="av2-card av2-s8">
+        <div class="av2-card av2-s8 tp-list">
           <div class="av2-card-h">
             <span class="t">租户清单</span>
             <span class="hint">按月租金降序 · 前 <span class="ana-hole">00</span> 户 · 累计=已展示项</span>
           </div>
-          <div class="fp-shim" style="height: 486px"></div>
+          <!-- 两档两个字面高:S 档是 12 张 56 高的行卡 = 672;>600 仍是 12 行 ×38 + 表头 30 = 486。
+               骨架块高门禁读的是源码里字面的 height: NNNpx,绑成变量就扫不到,所以两支各写一份。 -->
+          <div v-if="isS" class="fp-shim" style="height: 672px"></div>
+          <div v-else class="fp-shim" style="height: 486px"></div>
         </div>
+        <button v-if="isS" type="button" class="ak-foldbar" disabled tabindex="-1">
+          <b>更多分析</b>
+          <span class="sub">合同月租分布 · 续约风险 · 合同生命周期</span>
+          <span class="n">3 块</span>
+        </button>
       </div>
     </div>
     <!-- skel:end -->
@@ -352,6 +384,8 @@ const listRows = computed(() => {
             <span class="hint">Top {{ Math.min(PAR_N, shares.length) }} 户(共 {{ shares.length }} 户) · 柱=占比 · 线=累计</span>
           </div>
           <AnaEChart :option="paretoOption" :height="300" />
+          <p class="ana-read hold"><template v-if="shares.length >= 5">第 1 位 {{ shares[0].share.toFixed(1) }}%,前 5 位合计 {{ top5Share }}%</template></p>
+          <p class="ana-ref hold"><template v-if="shares.length >= 5">共 {{ shares.length }} 户 · 占月租金总额</template></p>
         </div>
 
         <!-- 期区结构环(点扇区→下方清单过滤) -->
@@ -370,7 +404,7 @@ const listRows = computed(() => {
         </div>
 
         <!-- 租金分布散点带(对数轴,按期区;点=每份合同) -->
-        <div class="av2-card av2-s8">
+        <div class="av2-card av2-s8 tp-more" :class="{ 'is-open': moreOpen }">
           <div class="av2-card-h">
             <span class="t">合同{{ boxMode === 'rent' ? '月租' : '面积' }}分布(按期区)</span>
             <span class="hint">
@@ -390,10 +424,13 @@ const listRows = computed(() => {
             label="合同租赁面积未录入(rent_area 全部为 0)"
             hint="补录合同面积后,此处按期区呈现面积分布散点带"
             to="/contracts" toText="去合同管理补录" />
+          <!-- 面积模式全 0 走空态时 boxRows 为空 → boxTop 为 undefined,两句自己闭嘴,不必再包一层 template -->
+          <p class="ana-read hold"><template v-if="boxTop">合同最多的{{ boxTop.name }} {{ boxTop.n }} 份,中位 {{ boxTop.stats[2] }}{{ boxUnit }}</template></p>
+          <p class="ana-ref hold"><template v-if="boxTop">画得出来的生效合同 · 各期区分组 · 单位{{ boxUnit }}</template></p>
         </div>
 
         <!-- 续约风险 → 空态保留(合同日期未录) -->
-        <div class="av2-card av2-s4">
+        <div class="av2-card av2-s4 tp-more" :class="{ 'is-open': moreOpen }">
           <div class="av2-card-h"><span class="t">续约风险</span><span class="hint">剩余天数 × 月租金 · 依赖合同起止日期</span></div>
           <AnaEmpty
             label="合同起止日期未录入,无法评估到期与续约风险"
@@ -402,7 +439,7 @@ const listRows = computed(() => {
         </div>
 
         <!-- 合同生命周期 -->
-        <div class="av2-card av2-s4">
+        <div class="av2-card av2-s4 tp-more" :class="{ 'is-open': moreOpen }">
           <div class="av2-card-h"><span class="t">合同生命周期</span><span class="hint">全部合同分布</span></div>
           <AnaBarRows>
             <div v-for="l in lifeCounts" :key="l.label" class="ak-bar-row">
@@ -414,7 +451,7 @@ const listRows = computed(() => {
         </div>
 
         <!-- 租户清单(环图联动过滤) -->
-        <div class="av2-card av2-s8">
+        <div class="av2-card av2-s8 tp-list">
           <div class="av2-card-h">
             <span class="t">
               租户清单
@@ -425,6 +462,10 @@ const listRows = computed(() => {
             </span>
             <span class="hint">按月租金降序 · 前 {{ Math.min(LIST_N, filteredShares.length) }} 户 · 累计=已展示项</span>
           </div>
+          <!-- S 档换两行行卡:7 列 × 80 = 560 > 336,整块横向溢出。7 个字段一个不少、不折叠不省略号 ——
+               第一行 序号 + 租户名 ——右端—— 月租金(万,主字段);第二行 期区 · 主楼栋 ——右端—— 占比 · 累计 · 合同数。
+               行高 56,12 行 = 672(骨架按这个数分档)。占比条 .ak-inbar 是表格列宽里的东西,行卡上只留数字。 -->
+          <template v-if="!isS">
           <table class="ak-tbl">
             <thead><tr><th>租户</th><th>期区</th><th>月租金(万)</th><th>占比</th><th>累计</th><th>合同数</th><th>主楼栋</th></tr></thead>
             <tbody>
@@ -439,8 +480,23 @@ const listRows = computed(() => {
               </tr>
             </tbody>
           </table>
+          </template>
+          <div v-else class="tp-rows">
+            <div v-for="t in listRows" :key="t.name" class="tp-rc">
+              <div class="r1"><span class="rk">{{ t.rank }}</span><span class="nm">{{ t.name }}</span><span class="v mono">{{ (t.rent / 10000).toFixed(1) }} 万/月</span></div>
+              <div class="r2"><span>{{ phaseName(t.phase) }} · {{ t.primaryBuilding || '—' }}</span><span class="mono">占 {{ t.share.toFixed(1) }}% · 累计 {{ t.cum.toFixed(0) }}% · {{ t.contractCount }} 份</span></div>
+            </div>
+          </div>
           <div v-if="!listRows.length" class="tp2-none">该期区暂无有月租金的租户</div>
         </div>
+
+        <!-- S 档「更多分析」:合同月租分布 / 续约风险 / 合同生命周期三块默认收起。
+             条与三块的先后靠 S 档 order 排(见 scoped),DOM 序不动 —— 桌面栅格零差异。 -->
+        <button v-if="isS" type="button" class="ak-foldbar" :aria-expanded="moreOpen" @click="moreOpen = !moreOpen">
+          <b>更多分析</b>
+          <span class="sub">合同月租分布 · 续约风险 · 合同生命周期</span>
+          <span class="n">{{ moreOpen ? '收起' : '3 块' }}</span>
+        </button>
       </div>
     </div>
   </AnaShell>
@@ -459,4 +515,32 @@ const listRows = computed(() => {
 .tp2-chip .x { border: none; background: transparent; cursor: pointer; color: var(--text-muted); font-size: 12px; padding: 0; line-height: 1; }
 .tp2-chip .x:hover { color: var(--text-primary); }
 .tp2-none { text-align: center; color: var(--text-disabled); font-size: var(--fs-label); padding: 18px 0; }
+/* 「更多分析」折叠条:桌面 display:none —— 不进栅格、不占位、零差异。S 档才长出来。 */
+.ak-foldbar { display: none; }
+@media (max-width: 600px) { /* S */
+  .ak-foldbar {
+    display: flex; align-items: center; gap: 8px; grid-column: 1 / -1; order: 2;
+    min-height: 44px; padding: 0 12px; box-sizing: border-box;
+    border: 1px solid var(--border-subtle); border-radius: 8px;
+    background: var(--surface-white); color: var(--text-primary);
+    font-family: var(--font-sans); font-size: var(--fs-label); cursor: pointer; text-align: left;
+  }
+  .ak-foldbar .sub { flex: 1 1 auto; min-width: 0; font-size: var(--fs-micro); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ak-foldbar .n { flex: 0 0 auto; font-size: var(--fs-micro); color: var(--text-muted); }
+  /* 阅读序:帕累托(av2-s8 的 order:-1 照旧) → 期区结构(0) → 租户清单 → 折叠条 → 折进去的三块。
+     清单与「合同月租分布」都是 av2-s8,都被 ana.css 排到了 order:-1;这里逐块钉死序号把它们分开,
+     同序号之间仍按 DOM 序(分布 → 续约 → 生命周期,正是折叠条副标列的顺序)。 */
+  .tp-list { order: 1; }
+  .tp-more { order: 3; display: none; }
+  .tp-more.is-open { display: block; }
+  /* 7 列表的 S 档行卡:两行、行高 56(12 行 = 672,与骨架 S 档那一支同数) */
+  .tp-rows { display: flex; flex-direction: column; }
+  .tp-rc { height: 56px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 0 2px; border-bottom: 1px solid var(--divider); }
+  .tp-rc .r1 { display: flex; align-items: center; gap: 8px; font-size: var(--fs-label); }
+  .tp-rc .r1 .rk { width: 18px; height: 18px; flex: 0 0 auto; border-radius: 6px; background: var(--surface-sunken); display: grid; place-items: center; font-size: var(--fs-micro); font-weight: var(--fw-semibold); color: var(--text-muted); font-family: var(--font-mono); }
+  .tp-rc .r1 .nm { flex: 1 1 auto; min-width: 0; color: var(--text-primary); font-weight: var(--fw-medium); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tp-rc .r1 .v { flex: 0 0 auto; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+  .tp-rc .r2 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: var(--fs-micro); color: var(--text-muted); }
+  .tp-rc .r2 > * { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
 </style>

@@ -107,6 +107,44 @@ describe('PvLedgerScatter 空态', () => {
   })
 })
 
+// 手机体验稿 §④:原来 SQ 写死 300,改成量容器宽取 min(容器宽, 300)。
+// 桌面(容器 ≥ 300)这一档的每个数都钉住 —— 拆固定宽不许动到桌面一个像素。
+describe('PvLedgerScatter 画布宽', () => {
+  const clientWidth = (v: number) =>
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => v })
+  afterEach(() => { clientWidth(0) })
+
+  it('❗容器 ≥ 300:300×334,绘图区 248,对角线上那句还在 (186.3, 140)', () => {
+    clientWidth(792)
+    const w = mount(PvLedgerScatter, { props: { data: withPoints() } })
+    const svg = w.find('svg.pls-svg')
+    expect([attr(svg, 'width'), attr(svg, 'height'), attr(svg, 'viewBox')]).toEqual(['300', '334', '0 0 300 334'])
+    expect(num(w.find('.pls-axl-x'), 'x2') - num(w.find('.pls-axl-x'), 'x1')).toBe(P)
+    const lbl = w.findAll('text.pls-ax').find(t => t.text() === '虚线 = 两者相等')!
+    expect([attr(lbl, 'x'), attr(lbl, 'y')]).toEqual(['186.3', '140'])
+    const xt = w.findAll('text.pls-ax').find(t => t.text().startsWith('板数'))!
+    expect([attr(xt, 'x'), attr(xt, 'y')]).toEqual([String(PL + P), String(B + 30)])
+    const yt = w.findAll('text.pls-ax').find(t => t.text().startsWith('台账'))!
+    expect([attr(yt, 'x'), attr(yt, 'y')]).toEqual([String(PL - 6), String(PT + 10)])
+    expect(w.find('.pls').classes()).not.toContain('pls-narrow')
+  })
+
+  it('❗容器 280:画布跟着收到 280×314,绘图区还是正方 228,右栏改到图下面', async () => {
+    clientWidth(280)
+    const w = mount(PvLedgerScatter, { props: { data: withPoints() } })
+    await nextTick()
+    const svg = w.find('svg.pls-svg')
+    expect([attr(svg, 'width'), attr(svg, 'viewBox')]).toEqual(['280', '0 0 280 314'])
+    const ax = w.find('.pls-axl-x'), ay = w.find('.pls-axl-y')
+    expect(num(ax, 'x2') - num(ax, 'x1')).toBe(228)
+    expect(num(ay, 'y2') - num(ay, 'y1')).toBe(228)
+    // 轴字不出画布:x 轴标题右端贴着绘图区右缘,左端还在 0 以内
+    const xt = w.findAll('text.pls-ax').find(t => t.text().startsWith('板数'))!
+    expect(num(xt, 'x')).toBe(40 + 228)
+    expect(w.find('.pls').classes()).toContain('pls-narrow')
+  })
+})
+
 // 2026-09-16 行为矩阵:只经段控进来的图 —— 挂载时视口内点组擦入 320;换期不重挂,点按栋 200 形变,带跟量程形变
 describe('PvLedgerScatter 动效', () => {
   const inView = () => {

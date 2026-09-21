@@ -16,6 +16,7 @@ import { cpMeterApi, type CpStationDTO, type CpPowerUsageDTO } from '@/api/cpMet
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useFormSheet } from '@/composables/useFormSheet'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
 import { useDeepPeriod } from '@/composables/useDeepPeriod'
@@ -44,6 +45,8 @@ import { buildCpMeterTemplate, exportCpMeterMonth } from '@/utils/cpMeterExcel'
 
 const props = defineProps<{ vehicleType: 'car' | 'ebike' }>()
 const auth = useAuthStore()
+// 新增充电桩弹卡带输入 → S 档全屏 sheet(styles/form-sheet.css)
+const sheet = useFormSheet()
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const num = (s: string) => { const n = Number(s); return isFinite(n) ? n : 0 }
@@ -759,13 +762,13 @@ async function onTemplate() {
     </FPDrawer>
 
     <!-- 新增充电桩轻量弹窗(类型默认当前屏,可改) -->
-    <div v-if="stationDlg" class="cm-mask" @mousedown="stationDlg = false">
+    <div v-if="stationDlg" class="cm-mask" :class="{ 'fp-fsheet': sheet }" @mousedown="stationDlg = false">
       <div class="cm-dlg" @mousedown.stop>
         <div class="cm-dlg-h">
           <h3>新增充电桩</h3>
           <p>按桩(站)新增;类型默认当前屏,桩名全局唯一。桩名/运营商之后可在编辑模式下行内修改。</p>
         </div>
-        <div class="cm-dlg-b">
+        <div class="cm-dlg-b fp-fsheet-bd">
           <Input v-model="stForm.name" label="桩名" placeholder="如:快充2" size="sm" />
           <div class="cm-dlg-row">
             <Input v-model="stForm.operator" label="运营商" placeholder="如:小桔" size="sm" />
@@ -775,7 +778,7 @@ async function onTemplate() {
           </div>
           <div class="cm-dlg-err">{{ stErr }}</div>
         </div>
-        <div class="cm-dlg-f">
+        <div class="cm-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="stationDlg = false">取消</Button>
           <Button variant="filled" size="sm" @click="submitStation">
             <template #leading><component :is="iconFor('check')" :size="14" /></template>

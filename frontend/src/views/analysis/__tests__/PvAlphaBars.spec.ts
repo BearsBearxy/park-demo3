@@ -244,3 +244,38 @@ describe('PvAlphaBars · 动效', () => {
     expect(px(s, '--x')).not.toBe(129)
   })
 })
+
+// 2026-09-20 手机版(PvCharts2 稿 §7):判容器宽,不判视口宽 —— 这张图也出现在桌面 .av2-s4 窄栏里。
+// 几何换档,字号不动、不整幅缩放。上面所有断言跑在 jsdom 初值 496(桌面档),与本组改前逐个常量一致。
+describe('PvAlphaBars · 窄容器换几何', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('❗容器 360:行高 22→30、绘图区起点 66→76、高 = n×30+14、条的点击框撑满整行 30', async () => {
+    vi.spyOn(Element.prototype, 'clientWidth', 'get').mockReturnValue(360)
+    const w = mountIt()
+    await nextTick()
+    const plot = w.find('.pab-plot').attributes('style') ?? ''
+    expect(plot).toContain('--pab-row-h: 30px')
+    expect(plot).toContain('--pab-name-w: 68px')          // 栋名列右缘 58→68,绘图区 +8 = 76
+    expect(plot).toContain('--pab-hit-t: 0px')
+    expect(plot).toContain('--pab-hit-h: 30px')           // 触点 ≥ 30
+    expect(px(plot, 'height')).toBe(7 * 30 + 14)
+    expect(px(w.findAll('.pab-tick')[0].attributes('style'), 'left')).toBe(76)
+    expect([8, 5, 9].map(id => Number(/translateY\((-?[\d.]+)px\)/.exec(row(w, id).attributes('style') ?? '')?.[1])))
+      .toEqual([0, 30, 60])
+    // 不许整幅缩放,字号也没人改
+    expect(w.html()).not.toMatch(/scale\(|preserveAspectRatio/)
+  })
+
+  it('❗420 是门槛:容器 420 还是桌面几何,419 才换', async () => {
+    vi.spyOn(Element.prototype, 'clientWidth', 'get').mockReturnValue(420)
+    const wide = mountIt()
+    await nextTick()
+    expect(wide.find('.pab-plot').attributes('style')).toContain('--pab-row-h: 22px')
+    vi.restoreAllMocks()
+    vi.spyOn(Element.prototype, 'clientWidth', 'get').mockReturnValue(419)
+    const nar = mountIt()
+    await nextTick()
+    expect(nar.find('.pab-plot').attributes('style')).toContain('--pab-row-h: 30px')
+  })
+})

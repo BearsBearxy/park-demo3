@@ -55,6 +55,11 @@ const isSel = (r: any) => props.selectedKey != null && r[props.rowKey] === props
 // useViewport 自带 jsdom/SSR guard(无 matchMedia → tier 恒 'xl'),既有测试走表格分支不变。
 const { tier } = useViewport()
 
+// M 档(601–960)横向留白 16 → 10(TabletContent §① delta 行5:7 列 × 12px × 2 = 省 84px,
+// 省出来的宽用来保住列数——平板上一列都不删)。判定只能进 JS:td/th 的 padding 是内联样式,
+// 媒体查询盖不住(同 FPLedgerTable sticky 的理由)。L/XL 保持 16,S 走下面的卡片分支不用 td。
+const cellPadX = computed(() => (tier.value === 'm' ? '10px' : '16px'))
+
 // S 档兜底卡取列内容:与 td 同一取值路径(render 优先,否则按 key 取),列不够时给 null
 function cellNode(r: any, i: number) {
   const c = props.columns[i]
@@ -176,7 +181,8 @@ function renderSortHeader(col: SortableColumn) {
             :key="c.key"
             :style="{
               width: c.width,
-              padding: '0 16px 10px',
+              /* 与 td 同档收窄,否则 M 档表头与表体列不对齐 */
+              padding: `0 ${cellPadX} 10px`,
               textAlign: c.align || 'left',
               font: 'var(--type-label)',
               fontWeight: 'var(--fw-regular)',
@@ -196,7 +202,7 @@ function renderSortHeader(col: SortableColumn) {
           :style="{ height: 'var(--mx-row-h, 56px)', borderBottom: '1px solid var(--divider)' }"
         >
           <td v-for="(c, ci) in columns" :key="c.key"
-              :style="{ padding: '0 16px', verticalAlign: 'middle', textAlign: c.align || 'left' }">
+              :style="{ padding: `0 ${cellPadX}`, verticalAlign: 'middle', textAlign: c.align || 'left' }">
             <span class="fp-shim" aria-hidden="true"
                   :style="{ display: 'inline-block', height: '11px', borderRadius: '3px',
                             width: [62, 44, 54, 38, 48, 58][(ci + i) % 6] + '%' }"></span>
@@ -223,7 +229,7 @@ function renderSortHeader(col: SortableColumn) {
             :title="c.render ? undefined : String((r as any)[c.key] ?? '')"
             :style="{
               /* 等高铁律(LIST-PAGE-SPEC §4):垂直留白由 tr 定高提供(--mx-row-h),td 不吃上下 padding */
-              padding: '0 16px',
+              padding: `0 ${cellPadX}`,
               verticalAlign: 'middle',
               textAlign: c.align || 'left',
               font: 'var(--type-body)',

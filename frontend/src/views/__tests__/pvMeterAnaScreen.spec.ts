@@ -612,7 +612,15 @@ describe('光伏分栋分析 · 主卡:刻度、事实句与判据脚', () => {
     expect(rule('.pma-b2-r')).toMatch(/overflow:\s*hidden/)
     expect(rule('.pma-b2-r')).toMatch(/white-space:\s*nowrap/)
     expect(css).not.toMatch(/flex-wrap:\s*wrap/)
-    expect(rule('.pma-nochart')).toMatch(/height:\s*260px/)
+    // 占位块的高不再写死在 CSS 里 —— 它按档跟着 PvDayChart 的画布走(桌面 236 → 260,窄档 200 → 224)。
+    // 原来钉 CSS 文本那句有个毛病:写死多少它都绿,窄档对不上也看不出来(2026-09-20 对抗复查抓到:
+    // 窄档真版式只有 224,而这句一直绿着)。改成钉「两档的值都在,且同一处下发」。
+    const pvSrc = readFileSync(join(__dirname, '..', 'analysis', 'PvMeterAnaView.vue'), 'utf8')
+    expect(pvSrc, '两档的高必须都在,且从同一处下发').toMatch(/narrow\.value \? '224px' : '260px'/)
+    // 判据必须是容器宽,不是视口档 —— 图自己看的就是容器宽,两边用不同判据会在视口 488–600 分叉。
+    expect(pvSrc, '占位块的档位判据要与图同源(容器宽)').toMatch(/mainW\.value < 420/)
+    expect(pvSrc, '这个文件不该再按视口档判大图那块的高').not.toMatch(/tier\.value === 's' \? '2\d\dpx'/)
+    expect(rule('.pma-nochart'), '高度改成内联下发后,CSS 里不该再留一个写死的高').not.toMatch(/height:\s*\d/)
     const w = await mountScreen()
     expect(w.findAll('.pma-b2 > .pma-b2-r')).toHaveLength(2)
     await pickFirstFolded(w)

@@ -18,6 +18,7 @@ import {
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useFormSheet } from '@/composables/useFormSheet'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
 import { S } from '@/utils/lockScopes'
@@ -40,6 +41,8 @@ import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 import { ELEC_FEE_LABEL, ELEC_SUB_LABEL, elecFeeLabel } from '@/utils/elecCostExcel'
 
 const auth = useAuthStore()
+// 新增电表弹卡带输入 → S 档全屏 sheet(styles/form-sheet.css)
+const sheet = useFormSheet()
 // RBAC:费项/表名录入是 entry;电价参数是计费口径,归 param-policy(simulate 会写 price-cfg,同门)
 const canEntry = computed(() => auth.can('entry:edit'))
 const canPrice = computed(() => auth.can('param-policy:edit'))
@@ -784,18 +787,18 @@ function fmtMetric(mt: ElecMetricDTO): string {
     </Card>
 
     <!-- 新增电表轻量弹窗(仅编辑态入口) -->
-    <div v-if="meterDlg" class="ec-mask" @mousedown="meterDlg = false">
+    <div v-if="meterDlg" class="ec-mask" :class="{ 'fp-fsheet': sheet }" @mousedown="meterDlg = false">
       <div class="ec-dlg" @mousedown.stop>
         <div class="ec-dlg-h">
           <h3>新增电表</h3>
           <p>类型决定可录费项:总表 5 费项 / 宿舍 用电费用 / 运营性 费用+分摊。建表后有数据不可改类型。</p>
         </div>
-        <div class="ec-dlg-b">
+        <div class="ec-dlg-b fp-fsheet-bd">
           <Input v-model="mForm.name" label="电表名称" placeholder="如:充电桩总表" size="sm" />
           <Select v-model="mForm.kind" label="类型" :options="KIND_OPTS" size="sm" />
           <div class="ec-dlg-err">{{ mErr }}</div>
         </div>
-        <div class="ec-dlg-f">
+        <div class="ec-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="meterDlg = false">取消</Button>
           <Button variant="filled" size="sm" @click="submitMeter">
             <template #leading><component :is="iconFor('check')" :size="14" /></template>

@@ -6,6 +6,9 @@ import { computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedNoteCell from '@/components/sched/SchedNoteCell.vue'
+import FPWideCards, { type WideCard } from '@/components/fp/FPWideCards.vue'
+import { useViewport } from '@/composables/useViewport'
+import { finMoney } from '@/utils/finFmt'
 import type { SalaryRecordDTO, SalaryTotal } from '@/types/salary'
 
 const props = defineProps<{
@@ -23,6 +26,8 @@ const emit = defineEmits<{
   // 批量删除选择(seed/manual/import 同等可选)
   'toggleSelect': [row: SalaryRecordDTO]
   'selectAll': [checked: boolean]
+  // S 档点卡:整行交给父开只读明细抽屉(宽档无此动线,桌面点行本来就什么都不做)
+  'row': [row: SalaryRecordDTO]
 }>()
 
 // 数字格式(1:1 from jsx wNum):空值显「—」
@@ -33,6 +38,32 @@ const allSelected = computed(() =>
   props.rows.length > 0 &&
   props.rows.every(r => props.selectedIds?.has(r.id)),
 )
+
+// ── S 档(≤600)行→卡片:RESPONSIVE-LAYOUT-SPEC §5.3 卡片名单含「工资」,
+//    WideCardVariants 板 §3 判本表为「标准 88」。宽档的 <table> 原样保留在下面的 v-else。
+//    jsdom/SSR 无 matchMedia → tier 恒 'xl',既有桌面断言照旧走表格分支。
+const { tier } = useViewport()
+
+/**
+ * 稿 §3 给附表12 的四个字段 → SalaryRecordDTO 字段名(逐个在 types/salary.ts 与本表表头核过):
+ *   姓名     = r.name    表头「姓名」
+ *   应发合计 = r.gross   表头「应发工资」(后端派生 wageTotal+lunch+heat+commission)
+ *   实发     = r.net     表头「实发金额」(后端派生 gross-deduct)
+ *   扣款合计 = r.deduct  「代缴代扣」组的合计(后端派生 social+tax+otherDeduct);本表 tbody
+ *                        里没有这一格(只逐项列 社保/上月个税/其他),值取 DTO 的派生列
+ *
+ * 扣款走 sub 的第二句、**不画 pill**:pill 是状态胶囊(ok/warn/info 三色语义),
+ * 把一个金额塞进去会被读成「扣款是一种状态」。本行唯一的真状态列是签收(r.sign),
+ * 但稿的四字段里没有它,不替换、不加塞 —— 整行的其余 14 根列在点开的明细抽屉里看。
+ * 金额用 finMoney:¥ 前缀 + 2 位小数 + U+2212 负号(卡片模板硬条件④)。
+ */
+function card(r: SalaryRecordDTO): WideCard {
+  return {
+    name: r.name,
+    amount: finMoney(r.gross),
+    sub: `实发 ${finMoney(r.net)} · 扣款 ${finMoney(r.deduct)}`,
+  }
+}
 </script>
 
 <template>
@@ -47,6 +78,20 @@ const allSelected = computed(() =>
         新增工资
       </Button>
     </div>
+
+    <!-- S 档**查看态**卡列(§5.3 查看优先):整卡一个点击目标 → 只读明细抽屉看整行。
+         编辑态回落原表 —— 全选框(:122)/逐行勾选(:150)/备注直编(:203)/行删除(:206)
+         在只读卡上一个都没有位置,而本屏没有「按表格查看」那条退路(台账才有),
+         少判一个 !edit 就等于手机上进编辑模式后这四件整体不可达。
+         宽档一个像素不动,走下面的 v-else 原表。 -->
+    <FPWideCards
+      v-else-if="tier === 's' && !edit"
+      :rows="rows"
+      row-key="id"
+      :fields="card"
+      :density="88"
+      @row-click="emit('row', $event)"
+    />
 
     <table v-else class="s12-table">
       <thead>

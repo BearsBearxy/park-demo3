@@ -6,6 +6,8 @@
 //   · KPI:期末借合计/期末贷合计/平衡差(非0红,0显「已平」)/科目数。
 import { ref, computed } from 'vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
+import FPWideCards, { type WideCard } from '@/components/fp/FPWideCards.vue'
+import { useViewport } from '@/composables/useViewport'
 import type { ReportCell } from '@/types/report'
 import { TB_FIELDS, tbTotals, tbBalanceDiff, visibleRows, type TbAccount, type TbAmounts, type TbFieldKey } from '@/reports/trialBalance'
 import { parserProps } from '@/utils/importRegistry'
@@ -21,6 +23,7 @@ import FPToast from '@/components/fp/FPToast.vue'
 import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFinStatementScreen } from '@/components/fin/useFinStatementScreen'
+import { useFormSheet } from '@/composables/useFormSheet'
 import FinDialogs from '@/components/fin/FinDialogs.vue'
 import FpImportModal from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
@@ -84,11 +87,15 @@ const liveOf = (rowKey: string, field: TbFieldKey): number | string => {
 }
 
 // ── 折叠/搜索行 + 合计/KPI ────────────────────────────────
-const parents = computed(() => {
-  const s = new Set<string>()
-  for (const a of accounts.value) if (a.parentKey != null) s.add(a.parentKey)
-  return s
+// 每个父节点的直接子级数。改前这里只攒一个 parents 集合(有没有下级);S 档卡片上没有 ▸ 箭头,
+// 末行要标「下级 N」才知道这张卡点得开,于是同一趟循环顺手数个数,parents 由它的键推出 ——
+// 判定与改前逐字等价(parentKey 非空的键都算父)。
+const childCount = computed(() => {
+  const m = new Map<string, number>()
+  for (const a of accounts.value) if (a.parentKey != null) m.set(a.parentKey, (m.get(a.parentKey) ?? 0) + 1)
+  return m
 })
+const parents = computed(() => new Set(childCount.value.keys()))
 const rows = computed(() => visibleRows(accounts.value, expanded.value, query.value))
 function toggle(rowKey: string) {
   const next = new Set(expanded.value)
@@ -96,6 +103,40 @@ function toggle(rowKey: string) {
   else next.add(rowKey)
   expanded.value = next
 }
+
+// ── S 档 行→卡片(稿 ReportPhone §2 表第3行:标准 88 档;6 根数值列的 B 级宽表) ──
+// 只在**查看态**换卡片:卡片上没有输入格,而 §11.2(2026-08-30 用户拍板)写的是手机录入
+// 「不禁止、不隐藏、不优化」—— 所以编辑态继续渲原表(8 列行内录入 + TbTable 自己的首列 sticky),
+// 上面那行 .tb-s-hint 照旧荐桌面。jsdom 无 matchMedia → tier 恒 'xl',桌面与既有测试零差异。
+const editable = computed(() => edit.value && !isAll.value)
+const { tier } = useViewport()
+const asCards = computed(() => tier.value === 's' && !editable.value)
+
+// 卡面字段,逐个标明来自 TbTable 的哪一列:
+//   name   ← 科目代码列(colgroup 第 1 根)+ 科目名称列(第 2 根)
+//   amount ← 期末余额:TB_FIELDS 的 endDr(期末借方)非零取它,否则 endCr(期末贷方)
+//   pill   ← 这个数落在借方还是贷方。「期末借方/期末贷方」是 TB_FIELDS[].side 的表头字面,
+//            不是对数的定性;两方都是 0 的行不画胶囊。色调一律 info —— 源码里没有任何判据
+//            说借方余额比贷方余额「好」,用 ok/warn 就是凭空发明一个判定
+//   sub    ← 期初余额(openDr 非零取它,否则 openCr)+ 本期发生额借/贷(periodDr/periodCr);
+//            有下级的行再缀「下级 N」(childCount),卡片档没有 ▸,这个数是「点得开」的唯一提示
+function tbCard(r: TbAccount): WideCard {
+  const v = (f: TbFieldKey) => getLeaf(r.rowKey, f)
+  const endDr = v('endDr'), endCr = v('endCr')
+  const onDr = endDr !== 0
+  const openDr = v('openDr')
+  const kids = childCount.value.get(r.rowKey) ?? 0
+  return {
+    name: r.code ? `${r.code} ${r.label}` : r.label,
+    amount: finMoney(onDr ? endDr : endCr),
+    pill: endDr === 0 && endCr === 0 ? null : { text: onDr ? '期末借方' : '期末贷方', tone: 'info' },
+    sub: `期初 ${finMoney(openDr !== 0 ? openDr : v('openCr'))} · 本期借 ${finMoney(v('periodDr'))}`
+      + ` · 本期贷 ${finMoney(v('periodCr'))}` + (kids ? ` · 下级 ${kids}` : ''),
+  }
+}
+// 整卡点击 = 表上那颗 ▸(展开/收起下级)。折叠是本屏既有行为(spec C6 默认折叠到一级),
+// 卡片档不给它入口的话,手机上除了搜索再也看不到下级科目。叶子行点了不动。
+function onCardTap(r: TbAccount) { if (parents.value.has(r.rowKey)) toggle(r.rowKey) }
 
 // 实时金额面(服务端快照 + draft 覆盖),供合计/KPI/导出
 const effAmounts = computed<TbAmounts>(() => {
@@ -248,6 +289,11 @@ async function onExport() {
 // 那个整屏选择器随四层动线退场,门跟着搬到左栏管理区。
 const canManageCo = computed(() => useAuthStore().can('master:edit'))
 
+// ≤960 左轨收成顶部 chips 后,轨底那三颗管理钮收成一颗虚线 chip → 点开这个面板再选动作
+// (§5.6「S:选择器点开为全屏列表 sheet」)。壳复用 styles/form-sheet.css 的 .fp-fsheet,不新造组件。
+const manageOpen = ref(false)
+const sheet = useFormSheet()
+
 
 </script>
 
@@ -277,6 +323,16 @@ const canManageCo = computed(() => useAuthStore().can('master:edit'))
         </template>
       </BookRail>
     </aside>
+
+    <!-- ≤960 左轨收成顶部横向 chips(RESPONSIVE-LAYOUT-SPEC §5.6,照台账屏 LedgerView 范式):
+         选择语义与轨内点击同源 pickCompany;≥961 整行 display:none,桌面零变化(§9)。
+         轨底三颗管理钮收成最后一颗虚线 chip,点开面板再选动作——收轨不等于收权限,
+         同一道 master:edit 门不因收轨消失。 -->
+    <div class="finw-chips">
+      <button v-for="b in railItems" :key="b.id" class="finw-chip" :class="{ on: b.id === companyId }"
+              @click="pickCompany(b.id)">{{ b.name }}</button>
+      <button v-if="canManageCo" class="finw-chip mng" @click="manageOpen = true">管理</button>
+    </div>
 
     <div class="finw-main">
       <!-- 公司清单未到位 -->
@@ -399,18 +455,28 @@ const canManageCo = computed(() => useAuthStore().can('master:edit'))
         <span v-if="edit">编辑模式 · 小屏可录入,建议在桌面端操作</span>
       </div>
       <TbTable
+        v-if="!asCards"
         :rows="rows"
         :expanded="expanded"
         :parents="parents"
         :totals="totals"
         :value-of="valueOf"
-        :editable="edit && !isAll"
+        :editable="editable"
         :live-of="liveOf"
         :selected="selected"
         @toggle="toggle"
         @input="onInput"
         @remove="removeAccount"
         @select="toggleSelect"
+      />
+      <!-- S 档查看态:行→卡片(标准 88)。合计尾行不跟着走 —— 期末借/贷合计就在上面 KPI 那两张卡上 -->
+      <FPWideCards
+        v-else
+        :rows="rows"
+        row-key="rowKey"
+        :fields="tbCard"
+        :density="88"
+        @row-click="onCardTap"
       />
 
       <p class="fin-foot"><component :is="iconFor('info')" :size="13" />单位:元 · 合计行 = 一级科目逐列求和(下级明细已含在一级科目内);期末借方合计应等于期末贷方合计(试算平衡)。</p>
@@ -440,6 +506,38 @@ const canManageCo = computed(() => useAuthStore().can('master:edit'))
   <div v-else class="page-loading"><span class="page-spin" /></div>
     </div>
   </div>
+
+  <!-- ≤960 管理面板(§5.6:S 档选择器点开为全屏 sheet):虚线「管理」chip 的落点,
+       轨底三颗管理钮原样搬进来 —— 点 chip 只开面板,删除仍要在面板里再点一次、再过 FinDialogs 的确认。
+       壳复用 styles/form-sheet.css 那一套(S 档 .fp-fsheet 全屏、其余档居中卡),不新造面板组件。 -->
+  <Teleport to="body">
+    <div v-if="manageOpen" class="fin-mask" :class="{ 'fp-fsheet': sheet }" @mousedown="manageOpen = false">
+      <div class="fin-dlg" role="dialog" aria-modal="true" aria-label="管理公司" @mousedown.stop>
+        <!-- ⚠ ✕ 不是装饰:S 档挂上 .fp-fsheet 之后弹卡全屏,遮罩被它 100% 盖满,
+             「点外面关」没有「外面」可点;全文件也没有 Esc 处理。没这颗就只能靠
+             「点新增再取消」绕出去(2026-09-21 对抗复查抓到)。 -->
+        <div class="fin-dlg-h">
+          <h3>管理公司</h3>
+          <button type="button" class="finw-sheet-x" aria-label="关闭" @click="manageOpen = false">
+            <component :is="iconFor('x')" :size="18" />
+          </button>
+        </div>
+        <div class="finw-sheet-b fp-fsheet-bd">
+          <div class="finw-manage">
+            <button class="finw-mbtn" @click="manageOpen = false; onNewCompany()">
+              <component :is="iconFor('plus')" :size="13" />新增
+            </button>
+            <button class="finw-mbtn" :disabled="isAll || !company" @click="manageOpen = false; onEditCompany()">
+              <component :is="iconFor('pencil')" :size="13" />重命名
+            </button>
+            <button class="finw-mbtn del" :disabled="isAll || !company" @click="manageOpen = false; onDeleteCompany()">
+              <component :is="iconFor('trash-2')" :size="13" />删除
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 
   <!-- 公司弹窗(居中,自管 v-if),放最后 -->
   <FinDialogs
@@ -543,18 +641,10 @@ const canManageCo = computed(() => useAuthStore().can('master:edit'))
 /* S 档提示行:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前(§1) */
 .tb-s-hint { display:none; }
 
-/* ── S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5.3)── */
-@media (max-width: 600px) {
-  /* KPI repeat(4) 在 390 上每格 <90px,金额放不下——定两列(挂载即终态,不随内容抖) */
-  .fin-kpis { grid-template-columns:repeat(2, minmax(0,1fr)); }
-  /* 工具行弹性收窄:搜索框吃剩余宽、可被挤压。SearchField 宽度是 ds 组件内联 style 写死
-     (该组件不在本次改动范围),只能 !important 压过内联——作用域锁死 .tb-tools 内,
-     不外溢到其他搜索场景(先例:mx-list.css .mx-pagerbar 压 ds-pg-pill 内联) */
-  .tb-tools { flex:1 1 auto; min-width:0; }
-  .tb-tools :deep(.ds-searchfield) { width:auto !important; flex:1 1 120px; min-width:0; }
-  /* 宽表编辑荐桌面提示(§11.2 预留位):行常驻定高 20px,进出编辑只换文案不挪版 */
-  .tb-s-hint { display:flex; align-items:center; flex:0 0 20px; height:20px; font-size:12px; color:var(--hue-orange); }
-}
+/* ⚠ 本屏两个媒体块(960/600)挪到了**本文件末尾**(2026-09-21,§5.6 收左轨):窄档要盖的
+   .finw / .finw-rail 基础规则写在下面的「工作台外壳」段里,媒体块排在它们之前是**静默**失效
+   ——同特异性按源序,`.finw-rail{display:none}` 会被后面的 `.finw-rail{display:flex}` 盖回去。
+   两块的相对次序(960 在前、600 在后)与块内内容一字未动。 */
 
 /* 新增科目弹窗 — 1:1 FinDialogs .fin-mask/.fin-dlg(scoped 不跨组件,故本屏自带一份,遵 PAGE-BEHAVIOR-SPEC §2) */
 .fin-mask { position:fixed; inset:0; background:var(--scrim); z-index:300; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
@@ -613,4 +703,60 @@ const canManageCo = computed(() => useAuthStore().can('master:edit'))
 }
 .finw-empty .t { margin: 8px 0 0; font-size: 15px; font-weight: var(--fw-semibold); color: var(--text-muted); }
 .finw-empty .s { margin: 0; font-size: 12px; color: var(--text-disabled); }
+
+/* 顶部 chips:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前(§1) */
+.finw-chips { display:none; }
+/* 管理面板体(壳走 styles/form-sheet.css 的 .fp-fsheet,S 档全屏 sheet;此处只补内边距与触达高) */
+.finw-sheet-b { padding: 18px 22px 22px; }
+.fin-dlg-h:has(.finw-sheet-x) { display: flex; align-items: center; justify-content: space-between; }
+.finw-sheet-x { flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; }
+.finw-sheet-b .finw-mbtn { min-height: 44px; }
+
+/* ── M 档(≤960,RESPONSIVE-LAYOUT-SPEC §5.3):KPI 定两列。坏的是**标签**不是金额——
+   768 上 repeat(4) 每格 151,扣 .kc 的 padding 40 只剩 111 内容宽;
+   「试算平衡差(借−贷)」/「期末借方合计」≈98 + 图标 18 + 缝 8 = 124 > 111,
+   被 .kc-l 的 ellipsis 截断;而 ds/KpiCard 的 .kc-l 没有 :title(useFitDown 只管数值不管标签),
+   悬停也看不全——补缺陷不是偏好。(挂载即终态,不随内容抖;宽档规则在前 §1。) ── */
+@media (max-width: 960px) {
+  .fin-kpis { grid-template-columns:repeat(2, minmax(0,1fr)); }
+
+  /* 左轨收成顶部横向 chips(§5.6):几何 1:1 抄台账屏 LedgerView .lgw-chips 那一份 ——
+     chip 36 高 / radius-full / 行内横滚;选中态只换色不改尺寸(布局稳定铁律)。
+     208px 定宽轨在 390 视口占掉 208/390 = 53% 的宽,主区剩不下一张表。 */
+  .finw { flex-direction:column; gap:12px; }
+  .finw-rail { display:none; }
+  .finw-chips { flex:0 0 auto; display:flex; gap:8px; overflow-x:auto; padding:2px; }
+  .finw-chip {
+    flex:0 0 auto; display:inline-flex; align-items:center;
+    height:36px; padding:0 14px; border-radius:var(--radius-full);
+    border:1px solid var(--border-control); background:var(--surface-white);
+    color:var(--text-secondary); font-family:var(--font-sans);
+    font-size:var(--fs-label); font-weight:var(--fw-medium);
+    cursor:pointer; white-space:nowrap;
+  }
+  .finw-chip.on { border-color:var(--hue-blue); background:var(--accent-blue); color:var(--text-primary); }
+  .finw-chip.mng { border-style:dashed; color:var(--text-muted); }
+}
+
+/* ── S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5.3)── */
+@media (max-width: 600px) {
+  /* §5.7「3–4 张 → 横滑胶囊」:本屏 4 张 KpiCard。S 档从 2 列网格(2 行 = 216px)
+     换成一行横滑(≈108px),省下的 108 直接变成表格能露的行数 ——
+     §5.7 的验收标准原话:「不是卡片好不好看,而是收完之后主内容能不能进首屏」。
+     几何照 mx-list.css 的 .mx-kpirail:定宽 140、不换行、隐滚动条但留触屏拖动。
+     ⚠ M 档(960 块)仍是 2 列,那是 KpiNarrow 板实测的结论(768 上 4 列标签被截),两档各管各的。 */
+  .fin-kpis {
+    display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 12px;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  .fin-kpis::-webkit-scrollbar { display: none; }
+  .fin-kpis > * { flex: 0 0 140px; }
+  /* 工具行弹性收窄:搜索框吃剩余宽、可被挤压。SearchField 宽度是 ds 组件内联 style 写死
+     (该组件不在本次改动范围),只能 !important 压过内联——作用域锁死 .tb-tools 内,
+     不外溢到其他搜索场景(先例:mx-list.css .mx-pagerbar 压 ds-pg-pill 内联) */
+  .tb-tools { flex:1 1 auto; min-width:0; }
+  .tb-tools :deep(.ds-searchfield) { width:auto !important; flex:1 1 120px; min-width:0; }
+  /* 宽表编辑荐桌面提示(§11.2 预留位):行常驻定高 20px,进出编辑只换文案不挪版 */
+  .tb-s-hint { display:flex; align-items:center; flex:0 0 20px; height:20px; font-size:12px; color:var(--hue-orange); }
+}
 </style>
