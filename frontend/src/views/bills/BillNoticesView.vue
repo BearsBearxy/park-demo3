@@ -49,6 +49,7 @@ import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPStat from '@/components/fp/FPStat.vue'
 import FPMoreMenu from '@/components/fp/FPMoreMenu.vue'
 import { useViewport } from '@/composables/useViewport'
+import { useTopBarAction } from '@/composables/useTopBarAction'
 import FPAlertChip from '@/components/fp/FPAlertChip.vue'
 import FPAlertPanel, { type AlertGroup } from '@/components/fp/FPAlertPanel.vue'
 import CoefBookWindow from './CoefBookWindow.vue'
@@ -252,11 +253,40 @@ const q = ref('')
 // 档位判定走 useViewport 而不是媒体查询:这一轮收的是**渲染哪一支**(屏名不进 DOM、七个入口
 // 收成一颗「⋯」),@media 只能藏,藏了那一行照样占着 DOM 与高度。
 // jsdom 无 matchMedia → tier 恒 'xl',宽档分支与既有桌面测试一个字不动(§9 零差异)。
+//
+// **两个判据各管一件事,不是同一件事的两种写法**(上一轮两套混用,读的人分不清哪处管哪档):
+//   narrow(M↓,≤960)=「这块东西在平板上就已经放不下了」。§5.10「M 档」小节的原话是
+//                     「走同一套,只有一处不同」,所以屏名 / 期段控 / 筛选行 / 五个只读入口 /
+//                     批量确认这些**收进哪里**的判断,M 与 S 同判,一律走 narrow。
+//   isS  (S 档,≤600)=「只有手机外壳才有的那一支」。今天只剩一件事归它:主动作能不能交给
+//                     手机顶栏 —— 见下面 useTopBarAction 上方那段「M 档看不见手机顶栏」。
 const { tier } = useViewport()
 const isS = computed(() => tier.value === 's')
 // §5.10 判据四「外壳已经说过的,流内不再说一遍」:顶栏 52px 已经写着「催缴单」,
 // 所以屏名在 S 与 M 两档都不画(§5.10「M 档」那段明文:屏名在 M 档同样不画)。
 const narrow = computed(() => tier.value === 's' || tier.value === 'm')
+
+// ── §5.10 动作 →「顶栏右:1 个主动作」(S 档) ───────────────────────────────────
+// 主动作 = 编辑模式(判据与另外六个入口的去处见 moreItems 上方那段)。
+// 不必判档:顶栏只在 S 档挂载,别档登记是空转;卸载 / KeepAlive 停用的清场由 composable 管。
+// 三种「点不动」的时刻不登记 —— 顶栏画一颗按不动的按钮是白占一个位(顶栏总共四个位):
+//   canEnter 假(只读账号 / 园区股东):桌面上这颗按钮本来就不画;
+//   reviewNote 非空(已审核 / 待审核):桌面上按钮位换成禁用药丸,而审核簇(FPReviewActions)
+//   就在标题行上写着同一件事 —— 判据四,外壳/行上已经说过的不再说第二遍。
+useTopBarAction(() => {
+  if (!canEnter.value || reviewNote.value) return null
+  // ⚠ label 是这颗按钮的**无障碍名**,必须是动作名,不能写状态句。
+  //   曾写成「张三 编辑中」—— 念出来是个状态,而点下去是去抢锁,名实不符;
+  //   而且同一个顶栏动作位上,抄表屏写的是动作名,两屏各一套约定(2026-09-21 对抗复查抓到)。
+  //   锁被别人占着这件事**不丢**:点下去 toggleEdit() 会走 FPLockDialogs 把占用人与空闲分钟说清楚,
+  //   与抄表屏同口径。代价是 S 档「不用点就知道锁在谁手上」这条没了 —— 顶栏这个位只有
+  //   {label, icon, onClick} 三件,表达不了「画出来但按不动」。真要它得给 TopBarAction 补 disabled。
+  return {
+    label: editMode.value ? '完成' : '编辑模式',
+    icon: iconFor(editMode.value ? 'check' : 'pencil'),
+    onClick: () => toggleEdit(),
+  }
+})
 // §5.10 筛选一行:本屏筛选控件 3 件(期段控 + 仅看有警告 + 搜租户名)> 2 ⇒ 收。
 // 留外面的是输入即用的搜索,收进面板的是反正都要点开的选择器。
 const filterOpen = ref(false)
@@ -342,12 +372,21 @@ function toggleOne(tid: number) {
 async function confirmTenants(tids: number[]) {
   if (!canIssue.value || confirming.value || !tids.length) return
   const gaps = tids.filter(gapOf)
+  const ask: string[] = []
+  // §5.11「不可逆动作不要只靠菜单里一行字」:窄档的「批量确认」现在是「⋯」里的一行字,
+  // 点进去勾几户再点一下就单向流转了。多户那一路补一句写明不可逆的二次确认。
+  // **单户不加**(行内那颗「确认」钮):那一户就在手指底下、名字在同一行上,
+  // 106 行一行一个弹窗是把确认变成肌肉记忆 —— 加了等于没加。
+  if (tids.length > 1) {
+    ask.push(`确认 ${tids.length} 户的催缴单?状态单向流转为「已确认」,不能改回草稿。`)
+  }
   if (gaps.length) {
     const names = gaps.slice(0, 5)
       .map(t => filtered.value.find(r => r.tenantId === t)?.tenantName ?? '#' + t).join('、')
-    if (!confirm(`${gaps.length} 户有费用未指定收款公司(${names}${gaps.length > 5 ? ' 等' : ''})。\n`
-      + '导出的通知单上这部分不显示收款账户信息,租户可能不知道往哪付款。\n仍然确认?')) return
+    ask.push(`${gaps.length} 户有费用未指定收款公司(${names}${gaps.length > 5 ? ' 等' : ''})。\n`
+      + '导出的通知单上这部分不显示收款账户信息,租户可能不知道往哪付款。')
   }
+  if (ask.length && !confirm(ask.join('\n\n') + '\n仍然确认?')) return
   confirming.value = true
   try {
     const res = await billDeliveryApi.confirm(ym.value, tids)
@@ -632,7 +671,7 @@ const drawerSub = computed(() => {
   return [ym.value, `在租合同 ${cn} 份`, `明细 ${r.lineCount} 行`].join(' · ')
 })
 
-// ── §5.10 动作:S 档收成「1 个主动作 +「⋯」」 ───────────────────────────────────
+// ── §5.10 动作:S 档「顶栏 1 个主动作 +「⋯」」,M 档「屏内 2 个主动作 +「⋯」」 ──────
 // 主控行上今天有 7 个入口:收款公司 / 收款簿 / 系数簿 / 导出通知单 / 导出对账表 /
 // 生成本月·重新生成(编辑态才出) / 编辑模式。
 //
@@ -643,9 +682,20 @@ const drawerSub = computed(() => {
 // 审核簇(FPReviewActions)不进菜单:它是**状态**不是动作(§5.10「状态藏了等于没有」),
 // 且组件自己写明不做成「更多」菜单;它本来就是 28 高的一簇胶囊,不占一整行。
 //
-// ⚠ §5.11(溢出菜单还没规则):菜单里唯一不可逆的是「重新生成」——先删后插覆盖整月。
-// 它的二次确认在 onGenerate(:454)已经有一句写明覆盖范围的 confirm,
-// 「不可逆动作不要只靠菜单里一行字」那条由它兜着,本轮不另加一层。
+// ⚠ **M 档(601–960)看不见手机顶栏** —— AppShell.vue:162 是 `v-if="tier !== 's'"`(走桌面
+// TabStrip + Toolbar),:168 的 `v-else` 才挂 MobileTopBar。所以 §5.10「M 档主动作留 2 个」
+// 那一行虽然写着「走同一套」,实现上**不能走顶栏**:在 M 档登记顶栏动作是空转,
+// 那两个主动作只能留在屏内流里。本屏 M 档留在行上的两个 =
+//   ① 编辑模式(常在,理由同上:不点它一件写操作都做不成)
+//   ② 生成本月 / 重新生成(编辑态才出 —— 沿用桌面那颗一模一样的 `canRun` 条件,
+//      不新开一处「由交互态决定显隐的流内块」,零位移铁律不欠新账;浏览态 M 档就只有 ① 一个,
+//      「留 2 个」是上限不是配额)
+// 其余五个只读入口 + 批量确认在 M 与 S 同判(narrow)进「⋯」;生成只在 S 档进菜单。
+//
+// ⚠ §5.11(溢出菜单还没规则):菜单里唯一「一行字点下去就不可逆」的是「重新生成」——
+// 先删后插覆盖整月。它的二次确认在 onGenerate 里已经有一句写明覆盖范围的 confirm。
+// 「批量确认」是不可逆的**入口**(draft→confirmed 单向流转),但点它只是进选择态,
+// 真正落刀的那一步在 confirmTenants —— 二次确认补在那里(见该函数)。
 const moreItems = computed(() => [
   { key: 'company', label: '收款公司', icon: 'building-2' },
   { key: 'paybook', label: '收款簿', icon: 'credit-card' },
@@ -654,7 +704,8 @@ const moreItems = computed(() => [
   { key: 'expRecon', label: '导出对账表', icon: 'table', disabled: !rows.value?.length || exportBusy.value },
   // 批量确认原本长在筛选行上,它是动作不是筛选 —— S 档跟着动作一起进菜单。
   ...(canIssue.value && filtered.value.length ? [{ key: 'bulk', label: '批量确认', icon: 'list-todo' }] : []),
-  ...(canRun.value
+  // 生成只在 S 档进菜单:M 档它是留在行上的第二个主动作(见上),两处都出就是画两遍。
+  ...(isS.value && canRun.value
     ? [{
         key: 'generate',
         label: rows.value?.length ? '重新生成' : '生成本月',
@@ -699,8 +750,9 @@ function onMore(key: string) {
         <FPAlertChip :count="alertGroups.length" @open="alertOpen = true" />
       </div>
       <div class="bn-actions">
-        <!-- §5.10 动作:S 档这五件 + 生成一起进「⋯」(见 moreItems),行上只留主动作 + ⋯ -->
-        <template v-if="!isS">
+        <!-- §5.10 动作:五个只读入口在 M 与 S 同判(narrow)进「⋯」(见 moreItems)。
+             §5.10「M 档」小节的原话是「走同一套」,收进菜单这件事 M 与 S 没有分歧。 -->
+        <template v-if="!narrow">
         <Button variant="outline" size="sm" @click="companyOpen = true">
           <template #leading><component :is="iconFor('building-2')" :size="14" /></template>
           收款公司
@@ -721,23 +773,27 @@ function onMore(key: string) {
           <template #leading><component :is="iconFor('table')" :size="14" /></template>
           导出对账表
         </Button>
+        </template>
         <!-- 生成:编辑态才出(EDIT-MODE-SPEC v2)。已有单的「重新生成」= 先删后插覆盖整月 ⇒ danger;
-             空月的「生成本月」无可覆盖对象,是本屏的起点动作 ⇒ filled(此时页头唯一实义主动作) -->
-        <Button v-if="canRun" :variant="rows.length ? 'danger' : 'filled'" size="sm"
+             空月的「生成本月」无可覆盖对象,是本屏的起点动作 ⇒ filled(此时页头唯一实义主动作)。
+             §5.10 M 档:它是留在屏内流里的**第二个主动作**(M 档看不见手机顶栏,见 moreItems 上方),
+             所以判据是 !isS 而不是 !narrow;S 档它进「⋯」。 -->
+        <Button v-if="!isS && canRun" :variant="rows.length ? 'danger' : 'filled'" size="sm"
                 :disabled="generating" @click="onGenerate">
           <template #leading><component :is="iconFor(rows.length ? 'refresh-cw' : 'play')" :size="14" /></template>
           {{ generating ? '生成中…' : rows.length ? '重新生成' : '生成本月' }}
         </Button>
-        </template>
         <!-- 审核动作簇(§01):长在编辑按钮**左边**,同一条 flex 行 —— 编辑按钮位一个像素不动。
              四态八格由组件自己判(全站唯一那一份),屏这一层只负责喂键与人话名。
              §5.10:它是审核**态**不是动作,S 档照样留在行上,不进「⋯」。 -->
         <FPReviewActions :keys="reviewKeys" :label="reviewLabel" :can-edit="canEnter" :edit="editMode" />
-        <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
+        <!-- 编辑模式 = 本屏主动作。S 档它搬进手机顶栏(useTopBarAction,顶栏钉在屏名与 🔍 之间),
+             行上就不能再画一颗 —— 同一个动作画两遍。M 档没有手机顶栏,照旧留在行上。 -->
+        <FPEditModeButton v-if="!isS" :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
                           :review-note="reviewNote" :review-tip="reviewTip"
                           @toggle="toggleEdit()" />
-        <!-- S 档主动作右侧那颗「⋯」。判据与条目见 moreItems(:script 尾) -->
-        <FPMoreMenu v-if="isS" :items="moreItems" @select="onMore" />
+        <!-- 主动作右侧那颗「⋯」,M 与 S 同判。判据与条目见 moreItems(:script 尾) -->
+        <FPMoreMenu v-if="narrow" :items="moreItems" @select="onMore" />
       </div>
     </div>
 
@@ -785,8 +841,9 @@ function onMore(key: string) {
           仅看有警告
         </label>
         <span style="flex:1"></span>
-        <!-- 批量确认是动作不是筛选:S 档进「⋯」(moreItems),其余档留在行上不动 -->
-        <Button v-if="!isS && canIssue && filtered.length" variant="outline" size="sm" @click="bulkMode = true">
+        <!-- 批量确认是动作不是筛选:M↓ 跟着动作一起进「⋯」(moreItems),L/XL 留在行上不动。
+             与上面那五颗同判(narrow)—— 它和它们一样是「收进哪里」的问题,不是「顶栏有没有」。 -->
+        <Button v-if="!narrow && canIssue && filtered.length" variant="outline" size="sm" @click="bulkMode = true">
           <template #leading><component :is="iconFor('list-todo')" :size="14" /></template>
           批量确认
         </Button>
@@ -1470,11 +1527,12 @@ tbody tr:hover .bn-cfm { visibility: visible; }
    宽档规则在前窄档在后(§1)。根挂 fp-fluid 摘地板后,窄档兜底从「整屏 800px」换成
    「KPI/工具行流式收纳 + 只有表自己保底横滚」。
 
-   § 390 屏顶算术(§5.7 + §5.10 收完之后,表能露几行)——数字来源逐条:
+   § S 档 390 屏顶算术(§5.7 + §5.10 收完之后,表能露几行)——数字来源逐条:
      FPStepStrip  54   .fss--s 定高(§5.9,组件里已实现,本轮没动)
      gap          14   .bn-page gap
      .bn-head     30   屏名与期段控不进 DOM,左只剩 FPAlertChip(.fac 30 高),
-                       右只剩 审核簇 28 + 编辑模式 28 + ⋯ 30 ⇒ 行高 30(原 190:h2 34 + 七钮折三行)
+                       右只剩 审核簇 28 + ⋯ 30 ⇒ 行高 30
+                       (编辑模式这一轮搬进手机顶栏,行上不再有它;行高不变 —— 原来也是 ⋯ 那 30 在定)
      gap          14
      .bn-kpis     92   横滑一行(原 196 = 2×92 + 12)
      gap          14
@@ -1484,12 +1542,42 @@ tbody tr:hover .bn-cfm { visibility: visible; }
      表可用 = 首屏 655 − 262 = 393
      表头 34(.bn-table thead th)+ tfoot 40(.bn-table tfoot th)= 74
      (393 − 74) ÷ 34(行高)= 9.38 → **9 行**(原 (99−74)÷34 = 0.7 → 0 行)
-   ⚠ 9 行是上限:真数据里每个楼栋有一条 .bn-band 分组头,也按 34 占一行。 */
+   ⚠ 9 行是上限:真数据里每个楼栋有一条 .bn-band 分组头,也按 34 占一行。
+
+   § M 档 768×1024 竖屏屏顶算术(平板落 M,§3.5):
+     内容带 = 1024 − .fp-stage padding 8×2 − .fp-main-card 边框 2 − TabStrip 44
+              − Toolbar 48 − .fp-content padding 16×2 = 882
+     FPStepStrip  54   .fss--m 是 flex-wrap:nowrap 的横滑全条(§5.9),一行药丸,按与 .fss--s
+                       同构的一行高计 —— M 档组件里没有定高声明,这 54 是推算不是断言
+     gap          14
+     .bn-head     30   屏名/期段控不进 DOM;左 FPAlertChip 30,右 审核簇 28 + 编辑模式 28 + ⋯ 30
+                       (编辑态多一颗生成 28;601 那一端右组可能仍折 2 行 ⇒ 屏顶 +38、表少 1 行)
+     gap          14
+     .bn-kpis     92   与 S 同一条横滑轨(原 2 列 = 196)
+     gap          14
+     .bn-toolbar  44   搜索 230 + 筛选钮 —— 两件同处一行
+     ────────────────
+     屏顶合计    262
+     表可用 = 882 − 262 = 620;(620 − 74) ÷ 34 = 16.05 → **16 行**
+   § XL:不在 §5.10 收编范围,标题行/筛选行/KPI 四列一个像素不动(§9)。 */
 @media (max-width: 960px) { /* M↓ */
-  /* KPI 四列在 M 档就已经挤不下:4×150(minmax 下限)+3×12(gap)=636px,
-     而 M 档内容区最窄 601−(126–160 铬边)≈441px,768 验收宽也只有 ≈608–642px——
-     多数区间四列必溢出 → M 起即降两列;S 档沿层叠继承同一条,不另写 600 块。 */
-  .bn-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* §5.7 屏顶 KPI 卡行:**按卡片数分档,不按视口分**。本屏 4 张 ⇒ 3–4 张那一档 =
+     横滑胶囊行(≥5 张才「先砍再排」)。几何照抄 mx-list.css 的 .mx-kpirail:
+     定宽 140 不换行、隐滚动条但留触屏拖动。M 与 S 同一条,S 档沿层叠继承,不在 600 块重写。
+
+     ⚠ 上一轮这里写的是 `repeat(2, minmax(0, 1fr))`(两列),判据是「四列 636px 在 M 档
+     多数区间必溢出」—— 那条判据本身没错,错在它算的是**降列**这一种收法。降列换来的是
+     竖向占位:两列 = 92×2 + 12 = 196px,横滑一行只要 92px,而 §5.7 的验收标准是
+     「收完之后主内容能不能进首屏」,不是「卡片挤不挤」。
+     另一条同样重要:§3.5-pre 要求 M 档**行组成静态确定**,不许靠 flex-wrap 在一行两行之间跳
+     —— `flex-wrap: nowrap` 的轨在 601 与 960 上都是恰好一行 92px,两列 grid 在 M 档
+     恰好是那种会跳的写法(4 张时永远 2 行,5 张时 3 行)。 */
+  .bn-kpis { display: flex; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .bn-kpis::-webkit-scrollbar { display: none; }
+  .bn-kpis > * { flex: 0 0 140px; }
+  /* 140 宽扣掉卡内 padding 只剩 112:「月租金合计(参考,元)」这类标签在 FPStat 里是
+     white-space:nowrap 且**没有** overflow —— 不截会直接压到右边那张卡上。只补省略号,不改 FPStat。 */
+  .bn-kpis :deep(.fs-l) { overflow: hidden; text-overflow: ellipsis; }
   /* §5.10:M↓ 筛选行收成「搜索 + 一颗筛选钮」。两件同处一行,高度必须同档 ——
      筛选钮定 44(§6.2 主操作触达下限),搜索框跟上。判据是触屏不是视口:平板也是触屏,
      所以这一条从 600 提到 960(同 mx-list.css:44 那条分页器触达的理由)。
@@ -1502,16 +1590,9 @@ tbody tr:hover .bn-cfm { visibility: visible; }
   .bn-table { min-width: 920px; }
 }
 @media (max-width: 600px) { /* S */
-  /* §5.7 屏顶 KPI 卡行:本屏 4 张 ⇒ **横滑胶囊行**(3–4 张那一档),不是「先砍再排」(≥5 张才用)。
-     几何照抄 mx-list.css 的 .mx-kpirail S 档那段:定宽 140 不换行、隐滚动条但留触屏拖动。
-     省下来的是一整行卡:M 档继承下来的 2×2 要 92×2 + 12 = 196px,横滑一行 92px。
-     (92 = FPStat 上下 padding 12×2 + 标签 18 + gap 4 + 数字 26 + gap 4 + sub 16) */
-  .bn-kpis { display: flex; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-  .bn-kpis::-webkit-scrollbar { display: none; }
-  .bn-kpis > * { flex: 0 0 140px; }
-  /* 140 宽扣掉卡内 padding 只剩 112:「月租金合计(参考,元)」这类标签在 FPStat 里是
-     white-space:nowrap 且**没有** overflow —— 不截会直接压到右边那张卡上。只补省略号,不改 FPStat。 */
-  .bn-kpis :deep(.fs-l) { overflow: hidden; text-overflow: ellipsis; }
+  /* §5.7 的横滑胶囊轨写在上面的 960 块里(M 与 S 同一条,4 张卡两档都走横滑),
+     这里沿层叠继承,一个字不重写。92 = FPStat 上下 padding 12×2 + 标签 18 + gap 4
+     + 数字 26 + gap 4 + sub 16。 */
 
   /* 搜索框弹性收窄(照 mx-list 搜索框手法),390 视口不撑破工具行;
      高度在上面的 960 块已定 44,这里只补 §6.5 的 iOS 门槛:<16px 聚焦会把整页放大,表当场出屏。 */

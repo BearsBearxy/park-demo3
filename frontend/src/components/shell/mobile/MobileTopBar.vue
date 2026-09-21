@@ -4,6 +4,7 @@
 import { computed, ref, defineAsyncComponent } from 'vue'
 import { useRoute } from 'vue-router'
 import { usePresenceStore } from '@/stores/presence'
+import { useUiStore } from '@/stores/ui'
 import { Menu, Search, Bell } from 'lucide-vue-next'
 // 铃铛抽屉懒加载,口径照抄 Toolbar.vue:顶栏在外壳里是**急切**的,静态 import 会把
 // 抽屉连同它的 CSS 一起压进首屏块。⚠ 必须配下面的 v-if 才真省 ——
@@ -21,6 +22,9 @@ const inbox = ref(false)
 // 与 Toolbar.vue 同一口径(三件事的总和)—— 两处各写一份的话,手机上和桌面上的红点会不一样。
 const pendingCount = computed(() =>
   presence.approvals.length + presence.pendingReviews + presence.myReturned)
+
+// 屏级主动作(§5.10)。没屏登记时整个按钮不渲染 —— 顶栏逐字回到原来那四件。
+const ui = useUiStore()
 </script>
 
 <template>
@@ -29,6 +33,13 @@ const pendingCount = computed(() =>
       <Menu :size="20" />
     </button>
     <span class="mtb-title">{{ pageName }}</span>
+    <!-- 屏级主动作(§5.10「动作 → 顶栏右:1 个主动作」)。钉在 🔍 之前,不是最右:
+         🔍/🔔 这样仍贴着右边缘,换屏时一个像素不挪 —— 外壳的稳定是它的价值(§5.10 判据四)。
+         流内没有块因此出现/消失,零位移铁律不受影响(LAYOUT-STABILITY §1)。 -->
+    <button v-if="ui.topBarAction" class="mtb-btn mtb-act" @click="ui.topBarAction.onClick()">
+      <component :is="ui.topBarAction.icon" v-if="ui.topBarAction.icon" :size="18" />
+      <span class="mtb-act-t">{{ ui.topBarAction.label }}</span>
+    </button>
     <button class="mtb-btn" aria-label="搜索" @click="emit('open-command')">
       <Search :size="20" />
     </button>
@@ -77,6 +88,21 @@ const pendingCount = computed(() =>
 }
 .mtb-btn:hover,
 .mtb-btn:active { background: var(--bg-hover); color: var(--text-primary); }
+
+/* 屏级主动作:定宽 44 的圆钮放不下一句话,改自适应宽 —— 但触达下限仍是 44×44(规范 §6.2),
+   高度继承 .mtb-btn 的 44 不覆盖,横向靠 min-width 兜底(只有图标没有字时也够)。
+   .mtb-btn 是 display:grid + place-items:center,两个子节点默认竖着叠,所以改 column 流。 */
+.mtb-act {
+  width: auto;
+  min-width: 44px;
+  padding: 0 10px;
+  grid-auto-flow: column;
+  gap: 4px;
+  color: var(--text-primary);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-medium);
+}
+.mtb-act-t { white-space: nowrap; }
 
 .mtb-title {
   flex: 1;
