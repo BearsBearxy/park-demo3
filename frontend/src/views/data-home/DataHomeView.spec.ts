@@ -677,6 +677,12 @@ describe('数据中心首页 · 年份条(P2 T4)', () => {
     // manageYears=false 真的传到了生产落点(F8):首页这条是导航不是账册管理,「＋ 补更早年份」
     // 不该出现 —— 组件级用例只证明组件支持这个 prop,这条证明首页真的传了 false。
     expect(w.find('.bmm-addy').exists()).toBe(false)
+    // scroll-row 同理(2026-09-21):S 档一行 12 格 + 横滚。4 列 × 3 行时 4 年要 976px,
+    // 而手机内容带只有 ~848px —— 下面的出账链与附表两列整块出屏,点月份看不见任何变化。
+    // 别的 8 个宿主不传这条,只有首页传。
+    const cells = w.findAll('.bmm-cells')
+    expect(cells.length, '一个格子容器都没选到,下面的断言会恒真').toBeGreaterThan(0)
+    for (const c of cells) expect(c.classes(), '首页没把 scroll-row 传下去').toContain('bmm-scroll')
   })
 
   it('年份行来自 ov.months 的年,不是链数据年:只有附表的年也点得进去', async () => {

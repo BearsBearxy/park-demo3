@@ -58,13 +58,16 @@ describe('§5.8 ① 三档列数', () => {
 })
 
 describe('§5.8 ② 新列数用 minmax(0, 1fr),不是裸 1fr', () => {
-  it('960 / 600 两块里的 grid-template-columns 全是 minmax(0, 1fr)', () => {
-    const decls = [Q960, Q600].flatMap((q) => {
+  it('960 / 600 两块里凡是排轨道的 grid-template-columns 全是 minmax(0, 1fr)', () => {
+    const all = [Q960, Q600].flatMap((q) => {
       const block = mediaBlock(SRC, q)
       expect(block, `${q} 块取不到,下面的 filter 会恒为空`).not.toBe('')
       return [...block.matchAll(/grid-template-columns:[^;]+;/g)].map((m) => m[0])
     })
+    // 横滚档那条是 `none`(把轨道整个清掉,交给 grid-auto-columns),不排轨道,不归这条管
+    const decls = all.filter((d) => !d.includes('none'))
     // 先断「真的选到了东西」—— 选择器写错时 filter 恒空,这条就成了恒真
+    expect(all, '两块里的声明总数变了(6列 / 4列 / 横滚的 none)').toHaveLength(3)
     expect(decls).toHaveLength(2)
     for (const d of decls) {
       expect(d).toContain('minmax(0, 1fr)')

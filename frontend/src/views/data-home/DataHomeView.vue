@@ -552,7 +552,9 @@ const bookingRows = computed(() => shown('booking'))
     <!-- 年份条(P2 T4):取代月份下拉。manage-years=false —— 首页这条是导航不是账册管理,
          「添加次年」在总览屏不产生任何数据,接了线也没有语义(裁定 5)。 -->
     <div v-if="ov.period" class="dh-ystrip">
-      <BookMonthMatrix :book="{}" :years="yearRows" :manage-years="false"
+      <!-- scroll-row:S 档一行 12 格 + 横滚(2026-09-21 用户拍板,理由见 BookMonthMatrix 的 prop 注释)。
+           4 列 × 3 行时 4 年要 976px,而手机内容带只有 ~848px —— 下面的出账链与附表两列整块出屏。 -->
+      <BookMonthMatrix :book="{}" :years="yearRows" :manage-years="false" scroll-row
                        @pick="(y, m) => { pickedYm = `${y}-${String(m).padStart(2, '0')}` }" />
     </div>
 
