@@ -36,9 +36,13 @@ export const CHANGELOG: ReleaseNote[] = [
       { icon: 'layout-dashboard', title: '平板上的列表页', desc: '原来筛选条会在一行两行之间跳，现在固定两行，表格一列都不删。', to: 'buildings' },
       { icon: 'layout-grid', title: '平板上的指标卡', desc: '原来标签被截成「营业收入…」，现在降成两列，七个字写得下。' },
       { icon: 'credit-card', title: '楼栋和租户的手机卡片', desc: '原来卡上一个钱字都没有，现在第一行右端就是月租金。', to: 'buildings' },
+      { icon: 'calendar', title: '本月出账的选月份', desc: '原来一年铺三行，四年就把下面的出账链挤出屏幕，现在一年一行、左右滑。', to: 'data-home' },
     ],
     fixed: [
       '月度台账：租户明细里，负数的费用和空项一起被整条藏掉',
+      '园区抄表：手机上一行表格都看不见',
+      '三大报表：选公司的侧栏占掉大半个屏，表格只剩一条缝',
+      '手机上从首页点进一屏之后，再也回不到首页',
     ],
   },
   {
