@@ -176,6 +176,28 @@ describe('审核动作簇 FPReviewActions', () => {
     expect(w.findAll('button')).toHaveLength(0)
   })
 
+  // ⚠ 审核员不在「只读账号」那一档里。reviewer 角色的全部权限就是 review:approve 一个,
+  //   既没有 *:edit 也没有 elevate:request ⇒ 宿主的 canEnter 对他恒假 ⇒ 原来的
+  //   `show = canEdit && ready` 把**唯一能审的那个角色**挡在了 15 个屏外面。
+  //   破坏验证:把 show 改回 `!!props.canEdit && ready.value` → 本行红。
+  it('❗canEdit=false 但有审核权:照画(纯审核员没有任何编辑权)', () => {
+    const w = mountWith({
+      rows: [row(KEY, 'submitted')],
+      canEdit: false,
+      perms: ['review:approve'],       // reviewer 角色的全集,一个 edit 权都没有
+      me: 'lishen',                    // 不是交审人 ⇒ 不该出「撤回」
+    })
+    expect(labels(w).sort()).toEqual(['通过', '退回'].sort())
+  })
+
+  // 没有审核权的只读账号仍然一颗都不画 —— 上面那条不是把门拆了
+  it('❗canEdit=false 且无审核权:仍然整簇不渲染', () => {
+    const w = mountWith({
+      rows: [row(KEY, 'submitted')], canEdit: false, perms: ['entry:view'], me: 'holder',
+    })
+    expect(w.findAll('button')).toHaveLength(0)
+  })
+
   // 破坏验证:把 ready 的 yearLoaded 判断删掉 → 红(会画出一颗「交审」)
   it('❗年数据还没到:一颗都不画(不能给一张已审核的表画交审键)', () => {
     const w = mountWith({ rows: [], unloaded: true })

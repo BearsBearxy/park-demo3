@@ -29,9 +29,11 @@ class BillNoticeWarnTest {
     static final Path WARN_CODE = Path.of("src/main/java/com/park/demo3/service/WarnCode.java");
     static final Path PRODUCER = Path.of("src/main/java/com/park/demo3/service/BillNoticeService.java");
 
-    // 2026-09-23 定稿的八类。加第九类必须回来改这里,顺带被逼着回答「文案写了吗、落点给了吗」。
+    // 2026-09-23 定稿的九类(W_METER_BIND_STALE 当天补:绑定按月落段之后,落不到段的残留要有人报)。
+    // 加第十类必须回来改这里,顺带被逼着回答「文案写了吗、落点给了吗」。
     static final List<String> EXPECTED = List.of(
         "W_METER_NO_CONTRACT",
+        "W_METER_BIND_STALE",
         "W_ROOM_MISMATCH",
         "W_CONTRACT_NO_DATES",
         "W_TERM_NO_PARAMS",

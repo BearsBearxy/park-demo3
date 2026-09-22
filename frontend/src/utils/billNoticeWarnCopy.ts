@@ -17,6 +17,7 @@ import { paramDef } from './paramRegistry'
 // 顺序 = 屏上组序。与后端 WarnCode.java 的常量双向全等(门禁 G2 直接读那个文件核对)。
 export const WARN_CODES = [
   'W_METER_NO_CONTRACT',
+  'W_METER_BIND_STALE',
   'W_ROOM_MISMATCH',
   'W_CONTRACT_NO_DATES',
   'W_TERM_NO_PARAMS',
@@ -49,6 +50,16 @@ export const WARN_COPY: Record<WarnCode, WarnCopy> = {
     // 「没能定出」不写「找不到」:四种触发档里 ambiguous 那一档是**候选不止一份、选不出该用哪份**
     // (MeterBindingService.java:144),写「找不到」对这一档是假的(对抗复查 2026-09-23)。
     desc: '这些表在出单时没能定出归属合同,量照算进这张单,但没留下合同快照,位置也落不上。不处理的话事后按合同对账时这几块表的钱找不到出处。',
+    fmt: (payload, hint) => hint || `表 #${payload}`,
+    route: 'meters',
+    actionLabel: '去园区抄表',
+    drawer: true,
+  },
+  W_METER_BIND_STALE: {
+    title: '表绑的合同本月没生效',
+    // 与上一条分开的理由写在 WarnCode.java:那一条是没人指认过,这一条是指认过但指错了期,
+    // 动作不同。desc 写后果不写判据内部词(「递增段」「链」是合同卡片上的词,不是这屏的词)。
+    desc: '这些表被指认给了一份本月还没生效(或已经到期)的合同,那份合同的前后期里也没有能接上本月的。量照算进这张单,但单上这几块表挂的是一份本月不作数的合同 —— 而同一张单的租金走的是本月那一期,事后按合同对账时两边对不上。',
     fmt: (payload, hint) => hint || `表 #${payload}`,
     route: 'meters',
     actionLabel: '去园区抄表',

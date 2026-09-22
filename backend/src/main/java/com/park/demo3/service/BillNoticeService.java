@@ -106,6 +106,7 @@ public class BillNoticeService {
     private final AllocService alloc;
     private final MeterBindingService binding;
     private final ReviewGuard reviewGuard;
+    private final AuditLogService audit;   // 取消确认要留痕(RBAC-SPEC §7)
 
     public BillNoticeService(BillNoticeMapper notices, BillNoticeLineMapper noticeLines,
                              BillNoticeWarnMapper noticeWarns,
@@ -119,8 +120,8 @@ public class BillNoticeService {
                              UnitMapper units, BillingTermUnitMapper termUnits,
                              PriceCfgService price,
                              AllocService alloc, MeterBindingService binding,
-                             ReviewGuard reviewGuard) {
-        this.reviewGuard = reviewGuard;
+                             ReviewGuard reviewGuard, AuditLogService audit) {
+        this.reviewGuard = reviewGuard; this.audit = audit;
         this.notices = notices; this.noticeLines = noticeLines; this.noticeWarns = noticeWarns;
         this.noteOverrides = noteOverrides;
         this.meters = meters; this.readings = readings;
@@ -280,6 +281,11 @@ public class BillNoticeService {
                 if ("manual".equals(row.status())) {   // 无合同归属:降级挂租户出单+warn(§5.8)
                     // hint = 这块表在屏上怎么称呼,判据见 meterTag()。
                     warn(warnByTenant, tid, WarnCode.W_METER_NO_CONTRACT,
+                        String.valueOf(m.getId()), meterTag(m));
+                } else if ("override_stale".equals(row.status())) {
+                    // 绑的那份本月没生效,链上也没有覆盖本月的段。行照出,但 contract_id 快照落的是
+                    // 一份本月不在租期内的合同 —— 原先这件事只在抄表屏上红,催缴单一声不吭。
+                    warn(warnByTenant, tid, WarnCode.W_METER_BIND_STALE,
                         String.valueOf(m.getId()), meterTag(m));
                 }
                 MeterReading r = readingByMeter.get(m.getId());
@@ -1296,6 +1302,39 @@ public class BillNoticeService {
             confirmed++;
         }
         return new BillDeliveryDTO.Confirm(confirmed, skipped);
+    }
+
+    /**
+     * 取消确认(2026-09-23,confirmed → draft)。
+     *
+     * <p>原来这条轴是单向的(S20 §1.3 原文「不提供"退回草稿"按钮,要改就作废后重生成」),
+     * 于是点错一户就只剩两条路:作废(落 void 不是 draft,屏上那户从此显示「待核对」但重新生成
+     * 仍会跳过它)或者整月重生成(会连带把别人已核完的户一起冲掉)。两条都不是「反悔」。
+     *
+     * <p><b>只收 confirmed 这一档,不收 exported。</b>已导出意味着 Excel 已经发出去了 ——
+     * 那是 {@code Perm.BILLING_ISSUE_EDIT} 说的「对外不可逆动作」,系统里点一下退不回来。
+     *
+     * <p>理由必填、落审计日志:撤的是一个别人可能已经照着往下走的判断,同审核轴 withdraw 的规矩。
+     * 权限与 confirm 同一个点(签发岗自己的动作自己撤,对应审核轴的 recall 而不是 withdraw);
+     * 已交审/已审核的月仍被 reviewGuard 拦在外面。
+     */
+    @Transactional
+    public BillDeliveryDTO.Unconfirm unconfirm(String ym, List<Integer> tenantIds, String reason) {
+        reviewGuard.assertEditable(ReviewKind.BILL_NOTICES, ym, null);
+        int reverted = 0, skipped = 0;
+        for (BillNotice n : byTenants(ym, tenantIds)) {
+            if (!"confirmed".equals(n.getStatus())) { skipped++; continue; }
+            // confirmed_at / confirmed_by 要真的清空:MyBatis-Plus 的 updateById 跳 null 字段,
+            // setConfirmedBy(null) 落不下去 —— 屏上会留着「张三 09-23 确认」而状态是待核对。
+            notices.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<BillNotice>()
+                .eq("id", n.getId())
+                .set("status", "draft").set("confirmed_at", null).set("confirmed_by", null));
+            reverted++;
+        }
+        if (reverted > 0)
+            audit.log("bill-notice.unconfirm", ym + " · " + tenantIds.size() + " 户",
+                reverted + " 张单退回草稿;理由:" + reason);
+        return new BillDeliveryDTO.Unconfirm(reverted, skipped);
     }
 
     // 导出后回标;重复导出刷新 exported_at(「最近一次导出时间」)。已作废单不动。

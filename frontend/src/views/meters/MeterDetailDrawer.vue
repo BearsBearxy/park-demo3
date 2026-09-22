@@ -670,6 +670,10 @@ async function doBind(contractId: number | null) {
           </span>
           <span class="tag" :class="{ bad: bind.status === 'override_stale' }">{{ BIND_STATUS_NOTE[bind.status] }}</span>
           <span v-if="qb" class="reason">{{ BIND_BUCKET_LABEL[qb] }} · {{ bindReason(qb, bind) }}</span>
+          <!-- 钉的那份没被直接用上:说清钉的是哪份、本月落在哪份。不静默替换(S2-BIND-SPEC §2) -->
+          <span v-else-if="bind.pinnedContractNo" class="reason ok">
+            人工绑定的是 {{ bind.pinnedContractNo }},本月不在它的租期内,已落到本月这一期 ✓
+          </span>
           <span v-else class="reason ok">合同归属就绪,可参与派生 ✓</span>
           <span v-if="bind.locations?.length" class="locs">{{ bind.locations.join('；') }}</span>
         </div>

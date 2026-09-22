@@ -324,6 +324,38 @@ class ContractWriteApiIT extends AbstractMysqlIT {
         assertThat(st).containsExactly("vacant");
     }
 
+    // ⚠ 线路断言:解约日要真的从 JSON 走到 end_date 上。字段名拼错、@RequestBody 收不到,
+    //   后端都会安静地退回「今天」—— 屏上看不出来,下个月的单才看得出来。
+    //   判据本身(收不收、收成哪天)在 ContractServiceTest,那几条各自破坏验证过。
+    @Test
+    void terminate_withDate_cutsEndDate() throws Exception {
+        int id = createContract(uniqueNo(), firstTenantId(), firstBuildingId(), null,
+                "2026-01-01", "2028-12-31", "active");
+
+        mvc.perform(post("/api/contracts/" + id + "/terminate")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"terminatedOn\":\"2026-06-15\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.status").value("terminated"))
+                .andExpect(jsonPath("$.data.endDate").value("2026-06-15"));
+    }
+
+    @Test
+    void terminate_dateBeforeStart_returns409InBody() throws Exception {
+        int id = createContract(uniqueNo(), firstTenantId(), firstBuildingId(), null,
+                "2026-01-01", "2028-12-31", "active");
+
+        mvc.perform(post("/api/contracts/" + id + "/terminate")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"terminatedOn\":\"2025-12-31\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value("终止日期不能早于起租日期"));
+    }
+
     @Test
     void terminate_twice_returns409InBody() throws Exception {
         int id = createContract(uniqueNo(), firstTenantId(), firstBuildingId(), null,

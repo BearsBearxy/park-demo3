@@ -29,7 +29,7 @@ import {
   groupByBuilding, groupDormExcelStyle, groupExcelStyle, groupRentByPremise, lineNoteKey, mergeMaintRows,
   mergeNoteKey, noteDisplay, noteKeyId, rentAreaText,
   rentByTenant, rentFeeName, resolvePhase, segLabel, tenantBuildings, tenantKpis,
-  buildNoticeAlertGroups, warnSummaryLines,
+  buildNoticeAlertGroups, warnSummaryLines, warnGroupsOf,
   type CrossMark, type NoteKey, type NoticeAlert, type QtyCell, type ShareMergeRow,
   type TenantBuildings, type TenantNoticeRow,
 } from '@/utils/billNoticeLogic'
@@ -398,7 +398,7 @@ async function confirmTenants(tids: number[]) {
   // **单户不加**(行内那颗「确认」钮):那一户就在手指底下、名字在同一行上,
   // 106 行一行一个弹窗是把确认变成肌肉记忆 —— 加了等于没加。
   if (tids.length > 1) {
-    ask.push(`确认 ${tids.length} 户的催缴单?状态单向流转为「已确认」,不能改回草稿。`)
+    ask.push(`确认 ${tids.length} 户的催缴单?确认后重新生成会跳过这几户;要反悔得在抽屉里逐户取消确认。`)
   }
   if (gaps.length) {
     const names = gaps.slice(0, 5)
@@ -414,6 +414,23 @@ async function confirmTenants(tids: number[]) {
     exitBulk()
     await loadMonth()
   } catch (e) { alert(errMsg(e, '确认失败')) } finally { confirming.value = false }
+}
+
+// 取消确认(2026-09-23):confirmed → draft。只做单户 —— 这是「点错了」的补救,
+// 不是一个批量工序;做成批量等于给「全部退回重来」开一个入口。
+// 理由必填(后端 @NotBlank 也拦一道):撤的是别人可能已经照着往下走的一个判断。
+async function unconfirmTenant(tid: number) {
+  const name = filtered.value.find(r => r.tenantId === tid)?.tenantName ?? '#' + tid
+  const reason = prompt(`取消确认「${name}」?退回待核对,重新生成不再跳过这户。
+写一句理由(会留痕):`)
+  if (reason == null) return                       // 取消对话框
+  if (!reason.trim()) { alert('理由必填'); return }
+  confirming.value = true
+  try {
+    const res = await billDeliveryApi.unconfirm(ym.value, [tid], reason.trim())
+    flashOk(`已退回 ${res.reverted} 单${res.skipped ? `,跳过 ${res.skipped} 单(已导出/已作废)` : ''}`)
+    await loadMonth()
+  } catch (e) { alert(errMsg(e, '取消确认失败')) } finally { confirming.value = false }
 }
 
 // 该户导出所需的一整包(明细 + 备注覆盖 + 场地);批量与单户共用,免两处拼装走样
@@ -514,20 +531,10 @@ const slotCells = computed<SlotCell[]>(() => {
     { dorm: details.value.some(d => d.noticeKind === 'dorm'), amounts: slotAmounts(details.value) },
     payMap.value, companies.value)
 })
-// 方格下的一行说明。读的是 payMap 与当前单头,保存即变 —— 与落库的 warn 不同,它不会说陈年旧话。
-// 措辞指卡上的「未设置」三个字,不指边框样式(边框会随卡片改版变,字不会)。
-const payHint = computed(() => {
-  const r = dlgRow.value
-  if (!r || !slotCells.value.length) return ''
-  if (slotCells.value.some(c => c.companyId == null))
-    return canIssue.value
-      ? '标着「未设置」的格子还没指定收款公司:勾选后在下方选公司'
-      : '标着「未设置」的格子还没指定收款公司'
-  // 格子都指定了不等于「设齐了」:映射不到槽的行压根不出格(见 slotAmounts 注释),不下这个结论
-  return gapOf(r.tenantId)
-    ? '屏上这些格子都已指定;本月的单仍按上次生成时的归属拆,重新生成后才会跟上'
-    : ''
-})
+// 原来方格下面还有一行说明(payHint)。2026-09-23 照稿撤掉:它是**条件出现的一行**,
+// 换户时有无不定,下面的费项表会跟着上下弹 —— 稿上「换户时费项表不移动」钉的就是这条。
+// 两句话都没丢,搬进了收款条本身:待指定几项写在条上;「设好了但本月的单还没跟上」
+// 走 PaySlotGrid 的 stale(判据仍是 gapOf,一个字没改)。
 
 async function onSlotSave(p: { colIds: string[]; companyId: number }) {
   if (!canIssue.value || slotSaving.value || !dlgRow.value) return
@@ -573,6 +580,22 @@ const dlgTab = ref<string>('rent')
 //     同一屏上两句话互相否定。现在只陈述「这是快照,重新生成才会变」,不承诺改得掉。
 const WARN_WHEN = '生成本月催缴单那一刻查出的,不是实时的 —— 重新生成本月后这里才会变'
 
+// 告警徽标(照稿:徽标长在抽屉副标题行上,不占正文的一行)。
+// 点开哪一类就记哪一类的 code;换户清空 —— 上一户展开着会让下一户的头无端变高。
+const openWarn = ref('')
+const dlgWarnGroups = computed(() => warnGroupsOf(dlgRow.value?.alerts ?? []))
+const dlgWarnOpen = computed(() => dlgWarnGroups.value.find(g => g.code === openWarn.value) ?? null)
+
+// 逐户导航(照稿:一个月要按「下一户」走一百多次,核对是个循环不是一次次单独查询)。
+// 走的是**当前筛选后的这一期**,不是只走待核对的 —— 已确认的也要能翻回去看。
+const dlgIdx = computed(() =>
+  dlgRow.value ? filtered.value.findIndex(r => r.tenantId === dlgRow.value!.tenantId) : -1)
+function stepTenant(d: 1 | -1) {
+  const i = dlgIdx.value + d
+  if (i < 0 || i >= filtered.value.length) return
+  openDetail(filtered.value[i])
+}
+
 const DLG_TABS = [{ value: 'rent', label: '场地租金' }, { value: 'util', label: '水电费' }]
 const dlgLoading = ref(false)
 const dlgRow = ref<DisplayRow | null>(null)
@@ -582,6 +605,7 @@ let dlgSeq = 0
 async function openDetail(r: DisplayRow) {
   dlgOpen.value = true
   dlgTab.value = 'rent'
+  openWarn.value = ''     // 换户收起告警面板:上一户展开着会让这一户的头凭空高一截
   dlgRow.value = r
   dlgYm.value = ym.value   // 快照:抽屉开着换月不改备注归属月
   dlgLoading.value = true
@@ -1018,24 +1042,57 @@ function onMore(key: string) {
       :full="true"
       @close="dlgOpen = false"
     >
+      <!-- 状态进抽屉(照稿):今天只有列表那一列有,开着抽屉核对的人看不到核过没核过 -->
+      <template v-if="dlgRow" #badge>
+        <span class="bn-st" :class="statusOf(dlgRow.tenantId)">{{ ST_LABEL[statusOf(dlgRow.tenantId)] }}</span>
+      </template>
+
+      <!-- 告警长在副标题行上,一类一个徽标,写明类名与条数。
+           那一行本来就在 ⇒ 有告警没告警,抽屉高度一样;点徽标在标题区里展开,正文不动。
+           不用悬浮提示 —— 2026-09-12 拍板把 ⓘ 浮层整个拆掉了,这里不复活它。 -->
+      <template v-if="dlgRow && dlgWarnGroups.length" #submeta>
+        <button v-for="g in dlgWarnGroups" :key="g.code" type="button" class="bn-abadge"
+                :class="{ on: openWarn === g.code }" :aria-expanded="openWarn === g.code"
+                @click="openWarn = openWarn === g.code ? '' : g.code">
+          <component :is="iconFor('alert-triangle')" :size="12" />
+          {{ g.title }}<b>{{ g.items.length }}</b>
+          <component :is="iconFor('chevron-down')" :size="11" />
+        </button>
+      </template>
       <div v-if="dlgLoading || !dlgRow" class="bn-empty">加载中…</div>
       <template v-else>
-        <!-- 户头(警告=各单去重合并) -->
-        <div v-if="dlgRow.alerts.length" class="bn-bar warn">
-          <component :is="iconFor('alert-triangle')" :size="14" />
-          <span class="bn-warn-multi">{{ warnLines(dlgRow.alerts) }}<em class="bn-warn-when">{{ WARN_WHEN }}</em></span>
-        </div>
-        <div class="bn-hgrid">
-          <div class="bn-hfld"><label>位置</label><span :class="{ dim: !dlgRow.premiseText }">{{ dlgRow.premiseText || '—' }}</span></div>
-          <div class="bn-hfld"><label>本期合计</label><span class="mono">{{ fmt2(dlgRow.totalAmount) }} 元</span></div>
-          <div class="bn-hfld"><label>月租金(参考)</label><span class="mono" :class="{ dim: dlgRow.rent == null }">{{ dlgRow.rent == null ? '–' : fmt2(dlgRow.rent) + ' 元' }}</span></div>
-          <div class="bn-hfld"><label>上期欠费</label><span class="mono dim" title="催缴闭环接口点,S4 恒 0,待收款流水接入">{{ fmt2(dlgRow.prevDue) }} 元</span></div>
+        <!-- 点开的那一类:明细 + 落点链 + 时效。默认收起,所以不破坏「换户不跳」——
+             它是用户自己点出来的,不是随这户的数据自动多出来的。 -->
+        <div v-if="dlgWarnOpen" class="bn-apanel">
+          <div class="bn-arow">
+            <span class="kind">{{ dlgWarnOpen.title }}</span>
+            <span class="val">{{ dlgWarnOpen.items.join('、') }}</span>
+            <!-- 落点与屏级告警抽屉走同一条(:197 的 router.push(`/${g.route}`)),不另造一条 -->
+            <a v-if="dlgWarnOpen.route" class="go" href="#"
+               @click.prevent="dlgOpen = false; router.push(`/${dlgWarnOpen.route}`)">{{ dlgWarnOpen.actionLabel }} ›</a>
+          </div>
+          <em class="when">{{ WARN_WHEN }}</em>
         </div>
 
-        <!-- S20 收款方分段:按收款槽出方格(同槽多费项共用一家公司),多选后指定公司 -->
-        <PaySlotGrid v-if="slotCells.length" :cells="slotCells" :companies="companies"
-                     :can-edit="canIssue" :saving="slotSaving" @save="onSlotSave" />
-        <p v-if="payHint" class="bn-payhint">{{ payHint }}</p>
+        <!-- 正文永远只有三块,每块高度与这户的情况无关:头部三格 / 收款条 / 段控+费项表。
+             照稿「换户时费项表不移动」—— 一个月要按「下一户」走一百多次,正文一弹就要重新找表。
+             告警不在这里,它在抽屉头的副标题行上(#submeta)。 -->
+        <div class="bn-hgrid c3">
+          <div class="bn-hfld"><label>位置</label><span :class="{ dim: !dlgRow.premiseText }">{{ dlgRow.premiseText || '—' }}</span></div>
+          <!-- 上期欠费降格成小字(用户 2026-09-23 拍板):催缴闭环的接口点,S4 恒 0,
+               收款流水接进来之前它占着四分之一的头部宽度说不出任何事。
+               ⚠ 这里**不印那个 0**(对抗复查 2026-09-23):库里 739 张单的 prev_due 全是 0,
+                 它不是量出来的,印在屏上就是「这户上期不欠钱」的断言;而唯一说清「功能没接通」的
+                 那句话原本只躲在 title 里,鼠标之外摸不到。收款流水接进来那天再换回数字。 -->
+          <div class="bn-hfld"><label>本期合计</label><span class="mono">{{ fmt2(dlgRow.totalAmount) }} 元</span>
+            <em class="bn-hsub" title="催缴闭环的接口点:收款流水还没接进来,这里暂时算不出上期欠费">上期欠费 · 收款流水未接入</em></div>
+          <div class="bn-hfld"><label>月租金(参考)</label><span class="mono" :class="{ dim: dlgRow.rent == null }">{{ dlgRow.rent == null ? '–' : fmt2(dlgRow.rent) + ' 元' }}</span>
+            <em class="bn-hsub">整月口径,未含免租期/按天折</em></div>
+        </div>
+
+        <!-- S20 收款方分段:默认收起成一条,展开是一行一槽的行表。恒出(空态也出条) -->
+        <PaySlotGrid :cells="slotCells" :companies="companies" :can-edit="canIssue"
+                     :saving="slotSaving" :stale="gapOf(dlgRow.tenantId)" @save="onSlotSave" />
 
         <Segmented :options="DLG_TABS" v-model="dlgTab" size="sm" />
 
@@ -1380,6 +1437,33 @@ function onMore(key: string) {
       </template>
 
       <template #footer>
+        <!-- 主动作:确认该户。照稿从列表行上搬进来 —— 判断在抽屉里做出,钮就该在抽屉里。
+             ⚠ 确认完**原地留着**(用户 2026-09-23 拍板):单向流转不可逆,自动跳下一户
+             会让人来不及看清刚才那一下。下一户由右边的导航自己点。 -->
+        <Button v-if="dlgRow && canIssue && statusOf(dlgRow.tenantId) === 'draft'"
+                variant="primary" size="sm" :disabled="confirming"
+                title="核对无误,确认该户:确认后重新生成会跳过这户;点错了可以取消确认(要写理由)"
+                @click="confirmTenants([dlgRow.tenantId])">
+          <template #leading><component :is="iconFor('check')" :size="14" /></template>
+          {{ confirming ? '确认中…' : '核对无误,确认该户' }}
+        </Button>
+        <template v-else-if="dlgRow && statusOf(dlgRow.tenantId) === 'confirmed'">
+          <span class="bn-ftnote ok">
+            <component :is="iconFor('check')" :size="14" />已确认 · 重新生成会跳过这户
+          </span>
+          <!-- 取消确认(2026-09-23):原来这一档只有一句「不能改回草稿」,点错一户就只剩
+               作废或整月重生成两条路,两条都不是「反悔」。理由必填,落审计日志。 -->
+          <Button v-if="canIssue" variant="outline" size="sm" :disabled="confirming"
+                  title="取消确认:退回待核对,要写一句理由并留痕。已导出的单退不回来"
+                  @click="unconfirmTenant(dlgRow.tenantId)">
+            <template #leading><component :is="iconFor('rotate-ccw')" :size="14" /></template>
+            取消确认
+          </Button>
+        </template>
+        <span v-else-if="dlgRow && statusOf(dlgRow.tenantId) === 'exported'" class="bn-ftnote">
+          已导出 · 重新生成会跳过这户
+        </span>
+
         <!-- 单户导出:与「导出通知单」窗口同一套版式(上表租金/下表水电),账户取该公司默认账户 -->
         <Button variant="outline" size="sm" :disabled="dlgLoading || cardBusy || !dlgRow"
                 title="导出本户 Excel:一个文件,上表场地租金、下表水电费;跨收款公司按 sheet 分。账户取各公司的默认收款账户"
@@ -1387,6 +1471,20 @@ function onMore(key: string) {
           <template #leading><component :is="iconFor('download')" :size="14" /></template>
           {{ cardBusy ? '导出中…' : '导出本户 Excel' }}
         </Button>
+
+        <span class="bn-ftsp"></span>
+
+        <!-- 逐户导航:和「确认」挨在一起,核完一户手不用跑回列表 -->
+        <span v-if="dlgIdx >= 0" class="bn-nav">
+          <button type="button" :disabled="dlgIdx <= 0" @click="stepTenant(-1)" aria-label="上一户">
+            <component :is="iconFor('chevron-left')" :size="13" />上一户
+          </button>
+          <span class="pos"><b>{{ dlgIdx + 1 }}</b> / {{ filtered.length }}</span>
+          <button type="button" :disabled="dlgIdx >= filtered.length - 1" @click="stepTenant(1)" aria-label="下一户">
+            下一户<component :is="iconFor('chevron-right')" :size="13" />
+          </button>
+        </span>
+
         <Button variant="outline" size="sm" @click="dlgOpen = false">关闭</Button>
       </template>
     </FPDrawer>
@@ -1520,12 +1618,63 @@ tbody tr:hover .bn-cfm { visibility: visible; }
 /* ── 抽屉:户头 + 两 tab 明细行表(md-htable 家族) ── */
 .bn-empty { padding: 40px 12px; text-align: center; color: var(--text-disabled); font-size: var(--fs-label); }
 .bn-hgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px 18px; margin-bottom: 12px; }
+/* 三格档(抽屉):上期欠费降格成小字之后,位置那一格宽出来能多显十来个字 */
+.bn-hgrid.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .bn-hfld { min-width: 0; }
 .bn-hfld label { display: block; margin-bottom: 4px; font-size: var(--fs-label); color: var(--text-muted); }
 /* 时效说明:另起一行、弱化 —— 混在同色同字号的条目里会被读成「又一条查出来的毛病」 */
 .bn-warn-when { display: block; margin-top: 6px; font-size: var(--fs-label); font-style: normal; opacity: .72; }
 /* 方格下的实时说明行:抽屉 body 是 flex gap,负 margin 把它收到方格底下而不是另起一段 */
-.bn-payhint { margin: -14px 0 0; font-size: var(--fs-label); color: var(--text-muted); }
+/* ── 抽屉头:告警徽标(照稿 2026-09-23) ──────────────────────────────────
+   长在 FPDrawer 的 #submeta 槽里,和副标题同一行。那一行本来就在 ⇒
+   有告警没告警抽屉一样高,不会一换户就上下弹。 */
+.bn-abadge {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px;
+  height: 20px; padding: 0 8px 0 7px; border: none; border-radius: var(--radius-full);
+  background: var(--warn-soft); color: var(--warn-text);
+  font-family: var(--font-sans); font-size: var(--fs-micro); font-weight: var(--fw-medium);
+  cursor: pointer; white-space: nowrap;
+}
+.bn-abadge:hover { background: var(--caution-soft); }
+.bn-abadge.on { background: var(--hue-orange); color: var(--text-on-solid); }
+.bn-abadge b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* 点开那一类:明细 + 落点链 + 时效。默认收起,所以不破坏「换户不跳」 */
+.bn-apanel { padding: 10px 12px; border-radius: var(--radius-md); background: var(--warn-soft); }
+.bn-arow { display: flex; align-items: baseline; gap: 8px; padding-left: 10px;
+           border-left: 3px solid var(--hue-orange); font-size: var(--fs-label); line-height: 1.55; }
+.bn-arow .kind { flex: 0 0 auto; font-weight: var(--fw-semibold); color: var(--warn-text); }
+.bn-arow .val { flex: 1 1 auto; min-width: 0; color: var(--text-secondary);
+                overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bn-arow .go { flex: 0 0 auto; color: var(--text-link); text-decoration: none; }
+.bn-arow .go:hover { text-decoration: underline; }
+.bn-apanel .when { display: block; margin-top: 8px; padding-top: 8px;
+                   border-top: 1px solid rgba(133, 79, 11, .18);
+                   font-style: normal; font-size: var(--fs-micro); line-height: 1.5;
+                   color: var(--warn-text); opacity: .82; }
+
+/* 头部三格的副行小字(上期欠费 / 月租金口径) */
+.bn-hsub { display: block; margin-top: 3px; font-style: normal; font-size: var(--fs-micro);
+           color: var(--text-muted); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ── 抽屉底部动作条 ───────────────────────────────────────────────────── */
+.bn-ftsp { flex: 1 1 auto; }
+.bn-ftnote { display: inline-flex; align-items: center; gap: 6px; height: 30px;
+             font-size: var(--fs-label); color: var(--text-muted); }
+.bn-ftnote.ok { color: var(--ok-text); }
+/* 逐户导航:和「确认」挨在一起,核完一户手不用跑回列表 */
+.bn-nav { display: inline-flex; align-items: center; gap: 4px; }
+.bn-nav button {
+  display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 9px;
+  border: 1px solid var(--border-control); border-radius: var(--radius-sm);
+  background: var(--surface-white); font-family: var(--font-sans); font-size: var(--fs-label);
+  color: var(--text-secondary); cursor: pointer;
+}
+.bn-nav button:hover:not(:disabled) { border-color: var(--border-control-strong); color: var(--text-primary); }
+.bn-nav button:disabled { color: var(--text-disabled); cursor: default; }
+.bn-nav .pos { padding: 0 8px; font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+               font-size: var(--fs-label); color: var(--text-muted); }
+.bn-nav .pos b { color: var(--text-primary); font-weight: var(--fw-semibold); }
 .bn-hfld span { font-size: var(--fs-body); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 .bn-hfld .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .bn-hfld .dim, .bn-hfld .mono.dim { color: var(--text-disabled); }

@@ -166,7 +166,7 @@ export function statusDims(x: WorkbenchRow): string {
   const dims: string[] = []
   if (x.retired) return `已停用:自 ${x.m.retiredYm} 起不计,不进抄表进度与公摊分母(表仍显示)`
   if (x.pending) dims.push('待核:企业名称原文未匹配租户档案')
-  if (x.unbound) dims.push(`待绑定:${x.bind?.status === 'override_stale' ? '人工绑定不覆盖本月' : BIND_BUCKET_LABEL[x.bind?.bucket ?? 'no_contract']}`)
+  if (x.unbound) dims.push(`待绑定:${x.bind?.status === 'override_stale' ? '绑的那份合同本月没生效' : BIND_BUCKET_LABEL[x.bind?.bucket ?? 'no_contract']}`)
   if (x.flags.touMismatch) dims.push('时段不符:尖峰平谷用量之和与总用量不符')
   if (x.flags.negative) dims.push('倒走:总用量为负,疑换表/抄错')
   if (x.placeholder) dims.push('占位槽:空/停用原文,不计入待核与抄表进度')
@@ -571,10 +571,10 @@ export function buildingTotals(rows: WorkbenchRow[]): BuildingTotals | null {
 export type BindQueueBucket = BindBucket | 'pending' | 'stale'
 export const BIND_BUCKET_LABEL: Record<BindQueueBucket, string> = {
   date_missing: '缺日期', ambiguous: '多合同', bld_mismatch: '口径错位',
-  no_contract: '无合同', pending: '待核', stale: '绑定过期',
+  no_contract: '无合同', pending: '待核', stale: '绑定不适用',
 }
 export const BIND_STATUS_NOTE: Record<BindStatus, string> = {
-  auto: '自动', auto_bld: '对位', override: '人工', override_stale: '过期',
+  auto: '自动', auto_bld: '对位', override: '人工', override_stale: '不适用',
   manual: '待处理', pending: '待核', placeholder: '占位',
 }
 
@@ -593,7 +593,12 @@ export function bindReason(qb: BindQueueBucket, row: MeterBindingRowDTO): string
     case 'ambiguous': return `${n} 份合同覆盖本月,需人工选定`
     case 'bld_mismatch': return `楼栋对位落空(口径错位),${n} 份候选`
     case 'no_contract': return '该户无有效合同(补合同是业务动作)'
-    case 'stale': return `${row.contractNo ?? ''} 不覆盖本月,请复核`
+    // 「过期」曾被读成「这份合同到期了」。它说的是:有人把这块表指给了这一份,而本月不在它的租期内
+    // (往往是还没开始),它的前后期里也没有能接上本月的。候选=本月这户能用的合同,点一下就改过去。
+    // 合同号不重复:它就印在这句话左边那一格里(MeterDetailDrawer 的 .md-bstat .val)。
+    case 'stale': return n
+      ? `这一份本月还没生效或已到期,它的前后期也没有接上本月的;下面 ${n} 份是本月这户能用的`
+      : '这一份本月还没生效或已到期,该户本月也没有别的有效合同'
   }
 }
 

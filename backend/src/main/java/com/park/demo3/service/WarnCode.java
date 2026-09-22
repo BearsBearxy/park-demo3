@@ -31,6 +31,18 @@ public enum WarnCode {
     W_METER_NO_CONTRACT,
 
     /**
+     * 表绑的合同本月没生效。
+     * 判据:{@code "override_stale".equals(row.status())} —— 有人给这块表指认过一份合同,
+     * 但那份本月不在租期内,它所在的递增段/续签链上也没有覆盖本月的段,自动归属同样定不出替代。
+     * 影响:行照出、金额一分不变;contract_id 快照落的是<b>本月并未生效的那一份</b>,
+     * 于是租金行挂 A 段、水电行挂 B 段 —— 事后按合同对账时这几块表的钱对不上任何一期。
+     * payload = meterId;hint = 表名(同 W_METER_NO_CONTRACT 的 meterTag 口径)。
+     * <p>与 W_METER_NO_CONTRACT 分开:那一类是<b>没人指认过</b>(去挂合同),
+     * 这一类是<b>指认过但指错了期</b>(去改绑定或补那一期的合同),动作不同,不共用一句话。
+     */
+    W_METER_BIND_STALE,
+
+    /**
      * 房号对不上合同。
      * 判据:{@code Pin.undecided()} = {@code tokens>0 && cands>0 && candTokens>0 && hits==0}
      * —— 表上抽得出房号、合同计费行上也抽得出房号,一条都对不上。

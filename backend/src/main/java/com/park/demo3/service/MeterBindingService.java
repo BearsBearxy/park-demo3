@@ -90,6 +90,15 @@ public class MeterBindingService {
             famContracts.computeIfAbsent(root.getOrDefault(c.getTenantId(), c.getTenantId()),
                 k -> new ArrayList<>()).add(c);
         }
+        // 递增段/续签链:parent_contract_id 连成的单链(V57 link_type new|renew|escalation)。
+        // 规则1 按月落段要用它 —— 见下面 segmentCovering 的注释。
+        Map<Integer, Integer> chainRoot = new HashMap<>();
+        for (Contract c : byId.values()) chainRoot.put(c.getId(), chainRootOf(c, byId));
+        Map<Integer, List<Contract>> chainMembers = new HashMap<>();   // 链首 id → 本链非草稿各段
+        for (Contract c : byId.values()) {
+            if ("draft".equals(c.getStatus())) continue;
+            chainMembers.computeIfAbsent(chainRoot.get(c.getId()), k -> new ArrayList<>()).add(c);
+        }
         Map<Integer, MeterReading> readByMeter = readingsByMeter(ym);
         Map<Integer, String> bName = buildings.selectList(null).stream()
             .collect(Collectors.toMap(Building::getId, Building::getName));
@@ -116,11 +125,16 @@ public class MeterBindingService {
             if (!hasReading) missing++;
 
             String status; String bucket = null; Contract chosen = null; List<Contract> cands = List.of();
+            // 规则1(2026-09-23 改写):人工绑定钉的是**一份合同**,不是它的某一段。
+            // 递增段与续签是同一份合同的分期(V57 link_type escalation|renew,拆链 spec §1「派生一视同仁」),
+            // 租金那边一直是按月挑段的(BillNoticeService 走 covers()),只有这里钉死一段 ——
+            // 于是旭化成 2023-08 那张单上租金挂 C2024M-022A#2、水电挂 #3(2023-10-27 才生效),全库 203 行。
+            Contract pinned = m.getContractId() == null ? null : byId.get(m.getContractId());
+            Contract seg = pinned == null ? null : segmentCovering(pinned, chainMembers, chainRoot, first, last);
             if (m.getTenantId() == null) {
                 status = meaningless(m.getTenantName()) ? "placeholder" : "pending";
-            } else if (m.getContractId() != null) {   // 规则1:override 直接采用,确定不覆盖才警示
-                chosen = byId.get(m.getContractId());
-                status = staleFor(chosen, first, last) ? "override_stale" : "override";
+            } else if (seg != null) {
+                status = "override"; chosen = seg;   // seg==pinned 即原先的「直接采用」
             } else {
                 List<Contract> fam = famContracts.getOrDefault(
                     root.getOrDefault(m.getTenantId(), m.getTenantId()), List.of());
@@ -149,14 +163,24 @@ public class MeterBindingService {
                     if (!noDates.isEmpty()) { bucket = "date_missing"; cands = noDates; }   // 唯一时 UI 一键确认=写 override
                     else bucket = "no_contract";   // 含「有日期但不覆盖该月」:该月无可用合同
                 }
+                // 钉过合同、本月落不到段、自动也定不出 → override_stale(不是 manual:有人指认过,
+                // 该留着他指的那一份)。候选照给 —— 原先这一档候选恒空,抽屉上只剩「该户无候选合同」,
+                // 而该户本月明明有能用的合同,除了解绑没有第二条出路。
+                if (pinned != null && "manual".equals(status)) {
+                    status = "override_stale"; bucket = null; chosen = pinned;
+                }
             }
             if ("manual".equals(status)) manual.merge(bucket, 1, Integer::sum);
             else counts.merge(status, 1, Integer::sum);
             Integer cid = chosen != null ? chosen.getId() : m.getContractId();
             boolean noBind = "pending".equals(status) || "placeholder".equals(status);
+            // 钉的那份没被直接用上时把它带出去:屏上要说清「钉的是哪份、本月落在哪份」,
+            // 不静默替换(§2「不设静默兜底」)。落回同一份时为 null,contractNo 已经是它。
+            String pinNo = pinned != null && chosen != null && !pinned.getId().equals(chosen.getId())
+                ? pinned.getContractNo() : null;
             rows.add(new MeterBindingDTO.Row(m.getId(), status, bucket,
                 noBind ? null : cid,
-                chosen == null ? null : chosen.getContractNo(),
+                chosen == null ? null : chosen.getContractNo(), pinNo,
                 noBind || cid == null ? List.of() : locsByContract.getOrDefault(cid, List.of()),
                 cands.stream().map(c -> new MeterBindingDTO.Candidate(c.getId(), c.getContractNo(),
                     bName.get(c.getBuildingId()), c.getStartDate(), c.getEndDate(),
@@ -273,10 +297,29 @@ public class MeterBindingService {
         return !c.getStartDate().isAfter(last) && !c.getEndDate().isBefore(first);
     }
 
-    // override 失效:仅起止齐全且确定不覆盖才警示(缺日期无法断言,不标——缺口由 date_missing 报表追)
-    private static boolean staleFor(Contract c, LocalDate first, LocalDate last) {
-        return c == null || (c.getStartDate() != null && c.getEndDate() != null
-            && (c.getStartDate().isAfter(last) || c.getEndDate().isBefore(first)));
+    // 链首:沿 parent_contract_id 上溯。guard 防脏数据成环(分叉告警在前端 chain.ts,这里只求不挂)
+    private static Integer chainRootOf(Contract c, Map<Integer, Contract> byId) {
+        Contract w = c;
+        for (int guard = 0; guard < 64; guard++) {
+            Contract p = w.getParentContractId() == null ? null : byId.get(w.getParentContractId());
+            if (p == null || p.getId().equals(w.getId())) break;
+            w = p;
+        }
+        return w.getId();
+    }
+
+    // 规则1 的按月落段:钉的那份所在链上覆盖 ym 的那一段。
+    //  · 缺起止日期的绑定原样采用 —— date_missing 桶的「一键确认」写的就是这种,
+    //    拒用会让那批表永久变红(§4.5 原本用 staleFor 保的就是这一条);
+    //  · 段是对租期的分区,正常恰好命中一段;0 段(链断了/该月这户真没合同)或多段(脏数据)
+    //    都返回 null,交给规则 2-5 的自动归属去判,判不出才是 override_stale。
+    private static Contract segmentCovering(Contract pinned, Map<Integer, List<Contract>> chainMembers,
+                                            Map<Integer, Integer> chainRoot, LocalDate first, LocalDate last) {
+        if (pinned.getStartDate() == null || pinned.getEndDate() == null) return pinned;
+        if (covers(pinned, first, last)) return pinned;
+        List<Contract> hit = chainMembers.getOrDefault(chainRoot.get(pinned.getId()), List.of())
+            .stream().filter(c -> covers(c, first, last)).toList();
+        return hit.size() == 1 ? hit.get(0) : null;
     }
 
     private static BigDecimal nsum(BigDecimal a, BigDecimal b) {

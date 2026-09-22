@@ -161,6 +161,15 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 例外是 `admin`，它是「全部权限」角色（V101 起每个新权限点都给它），所以也持有 `review:approve`。
 系统不拦「同一账号既录又审」；客户若给主管勾了审核权，录审分离由客户自己负责。
 
+> **⚠ 2026-09-23 修:「零 `:edit`、无 `elevate:request`」把审核员挡在了 15 个屏外面。**
+> 屏上那一簇审核按钮(`FPReviewActions`,全站唯一一份)的显示门原来是 `canEdit && ready`,
+> 而 `canEdit` 来自 `useEditMode` 的 `canEnter = hasAny(perms) || can('elevate:request')` ——
+> 对纯审核员**恒假**。后端三个动作都正确挂在 `review:approve` 上、催缴单屏也把审核键
+> (`bill-notices:{ym}`)挂上了,而唯一能审的那个角色登进去一颗审核按钮都看不见。
+> 显示门已改成 `canEdit || isReviewer`(判据仍在后端,前端只决定画不画)。
+> 断言在 `FPReviewActions.spec.ts`:`canEdit=false` + 只有 `review:approve` → 画「通过 / 退回」;
+> `canEdit=false` 且无审核权 → 仍然一颗不画。两条都破坏验证过。
+
 **向后兼容**：现有 `admin` → 系统管理员，`viewer` → 只读。老账号与老 JWT 照常认。
 
 ---
@@ -264,6 +273,7 @@ POST /api/review/*/submit    → param-policy | param-monthly | meter-reading | 
 POST /api/review/*/approve   → review:approve
 POST /api/review/*/return    → review:approve
 POST /api/review/*/withdraw  → review:approve
+POST /api/review/*/recall    → 同 submit（录入方撤自己交的，本人判定下沉 ReviewService）
 # GET /api/review 不登记 —— 本表只管非 GET,读全开
 
 # ═══ 默认段（单模块 controller）═══

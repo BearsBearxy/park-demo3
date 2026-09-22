@@ -51,11 +51,26 @@
 
 ```
 draft(待核对) ──确认──> confirmed(已确认) ──导出──> exported(已导出)
+     ↑                      │                         (退不回来)
+     └──取消确认(理由必填)───┘
      └────────────────── 重新生成(仅 draft) ──────┘
                          confirmed/exported 户被跳过并计数报告
 ```
 
-- **单向流转**，不提供"退回草稿"按钮（要改就作废后重生成，走既有 `void`）。
+- ~~**单向流转**，不提供"退回草稿"按钮（要改就作废后重生成，走既有 `void`）。~~
+  **2026-09-23 推翻这一条**（用户要求"增加审核后可以回退的机制"）。理由：原方案给的两条补救路都不是"反悔" ——
+  `void` 落的是 `void` 不是 `draft`（屏上那户会显示"待核对"，但重新生成仍把它整户跳过，因为锁定户盘点只看"有没有非 draft 的单"）；
+  整月重新生成则会把**别人已经核完的户**一起冲掉。点错一户之后没有一条路能只退那一户。
+
+  新增 `POST /api/bill-notices/unconfirm`（户级批量，`ym` + `tenantIds` + `reason`）：
+  - **只收 `confirmed` 这一档**。`exported` 退不回来 —— Excel 已经发出去了，那是 `Perm.BILLING_ISSUE_EDIT` 说明里写的"对外不可逆动作"；`draft` / `void` 计入 `skipped`，不报错（形状与 `confirm` 对称）。
+  - **理由必填**（`@NotBlank`）并落 `auth_audit_log`：撤的是一个别人可能已经照着往下走的判断，同审核轴 `withdraw` 的规矩（`ReviewService:346`「作废的是审核员的判断，得给那个人一句交代」）。
+  - **权限与 `confirm` 同一个点**（`billing-issue:edit`）：签发岗自己的动作自己撤，对应审核轴的 `recall`（本人撤回）而不是 `withdraw`（审核员作废别人的判断）。登记必须排在 `/api/bill-notices/**` 那条 catch-all 之前。
+  - `confirmed_at` / `confirmed_by` 用 `UpdateWrapper` 显式置 NULL —— MyBatis-Plus 的 `updateById` 跳 null 字段，照 `setConfirmedBy(null)` 写的话状态回了草稿、确认人还留在屏上。
+  - 已交审 / 已审核的月仍被 `ReviewGuard` 拦住（423），与 `confirm` 同一道闸。
+  - 断言在 `BillNoticeApiIT.t22`：草稿态只计 skipped ／ 空理由 400 且状态不动 ／ 退回后 `confirmed_at` 为 NULL ／ 退回后重新生成不再跳过 ／ 已导出退不回来。三条各自破坏验证过。
+
+  屏上三处"不能改回草稿"的话同时改掉（它们从此是假的）：多户二次确认、主动作 title、抽屉底部那一行。
 - **重新生成保护**：引擎已有 `issuedTenants` 跳过机制（`BillNoticeService:437-439`），扩为"status ∈ {confirmed, exported} 的户整户跳过"，生成结果里报告跳过户数——**这是防止已核对数据被静默覆盖的闸门**（呼应审计 P0「月度关账」的轻量版）。
 - 状态是**单据级**存储、**户级**展示：该户全部单都 confirmed 才显示"已确认"；部分确认显示"部分确认"。
 

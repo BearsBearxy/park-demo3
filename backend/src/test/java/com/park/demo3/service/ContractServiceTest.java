@@ -153,4 +153,78 @@ class ContractServiceTest {
         assertThatThrownBy(() -> svc.create(reqWithExtras(null, List.of(777))))
             .isInstanceOf(BizException.class).hasMessageContaining("附加单元不存在");
     }
+
+    // ── 终止:解约日收进 end_date(2026-09-23) ───────────────────────────────
+    // ⚠ 这几条钉的不是「哪一列被写了」,是「终止之后出账还认不认这个月」。
+    //   出账那一侧唯一的判据是 MeterBindingService.covers(非草稿 + 起止齐全 + 月区间重叠),
+    //   它不看 status —— 所以只写 status 的终止在出账链上等于没发生。断言直接调 covers 本人。
+    private Contract terminateAndCapture(Contract c, LocalDate on) {
+        Mockito.when(cm.selectById(c.getId())).thenReturn(c);
+        svc.terminate(c.getId(), on);
+        Mockito.verify(cm).updateById(c);
+        return c;
+    }
+
+    @Test void terminate_解约日收进到期日_解约当月还算这个月之后不算() {
+        Contract c = contract(1, 1, 7, null, "active",
+            LocalDate.of(2026, 1, 1), LocalDate.of(2028, 12, 31), 8000);
+        terminateAndCapture(c, LocalDate.of(2026, 6, 15));
+
+        assertThat(c.getStatus()).isEqualTo("terminated");
+        assertThat(c.getEndDate()).isEqualTo(LocalDate.of(2026, 6, 15));
+        // 解约当月:人确实在租过半个月,照出(金额由 prorate 按天折)
+        assertThat(MeterBindingService.covers(c, LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30))).isTrue();
+        // 次月起:不再命中 —— 这就是原来那个「终止了还出满月租金」的口子
+        assertThat(MeterBindingService.covers(c, LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 31))).isFalse();
+        // 解约之前的月份一个字不变(所以修法不是去 covers 里排 terminated)
+        assertThat(MeterBindingService.covers(c, LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 28))).isTrue();
+    }
+
+    @Test void terminate_解约日晚于到期日_不把到期日往后推() {
+        Contract c = contract(2, 1, 7, null, "active",
+            LocalDate.of(2026, 1, 1), LocalDate.of(2026, 3, 31), 8000);
+        terminateAndCapture(c, LocalDate.of(2026, 9, 9));   // 已自然到期后才来补状态
+        assertThat(c.getEndDate()).isEqualTo(LocalDate.of(2026, 3, 31));
+    }
+
+    @Test void terminate_不传解约日_取今天() {
+        Contract c = contract(3, 1, 7, null, "active",
+            LocalDate.of(2000, 1, 1), LocalDate.of(2099, 12, 31), 8000);
+        terminateAndCapture(c, null);
+        assertThat(c.getEndDate()).isEqualTo(LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")));
+    }
+
+    @Test void terminate_解约日早于起租_拒绝() {
+        Contract c = contract(4, 1, 7, null, "active",
+            LocalDate.of(2026, 1, 1), LocalDate.of(2028, 12, 31), 8000);
+        Mockito.when(cm.selectById(4)).thenReturn(c);
+        assertThatThrownBy(() -> svc.terminate(4, LocalDate.of(2025, 12, 31)))
+            .isInstanceOf(BizException.class).hasMessageContaining("终止日期不能早于起租日期");
+        Mockito.verify(cm, Mockito.never()).updateById(Mockito.any(Contract.class));
+    }
+
+    // ── 续签继承合同性质(2026-09-23) ──────────────────────────────────────
+    // ⚠ 「整租」这一列页面上改不了(V59 起只有一条 SQL 写过它),所以续签漏抄 = 永久丢失。
+    //   丢了之后六处「排除整租防双算」同时失效:KPI 月租金合计、楼栋卡三项、租金行、容量费、分析屏两处。
+    //   破坏验证:把 renew 里的 setKind 删掉 → 本行红。
+    @Test void renew_继承整租标记() {
+        Contract old = contract(5, 1, 7, null, "active",
+            LocalDate.of(2023, 5, 1), LocalDate.of(2024, 2, 29), 1808871.63);
+        old.setKind("master_lease");
+        Mockito.when(cm.selectById(5)).thenReturn(old);
+        Mockito.when(cm.selectList(Mockito.any())).thenReturn(List.of());   // 合同号查重
+        Mockito.when(btm.selectList(Mockito.any())).thenReturn(List.of());  // 无计费行可复制
+        Contract[] saved = new Contract[1];
+        Mockito.when(cm.insert(Mockito.any(Contract.class))).thenAnswer(inv -> {
+            saved[0] = inv.getArgument(0); saved[0].setId(77); return 1;
+        });
+        Mockito.when(cm.selectById(77)).thenAnswer(inv -> saved[0]);
+
+        svc.renew(5, new ContractRenewReq("IT-RENEW-KIND", LocalDate.of(2024, 3, 1),
+            LocalDate.of(2025, 2, 28), null, null, null, null));
+
+        assertThat(saved[0].getKind()).isEqualTo("master_lease");
+        assertThat(saved[0].getParentContractId()).isEqualTo(5);
+        assertThat(old.getStatus()).isEqualTo("renewed");
+    }
 }

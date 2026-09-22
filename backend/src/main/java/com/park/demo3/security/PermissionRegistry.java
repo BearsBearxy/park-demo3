@@ -99,6 +99,9 @@ public class PermissionRegistry {
         add(null, "/api/bills/paymap", Perm.BILLING_ISSUE_EDIT);
         add(null, "/api/bills/**",     Perm.BILLING_RUN_EDIT);
         add(null, "/api/bill-notices/confirm",        Perm.BILLING_ISSUE_EDIT);
+        // 取消确认与确认同一个权限点:签发岗自己的动作自己撤,对应审核轴的 recall(本人撤回)
+        // 而不是 withdraw(审核员作废别人的判断)。必须排在下面那条 /** 之前,否则被 catch-all 吃掉。
+        add(null, "/api/bill-notices/unconfirm",      Perm.BILLING_ISSUE_EDIT);
         add(null, "/api/bill-notices/mark-exported",  Perm.BILLING_ISSUE_EDIT);
         add(null, "/api/bill-notices/{id}/issue",     Perm.BILLING_ISSUE_EDIT);
         add(null, "/api/bill-notices/{id}/void",      Perm.BILLING_ISSUE_EDIT);

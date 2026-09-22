@@ -4,7 +4,7 @@ import {
   buildRows, rowStatus, cardCounts, matchStatus, filterRows,
   segUsage, segCheck, buildingTotals, groupByBuilding,
   effCurr, draftRowDirty, draftDirtyIds, rowUsage, draftRowIssues, draftReq, gridFooter,
-  bindQueueBucket, autoLinkEstimate, statusDims,
+  bindQueueBucket, bindReason, autoLinkEstimate, statusDims,
   flattenGroups, buildWindow, offsetOf, ROW_H, BSUM_H, floorRankOf,
   type WorkbenchRow, type WorkbenchFilter, type MeterDraft, type BuildingGroup, type DisplayItem,
 } from './useMeterWorkbench'
@@ -497,6 +497,20 @@ describe('bindQueueBucket / autoLinkEstimate — v4 meterBindQueue 口径并入'
     expect(bindQueueBucket({ status: 'override_stale' })).toBe('stale')
     expect(bindQueueBucket({ status: 'manual', bucket: 'ambiguous' })).toBe('ambiguous')
     expect(bindQueueBucket({ status: 'manual' })).toBe('no_contract')
+  })
+  // ⚠ 「过期」曾被用户读成「这份合同到期了」(2026-09-23 报障:合同明明覆盖这个月还写过期)。
+  //   这一档说的是「有人把这块表指给了这一份,而本月不在它的租期内」——往往是它还没开始。
+  //   破坏验证:把 'stale' 那一支改回 `${contractNo} 不覆盖本月,请复核` → 本行红。
+  it('stale 的话要说清是绑定不适用、不是合同到期;有候选时指到候选上', () => {
+    const base = { meterId: 1, status: 'override_stale', contractNo: 'C2024M-022A#3', hasReading: true } as const
+    const withCands = bindReason('stale', { ...base, candidates: [
+      { contractId: 419, contractNo: 'C2024M-022A#2', buildingName: 'A座', startDate: null, endDate: null },
+      { contractId: 423, contractNo: 'C2024M-022#2', buildingName: 'A座', startDate: null, endDate: null },
+    ] })
+    expect(withCands).toContain('本月还没生效或已到期')
+    expect(withCands).toContain('2 份')          // 候选数报出来:原先这一档候选恒空,屏上只剩「该户无候选合同」
+    expect(withCands).not.toContain('C2024M-022A#3')   // 合同号在左边那一格,别印第二遍
+    expect(bindReason('stale', base)).toContain('该户本月也没有别的有效合同')
   })
   it('一键挂预估:精确全等且档案内唯一才计入', () => {
     const tenantNames = ['锂朋科技', '嘉荣', '嘉荣', '力灏']

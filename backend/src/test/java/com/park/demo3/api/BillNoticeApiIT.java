@@ -1190,4 +1190,57 @@ class BillNoticeApiIT extends AbstractMysqlIT {
                 "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "]}"), "$.data.marked")).isZero();
         assertThat(one(notices(ym, t)).get("status")).isEqualTo("void");
     }
+
+    // ── t22 取消确认(2026-09-23):confirmed→draft,理由必填;只收 confirmed 这一档。
+    //    原来这条轴是单向的(S20 §1.3 原文「不提供"退回草稿"按钮」),点错一户只剩作废或整月重生成。
+    //    槽 2093-06。 ──
+    @Test
+    void t22_unconfirm_backToDraft_reasonRequired_exportedNotRevertable() throws Exception {
+        String ym = "2093-06";
+        monthlyPrices(ym);
+        int t = createTenant("IT取消确认户");
+        int c = contract(t, "2089-01-01", "2099-12-31", null);
+        int m = createMeter("elec", "p1", "IT取消确认电", t);
+        bind(m, c);
+        reading(m, ym, "\"prevTotal\":0,\"currTotal\":100");
+        assertThat((int) JsonPath.read(generate(ym), "$.data.generated")).isEqualTo(1);
+
+        // 草稿态取消确认:没有可退的,只计 skipped(不报错 —— 与 confirm 的形状对称)
+        assertThat((int) JsonPath.read(postOk("/api/bill-notices/unconfirm",
+                "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "],\"reason\":\"点错了\"}"),
+                "$.data.reverted")).isZero();
+
+        postOk("/api/bill-notices/confirm", "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "]}");
+        assertThat(one(notices(ym, t)).get("confirmedAt")).isNotNull();
+
+        // 理由必填:空串 400(@NotBlank),状态一个字不动
+        mvc.perform(post("/api/bill-notices/unconfirm").header("Authorization", auth())
+                        .contentType("application/json")
+                        .content("{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "],\"reason\":\"\"}"))
+                .andExpect(status().isBadRequest());
+        assertThat(one(notices(ym, t)).get("status")).isEqualTo("confirmed");
+
+        // 取消确认:confirmed→draft,**confirmed_at / confirmed_by 一起清空**。
+        // ⚠ 这一条钉的是 UpdateWrapper 那个写法:MyBatis-Plus 的 updateById 跳 null 字段,
+        //   照 setConfirmedBy(null)+updateById 写的话状态回了草稿、确认人还留在屏上。
+        String u = postOk("/api/bill-notices/unconfirm",
+                "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "],\"reason\":\"金额算错了要重算\"}");
+        assertThat((int) JsonPath.read(u, "$.data.reverted")).isEqualTo(1);
+        Map<String, Object> row = one(notices(ym, t));
+        assertThat(row.get("status")).isEqualTo("draft");
+        assertThat(row.get("confirmedAt")).isNull();
+
+        // 退回之后重新生成不再跳过这户 —— 这正是取消确认要的效果
+        assertThat((int) JsonPath.read(generate(ym), "$.data.skippedConfirmed")).isZero();
+        assertThat((int) JsonPath.read(generate(ym), "$.data.generated")).isEqualTo(1);
+
+        // 已导出的退不回来:Excel 已经发出去了(billing-issue:edit 说明原话「对外不可逆动作」)
+        postOk("/api/bill-notices/confirm", "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "]}");
+        postOk("/api/bill-notices/mark-exported", "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "]}");
+        String u2 = postOk("/api/bill-notices/unconfirm",
+                "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "],\"reason\":\"还想退\"}");
+        assertThat((int) JsonPath.read(u2, "$.data.reverted")).isZero();
+        assertThat((int) JsonPath.read(u2, "$.data.skipped")).isEqualTo(1);
+        assertThat(one(notices(ym, t)).get("status")).isEqualTo("exported");
+    }
 }

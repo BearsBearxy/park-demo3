@@ -44,7 +44,14 @@ const props = withDefaults(defineProps<{
   year?: number | null
   /** 这一屏的编辑入口画不画(= FPEditModeButton 的 canEnter)。假 ⇒ 整簇不渲染:
    *  只读账号 / 园区股东本来就没有编辑按钮,单给他看一句「已审核」是凭空多一条用不上的信息
-   *  —— 与 FPEditModeButton 的现行口径一致。 */
+   *  —— 与 FPEditModeButton 的现行口径一致。
+   *
+   *  ⚠ **审核员不在「只读账号」这一档里**(2026-09-23 修)。reviewer 角色的全部权限就是
+   *  `review:approve` 一个,既没有任何 `*:edit`、也没有 `elevate:request`,于是
+   *  useEditMode 的 `canEnter = hasAny(perms) || can('elevate:request')` 对他恒假 ——
+   *  后端三个动作都好好挂在 review:approve 上、催缴单屏也把审核键挂上了,
+   *  而**唯一能审的那个角色在 15 个屏上一颗审核按钮都看不见**。
+   *  所以显示门改成 `canEdit || isReviewer`:判据仍在后端,这里只决定画不画。 */
   canEdit?: boolean
   /**
    * 宿主此刻在不在编辑态。真 ⇒ **动作按钮一颗都不画**,但「已退回」那颗 chip 留着。
@@ -88,7 +95,8 @@ const ready = computed(() => keys.value.length > 0 && keys.value.every((k) => {
   const p = periodOfKey(k)
   return !!p && review.yearLoaded(+p.slice(0, 4))
 }))
-const show = computed(() => !!props.canEdit && ready.value)
+const isReviewer = computed(() => auth.can('review:approve'))
+const show = computed(() => (!!props.canEdit || isReviewer.value) && ready.value)
 
 const rowOf = (k: string): ReviewRow | null => review.rowOf(k)
 /** 态的判据(含「库里没这行 = 派生 entered」)在 store.statusOf 那一份,这里只筛。
@@ -96,7 +104,6 @@ const rowOf = (k: string): ReviewRow | null => review.rowOf(k)
 const inState = (...ss: ReviewStatus[]) =>
   keys.value.filter((k) => { const s = review.statusOf(k); return !!s && ss.includes(s) })
 
-const isReviewer = computed(() => auth.can('review:approve'))
 
 // 每个动作各自作用于「此刻正处在对应态的那几把键」,不先把多键折成一个态再统一发。
 // 折的话公共电核算屏(alloc + alloc-loss)一把 entered 一把 submitted 时,submitAll 会把

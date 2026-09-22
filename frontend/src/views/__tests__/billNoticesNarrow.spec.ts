@@ -412,7 +412,10 @@ describe('§5.10 屏标题行 —— 屏名不上屏,动作收成 1 主 +「⋯�
     await go!.trigger('click')
     await flushPromises()
     expect(confirmSpy).toHaveBeenCalledOnce()
-    expect(confirmSpy.mock.calls[0][0]).toContain('不能改回草稿')
+    // 2026-09-23:交付轴不再是单向的(S20 §1.3 那条「不提供退回草稿按钮」已被推翻),
+    // 这句二次确认改成说**代价**——重生成会跳过这几户,要反悔得逐户去抽屉里取消。
+    expect(confirmSpy.mock.calls[0][0]).toContain('重新生成会跳过这几户')
+    expect(confirmSpy.mock.calls[0][0], '这句话现在是假的').not.toContain('不能改回草稿')
     expect(billDeliveryApi.confirm).not.toHaveBeenCalled()
   })
 

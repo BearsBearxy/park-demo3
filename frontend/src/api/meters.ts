@@ -183,7 +183,9 @@ export interface MeterDeleteDTO {
 export type BindBucket = 'date_missing' | 'ambiguous' | 'bld_mismatch' | 'no_contract'
 export type BindStatus =
   | 'auto' | 'auto_bld'            // 自动归属(候选唯一/楼栋对位唯一)
-  | 'override' | 'override_stale'  // 人工绑定(stale=合同不覆盖 ym,警示不静默失效)
+  // 人工绑定。钉的那份不覆盖 ym 时按月落到同链(递增段/续签)覆盖该月的那一段,仍是 override;
+  // stale=链上也没有覆盖该月的段、自动归属同样定不出 —— 警示不静默失效
+  | 'override' | 'override_stale'
   | 'manual'                       // 待处理队列(带 bucket 分桶原因)
   | 'pending'                      // 待核:ownership=tenant 且 tenant_id NULL 且原文有意义
   | 'placeholder'                  // 占位槽:原文 NULL/'-'/'（空）'/'已停用',不计入待核收敛
@@ -204,6 +206,8 @@ export interface MeterBindingRowDTO {
   bucket?: BindBucket | null
   contractId?: number | null
   contractNo?: string | null
+  /** 人工绑定钉的那份合同号,仅当它没被直接用上时给(本月落到了同链另一段,或退回了自动归属) */
+  pinnedContractNo?: string | null
   locations?: string[]             // 绑定合同的费项位置标签;未绑定=[]
   candidates?: BindCandidateDTO[]
   hasReading: boolean

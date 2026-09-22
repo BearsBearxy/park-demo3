@@ -25,7 +25,10 @@ export const contractApi = {
       .then(d => ({ ...d, contract: fromWire(d.contract) })),
   create:  (req: ContractCreateReq): Promise<ContractDTO> => http.post<ContractWire>('/contracts', toWire(req)).then(fromWire),
   update:  (id: number, req: ContractCreateReq): Promise<ContractDTO> => http.put<ContractWire>(`/contracts/${id}`, toWire(req)).then(fromWire),
-  terminate: (id: number): Promise<ContractDTO>    => http.post<ContractWire>(`/contracts/${id}/terminate`).then(fromWire),
+  // terminatedOn=解约日(YYYY-MM-DD),空=后端取今天。后端会把它收进 endDate —— 出账判「这个月算不算数」
+  // 只看起止日期重叠、不看状态,不收就等于终止没发生。
+  terminate: (id: number, terminatedOn?: string): Promise<ContractDTO> =>
+    http.post<ContractWire>(`/contracts/${id}/terminate`, { terminatedOn: terminatedOn ?? null }).then(fromWire),
   renew:   (id: number, req: ContractRenewReq): Promise<ContractDTO> => http.post<ContractWire>(`/contracts/${id}/renew`, req).then(fromWire),
   remove:  (id: number): Promise<void>             => http.delete(`/contracts/${id}`),
   // 计费行批量导入(BILL-FORWARD 刀1 三次返工 §1.7):FeeRow 1:1,按合同整组替换 source='import' 行、保留 manual 行

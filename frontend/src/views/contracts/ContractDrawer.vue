@@ -11,6 +11,7 @@ import FPContractTimeline from './FPContractTimeline.vue'
 import FPContractChain from './FPContractChain.vue'
 import Avatar from '@/components/ds/Avatar.vue'
 import Button from '@/components/ds/Button.vue'
+import DatePicker from '@/components/ds/DatePicker.vue'
 import { iconFor } from '@/components/ds/icon'
 import { useAuthStore } from '@/stores/auth'
 
@@ -28,6 +29,10 @@ const detail = ref<ContractDetailDTO | null>(null)
 
 // ─── 操作:终止 / 删除(确认弹窗) ──────────────────────────
 const askTerminate = ref(false)
+// 解约日,默认今天。收进合同的到期日 —— 出账判「这个月算不算数」只看起止日期重叠,
+// 不收的话终止等于没发生(后面每个月照出满月租金)。时间轴那行「已终止 · X · 提前解约」印的也是它。
+const todayStr = () => new Date().toLocaleDateString('sv-SE')   // sv-SE = YYYY-MM-DD,按本机时区
+const termOn = ref(todayStr())
 const askDelete = ref(false)
 const busy = ref(false)
 
@@ -40,7 +45,7 @@ async function doTerminate() {
   if (!props.contract || busy.value) return
   busy.value = true
   try {
-    const dto = await contractApi.terminate(props.contract.id)
+    const dto = await contractApi.terminate(props.contract.id, termOn.value)
     askTerminate.value = false
     emit('terminated', dto)
   } catch (e) {
@@ -69,6 +74,7 @@ async function doDelete() {
 watch(() => props.contract, async (c) => {
   detail.value = null
   askTerminate.value = false
+  termOn.value = todayStr()   // 换合同要重置:上一户改过的解约日不该跟着带到下一户
   askDelete.value = false
   if (!c) return
   const d = await contractApi.detail(c.id)
@@ -337,6 +343,15 @@ const contactLine = computed(() =>
           <h3>终止合同</h3>
           <p>确认终止合同「{{ contract.contractNo }}」?其占用的单元将变为空置。</p>
         </div>
+        <div class="cd-dlg-b">
+          <label for="cd-term-on">解约日期</label>
+          <DatePicker field-id="cd-term-on" :model-value="termOn" aria-label="解约日期"
+                      @update:model-value="termOn = ($event as string) || todayStr()" />
+          <p class="cd-term-note">
+            到期日收到这一天,解约当月按天折;这天之后不再出租金、容量费,也不进公摊名册。
+            之前已生成的月份不变。
+          </p>
+        </div>
         <div class="cd-dlg-f">
           <Button variant="gray" size="sm" @click="askTerminate = false">取消</Button>
           <Button variant="danger" size="sm" :disabled="busy" @click="doTerminate">
@@ -443,4 +458,8 @@ const contactLine = computed(() =>
 .cd-dlg-h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .cd-dlg-h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
 .cd-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:20px 22px 20px; }
+/* 终止确认里的解约日:日期在上、后果一句在下。这一句是这个弹窗唯一说清「下游会怎样」的地方 */
+.cd-dlg-b { padding:14px 22px 0; }
+.cd-dlg-b label { display:block; margin-bottom:6px; font-size:12.5px; color:var(--text-muted); }
+.cd-term-note { margin:10px 0 0; font-size:12px; line-height:1.55; color:var(--text-muted); }
 </style>

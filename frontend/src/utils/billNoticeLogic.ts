@@ -812,15 +812,19 @@ export function buildNoticeAlertGroups(
     })
 }
 
-// 一户的告警摘要:**一类一行 = 块头 + 该类的条目**。落点是列表行尾「!」的悬浮与明细抽屉横幅。
-//
-// 只列条目不给块头,屏上就是几个光秃秃的名字 ——「A101旭化成水 / 旭化成二楼水1 / 旭化成二楼水2」,
-// 看的人不知道这三个名字在说什么(2026-09-23 用户原话:每个租户的卡里面还是莫名其妙的提示)。
-// 组序与 buildNoticeAlertGroups 共用 WARN_CODES,两处顺序不许各排各的。
+// 一户的告警按类分组。两个落点共用这一份:列表行尾「!」的悬浮(warnSummaryLines)、
+// 明细抽屉标题行上的徽标与点开面板(BillNoticesView)。组序用 WARN_CODES,不按入参顺序。
 //
 // ⚠ 不复用 buildNoticeAlertGroups:它按 FPAlertPanel §6-3 滤掉了 drawer:false 的类
 // (今天是 W_TOTAL_NEGATIVE),而这两个落点要把这户的告警**全部**说完 —— 滤掉就成了亮着灯却没有字。
-export function warnSummaryLines(alerts: NoticeAlert[]): string {
+export interface WarnGroup {
+  code: string
+  title: string
+  items: string[]
+  route: string
+  actionLabel: string
+}
+export function warnGroupsOf(alerts: NoticeAlert[]): WarnGroup[] {
   const byCode = new Map<string, string[]>()
   for (const a of alerts) {
     const t = warnItemText(a.code, a.payload, a.hint)
@@ -828,9 +832,20 @@ export function warnSummaryLines(alerts: NoticeAlert[]): string {
     if (!items.includes(t)) items.push(t)
     byCode.set(a.code, items)
   }
-  return WARN_CODES.filter(c => byCode.has(c)).map(c => {
-    const body = byCode.get(c)!.join('、')
+  return WARN_CODES.filter(c => byCode.has(c)).map(c => ({
+    code: c, title: WARN_COPY[c].title, items: byCode.get(c)!,
+    route: WARN_COPY[c].route, actionLabel: WARN_COPY[c].actionLabel,
+  }))
+}
+
+// 一户的告警摘要:**一类一行 = 块头 + 该类的条目**。落点是列表行尾「!」的悬浮。
+//
+// 只列条目不给块头,屏上就是几个光秃秃的名字 ——「A101旭化成水 / 旭化成二楼水1 / 旭化成二楼水2」,
+// 看的人不知道这三个名字在说什么(2026-09-23 用户原话:每个租户的卡里面还是莫名其妙的提示)。
+export function warnSummaryLines(alerts: NoticeAlert[]): string {
+  return warnGroupsOf(alerts).map(g => {
+    const body = g.items.join('、')
     // 条目本身就是块头那一类(本期合计为负)不复述,免得屏上出现「X:X」
-    return body === WARN_COPY[c].title ? body : `${WARN_COPY[c].title}:${body}`
+    return body === g.title ? body : `${g.title}:${body}`
   }).join('\n')
 }

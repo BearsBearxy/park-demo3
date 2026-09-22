@@ -10,7 +10,10 @@ public record MeterBindingDTO(Summary summary, List<Row> rows) {
     public record Summary(int auto, int autoBld, int override, int overrideStale,
                           Map<String, Integer> manual,   // 按桶计数,四桶恒在(零也给,UI 稳定)
                           int pending, int placeholder, int missingReadings) {}
+    // pinnedContractNo=人工绑定钉的那份合同号,仅当它没被直接用上时给(本月落到了同链的另一段,
+    // 或链里没有覆盖本月的段、退回了自动归属)。屏上据此说明「钉的是哪份、本月落在哪份」,不静默替换。
     public record Row(Integer meterId, String status, String bucket, Integer contractId, String contractNo,
+                      String pinnedContractNo,
                       List<String> locations, List<Candidate> candidates, boolean hasReading) {}
     public record Candidate(Integer contractId, String contractNo, String buildingName,
                             LocalDate startDate, LocalDate endDate, List<String> locations) {}

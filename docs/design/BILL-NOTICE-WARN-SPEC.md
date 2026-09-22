@@ -52,7 +52,7 @@
 
 ---
 
-## §1 告警目录(八类)
+## §1 告警目录(九类)
 
 通用约定:
 
@@ -99,6 +99,27 @@
 钉它的断言在 `BillNoticeApiIT` t9:同户四块表(两块带字、一块裸数字、一块普通),
 断言 hints `hasSize(4).doesNotHaveDuplicates()` 且 `doesNotContain("636.00")`。
 破坏验证:`meterTag` 改回 `sub_name` → 红;去掉裸数字回落 → 红。
+
+### §1.1b `W_METER_BIND_STALE` 表绑的合同本月没生效
+
+> 2026-09-23 补的第九类（旭化成报障）。编号用 `1.1b` 不改后面七节的号：§1.7 之类被正文引用着，
+> renumber 会把那些引用全指歪。`WARN_CODES` 里它排**第二**（屏上组序：两类表的问题挨在一起）。
+
+| 项 | 内容 |
+|---|---|
+| 屏上块头 | 表绑的合同本月没生效 |
+| desc | 这些表被指认给了一份本月还没生效(或已经到期)的合同,那份合同的前后期里也没有能接上本月的。量照算进这张单,但单上这几块表挂的是一份本月不作数的合同 —— 而同一张单的租金走的是本月那一期,事后按合同对账时两边对不上。 |
+| 条目形状 | `{hint}`（hint = `meterTag(m)`，与 §1.1 同一条判据）；payload = `meterId` |
+| 落点屏 | `/meters` 园区抄表 · 动作「去园区抄表」 |
+| 判据(代码) | `"override_stale".equals(row.status())` — `BillNoticeService` 与 §1.1 同一处 if/else |
+| 判据(人话) | 有人给这块表指认过一份合同，但本月不在它的租期内，它所在的递增段/续签链上也没有能接上本月的段，规则 2-5 的自动归属同样定不出替代 |
+| 对账单影响 | 行照出、金额一分不变；`contract_id` 快照落的是**本月并未生效的那一份** |
+| 实测 | 改绑定规则之前 2023-08 有 203 行这种表费项、一声不吭；规则改后 2023-08 残留 108 块表进这一类，2023-10 / 2024-02 归零（见 `S2-BIND-SPEC` 规则1修订） |
+| 进抽屉 | 是 |
+
+> **为什么不并进 §1.1。** 那一类是「没人指认过」→ 去挂合同；这一类是「指认过但指错了期」
+> → 去改绑定、或去补那一期的合同。动作不同就不共用一句话（§5 的规矩）。
+> 而且并进去还会撞 `uk_warn`：两类的 payload 都是 `meterId`。
 
 ### §1.2 `W_ROOM_MISMATCH` 房号对不上合同
 
@@ -448,7 +469,16 @@ chip 口径的出处:`FPAlertChip.vue:5-6` 注释「count 口径全站钉死 = �
 
 **不做条目数上限、不做折叠。** 实测单户单月去重后最多 9 条。9 行是内容。
 
-### §4.5 行尾「!」与明细横幅
+### §4.5 行尾「!」与明细抽屉
+
+> **2026-09-23 改(照稿实现,画布「催缴单租户抽屉 · 整屏重设计」):明细抽屉那一路不再是「横幅」。**
+> 告警从抽屉正文的整宽横条,改成**抽屉副标题行上的徽标**(一类一个,写明类名与条数),
+> 点徽标才展开明细 + 落点链 + 时效句。理由是逐户核对:一个月要按「下一户」走一百多次,
+> 告警这一户有、下一户没有,正文就整体上下弹。徽标长在本来就存在的那一行上 ⇒ 有无都不改高度。
+> 真屏实测(旭化成有徽标 / 南宗没有):费项表顶边都在抽屉正文的 186 px 处。
+> 机器判据在 `views/__tests__/billNoticeDrawerShape.spec.ts`(11 条,逐条破坏验证过)。
+> **行尾「!」那一路没变**,仍是 `warnSummaryLines` 出的多行文本。
+
 
 两处保留,文本改成按文案表合成的多行(**含** `W_TOTAL_NEGATIVE`,它的唯一落点就是这里)。
 `:826` 的 KPI sub 文案「悬停行尾「!」看原文」要跟着改成指向抽屉的话 —— 否则它在说旧话。
@@ -481,7 +511,7 @@ chip 口径的出处:`FPAlertChip.vue:5-6` 注释「count 口径全站钉死 = �
 全部文案住在 `frontend/src/utils/billNoticeWarnCopy.ts`:
 
 ```ts
-export const WARN_CODES = ['W_METER_NO_CONTRACT', ...] as const   // 顺序 = 屏上组序
+export const WARN_CODES = ['W_METER_NO_CONTRACT', 'W_METER_BIND_STALE', ...] as const   // 顺序 = 屏上组序
 export const WARN_COPY: Record<WarnCode, {
   title: string          // 屏上块头
   desc: string           // 这是什么、不处理会怎样
@@ -676,7 +706,7 @@ resolve 到仓库根读 `ReviewKind.java`)。`paramRegistry` 那一对靠人工�
 | # | 做什么 | 主要文件 | 怎么验证 |
 |---|---|---|---|
 | 1 | `V126__bill_notice_warn.sql`:只建表,零回填。DDL 见 §2.1,含四条硬约束。⚠ 文件头注不要写「留一版当 undo」,按 §2.1 的真实说法写 | `db/migration/V126__bill_notice_warn.sql` | flyway migrate 后 `SHOW CREATE TABLE` 必须同时出现 `uk_warn(notice_id,code,payload)` 与 `ON DELETE CASCADE`。破坏验证:去掉 CASCADE → 第 2 步那条孤儿行断言红 |
-| 2 | 后端结构化:`WarnCode.java`(8 常量,javadoc 钉判据原文 + 行号)、`BillNoticeWarn.java`、`BillNoticeWarnMapper.java`、改 `BillNoticeService`。⚠ 去重用 `LinkedHashMap` keyed by `code + ' ' + payload`,**不是**整条 record;⚠ `W_TERM_NO_PARAMS` 的 payload = 计费行 id | `service/WarnCode.java`、`entity/`、`mapper/`、`service/BillNoticeService.java` | 造 status=manual 的表 → generate → 恰好一行 `W_METER_NO_CONTRACT`。⚠ **必做**:造一份有两条同名缺参数计费行的合同 → generate **成功**且落 2 行(既不撞键、也不塌成 1 行)。破坏验证:payload 改回 `contract_no` → 该用例红(1062) |
+| 2 | 后端结构化:`WarnCode.java`(9 常量,javadoc 钉判据原文 + 行号)、`BillNoticeWarn.java`、`BillNoticeWarnMapper.java`、改 `BillNoticeService`。⚠ 去重用 `LinkedHashMap` keyed by `code + ' ' + payload`,**不是**整条 record;⚠ `W_TERM_NO_PARAMS` 的 payload = 计费行 id | `service/WarnCode.java`、`entity/`、`mapper/`、`service/BillNoticeService.java` | 造 status=manual 的表 → generate → 恰好一行 `W_METER_NO_CONTRACT`。⚠ **必做**:造一份有两条同名缺参数计费行的合同 → generate **成功**且落 2 行(既不撞键、也不塌成 1 行)。破坏验证:payload 改回 `contract_no` → 该用例红(1062) |
 | 3 | 后端弱门 `arch/BillNoticeWarnTest.java`(抄 `QueryHygieneTest` 的全等断言 + 扫描面下限) | `test/.../arch/BillNoticeWarnTest.java` | 加第九个常量不改 EXPECTED → 红;把某个 code 的产地复制成两处 → 红;把扫描路径写错 → 抛错而不是空清单 |
 | 4 | 接口契约:`NoticeWarnDTO(code,payload,hint)`;两个 DTO 的 `String warn` → `List<NoticeWarnDTO> warns` | `dto/`、`BillNoticeService`、`DataHomeService` | 列表与明细的 warns 逐项相等;⚠ `QueryHygieneTest` 的 `BillNoticeService.java=10` 仍全等(新查询一律带 wrapper) |
 | 5 | 前端文案表 `billNoticeWarnCopy.ts`:`WARN_CODES` + `WARN_COPY`。⚠ 无 `itemLabel` 字段,标签只由 `fmt` 出 | `frontend/src/utils/billNoticeWarnCopy.ts` | 第 7 步门禁全绿 |

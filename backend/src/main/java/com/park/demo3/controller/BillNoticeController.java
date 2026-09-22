@@ -55,6 +55,12 @@ public class BillNoticeController {
         return svc.confirm(req.ym(), req.tenantIds());
     }
 
+    @Operation(summary = "取消确认(confirmed→draft,理由必填并留痕;已导出/已作废单跳过并计数)")
+    @PostMapping("/unconfirm")
+    public BillDeliveryDTO.Unconfirm unconfirm(@Valid @RequestBody BillDeliveryDTO.UnconfirmReq req) {
+        return svc.unconfirm(req.ym(), req.tenantIds(), req.reason());
+    }
+
     @Operation(summary = "标记已导出(draft/confirmed→exported,刷新导出时间;已作废单不动)")
     @PostMapping("/mark-exported")
     public BillDeliveryDTO.Export markExported(@Valid @RequestBody BillDeliveryDTO.Req req) {

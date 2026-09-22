@@ -115,6 +115,16 @@ class MeterBindingApiIT extends AbstractMysqlIT {
         return rows.get(0);
     }
 
+    /** 续签一期:parent_contract_id 连上,link_type=renew(递增段拆链落的是 escalation,同一条链) */
+    private int renew(int contractId, String no, String start, String end) throws Exception {
+        String res = mvc.perform(post("/api/contracts/" + contractId + "/renew").header("Authorization", auth())
+                .contentType("application/json").content("{\"contractNo\":\"" + no + "\",\"startDate\":\""
+                        + start + "\",\"endDate\":\"" + end + "\"}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        return JsonPath.read(res, "$.data.id");
+    }
+
     private void bind(int meterId, String contractIdJson) throws Exception {
         mvc.perform(put("/api/meters/" + meterId + "/bind").header("Authorization", auth())
                 .contentType("application/json").content("{\"contractId\":" + contractIdJson + "}"))
@@ -167,6 +177,64 @@ class MeterBindingApiIT extends AbstractMysqlIT {
         mvc.perform(put("/api/meters/99999999/bind").header("Authorization", auth())
                 .contentType("application/json").content("{\"contractId\":null}"))
                 .andExpect(jsonPath("$.code").value(404));
+    }
+
+    // ── 规则1 按月落段(2026-09-23 改写) ─────────────────────────────────────────
+    // 人工绑定钉的是**一份合同**,不是它的某一段:递增段与续签是同一份合同的分期(V57 link_type),
+    // 租金那边一直按月挑段(BillNoticeService 走 covers()),绑定这边原先钉死一段 ——
+    // 于是旭化成 2023-08 那张单上租金挂 C2024M-022A#2、水电挂 #3(2023-10-27 才生效),全库 203 行。
+    @Test
+    void 人工绑定按月落到本链覆盖该月的那一段() throws Exception {
+        int t = createTenant("IT落段户", null);
+        int b1 = buildingIds().get(0);
+        int seg1 = createContract(t, b1, "2099-01-01", "2099-06-30");
+        String no2 = "IT-SEG2-" + System.nanoTime();
+        int seg2 = renew(seg1, no2, "2099-07-01", "2099-12-31");
+        int mid = createMeter("elec", "IT落段表", t, b1, "IT落段户");
+        bind(mid, String.valueOf(seg2));   // 用户钉在后一段上
+
+        // 钉的那段覆盖本月 → 就是它,不多说一句
+        Map<String, Object> r = row(binding("2099-08"), mid);
+        assertThat(r.get("status")).isEqualTo("override");
+        assertThat(r.get("contractId")).isEqualTo(seg2);
+        assertThat(r.get("pinnedContractNo")).isNull();
+
+        // 翻到前一段的月份 → 落到同链的前一段,不再标「过期」;钉的那份带出去,屏上要说清
+        String body = binding("2099-03");
+        r = row(body, mid);
+        assertThat(r.get("status")).isEqualTo("override");
+        assertThat(r.get("contractId")).isEqualTo(seg1);
+        assertThat(r.get("pinnedContractNo")).isEqualTo(no2);
+        assertThat((int) JsonPath.read(body, "$.data.summary.overrideStale")).isZero();
+
+        // 链上没有覆盖该月的段,但该户另有一份覆盖(全库 338 份合同是断头链首,链里找不到前身)
+        // → 退回自动归属,并把被跳过的那份带出去
+        int other = createContract(t, b1, "2098-01-01", "2098-12-31");
+        r = row(binding("2098-03"), mid);
+        assertThat(r.get("status")).isEqualTo("auto");
+        assertThat(r.get("contractId")).isEqualTo(other);
+        assertThat(r.get("pinnedContractNo")).isEqualTo(no2);
+    }
+
+    // 落不到段、自动也定不出 → 仍是 override_stale(有人指认过,该留着他指的那份),
+    // 但候选照给:原先这一档候选恒空,抽屉上只剩「该户无候选合同」,除了解绑没有第二条出路。
+    @Test
+    void 落不到段也定不出时仍标过期但候选不再是空的() throws Exception {
+        int t = createTenant("IT过期户", null);
+        List<Integer> bs = buildingIds();
+        int b1 = bs.get(0), b2 = bs.get(1);
+        int pin = createContract(t, b1, "2099-07-01", "2099-12-31");
+        createContract(t, b2, "2098-01-01", "2098-12-31");   // 两份都覆盖 2098-03,都不在表所在栋
+        createContract(t, b2, "2098-01-01", "2098-12-31");
+        int mid = createMeter("elec", "IT过期表", t, b1, "IT过期户");
+        bind(mid, String.valueOf(pin));
+
+        String body = binding("2098-03");
+        Map<String, Object> r = row(body, mid);
+        assertThat(r.get("status")).isEqualTo("override_stale");
+        assertThat(r.get("contractId")).isEqualTo(pin);   // 钉的那份留着,不静默改掉
+        assertThat((List<?>) r.get("candidates")).hasSize(2);
+        assertThat((int) JsonPath.read(body, "$.data.summary.overrideStale")).isEqualTo(1);
     }
 
     // ── manual 分桶:date_missing(候选一键确认)/no_contract/auto_bld 对位唯一/bld_mismatch/ambiguous ──

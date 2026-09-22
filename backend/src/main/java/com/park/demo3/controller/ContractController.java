@@ -31,8 +31,11 @@ public class ContractController {
         return svc.update(id, req);
     }
 
-    @Operation(summary = "终止合同（其占用单元派生回空置）") @PostMapping("/{id}/terminate")
-    public ContractDTO terminate(@PathVariable Integer id) { return svc.terminate(id); }
+    @Operation(summary = "终止合同（解约日收进 end_date；其占用单元派生回空置）") @PostMapping("/{id}/terminate")
+    public ContractDTO terminate(@PathVariable Integer id,
+                                 @RequestBody(required = false) ContractTerminateReq req) {
+        return svc.terminate(id, req == null ? null : req.terminatedOn());
+    }
 
     @Operation(summary = "续签合同（原合同终止，新合同继承租户/楼栋/单元）") @PostMapping("/{id}/renew")
     public ContractDTO renew(@PathVariable Integer id, @Valid @RequestBody ContractRenewReq req) {

@@ -50,6 +50,7 @@ const hasCJK = (s: string) => /[一-龥]/.test(s)
 // paramDef('544.00') 会返回 undefined,拿它当探针会把正常实现判红。
 const PROBE: Record<WarnCode, [string, string]> = {
   W_METER_NO_CONTRACT: ['798', '六楼 4-636 水表①'],
+  W_METER_BIND_STALE: ['193', '旭化成电表3'],
   W_ROOM_MISMATCH: ['544', ''],
   W_CONTRACT_NO_DATES: ['S10-0145#1', ''],
   W_TERM_NO_PARAMS: ['3312', 'S10-0145#1 · 厂房租金'],
@@ -61,8 +62,8 @@ const PROBE: Record<WarnCode, [string, string]> = {
 
 describe('告警文案门禁', () => {
   it('元断言:尺子本身没坏(扫描面下限)', () => {
-    expect(WARN_CODES.length).toBe(8)
-    expect(backendCodes().length).toBeGreaterThanOrEqual(8)
+    expect(WARN_CODES.length).toBe(9)
+    expect(backendCodes().length).toBeGreaterThanOrEqual(9)
     expect(PRICE_KEYS.length).toBe(7)          // 闭集空了的话 G6 会退化成空循环、永远绿
     expect(PACKAGE_FEE_KEYS.length).toBe(3)
     // 尺子自身可信:FORBIDDEN 抓得住下划线,ASCII_RUN 抓得住英文词

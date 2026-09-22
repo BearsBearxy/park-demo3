@@ -20,6 +20,27 @@ import type { ReleaseNote } from '@/types/changelog'
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: '0.18.0',
+    date: '2026-09-23',
+    headline: '一户核完当场确认，直接翻下一户',
+    added: [],
+    improved: [
+      { icon: 'file-check-2', title: '核完一户当场确认', desc: '确认、取消确认、上一户 / 下一户都在抽屉底下，不用关抽屉回列表找。', to: 'bill-notices' },
+      { icon: 'bell-ring', title: '警告不再占一整行', desc: '收成标题旁的一个小标签，写明是哪一类、有几条。要看是哪几块表就点一下。', to: 'bill-notices' },
+      { icon: 'credit-card', title: '收款公司', desc: '原来一屏卡片各印一遍未设置，现在收成一行只报数。展开后一行一项，选完就存。', to: 'bill-notices' },
+      { icon: 'layout-grid', title: '抽屉里的上期欠费', desc: '这项还没接通，一直是 0，降成小字。位置那一格宽出来，能多看到十几个字。', to: 'bill-notices' },
+      { icon: 'calendar-clock', title: '表和合同的对应', desc: '原来钉死在一份合同上，翻到别的月就报过期；现在自动落到那个月的那一期。', to: 'meters' },
+      { icon: 'x-circle', title: '终止合同要填解约日', desc: '填了才知道从哪天起不再收钱。解约当月按天折，之后不出租金；已生成的月份不变。', to: 'contracts' },
+    ],
+    fixed: [
+      '催缴单：换一户看，明细表会上下跳，每次都要重新找',
+      '园区抄表：合同明明覆盖这个月还写绑定过期，单上租金和水电算成两期',
+      '催缴单：表绑的合同本月没生效，单子上一声不吭',
+      '合同管理：终止后下个月照出满月租金；整租合同一续签就变成普通合同',
+      '审核：审核员登进去，屏上一颗审核按钮都看不到',
+    ],
+  },
+  {
     version: '0.17.0',
     date: '2026-09-23',
     headline: '催缴单的警告按类分开，点得过去',

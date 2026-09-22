@@ -232,14 +232,28 @@ public class ContractService {
         }
     }
 
-    /** 终止合同;单元状态读时派生,终止后自动回 vacant。 */
-    @NoReviewGuard(reason = "只写 contract.status 一列;历史月的在租名册按起止日期重叠判、不看 status(AllocService 那一段注释:active 是今天的状态),且只在已守的 generate 那一刻被读")
-    public ContractDTO terminate(Integer id) {
+    /** 终止合同;单元状态读时派生,终止后自动回 vacant。
+     *
+     *  <p><b>终止日同时收进 end_date</b>(2026-09-23 修)。原来只写 status 一列 ——
+     *  而全链判「这个月算不算数」的 {@code MeterBindingService.covers} 只排 draft,terminated 照过:
+     *  提前解约的合同后面每个月照出满月租金、照算容量费、照进公摊名册。屏上还更糟:合同抽屉的时间轴
+     *  第 153 行印的是「已终止 · {endDate} · 提前解约」—— 把原到期日当成解约日印出来。
+     *  收 end_date 之后 covers 自然在解约日之后不再命中,解约当月按天折,历史月一个字不变。
+     *
+     *  <p>不改 covers 去排 terminated:那会连**解约之前**的月份一起停掉,而那些月人确实在租。
+     *  期限原文(term_text/V55)留着原始凭据,不受影响。 */
+    @NoReviewGuard(reason = "写 contract.status 与 end_date 两列,contract 表无 ym 列;影响面与 update 改起止日同构(见 :191 的 reason)—— 只改下一次 generate 的输入,已审月的 alloc_result 与 bill_notice_line 是出账那一刻的落库快照,动不了")
+    public ContractDTO terminate(Integer id, LocalDate terminatedOn) {
         Contract c = contracts.selectById(id);
         if (c == null) throw new BizException(ResultCode.NOT_FOUND, "合同不存在");
         if ("terminated".equals(c.getStatus()))
             throw new BizException(ResultCode.CONFLICT, "合同已终止");
+        LocalDate on = terminatedOn != null ? terminatedOn : LocalDate.now(ZoneId.of("Asia/Shanghai"));
+        if (c.getStartDate() != null && on.isBefore(c.getStartDate()))
+            throw new BizException(ResultCode.CONFLICT, "终止日期不能早于起租日期");
         c.setStatus("terminated");
+        // 已经自然到期的合同:终止只是补个状态,不把到期日往后推
+        if (c.getEndDate() == null || on.isBefore(c.getEndDate())) c.setEndDate(on);
         contracts.updateById(c);
         return dtoOf(contracts.selectById(id));
     }
@@ -265,6 +279,10 @@ public class ContractService {
         c.setTenantId(old.getTenantId());
         c.setBuildingId(old.getBuildingId());
         c.setUnitId(old.getUnitId());
+        // V59 合同性质随租期走(2026-09-23 补):原来这一行没有,整租合同一续签就回落 DB 默认 normal,
+        // 而「排除整租防双算」有六个消费者(KPI 月租金合计/楼栋卡三项/租金行/容量费/分析屏到期与对标)——
+        // 火炬园那份 180 万的整栋合同续一次签,这六处同时失效,底下 26 户的单照出、整栋的单也出。
+        c.setKind(old.getKind());
         c.setRentArea(req.rentArea() != null ? req.rentArea() : old.getRentArea());
         c.setMonthlyRent(req.monthlyRent() != null ? req.monthlyRent() : old.getMonthlyRent());
         c.setDeposit(req.deposit() != null ? req.deposit() : old.getDeposit());
