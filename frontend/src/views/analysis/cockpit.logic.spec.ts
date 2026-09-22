@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, t80, fitRevenueTrendUpTo, mainChart, mainChartOption, mainChartOutlierNote, nextMonthForecast, nextForecastReadout, nextForecastRefText, momOf, monthRangeLabel, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, phaseStack, phaseStackLast, pnlYearMonths, revNoteText, schedTrend,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, marginNote, MARGIN_DISTORT_PCT, fitBandAt, fitRevenueTrend, t80, fitRevenueTrendUpTo, mainChart, mainChartOption, mainChartOutlierNote, nextMonthForecast, nextForecastReadout, nextForecastRefText, momOf, monthRangeLabel, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, phaseStack, phaseStackLast, pnlYearMonths, revNoteText, schedTrend,
   type BacktestRow, type BudgetAch, type MainChartData, type RevenueFit,
 } from './cockpit.logic'
 import type { PnlSummary, S10PhaseMonthly, CollectRate } from '@/analysis/anaData'
@@ -261,6 +261,17 @@ describe('buildConclusion(经营结论条 spec §A:数据模板分句,缺数据�
     expect(r.map((x) => x.text)).toEqual(['收缴率 81.3% 低于目标 96%,期末欠费 ¥3,185万', '4 条异常待处理'])
     expect(buildConclusion(null, [], rows, [], 4, tgt, yr)).toEqual([])
   })
+  // 2026-09-22:拍宣传片素材时逐帧核对发现,同屏 KPI 卡写「利润率 — 基数过小」(拒答),
+  // 这条结论条却写「(利润率 1030.3%)」(直答)。判据抽成 marginNote 之后两边共用一份。
+  it('❗基数过小:结论条与 KPI 卡一样不写百分比', () => {
+    // 量级照 2025-12 屏上那组:收入 −¥53万、园区利润 −¥549万 —— 两个负数一除被放大到 +1031%
+    const revenue = N12(); revenue[11] = -532000
+    const profit = N12(); profit[11] = -5485000
+    const r = buildConclusion(pnl({ months: [12], revenue, profit }), [], [], [], 0, tgt,
+      { isMonth: true, year: 2025, usedMi: 11, ym: '2025-12' })
+    expect(r[0].text).toBe('2025年12月收入 −¥53万,园区利润 −¥549万(利润率 — 基数过小)')
+    expect(r[0].tone).toBe('risk')
+  })
   it('月粒度:句1 前缀带月且不并入年度预算达成;收缴取参 = KPI 的所选月 ym(非 pnl 月锚)', () => {
     const revenue = N12(); revenue[9] = 9301531   // 2025-10 锚点
     const profit = N12(); profit[9] = 3158720
@@ -269,6 +280,32 @@ describe('buildConclusion(经营结论条 spec §A:数据模板分句,缺数据�
       { isMonth: true, year: 2025, usedMi: 9, ym: '2025-11' })
     expect(r[0].text).toBe('2025年10月收入 ¥930万,园区利润 ¥316万(利润率 34.0%)')
     expect(r[1].text).toBe('收缴率 81.3% 低于目标 96%')
+  })
+})
+
+// ── 利润率失真门(2026-09-22):判据一处,KPI 卡与结论条共用 ────────────────────────
+describe('marginNote', () => {
+  it('基数过小(两个负数相除被放大)不写百分比', () => {
+    expect(marginNote(-532000, -5485000)).toBe('利润率 — 基数过小')
+  })
+  it('正常区间照写一位小数(2025 年实测:8,772万 / 2,290万)', () => {
+    expect(marginNote(87722076, 22900000)).toBe('利润率 26.1%')
+  })
+  it(`边界是 ${MARGIN_DISTORT_PCT}%:等于不算失真,超过才算`, () => {
+    expect(marginNote(100, 300)).toBe('利润率 300.0%')
+    expect(marginNote(100, 301)).toBe('利润率 — 基数过小')
+  })
+  it('收入为 0 / 缺利润 → null:调用方自己决定省句还是写「当期无损益数据」', () => {
+    expect(marginNote(0, 100)).toBeNull()
+    expect(marginNote(100, null)).toBeNull()
+    expect(marginNote(null, 100)).toBeNull()
+  })
+  // 照实写、不假装堵上:判据取的是比值上限不是 |比值|,与它取代的那段字面量逐字同义。
+  // 利润负、收入正的那一侧(比值 −1000%)现在仍会印出来 —— 改动前就是这样,这一轮没动它。
+  it('负向失真目前仍会印出来(已知口子,与改动前同)', () => {
+    // 注意这里是 ASCII 连字符不是 −:toFixed 出的就是 ASCII，而同句里的金额走 fw() 用的是 −。
+    // 一句话里两种负号，是改动前就有的不一致，一并记着，这轮不动。
+    expect(marginNote(532000, -5485000)).toBe('利润率 -1031.0%')
   })
 })
 
