@@ -556,4 +556,34 @@ describe('分析层文案门禁', () => {
     }
     expect(bad.length, `屏上提到设计稿 ${bad.length} 处:\n${bad.join('\n')}`).toBe(0)
   })
+
+  /**
+   * 用户 2026-09-22:屏上不许写 spec。
+   *
+   * 出事的是现金流屏顶上那句「现金流量表未录入(spec 改造) · 上=收款实现视图…」。
+   * 「spec 改造」是说给自己人听的实现状态 —— 用户既核不了也用不上,和上面那条
+   * 「不许提设计稿」是同一类:实现期的词漏进了产品。上面那条的判据里没有 spec,
+   * 所以它从头到尾没被挡住;补上。
+   *
+   * 判据只看模板正文:<script>/<style>/注释/插值/标签本身全抹成空格(抹不是删,
+   * 换行留着,行号才对得上)。样式注释里写 KPI-CARD-SPEC 是正当溯源,
+   * `v-for="… in c.spec.lines"` 是变量名 —— 两样都不该被误伤。
+   */
+  it('❗屏上不许出现 spec —— 实现期的词漏进产品文案', () => {
+    const blank = (s: string): string => s.replace(/[^\n]/g, ' ')
+    const bad: string[] = []
+    for (const { dir, file: f } of vueFiles()) {
+      const tpl = readTpl(join(dir, f), 'utf8')
+        .replace(/<script[\s\S]*?<\/script>/g, blank)
+        .replace(/<style[\s\S]*?<\/style>/g, blank)
+        .replace(/<!--[\s\S]*?-->/g, blank)
+        .replace(/\{\{[\s\S]*?\}\}/g, blank)
+        .replace(/<[^>]*>/g, blank)
+      for (const m of tpl.matchAll(/\bspec\b/gi)) {
+        const line = tpl.slice(0, m.index).split('\n').length
+        bad.push(`  ${f} 模板第 ${line} 行附近: ${m[0]}`)
+      }
+    }
+    expect(bad.length, `屏上出现 spec ${bad.length} 处:\n${bad.join('\n')}`).toBe(0)
+  })
 })

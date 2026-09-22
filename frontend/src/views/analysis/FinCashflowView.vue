@@ -208,7 +208,9 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
 
     <div class="fin-page">
       <div class="fin-head">
-        <span class="sub">现金流量表未录入(spec 改造) · 上=收款实现视图(台账应收 vs 实收 + 附表10 现收) · 单位 万元</span>
+        <!-- 「(spec 改造)」是实现期的话,用户既核不了也用不上,2026-09-22 拆掉;
+             「现金流量表还没有」这件事下半屏那张空态卡已经说了并给了入口,这里只说上半屏是怎么算的 -->
+        <span class="sub">上面这几张按台账的应收/实收 + 附表10 现收算 · 单位 万元 · 现金流量表见下</span>
         <AnaPill tone="legal" icon="scale">法人口径 · {{ companyLabel }}</AnaPill>
       </div>
 

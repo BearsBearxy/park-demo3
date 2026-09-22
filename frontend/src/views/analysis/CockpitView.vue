@@ -32,7 +32,7 @@ import {
   type AnaAnomaly, type AnomalyInputs, type CollectRate, type PnlSummary, type S10PhaseMonthly,
 } from '@/analysis/anaData'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, nextMonthForecast, nextForecastReadout, nextForecastRefText, mainChart, mainChartOption, mainChartOutlierNote, momOf, monthRangeLabel, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, phaseStack, phaseStackLast, pnlYearMonths, revNoteText, schedTrend,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, nextMonthForecast, nextForecastReadout, nextForecastRefText, mainChart, mainChartOption, mainChartOutlierNote, marginNote, momOf, monthRangeLabel, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, phaseStack, phaseStackLast, pnlYearMonths, revNoteText, schedTrend,
 } from './cockpit.logic'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -146,7 +146,6 @@ const yearMonths = computed(() => pnlYearMonths(pnl.value))
 const rev = computed(() => atPnlPeriod(pnl.value?.revenue, isMonth.value, usedMi.value, yearMonths.value))
 const cost = computed(() => atPnlPeriod(pnl.value?.cost, isMonth.value, usedMi.value, yearMonths.value))
 const prof = computed(() => atPnlPeriod(pnl.value?.profit, isMonth.value, usedMi.value, yearMonths.value))
-const margin = computed(() => (rev.value && prof.value != null ? (prof.value / rev.value) * 100 : null))
 const cp = computed(() => colPick(collects.value, isMonth.value, year.value, period.ym.value))
 const ach = computed(() => budgetAch(budgetRows.value, pnl.value, year.value))
 // 未闭月护栏(FORECAST §2.7):副标题按可用月印覆盖区间,不写「已闭月」(该端点语义是审核状态,分析层不消费)。
@@ -385,9 +384,9 @@ const conclusion = computed(() => buildConclusion(
       <AnaKpiTile :label="isMonth ? '营业收入' : pnlRange + '收入'" :value="money(rev)"
         :delta="momOf(pnl?.revenue, isMonth, usedMi)" kind="环比" :note="revNote" />
       <AnaKpiTile label="成本费用" :value="money(cost)" :delta="momOf(pnl?.cost, isMonth, usedMi)" kind="环比" invert :note="pnlRange || undefined" />
-      <!-- 数值失真门(普查稿 §2.5):基数过小时利润率会被放大成失真的大百分比,上限守卫不印具体数 -->
+      <!-- 数值失真门(普查稿 §2.5):判据在 cockpit.logic.ts 的 marginNote,与下面那条结论条共用一份 -->
       <AnaKpiTile label="园区利润" :value="money(prof)" profit
-        :note="(margin != null ? (margin > 300 ? '利润率 — 基数过小' : '利润率 ' + margin.toFixed(1) + '%') : '当期无损益数据') + (pnlRange ? ' · ' + pnlRange : '')" />
+        :note="(marginNote(rev, prof) ?? '当期无损益数据') + (pnlRange ? ' · ' + pnlRange : '')" />
       <!-- 副文案人话化(2026-07-20 用户反馈):delta=−15.5pt + kind=距目标96%,口径区间挪 note 行 -->
       <AnaKpiTile label="收缴率" :value="cp ? cp.rate.toFixed(1) + '%' : '—'"
         :delta="cp ? +(cp.rate - anaSettings.collectTarget).toFixed(1) : null"
