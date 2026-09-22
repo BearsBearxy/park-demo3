@@ -66,7 +66,7 @@ import { mediaBlock } from '@/test-utils/mediaBlock'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
-import { billNoticesApi, type BillNoticeDTO } from '@/api/billNotices'
+import { billNoticesApi, type BillNoticeDTO, type NoticeWarnDTO } from '@/api/billNotices'
 import { paramsApi, type ParamStatusDTO } from '@/api/params'
 import { contractApi } from '@/api/contract'
 import { buildingApi } from '@/api/building'
@@ -127,16 +127,17 @@ vi.mock('@/api/locks', () => ({
 //     金额各不相同 ⇒ KPI 的「总额」与「月租金」不是同一个数,四张卡不会碰巧一样。)
 const mk = (
   id: number, tenantId: number, tenantName: string,
-  premiseText: string, totalAmount: number, warn: string | null,
+  premiseText: string, totalAmount: number, warns: NoticeWarnDTO[],
 ): BillNoticeDTO => ({
   id, ym: '2026-08', tenantId, tenantName,
   payCompanyId: 3, payCompanyName: '甲公司', noticeKind: 'combined',
-  premiseText, totalAmount, prevDue: 0, status: 'draft', warn, lineCount: 4,
+  premiseText, totalAmount, prevDue: 0, status: 'draft', warns, lineCount: 4,
 })
 const NOTICES: BillNoticeDTO[] = [
-  mk(91, 5, '力灏', '一期 A座602室', 12345.6, null),
-  mk(92, 6, '宏远', '一期 B座101室', 8761.25, '取价缺 2026-08 单价'),
-  mk(93, 7, '晟通', '二期 C座305室', 20408.9, null),
+  mk(91, 5, '力灏', '一期 A座602室', 12345.6, []),
+  mk(92, 6, '宏远', '一期 B座101室', 8761.25,
+     [{ code: 'W_PRICE_MISSING', payload: 'elec_sharp', hint: '' }]),
+  mk(93, 7, '晟通', '二期 C座305室', 20408.9, []),
 ]
 const STATUS: ParamStatusDTO = {
   priceOk: 6, priceTotal: 6, pendingChanges: 0, lastChangeAt: null,

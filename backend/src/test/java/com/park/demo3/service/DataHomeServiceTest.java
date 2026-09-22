@@ -39,8 +39,13 @@ class DataHomeServiceTest {
     com.park.demo3.mapper.ElecCostEntryMapper elecCostEntries =
         Mockito.mock(com.park.demo3.mapper.ElecCostEntryMapper.class);
 
+    // V126:告警搬到 bill_notice_warn 子表;本类用例不碰告警,mock 回空
+    com.park.demo3.mapper.BillNoticeWarnMapper noticeWarns =
+        Mockito.mock(com.park.demo3.mapper.BillNoticeWarnMapper.class);
+
     DataHomeService svc = new DataHomeService(ledger, s10, salary, office, pv, charging, elec, contractService,
-        meterReadings, poolResults, lossResults, billNotices, paramService, companies, amounts, elecCostEntries);
+        meterReadings, poolResults, lossResults, billNotices, noticeWarns, paramService, companies,
+        amounts, elecCostEntries);
 
     // ── helpers ──
     S10Record s10Row(String acctMonth, int phase, LocalDateTime updated) {

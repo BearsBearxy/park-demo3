@@ -15,7 +15,7 @@ const line = (o: Partial<BillNoticeLineDTO>): BillNoticeLineDTO => ({
 const detail = (payCompanyId: number | null, lines: BillNoticeLineDTO[], o: Record<string, unknown> = {}) => ({
   id: 1, ym: '2024-02', tenantId: 7, tenantName: '王红婷', payCompanyId, payCompanyName: null,
   noticeKind: 'fee', premiseText: null, totalAmount: lines.reduce((s, l) => s + l.amount, 0),
-  prevDue: 0, status: 'draft', warn: null, lines, ...o,
+  prevDue: 0, status: 'draft', warns: [], lines, ...o,
 })
 const noNotes = new Map<string, string>()
 

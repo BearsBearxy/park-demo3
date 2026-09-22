@@ -86,13 +86,13 @@ const NOTICES: BillNoticeDTO[] = [{
   id: 91, ym: '2026-08', tenantId: 5, tenantName: '力灏',
   payCompanyId: 3, payCompanyName: '甲公司', noticeKind: 'combined',
   premiseText: '一期 A座602室', totalAmount: 12345.6, prevDue: 0,
-  status: 'draft', warn: null, lineCount: 1,
+  status: 'draft', warns: [], lineCount: 1,
 }]
 const DETAIL: BillNoticeDetailDTO = {
   id: 91, ym: '2026-08', tenantId: 5, tenantName: '力灏',
   payCompanyId: 3, payCompanyName: '甲公司', noticeKind: 'combined',
   premiseText: '一期 A座602室', totalAmount: 12345.6, prevDue: 0,
-  status: 'draft', warn: null, lines: [RENT_LINE],
+  status: 'draft', warns: [], lines: [RENT_LINE],
 }
 const STATUS: ParamStatusDTO = {
   priceOk: 6, priceTotal: 6, pendingChanges: 0, lastChangeAt: null,

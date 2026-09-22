@@ -29,7 +29,9 @@ import {
   groupByBuilding, groupDormExcelStyle, groupExcelStyle, groupRentByPremise, lineNoteKey, mergeMaintRows,
   mergeNoteKey, noteDisplay, noteKeyId, rentAreaText,
   rentByTenant, rentFeeName, resolvePhase, segLabel, tenantBuildings, tenantKpis,
-  type CrossMark, type NoteKey, type QtyCell, type ShareMergeRow, type TenantBuildings, type TenantNoticeRow,
+  buildNoticeAlertGroups, warnSummaryLines,
+  type CrossMark, type NoteKey, type NoticeAlert, type QtyCell, type ShareMergeRow,
+  type TenantBuildings, type TenantNoticeRow,
 } from '@/utils/billNoticeLogic'
 import { useAuthStore } from '@/stores/auth'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
@@ -63,7 +65,7 @@ import FPToast from '@/components/fp/FPToast.vue'
 import { billDeliveryApi, companyBookApi, type CompanyFullDTO } from '@/api/billDelivery'
 import { billsApi } from '@/api/bills'
 import {
-  buildSlotCells, slotAmounts, tenantStatus,
+  GAP_TIP, buildSlotCells, gapWord, slotAmounts, tenantStatus,
   type ExportNoticeReq, type ExportReconReq, type SlotCell, type TenantStatus,
 } from '@/utils/payBookLogic'
 import {
@@ -185,6 +187,24 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
     run: () => { alertOpen.value = false; gotoParams() },
   },
 }] : [])
+
+// 告警组:stale 一组(屏级) + buildNoticeAlertGroups 按 code 分出来的若干组(当前期别全部户)。
+// 分组是纯函数(billNoticeLogic),.vue 里不再转一层 —— 那样单测就盯不住分组逻辑了。
+// drawer:false 的类别不进这里(§6-3 只报不给动作的不许进来),它的落点是行尾「!」与抽屉横幅。
+const noticeAlertGroups = computed<AlertGroup[]>(() =>
+  buildNoticeAlertGroups(phaseRows.value).map(g => ({
+    key: g.key, title: g.title, desc: g.desc, tone: g.tone, items: g.items,
+    action: { label: g.actionLabel, icon: 'arrow-right', run: () => { alertOpen.value = false; router.push(`/${g.route}`) } },
+  })))
+const allAlertGroups = computed<AlertGroup[]>(() => [...alertGroups.value, ...noticeAlertGroups.value])
+// FPAlertChip 的口径全站钉死 = Σ 各组 items.length,**无 items 的组按 1 计**。
+// 那个 `|| 1` 不能省:stale 组在 lastChangeText 为空时 items 就是空数组,而 FPAlertPanel 对空 items
+// 的组照样渲染组头与 desc —— 不兜底就会出现「抽屉里有东西、chip 显示无待处理」。
+const alertCount = computed(() => allAlertGroups.value.reduce((n, g) => n + (g.items.length || 1), 0))
+
+// 告警在屏上的字走 utils(一类一行 = 块头 + 条目;判据与单测在 billNoticeLogic.ts)
+const warnLines = warnSummaryLines
+const warnText = (alerts: NoticeAlert[]) => `${warnLines(alerts)}\n\n${WARN_WHEN}`
 // 页签切回:参数页那边可能刚重算过 —— 批次时间变了就整月重拉(单与 stale 条一起变新),没变只刷状态
 // (回包前若已换月(seq 变了)就丢弃,别让旧月 status 盖住新月的 stale 条)
 onReactivated(async () => {
@@ -296,7 +316,7 @@ watch(narrow, v => { if (!v) filterOpen.value = false })   // 拖宽窗口时不
 const filterCount = computed(() => (warnOnly.value ? 1 : 0))
 const phaseLabel = computed(() => PHASE_OPTS.find(o => o.value === phase.value)?.label ?? '')
 const filtered = computed(() => phaseRows.value.filter(r =>
-  (!warnOnly.value || !!r.warn)
+  (!warnOnly.value || r.alerts.length > 0)
   && (q.value.trim() === '' || (r.tenantName ?? '').includes(q.value.trim()))))
 // 改造二:期 tab 内按主楼栋分组(入参=筛选后的行 → 搜索/仅看警告/换期自动重算,空组不出现)
 const groups = computed(() => groupByBuilding(filtered.value, r => r.bld.main))
@@ -383,8 +403,8 @@ async function confirmTenants(tids: number[]) {
   if (gaps.length) {
     const names = gaps.slice(0, 5)
       .map(t => filtered.value.find(r => r.tenantId === t)?.tenantName ?? '#' + t).join('、')
-    ask.push(`${gaps.length} 户有费用未指定收款公司(${names}${gaps.length > 5 ? ' 等' : ''})。\n`
-      + '导出的通知单上这部分不显示收款账户信息,租户可能不知道往哪付款。')
+    ask.push(`${gapWord(gaps.length)}(${names}${gaps.length > 5 ? ' 等' : ''})。\n`
+      + '已设好归属的要重新生成本月催缴单才会拆单;导出的通知单上这部分不印收款账户,租户可能不知道往哪付款。')
   }
   if (ask.length && !confirm(ask.join('\n\n') + '\n仍然确认?')) return
   confirming.value = true
@@ -436,9 +456,11 @@ async function onExportNotice(req: ExportNoticeReq) {
     // 标记失败不影响已下载的文件,但**必须说出来**:最常见的失败是无 billing-issue 权限(403),
     // 静默吞掉的话用户拿到了文件、单据状态却还是「未导出」,下次还会被当成没导过。
     const marked = await billDeliveryApi.markExported(req.ym, req.tenantIds).then(() => true).catch(() => false)
-    const noAcct = req.tenantIds.filter(gapOf).length
+    // 判据是 gapOf(单没落到收款公司),不是「公司没录账户」—— 后者在 ExportNoticeWindow 里由
+    // noAcctCos 另算。两件事共用「无收款账户」这个词会串台(2026-09-23)。
+    const noPayCo = req.tenantIds.filter(gapOf).length
     exportResult.value = `已导出 ${res.files} 个租户文件 / ${res.sheets} 张通知单`
-      + (noAcct ? ` · 其中 ${noAcct} 户无收款账户` : '')
+      + (noPayCo ? ` · 其中 ${gapWord(noPayCo)}` : '')
       + (marked ? '' : ' · 未能标记为「已导出」(需签发权限),单据状态不变')
     flashOk(exportResult.value)
     expNoticeOpen.value = false
@@ -492,14 +514,29 @@ const slotCells = computed<SlotCell[]>(() => {
     { dorm: details.value.some(d => d.noticeKind === 'dorm'), amounts: slotAmounts(details.value) },
     payMap.value, companies.value)
 })
+// 方格下的一行说明。读的是 payMap 与当前单头,保存即变 —— 与落库的 warn 不同,它不会说陈年旧话。
+// 措辞指卡上的「未设置」三个字,不指边框样式(边框会随卡片改版变,字不会)。
+const payHint = computed(() => {
+  const r = dlgRow.value
+  if (!r || !slotCells.value.length) return ''
+  if (slotCells.value.some(c => c.companyId == null))
+    return canIssue.value
+      ? '标着「未设置」的格子还没指定收款公司:勾选后在下方选公司'
+      : '标着「未设置」的格子还没指定收款公司'
+  // 格子都指定了不等于「设齐了」:映射不到槽的行压根不出格(见 slotAmounts 注释),不下这个结论
+  return gapOf(r.tenantId)
+    ? '屏上这些格子都已指定;本月的单仍按上次生成时的归属拆,重新生成后才会跟上'
+    : ''
+})
+
 async function onSlotSave(p: { colIds: string[]; companyId: number }) {
   if (!canIssue.value || slotSaving.value || !dlgRow.value) return
   const tid = dlgRow.value.tenantId
   slotSaving.value = true
   try {
     for (const colId of p.colIds) await billsApi.setPaymap({ tenantId: tid, feeKey: colId as never, companyId: p.companyId })
-    loadPayMap()
-    flashOk(`已指定 ${p.colIds.length} 项收款公司;下次重新生成按新归属拆单`)
+    await loadPayMap()   // 不 await 的话 PUT 成功了卡片可能还印着「未设置」——本身就是一条「设了还显示」
+    flashOk(`已指定 ${p.colIds.length} 项收款公司;重新生成本月催缴单后按新归属拆单`)
   } catch (e) { alert(errMsg(e, '保存失败')) } finally { slotSaving.value = false }
 }
 
@@ -524,6 +561,18 @@ async function onGenerate() {
 // ── 明细抽屉(两 tab:场地租金在前/水电费在后;竞态守卫同列表手法) ──
 const dlgOpen = ref(false)
 const dlgTab = ref<string>('rent')
+// 落库的 warn 是生成那一刻的快照,横幅与行尾「!」用同一句说清时效,免得它假装实时
+// (「有费项未设置收款公司」已在 2026-09-23 从 warn 里摘掉 —— 那条是唯一随时会变的判据)。
+//
+// ⚠ 这一句给**八类**无差别追加,所以它只许说时效,不许指路、不许承诺能清掉
+//   (对抗复查 2026-09-23 查出的两处):
+//   · 原文写「在合同或表档案里改完后」—— 而「包干行没挂上池」的落点是公共电核算、
+//     「这个月缺价」的落点是计费参数,两类在真屏上都出现过,那句话是在把人指去错的屏。
+//     该去哪屏由每一类自己的 WARN_COPY.actionLabel 说,这里不替它们说。
+//   · 原文写「改完后……才更新」—— 而「本期合计为负」自己的 why 明写「清除路径不存在」,
+//     同一屏上两句话互相否定。现在只陈述「这是快照,重新生成才会变」,不承诺改得掉。
+const WARN_WHEN = '生成本月催缴单那一刻查出的,不是实时的 —— 重新生成本月后这里才会变'
+
 const DLG_TABS = [{ value: 'rent', label: '场地租金' }, { value: 'util', label: '水电费' }]
 const dlgLoading = ref(false)
 const dlgRow = ref<DisplayRow | null>(null)
@@ -747,7 +796,7 @@ function onMore(key: string) {
         <!-- §5.10 筛选:期段控是「反正都要点开的选择器」,M↓ 收进筛选面板 -->
         <Segmented v-if="!narrow" :options="PHASE_OPTS" v-model="phase" size="sm" />
         <!-- 屏级告警入口(§6):位置固定在主控区尾,不随有无告警/批量态变化 -->
-        <FPAlertChip :count="alertGroups.length" @open="alertOpen = true" />
+        <FPAlertChip :count="alertCount" @open="alertOpen = true" />
       </div>
       <div class="bn-actions">
         <!-- §5.10 动作:五个只读入口在 M 与 S 同判(narrow)进「⋯」(见 moreItems)。
@@ -802,7 +851,7 @@ function onMore(key: string) {
       <FPStat label="户数" :value="String(kpis.count)" tint="blue" />
       <FPStat label="本期总额(元)" :value="fmt2(kpis.total)" tint="sky" sub="S5 起含租金板块" />
       <FPStat label="月租金合计(参考,元)" :value="fmt2(kpis.rent)" sub="整月口径,未含免租期/按天折" />
-      <FPStat label="警告户数" :value="String(kpis.warned)" :sub="kpis.warned ? '悬停行尾「!」看原文' : undefined" />
+      <FPStat label="警告户数" :value="String(kpis.warned)" :sub="kpis.warned ? '悬停行尾「!」看是哪几类' : undefined" />
     </div>
 
     <!-- 生成摘要提示(5s 自消)。page 模式:本屏无 relative 容器,且 --z-toast 最高不被遮 -->
@@ -898,8 +947,10 @@ function onMore(key: string) {
             <th>行数</th>
             <th title="该户全部单据本期合计之和(租金+水电,含宿舍单);账外户降淡不入应收">本期合计(元)</th>
             <th title="该户当月在租合同月租之和;参考口径:整月,未含免租期/按天折">月租金(参考)</th>
-            <th class="l" title="待核对→已确认→已导出(单向);橙点=该户有费用未指定收款公司(提示不阻断);已确认/已导出户重新生成自动跳过">状态</th>
-            <th title="门禁告警:缺价/表未归属合同/费项未设收款公司/合计为负…各单去重合并,悬停「!」看原文">警告</th>
+            <th class="l" :title="`待核对→已确认→已导出(单向);橙点=${GAP_TIP};已确认/已导出户重新生成自动跳过`">状态</th>
+            <!-- 类名逐字抄 WARN_COPY 的 title:写成别的说法,用户按列头的词去屏上找就对不上号
+             (对抗复查 2026-09-23)。「看原文」也已不成立 —— 悬浮里是按文案表合成的字,不是库里的原串。 -->
+            <th title="生成本月催缴单时查出的:表没挂上合同/房号两边对不上/这个月缺价/本期合计为负…各单去重合并,悬停「!」看是哪几类">警告</th>
           </tr>
         </thead>
         <tbody>
@@ -930,11 +981,11 @@ function onMore(key: string) {
               <!-- S20 状态列:徽标 + 橙点(收款缺口) + hover 出确认按钮 -->
               <td class="l bn-stc">
                 <span class="bn-st" :class="statusOf(r.tenantId)">{{ ST_LABEL[statusOf(r.tenantId)] }}</span>
-                <span v-if="gapOf(r.tenantId)" class="bn-gapdot" title="该户有费用未指定收款公司(提示,不阻断导出)"></span>
+                <span v-if="gapOf(r.tenantId)" class="bn-gapdot" :title="GAP_TIP"></span>
                 <button v-if="canIssue && !bulk && statusOf(r.tenantId) === 'draft'" class="bn-cfm" type="button"
                         :disabled="confirming" title="核对无误,确认该户" @click.stop="confirmTenants([r.tenantId])">确认</button>
               </td>
-              <td class="ct"><span v-if="r.warn" class="bn-warn" :title="r.warn">!</span></td>
+              <td class="ct"><span v-if="r.alerts.length" class="bn-warn" :title="warnText(r.alerts)">!</span></td>
             </tr>
           </template>
           <tr v-if="filtered.length === 0">
@@ -970,9 +1021,9 @@ function onMore(key: string) {
       <div v-if="dlgLoading || !dlgRow" class="bn-empty">加载中…</div>
       <template v-else>
         <!-- 户头(警告=各单去重合并) -->
-        <div v-if="dlgRow.warn" class="bn-bar warn">
+        <div v-if="dlgRow.alerts.length" class="bn-bar warn">
           <component :is="iconFor('alert-triangle')" :size="14" />
-          <span class="bn-warn-multi">{{ dlgRow.warn }}</span>
+          <span class="bn-warn-multi">{{ warnLines(dlgRow.alerts) }}<em class="bn-warn-when">{{ WARN_WHEN }}</em></span>
         </div>
         <div class="bn-hgrid">
           <div class="bn-hfld"><label>位置</label><span :class="{ dim: !dlgRow.premiseText }">{{ dlgRow.premiseText || '—' }}</span></div>
@@ -984,6 +1035,7 @@ function onMore(key: string) {
         <!-- S20 收款方分段:按收款槽出方格(同槽多费项共用一家公司),多选后指定公司 -->
         <PaySlotGrid v-if="slotCells.length" :cells="slotCells" :companies="companies"
                      :can-edit="canIssue" :saving="slotSaving" @save="onSlotSave" />
+        <p v-if="payHint" class="bn-payhint">{{ payHint }}</p>
 
         <Segmented :options="DLG_TABS" v-model="dlgTab" size="sm" />
 
@@ -1361,7 +1413,7 @@ function onMore(key: string) {
                    @taken="onTaken" @close-takeover="lockedBy = null" @close-evicted="evictedBy = null" />
 
     <!-- 屏级告警抽屉(§6):原「本屏为旧快照」流内条搬到这里,带人话说明与「去重算」动作 -->
-    <FPAlertPanel :open="alertOpen" :groups="alertGroups" @close="alertOpen = false" />
+    <FPAlertPanel :open="alertOpen" :groups="allAlertGroups" @close="alertOpen = false" />
   </div>
 </template>
 
@@ -1470,6 +1522,10 @@ tbody tr:hover .bn-cfm { visibility: visible; }
 .bn-hgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px 18px; margin-bottom: 12px; }
 .bn-hfld { min-width: 0; }
 .bn-hfld label { display: block; margin-bottom: 4px; font-size: var(--fs-label); color: var(--text-muted); }
+/* 时效说明:另起一行、弱化 —— 混在同色同字号的条目里会被读成「又一条查出来的毛病」 */
+.bn-warn-when { display: block; margin-top: 6px; font-size: var(--fs-label); font-style: normal; opacity: .72; }
+/* 方格下的实时说明行:抽屉 body 是 flex gap,负 margin 把它收到方格底下而不是另起一段 */
+.bn-payhint { margin: -14px 0 0; font-size: var(--fs-label); color: var(--text-muted); }
 .bn-hfld span { font-size: var(--fs-body); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 .bn-hfld .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .bn-hfld .dim, .bn-hfld .mono.dim { color: var(--text-disabled); }

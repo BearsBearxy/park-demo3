@@ -40,6 +40,7 @@ public class DataHomeService {
     private final AllocPoolResultMapper poolResults;
     private final AllocLossResultMapper lossResults;
     private final BillNoticeMapper billNotices;
+    private final BillNoticeWarnMapper noticeWarns;
     private final ParamService paramService;
     private final ManagementCompanyMapper companies;   // 台账公司清单全集(P2):按 sort_no,id 排序
 
@@ -48,6 +49,7 @@ public class DataHomeService {
                            ElecRecordMapper elec, ContractService contractService,
                            MeterReadingMapper meterReadings, AllocPoolResultMapper poolResults,
                            AllocLossResultMapper lossResults, BillNoticeMapper billNotices,
+                           BillNoticeWarnMapper noticeWarns,
                            ParamService paramService, ManagementCompanyMapper companies,
                            com.park.demo3.mapper.ReportAmountMapper amounts,
                            com.park.demo3.mapper.ElecCostEntryMapper elecCostEntries) {
@@ -56,7 +58,8 @@ public class DataHomeService {
         this.ledger = ledger; this.s10 = s10; this.salary = salary; this.office = office;
         this.pv = pv; this.charging = charging; this.elec = elec; this.contractService = contractService;
         this.meterReadings = meterReadings; this.poolResults = poolResults;
-        this.lossResults = lossResults; this.billNotices = billNotices; this.paramService = paramService;
+        this.lossResults = lossResults; this.billNotices = billNotices; this.noticeWarns = noticeWarns;
+        this.paramService = paramService;
         this.companies = companies;
     }
 

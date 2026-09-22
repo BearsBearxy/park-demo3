@@ -9,7 +9,7 @@ import { companyBookApi, type CompanyFullDTO } from '@/api/billDelivery'
 import type { BuildingDTO } from '@/types/building'
 import { groupByBuilding } from '@/utils/billNoticeLogic'
 import {
-  STATUS_LABEL, buildPayRows,
+  GAP_TIP, STATUS_LABEL, buildPayRows, gapWord,
   type ExportNoticeReq, type PayContractIn, type PayNoticeIn, type PayTenantRow,
 } from '@/utils/payBookLogic'
 import { iconFor } from '@/components/ds/icon'
@@ -116,7 +116,7 @@ function onExport() {
   if (notConfirmed.value.length
     && !confirm(`选中的 ${notConfirmed.value.length} 户还没核对确认(${notConfirmed.value.slice(0, 3).map(r => r.tenantName).join('、')}${notConfirmed.value.length > 3 ? '…' : ''})。仍然导出?`)) return
   if (gapCount.value
-    && !confirm(`其中 ${gapCount.value} 户有费用未指定收款公司,这部分通知单不会显示收款账户信息,租户可能不知道往哪付款。仍然导出?`)) return
+    && !confirm(`其中 ${gapWord(gapCount.value)},这部分通知单不会印收款账户信息,租户可能不知道往哪付款。仍然导出?`)) return
   const accountByCompany: Record<number, number | null> = {}
   for (const id of selectedCoIds.value) accountByCompany[id] = acctByCo.value[id] ? +acctByCo.value[id] : null
   emit('export', { ym: props.ym, tenantIds: picked.value.map(r => r.tenantId), accountByCompany })
@@ -187,7 +187,7 @@ const statusOf = (r: PayTenantRow) => STATUS_LABEL[r.status]
               <td class="l">
                 <span class="ex-tname" :title="r.tenantName">
                   {{ r.tenantName }}
-                  <em v-if="r.gap" class="ex-dot" title="该户有费项未指定收款公司,这部分单不显示收款账户">●</em>
+                  <em v-if="r.gap" class="ex-dot" :title="`${GAP_TIP};这部分单不印收款账户`">●</em>
                 </span>
               </td>
               <td class="l"><span class="ex-txt dim">{{ r.bld.main?.name ?? '–' }}</span></td>
@@ -204,7 +204,7 @@ const statusOf = (r: PayTenantRow) => STATUS_LABEL[r.status]
     </div>
 
     <template #footer>
-      <span class="ex-foot">{{ picked.length }} 个文件 / {{ sheetTotal }} 张单<template v-if="gapCount"> · {{ gapCount }} 户无收款账户</template></span>
+      <span class="ex-foot">{{ picked.length }} 个文件 / {{ sheetTotal }} 张单<template v-if="gapCount"> · {{ gapWord(gapCount) }}</template></span>
       <Button variant="outline" size="sm" @click="emit('close')">关闭</Button>
       <Button variant="filled" size="sm" :disabled="picked.length === 0 || busy" @click="onExport">
         <template #leading><component :is="iconFor('download')" :size="14" /></template>

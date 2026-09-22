@@ -174,6 +174,20 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         return JsonPath.read(detailBody, "$.data.lines[?(@.seg=='" + seg + "')]");
     }
 
+    /** 一张单上的告警类别清单(V126:warns 是三列对象数组,不再是分号串)。 */
+    @SuppressWarnings("unchecked")
+    private static List<String> codes(Map<String, Object> notice) {
+        List<Map<String, Object>> ws = (List<Map<String, Object>>) notice.get("warns");
+        return ws == null ? List.of() : ws.stream().map(w -> (String) w.get("code")).toList();
+    }
+
+    /** 某一类告警在这张单上的全部条目(payload/hint 分列,不拼串)。 */
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> warnsOf(Map<String, Object> notice, String code) {
+        List<Map<String, Object>> ws = (List<Map<String, Object>>) notice.get("warns");
+        return ws == null ? List.of() : ws.stream().filter(w -> code.equals(w.get("code"))).toList();
+    }
+
     private static Map<String, Object> one(List<Map<String, Object>> rows) {
         assertThat(rows).hasSize(1);
         return rows.get(0);
@@ -423,7 +437,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get("noticeKind")).isEqualTo("offbook");
         assertThat(d(rows.get(0).get("totalAmount"))).isLessThan(0.0);
-        assertThat((String) rows.get(0).get("warn")).contains("负");
+        assertThat(codes(rows.get(0))).contains("W_TOTAL_NEGATIVE");
         String body = detail(((Number) rows.get(0).get("id")).intValue());
         assertThat(d(one(feeLines(body, "elec")).get("amount"))).isLessThan(0.0);
     }
@@ -436,14 +450,33 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         int t = createTenant("IT出账无合同户");
         int m = createMeter("elec", "p1", "IT出账无合同电", t);
         reading(m, ym, "\"prevTotal\":0,\"currTotal\":100");
+        // 同一户再来两块:表序会撞(都是「电表①」那一族),表名分得开。
+        // 真屏走查(2026-09-23 旭化成)撞过:三块水表 sub_name 全是「水表①」,屏上三行一模一样。
+        int m2 = createMeter("elec", "p1", "IT无合同电甲", t);
+        int m3 = createMeter("elec", "p1", "IT无合同电乙", t);
+        reading(m2, ym, "\"prevTotal\":0,\"currTotal\":100");
+        reading(m3, ym, "\"prevTotal\":0,\"currTotal\":100");
+        // 裸数字表名(宿舍那批的形状「636.00」)必须回落到位置 + 表序,不许原样上屏
+        int mBare = createMeter("elec", "p1", "636.00", t);
+        reading(mBare, ym, "\"prevTotal\":0,\"currTotal\":100");
 
         String gen = generate(ym);
         assertThat((int) JsonPath.read(gen, "$.data.warned")).isGreaterThanOrEqualTo(1);
         List<Map<String, Object>> rows = notices(ym, t);
         assertThat(rows).hasSize(1);
-        assertThat((String) rows.get(0).get("warn")).contains("未归属");
+        assertThat(codes(rows.get(0))).contains("W_METER_NO_CONTRACT");
+        // ⚠ 条目必须**两两不同**:hint 取 sub_name 的话这里全是「电表①」,屏上认不出是哪块表。
+        //   破坏验证:把 meterTag() 改回 nz(m.getSubName()) → 本行红。
+        List<String> hints = warnsOf(rows.get(0), "W_METER_NO_CONTRACT").stream()
+            .map(w -> (String) w.get("hint")).toList();
+        assertThat(hints).hasSize(4).doesNotHaveDuplicates();
+        assertThat(hints).contains("IT无合同电甲", "IT无合同电乙");
+        // ⚠ 裸数字表名不许原样上屏(「636.00」读起来像金额 —— 2026-09-23 用户原话:完全看不懂)。
+        //   破坏验证:把 meterTag() 的 bareDigitName 分支删掉 → 本行红。
+        assertThat(hints).doesNotContain("636.00");
         String body = detail(((Number) rows.get(0).get("id")).intValue());
-        Map<String, Object> line = one(feeLines(body, "elec"));
+        // 只看最初那块表的行(本用例后来又加了三块表验条目可分辨,feeLines 会全收)
+        Map<String, Object> line = elecOfMeter(body, m);
         assertThat(line.get("contractId")).isNull();
         assertThat(d(line.get("amount"))).isEqualTo(80.0);
     }
@@ -561,7 +594,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         generate(ym);
         List<Map<String, Object>> rows = notices(ym, t);
         assertThat(rows).hasSize(1);
-        assertThat((String) rows.get(0).get("warn")).contains("缺起止日期");
+        assertThat(codes(rows.get(0))).contains("W_CONTRACT_NO_DATES");
         String body = detail(((Number) rows.get(0).get("id")).intValue());
         assertThat(feeLines(body, "rent_factory")).isEmpty();
         assertThat(d(one(feeLines(body, "elec")).get("amount"))).isEqualTo(80.0);
@@ -589,9 +622,13 @@ class BillNoticeApiIT extends AbstractMysqlIT {
                 + "{\"propertyType\":\"factory\",\"location\":\"A座311室\",\"feeKey\":\"rent_factory\",\"area\":10,\"unitPrice\":1}]");
         int hit = createMeter("elec", "p1", "IT场地电309", ta);    // name 带房号 → 命中 A座309室
         int miss = createMeter("elec", "p1", "IT场地电999", ta);   // 房号不在本合同清单 → 回退
-        bind(hit, ca); bind(miss, ca);
+        // 同一房号再来一块表,名字只差「.00」—— 镜像真库里 544(电)/544.00(水)那一对:
+        // 表名是导入原串,水表那批从 Excel 数值列进来带小数尾。去重键是房号不是整句(2026-09-23)。
+        int miss2 = createMeter("elec", "p1", "999.00", ta);
+        bind(hit, ca); bind(miss, ca); bind(miss2, ca);
         reading(hit, ym, "\"prevTotal\":0,\"currTotal\":100");
         reading(miss, ym, "\"prevTotal\":0,\"currTotal\":100");
+        reading(miss2, ym, "\"prevTotal\":0,\"currTotal\":100");
         // B:一条 location 列三间
         int tb = createTenant("IT场地合并户");
         int cb = contractLines(tb, "2089-01-01", "2099-12-31", null,
@@ -615,7 +652,34 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         assertThat(elecOfMeter(bodyA, hit).get("premise")).isEqualTo("A座309室");
         // ② 零命中 → 回退今天的长串(不猜)+ 按表短 warn
         assertThat(elecOfMeter(bodyA, miss).get("premise")).isEqualTo("A座309室、A座310室、A座311室");
-        assertThat((String) one(notices(ym, ta)).get("warn")).contains("场地未定:IT场地电999");
+        Map<String, Object> nA = one(notices(ym, ta));
+        // 文案取房号 + 带字的表名(表名是「这块表挂错人了」的唯一线索);不取 m.getName() 原串。
+        // 破坏验证:把 BillNoticeService 那处换回 "场地未定:" + m.getName() → 本行红。
+        // ⚠ 这是「场地未定:544.00」那起事故的**指定判据**:房号与表名必须**分两列存**,不拼串。
+        //   拼串就是当初的形状 —— 标签说的是场地、塞进去的是表名,前端拿到一坨字符串,
+        //   没有任何东西能发现口径不对。破坏验证:把 payload/hint 合成一列 → 本段红。
+        assertThat(warnsOf(nA, "W_ROOM_MISMATCH"))
+            .anySatisfy(w -> {
+                assertThat(w.get("payload")).isEqualTo("999");
+                assertThat(w.get("hint")).isEqualTo("IT场地电999");
+            });
+        // 同一房号的两块表塌成一条,且屏上不出现读起来像金额的「999.00」。
+        // 破坏验证:把去重键从房号换回整句 → 下面两行同时红。
+        // 同一房号的水电两块表塌成一条(去重键=房号),且屏上不出现读起来像金额的「999.00」
+        assertThat(warnsOf(nA, "W_ROOM_MISMATCH").stream()
+            .filter(w -> "999".equals(w.get("payload"))).count()).isEqualTo(1);
+        assertThat(warnsOf(nA, "W_ROOM_MISMATCH"))
+            .noneSatisfy(w -> assertThat(w.get("payload")).isEqualTo("999.00"));
+        // 「有费项未设置收款公司」已从 warn 里摘掉:它是唯一随 paymap 随时变的判据,冻进生成时快照
+        // 就成了「设完也不消失」。信息不丢 —— 该户的单 payCompanyId 仍为空,屏上橙点照亮。
+        // 破坏验证:恢复 BillNoticeService 里那行 add("有费项未设置收款公司") → 第一行红;
+        //          若哪天给未设公司的单填上兜底公司 → 第二行红。
+        // 2026-09-23 配的防回归:收款公司是**随时会变**的判据,不许冻进生成时快照。
+        // 库里不存文案,所以这里断言的是「没有任何与收款公司相关的类别」——
+        // 八个类别里本来就没有它,加回来就红。
+        assertThat(codes(nA)).doesNotContain("W_PAY_COMPANY_MISSING");
+        assertThat(codes(nA)).allSatisfy(c -> assertThat(c).doesNotContain("PAY_COMPANY"));
+        assertThat(one(notices(ym, ta)).get("payCompanyId")).isNull();
         // ③ A 类合并串 → 合成单间
         assertThat(elecOfMeter(detail(soleNoticeId(ym, tb)), mb).get("premise"))
                 .isEqualTo("二期10号楼（三车间）603单元");

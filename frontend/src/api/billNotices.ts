@@ -9,14 +9,14 @@ export interface BillNoticeDTO {
   ym: string
   tenantId: number
   tenantName: string | null
-  payCompanyId: number | null        // null=费项未设收款公司(单头带 warn)
+  payCompanyId: number | null        // null=这张单还没落到收款公司(gapOf 橙点读它)
   payCompanyName: string | null
   noticeKind: string                 // combined/fee/maint/dorm/offbook(v2 屏上不显,仅 offbook 降淡判定用)
   premiseText: string | null         // 场地段拼接(如 "A座602室,B座201室")
   totalAmount: number
   prevDue: number                    // 上期欠费:催缴闭环接口点,S4 恒 0
   status: string                     // draft/issued/void
-  warn: string | null                // 门禁告警原文(";"拼接);null=无警告
+  warns: NoticeWarnDTO[]             // V126:告警条目化;文案由前端 WARN_COPY 按 code 出
   lineCount: number
 }
 
@@ -59,11 +59,19 @@ export interface BillNoticeDetailDTO {
   totalAmount: number
   prevDue: number
   status: string
-  warn: string | null
+  warns: NoticeWarnDTO[]
   lines: BillNoticeLineDTO[]
 }
 
-// generate 摘要:generated=新插单数;lines=行数;warned=带 warn 单数+因 issued 跳过的租户数
+// 一条告警(V126,BILL-NOTICE-WARN-SPEC §3.1)。三列分开传,不拼串 ——
+// 拼串就是「场地未定:544.00」那起事故的形状:标签与值糊在一起,前端没法分类也没法核对。
+export interface NoticeWarnDTO {
+  code: string      // WarnCode 常量名,一个汉字都没有
+  payload: string   // 实例数据业务键(房号/价目键/计费行id/表id/费项键);无实例数据的类是空串
+  hint: string      // 第二段实例数据(表名/「合同号 · 费项名」);无则空串
+}
+
+// generate 摘要:generated=新插单数;lines=行数;warned=带告警单数+因 issued 跳过的租户数
 export interface BillNoticeGenResultDTO {
   generated: number
   lines: number

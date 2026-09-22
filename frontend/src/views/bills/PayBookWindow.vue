@@ -13,7 +13,7 @@ import type { S10ColId } from '@/types/s10'
 import type { BuildingDTO } from '@/types/building'
 import { groupByBuilding } from '@/utils/billNoticeLogic'
 import {
-  COL_SLOTS, buildPayMap, buildPayPlan, buildPayRows, payKey, resolveSlot, slotFeeNames, slotGap,
+  COL_SLOTS, GAP_TIP, buildPayMap, buildPayPlan, buildPayRows, payKey, resolveSlot, slotFeeNames, slotGap,
   slotLabel, slotOf,
   type PayContractIn, type PayMap, type PayNoticeIn, type PayStash, type PayTenantRow,
 } from '@/utils/payBookLogic'
@@ -322,7 +322,7 @@ function onClose() {
                 <td class="l">
                   <span class="pb-tname" :title="r.tenantName">
                     {{ r.tenantName }}
-                    <em v-if="r.gap" class="pb-dot" title="该户有费项未指定收款公司(提示不阻断)">●</em>
+                    <em v-if="r.gap" class="pb-dot" :title="GAP_TIP">●</em>
                   </span>
                 </td>
                 <td class="l">

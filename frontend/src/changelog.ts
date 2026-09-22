@@ -20,6 +20,23 @@ import type { ReleaseNote } from '@/types/changelog'
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: '0.17.0',
+    date: '2026-09-23',
+    headline: '催缴单的警告按类分开，点得过去',
+    added: [],
+    improved: [
+      { icon: 'bell-ring', title: '催缴单的警告', desc: '原来是一串挤在一起的字，现在按类分开，点一下直接去改。', to: 'bill-notices' },
+      { icon: 'file-check-2', title: '警告里的房号', desc: '原来印成 544.00 像个金额，现在写清是哪间房、哪块表。', to: 'bill-notices' },
+      { icon: 'gauge', title: '警告里说的是哪块表', desc: '一户有三块水表时，原来屏上三行都写「水表①」，认不出是哪一块；现在写表名。', to: 'bill-notices' },
+    ],
+    fixed: [
+      '催缴单：收款公司设好了，警告条还在说没设',
+      '催缴单：有几项费用在收款方卡片里不出卡，想设也设不了',
+      '催缴单：收款方卡片上印出 rent_office 这种英文',
+      '催缴单：同一个房间的水表和电表，警告重复报两条',
+    ],
+  },
+  {
     version: '0.16.0',
     date: '2026-09-21',
     headline: '宽表在手机上一行一张卡，平板按小桌面排',

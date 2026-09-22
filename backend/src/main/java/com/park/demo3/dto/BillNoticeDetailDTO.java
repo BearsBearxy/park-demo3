@@ -8,7 +8,7 @@ public record BillNoticeDetailDTO(
     Integer payCompanyId, String payCompanyName,
     String noticeKind, String premiseText,
     BigDecimal totalAmount, BigDecimal prevDue,
-    String status, String warn,
+    String status, List<NoticeWarnDTO> warns,
     List<Line> lines) {
 
     public record Line(
