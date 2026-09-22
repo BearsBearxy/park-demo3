@@ -178,6 +178,28 @@ export function budgetRevenueOf(budgetRows: BudgetRowDTO[], year: number): numbe
   return budgetRows.find((r) => r.year === year && matchBudgetKey(r.label, r.sub) === 'revenue')?.budget ?? null
 }
 
+/**
+ * 利润率失真门(普查稿 §2.5)。基数过小时利润率被放大成失真的大百分比 ——
+ * 2025-12 实测:收入 −¥53万、园区利润 −¥549万,两个负数一除是 +1031%。
+ *
+ * 判据只此一处。原来它以字面量写在 CockpitView.vue 的 KPI 卡 note 里,而同屏下面那条
+ * 结论条没有守卫 —— 于是一屏之内 KPI 卡写「利润率 — 基数过小」(拒答)、结论条写
+ * 「(利润率 1030.3%)」(直答),两句话互相拆台。2026-09-22 拍宣传片素材时逐帧核对发现。
+ * 改这个数 = 改屏上什么时候不给百分比。
+ */
+export const MARGIN_DISTORT_PCT = 300
+/**
+ * 屏上的利润率写法:失真时不写数。
+ * rev 为 0 / 空或 prof 缺失 → null(由调用方决定是省句还是写「当期无损益数据」)。
+ * 判据用的是比值上限而不是 |比值|:与它取代的那段字面量逐字同义,不在这一轮里悄悄改行为。
+ * (负向失真 —— 利润负、收入正 —— 现在仍会印出来,这是改动前就有的洞,另记。)
+ */
+export function marginNote(rev: number | null | undefined, prof: number | null | undefined): string | null {
+  if (!rev || prof == null) return null
+  const m = (prof / rev) * 100
+  return m > MARGIN_DISTORT_PCT ? '利润率 — 基数过小' : `利润率 ${m.toFixed(1)}%`
+}
+
 // ── 经营结论条(spec 2026-07-11 §A:数据模板生成分句,无写死结论;缺哪块数据省哪句) ──
 // 取数全复用本屏既有取值函数(atPeriod/colPick/budgetAch),不另立聚合口径。
 export interface ConclusionItem { text: string; tone: 'good' | 'watch' | 'risk' | 'neutral'; link?: string }
@@ -205,7 +227,11 @@ export function buildConclusion(
   if (rev != null) {
     let text = `${isMonth ? `${year}年${usedMi + 1}月` : `${year}年`}收入 ${fw(rev)}`
       + (ach ? `(预算达成 ${ach.rate.toFixed(1)}%)` : '')
-    if (prof != null) text += `,园区利润 ${fw(prof)}` + (rev ? `(利润率 ${((prof / rev) * 100).toFixed(1)}%)` : '')
+    // 括注与 KPI 卡共用 marginNote:失真时两边一起不写百分比(原来这里没守卫,同屏自相矛盾)
+    if (prof != null) {
+      const mn = marginNote(rev, prof)
+      text += `,园区利润 ${fw(prof)}` + (mn ? `(${mn})` : '')
+    }
     const tone: ConclusionItem['tone'] =
       prof != null && prof < 0 ? 'risk' : ach && ach.rate < 100 ? 'watch' : prof != null || ach ? 'good' : 'neutral'
     out.push({ text, tone })
