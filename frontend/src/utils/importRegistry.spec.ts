@@ -647,3 +647,30 @@ describe('contractFull run', () => {
     post.mockRestore()
   })
 })
+
+describe('meter run', () => {
+  it('run:后端 notices 透传到结果(换楼等「已导入、仅需知会」提示)', async () => {
+    const notice = { rowIndex: 0, label: '表「A-1」', reason: '表「A-1」按编码认到了这一行,但这一行把它换了楼' }
+    const post = vi.spyOn(http, 'post').mockResolvedValue({ imported: 1, skipped: 0, errors: [], matches: { code: 1 }, notices: [notice] } as never)
+    const entry = IMPORT_TYPES.find(t => t.key === 'meter')!
+    const res = await entry.run([{ kind: 'elec', name: 'A-1', code: 'X1', ym: '2024-02', curr: 10 }], {})
+    expect(post).toHaveBeenCalledWith('/meters/import', expect.anything())
+    expect(res.notices).toEqual([notice])
+    post.mockRestore()
+  })
+
+  it('runImport:文件名随行送后端(进档案变更记录),batchId / changes / notices 原样透传', async () => {
+    const change = { meterId: 7, label: 'A-1', field: 'tenant', before: '甲', after: '乙', from: '2024-02', until: null }
+    const notice = { rowIndex: 0, label: 'A-1', reason: '表「A-1」本行企业名称为空' }
+    const post = vi.spyOn(http, 'post').mockResolvedValue({
+      imported: 1, skipped: 0, errors: [], matches: [], notices: [notice], batchId: 'b-1', changes: [change],
+    } as never)
+    const res = await runImport('meter', [{ kind: 'elec', name: 'A-1', ym: '2024-02', curr: 10 }], {}, '2024年2月抄表.xlsx')
+    expect(post).toHaveBeenCalledWith('/meters/import',
+      { rows: [expect.objectContaining({ name: 'A-1' })], fileName: '2024年2月抄表.xlsx' })
+    expect(res.batchId).toBe('b-1')
+    expect(res.changes).toEqual([change])
+    expect(res.notices).toEqual([notice])
+    post.mockRestore()
+  })
+})

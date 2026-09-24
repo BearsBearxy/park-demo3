@@ -17,7 +17,7 @@ class ContractServiceTest {
     ContractBillingTermMapper btm = Mockito.mock(ContractBillingTermMapper.class);
     ContractUnitMapper cum = Mockito.mock(ContractUnitMapper.class);
     BillingTermUnitMapper btum = Mockito.mock(BillingTermUnitMapper.class);
-    ContractService svc = new ContractService(cm, tm, bm, um, btm, cum, btum);
+    ContractService svc = new ContractService(cm, tm, bm, um, btm, cum, btum, null, null);
 
     // --- helpers ---
     Tenant tenant(int id) {
@@ -160,7 +160,7 @@ class ContractServiceTest {
     //   它不看 status —— 所以只写 status 的终止在出账链上等于没发生。断言直接调 covers 本人。
     private Contract terminateAndCapture(Contract c, LocalDate on) {
         Mockito.when(cm.selectById(c.getId())).thenReturn(c);
-        svc.terminate(c.getId(), on);
+        svc.terminate(c.getId(), on, null);
         Mockito.verify(cm).updateById(c);
         return c;
     }
@@ -198,7 +198,7 @@ class ContractServiceTest {
         Contract c = contract(4, 1, 7, null, "active",
             LocalDate.of(2026, 1, 1), LocalDate.of(2028, 12, 31), 8000);
         Mockito.when(cm.selectById(4)).thenReturn(c);
-        assertThatThrownBy(() -> svc.terminate(4, LocalDate.of(2025, 12, 31)))
+        assertThatThrownBy(() -> svc.terminate(4, LocalDate.of(2025, 12, 31), null))
             .isInstanceOf(BizException.class).hasMessageContaining("终止日期不能早于起租日期");
         Mockito.verify(cm, Mockito.never()).updateById(Mockito.any(Contract.class));
     }

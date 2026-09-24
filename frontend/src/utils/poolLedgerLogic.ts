@@ -4,7 +4,7 @@
 // 「楼层」列归一为一格 floor_label、带尾按原册 SUM 区间出合计行。
 // §H3:二期 2023 冻结参数在「分摊标准」列 title 里披露(stdDisplay 的 frozenNote 参数)。
 import type { AllocLossReconDTO, AllocLossUnitDTO, AllocMeterDiffDTO, AllocMethod, AllocPoolLineDTO, AllocPoolRowDTO } from '@/api/alloc'
-import { ALLOC_METHOD_LABEL } from '@/utils/allocLogic'
+import { ALLOC_METHOD_LABEL, qtyUnit } from '@/utils/allocLogic'
 import { floorRank } from '@/composables/useMeterWorkbench'
 
 const r2 = (v: number) => Math.round(v * 100) / 100
@@ -185,12 +185,21 @@ export function costPerLine(r: Pick<AllocPoolRowDTO, 'lines'>): boolean {
   const ls = r.lines ?? []
   return ls.length > 0 && ls.every(l => l.costAmount != null)
 }
-// 池合计副标题:多表池才显(单表池池行=表行,重复无意义)
-export function poolSubtotal(r: Pick<AllocPoolRowDTO, 'lines' | 'qtyTotal' | 'costAmount'>): string | null {
-  if ((r.lines?.length ?? 0) < 2) return null
+// 池用量副标题:每个池都出 —— 这一行是屏上**唯一**带单位的地方(列头「用量」不写单位,
+// 因为同一张表里电池与水池混排,写死 kWh 会把吨标成度)。
+// ⚠2026-09-23 修:原来这里 `lines.length < 2 就 return null`(理由是「单表池池行=表行,重复无意义」),
+// 结果 98 个池里 84 个(78 个单表 + 6 个零表)屏上一个单位都没有 —— 那条理由只挡住了数字重复,
+// 却把单位一起挡掉了。单表池仍不写「合计」二字(没有东西可合),但单位照出。
+export function poolSubtotal(
+  r: Pick<AllocPoolRowDTO, 'lines' | 'qtyTotal' | 'costAmount' | 'feeKey'>): string | null {
+  // 量和金额都没有 ⇒ 没什么可说的,别印「– 度 · – 元」占一行
+  if (r.qtyTotal == null && r.costAmount == null) return null
   const q = r.qtyTotal == null ? '–' : fmtN(r.qtyTotal)
   const c = r.costAmount == null ? '–' : fmtN(r.costAmount)
-  return `Σ ${q} 度 / ${c} 元`
+  // 用「合计」不用「Σ」:这一格是给抄表/出账的人看的,Σ 是数学记号不是他们的词
+  // (2026-09-23 用户原话:「用户根本看不懂」)。单位跟费项走 —— 绿化水池的 153 是吨不是度。
+  const body = `${q} ${qtyUnit(r.feeKey)} · ${c} 元`
+  return (r.lines?.length ?? 0) < 2 ? body : `合计 ${body}`
 }
 // 电表行标签:sign=-1 前缀「−」(冲减);label 已是「区域·位置·用途·表号」全名
 export const lineLabel = (l: AllocPoolLineDTO) => (l.sign < 0 ? '−' : '') + l.label
@@ -226,9 +235,10 @@ export function lineFloor(l: Pick<AllocPoolLineDTO, 'floorLabel'> | null | undef
 // 池级自然键 book_key(原册 A 列)不再占这一列,改进池首行副标题(poolSubtitle)。
 export const lineUseName = (l: Pick<AllocPoolLineDTO, 'useName'> | null | undefined, fallback: string) =>
   l?.useName?.trim() || fallback
-// 池首行副标题:原册 A 列自然键(回溯锚点)+ Σ 用量/金额。与本行用途同字时不重复出。
-export function poolSubtitle(r: Pick<AllocPoolRowDTO, 'bookKey' | 'lines' | 'qtyTotal' | 'costAmount'>,
-                             lineName: string): string | null {
+// 池首行副标题:原册 A 列自然键(回溯锚点)+ 本池合计用量/金额。与本行用途同字时不重复出。
+export function poolSubtitle(
+  r: Pick<AllocPoolRowDTO, 'bookKey' | 'lines' | 'qtyTotal' | 'costAmount' | 'feeKey'>,
+  lineName: string): string | null {
   const key = r.bookKey?.trim()
   const parts = [key && key !== lineName ? key : null, poolSubtotal(r)].filter(Boolean)
   return parts.length ? parts.join(' · ') : null
@@ -309,21 +319,41 @@ export function meterDiffGroup(diffs: AllocMeterDiffDTO[], zone: string) {
   }
 }
 
-// ── 损耗对账区两行(供电局总表 vs 各栋总表合计 / 各栋分表合计),读时派生列落位到屏列 ──
-// 供电局读数不拼进标签,单独落「总表用电量」列;被比的合计落「分表用电量」列(从供电局总表看,各栋的表都是它的分表)
+// ── 损耗对账区,读时派生列落位到屏列(POOL-ENGINE-SPEC §6.2) ──
+// 供电侧读数不拼进标签,单独落「总表用电量」列;被比的合计落「分表用电量」列
+// (从供电局总表看,各栋的表都是它的分表)。
+//
+// 入参是该期区的**全部**对账条目(后端一个期区发 1~2 条),每条铺成两行 —— 不能只取第一条:
+// 第二条正是 2026-09-23 补的那一条「全部楼栋」。在这之前屏上只画前两行,而那两行剔掉了
+// 独立供电的一期A座,于是 tfoot 写 101,604.40、对账区写 63,054.40,差着一整栋而屏上一个字都没说。
+//
+// 行名一律 `{supplyLabel} vs {sumLabel}总表合计 / 分表合计`,两个 label 都由后端从库里的表名、
+// 栋名现拼 —— 前端不另起一套名字,不然改一处两处就不同步。
 export interface LossReconRow {
   label: string
-  supplyQty: number | null   // 供电局总表读数 → 「总表用电量」列
-  sumQty: number | null      // 各栋总表合计 / 各栋分表合计 → 「分表用电量」列
+  supplyQty: number | null   // 供电侧读数 → 「总表用电量」列
+  supplyTitle: string
+  sumQty: number | null      // 合计 → 「分表用电量」列
+  sumTitle: string
   loss: number | null
   rate: number | null
+  /** 这一行是不是新一条对账条目的头一行(第一条不算)。屏上靠它在两组之间画一条分隔线。 */
+  newGroup: boolean
 }
-export function buildLossReconRows(r: AllocLossReconDTO | null | undefined): LossReconRow[] {
-  if (!r) return []
-  return [
-    { label: '供电局总表 vs 各栋总表合计', supplyQty: r.supplyQty, sumQty: r.sumC, loss: r.lossVsC, rate: r.rateVsC },
-    { label: '供电局总表 vs 各栋分表合计', supplyQty: r.supplyQty, sumQty: r.sumD, loss: r.lossVsD, rate: r.rateVsD },
-  ]
+export function buildLossReconRows(rs: AllocLossReconDTO[] | null | undefined): LossReconRow[] {
+  const out: LossReconRow[] = []
+  for (const r of rs ?? []) {
+    const supplyTitle = `${r.supplyLabel}本月读数`
+    out.push(
+      { label: `${r.supplyLabel} vs ${r.sumLabel}总表合计`, supplyQty: r.supplyQty, supplyTitle,
+        sumQty: r.sumC, sumTitle: `${r.sumLabel}的总表用电量相加`,
+        loss: r.lossVsC, rate: r.rateVsC, newGroup: out.length > 0 },
+      { label: `${r.supplyLabel} vs ${r.sumLabel}分表合计`, supplyQty: r.supplyQty, supplyTitle,
+        sumQty: r.sumD, sumTitle: `${r.sumLabel}的分表用电量相加`,
+        loss: r.lossVsD, rate: r.rateVsD, newGroup: false },
+    )
+  }
+  return out
 }
 
 // ── 损耗合计行:Σ 总表/铝缆/分表/损耗量(率不合计) ──

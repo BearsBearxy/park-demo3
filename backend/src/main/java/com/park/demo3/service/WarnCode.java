@@ -31,7 +31,9 @@ public enum WarnCode {
     W_METER_NO_CONTRACT,
 
     /**
-     * 表绑的合同本月没生效。
+     * 表绑的合同本月用不上。
+     * 两种成因(METER-TIMELINE-SPEC §3.6 之后):① 指错了期(下面的判据);② 钉的是别户的合同(换户后没重钉)——
+     * 不采用、自动也定不出,同样是 override_stale,此时 contract_id 快照为空。
      * 判据:{@code "override_stale".equals(row.status())} —— 有人给这块表指认过一份合同,
      * 但那份本月不在租期内,它所在的递增段/续签链上也没有覆盖本月的段,自动归属同样定不出替代。
      * 影响:行照出、金额一分不变;contract_id 快照落的是<b>本月并未生效的那一份</b>,
@@ -41,6 +43,17 @@ public enum WarnCode {
      * 这一类是<b>指认过但指错了期</b>(去改绑定或补那一期的合同),动作不同,不共用一句话。
      */
     W_METER_BIND_STALE,
+
+    /**
+     * 表本月已在别户锁定的单上收过(METER-TIMELINE-SPEC §5,2026-09-24 补的第十类)。
+     * 判据:{@code lockedMeters.contains(m.getId()) && !lockedTenants.contains(tid)} —— 这块表出现在本月
+     * 某张已确认 / 已导出(含历史 issued)单的明细里,而当月档案现在把它挂在另一户(tid)名下。
+     * 影响:这一户的草稿<b>不出这块表的任何行</b>(电/水/管理费),量只算在已锁的那张单上一次 ——
+     * 否则档案改了归属再重生成,新户会把同一块表同一个月再收一遍(J5-1 换户后重算双收)。
+     * payload = meterId;hint = 表名(同 W_METER_NO_CONTRACT 的 meterTag 口径)。
+     * <p>要让它进这一户:先把那张已锁的单作废,再重新生成本月。
+     */
+    W_METER_BILLED_ELSEWHERE,
 
     /**
      * 房号对不上合同。
@@ -100,7 +113,7 @@ public enum WarnCode {
     /**
      * 本期合计为负。
      * 判据:{@code total.signum() < 0} —— <b>唯一按单算</b>的一类(写在 groups 循环体内),
-     * 其余七类按户算然后拷给该户每张单。
+     * 其余各类按户算然后拷给该户每张单。
      * 影响:无。负值本身合法。
      * payload = 空串;hint = 空串。前端 {@code drawer:false}:它不是数据缺口而是一个结论,
      * 清除路径不存在,给不出 FPAlertPanel §6-3 要求的可执行动作。

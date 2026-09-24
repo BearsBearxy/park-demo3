@@ -95,11 +95,20 @@ describe('模板/导出 ↔ 解析器互认(修正回路)', () => {
     expect(water.records[0]).toMatchObject({ zone: 'p2', kind: 'water', currTotal: 2137 })
   })
   it('导出 aoa 可被解析器读回(改后直接重导)', () => {
-    const meters = [{ id: 7, kind: 'elec', zone: 'p1', name: 'A座总电', area: 'A座', factor: 1500, meterType: '总电表' }]
+    const meters = [{ id: 7, kind: 'elec', zone: 'p1', name: 'A座总电', area: 'A座', factor: 1500, meterType: '总电表', status: 'active' }]
     const readings = [{ meterId: 7, prevTotal: 1540.85, currTotal: 1600, prevPeak: 456.92, currPeak: 470 }]
     const aoa = buildMeterExportAoa('p1', 'elec', '2024-05', meters, readings).map(r => r.map(String))
     const sec = parseMeterSheet('一期园区电', aoa)!
     expect(sec.records[0]).toMatchObject({ name: 'A座总电', ym: '2024-05', prevTotal: 1540.85, currTotal: 1600, prevPeak: 456.92, factor: 1500 })
+  })
+  // METER-TIMELINE-SPEC §6:导出当月只导站在该月在册的表(在用 + 停用),已拆 / 还不在册的不导
+  it('只导本月在册的表:在用、停用进;已拆、未在册不进', () => {
+    const mk = (id: number, name: string, status: string | null) =>
+      ({ id, kind: 'water', zone: 'p1', name, area: 'A座', tenantName: `户${id}`, factor: 1, status })
+    const meters = [mk(1, '在用水', 'active'), mk(2, '停用水', 'retired'), mk(3, '已拆水', 'removed'), mk(4, '未在册水', null)]
+    const aoa = buildMeterExportAoa('p1', 'water', '2024-05', meters, [])
+    expect(aoa.slice(2).map(r => r[0])).toEqual(['在用水', '停用水'])
+    expect(aoa.slice(2).map(r => r[3])).toEqual(['户1', '户2'])     // 档案列照传进来的(= 站在该月那一段)
   })
 })
 
@@ -274,7 +283,7 @@ describe('缺标识列预检(§J3)与模板/导出标识列(§J4)', () => {
     expect(tpl[1][0]).toBe('')            // 表头行首格空 = 无表头的窄标识列(与原册同构)
     expect(tpl[3][0]).toBe('示例总电')     // 数据行首格 = 标识名
     expect(buildMeterTemplateAoa('p2', 'water', '2026-07')[2][0]).toBe('示例总水')
-    const meters = [{ id: 7, kind: 'elec', zone: 'p1', name: 'B东侧楼梯间', area: 'B座', spot: '天面', subName: '电表①' }]
+    const meters = [{ id: 7, kind: 'elec', zone: 'p1', name: 'B东侧楼梯间', area: 'B座', spot: '天面', subName: '电表①', status: 'active' }]
     const aoa = buildMeterExportAoa('p1', 'elec', '2024-02', meters, [{ meterId: 7, prevTotal: 1, currTotal: 2 }])
     expect(aoa[3][0]).toBe('B东侧楼梯间')   // 导出数据行首列 = meter.name
     const sec = parseMeterSheet('一期园区电', aoa.map(r => r.map(String)))!

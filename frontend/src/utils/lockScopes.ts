@@ -109,8 +109,11 @@ export const NAV_SCOPE_PREFIX: Record<string, string | string[]> = {
   'ledger': ['ledger', 'book-template:ledger'],
   'params': 'billing-chain',
   'alloc': 'billing-chain',
-  // reconciliation / import / alloc-loss 三屏没有编辑锁(纯查看/仅登记,楼栋损耗全文件无
-  // useEditMode / 无 acquire),不补键 —— 补了是一个永远不亮的键(2026-09-06 复查撤回 alloc-loss)
+  // 2026-09-23 补回 alloc-loss:楼栋损耗屏开了一个写入口(备注),有 useEditMode 也占同一把
+  // billing-chain 月锁了 —— 2026-09-06 撤回的理由(「全文件无 useEditMode」)不再成立。
+  // 不补的表现是:有人正在这屏改备注,侧栏/页签的小圆点永远不亮,而且不报错。
+  'alloc-loss': 'billing-chain',
+  // reconciliation / import 两屏仍然没有编辑锁(纯查看 / 仅登记),不补键 —— 补了是永远不亮的键
   'bill-notices': 'billing-chain',
   'meters': 'meters',
   'pv-income': ['sched:pv', 'pv-meter'],
@@ -140,8 +143,8 @@ export const NAV_SCOPE_PREFIX: Record<string, string | string[]> = {
 export function scopeNote(scope: string | null | undefined): string | null {
   if (!scope) return null
   if (scope.startsWith('billing-chain:')) {
-    return '出账链三屏（计费参数 · 公共电核算 · 催缴单）与系数簿共用同一把月锁 —— '
-         + '它们改的是同一批出账快照，锁住一个就是锁住四个'
+    return '出账链四屏（计费参数 · 公共电核算 · 楼栋损耗 · 催缴单）与系数簿共用同一把月锁 —— '
+         + '它们改的是同一批出账数据，锁住一个就是锁住全部'
   }
   return null
 }

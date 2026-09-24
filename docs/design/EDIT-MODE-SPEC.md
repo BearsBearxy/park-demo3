@@ -109,6 +109,8 @@
 ```
 
 - **审核态这道闸与提权正交**：已审核 / 待审核由**写路径守卫**（`ReviewGuard`，service 层）拦，与调用方持有何种 edit 权无关 —— 主管接管锁、当场提权都过不去。
+- 2026-09-24 起表档案的写（归属、在册状态、绑定、终止合同勾表、撤销导入、批删本期）不只查「这个月」：按这一行管到的**每个月**查审核态
+  （链尾那一段查到库里最大已生成月），另加「含这块表的催缴单已确认 / 已导出」一类冻结 —— 审核锁 423，其余冻结 409 点名（METER-TIMELINE-SPEC §4）。
 - **R1 后端 / R2 前端,两半都已落地**(2026-09-07)。写端点返 `body.code=423`;前端的闸落在**三个地方**,不是一个:
   - `composables/useEditMode.ts` —— 10 屏
   - `components/sched/SchedHeader.vue` —— 附表族 7 屏(它自己接 `useEditLock`,**不走 `useEditMode`**)
@@ -150,7 +152,7 @@ const { editMode, canEnter, missing, asking, toggle, askFor, onElevated } =
   useEditMode(['billing-run:edit', 'param-policy:edit'])
 ```
 
-已接入：计费参数、公共电核算、催缴单、充电桩、电费成本、抄表、光伏 7 屏 +
+已接入：计费参数、公共电核算、楼栋损耗、催缴单、充电桩、电费成本、抄表、光伏 8 屏 +
 `SchedHeader`（附表族 7 屏共用，一处到位）+ 系数簿 / 收款簿两个窗口（各有自己的
 退出语义，直接用 store 的 `endElevation`，没套 composable）。
 

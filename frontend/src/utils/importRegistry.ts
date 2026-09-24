@@ -291,7 +291,8 @@ export interface ImportTypeEntry {
   module: ImportModule
   // title/templateCols 为 FpImportModal 必填项,收紧类型让 v-bind 展开处可静态校验
   modalProps: (ctx: ImportCtx) => { title: string; templateCols: string[] } & Record<string, unknown>
-  run: (payload: ImportRec[] | Pick[], ctx: ImportCtx) => Promise<ImportResultDTO>
+  // fileName:runImport 透传的文件名(粘贴为「（粘贴）」);目前只有抄表导入把它交给后端(进档案变更记录)
+  run: (payload: ImportRec[] | Pick[], ctx: ImportCtx, fileName?: string) => Promise<ImportResultDTO>
   target: (ctx: ImportCtx) => string | null
 }
 
@@ -638,14 +639,20 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       }
     },
     // sections 勾选段与单段平铺两种 payload 形态都可能到达(parseWorkbook 契约)
-    run: async (payload) => {
+    run: async (payload, _ctx, fileName) => {
       const rows = (payload as (ImportRec | { records: ImportRec[] })[])
         .flatMap(p => 'records' in p && Array.isArray((p as { records: ImportRec[] }).records)
           ? (p as { records: ImportRec[] }).records : [p as ImportRec])
       if (!rows.length) return { imported: 0, skipped: 0, errors: [] }
-      const res = await http.post<ImportResultDTO>('/meters/import', { rows })
+      // fileName 进档案变更记录(METER-TIMELINE-SPEC §1.4),抽屉「档案变更」与撤销导入靠它认出是哪一次
+      const res = await http.post<ImportResultDTO>('/meters/import', { rows, fileName })
       // matches 透传:结果弹层显示 按编码命中/按位置命中/按标识命中/新建 四档(METER-IMPORT-SPEC §4)
-      return { imported: res.imported, skipped: res.skipped, errors: res.errors, matches: res.matches }
+      // notices 透传:换楼/企业名称空保留/人工设定未覆盖这些「已导入、仅需知会」的提示,漏了弹层就收不到
+      // batchId / changes 透传:撤销这次导入的档案改动、结果弹层列「表 · 字段 · 旧 → 新 · 影响月」(SPEC §3.2 §3.5)
+      return {
+        imported: res.imported, skipped: res.skipped, errors: res.errors, matches: res.matches, notices: res.notices,
+        batchId: res.batchId, changes: res.changes,
+      }
     },
     target: () => null,
   },
@@ -1037,7 +1044,7 @@ export async function runImport(
 ): Promise<ImportResultDTO> {
   const entry = IMPORT_TYPES.find(t => t.key === key)
   if (!entry) throw new Error('unknown import type: ' + key)
-  const res = await entry.run(payload, ctx)
+  const res = await entry.run(payload, ctx, fileName)
   // 有行入库即让分析层缓存整体失效:空态→去导入→回分析屏立即见新数据(复审:缓存陈旧闭环)
   if (res.imported > 0) invalidateAnaCache()
   try {

@@ -1,5 +1,5 @@
 import http from './index'
-import type { ContractDTO, ContractSummaryDTO, ContractDetailDTO, ContractCreateReq, ContractRenewReq, RentFreePeriod, BillingLinesImportRow } from '../types/contract'
+import type { ContractDTO, ContractSummaryDTO, ContractDetailDTO, ContractCreateReq, ContractRenewReq, RentFreePeriod, BillingLinesImportRow, ContractTerminatePreviewDTO } from '../types/contract'
 import type { ImportResultDTO } from '../types/import'
 
 // rent_free 后端存 JSON 字符串(TEXT 列):读侧 try-parse 转数组(手改库塞垃圾按 null 兜底,见 plan 风险条),
@@ -27,8 +27,13 @@ export const contractApi = {
   update:  (id: number, req: ContractCreateReq): Promise<ContractDTO> => http.put<ContractWire>(`/contracts/${id}`, toWire(req)).then(fromWire),
   // terminatedOn=解约日(YYYY-MM-DD),空=后端取今天。后端会把它收进 endDate —— 出账判「这个月算不算数」
   // 只看起止日期重叠、不看状态,不收就等于终止没发生。
-  terminate: (id: number, terminatedOn?: string): Promise<ContractDTO> =>
-    http.post<ContractWire>(`/contracts/${id}/terminate`, { terminatedOn: terminatedOn ?? null }).then(fromWire),
+  // vacateMeterIds=终止框里勾的表,自解约次月起写空置行(METER-TIMELINE-SPEC §3.6);区间冻结 → 423 / 409 整个拒
+  terminate: (id: number, terminatedOn?: string, vacateMeterIds?: number[]): Promise<ContractDTO> =>
+    http.post<ContractWire>(`/contracts/${id}/terminate`,
+      { terminatedOn: terminatedOn ?? null, vacateMeterIds: vacateMeterIds ?? [] }).then(fromWire),
+  // 终止框取数:这一户在解约月挂着的表(房号对得上合同场地的 checked=true);on 空=今天
+  terminatePreview: (id: number, on?: string): Promise<ContractTerminatePreviewDTO> =>
+    http.get(`/contracts/${id}/terminate-preview`, on ? { params: { on } } : undefined),
   renew:   (id: number, req: ContractRenewReq): Promise<ContractDTO> => http.post<ContractWire>(`/contracts/${id}/renew`, req).then(fromWire),
   remove:  (id: number): Promise<void>             => http.delete(`/contracts/${id}`),
   // 计费行批量导入(BILL-FORWARD 刀1 三次返工 §1.7):FeeRow 1:1,按合同整组替换 source='import' 行、保留 manual 行

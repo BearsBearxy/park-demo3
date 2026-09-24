@@ -4,6 +4,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { defineComponent, h, ref, KeepAlive } from 'vue'
 
 import MeterView from '@/views/meters/MeterView.vue'
+import MeterDetailDrawer from '@/views/meters/MeterDetailDrawer.vue'
 import {
   metersApi,
   type MeterDTO, type MeterReadingDTO, type MeterBindingDTO,
@@ -11,6 +12,8 @@ import {
 } from '@/api/meters'
 import { useAuthStore } from '@/stores/auth'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
+import { exportMeterMonth } from '@/utils/meterExcel'
+import Select from '@/components/ds/Select.vue'
 import api from '@/api'
 
 /**
@@ -48,6 +51,11 @@ vi.mock('@/api/meters', () => ({
     deletePreview: vi.fn(), batchDelete: vi.fn(), autoLinkByName: vi.fn(),
     bind: vi.fn(), importRows: vi.fn(), usageSummary: vi.fn(),
   },
+}))
+// 导出只桩掉写文件那一下(xlsx 在 jsdom 里写不出来);解析 / 生成 aoa 的纯函数照用原件
+vi.mock('@/utils/meterExcel', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/utils/meterExcel')>()),
+  exportMeterMonth: vi.fn(),
 }))
 vi.mock('@/api/tenant', () => ({ tenantApi: { list: () => Promise.resolve([]) } }))
 vi.mock('@/api/building', () => ({ buildingApi: { list: () => Promise.resolve([]) } }))
@@ -95,7 +103,9 @@ const METERS: MeterDTO[] = [
     floorLabel: '一楼', side: '东侧', roomNo: '101室',
     tenantName: '力灏电子', tenantId: null, buildingId: 13, ownership: 'tenant',
     meterType: null, deviceType: 'three', subName: '电表①', code: 'E-001', factor: 500,
-    retiredYm: null, activeFromYm: null, removedYm: null, sortNo: 1, readingCount: 1,
+    sortNo: 1, readingCount: 1,
+    status: 'active', statusFrom: '1900-01', statusUntil: null,
+    assignFrom: '1900-01', assignUntil: null, assignSrc: 'migrate', changedThisMonth: false,
   },
 ]
 
@@ -132,7 +142,7 @@ const IMPORT_ROWS: MeterImportRow[] = [
 const M_FORM = {
   kind: 'elec', zone: 'p1', building: '', spot: '三楼西侧', tenantId: null as number | null,
   ownership: 'share', name: '三车间总电', subName: '电表③', code: 'E-003', factor: '200',
-  area: 'C座', floorLabel: '三楼', side: '西侧', roomNo: '301室',
+  area: 'C座', floorLabel: '三楼', side: '西侧', roomNo: '301室', fromYm: YM,
 }
 
 interface MeterVm {
@@ -141,6 +151,7 @@ interface MeterVm {
   meterDlg: boolean
   delPreview: MeterDeleteDTO | null
   delTyped: string
+  okMsg: string
   mForm: typeof M_FORM
   loadReadings: () => Promise<void>
   confirmDelete: () => Promise<void>
@@ -148,7 +159,14 @@ interface MeterVm {
   submitMeter: () => Promise<void>
   autoLink: () => Promise<void>
   dirtyIds: number[]
-  onCellEdit: (p: { meterId: number; field: 'currTotal'; value: string }) => void
+  onCellEdit: (p: { meterId: number; field: 'currTotal' | 'prevTotal'; value: string }) => void
+  // METER-TIMELINE-SPEC(C1)那一组用到的
+  meters: MeterDTO[] | null
+  status: string
+  openMeterDlg: () => void
+  onSaveChanges: () => Promise<void>
+  onExport: () => Promise<void>
+  loadMeters: () => Promise<void>
 }
 
 beforeEach(() => {
@@ -262,7 +280,7 @@ describe('园区抄表 · 编辑态被接管走之后写口自守', () => {
     await vm.autoLink()
     await flushPromises()
 
-    expect(metersApi.batchDelete).toHaveBeenCalledWith(YM, { cascade: true, dropEmptyMeters: true })
+    expect(metersApi.batchDelete).toHaveBeenCalledWith(YM, { cascade: true, dropEmptyMeters: true, dropDraftNotices: false })
     expect(metersApi.create).toHaveBeenCalled()
     expect(metersApi.autoLinkByName).toHaveBeenCalled()
     expect(post.mock.calls.map(c => c[0])).toContain('/meters/import')
@@ -351,5 +369,387 @@ describe('园区抄表 · 没选期时切回页签', () => {
     await flushPromises()
     expect(metersApi.binding).not.toHaveBeenCalledWith('')
     w.unmount()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────
+// METER-TIMELINE-SPEC(C1):抄表屏按月取档案、按状态段说话、新表自 M 起在册、缺底数、导入结果列档案变化
+// ─────────────────────────────────────────────────────────────
+
+/** 同一块表站在别的月份的样子(档案按月:4 月起换了户)。 */
+const APR: MeterDTO[] = [{ ...METERS[0], tenantName: '锂朋科技', assignFrom: '2025-04', changedThisMonth: true }]
+/** 一块本月还不在册的表(第一条状态晚于本月)+ 一块在册、本月没读数也没底数的新表。 */
+const NOT_YET: MeterDTO = { ...METERS[0], id: 2, name: '四车间新电', status: null, statusFrom: null, readingCount: 0 }
+const FRESH: MeterDTO = { ...METERS[0], id: 3, name: '五车间新电', tenantName: '五车间', tenantId: 5, statusFrom: YM, readingCount: 0 }
+
+/** 一个手动结算的 promise:切月途中「上个月那一趟还没回来」要靠它摆出来。 */
+function deferred<T>() {
+  let resolve!: (v: T) => void, reject!: (e: unknown) => void
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej })
+  return { promise, resolve, reject }
+}
+
+describe('园区抄表 · 档案按月(METER-TIMELINE-SPEC §2 / §6)', () => {
+  it('❗站在本月拉档案;切月重拉,带上新月份', async () => {
+    await open()
+    expect(metersApi.list).toHaveBeenLastCalledWith(undefined, undefined, YM)
+    useBillingPeriodStore().pick(2025, 4)
+    await flushPromises()
+    expect(metersApi.list).toHaveBeenLastCalledWith(undefined, undefined, '2025-04')
+  })
+
+  it('❗连切两个月,慢的那一趟后到也不许盖掉新月的档案', async () => {
+    const w = await open()
+    const apr = deferred<MeterDTO[]>()
+    vi.mocked(metersApi.list).mockImplementation((_k, _z, ym) =>
+      (ym === '2025-04' ? apr.promise : Promise.resolve(METERS)))
+    useBillingPeriodStore().pick(2025, 4)
+    await flushPromises()
+    useBillingPeriodStore().pick(2025, 5)
+    await flushPromises()
+    apr.resolve(APR)                 // 4 月那趟最后才回来
+    await flushPromises()
+    expect(vmOf(w).meters![0].tenantName, '4 月的档案盖掉了 5 月的').toBe('力灏电子')
+  })
+
+  it('❗切了月又没拉到档案:不拿上个月的档案冒充本月,整页给失败态', async () => {
+    const w = await open()
+    vi.mocked(metersApi.list).mockRejectedValue(new Error('后端挂了'))
+    useBillingPeriodStore().pick(2025, 4)
+    await flushPromises()
+    expect(vmOf(w).meters, '3 月的档案还挂在 4 月上').toBeNull()
+    expect(w.find('.mt-gate-fail').exists()).toBe(true)
+  })
+
+  it('❗导出:本月档案还没到手不导(不导半新半旧的册子);到手后照导本月', async () => {
+    const w = await open()
+    const apr = deferred<MeterDTO[]>()
+    vi.mocked(metersApi.list).mockImplementation(() => apr.promise)
+    useBillingPeriodStore().pick(2025, 4)
+    await flushPromises()
+    await vmOf(w).onExport()
+    expect(exportMeterMonth, '4 月的读数配 3 月的档案导出去了').not.toHaveBeenCalled()
+    expect(window.alert).toHaveBeenCalled()
+    apr.resolve(APR)
+    await flushPromises()
+    await vmOf(w).onExport()
+    expect(exportMeterMonth).toHaveBeenCalledWith('2025-04', APR, READINGS, expect.anything())
+  })
+
+  it('❗状态下拉有「本月有变化」「期区对不上」「缺底数」,不在册两项改叫「已拆」「未在册」', async () => {
+    const w = await open()
+    const labels = w.findAllComponents(Select)
+      .map(s => (s.props('options') as { value: string; label: string }[]))
+      .find(o => o.some(x => x.value === 'changed'))!.map(x => x.label)
+    expect(labels).toEqual(expect.arrayContaining(['本月有变化', '期区对不上', '缺底数', '已拆', '未在册']))
+    expect(labels).not.toContain('已退场')
+  })
+
+  it('❗已拆 / 未在册的说明条按状态段说话,不再教人清空账期', async () => {
+    const w = await open()
+    for (const s of ['removed', 'notYet']) {
+      vmOf(w).status = s
+      await flushPromises()
+      const t = w.find('.mt-hidbar').text()
+      expect(t).toContain('在册状态')
+      expect(t).not.toContain('账期')
+    }
+  })
+})
+
+describe('园区抄表 · 新增表自 M 起在册(SPEC §3.4)', () => {
+  it('❗弹窗默认自本月起在册,提交带上这个月', async () => {
+    const w = await open()
+    const vm = vmOf(w)
+    vi.mocked(metersApi.create).mockResolvedValue(METERS[0])
+    vm.editMode = true
+    await flushPromises()
+    vm.openMeterDlg()
+    await flushPromises()
+    expect(vm.mForm.fromYm).toBe(YM)
+    expect(w.find('.mt-dlg').text()).toContain('自这个月起在册')
+    vm.mForm = { ...vm.mForm, name: '六车间新电', fromYm: '2025-05' }
+    await vm.submitMeter()
+    expect(metersApi.create).toHaveBeenCalledWith(expect.objectContaining({ name: '六车间新电', fromYm: '2025-05' }))
+  })
+})
+
+describe('园区抄表 · 缺底数与自愈(SPEC §3.4)', () => {
+  beforeEach(() => {
+    vi.mocked(metersApi.list).mockResolvedValue([...METERS, NOT_YET, FRESH])
+    vi.mocked(metersApi.createReading).mockResolvedValue(READINGS[0])
+  })
+
+  it('❗没有底数的行在编辑态开放「上月行至」;有底数的行不开', async () => {
+    const w = await open()
+    vmOf(w).editMode = true
+    await flushPromises()
+    const base = w.findAll('input[data-pi="0"]')
+    expect(base, '只有 3 号新表没有底数').toHaveLength(1)
+    await base[0].setValue('90')
+    vmOf(w).onCellEdit({ meterId: 3, field: 'currTotal', value: '120' })
+    await vmOf(w).onSaveChanges()
+    await flushPromises()
+    expect(metersApi.createReading).toHaveBeenCalledWith(expect.objectContaining({ meterId: 3, prevTotal: 90, currTotal: 120 }))
+  })
+
+  it('❗只录本月、不录底数 → 行状态「缺底数」', async () => {
+    vi.mocked(metersApi.readings).mockResolvedValue([...READINGS,
+      { ...READINGS[0], id: 13, meterId: 3, prevTotal: null, currTotal: 120, usageTotal: null }])
+    const w = await open()
+    expect(w.findAll('.mlg-st').map(b => b.text())).toContain('缺底数')
+  })
+
+  it('❗未在册的表录了本月读数:保存前点名「将从本月起在册」,取消就一条不存', async () => {
+    const w = await open()
+    const vm = vmOf(w)
+    vm.editMode = true
+    await flushPromises()
+    vm.onCellEdit({ meterId: 2, field: 'currTotal', value: '50' })
+    vi.mocked(window.confirm).mockReturnValue(false)
+    await vm.onSaveChanges()
+    await flushPromises()
+    expect(vi.mocked(window.confirm).mock.calls.at(-1)?.[0]).toContain(`将从 ${YM} 起在册`)
+    expect(metersApi.createReading, '取消了还存').not.toHaveBeenCalled()
+    expect(vm.dirtyIds, '取消后草稿还在').toEqual([2])
+
+    vi.mocked(window.confirm).mockReturnValue(true)
+    await vm.onSaveChanges()
+    await flushPromises()
+    expect(metersApi.createReading).toHaveBeenCalledWith(expect.objectContaining({ meterId: 2, currTotal: 50 }))
+  })
+
+  it('❗浏览态直呼保存:一条读数都不许写(写口自守)', async () => {
+    const w = await open()
+    const vm = vmOf(w)
+    vm.onCellEdit({ meterId: 1, field: 'currTotal', value: '260' })
+    await vm.onSaveChanges()
+    await flushPromises()
+    expect(metersApi.updateReading).not.toHaveBeenCalled()
+    expect(metersApi.createReading).not.toHaveBeenCalled()
+  })
+})
+
+describe('园区抄表 · 导入结果与批删预览报档案改动(SPEC §3.2 / §3.5)', () => {
+  it('❗导入结果逐条列「表 · 字段 · 旧 → 新 · 影响哪几个月」', async () => {
+    const w = await open()
+    const vm = vmOf(w)
+    vi.spyOn(api, 'post').mockResolvedValue({
+      imported: 1, skipped: 0, errors: [], batchId: 'b-1',
+      changes: [
+        { meterId: 1, label: '一车间总电', field: 'tenant', before: '力灏电子', after: '锂朋科技', from: YM, until: null },
+        { meterId: 1, label: '一车间总电', field: 'status', before: null, after: 'retired', from: YM, until: '2025-05' },
+      ],
+    } as never)
+    vm.editMode = true
+    await flushPromises()
+    await vm.onImport(IMPORT_ROWS as never, 'meters-2025-03.xlsx' as never)
+    await flushPromises()
+    const box = w.find('.ir-chg')
+    expect(box.text()).toContain('2 处表档案改动')
+    await box.find('.ir-errs-toggle').trigger('click')
+    const lines = box.findAll('li').map(li => li.text())
+    expect(lines[0]).toContain(`企业名称 力灏电子 → 锂朋科技 · 影响 ${YM} 起`)
+    expect(lines[1]).toContain(`状态 不在册 → 停用 · 影响 ${YM} ~ 2025-05`)
+  })
+
+  it('❗批量删除本期的预览报出连带删掉的档案记录条数', async () => {
+    const w = await open()
+    const vm = vmOf(w)
+    vm.editMode = true
+    await flushPromises()
+    vm.delPreview = { ...DEL_PREVIEW, assignRows: 4, statusRows: 1 }
+    await flushPromises()
+    const t = w.find('.mt5-del-list').text()
+    expect(t).toContain('本期导入写下的表档案记录')
+    expect(t).toContain('归属 4 · 状态 1')
+    expect(t, '没有册子记录要删时不该多出这一条').not.toContain('册子记录')
+  })
+
+  it('❗批量删除本期:预览和删完的提示都报出连带删掉的本月册子记录(SPEC §10.2)', async () => {
+    const w = await open()
+    const vm = vmOf(w)
+    vi.mocked(metersApi.batchDelete).mockResolvedValue({ ...DEL_DONE, bookRows: 9 })
+    vm.editMode = true
+    await flushPromises()
+    vm.delPreview = { ...DEL_PREVIEW, bookRows: 9 }
+    vm.delTyped = YM
+    await flushPromises()
+    expect(w.find('.mt5-del-list').text()).toContain('连带删除本月册子记录 9 条,删后这个月算作没导入过册子')
+    await vm.confirmDelete()
+    await flushPromises()
+    expect(vm.okMsg).toContain('、9 条本月册子记录。')
+  })
+
+  // ── 该月的催缴单(用户 2026-09-24「想批量删除,结果也是删不了」):三种形状各一条 ──
+  const confirmBtn = (w: Awaited<ReturnType<typeof open>>) =>
+    w.findAll('.mt-dlg-f button').find(b => b.text().includes('确认删除'))!
+
+  it('❗批量删除本期 · 该月没有催缴单:不出第三个勾选项,确认键照常放行', async () => {
+    const w = await open()
+    const vm = vmOf(w)
+    vm.editMode = true
+    await flushPromises()
+    vm.delPreview = { ...DEL_PREVIEW, draftNotices: 0, voidNotices: 0, lockedNotices: 0, lockedTenants: [] }
+    vm.delTyped = YM
+    await flushPromises()
+    expect(w.findAll('.mt5-del-ck')).toHaveLength(2)
+    expect(w.find('.mt-dlg').text()).not.toContain('草稿催缴单')
+    expect(w.find('.mt-dlg').text()).not.toContain('已确认/已导出')
+    expect(confirmBtn(w).attributes('disabled')).toBeUndefined()
+  })
+
+  it('❗批量删除本期 · 只有草稿/已作废的单:出勾选项报张数,勾上才带 dropDraftNotices,删完报删了几张单', async () => {
+    useAuthStore().permissions = ['meter-reading:edit', 'meter-master:edit', 'billing-run:edit']
+    const w = await open()
+    const vm = vmOf(w)
+    const notices = { draftNotices: 245, voidNotices: 3, lockedNotices: 0, lockedTenants: [] }
+    vi.mocked(metersApi.batchDelete).mockResolvedValue({ ...DEL_DONE, ...notices })
+    vm.editMode = true
+    await flushPromises()
+    vm.delPreview = { ...DEL_PREVIEW, ...notices }
+    vm.delTyped = YM
+    await flushPromises()
+    const cks = w.findAll('.mt5-del-ck')
+    expect(cks).toHaveLength(3)
+    expect(cks[2].text()).toContain('同时删除该月的草稿催缴单(248 张,含已作废 3 张)')
+    expect(cks[2].text()).toContain('删的是这个月全部的草稿,删后可在催缴单屏重新生成')
+    expect((cks[2].find('input').element as HTMLInputElement).checked, '默认不勾').toBe(false)
+    expect(confirmBtn(w).attributes('disabled'), '只有草稿单不禁确认键').toBeUndefined()
+    await cks[2].find('input').setValue(true)
+    await vm.confirmDelete()
+    await flushPromises()
+    expect(metersApi.batchDelete).toHaveBeenCalledWith(YM, { cascade: true, dropEmptyMeters: true, dropDraftNotices: true })
+    expect(vm.okMsg).toContain('、248 张草稿催缴单')
+  })
+
+  it('❗批量删除本期 · 有已确认/已导出的单:列户名(最多 5 户,余者等 N 户),确认键禁用', async () => {
+    useAuthStore().permissions = ['meter-reading:edit', 'meter-master:edit', 'billing-run:edit']
+    const w = await open()
+    const vm = vmOf(w)
+    vm.editMode = true
+    await flushPromises()
+    vm.delPreview = {
+      ...DEL_PREVIEW, draftNotices: 2, voidNotices: 0, lockedNotices: 7,
+      lockedTenants: ['力灏电子', '锂朋科技', '南盛物流', '次生代', '翔海', '汇川'],
+    }
+    vm.delTyped = YM
+    await flushPromises()
+    const t = w.find('.mt5-del-list').text()
+    expect(t).toContain('该月有 7 张已确认/已导出的催缴单(力灏电子、锂朋科技、南盛物流、次生代、翔海 等 6 户)')
+    expect(t).toContain('先在催缴单屏作废这些单')
+    expect(confirmBtn(w).attributes('disabled'), '有锁定单还能点确认').toBeDefined()
+    // 同一份数字只去掉锁定单 → 放行:上面那一下是锁定单禁的,不是别的条件
+    vm.delPreview = { ...vm.delPreview!, lockedNotices: 0, lockedTenants: [] }
+    await flushPromises()
+    expect(confirmBtn(w).attributes('disabled')).toBeUndefined()
+  })
+
+  // 对抗复查 R-F5:连带删草稿单后端另要 billing-run:edit(提权 / 自定义角色只拿得到抄表两项)
+  it('❗批量删除本期 · 有草稿单但没有出账权限:不给勾,写明要出账权限,确认键禁用', async () => {
+    const w = await open()
+    const vm = vmOf(w)
+    vm.editMode = true
+    await flushPromises()
+    vm.delPreview = { ...DEL_PREVIEW, draftNotices: 4, voidNotices: 0, lockedNotices: 0, lockedTenants: [] }
+    vm.delTyped = YM
+    await flushPromises()
+    expect(w.findAll('.mt5-del-ck'), '没有出账权限还出了勾选项').toHaveLength(2)
+    expect(w.find('.mt5-del-nobill').text()).toBe('该月有 4 张草稿催缴单,连带删除要出账权限;请有出账权限的人来删,或先到催缴单屏处理')
+    expect(confirmBtn(w).attributes('disabled'), '勾不了还能点确认,点了只会 409').toBeDefined()
+    // 同一份预览只补上出账权限 → 勾选项回来、确认键放行:上面那几下是权限禁的
+    useAuthStore().permissions = ['meter-reading:edit', 'meter-master:edit', 'billing-run:edit']
+    await flushPromises()
+    expect(w.findAll('.mt5-del-ck')).toHaveLength(3)
+    expect(w.find('.mt5-del-nobill').exists()).toBe(false)
+    expect(confirmBtn(w).attributes('disabled')).toBeUndefined()
+  })
+
+  // 对抗复查 R-F4:弹窗开着时别人生成了这个月 → 执行 409 让人勾,弹窗得跟着重拉,不然没有框可勾
+  it('❗批量删除本期 · 执行被 409 退回:重拉预览,新出现的草稿单勾选项跟上', async () => {
+    useAuthStore().permissions = ['meter-reading:edit', 'meter-master:edit', 'billing-run:edit']
+    const w = await open()
+    const vm = vmOf(w)
+    vm.editMode = true
+    await flushPromises()
+    vm.delPreview = { ...DEL_PREVIEW, draftNotices: 0, voidNotices: 0, lockedNotices: 0, lockedTenants: [] }
+    vm.delTyped = YM
+    await flushPromises()
+    expect(w.findAll('.mt5-del-ck')).toHaveLength(2)
+    vi.mocked(metersApi.batchDelete).mockRejectedValueOnce({ message: '该月有 245 张草稿催缴单,读数删了单还在。' })
+    vi.mocked(metersApi.deletePreview).mockResolvedValueOnce(
+      { ...DEL_PREVIEW, draftNotices: 245, voidNotices: 0, lockedNotices: 0, lockedTenants: [] })
+    await vm.confirmDelete()
+    await flushPromises()
+    expect(metersApi.deletePreview).toHaveBeenCalledWith(YM, { cascade: true, dropEmptyMeters: true, dropDraftNotices: false })
+    const cks = w.findAll('.mt5-del-ck')
+    expect(cks, '409 之后弹窗还是旧预览,没有框可勾').toHaveLength(3)
+    expect(cks[2].text()).toContain('同时删除该月的草稿催缴单(245 张)')
+  })
+
+  // 对抗复查:不勾「删派生快照」时后端回 derived=0,旧句「该月已生成的派生快照 0 条」把「不删」说成「没有」
+  it('❗批量删除本期 · 派生快照那一行说「将删除 N 条」,不说「已生成 N 条」', async () => {
+    const w = await open()
+    const vm = vmOf(w)
+    vm.editMode = true
+    await flushPromises()
+    vm.delPreview = { ...DEL_PREVIEW, derived: 0 }
+    await flushPromises()
+    const t = w.find('.mt5-del-list').text()
+    expect(t).toContain('将删除该月派生快照 0 条')
+    expect(t).not.toContain('已生成')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────
+// E 修补:档案重拉失败时抽屉也锁、切回页签重拉档案、已有读数的未在册表不承诺在册
+// ─────────────────────────────────────────────────────────────
+
+describe('园区抄表 · 档案失败态与切回(E 修补)', () => {
+  it('❗表档案重拉失败:编辑态里抽屉也退回只读(失败条写着编辑已锁,抽屉不能拿旧档案写)', async () => {
+    const w = await open()
+    const vm = vmOf(w)
+    vm.editMode = true
+    await flushPromises()
+    expect(w.findComponent(MeterDetailDrawer).props('editMode'), '前提:编辑态里抽屉可写').toBe(true)
+    vi.mocked(metersApi.list).mockRejectedValue(new Error('后端挂了'))
+    await vm.loadMeters()
+    await flushPromises()
+    expect(vm.editMode, '编辑态本身没退').toBe(true)
+    expect(w.findComponent(MeterDetailDrawer).props('editMode')).toBe(false)
+  })
+
+  it('❗切走再切回:表档案重拉(合同终止会写解约次月起的空置行)', async () => {
+    const alive = ref(true)
+    const w = mount(defineComponent({
+      setup: () => () => h(KeepAlive, null, { default: () => (alive.value ? h(MeterView) : null) }),
+    }), { global: { stubs: { Teleport: true } } })
+    await flushPromises()
+    const n = vi.mocked(metersApi.list).mock.calls.length
+    alive.value = false
+    await flushPromises()
+    alive.value = true
+    await flushPromises()
+    expect(vi.mocked(metersApi.list).mock.calls.length).toBe(n + 1)
+    expect(metersApi.list).toHaveBeenLastCalledWith(undefined, undefined, YM)
+    w.unmount()
+  })
+
+  it('❗未在册但本月已有读数的表:改读数不弹「将从本月起在册」(后端改读数不补在册),说明条也不这么承诺', async () => {
+    vi.mocked(metersApi.list).mockResolvedValue([...METERS, NOT_YET])
+    vi.mocked(metersApi.readings).mockResolvedValue([...READINGS, { ...READINGS[0], id: 14, meterId: 2, currTotal: 30 }])
+    vi.mocked(metersApi.updateReading).mockResolvedValue(READINGS[0])
+    const w = await open()
+    const vm = vmOf(w)
+    vm.status = 'notYet'
+    await flushPromises()
+    expect(w.find('.mt-hidbar').text()).toContain('已有本月读数的,改读数不会让它在册')
+    vm.editMode = true
+    await flushPromises()
+    vm.onCellEdit({ meterId: 2, field: 'currTotal', value: '50' })
+    await vm.onSaveChanges()
+    await flushPromises()
+    expect(vi.mocked(window.confirm).mock.calls.some(c => String(c[0]).includes('起在册'))).toBe(false)
+    expect(metersApi.updateReading).toHaveBeenCalledWith(14, expect.objectContaining({ meterId: 2, currTotal: 50 }))
   })
 })

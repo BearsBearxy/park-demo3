@@ -21,6 +21,10 @@ public final class BillDeliveryDTO {
                                @jakarta.validation.constraints.NotBlank(message = "必须写明理由")
                                @jakarta.validation.constraints.Size(max = 255) String reason) {}
 
+    /** 作废请求(METER-TIMELINE-SPEC §5「作废并重出」):理由必填 —— 作废的可能是一张已经发出去的单。 */
+    public record VoidReq(@jakarta.validation.constraints.NotBlank(message = "必须写明理由")
+                          @jakarta.validation.constraints.Size(max = 255) String reason) {}
+
     /** unconfirm 结果:reverted=confirmed→draft 的单数;skipped=非 confirmed(草稿/已导出/已作废)未动的单数 */
     public record Unconfirm(int reverted, int skipped) {}
 

@@ -51,8 +51,13 @@ export interface ParamStatusDTO {
   lastChangeAt: string | null
   poolSnapshotAt: string | null   // alloc_pool_result 生成时间(null=本月未生成)
   billBatchAt: string | null      // 催缴单批次时间
-  stale: boolean              // 参数晚于快照 → 池/损耗/催缴单为旧结果
+  stale: boolean              // 参数或抄表改动晚于快照 → 池/损耗/催缴单为旧结果
   otherMonthsAffected: string[]   // from 版本波及的其它已生成月份
+  // METER-TIMELINE-SPEC §5:需重算的第二个来源 = 抄表(档案与读数改动)。lastChangeAt 取两边较晚的那次,
+  // lastChangeSource 说它来自哪边;staleSources = 让本月过期的来源(可两个都在),文案据此说「改过参数 / 抄表」。
+  // pendingChanges 仍只数参数条数。可选只为不逼既有夹具补字段:后端恒下发
+  lastChangeSource?: 'param' | 'meter' | null
+  staleSources?: ('param' | 'meter')[]
 }
 
 // valueText / oldText / newText:值的人话文案(后端与列表行同一格式器:枚举字典 / 布尔状态句 / 引用显名 / 千分位+单位);值空则 null → 页面显「—」

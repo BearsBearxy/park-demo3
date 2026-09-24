@@ -95,7 +95,12 @@ function meter(id: number, name: string): MeterDTO {
     floorLabel: '一楼', side: '东侧', roomNo: `10${id}室`,
     tenantName: `租户${id}`, tenantId: id, buildingId: 13, ownership: 'tenant',
     meterType: null, deviceType: 'three', subName: `电表${id}`, code: `E-00${id}`, factor: 500,
-    retiredYm: null, activeFromYm: null, removedYm: null, sortNo: id, readingCount: 1,
+    sortNo: id, readingCount: 1,
+    status: 'active', statusFrom: '1900-01', statusUntil: null,
+    assignFrom: '1900-01', assignUntil: null, assignSrc: 'migrate', changedThisMonth: false,
+    // 基线 = 本月册子已导入、三块都在册子里(METER-TIMELINE-SPEC §10.4):表格上方不多出那一句,
+    // 屏顶块序才是下面钉的四块。「一笔都没有」那一形在文末 §10.4 那组单独换夹具断
+    bookSeen: true, bookFile: '2025-03 一期电.xlsx', bookAt: '2025-03-28T09:00:00',
   }
 }
 /** 已抄的一条读数;usageTotal 可打成负数 → 倒走 → 异常 +1(readingFlags:25)。 */
@@ -189,6 +194,7 @@ afterEach(() => { asXL() })
 
 const SRC = readFileSync(join(__dirname, '../meters/MeterView.vue'), 'utf8').replace(/\r\n/g, '\n')
 const STRIP_SRC = readFileSync(join(__dirname, '../../components/fp/FPStepStrip.vue'), 'utf8').replace(/\r\n/g, '\n')
+const GRID_SRC = readFileSync(join(__dirname, '../meters/MeterLedgerGrid.vue'), 'utf8').replace(/\r\n/g, '\n')
 
 /** 从 CSS 文本里取某个选择器规则块内 `prop: value` 的那个 value(取第一处命中)。 */
 function cssProp(css: string, selector: string, prop: string): string | null {
@@ -610,6 +616,60 @@ describe('§9 · XL 档零差异:标题行、6 张卡、7 件筛选原样', () =
     expect(w.find('.mt5-filters').exists(), '前提:宽档筛选条还在').toBe(true)
     expect(w.find('.mt5-fbtn').exists()).toBe(false)
     expect(w.find('.fp-more-btn').exists()).toBe(false)
+    w.unmount()
+  })
+})
+
+describe('METER-TIMELINE-SPEC §10.4 · 本月册子:整段零记录出一句,部分有逐行打标', () => {
+  const noBook = (m: MeterDTO): MeterDTO => ({ ...m, bookSeen: false, bookFile: null, bookAt: null })
+  const flow = (w: { find: (s: string) => { element: Element } }) =>
+    [...w.find('.mt-page').element.children].map(c => c.className).filter(c => typeof c === 'string' && c !== '')
+
+  it('S 档 · 整段零记录:表格正上方多一句(原句),其余块序不动;一块都不打标', async () => {
+    asS()
+    vi.mocked(metersApi.list).mockResolvedValue(METERS.map(noBook))
+    const w = await open()
+    expect(flow(w)).toEqual(['fss fss--s', 'mt5-sum', 'mt5-fbar', 'mt-bookbar', 'mlg-wrap'])
+    expect(w.find('.mt-bookbar').text()).toContain('这个月还没导入过一期的电表册子,这些表的档案都是沿用的')
+    expect(w.findAll('.mlg-tname'), '前提:三行都渲染了').toHaveLength(3)
+    expect(w.findAll('.mlg-book')).toHaveLength(0)
+    w.unmount()
+  })
+
+  it('整月没有读数:让位给「暂无抄表数据」那条,不叠两条', async () => {
+    vi.mocked(metersApi.list).mockResolvedValue(METERS.map(noBook))
+    const w = await open([])
+    expect(w.find('.mt-empty').exists(), '前提:空态引导出来了').toBe(true)
+    expect(w.find('.mt-bookbar').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('部分有:只在没出现那块的名字旁打标,名字照显;悬停是原句;不出那一句', async () => {
+    vi.mocked(metersApi.list).mockResolvedValue([METERS[0], noBook(METERS[1]), METERS[2]])
+    const w = await open()
+    expect(w.findAll('.mlg-tname'), '前提:三行都渲染了').toHaveLength(3)
+    expect(w.find('.mt-bookbar').exists()).toBe(false)
+    const tags = w.findAll('.mlg-book')
+    expect(tags).toHaveLength(1)
+    expect(tags[0].text()).toBe('本月册子没有')
+    expect(tags[0].attributes('title')).toBe('这个月导入的册子里没有这块表;显示的是最早那一行(按旧档案补记)')
+    expect(tags[0].element.closest('.mlg-tname')!.querySelector('.nm')!.textContent).toBe('租户2')
+    w.unmount()
+  })
+
+  it('标签不挤名字:格子挤了几乎全由标签让(收缩 99999 : 1),最小只留那颗点', () => {
+    expect(cssProp(GRID_SRC, '.mlg-tname .mlg-book', 'flex')).toBe('0 99999 auto')
+    expect(cssProp(GRID_SRC, '.mlg-tname .mlg-book', 'min-width')).toBe('11px')
+    expect(cssProp(GRID_SRC, '.mlg-tname .nm', 'flex')).toBe('1 1 auto')
+  })
+
+  it('状态下拉有「本月册子里没有」:选中后下拉写着它,表里只剩打标那一行', async () => {
+    vi.mocked(metersApi.list).mockResolvedValue([METERS[0], noBook(METERS[1]), METERS[2]])
+    const w = await open()
+    vmOf(w).status = 'bookMissing'
+    await flushPromises()
+    expect(w.findAll('.mt5-filters .ds-sel-trigger')[2].text()).toBe('本月册子里没有')
+    expect(w.findAll('.mlg-tname').map(c => c.find('.nm').text())).toEqual(['租户2'])
     w.unmount()
   })
 })

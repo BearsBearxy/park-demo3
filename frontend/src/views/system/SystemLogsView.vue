@@ -19,6 +19,7 @@ import Select from '@/components/ds/Select.vue'
 import DatePicker from '@/components/ds/DatePicker.vue'
 import Badge from '@/components/ds/Badge.vue'
 import FPPager from '@/components/fp/FPPager.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'   // 原先漏导入:失败态渲染成不认识的标签,重试钮不在
 import { useFitRows } from '@/components/fp/useFitRows'
 import { iconFor } from '@/components/ds/icon'
 
@@ -32,8 +33,11 @@ const SRC = {
   //   为一行日志给 ds/Badge 加一档色不划算。左侧那颗圆点的 color 是自由值,那里给绿,
   //   与「已审核」在清单上的色同源;徽标底色走 slate,与另外三路照样分得开。
   review: { label: '审核', tone: 'slate' as const, color: 'var(--hue-green)' },
+  // 第 5 路:meter_archive_log(METER-TIMELINE-SPEC §5,表的归属 / 状态每写一行留一条)。
+  // 徽标底色用 neutral(六档色已被前四路占掉四档,余下 red 会读成出错);圆点给 slate,与「其他」的 ink 分开
+  meter: { label: '表档案', tone: 'neutral' as const, color: 'var(--fill-slate)' },
 }
-// 后端只认这四个来源,但真冒出第五种也要看得见(而不是渲染成一行没有徽标的孤儿)
+// 后端只认这五个来源,但真冒出第六种也要看得见(而不是渲染成一行没有徽标的孤儿)
 const OTHER = { label: '其他', tone: 'neutral' as const, color: 'var(--ink-500)' }
 
 // 动作码翻人话。查不到就原样显示 —— 吞掉未知动作等于审计有洞。
@@ -47,8 +51,12 @@ const ACTION: Record<string, string> = {
   'user.disable': '停用账号', 'user.reset-password': '重置密码', 'user.change-password': '修改密码',
   'role.create': '新建角色', 'role.update': '改角色权限', 'role.delete': '删除角色',
   'lock.takeover': '接管编辑锁', 'lock.force-release': '强制解锁',
+  'meter.delete': '删表',
   // review_log.action(R1;四个动作的取值见 ReviewService)
   submit: '交审', approve: '通过审核', return: '退回', withdraw: '撤销审核',
+  // meter_archive_log:表(assign 归属 / status 状态)· 动作。target =「表名 · 起始月」,detail =「旧 → 新 · 来源」
+  'assign.insert': '新增归属', 'assign.update': '改归属', 'assign.delete': '删除归属',
+  'status.insert': '新增状态', 'status.update': '改状态', 'status.delete': '删除状态',
 }
 
 // ─── state ───────────────────────────────────────────────
@@ -106,6 +114,7 @@ const SRC_OPTS = [
   { value: 'import', label: '导入' },
   { value: 'auth', label: '账号与角色' },
   { value: 'review', label: '审核' },
+  { value: 'meter', label: '表档案' },
 ]
 // 操作人来自返回的 actors(三表并集),与当前筛选无关 —— 筛出 0 条时下拉不会跟着空掉
 const actorOpts = computed(() => [
@@ -154,7 +163,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.va
       <div>
         <h2 style="margin:0;font-size:var(--fs-h2);font-weight:var(--fw-semibold)">操作日志</h2>
         <p style="margin:5px 0 0;font-size:var(--fs-label);color:var(--text-muted)">
-          系统管理 · 计费参数、导入、账号与角色三路留痕,按时间倒序 · 共 {{ rows ? total : '…' }} 条
+          系统管理 · 计费参数、导入、表档案、账号与角色、审核五路留痕,按时间倒序 · 共 {{ rows ? total : '…' }} 条
         </p>
       </div>
     </div>

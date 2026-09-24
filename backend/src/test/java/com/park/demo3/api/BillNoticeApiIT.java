@@ -85,9 +85,11 @@ class BillNoticeApiIT extends AbstractMysqlIT {
                 + (tenantId == null ? "" : ",\"tenantId\":" + tenantId) + "}");
     }
 
+    // 钉到建表那一段(1900-01 起)= 对所有月份生效(合同钉按段写,METER-TIMELINE-SPEC §3.6)
     private void bind(int meterId, int contractId) throws Exception {
         mvc.perform(put("/api/meters/" + meterId + "/bind").header("Authorization", auth())
-                .contentType("application/json").content("{\"contractId\":" + contractId + "}"))
+                .contentType("application/json")
+                .content("{\"contractId\":" + contractId + ",\"ym\":\"2099-01\",\"mode\":\"correct\"}"))
                 .andExpect(jsonPath("$.code").value(0));
     }
 
@@ -416,7 +418,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         assertThat(((Number) rows.get(0).get("id")).intValue()).isEqualTo(id2);
         assertThat(rows.get(0).get("status")).isEqualTo("issued");
 
-        postOk("/api/bill-notices/" + id2 + "/void", "{}");
+        postOk("/api/bill-notices/" + id2 + "/void", "{\"reason\":\"IT 撤签发\"}");
         assertThat(one(notices(ym, t)).get("status")).isEqualTo("void");
     }
 
@@ -1181,7 +1183,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         assertThat((int) JsonPath.read(generate(ym), "$.data.skippedConfirmed")).isEqualTo(1);
 
         // 作废后不再参与流转:确认只计 skipped,标记导出不改状态
-        postOk("/api/bill-notices/" + id + "/void", "{}");
+        postOk("/api/bill-notices/" + id + "/void", "{\"reason\":\"IT 作废\"}");
         String r3 = postOk("/api/bill-notices/confirm",
                 "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "]}");
         assertThat((int) JsonPath.read(r3, "$.data.confirmed")).isZero();
@@ -1242,5 +1244,66 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         assertThat((int) JsonPath.read(u2, "$.data.reverted")).isZero();
         assertThat((int) JsonPath.read(u2, "$.data.skipped")).isEqualTo(1);
         assertThat(one(notices(ym, t)).get("status")).isEqualTo("exported");
+    }
+
+    // ══ METER-TIMELINE-SPEC §5 下游(B3):锁定单收过的表不进别户草稿 + 新告警 / 明细比当月档案 / 作废带理由落审计。
+    //    槽 2085-02(2085 年全仓只有 B3 用)。 ══
+
+    @Autowired com.park.demo3.service.MeterTimelineService timeline;
+
+    // 甲户的单已导出、含这块表;档案随后在本月改挂乙户 → 重生成时乙户草稿一行都不出这块表(否则同表同月收两次),
+    // 只出一条 W_METER_BILLED_ELSEWHERE(payload=表 id、hint=表名,分两列存);甲户已导出的明细比当月档案,
+    // 标出「现归乙户」;甲户的单作废(理由必填、落审计、超长截到列宽)后再生成,这块表进乙户、告警消失。
+    @Test
+    void t40_lockedMeterSkipsOtherDraft_detailFlagsArchive_voidAuditedThenReissue() throws Exception {
+        String ym = "2085-02";
+        monthlyPrices(ym);
+        int tA = createTenant("IT锁单甲户" + System.nanoTime()), tB = createTenant("IT锁单乙户" + System.nanoTime());
+        int cA = contract(tA, "2084-01-01", "2099-12-31", null), cB = contract(tB, "2084-01-01", "2099-12-31", null);
+        int m = createMeter("elec", "p1", "IT锁单换户电", tA), mB = createMeter("elec", "p1", "IT锁单乙户电", tB);
+        bind(m, cA); bind(mB, cB);
+        reading(m, ym, "\"prevTotal\":0,\"currTotal\":100");
+        reading(mB, ym, "\"prevTotal\":0,\"currTotal\":50");
+        generate(ym);
+        int idA = soleNoticeId(ym, tA);
+        postOk("/api/bill-notices/confirm", "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + tA + "]}");
+        postOk("/api/bill-notices/mark-exported", "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + tA + "]}");
+
+        // 档案在本月改挂乙户。界面上这一写会被冻结闸拦下(含这块表的单已导出);这里直接走 timeline,
+        // 模拟上线前就改过的历史数据 —— 生成侧这道挡是兜底,不能指望前面的闸
+        var a = new com.park.demo3.entity.MeterAssign();
+        a.setMeterId(m); a.setFromYm(ym); a.setTenantId(tB); a.setTenantName("IT锁单乙户"); a.setOwnership("tenant");
+        timeline.writeAssign(a, com.park.demo3.service.MeterTimelineService.Ctx.of("manual"));
+
+        generate(ym);
+        Map<String, Object> nB = one(notices(ym, tB));
+        int idB = ((Number) nB.get("id")).intValue();
+        List<Integer> billed = JsonPath.read(detail(idB), "$.data.lines[?(@.meterId==" + m + ")].lineNo");
+        assertThat(billed).as("甲户已导出的单收过这块表,乙户草稿不许再出它的任何一行").isEmpty();
+        Map<String, Object> w = one(warnsOf(nB, "W_METER_BILLED_ELSEWHERE"));
+        assertThat(w.get("payload")).isEqualTo(String.valueOf(m));
+        assertThat(w.get("hint")).isEqualTo("IT锁单换户电");
+        assertThat(jdbc.queryForList("SELECT payload, hint FROM bill_notice_warn WHERE notice_id=? AND code='W_METER_BILLED_ELSEWHERE'",
+                idB)).containsExactly(Map.of("payload", String.valueOf(m), "hint", "IT锁单换户电"));
+
+        String dA = detail(idA);
+        assertThat(elecOfMeter(dA, m).get("archiveTenantId")).isEqualTo(tB);
+        assertThat(elecOfMeter(dA, m).get("archiveTenantName")).asString().startsWith("IT锁单乙户");
+        assertThat(elecOfMeter(detail(idB), mB).get("archiveTenantName")).as("与档案一致的行不标").isNull();
+
+        mvc.perform(post("/api/bill-notices/" + idA + "/void").header("Authorization", auth())
+                        .contentType("application/json").content("{\"reason\":\" \"}"))
+                .andExpect(status().isBadRequest());
+        assertThat(one(notices(ym, tA)).get("status")).isEqualTo("exported");
+        postOk("/api/bill-notices/" + idA + "/void", "{\"reason\":\"" + "错".repeat(255) + "\"}");
+        assertThat(jdbc.queryForList("SELECT detail FROM auth_audit_log WHERE action='bill-notice.void' AND target LIKE ?",
+                String.class, "%单 #" + idA))
+            .as("理由 255 字 + 前缀超过 detail 列宽:要截断落库,不能整条写失败被吞掉")
+            .singleElement().asString().hasSize(255).startsWith("作废;理由:错错");
+
+        generate(ym);
+        Map<String, Object> nB2 = one(notices(ym, tB));
+        assertThat(warnsOf(nB2, "W_METER_BILLED_ELSEWHERE")).isEmpty();
+        assertThat(d(elecOfMeter(detail(((Number) nB2.get("id")).intValue()), m).get("amount"))).isEqualTo(80.0);
     }
 }

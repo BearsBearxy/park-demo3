@@ -108,10 +108,10 @@ vi.mock('@/api/alloc', () => ({
   },
 }))
 vi.mock('@/api/meters', () => ({
-  metersApi: { list: () => Promise.resolve([
+  metersApi: { list: vi.fn(() => Promise.resolve([
     { id: 307, name: '力美C201电', buildingId: 20, zone: 'p1', kind: 'elec', tenantId: null, subName: null },
     { id: 400, name: '三期总电', buildingId: null, zone: 'p3', kind: 'elec', tenantId: null, subName: null },
-  ]) },
+  ])) },
 }))
 vi.mock('@/api/building', () => ({
   buildingApi: { list: () => Promise.resolve([
@@ -144,9 +144,9 @@ describe('ParamCenterView 计费参数页', () => {
     const w = await mountPage()
     expect(w.find('.page-loading').exists()).toBe(false)
     const t = w.text()
-    for (const h of ['① 本月参数', '② 长期常数', '③ 核算口径', '④ 户级例外', '⑤ 固定规则']) expect(t).toContain(h)
+    for (const h of ['① 本月参数', '② 长期常数', '③ 计算方式', '④ 户级例外', '⑤ 固定规则']) expect(t).toContain(h)
     expect(t).toContain('本月电价 6/6 ✓')
-    expect(t).toContain('快照与参数一致')
+    expect(t).toContain('改过的参数和抄表都已重算')
     // 人话行:A座 损耗调整度数 −1,500 仅 2024-02;B座 仅按公摊分摊度数 2023-11 起长期;户级例外覆盖全园
     expect(t).toContain('-1,500 度')
     expect(t).toContain('仅 2024-02')
@@ -300,7 +300,7 @@ describe('ParamCenterView 计费参数页', () => {
   // 回归钉(P7 fix-round 1):ref_meter 候选过滤曾按 scope === 'p1'/'p2'/'dorm' 枚举,漏了 p3 ——
   // 编辑三期的「供电局对账总表」会退到 else 分支(meters.value,全园所有表都能选),
   // 而不是只给三期的表。改用形状校验(isZoneCode)后应该只剩三期总电一个候选。
-  it('③ 核算口径 ref_meter 候选按期区过滤到 p3:不再退化成全园所有表', async () => {
+  it('③ 计算方式 ref_meter 候选按期区过滤到 p3:不再退化成全园所有表', async () => {
     const w = await mountPage()
     await w.findAll('button').find(b => b.text().includes('编辑模式'))!.trigger('click')
     const tr = w.findAll('.pm-rgroup').find(g => g.text().includes('三期'))!
@@ -315,7 +315,7 @@ describe('ParamCenterView 计费参数页', () => {
   // 回归钉:zoneOfBuilding 曾按 b.phase === 2 ? 'p2' : 'p1' 猜期区,phase 3(以及宿舍 phase 1)
   // 一律落进 'p1' 桶,与真正的一期楼栋混在一起当「同期区」候选。改读 b.zone 真实字段后,
   // 三期 G栋(zone 未标注 = null)只该跟别的「未标注」楼栋同桶,不能把一期 A/B座也算进来。
-  it('③ 核算口径 ref_building 候选按真实 zone 分桶:三期未标注楼栋不再混入一期候选', async () => {
+  it('③ 计算方式 ref_building 候选按真实 zone 分桶:三期未标注楼栋不再混入一期候选', async () => {
     const w = await mountPage()
     await w.findAll('button').find(b => b.text().includes('编辑模式'))!.trigger('click')
     const tr = w.findAll('.pm-rgroup').find(g => g.text().includes('三期 G栋'))!
@@ -364,6 +364,25 @@ describe('ParamCenterView 告警 chip + 抽屉', () => {
     w.unmount()
   })
 
+  // METER-TIMELINE-SPEC §5:只有抄表让本月过期时,抽屉不许说「改了 0 项参数」—— 那是在说没改过却要重算。
+  // 破坏验证:把 srcItems 的 param 那一支条件去掉(恒出「改了 N 项参数」)→ 本条红。
+  it('❗只有抄表改过 → 抽屉说抄表有改动,不出「改了 0 项参数」', async () => {
+    const { paramsApi } = await import('@/api/params')
+    ;(paramsApi.status as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ...STATUS, stale: true, pendingChanges: 0, lastChangeAt: '2026-08-18T09:20:00',
+      lastChangeSource: 'meter', staleSources: ['meter'],
+    } satisfies ParamStatusDTO)
+    const w = await mountPage()
+    try {   // 红了也要卸:抽屉在 body 上,残留会让后面几条的 drawer() 捡到它
+      await openChip(w)
+      const t = drawer()!.textContent ?? ''
+      expect(t).toContain('抄表数据（读数或表档案）改过')
+      expect(t).toContain('自上次重算起抄表数据（读数或表档案）有改动')
+      expect(t).toContain('最近改动 08-18 09:20')
+      expect(t).not.toContain('项参数')
+    } finally { w.unmount() }
+  })
+
   it('无告警时 chip 仍渲染(quiet 态),抽屉是空态', async () => {
     const w = await mountPage()
     const chip = w.find('button.fac')
@@ -392,6 +411,19 @@ describe('ParamCenterView 告警 chip + 抽屉', () => {
     expect(w.find('button.fac').text()).toContain('无待处理')
     expect(drawer()!.textContent).toContain('本月没有待处理事项')
     recalc.mockReset()
+    w.unmount()
+  })
+})
+
+// 表的楼栋 / 租户按月分段(METER-TIMELINE-SPEC §2):选择器候选站在本页账期取。
+// 破坏验证:loadMeters 里不传 ym(改回 metersApi.list('elec'))→ 本条红。
+describe('ParamCenterView 表清单带账期', () => {
+  it('❗GET /meters 带页面账期', async () => {
+    const { metersApi } = await import('@/api/meters')
+    const list = metersApi.list as ReturnType<typeof vi.fn>
+    list.mockClear()
+    const w = await mountPage()
+    expect(list).toHaveBeenCalledWith('elec', undefined, '2024-02')
     w.unmount()
   })
 })

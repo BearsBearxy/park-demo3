@@ -7,8 +7,11 @@ import org.apache.ibatis.annotations.Select;
 import java.util.List;
 
 /**
- * 操作日志时间线:四张来源表 union 后按时间倒序（RBAC-SPEC §7.2）。review_log 是 R1 加的第 4 张,
+ * 操作日志时间线:五张来源表 union 后按时间倒序（RBAC-SPEC §7.2）。review_log 是 R1 加的第 4 张,
  * 它没有 authorizer 列(审核不走提权,没有「代他人执行」这回事),照 import 分支写 NULL AS authorizer。
+ * meter_archive_log 是第 5 张(METER-TIMELINE-SPEC §5「档案写入进操作日志:表 · 月 · 旧 → 新 · 来源」):
+ * action = 「assign|status . insert|update|delete」;target = 表名 · 起始月(表删了回落 #id,档案史不挂外键);
+ * detail = 状态行比状态、归属行比企业名称原文(完整前后像在抽屉「档案变更」)· 来源 · 文件名 · 行定位。
  *
  * **分页与筛选都在 SQL 里做**,不是捞进内存再切。param_change_log 随每次改参数增长,
  * 全捞正是 QueryHygieneTest 防的那种「返回行数只涨不跌」。
@@ -80,6 +83,32 @@ public interface AuditQueryMapper {
             <if test="to != null">AND at &lt; #{to}</if>
           </where>
         </if>
+        <if test="src == null">UNION ALL</if>
+        <if test="src == null or src == 'meter'">
+          SELECT 'meter' AS source, l.id AS rid, l.at AS ts, l.operator AS actor,
+                 CONCAT(l.tbl, '.', l.action) AS action,
+                 CONCAT(IFNULL(m.name, CONCAT('#', l.meter_id)), ' · ', l.from_ym) AS target,
+                 CONCAT(IF(l.tbl = 'status',
+                          CONCAT(CASE JSON_UNQUOTE(JSON_EXTRACT(l.before_json, '$.status'))
+                                   WHEN 'active' THEN '在用' WHEN 'retired' THEN '停用' WHEN 'removed' THEN '已拆' ELSE '—' END,
+                                 ' → ',
+                                 CASE JSON_UNQUOTE(JSON_EXTRACT(l.after_json, '$.status'))
+                                   WHEN 'active' THEN '在用' WHEN 'retired' THEN '停用' WHEN 'removed' THEN '已拆' ELSE '—' END),
+                          CONCAT(IFNULL(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(l.before_json, '$.tenantName')), 'null'), '—'),
+                                 ' → ',
+                                 IFNULL(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(l.after_json, '$.tenantName')), 'null'), '—'))),
+                        ' · ',
+                        CASE l.src WHEN 'import' THEN '导入' WHEN 'manual' THEN '手改' WHEN 'contract' THEN '合同终止'
+                                   WHEN 'migrate' THEN '按旧档案补记' ELSE l.src END,
+                        IFNULL(CONCAT(' · ', l.file_name), ''), IFNULL(CONCAT(' · ', l.row_ref), '')) AS detail,
+                 NULL AS authorizer
+          FROM meter_archive_log l LEFT JOIN meter m ON m.id = l.meter_id
+          <where>
+            <if test="actor != null and actor != ''">l.operator = #{actor}</if>
+            <if test="from != null">AND l.at &gt;= #{from}</if>
+            <if test="to != null">AND l.at &lt; #{to}</if>
+          </where>
+        </if>
         """;
 
     /** 末位键 rid 让排序成为全序 —— 见类注释第 2 条，没有它翻页会重复/漏行。 */
@@ -100,6 +129,7 @@ public interface AuditQueryMapper {
           UNION SELECT operator FROM import_log
           UNION SELECT actor FROM auth_audit_log
           UNION SELECT actor FROM review_log
+          UNION SELECT operator FROM meter_archive_log
         ) x WHERE a IS NOT NULL AND a <> '' ORDER BY a
         """)
     List<String> actors();

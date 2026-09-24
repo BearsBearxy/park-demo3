@@ -27,7 +27,7 @@ export interface ChainCell {
   pool: boolean      // 有池快照
   loss: boolean      // 有损耗快照
   notices: boolean   // 有催缴单
-  /** 参数改动晚于快照 —— 屏上数字是旧的。**月的属性,不是某一道工序的**。 */
+  /** 参数或抄表改动晚于快照(METER-TIMELINE-SPEC §5)—— 屏上数字是旧的。**月的属性,不是某一道工序的**。 */
   stale: boolean
   /** 整月已审核锁定(D20:该月全部计入锁账的键都 approved)。年份条月格的 ✓ 靠它。 */
   closed: boolean
@@ -118,10 +118,8 @@ export const useBillingPeriodStore = defineStore('billingPeriod', () => {
     }
 
     // stale 全集只要**一次** status:后端的 otherMonthsAffected 就是「其它已生成月里同样过期的账期」
-    // (ParamService.status 遍历 alloc_pool_result 的 distinct ym 逐月判 snap.stale)。
+    // (ParamService.status 遍历有池快照或催缴单的月逐月判 snap.stale)。
     // 拿最新一个有数据的月去问,回包里 self + others 合起来即全集。
-    // ⚠ 已知边界:others 只遍历有池快照的月,只有催缴单没有池快照的月不会出现在里面。
-    //   那种月本身就不该有「快照过期」的说法(没有池快照可过期),不补。
     const latest = [...map.keys()].sort().pop()
     if (latest) {
       try {

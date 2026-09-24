@@ -88,14 +88,47 @@ export function pendingSummary(s: ParamStatus): string {
 }
 
 // ── 其它三屏头部的 stale 条(spec §5.5.3):公共电核算 / 楼栋损耗看池快照,催缴单看批次时间 ——
-//    本屏那份快照早于最近一次参数改动才算旧(后端 status.stale 是两者取或,催缴单没重生成不该让池屏也亮);
+//    本屏那份快照早于最近一次参数或抄表改动才算旧(后端 status.stale 是两者取或,催缴单没重生成不该让池屏也亮);
 //    未生成(快照 null)不算旧。返回文案,'' = 一致 ──
 export type SnapKind = 'pool' | 'bill'
 export function staleText(s: ParamStatus | null | undefined, kind: SnapKind): string {
   if (!s?.lastChangeAt) return ''
   const snap = kind === 'bill' ? s.billBatchAt : s.poolSnapshotAt
   if (!snap || s.lastChangeAt <= snap) return ''       // ISO 'YYYY-MM-DDTHH:mm:ss' 字典序=时间序
-  return `参数于 ${hhmm(s.lastChangeAt)} 更新，本屏为旧快照`
+  // 2026-09-23 去行话:原句「本屏为旧快照」——「快照」是引擎内部的说法,用户不认。
+  // 三个消费屏(公共电核算 / 楼栋损耗 / 催缴单)都把它当告警抽屉里的一条明细文字,换词不改判定。
+  // 两个来源都在时只有「最近一次」的时间(后端只给 lastChangeAt 一个),所以不说「X 于某时」。
+  return staleSources(s).length > 1
+    ? `参数和抄表都改过，最近一次在 ${hhmm(s.lastChangeAt)}，本屏数字还是改之前算的`
+    : `${staleWhat(s)}于 ${hhmm(s.lastChangeAt)} 更新，本屏数字还是改之前算的`
+}
+
+// ── 需重算的来源(METER-TIMELINE-SPEC §5):参数 / 抄表(读数与表档案)。后端 staleSources = 让本月过期的来源,
+//    lastChangeSource = 最近一次改动来自哪边(过期时它必在其中);两个都没给(旧后端)→ 按参数算。
+//    只在「已判过期」的地方调,不自己判过期 ──
+export type StaleSource = 'param' | 'meter'
+export function staleSources(s: ParamStatus | null | undefined): StaleSource[] {
+  const has = new Set<StaleSource>(s?.staleSources ?? [])
+  if (s?.lastChangeSource) has.add(s.lastChangeSource)
+  if (!has.size) has.add('param')
+  return (['param', 'meter'] as const).filter(x => has.has(x))
+}
+const STALE_WORD: Record<StaleSource, [string, string]> = {
+  param: ['参数', '计费参数'],
+  meter: ['抄表', '抄表数据（读数或表档案）'],
+}
+/** 短称:参数 / 抄表 / 参数和抄表 */
+export function staleWhat(s: ParamStatus | null | undefined): string {
+  return staleSources(s).map(x => STALE_WORD[x][0]).join('和')
+}
+/** 句首主语:计费参数 / 抄表数据（读数或表档案）/ 计费参数和抄表数据 */
+export function staleWho(s: ParamStatus | null | undefined): string {
+  const xs = staleSources(s)
+  return xs.length > 1 ? '计费参数和抄表数据' : STALE_WORD[xs[0]][1]
+}
+/** 告警组名:改过参数还没重算 / 改过抄表还没重算 / 改过参数和抄表还没重算 */
+export function staleTitle(s: ParamStatus | null | undefined): string {
+  return `改过${staleWhat(s)}还没重算`
 }
 
 // ── 「复制上月电价」键集 = 代理购电六段裸价(与后端 PriceCfgService.ELEC_KEYS / POST /price-cfg/copy 复制范围同源) ──

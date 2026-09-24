@@ -21,7 +21,6 @@ import com.park.demo3.entity.BillPayCompany;
 import com.park.demo3.entity.Contract;
 import com.park.demo3.entity.ContractBillingTerm;
 import com.park.demo3.entity.ManagementCompany;
-import com.park.demo3.entity.Meter;
 import com.park.demo3.entity.MeterReading;
 import com.park.demo3.entity.Tenant;
 import com.park.demo3.mapper.AllocPoolResultMapper;
@@ -37,7 +36,6 @@ import com.park.demo3.mapper.BillPayCompanyMapper;
 import com.park.demo3.mapper.ContractBillingTermMapper;
 import com.park.demo3.mapper.ContractMapper;
 import com.park.demo3.mapper.ManagementCompanyMapper;
-import com.park.demo3.mapper.MeterMapper;
 import com.park.demo3.mapper.MeterReadingMapper;
 import com.park.demo3.mapper.TenantMapper;
 import com.park.demo3.security.NoReviewGuard;
@@ -90,7 +88,7 @@ public class BillNoticeService {
     private final BillNoticeLineMapper noticeLines;
     private final BillNoticeWarnMapper noticeWarns;
     private final BillNoteOverrideMapper noteOverrides;
-    private final MeterMapper meters;
+    private final MeterTimelineService timeline;   // 表档案站在 ym 取(METER-TIMELINE-SPEC §2)
     private final MeterReadingMapper readings;
     private final ContractMapper contracts;
     private final ContractBillingTermMapper billingTerms;
@@ -111,7 +109,7 @@ public class BillNoticeService {
     public BillNoticeService(BillNoticeMapper notices, BillNoticeLineMapper noticeLines,
                              BillNoticeWarnMapper noticeWarns,
                              BillNoteOverrideMapper noteOverrides,
-                             MeterMapper meters, MeterReadingMapper readings,
+                             MeterTimelineService timeline, MeterReadingMapper readings,
                              ContractMapper contracts, ContractBillingTermMapper billingTerms,
                              TenantMapper tenants, ManagementCompanyMapper companies,
                              BillPayCompanyMapper payMap, AllocRuleMapper rules,
@@ -124,7 +122,7 @@ public class BillNoticeService {
         this.reviewGuard = reviewGuard; this.audit = audit;
         this.notices = notices; this.noticeLines = noticeLines; this.noticeWarns = noticeWarns;
         this.noteOverrides = noteOverrides;
-        this.meters = meters; this.readings = readings;
+        this.timeline = timeline; this.readings = readings;
         this.contracts = contracts; this.billingTerms = billingTerms;
         this.tenants = tenants; this.companies = companies;
         this.payMap = payMap; this.rules = rules; this.ruleMembers = ruleMembers;
@@ -153,6 +151,9 @@ public class BillNoticeService {
     @Transactional
     public BillNoticeGenResultDTO generate(String ym) {
         requireYm(ym);
+        // 先锁定读本月读数,再做任何普通读:RR 的读视图建在第一条普通读上。并发的批删(删单 + 删读数)没提交时
+        // 这里就等它,读视图推迟到它提交之后 —— 否则按已删的读数把整月草稿又出回来。两边互等 = 死锁回滚一方。
+        readings.selectList(new QueryWrapper<MeterReading>().select("id").eq("ym", ym).last("FOR SHARE"));
         reviewGuard.assertEditable(ReviewKind.BILL_NOTICES, ym, null);
         LocalDate first = LocalDate.parse(ym + "-01");
         LocalDate last = first.withDayOfMonth(first.lengthOfMonth());
@@ -167,6 +168,14 @@ public class BillNoticeService {
         Set<Integer> confirmedTenants = notices.selectList(new QueryWrapper<BillNotice>()
                 .eq("ym", ym).in("status", "confirmed", "exported"))
             .stream().map(BillNotice::getTenantId).collect(Collectors.toSet());
+        // METER-TIMELINE-SPEC §5:本月已被锁定单收过的表(明细含它的已确认/已导出/历史 issued 单)。
+        // 档案改了归属(换租、终止后空置又挂新户)而旧户的单已锁:不挡的话重生成会让新户把同一块表同一个月再收一遍。
+        // 与 lockedTenants 同一组状态;ym 已由 requireYm 校验,inSql 拼接安全(同 list() 的 lineCount 写法)。
+        Set<Integer> lockedMeters = lockedTenants.isEmpty() ? Set.of() : noticeLines.selectObjs(
+                new QueryWrapper<BillNoticeLine>().select("DISTINCT meter_id").isNotNull("meter_id")
+                    .inSql("notice_id", "SELECT id FROM bill_notice WHERE ym = '" + ym
+                        + "' AND status IN ('confirmed','exported','issued')"))
+            .stream().map(o -> ((Number) o).intValue()).collect(Collectors.toSet());
         // 幂等:draft 先删;void 一并清(uk_notice 不含 status,作废单留着会撞重生成的新 draft;行由 FK CASCADE 连删)
         QueryWrapper<BillNotice> del = new QueryWrapper<BillNotice>()
             .eq("ym", ym).in("status", "draft", "void");
@@ -174,7 +183,7 @@ public class BillNoticeService {
         notices.delete(del);
 
         // ── 语境 ──
-        Map<Integer, Meter> meterById = new HashMap<>();
+        Map<Integer, MeterAt> meterById = new HashMap<>();
         // Finding 1(白盒复检):这里仍是「首块表」猜期区,跟 AllocService.zoneOfBuilding(列优先,
         // building.zone 为唯一事实来源)不是同一份解析——本服务没有注入 BuildingMapper/Building 集合,
         // 直接改调 AllocService.zoneOfBuilding 得新开一条 building 全表查询,与本轮「复用现有加载、
@@ -185,7 +194,7 @@ public class BillNoticeService {
         // 现状影响:building.zone 与首块表 zone 冲突,或楼栋已标 zone 但还没挂表时,催缴单的
         // splitShare 可能按错的/缺的期区分账(合计金额不受影响,只影响场地拆分呈现)。
         Map<Integer, String> zoneOfBuilding = new HashMap<>();
-        for (Meter m : meters.selectList(null)) {
+        for (MeterAt m : timeline.metersAt(ym)) {
             meterById.put(m.getId(), m);
             if (m.getBuildingId() != null && m.getZone() != null)
                 zoneOfBuilding.putIfAbsent(m.getBuildingId(), m.getZone());
@@ -258,9 +267,9 @@ public class BillNoticeService {
         int[] seq = {0};
 
         // ── 逐租户表:判定树 B(表→合同归属=resolveBinding 行级快照) ──
-        Map<Integer, List<Object[]>> metersByTenant = new LinkedHashMap<>();   // [Meter, Row]
+        Map<Integer, List<Object[]>> metersByTenant = new LinkedHashMap<>();   // [MeterAt, Row]
         for (MeterBindingDTO.Row row : binding.resolveBinding(ym).rows()) {
-            Meter m = meterById.get(row.meterId());
+            MeterAt m = meterById.get(row.meterId());
             if (m == null || m.getTenantId() == null) continue;   // pending/placeholder:无计费对象,不出行
             metersByTenant.computeIfAbsent(m.getTenantId(), k -> new ArrayList<>()).add(new Object[]{m, row});
         }
@@ -268,14 +277,19 @@ public class BillNoticeService {
             Integer tid = e.getKey();
             // 表序:sub_name(①②③ Unicode 序)优先,NULL 按 sort_no,id 顺位补号(仅展示,不回写)
             List<Object[]> ms = e.getValue().stream().sorted(Comparator
-                .comparing((Object[] o) -> ((Meter) o[0]).getSubName() == null)
-                .thenComparing(o -> ((Meter) o[0]).getSubName() == null ? "" : ((Meter) o[0]).getSubName())
-                .thenComparing(o -> ((Meter) o[0]).getSortNo() == null ? 0 : ((Meter) o[0]).getSortNo())
-                .thenComparing(o -> ((Meter) o[0]).getId())).toList();
+                .comparing((Object[] o) -> ((MeterAt) o[0]).getSubName() == null)
+                .thenComparing(o -> ((MeterAt) o[0]).getSubName() == null ? "" : ((MeterAt) o[0]).getSubName())
+                .thenComparing(o -> ((MeterAt) o[0]).getSortNo() == null ? 0 : ((MeterAt) o[0]).getSortNo())
+                .thenComparing(o -> ((MeterAt) o[0]).getId())).toList();
             int nElec = 0, nWater = 0;
             for (Object[] o : ms) {
-                Meter m = (Meter) o[0];
+                MeterAt m = (MeterAt) o[0];
                 MeterBindingDTO.Row row = (MeterBindingDTO.Row) o[1];
+                if (lockedMeters.contains(m.getId()) && !lockedTenants.contains(tid)) {
+                    // 已锁的那张单收过这块表本月的量:这一户一行都不出,只报一条(要进这一户得先作废那张单再重生成)
+                    warn(warnByTenant, tid, WarnCode.W_METER_BILLED_ELSEWHERE, String.valueOf(m.getId()), meterTag(m));
+                    continue;
+                }
                 String label = m.getSubName() != null ? m.getSubName()
                     : ("elec".equals(m.getKind()) ? "电表" + circled(++nElec) : "水表" + circled(++nWater));
                 if ("manual".equals(row.status())) {   // 无合同归属:降级挂租户出单+warn(§5.8)
@@ -411,7 +425,7 @@ public class BillNoticeService {
                     if (o.amount == null) continue;
                     boolean inElec = false, inShare = false;
                     if (!o.dorm && "elec".equals(o.feeKey) && o.meterId != null) {
-                        Meter m = meterById.get(o.meterId);
+                        MeterAt m = meterById.get(o.meterId);
                         inElec = m != null && m.getBuildingId() != null && chain.contains(m.getBuildingId());
                     } else if (form != FORM_C && o.poolRuleId != null && ("share_elec_floor".equals(o.feeKey)
                             || (form != FORM_F && "share_elec_elevator".equals(o.feeKey))
@@ -424,7 +438,7 @@ public class BillNoticeService {
                             : "p2".equals(pr.getZone()) && cb != null && chain.contains(cb));
                     } else if ((form == FORM_A || form == FORM_F || form == FORM_G) && !o.dorm
                             && "mgmt_fee".equals(o.feeKey) && o.meterId != null) {   // G 同源册:base 含管理费(永龙 K 列)
-                        Meter m = meterById.get(o.meterId);   // 管理费逐表行,按表楼栋圈链
+                        MeterAt m = meterById.get(o.meterId);   // 管理费逐表行,按表楼栋圈链
                         inShare = m != null && m.getBuildingId() != null && chain.contains(m.getBuildingId());
                     } else if (form == FORM_C && !o.dorm && "capacity".equals(o.feeKey) && o.contractId != null) {
                         Integer cb = buildingOfContract.get(o.contractId);   // 容量费无表,按合同楼栋圈链
@@ -445,7 +459,7 @@ public class BillNoticeService {
                     BigDecimal add = amtHit != null && amtHit.scope().startsWith("tenant:") ? r2(amtHit.value()) : null;
                     if (add == null) {
                         PriceCfgService.PriceHit pmHit = price.resolveHit("loss_base_park_meter", ym, l.tenantId, null);
-                        Meter pkm = pmHit == null || !pmHit.scope().startsWith("tenant:") ? null
+                        MeterAt pkm = pmHit == null || !pmHit.scope().startsWith("tenant:") ? null
                             : meterById.get(pmHit.value().intValue());
                         MeterReading pr = pkm == null ? null : readingByMeter.get(pkm.getId());
                         BigDecimal u = pr == null ? null
@@ -550,7 +564,7 @@ public class BillNoticeService {
                 .thenComparingInt(l -> l.seq));
             BigDecimal total = ls.stream().map(l -> l.amount == null ? BigDecimal.ZERO : l.amount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-            // 户级七类拷给该户每一张单(与 V126 之前同口径);W_TOTAL_NEGATIVE 是唯一按单算的一类。
+            // 户级各类拷给该户每一张单(与 V126 之前同口径);W_TOTAL_NEGATIVE 是唯一按单算的一类。
             List<Warn> warns = new ArrayList<>(
                 warnByTenant.getOrDefault(g.getKey().tenantId(), Map.of()).values());
             if (total.signum() < 0) warns.add(new Warn(WarnCode.W_TOTAL_NEGATIVE, "", ""));
@@ -617,7 +631,7 @@ public class BillNoticeService {
     // ── 电表判定树B:elec_package 户级命中→包干单行 / 分时(curr_peak|flat|valley 任一非空)→四段+mgmt0.16
     //    / is_dorm_room→居民+mgmt0.16 / 商业+mgmt0.32;户级例外由 resolveHit 的 scope 链天然覆盖 ──
     private void elecLines(Map<Integer, List<L>> byTenant, Map<Integer, Map<String, Warn>> warnByTenant, int[] seq,
-                           String ym, Integer tid, Meter m, MeterBindingDTO.Row row, MeterReading r,
+                           String ym, Integer tid, MeterAt m, MeterBindingDTO.Row row, MeterReading r,
                            String label, Map<Integer, List<String>> locs,
                            Map<Integer, List<UnitCand>> unitCands) {
         boolean dormRoom = m.getIsDormRoom() != null && m.getIsDormRoom() == 1;
@@ -689,7 +703,7 @@ public class BillNoticeService {
 
     // ── 水表:is_dorm_room→3.85+管网0(dorm scope 天然给 0=不出行)/否则 3.95+0.5;户级例外同链 ──
     private void waterLines(Map<Integer, List<L>> byTenant, Map<Integer, Map<String, Warn>> warnByTenant, int[] seq,
-                            String ym, Integer tid, Meter m, MeterBindingDTO.Row row, MeterReading r,
+                            String ym, Integer tid, MeterAt m, MeterBindingDTO.Row row, MeterReading r,
                             String label, Map<Integer, List<String>> locs,
                             Map<Integer, List<UnitCand>> unitCands) {
         boolean dormRoom = m.getIsDormRoom() != null && m.getIsDormRoom() == 1;
@@ -707,7 +721,7 @@ public class BillNoticeService {
 
     // 单一价行(电居民/电商业/水)
     private void singlePrice(Map<Integer, List<L>> byTenant, Map<Integer, Map<String, Warn>> warnByTenant, int[] seq,
-                             String ym, Integer tid, Meter m, MeterBindingDTO.Row row, MeterReading r,
+                             String ym, Integer tid, MeterAt m, MeterBindingDTO.Row row, MeterReading r,
                              String label, Map<Integer, List<String>> locs,
                              Map<Integer, List<UnitCand>> unitCands, boolean dormRoom,
                              String feeKey, String priceKey, String zone, BigDecimal total, String branch) {
@@ -720,7 +734,7 @@ public class BillNoticeService {
     }
 
     // 表行公共骨架(审计链 price_key/scope/month + 合同快照 + 场地段)
-    private L meterLine(Map<Integer, List<L>> byTenant, int[] seq, Integer tid, Meter m,
+    private L meterLine(Map<Integer, List<L>> byTenant, int[] seq, Integer tid, MeterAt m,
                         MeterBindingDTO.Row row, String label, Map<Integer, List<String>> locs,
                         Map<Integer, List<UnitCand>> unitCands, boolean dorm,
                         String feeKey, String cfgKey, String seg, BigDecimal prev, BigDecimal curr, BigDecimal f,
@@ -1084,7 +1098,7 @@ public class BillNoticeService {
     }
 
     // §2.1 name/room_no 权威(锚:表 929 name=411.00 而 spot=五楼 1-516),抽不出才回落 spot/sub_name。
-    static Set<String> roomTokens(Meter m) {
+    static Set<String> roomTokens(MeterAt m) {
         Set<String> out = new LinkedHashSet<>(tok(m.getRoomNo()));
         out.addAll(tok(m.getName()));
         if (!out.isEmpty()) return out;
@@ -1111,22 +1125,22 @@ public class BillNoticeService {
 
     // §2.2 定位:表房号 ∩ 合同计费行 location 房号,唯一命中才细化,否则回退 premiseOf(不猜)。
     // 取的是合同侧原文而非表侧自描述——公摊行 premise 同源于此,前端 byPremise 才配得上。
-    static String resolveMeterPremise(Meter m, Integer contractId, Map<Integer, List<String>> locs) {
+    static String resolveMeterPremise(MeterAt m, Integer contractId, Map<Integer, List<String>> locs) {
         return resolveMeterPremise(m, contractId, locs, Map.of());
     }
 
-    static String resolveMeterPremise(Meter m, Integer contractId, Map<Integer, List<String>> locs,
+    static String resolveMeterPremise(MeterAt m, Integer contractId, Map<Integer, List<String>> locs,
                                       Map<Integer, List<UnitCand>> unitCands) {
         if (contractId == null) return null;
         String p = pin(m, contractId, locs, unitCands).text();
         return p != null ? p : premiseOf(contractId, locs);
     }
 
-    static Pin pin(Meter m, Integer contractId, Map<Integer, List<String>> locs) {
+    static Pin pin(MeterAt m, Integer contractId, Map<Integer, List<String>> locs) {
         return pin(m, contractId, locs, Map.of());
     }
 
-    static Pin pin(Meter m, Integer contractId, Map<Integer, List<String>> locs,
+    static Pin pin(MeterAt m, Integer contractId, Map<Integer, List<String>> locs,
                    Map<Integer, List<UnitCand>> unitCands) {
         Set<String> rt = roomTokens(m);
         List<String> ls = contractId == null ? null : locs.get(contractId);
@@ -1236,13 +1250,32 @@ public class BillNoticeService {
             .filter(Objects::nonNull).collect(Collectors.toSet());
         Map<Integer, String> poolNames = rids.isEmpty() ? Map.of()
             : rules.selectBatchIds(rids).stream().collect(Collectors.toMap(AllocRule::getId, AllocRule::getName));
+        // METER-TIMELINE-SPEC §5「已导出单」:表行与当月档案实时比,这块表本月现挂的不是本单这一户 → 带出现归谁。
+        // 值:非 null = 不一致;archiveTenantId 为空时 name 取档案行的企业名称原文,空串 = 档案上本月没挂任何户(空置)。
+        Map<Integer, Integer> archTid = new HashMap<>();
+        Map<Integer, String> archName = new HashMap<>();
+        if (raw.stream().anyMatch(l -> l.getMeterId() != null)) {
+            MeterTimelineService.View v = timeline.viewAt(n.getYm());
+            for (BillNoticeLine l : raw) {
+                com.park.demo3.entity.MeterAssign a = l.getMeterId() == null ? null : v.assign(l.getMeterId());
+                if (a == null || Objects.equals(a.getTenantId(), n.getTenantId())) continue;
+                archTid.put(l.getMeterId(), a.getTenantId());
+                archName.put(l.getMeterId(), nz(a.getTenantName()));
+            }
+            Set<Integer> tids = archTid.values().stream().filter(Objects::nonNull).collect(Collectors.toSet());
+            Map<Integer, String> nameOf = tids.isEmpty() ? Map.of() : tenants.selectBatchIds(tids).stream()
+                .collect(Collectors.toMap(Tenant::getId, t -> nz(t.getCompanyName())));
+            archTid.forEach((mid, tid) -> { if (tid != null) archName.put(mid, nameOf.getOrDefault(tid, "")); });
+        }
         List<BillNoticeDetailDTO.Line> lines = raw.stream()
             .map(l -> new BillNoticeDetailDTO.Line(l.getLineNo(), l.getFeeKey(), l.getPremise(),
                 l.getMeterId(), l.getMeterLabel(), l.getContractId(), l.getSeg(),
                 l.getPrevRead(), l.getCurrRead(), l.getFactorSnap(), l.getQty(), l.getPriceSnap(),
                 l.getPriceKey(), l.getPriceScope(), l.getPriceMonth(), l.getRuleBranch(),
                 l.getPoolRuleId(), l.getShareSrc(), l.getBaseSnap(), l.getAmount(), l.getNote(), l.getFeeGroup(),
-                l.getPoolRuleId() == null ? null : poolNames.get(l.getPoolRuleId())))
+                l.getPoolRuleId() == null ? null : poolNames.get(l.getPoolRuleId()),
+                l.getMeterId() == null ? null : archTid.get(l.getMeterId()),
+                l.getMeterId() == null ? null : archName.get(l.getMeterId())))
             .toList();
         return new BillNoticeDetailDTO(n.getId(), n.getYm(), n.getTenantId(),
             names.tenant().get(n.getTenantId()), n.getPayCompanyId(),
@@ -1366,9 +1399,16 @@ public class BillNoticeService {
         return auth == null ? null : auth.getName();
     }
 
-    // 仅 issued/draft 可 void;issue 仅 draft(issued 不可被重跑覆盖,须先 void)
+    // 未作废的单都可 void(含已确认/已导出:METER-TIMELINE-SPEC §5「作废并重出」,作废后重新生成本月即重出);
+    // issue 仅 draft(issued 不可被重跑覆盖,须先 void)。
+    // 作废理由必填、落审计:作废的可能是一张已经发出去的单,事后得查得到谁、为什么(同 unconfirm 的规矩)。
     @NoReviewGuard(reason = "转调 transition(id,action),守卫在那里按实体的 ym 判")
-    public BillNoticeDTO voidNotice(Integer id) { return transition(id, "void"); }
+    public BillNoticeDTO voidNotice(Integer id, String reason) {
+        BillNoticeDTO d = transition(id, "void");
+        audit.log("bill-notice.void", d.ym() + " · " + (d.tenantName() == null ? "" : d.tenantName() + " · ") + "单 #" + id,
+            "作废;理由:" + reason);
+        return d;
+    }
     @NoReviewGuard(reason = "转调 transition(id,action),守卫在那里按实体的 ym 判")
     public BillNoticeDTO issue(Integer id) { return transition(id, "issued"); }
 
@@ -1441,7 +1481,7 @@ public class BillNoticeService {
      * 表名是不是「只有房号数字」—— meter.name 是导入原串,宿舍那批就是「636.00」「544」,
      * 直接上屏会被读成金额(2026-09-23 用户原话:完全看不懂)。两处告警共用这一条判据。
      */
-    private static boolean bareDigitName(Meter m) {
+    private static boolean bareDigitName(MeterAt m) {
         String nm = nz(m.getName()).trim();
         return nm.isEmpty() || nm.replaceAll("[0-9.\\-]", "").isEmpty();
     }
@@ -1454,7 +1494,7 @@ public class BillNoticeService {
      * 全是「水表①」,屏上并排三行一模一样,用户认不出是哪一块 —— 而它们的 name
      * (A101旭化成水 / 旭化成二楼水1 / 旭化成二楼水2)本来就分得开。
      */
-    private static String meterTag(Meter m) {
+    static String meterTag(MeterAt m) {
         if (!bareDigitName(m)) return nz(m.getName()).trim();
         String at = (nz(m.getSpot()) + " " + nz(m.getSubName())).trim();
         return at.isEmpty() ? nz(m.getSubName()) : at;

@@ -7,7 +7,7 @@
  * 一处持有，这道门是它唯一的入口。
  *
  * 多点的那一次点击换回来的是**格子里的四个点**：这个月抄表 / 公摊 / 损耗 / 催缴各自做了没有，
- * 底色橙 = 参数改动晚于快照、屏上数字是旧的。这个信号（`cfgDirty`）系统里本来就有，
+ * 底色橙 = 参数或抄表改动晚于快照、屏上数字是旧的。这个信号（`cfgDirty`）系统里本来就有，
  * 只是改造前出了公共电核算屏就看不见。
  *
  * ⚠ 只在**没有期**时渲染 —— 选过一次之后五屏都直落表格，这道门退成链路条上的一个按钮。
@@ -149,7 +149,7 @@ const edge = (first: boolean) => {
         <span class="sp" />
         <span class="li"><i class="lp on" />已做</span>
         <span class="li"><i class="lp" />未做</span>
-        <span class="li"><i class="lw" />需重算（参数改动晚于快照）</span>
+        <span class="li"><i class="lw" />需重算（参数或抄表改动晚于快照）</span>
       </div>
 
       <BookMonthMatrix

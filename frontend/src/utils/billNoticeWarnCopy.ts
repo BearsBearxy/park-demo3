@@ -18,6 +18,7 @@ import { paramDef } from './paramRegistry'
 export const WARN_CODES = [
   'W_METER_NO_CONTRACT',
   'W_METER_BIND_STALE',
+  'W_METER_BILLED_ELSEWHERE',
   'W_ROOM_MISMATCH',
   'W_CONTRACT_NO_DATES',
   'W_TERM_NO_PARAMS',
@@ -56,10 +57,21 @@ export const WARN_COPY: Record<WarnCode, WarnCopy> = {
     drawer: true,
   },
   W_METER_BIND_STALE: {
-    title: '表绑的合同本月没生效',
-    // 与上一条分开的理由写在 WarnCode.java:那一条是没人指认过,这一条是指认过但指错了期,
+    title: '表绑的合同本月用不上',
+    // 与上一条分开的理由写在 WarnCode.java:那一条是没人指认过,这一条是指认过但指的那份用不上,
     // 动作不同。desc 写后果不写判据内部词(「递增段」「链」是合同卡片上的词,不是这屏的词)。
-    desc: '这些表被指认给了一份本月还没生效(或已经到期)的合同,那份合同的前后期里也没有能接上本月的。量照算进这张单,但单上这几块表挂的是一份本月不作数的合同 —— 而同一张单的租金走的是本月那一期,事后按合同对账时两边对不上。',
+    // 两种成因都要写:指错了期(本月不在租期)、指错了户(换户后没重钉,METER-TIMELINE-SPEC §3.6 不采用,单上不挂合同)。
+    desc: '这些表人工绑定的合同本月用不上:要么本月不在它的租期内、前后期也接不上本月,要么它不是这一段租户的合同。量照算进这张单,但这几块表没挂上本月能用的合同,事后按合同对账时对不上。',
+    fmt: (payload, hint) => hint || `表 #${payload}`,
+    route: 'meters',
+    actionLabel: '去园区抄表',
+    drawer: true,
+  },
+  W_METER_BILLED_ELSEWHERE: {
+    title: '表已在别户的单上收过',
+    // 档案改了归属(换租、终止后空置又挂新户)而旧户那张单已确认/已导出:这一户的草稿不再出这块表,
+    // 否则同一块表同一个月收两次。两条出路都写上 —— 判据分不出是档案改错了还是那张单该作废。
+    desc: '这些表本月的量已经收在另一户已确认或已导出的单上,这张单没再算它们,免得同一块表收两次。要是本月确实归这一户,先把那张单作废再重新生成本月;要是档案改错了,去园区抄表改回来。',
     fmt: (payload, hint) => hint || `表 #${payload}`,
     route: 'meters',
     actionLabel: '去园区抄表',
@@ -127,9 +139,9 @@ export const WARN_COPY: Record<WarnCode, WarnCopy> = {
     actionLabel: '',
     drawer: false,
     // §6-3:只报不给动作的告警不许进抽屉。这一条给不出清除路径 —— 它不是数据缺口而是一个结论,
-    // 而且是唯一按**单**算的一类(其余七类按户算),塞进户级抽屉会被读成「这户有八类问题」。
+    // 而且是唯一按**单**算的一类(其余各类按户算),塞进户级抽屉会被读成「这户又多一类问题」。
     // 落点保持今天的样子:列表行尾「!」与明细抽屉横幅。
-    why: '它不是数据缺口而是一个结论,清除路径不存在,给不出可执行动作;而且它按单算,其余七类按户算。',
+    why: '它不是数据缺口而是一个结论,清除路径不存在,给不出可执行动作;而且它按单算,其余各类按户算。',
   },
 }
 

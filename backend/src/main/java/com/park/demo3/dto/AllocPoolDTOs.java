@@ -10,9 +10,12 @@ public final class AllocPoolDTOs {
     private AllocPoolDTOs() {}
 
     // V69:label=「楼层·电表①」位置化标签(不再露内部标识名);spot/subName/meterType 供 hover 明细
+    // status/statusFrom(METER-TIMELINE-SPEC §5,只在 GET /pools 有值):站在该月这块表的状态段
+    // (active/retired/removed,null=未在册)与这一段的起始月,给池编辑灰显「自 M 起已拆,不计」
     public record MeterBind(Integer meterId, String name, Integer sign,
-                            String label, String spot, String subName, String meterType) {
-        public MeterBind(Integer meterId, String name, Integer sign) { this(meterId, name, sign, null, null, null, null); }
+                            String label, String spot, String subName, String meterType,
+                            String status, String statusFrom) {
+        public MeterBind(Integer meterId, String name, Integer sign) { this(meterId, name, sign, null, null, null, null, null, null); }
     }
     public record Link(Integer ruleId, String name, String type) {}
 
@@ -66,6 +69,9 @@ public final class AllocPoolDTOs {
         String bookBlock, String bookKey, String groupLabel,
         String method, String stdKind, Integer roundScale, String baseKey, Integer sortNo, String note,
         Integer buildingId, String buildingName, String floorLabel, String side, String feeName, String autoName,
+        // 2026-09-23 补 feeKey:屏上用量的**单位**跟它走(含 water 记吨,其余记度)。
+        // 原来列头与 Σ 副标题都把单位写死成「度」,三个绿化水池的吨被标成度。
+        String feeKey,
         // autoMembers=true:园区级池未显式勾受益人 → 引擎按「该期全园在租名册」自动摊,前端显示"自动=全园在租"而非逐户勾选
         boolean autoMembers, List<PoolMember> members,
         List<MeterBind> meters, List<Link> links,
@@ -97,8 +103,13 @@ public final class AllocPoolDTOs {
         String variant, BigDecimal tenantRate, String note,
         BigDecimal formulaRate, BigDecimal manualRate, List<AllocLossRowDTO.GPart> gParts, BigDecimal gDiv) {}
 
+    // 对账行。一个期区出 1~2 条:第一条=供电局那块总表管得着的那几栋;
+    // 该期区若有 loss_recon=0(自己一条独立供电链路,不走这块总表)的单元,再出第二条=把它们并回来的全部楼栋。
+    // supplyLabel/sumLabel 都从库里的表名/栋名现拼(屏上一眼看出这行管哪几栋),屏上一行读作
+    // 「{supplyLabel} vs {sumLabel}总表合计 / {sumLabel}分表合计」。
     public record LossRecon(
-        String zone, BigDecimal supplyQty, BigDecimal sumC, BigDecimal sumD,
+        String zone, String supplyLabel, String sumLabel,
+        BigDecimal supplyQty, BigDecimal sumC, BigDecimal sumD,
         BigDecimal lossVsC, BigDecimal rateVsC, BigDecimal lossVsD, BigDecimal rateVsD) {}
 
     public record Loss(boolean generated, List<LossUnit> units, List<LossRecon> recon) {}

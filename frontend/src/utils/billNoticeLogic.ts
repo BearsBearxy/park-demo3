@@ -3,7 +3,7 @@
 // fee_key 词汇沿用 alloc_result 现值(spec §4:不造第三套)——公摊类标签 2026-08-08 起转「租户单口径」。
 // v1 的单据类/状态字典与按单 KPI 已随「屏上不显单据类/收款主体/状态」拍板删除。
 // S5 刀4:租金板块(fee_group='rent' 落库行)按 premise 分块 groupRentByPremise;公摊行名=纯费项名 + billFeeTitle 悬浮。
-import { ALLOC_FEE_LABEL } from '@/utils/allocLogic'
+import { ALLOC_FEE_LABEL, qtyUnit } from '@/utils/allocLogic'
 import { WARN_CODES, WARN_COPY, warnCopy, warnItemText } from './billNoticeWarnCopy'
 import { FEE_NAME, feeLabel, inferPropertyType, type FeeKey, type PropertyType } from '@/types/contract'
 
@@ -244,7 +244,7 @@ export function billQtyCell(l: {
   amount: number
 }): QtyCell {
   const p = l.priceSnap
-  const raw = `${l.qty ?? '–'} ${l.feeKey.includes('water') ? '吨' : '度'}`
+  const raw = `${l.qty ?? '–'} ${qtyUnit(l.feeKey)}`
   const dq = p != null && l.qty != null ? fitScale(l.qty, p, l.amount) : null
   if (dq != null) return { qty: l.qty, unit: '', title: null, price: showPrice(p!, dq) }
   const base = l.baseSnap
@@ -320,7 +320,7 @@ const shareSrcName = (l: FeeTitleLine): string =>
 // 返回值含前导分隔(多数支为「 —— …」,损耗支为「 总表…」),src + why 逐字等于改前的整串
 function shareWhy(l: FeeTitleLine): string {
   const water = l.feeKey.includes('water')
-  const unit = water ? '吨' : '度'
+  const unit = qtyUnit(l.feeKey)
   if (l.amount === 0) {
     return ` —— ${l.qty ? '本月摊到你这儿不足一分钱' : '这块表本月没走字'},不收钱`
   }
@@ -439,7 +439,7 @@ const money = (v: number) =>
 // 倍率列被 colspan 吞掉的那格信息。⚠ 真表名后端 DTO 未下发(只有 meterId/meterLabel),
 // 撞号且倍率相同的仍分不开,待 detail() 补 meterName 后收口。
 function meterWhy(l: FeeTitleLine, showFactor: boolean): string {
-  const unit = l.feeKey.includes('water') ? '吨' : '度'
+  const unit = qtyUnit(l.feeKey)
   const name = (l.meterLabel ?? '未标表') + (showFactor && l.factorSnap != null ? `(倍率 ${num(l.factorSnap)})` : '')
   if (l.amount === 0) return `${name} ${l.qty ? `用了 ${num(l.qty)} ${unit},` : '本月没走字,'}不收钱`
   const p = billQtyCell(l).price

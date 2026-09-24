@@ -8,6 +8,11 @@ export const ALLOC_FEE_KEYS: AllocFeeKey[] = [
   'share_elec_fire', 'share_elec_elevator', 'share_elec_light', 'share_elec_floor', 'share_elec_loss',
   'share_green_water',
 ]
+/** 用量单位:费项键含 water 记吨,其余记度。**全站这一份** ——
+ *  原来这句判据在 billNoticeLogic 里抄了三遍,公共电核算屏则干脆写死「度」,
+ *  于是三个绿化水池的吨被标成度(2026-09-23 报障)。 */
+export const qtyUnit = (feeKey: string) => (feeKey.includes('water') ? '吨' : '度')
+
 export const ALLOC_FEE_LABEL: Record<AllocFeeKey, string> = {
   share_elec_fire: '消防用电',
   share_elec_elevator: '电梯用电',

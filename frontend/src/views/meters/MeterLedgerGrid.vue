@@ -8,16 +8,16 @@
 // 稳定标识(楼层→方位→房号)锁在左侧固定列,易变的租户名降为普通列(仍可点开抽屉/带待核徽标)。
 // 电表两组各 5 列(总/尖/峰/平/谷)常驻,水表各 1 列(总)。无分页:wrap overflow:auto 充满卡高。
 // 表体按楼栋首现序分组,组末插「{楼栋名} · 总用电量」汇总行(§7.6,tenant+share 口径,随 draft 实时)。
-// 草稿式编辑:编辑态「本月行至」全格透明 input(上月行至只读基准),draft 归属父层 MeterView,
+// 草稿式编辑:编辑态「本月行至」全格透明 input(上月行至只读基准,没有底数的行开放录入起始底数),draft 归属父层 MeterView,
 // 本组件只读取草稿+emit cell-edit;用量列/页脚按草稿实时重算;校验红显不拦保存(§7.4)。
-// 键盘流(§7.3):Tab 走原生 DOM 序(tbody 内仅本月行至有 input=行内横向),Enter 显式跳下一格,行尾进下一行首格。
+// 键盘流(§7.3):Tab 走原生 DOM 序(行内横向),Enter 显式跳下一格,行尾进下一行首格(底数格不进这条序)。
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import { useViewport } from '@/composables/useViewport'
 import {
-  STATUS_META, statusDims, effCurr, rowUsage, draftRowIssues, gridFooter, groupByBuilding, groupUsage,
+  STATUS_META, statusDims, bookTip, effVal, serverVal, baseOpen, rowUsage, draftRowIssues, gridFooter, groupByBuilding, groupUsage,
   flattenGroups, buildWindow, offsetOf,
-  type WorkbenchRow, type MeterDraft, type CurrField, type PrevSegs, type BuildingGroup,
+  type WorkbenchRow, type MeterDraft, type CurrField, type PrevField, type DraftField, type PrevSegs, type BuildingGroup,
   type RowWindow,
 } from '@/composables/useMeterWorkbench'
 import { ownershipLabel } from '@/utils/meterSplit'
@@ -35,20 +35,20 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   open: [meterId: number]
-  'cell-edit': [p: { meterId: number; field: CurrField; value: string }]
+  'cell-edit': [p: { meterId: number; field: DraftField; value: string }]
 }>()
 
 const ChevronRight = iconFor('chevron-right')
 const FACTOR_TITLE = '有读数=当月录入时倍率快照;无读数=档案倍率。历史读数按录入时快照计用量,改档案倍率只影响之后新录'
 
 // ── 列模型:电表组内 总/尖/峰/平/谷 5 列,水表仅 总 1 列(§7.1) ──
-interface SegDef { lab: string; c: CurrField; p: keyof PrevSegs | null }
+interface SegDef { lab: string; c: CurrField; p: keyof PrevSegs | null; pf: PrevField }
 const ALL_SEGS: SegDef[] = [
-  { lab: '总', c: 'currTotal', p: null },
-  { lab: '尖', c: 'currSharp', p: 'sharp' },
-  { lab: '峰', c: 'currPeak', p: 'peak' },
-  { lab: '平', c: 'currFlat', p: 'flat' },
-  { lab: '谷', c: 'currValley', p: 'valley' },
+  { lab: '总', c: 'currTotal', p: null, pf: 'prevTotal' },
+  { lab: '尖', c: 'currSharp', p: 'sharp', pf: 'prevSharp' },
+  { lab: '峰', c: 'currPeak', p: 'peak', pf: 'prevPeak' },
+  { lab: '平', c: 'currFlat', p: 'flat', pf: 'prevFlat' },
+  { lab: '谷', c: 'currValley', p: 'valley', pf: 'prevValley' },
 ]
 // ⚠ 这里的列数随 kind 变,**不是** LAYOUT-STABILITY-SPEC §1 要治的那种位移,别照 2026-08-29
 //   PoolLedgerView/LossLedgerView 那次(切期区改列数)的修法套过来 —— 已经有人提过一次了。
@@ -167,7 +167,7 @@ onBeforeUnmount(() => {
 // —— 停用行照旧产行、位置分毫未变,却整表回顶)。
 // 换筛选/账期/电水/分区仍照旧回顶:那些维度都在 viewKey 里,变了就是另一张表(铁律一即此判据)。
 // ⚠ 不变式(反方向,与下面那条注释配对):**凡进 viewKey 的维度,必须也是 gridRows 的依赖**。
-// 现在 8 个维度条条成立(ym 经 buildRows/hiddenRows,其余 7 项经 filterRows),所以 viewKey 一变
+// 现在 8 个维度条条成立(ym 经 meters/readings 按月重拉,其余 7 项经 filterRows),所以 viewKey 一变
 // 必产新 rows、rows watch 必在同一 flush 跟着跑。但哪天塞进一个「不改行集」的维度(排序开关、
 // 只读展示模式),回顶后就没有 rows watch 兜底重建窗口 ⇒ 永久白屏顶。故这里自己也重建一次:
 // 此刻 props.rows 已是新值(props 先于 watch 回调更新),重复调一次 syncWindow 无副作用。
@@ -206,12 +206,12 @@ const foot = computed(() => gridFooter(props.rows, props.draft))
 const fmt = (v: number | null | undefined) =>
   v == null ? '–' : v.toLocaleString('en-US', { maximumFractionDigits: 2 })
 const prevOf = (x: WorkbenchRow, s: SegDef) => (s.p ? x.prevSegs[s.p] : x.prevTotal)
-const currOf = (x: WorkbenchRow, s: SegDef) => effCurr(x, props.draft.get(x.m.id), s.c)
-// input 值=草稿原文>服务器读数,防重渲染吞输入
-function inputVal(x: WorkbenchRow, s: SegDef): string {
-  const d = props.draft.get(x.m.id)?.[s.c]
+const currOf = (x: WorkbenchRow, s: SegDef) => effVal(x, props.draft.get(x.m.id), s.c)
+// input 值=草稿原文>服务器值,防重渲染吞输入
+function inputVal(x: WorkbenchRow, f: DraftField): string {
+  const d = props.draft.get(x.m.id)?.[f]
   if (d != null) return d
-  const v = x.r?.[s.c]
+  const v = serverVal(x, f)
   return v == null ? '' : String(v)
 }
 // V74 结构化位置三列后端 MeterDTO 已出,前端 MeterDTO 待 A3 刀补进;先经 MeterLoc 视图读取
@@ -256,8 +256,18 @@ function tenTitle(x: WorkbenchRow): string | undefined {
   return x.m.ownership === 'tenant' ? (x.tenantLabel ?? x.m.tenantName ?? undefined) : undefined
 }
 
-function onInput(x: WorkbenchRow, s: SegDef, e: Event) {
-  emit('cell-edit', { meterId: x.m.id, field: s.c, value: (e.target as HTMLInputElement).value })
+function onInput(x: WorkbenchRow, f: DraftField, e: Event) {
+  emit('cell-edit', { meterId: x.m.id, field: f, value: (e.target as HTMLInputElement).value })
+}
+// 底数格(SPEC §3.4 新表首月):Enter 在同一行里往右走,出了上月行至组进本月行至首格
+function onPrevEnter(e: KeyboardEvent) {
+  const t = e.target as HTMLInputElement
+  const k = Number(t.dataset.pi) + 1
+  const next = wrapEl.value?.querySelector<HTMLInputElement>(k < segDefs.value.length
+    ? `input.mlg-ni[data-di="${t.dataset.di}"][data-pi="${k}"]`
+    : `input.mlg-ni[data-di="${t.dataset.di}"][data-si="0"]`)
+  next?.focus()
+  next?.select()
 }
 
 // ── 键盘流(§7.3+6.5):Enter 跳下一编辑格(行内横向,行尾进下一数据行首格,汇总行跳过);
@@ -351,12 +361,14 @@ function onEnter(e: KeyboardEvent) {
           <!-- 租户(普通列):click 开抽屉;待核 coral 名+徽标(§7.1) -->
           <td>
             <span
-              class="mlg-tname" :class="{ coral: v.x.pending && !v.x.retired, dim: v.x.placeholder || v.x.retired }"
+              class="mlg-tname" :class="{ coral: v.x.pending && !v.x.retired && !v.x.off, dim: v.x.placeholder || v.x.retired || !!v.x.off }"
               :title="tenTitle(v.x)" @click="emit('open', v.x.m.id)"
             >
               <span class="nm">{{ tenName(v.x) }}</span>
-              <!-- 停用行不再飘待核红:本月不在服务中,待核无意义(2026-08-05 用户报障) -->
-              <span v-if="v.x.pending && !v.x.retired" class="mlg-st coral sm" title="企业名称原文未匹配到租户档案,点击在抽屉「合同绑定」页签挂租户">待核</span>
+              <!-- 本月册子没有(SPEC §10.4):挤了先缩它、最后只剩那颗点,名字不让位;悬停看是哪一段、从哪来 -->
+              <span v-if="bookTip(v.x)" class="mlg-book" :title="bookTip(v.x)!"><span>本月册子没有</span></span>
+              <!-- 停用 / 不在册的行不飘待核红:本月不在服务中,待核无意义(2026-08-05 用户报障) -->
+              <span v-if="v.x.pending && !v.x.retired && !v.x.off" class="mlg-st coral sm" title="企业名称原文未匹配到租户档案,点击在抽屉「合同绑定」页签挂租户">待核</span>
               <span
                 v-if="v.x.m.suspect === 'shadow'" class="mlg-st bad sm"
                 title="疑似重复建档:本表区域/位置/企业名称/编码全空,且与同栋同类的另一块档案完整的表同月上下期示数与倍率完全相等,很可能是同一块物理表的第二份档案。该表用量暂不计入楼栋分表Σ;认对后请补齐档案(在抽屉保存一次即解除存疑)"
@@ -372,19 +384,28 @@ function onEnter(e: KeyboardEvent) {
           <td><span class="mlg-txt" :title="v.x.m.subName ?? undefined">{{ v.x.m.subName ?? '–' }}</span></td>
           <td><span class="mlg-txt mono" :class="{ dim: !v.x.m.code }" :title="v.x.m.code ?? undefined">{{ v.x.m.code ?? '–' }}</span></td>
           <td><span class="mlg-nv" :title="FACTOR_TITLE">{{ v.x.factor }}</span></td>
-          <!-- 上月行至(只读基准) -->
-          <td v-for="s in segDefs" :key="'p' + s.c">
-            <span class="mlg-nv" :class="{ empty: prevOf(v.x, s) == null }">{{ fmt(prevOf(v.x, s)) }}</span>
+          <!-- 上月行至:只读基准;这一行没有底数(新表首月 / 读数没带上月行至)时编辑态开放录入起始底数(SPEC §3.4)。
+               data-pi 不进 data-si 序:其余行的键盘流一格不变 -->
+          <td v-for="(s, pi) in segDefs" :key="'p' + s.c">
+            <input
+              v-if="editMode && baseOpen(v.x)" class="mlg-ni" type="number" step="any"
+              :value="inputVal(v.x, s.pf)" placeholder="底数"
+              :data-di="v.di" :data-pi="pi"
+              @click.stop
+              @input="onInput(v.x, s.pf, $event)"
+              @keydown.enter.prevent="onPrevEnter($event)"
+            />
+            <span v-else class="mlg-nv" :class="{ empty: prevOf(v.x, s) == null }">{{ fmt(prevOf(v.x, s)) }}</span>
           </td>
           <!-- 本月行至:编辑态全格透明 input 点格直改(§7.2);@click.stop 不触发租户格外的行为;
                data-di/si=显示列表索引/段序,键盘流跨窗寻址(§7 6.5) -->
           <td v-for="(s, si) in segDefs" :key="'c' + s.c">
             <input
               v-if="editMode" class="mlg-ni" type="number" step="any"
-              :value="inputVal(v.x, s)" placeholder="–"
+              :value="inputVal(v.x, s.c)" placeholder="–"
               :data-di="v.di" :data-si="si"
               @click.stop
-              @input="onInput(v.x, s, $event)"
+              @input="onInput(v.x, s.c, $event)"
               @keydown.enter.prevent="onEnter($event)"
             />
             <span v-else class="mlg-nv" :class="{ empty: currOf(v.x, s) == null }">{{ fmt(currOf(v.x, s)) }}</span>
@@ -466,6 +487,12 @@ td.ct { text-align:center; }
    于是全部收缩都落在名字上 —— 列一窄名字就只剩一个字。min-width:0 是让 ellipsis 生效的前提) */
 .mlg-tname .nm { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .mlg-tname .mlg-st { flex:0 0 auto; }
+/* 本月册子没有(SPEC §10.4):橙点 + 字,点同催缴单「档案现归 X」那颗。格子挤了由它让:字先省略、
+   最后只剩点(min-width = 点 7 + 间距 4),名字要等它缩到头才开始让。收缩比例按宽度加权分摊,
+   999 时名字仍分到零点零几像素,已足以让名字末字变成省略号(浏览器实测 74.986 < 75),故取 99999 */
+.mlg-tname .mlg-book { flex:0 99999 auto; min-width:11px; display:inline-flex; align-items:center; gap:4px; font-size:var(--fs-micro); font-weight:var(--fw-regular); color:var(--warn-text); cursor:help; }
+.mlg-book::before { content:''; flex:0 0 7px; height:7px; border-radius:var(--radius-full); background:var(--hue-orange); }
+.mlg-book > span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .mlg-tname.coral .nm { color:var(--coral-text); }
 .mlg-tname.dim .nm { color:var(--text-disabled); font-weight:var(--fw-regular); }
 .mlg-tname .ch { opacity:0; flex:0 0 auto; color:var(--text-disabled); transition:opacity var(--dur-fast); }

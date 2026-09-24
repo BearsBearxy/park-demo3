@@ -56,6 +56,23 @@ describe('FpImportModal', () => {
     expect(ev![0][1]).toBe('（粘贴）')
   })
 
+  it('先选文件再改用粘贴:emit 的文件名是「（粘贴）」,不是先前那个文件', async () => {
+    const w = mountModal()
+    const input = w.find('input[type="file"]')
+    Object.defineProperty(input.element, 'files', {
+      value: [new File(['租户,厂房租金,商铺租金\nF,1,2'], 'book-2023-08.csv', { type: 'text/csv' })],
+    })
+    await input.trigger('change')
+    await vi.waitFor(() => expect(w.find('.fpimp-pvtable').exists()).toBe(true))
+    await w.find('.fpimp-tab:nth-child(2)').trigger('click')
+    await w.find('textarea').setValue('租户\t厂房租金\t商铺租金\nA\t100\t5')
+    await w.find('.fpimp-ta + div button').trigger('click')
+    await w.findAll('.fpimp-f button')[1].trigger('click')
+    const ev = w.emitted('import')!
+    expect(ev[0][0]).toEqual([{ tenantName: 'A', factoryRent: 100, shopRent: 5 }])
+    expect(ev[0][1]).toBe('（粘贴）')
+  })
+
   it('shows error when no row matches template', async () => {
     const w = mountModal()
     await w.find('.fpimp-tab:nth-child(2)').trigger('click')

@@ -6,6 +6,7 @@ import com.park.demo3.dto.MeterUsageSummaryDTO;
 import com.park.demo3.service.MeterBindingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -26,10 +27,11 @@ public class MeterBindingController {
         return svc.resolveBinding(ym);
     }
 
-    @Operation(summary = "人工绑定覆盖(写 override;contractId=null 解绑;表/合同不存在 404)")
+    @Operation(summary = "人工绑定覆盖(写 override;contractId=null 解绑;表/合同不存在 404)。"
+        + "钉在 ym 那一段上:mode=correct 钉到 ym 所在的那一段,from 自 ym 起写一行;波及冻结月 423/409")
     @PutMapping("/{id}/bind")
-    public void bind(@PathVariable Integer id, @RequestBody MeterBindReq req) {
-        svc.bind(id, req.contractId());
+    public void bind(@PathVariable Integer id, @Valid @RequestBody MeterBindReq req) {
+        svc.bind(id, req);
     }
 
     @Operation(summary = "按企业名称原文精确唯一匹配批量挂租户(幂等;返回 linked/skipped)")

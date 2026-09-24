@@ -45,6 +45,11 @@ export interface BillNoticeLineDTO {
   amount: number
   note: string | null
   feeGroup: string | null            // rent/elec/water(V90):板块分组
+  // METER-TIMELINE-SPEC §5:表行与当月档案实时比。archiveTenantName 非 null = 这块表本月现挂的不是本单这一户
+  // (屏上标「档案现归 X」);archiveTenantId 空 = 档案没认出户,name 是册上企业名称原文,空串 = 空置。
+  // 可选只为不逼既有夹具补字段:后端 detail 恒下发(一致时两个都是 null)
+  archiveTenantId?: number | null
+  archiveTenantName?: string | null
 }
 
 export interface BillNoticeDetailDTO {
@@ -102,8 +107,8 @@ export const billNoticesApi = {
     http.post('/bill-notices/generate', null, { params: { ym } }),
   // 仅 draft 可签发;签发后不被重跑覆盖
   issue: (id: number): Promise<BillNoticeDTO> => http.post(`/bill-notices/${id}/issue`),
-  // draft/issued 可作废;已作废 409
-  void: (id: number): Promise<BillNoticeDTO> => http.post(`/bill-notices/${id}/void`),
+  // 未作废的单都可作废(含已确认/已导出 —— 作废后重新生成本月即重出);已作废 409;理由必填(≤255),后端落审计
+  void: (id: number, reason: string): Promise<BillNoticeDTO> => http.post(`/bill-notices/${id}/void`, { reason }),
   // 备注人工覆盖(V92):该户该月全量;PUT=upsert(admin),DELETE=清除该键恢复引擎默认(admin,幂等)
   notes: (ym: string, tenantId: number): Promise<BillNoteOverrideDTO[]> =>
     http.get('/bill-notices/notes', { params: { ym, tenantId } }),

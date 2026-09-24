@@ -18,6 +18,9 @@ ALTER TABLE meter
 > 续签与递增段把它拆成 `parent_contract_id` 连起来的多期。钉住一期 ≠ 钉住这份合同，翻到别的月就红。
 > 修法**没有**加表：一列仍够用，读侧按月沿链落段即可（§2 规则1修订）。所以「若未来需按月换绑再升级绑定表」
 > 这一条仍未触发——需要按月换的不是绑定，是段。
+>
+> **2026-09-24 触发了。** 钉合同从 `meter.contract_id` 挪进 `meter_assign`（按月分段，只对那一段有效），
+> `fk_meter_contract` 随 V129 删掉，同款 `ON DELETE SET NULL` 挂在 `meter_assign` 上（METER-TIMELINE-SPEC §1.2 §3.6）。
 
 
 meter_type 列已被「表类」原文占用（户内用电/公共用电…），表类型另立 device_type。
@@ -39,6 +42,9 @@ meter_type 列已被「表类」原文占用（户内用电/公共用电…）�
 
 后两层 Row 上带出 `pinnedContractNo`＝被跳过的那份合同号，屏上须说明「钉的是哪份、本月落在哪份」——不静默替换。
 
+> 2026-09-24 再加一条（METER-TIMELINE-SPEC §3.6）：规则1 读的是**这一段**归属行上的钉；钉的合同不属于这一段租户的家族时不采用 ——
+> 自动定得出就用自动的（带 `pinnedContractNo`），定不出是 `override_stale` 且 `contractId` 为空（不再回落到钉的那份）。
+
 **实测收敛（dev 库，改前→改后）**：2023-08 `override_stale` 151→108（链内 7 / 退回自动归属 36）；2023-10 147→0；2024-02 1→0。2023-08 残留的 108 里 58 是该户当月确实没有任何有效合同，50 是同户多份且楼栋对不上。全库 431 份合同里只有 93 份登记了 `parent_contract_id`（79 escalation + 14 renew），338 份是断头链首——所以只靠链救不了大部分，第三层的退回是必需的。
 
 **规则4修订（2026-08-04，仁恒报障）**：对位落空时，先查家族**本栋缺日期合同**——命中则归 `date_missing` 桶、候选=本栋缺日期合同（唯一时一键确认），而不是 `bld_mismatch`+错栋候选。多楼栋合同户（仁恒：A座/C座 3 份在租 + 宿舍一栋 1 份缺日期 S10-0062）原先被别栋在租合同遮蔽：对位正确的合同因缺日期进不了候选集（规则2），规则5 的 date_missing 又只在零覆盖时触发——正确答案在抽屉里不可见，违背"不设静默兜底"的本意。
@@ -51,6 +57,9 @@ meter_type 列已被「表类」原文占用（户内用电/公共用电…）�
 - `GET /api/meters/binding?ym=` → record{summary, rows[]}：summary=各状态计数（auto/auto_bld/override/override_stale/manual 按桶/pending/placeholder/漏抄数）；rows 每块租户表={meterId, status, bucket?, contractId?, contractNo?, pinnedContractNo?（人工绑定钉的那份，仅当它没被直接用上时给——本月落到了同链另一段、或退回了自动归属）, locations, candidates:[{contractId,contractNo,buildingName,startDate,endDate,locations}](manual 时给候选供 UI 选), hasReading}。**这就是归属覆盖率报表**。locations（2026-08-04 用户要求）=合同费项位置标签，每个 distinct 计费行 location 一条「费项名去『租金』尾·位置原文」（位置原文含栋层单元，如「办公室·A座孵化器三楼315室」）；Row 上为绑定合同的标签（未绑定=[]）。
 - `PUT /api/meters/{id}/bind` → req{contractId(null=解绑)}：写 override；校验合同存在。
 - `POST /api/meters/auto-link-by-name` → 按 tenant_name 原文=租户档案名精确唯一匹配的待核表批量挂 tenant_id（侦察实测 19 块），返回{linked, skipped}。幂等。
+- 2026-09-24 起（METER-TIMELINE-SPEC §3.6、§4）：`PUT /{id}/bind` 必带 `ym` + `mode`（correct 改那一段 | from 从 ym 起新写一段），
+  按区间查冻结（审核锁 423，含这块表的催缴单已确认 / 已导出 409）；`auto-link-by-name` 逐行补、跳过冻结行；
+  binding 的 Row 多一个 `suggestion`（本月在租、房号对得上的他户合同，唯一才给）。
 - `GET /api/meters/usage-summary?ym=` → 户×月聚合（S3 输入面）：rows[]={tenantId, tenantName, kind, meterCount, missingReadings, usageTotal, usageSharp/Peak/Flat/Valley}——复用 MeterService.usage()，只聚合 ownership='tenant' 且 tenant_id 非空的表。
 
 ## 4. 明确不做（本切片）

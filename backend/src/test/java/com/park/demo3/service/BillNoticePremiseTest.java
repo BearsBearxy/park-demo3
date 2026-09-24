@@ -1,6 +1,5 @@
 package com.park.demo3.service;
 
-import com.park.demo3.entity.Meter;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -14,8 +13,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class BillNoticePremiseTest {
 
-    private static Meter meter(String roomNo, String name, String spot, String subName) {
-        Meter m = new Meter();
+    private static MeterAt meter(String roomNo, String name, String spot, String subName) {
+        MeterAt m = new MeterAt();
         m.setRoomNo(roomNo); m.setName(name); m.setSpot(spot); m.setSubName(subName);
         return m;
     }

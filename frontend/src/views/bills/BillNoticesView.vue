@@ -19,7 +19,7 @@ import {
   billNoticesApi, type BillNoteOverrideDTO, type BillNoticeDTO, type BillNoticeDetailDTO, type BillNoticeLineDTO,
 } from '@/api/billNotices'
 import { paramsApi, type ParamStatusDTO } from '@/api/params'
-import { staleText } from '@/utils/paramCenterLogic'
+import { staleText, staleTitle, staleWho } from '@/utils/paramCenterLogic'
 import { contractApi } from '@/api/contract'
 import { PROPERTY_TYPE_LABEL, type ContractDTO, type PropertyType } from '@/types/contract'
 import { buildingApi } from '@/api/building'
@@ -175,12 +175,13 @@ function gotoParams() {
 const alertOpen = ref(false)
 // 时间格式同 staleText 的 MM-DD HH:mm('YYYY-MM-DDTHH:mm:ss' → 'MM-DD HH:mm')
 const lastChangeText = computed(() => (status.value?.lastChangeAt ?? '').slice(5, 16).replace('T', ' '))
+// 组名 / 主语跟来源走(参数 / 抄表,METER-TIMELINE-SPEC §5),三屏同一组函数
 const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
   key: 'stale',
-  title: '本屏为旧快照',
-  desc: '计费参数在本月催缴单生成之后改过 —— 单上金额仍是改参前派生的。'
+  title: staleTitle(status.value),
+  desc: `${staleWho(status.value)}在本月催缴单生成之后又改过 —— 单上的金额还是改之前算的。`
     + '去计费参数页「重算本月」重出一遍(池核算 → 楼栋损耗 → 催缴单一起走),已确认 / 已导出的户会自动跳过、金额照旧。',
-  items: lastChangeText.value ? [{ text: `参数最后更新 ${lastChangeText.value}` }] : [],
+  items: lastChangeText.value ? [{ text: `最近一次改动 ${lastChangeText.value}` }] : [],
   action: {
     label: '去计费参数页重算',
     icon: 'refresh-cw',
@@ -431,6 +432,32 @@ async function unconfirmTenant(tid: number) {
     flashOk(`已退回 ${res.reverted} 单${res.skipped ? `,跳过 ${res.skipped} 单(已导出/已作废)` : ''}`)
     await loadMonth()
   } catch (e) { alert(errMsg(e, '取消确认失败')) } finally { confirming.value = false }
+}
+
+// 作废并重出(METER-TIMELINE-SPEC §5):已导出户的单导出后发现错了(比如档案现归别户),
+// 取消确认退不回来,作废是唯一出口。作废后重新生成本月,这户按当前档案与读数重出。
+// 只做单户(同取消确认:纠一户的错,不是批量工序);理由必填,后端逐张落审计。
+async function voidTenant(tid: number) {
+  if (!canIssue.value || confirming.value) return
+  const live = (noticesByTenant.value.get(tid) ?? []).filter(n => n.status !== 'void')
+  if (!live.length) return
+  const name = filtered.value.find(r => r.tenantId === tid)?.tenantName ?? '#' + tid
+  const reason = prompt(`作废「${name}」${ym.value} 的 ${live.length} 张催缴单?
+作废后重新生成本月,这户按当前的档案与读数重出;已导出的文件不会跟着变。
+写一句理由(会留痕):`)
+  if (reason == null) return
+  if (!reason.trim()) { alert('理由必填'); return }
+  confirming.value = true
+  let done = 0
+  try {
+    for (const n of live) { await billNoticesApi.void(n.id, reason.trim()); done++ }
+    flashOk(`已作废 ${done} 张单;重新生成本月后这户重出`)
+  } catch (e) {
+    alert(`${done ? `已作废 ${done} 张,其余没作废:` : ''}${errMsg(e, '作废失败')}`)
+  } finally {
+    confirming.value = false
+    await loadMonth()                                    // 部分成功也要把已作废的状态拉回来
+  }
 }
 
 // 该户导出所需的一整包(明细 + 备注覆盖 + 场地);批量与单户共用,免两处拼装走样
@@ -724,6 +751,13 @@ const dormElecRows = computed(() => dorm.value.elec.rooms.map(r => ({ r, c: dorm
 const dormWaterRows = computed(() => dorm.value.water.rooms.map(r => ({ r, c: dormPriceCells(r.main, null) })))
 const dormElecExtras = computed(() => dorm.value.elec.extras.map(l => ({ l, q: billQtyCell(l) })))
 const dormWaterExtras = computed(() => dorm.value.water.extras.map(l => ({ l, q: billQtyCell(l) })))
+// 表行与当月档案比不上(METER-TIMELINE-SPEC §5,后端 detail 实时比):标「档案现归 X」,橙点照收款缺口那颗。
+// name 空串 = 档案这个月是空置;非空但没认出户时 name 是册上企业名称原文,照样写出来
+function archText(l: BillNoticeLineDTO | null | undefined): string | null {
+  const n = l?.archiveTenantName
+  if (n == null) return null
+  return n === '' ? '档案本月为空置' : `档案现归 ${n}`
+}
 // 路灯/绿化水公摊格悬浮:面积×分摊单价=金额(与主表同一套判定,该格只有金额没法心算)
 function shareTitle(l: BillNoticeLineDTO | null): string | undefined {
   if (!l) return undefined
@@ -1240,6 +1274,7 @@ function onMore(key: string) {
                           <button class="bn-nop" title="取消" :disabled="noteSaving" @click="noteEditKey = null"><component :is="iconFor('x')" :size="14" /></button>
                         </template>
                         <template v-else>
+                          <span v-if="archText(r0.l)" class="bn-arch" :title="archText(r0.l)!">{{ archText(r0.l) }}</span>
                           <span class="bn-txt dim" :title="noteCell(r0.nk, r0.l.note).text || undefined">{{ noteCell(r0.nk, r0.l.note).text }}</span>
                           <span v-if="noteCell(r0.nk, r0.l.note).overridden" class="bn-ndot" :class="{ act: canRun }" :title="noteDotTitle(r0.l.note)" @click="restoreNote(r0.nk, r0.l.note)"></span>
                           <button v-if="canRun" class="bn-npen" title="编辑备注" @click="startNoteEdit(r0.nk, noteCell(r0.nk, r0.l.note).text)"><component :is="iconFor('pencil')" :size="12" /></button>
@@ -1336,7 +1371,10 @@ function onMore(key: string) {
                 <tbody>
                   <tr v-for="({ r: r1, c }, i) in dormElecRows" :key="i">
                     <td><span class="bn-nv dim">{{ i + 1 }}</span></td>
-                    <td class="l"><span class="bn-txt" :title="r1.room">{{ r1.room }}{{ r1.main.seg ? '·' + segLabel(r1.main.seg) : '' }}</span></td>
+                    <td class="l"><div class="bn-notec">
+                      <span class="bn-txt" :title="r1.room">{{ r1.room }}{{ r1.main.seg ? '·' + segLabel(r1.main.seg) : '' }}</span>
+                      <span v-if="archText(r1.main)" class="bn-arch" :title="archText(r1.main)!">{{ archText(r1.main) }}</span>
+                    </div></td>
                     <td><span class="bn-nv" :class="{ empty: r1.area == null }">{{ fmt(r1.area) }}</span></td>
                     <td><span class="bn-nv" :class="{ empty: r1.main.prevRead == null }">{{ fmt(r1.main.prevRead) }}</span></td>
                     <td><span class="bn-nv" :class="{ empty: r1.main.currRead == null }">{{ fmt(r1.main.currRead) }}</span></td>
@@ -1395,7 +1433,10 @@ function onMore(key: string) {
                 <tbody>
                   <tr v-for="({ r: r1, c }, i) in dormWaterRows" :key="i">
                     <td><span class="bn-nv dim">{{ i + 1 }}</span></td>
-                    <td class="l"><span class="bn-txt" :title="r1.room">{{ r1.room }}</span></td>
+                    <td class="l"><div class="bn-notec">
+                      <span class="bn-txt" :title="r1.room">{{ r1.room }}</span>
+                      <span v-if="archText(r1.main)" class="bn-arch" :title="archText(r1.main)!">{{ archText(r1.main) }}</span>
+                    </div></td>
                     <td><span class="bn-nv" :class="{ empty: r1.main.prevRead == null }">{{ fmt(r1.main.prevRead) }}</span></td>
                     <td><span class="bn-nv" :class="{ empty: r1.main.currRead == null }">{{ fmt(r1.main.currRead) }}</span></td>
                     <td><span class="bn-nv" :class="{ empty: r1.main.qty == null }">{{ fmt(r1.main.qty) }}</span></td>
@@ -1460,9 +1501,15 @@ function onMore(key: string) {
             取消确认
           </Button>
         </template>
-        <span v-else-if="dlgRow && statusOf(dlgRow.tenantId) === 'exported'" class="bn-ftnote">
-          已导出 · 重新生成会跳过这户
-        </span>
+        <template v-else-if="dlgRow && statusOf(dlgRow.tenantId) === 'exported'">
+          <span class="bn-ftnote">已导出 · 重新生成会跳过这户</span>
+          <!-- 作废并重出(METER-TIMELINE-SPEC §5):已导出的单退不回待核对,错了只能作废后重新生成。理由必填、留痕 -->
+          <Button v-if="canIssue" variant="outline" size="sm" :disabled="confirming"
+                  @click="voidTenant(dlgRow.tenantId)">
+            <template #leading><component :is="iconFor('x-circle')" :size="14" /></template>
+            作废
+          </Button>
+        </template>
 
         <!-- 单户导出:与「导出通知单」窗口同一套版式(上表租金/下表水电),账户取该公司默认账户 -->
         <Button variant="outline" size="sm" :disabled="dlgLoading || cardBusy || !dlgRow"
@@ -1713,6 +1760,9 @@ tbody tr:hover .bn-cfm { visibility: visible; }
 /* ── 备注人工覆盖(V92):hover 出铅笔;小圆点=有覆盖(悬浮引擎原文,admin 点击恢复) ── */
 .bn-notec { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .bn-notec .bn-txt { flex: 1 1 auto; min-width: 0; }
+/* 档案现归 X(METER-TIMELINE-SPEC §5):这块表本月档案挂的不是本单这户。点同收款缺口 .bn-gapdot,字写明现归谁 */
+.bn-arch { flex: 0 1 auto; min-width: 0; font-size: 12px; color: var(--warn-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bn-arch::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: var(--radius-full); background: var(--hue-orange); vertical-align: 1px; }
 .bn-ndot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--hue-blue); cursor: help; }
 .bn-ndot.act { cursor: pointer; }
 /* 铅笔入口:hover 该行才显现(admin);占位不塌行 */

@@ -192,6 +192,7 @@ function handleFile(file: File | undefined) {
 
 function doPaste() {
   if (!paste.value.trim()) { err.value = '请先粘贴数据。'; return }
+  fileName.value = ''   // 先选过文件再改粘贴:别让粘贴的数据挂着那个文件名进档案变更记录
   mapMatrix(parsePaste(paste.value))
 }
 

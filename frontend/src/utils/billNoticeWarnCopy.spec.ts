@@ -51,6 +51,7 @@ const hasCJK = (s: string) => /[一-龥]/.test(s)
 const PROBE: Record<WarnCode, [string, string]> = {
   W_METER_NO_CONTRACT: ['798', '六楼 4-636 水表①'],
   W_METER_BIND_STALE: ['193', '旭化成电表3'],
+  W_METER_BILLED_ELSEWHERE: ['2201', '次生代620电'],
   W_ROOM_MISMATCH: ['544', ''],
   W_CONTRACT_NO_DATES: ['S10-0145#1', ''],
   W_TERM_NO_PARAMS: ['3312', 'S10-0145#1 · 厂房租金'],
@@ -62,8 +63,8 @@ const PROBE: Record<WarnCode, [string, string]> = {
 
 describe('告警文案门禁', () => {
   it('元断言:尺子本身没坏(扫描面下限)', () => {
-    expect(WARN_CODES.length).toBe(9)
-    expect(backendCodes().length).toBeGreaterThanOrEqual(9)
+    expect(WARN_CODES.length).toBe(10)
+    expect(backendCodes().length).toBeGreaterThanOrEqual(10)
     expect(PRICE_KEYS.length).toBe(7)          // 闭集空了的话 G6 会退化成空循环、永远绿
     expect(PACKAGE_FEE_KEYS.length).toBe(3)
     // 尺子自身可信:FORBIDDEN 抓得住下划线,ASCII_RUN 抓得住英文词
@@ -153,5 +154,16 @@ describe('告警文案门禁', () => {
       expect(ASCII_RUN.test(out), `包干条目印出了英文:${out}`).toBe(false)
       expect(hasCJK(out), `包干条目里没有中文:${out}`).toBe(true)
     }
+  })
+})
+
+// METER-TIMELINE-SPEC §3.6 之后 override_stale 有两种成因:指错了期、钉的是别户的合同(后端不采用,单上不挂合同)。
+// 只写前一种的话,后一种的户看到的是「挂的是一份本月不作数的合同」—— 单上其实没挂合同,钉的那份也可能正在租期内
+describe('W_METER_BIND_STALE 两种成因都说', () => {
+  it('desc 写出「不在租期」与「不是这一段租户的合同」;块头不再说「没生效」', () => {
+    const c = WARN_COPY.W_METER_BIND_STALE
+    expect(c.desc).toContain('不在它的租期内')
+    expect(c.desc).toContain('不是这一段租户的合同')
+    expect(c.title).not.toContain('没生效')
   })
 })

@@ -528,7 +528,7 @@ class ReviewGuardCoverageTest {
      */
     private static final java.util.Set<String> NO_MONTH_COLUMN = java.util.Set.of(
         "ContractService#create", "ContractService#update", "ContractService#delete",
-        "ContractService#renew", "ContractService#terminate",
+        "ContractService#renew",
         "ContractService#importFull", "ContractService#importBillingLines",
         "BuildingService#create", "BuildingService#update", "BuildingService#delete",
         "BuildingService#createUnit", "BuildingService#updateUnit", "BuildingService#deleteUnit",
