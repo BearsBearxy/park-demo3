@@ -1009,6 +1009,8 @@ public class MeterService {
             all.add(MeterAt.of(m, latest.assign(m.getId()), latest.status(m.getId()), MeterTimeline.LATEST));
         }
         Index idx = new Index(all, statusRows);
+        idx.bldNames = buildings.selectList(new QueryWrapper<com.park.demo3.entity.Building>().select("id", "name")).stream()
+                .collect(Collectors.toMap(com.park.demo3.entity.Building::getId, com.park.demo3.entity.Building::getName, (a, b) -> a));
         // 本批档案写入共用一个批次号(撤销导入按它逆序还原,SPEC §3.5);文件名进 meter_archive_log.file_name(列宽 255)
         String batchId = java.util.UUID.randomUUID().toString();
         String fileName = blankToNull(req.fileName());
@@ -1035,8 +1037,19 @@ public class MeterService {
         List<MeterImportRequest.Row> rows = req.rows();
         // G10 判同码在册看的是同批别的表已经写到哪:编码栏「已拆」的行先走(换表的旧表先拆掉,新表那一行补在册才不被误拒),
         // 与行序无关。停用照算在册,不提前。报错、提示、认表清单末尾按行号排回去。
+        // 其次有码行先走(编码优先占位):真表档案里还没有编码时,有码那一行先认上、把编码写回,同址无码的临电行随后才让得开它
         List<Integer> order = java.util.stream.IntStream.range(0, rows.size()).boxed()
-            .sorted(java.util.Comparator.comparing((Integer k) -> !removedMark(rows.get(k)))).toList();
+            .sorted(java.util.Comparator.comparing((Integer k) -> !removedMark(rows.get(k)))
+                .thenComparing(k -> rowCode(rows.get(k)) == null)).toList();
+        // 编码优先占位(2026-09-25 用户拍板):按编码认得上的行先占住「那块表 · 那个月」,别的行按位置 / 标识认表时让开它。
+        // 二期原册:无码的「谢福兵临电」在前、按位置认到了有码的「谢福兵电」,真表那一行反被 G6 拒掉,真读数丢了。
+        // 期区对不上的不占(那一行是 G5 行级错误)
+        Map<String, Integer> codeClaim = new java.util.HashMap<>();   // 表id|月 → 按编码认到它的第一行
+        for (int k = 0; k < rows.size(); k++) {
+            Match c = idx.byCodeOf(rows.get(k));
+            if (c != null && c.meter() != null && c.meter().getZone().equals(rows.get(k).zone()))
+                codeClaim.putIfAbsent(c.meter().getId() + "|" + rows.get(k).ym(), k);
+        }
         for (int i : order) {
             MeterImportRequest.Row row = rows.get(i);
             // 标识列可缺(用户新模板没有):合成 区域-位置-表名 → 编码 作标签(§3.1)
@@ -1056,7 +1069,8 @@ public class MeterService {
             }
             String ym = row.ym();
             // G8:按位置 / 标识不认 M 月已拆的表(同址来的是换上去的新表);按编码照认,下面出提示
-            Match hit = idx.resolve(row, name, x -> "removed".equals(statusOf(statusRows, x.getId(), ym)));
+            Match hit = idx.resolve(row, name, x -> "removed".equals(statusOf(statusRows, x.getId(), ym))
+                || yields(rows, codeClaim.get(x.getId() + "|" + ym), i, x));
             if (hit.ambiguous != null) {   // 歧义不猜:猜错=把 A 表读数写进 B 表,不可逆无痕(§3.4)
                 errors.add(new ImportError(i, name, hit.ambiguous)); continue;
             }
@@ -1109,6 +1123,10 @@ public class MeterService {
                     .filter(o -> statusOf(statusRows, o.getId(), ym) != null && !"removed".equals(statusOf(statusRows, o.getId(), ym)))
                     .toList();
                 if (!olds.isEmpty()) swaps.add(new Swap(i, name, m.getName(), olds, ym));
+                if (hit.passed != null) notices.add(new ImportError(i, name, "本行没有编码,按位置认到的「"
+                    + hit.passed.getName() + "」有编码 " + hit.passed.getCode() + "、名字也不同,没有认它,已按新表建了「"
+                    + m.getName() + "」(读数记在它名下)。若两块其实是同一块表:在册子这一行补上编码 " + hit.passed.getCode()
+                    + " 重导,再到抄表屏删掉「" + m.getName() + "」的读数和这块表"));
                 idx.add(m);
                 MeterAt dup = dupeOf(m, row, readOfYm, meterById);
                 if (dup != null) notices.add(new ImportError(i, name,
@@ -1187,6 +1205,7 @@ public class MeterService {
                 notices.add(new ImportError(i, name, "表「" + m.getName() + "」自 " + sAt.getFromYm() + " 起"
                     + ("removed".equals(sAt.getStatus()) ? "已拆" : "停用") + ",本行有读数:读数已写入,但这个月不计费"));
             seen.putIfAbsent(m.getId() + "|" + ym, i);
+            if (rowCode(row) != null) codeClaim.putIfAbsent(m.getId() + "|" + ym, i);   // 档案里原来没码、本行头一回带码的也占
             allowed.add(ym);
             if ("removed".equals(g4) && read) allowed.add(next(ym));
             matches.add(new MeterImportResultDTO.Match(i, name, hit.by, m.getId()));
@@ -1365,7 +1384,10 @@ public class MeterService {
     // ── 身份匹配管道(METER-IMPORT-SPEC §3) ──
     // 逐层下探(不是短路):某层 0 候选就进下一层——现存 912 块无码表在新模板里第一次拿到编码,
     // 若 L1 落空即新建,这 912 块会全部重复建档。命中后编码写回档案 → 库逐月自愈向 L1 收敛。
-    private record Match(MeterAt meter, String by, String ambiguous) {}
+    // passed:按位置认到、因无码行不认有码异名的表而没认的那块(新建时出提示用)
+    private record Match(MeterAt meter, String by, String ambiguous, MeterAt passed) {
+        Match(MeterAt meter, String by, String ambiguous) { this(meter, by, ambiguous, null); }
+    }
     /** G9 候选:第 row 行新建了 fresh,同址还有在册的 olds(批末剔掉本批同月也出现的)。 */
     private record Swap(int row, String label, String fresh, List<MeterAt> olds, String ym) {}
 
@@ -1373,6 +1395,7 @@ public class MeterService {
         final Map<String, List<MeterAt>> byCode = new java.util.HashMap<>();
         final Map<String, List<MeterAt>> byAddr = new java.util.HashMap<>();
         final Map<String, MeterAt> byName = new java.util.HashMap<>();
+        Map<Integer, String> bldNames = Map.of();   // 只给归属护栏提示写楼栋名用
         final Map<Integer, List<MeterStatus>> status;   // importRows 的 statusRows(本批写的随写随进):同码表按月挑
 
         Index(List<MeterAt> all, Map<Integer, List<MeterStatus>> status) { this.status = status; all.forEach(this::add); }
@@ -1434,20 +1457,39 @@ public class MeterService {
             return s;
         }
 
-        // gone:导入月已拆的表(SPEC §3.2 G8)—— 按位置 / 标识不认它们;按编码照认(编码是这块物理表自己的)
+        /** 只按编码认(L1);编码为空 / 没认到 = null。 */
+        Match byCodeOf(MeterImportRequest.Row row) {
+            String code = rowCode(row);
+            return code == null ? null : pickByCode(byCode.getOrDefault(codeKey(row.kind(), code), List.of()), row.ym());
+        }
+
+        // gone:导入月已拆的表(SPEC §3.2 G8)、本批别的行同月按编码认走的表 —— 按位置 / 标识不认它们;按编码照认(编码是这块物理表自己的)
         Match resolve(MeterImportRequest.Row row, String name, java.util.function.Predicate<MeterAt> gone) {
             String code = rowCode(row);
-            if (code != null) {
-                Match m = pickByCode(byCode.getOrDefault(codeKey(row.kind(), code), List.of()), row.ym());
-                if (m != null) return m;
-            }
+            Match c = byCodeOf(row);
+            if (c != null) return c;
+            MeterAt passed = null;
             if (blankToNull(row.area()) != null) {
                 Match m = pick(sameAddr(row).stream().filter(x -> !gone.test(x)).toList(), code, name, row);
-                if (m != null) return m;
+                // 无码行不认有码且异名的表(2026-09-25 用户拍板):二期「谢福兵临电」无码,同址的「谢福兵电」有码,
+                // 按位置认上去就把临电读数写进了真表。不认它,往下走标识(同名的仍认得上),再没有就新建
+                if (m != null && m.meter() != null && alien(m.meter(), row)) passed = m.meter();
+                else if (m != null) return m;
             }
             MeterAt byN = byName.get(row.kind() + "|" + row.zone() + "|" + name);
-            if (byN != null && !gone.test(byN) && !codeConflict(byN, code)) return new Match(byN, "name", null);
-            return new Match(null, "new", null);
+            // 没认同址那块时,按标识名只认没有区域或与本行同址的表:别处的同名表认上去,读数串过去、区域也被改掉
+            if (byN != null && !gone.test(byN) && !codeConflict(byN, code)
+                && (passed == null || blankToNull(byN.getArea()) == null || sameAddr(row).contains(byN)))
+                return new Match(byN, "name", null);
+            return new Match(null, "new", null, passed);
+        }
+
+        // 行没有编码、有自己的标识名(不是缺标识列时拼出来的)、不是「已拆」行,候选有编码,
+        // 候选名(去掉新建撞名加的 #n)与这一行的标识名、这一行拼出来的名字都不同
+        private static boolean alien(MeterAt m, MeterImportRequest.Row row) {
+            String own = ownName(row);
+            return rowCode(row) == null && own != null && !removedMark(row) && blankToNull(m.getCode()) != null
+                && !sameName(own, m) && !sameName(fallbackName(row), m);
         }
 
         /** 与这一行同址(kind + zone + 区域 + 位置 + 表名)的表;行没有区域 = 空。 */
@@ -1480,6 +1522,8 @@ public class MeterService {
             if (ok.size() == 1) return new Match(ok.get(0), "addr", null);
             if (name != null) {
                 List<MeterAt> narrowed = ok.stream().filter(m -> name.equals(m.getName())).toList();
+                // 精确没中再去掉表名末尾的 #n 比一次:新建时撞名加了 #2 的表,重导同一本册子要认得回来
+                if (narrowed.isEmpty()) narrowed = ok.stream().filter(m -> name.equals(bare(m.getName()))).toList();
                 if (narrowed.size() == 1) return new Match(narrowed.get(0), "addr", null);
             }
             // §J1 原册里区分「同区域+同楼层+同表号」那几行的恰恰是企业名称(D 列),故在抛歧义之前
@@ -1511,6 +1555,29 @@ public class MeterService {
             return code != null && blankToNull(m.getCode()) != null && !code.trim().equals(m.getCode().trim());
         }
     }
+
+    // 编码优先占位:x 这个月已被本批第 c 行按编码认走 → 本行按位置 / 标识让开它。
+    // 读数相同、或本行自己的标识名就是这块表 → 不让,照旧认上交给 G6(读数相同放行,不同报错):
+    // 否则同一块表在两个 sheet 各出现一次(一次带码、一次无码),无码那次会悄悄新建「X#2」,一份读数进两块表
+    private static boolean yields(List<MeterImportRequest.Row> rows, Integer c, int i, MeterAt x) {
+        if (c == null || c == i) return false;
+        String own = ownName(rows.get(i));
+        return !sameReading(rows.get(c), rows.get(i)) && (own == null || !sameName(own, x));
+    }
+
+    // 行自己的标识名;缺标识列时拼出来的(= fallbackName)不算
+    private static String ownName(MeterImportRequest.Row row) {
+        String s = blankToNull(row.name());
+        return s == null || s.equals(fallbackName(row)) ? null : s;
+    }
+
+    // 名字相同:规范化后相等,表名末尾新建撞名时加的 #n 不算
+    private static boolean sameName(String name, MeterAt m) {
+        return MeterTimeline.canon(name).equals(MeterTimeline.canon(bare(m.getName())));
+    }
+
+    // 去掉 freeName 加的「#n」
+    private static String bare(String name) { return name.replaceFirst("#\\d+$", ""); }
 
     // 无标识列时的标签(§3.1):区域-位置-表名 → 编码
     private static String fallbackName(MeterImportRequest.Row row) {
@@ -1621,8 +1688,10 @@ public class MeterService {
                 m.setTenantId(null);
             }
             // 复合名共用表提示(2026-08-04 用户拍板:嘉荣、科文=101、102 两户共用一表,财务模板每月复现,
-            // 须持续提示修改;账单派生前不单挂任何一户,拆分口径在两户档案 remark)
-            if (impName.matches(".*[、/].*") && m.getTenantId() == null)
+            // 须持续提示修改;账单派生前不单挂任何一户,拆分口径在两户档案 remark)。
+            // 只报租户表(2026-09-25 用户:「园区生活水泵、消防控制室」「保安亭、路灯等」是公用表,报了是误报);
+            // 归属用这一行带来的 ownership(前端 classifyOwnership 判的)
+            if (impName.matches(".*[、/].*") && m.getTenantId() == null && "tenant".equals(blankToNull(row.ownership())))
                 warns.add("表「" + m.getName() + "」企业名称「" + impName
                     + "」为复合名且未能唯一挂档:若系两户共用一表(如 嘉荣、科文=101、102),请在模板按户拆分,"
                     + "或按租户档案备注的拆分口径人工处理;账单派生前不会自动分摊");
@@ -1642,8 +1711,9 @@ public class MeterService {
         if (m.getOwnerManual() != null && m.getOwnerManual() == 1) {
             if ((impOwn != null && !impOwn.equals(m.getOwnership()))
                     || (impBld != null && !impBld.equals(m.getBuildingId())))
-                warns.add("表「" + m.getName() + "」导入判定归属=" + nd(impOwn) + "/楼栋=" + nd(impBld)
-                    + ",与人工设定的 " + nd(m.getOwnership()) + "/" + nd(m.getBuildingId()) + " 不同,已保留人工值");
+                warns.add("表「" + m.getName() + "」按册子推导是「" + ownLabel(impOwn, m.getKind()) + " · " + bldLabel(idx.bldNames, impBld)
+                    + "」,与人工设定的「" + ownLabel(m.getOwnership(), m.getKind()) + " · " + bldLabel(idx.bldNames, m.getBuildingId())
+                    + "」不同,已保留人工设定");
         } else {
             // 没人工锁住归属的表,原来这一支是**静默换楼**的 —— 导入结果里一个字没有。
             // 2026-09-23 南盛物流案:一份二期文件里「广聚运通 二车间一楼102室」那行的编码栏
@@ -1675,6 +1745,19 @@ public class MeterService {
 
     // warn 文案里的空值占位(未给/未挂)
     private static String nd(Object v) { return v == null ? "(未给)" : String.valueOf(v); }
+    // 归属展示名与前端 meterSplit.OWNERSHIP_LABEL / ownershipLabel 同一张表(infra 按表类分流),提示里不露英文代号
+    private static final Map<String, String> OWN_LABEL = Map.of("tenant", "租户", "share", "园区公摊", "ops", "园区经营",
+            "infra", "配电总表", "park", "园区自担", "register", "计度寄存器");
+    private static String ownLabel(String o, String kind) {
+        if (o == null) return "(未给)";
+        if ("infra".equals(o) && "water".equals(kind)) return "供水总表";
+        return OWN_LABEL.getOrDefault(o, o);
+    }
+    private static String bldLabel(Map<Integer, String> names, Integer id) {
+        if (id == null) return "(未给楼栋)";
+        String n = names.get(id);
+        return n == null ? "楼栋#" + id : n;
+    }
 
     private static void fill(MeterReading r, MeterReadingReq req) {
         r.setPrevTotal(req.prevTotal()); r.setCurrTotal(req.currTotal());
