@@ -113,6 +113,12 @@ public class AllocController {
     @Operation(summary = "删除结果行(仅 manual 行;gen 行 409)") @DeleteMapping("/result/{id}")
     public void deleteResult(@PathVariable Integer id) { svc.deleteResult(id); }
 
+    // 备注(V127__loss_note.sql)=楼栋损耗屏唯一的写入口;其余列全是派生值,算法仍在计费参数页改。
+    // 落独立表 alloc_loss_note,generate 不碰它 —— 重算后备注还在。权限走 /api/alloc/** 那条
+    // BILLING_RUN_EDIT(与 generate 同档;PermissionRegistry 里 /rules 与 /cfg 是确切前缀,不会误吃本路径)。
+    @Operation(summary = "写楼栋损耗备注(按 ym+组头楼栋 upsert;空串=删行恢复无备注)") @PutMapping("/loss/note")
+    public void saveLossNote(@Valid @RequestBody AllocLossNoteReq req) { svc.saveLossNote(req); }
+
     @Operation(summary = "损耗与对账(读时派生:损耗率表+已/未分摊+elec-cost 互认提示)") @GetMapping("/recon")
     public AllocReconDTO recon(@RequestParam @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String ym) {
         return svc.recon(ym);

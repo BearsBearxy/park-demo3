@@ -48,6 +48,7 @@ export interface AccountReq {
 
 export interface ConfirmResultDTO { confirmed: number; skipped: number }
 export interface MarkExportedResultDTO { marked: number }
+export interface UnconfirmResultDTO { reverted: number; skipped: number }
 
 export const companyBookApi = {
   list: (): Promise<CompanyFullDTO[]> => http.get('/companies'),
@@ -64,6 +65,10 @@ export const billDeliveryApi = {
   // 户级批量确认:该户本月全部 draft 单转 confirmed;已 confirmed/exported 的计入 skipped
   confirm: (ym: string, tenantIds: number[]): Promise<ConfirmResultDTO> =>
     http.post('/bill-notices/confirm', { ym, tenantIds }),
+  // 取消确认(confirmed→draft):理由必填并落审计日志。只收 confirmed —— 已导出的退不回来,
+  // Excel 已经发出去了(billing-issue:edit 的说明原话「对外不可逆动作」)。
+  unconfirm: (ym: string, tenantIds: number[], reason: string): Promise<UnconfirmResultDTO> =>
+    http.post('/bill-notices/unconfirm', { ym, tenantIds, reason }),
   // 导出成功后回写 exported_at(前端导出完成才调,失败不调)
   markExported: (ym: string, tenantIds: number[]): Promise<MarkExportedResultDTO> =>
     http.post('/bill-notices/mark-exported', { ym, tenantIds }),

@@ -26,7 +26,7 @@ import type { BuildingDTO } from '@/types/building'
 import { tenantApi } from '@/api/tenant'
 import type { TenantDTO } from '@/types/tenant'
 import {
-  baseRefLabel, groupRows, rangeBadge, sourceLabel, tenantExceptionDelReqs, tenantExceptionReqs,
+  baseRefLabel, groupRows, rangeBadge, sourceLabel, staleSources, staleWho, tenantExceptionDelReqs, tenantExceptionReqs,
   type ParamRow, type RuleGroup,
 } from '@/utils/paramCenterLogic'
 import { LOSS_BASE_FORM_B_TEMPLATE, PARAM_DEFS, paramDef, writePlan, type ParamMode } from '@/utils/paramRegistry'
@@ -155,9 +155,16 @@ const tenants = ref<TenantDTO[]>([])
 const rules = ref<AllocRuleDTO[]>([])
 function loadMasters() {
   buildingApi.list().then(d => { buildings.value = d }).catch(() => {})
-  metersApi.list('elec').then(d => { meters.value = d }).catch(() => {})
+  loadMeters()
   tenantApi.list().then(d => { tenants.value = d }).catch(() => {})
   allocApi.rules().then(d => { rules.value = d }).catch(() => {})
+}
+// 表的楼栋 / 租户按月分段(METER-TIMELINE-SPEC §2):站在本页账期取,切月重拉;旧月回包晚到就丢
+let meterSeq = 0
+function loadMeters() {
+  const my = ++meterSeq
+  metersApi.list('elec', undefined, ym.value || undefined)
+    .then(d => { if (my === meterSeq) meters.value = d }).catch(() => {})
 }
 // 其它屏跳来的深链:?p=2024-02(或旧 ?ym=)&zone=p1&section=rule&rule=23 —— 期归 useChainDeepPeriod,这里消费其余四个键;分析层来的 adopt=YYYY-12 只认领不覆盖
 // edit=1 直接进编辑态(三屏 stale 条的 [去重算]:重算是写操作只在编辑态出,别让用户到了这儿再找「编辑模式」——同 PoolLedgerView generate=1)
@@ -199,6 +206,7 @@ onMounted(() => {
   if (period.picked) load()
 })
 watch([ym, zone], () => { if (period.picked) load() })
+watch(ym, loadMeters)
 
 // ── 四区分组 + 未设置折叠(①②:无命中的**对象级**行(栋/池/表)默认藏起来,按区展开;全园/期级月核对项无值常显 + 「缺」——
 //    折叠是为压掉几百条栋级/池级空行,不该连状态条「缺 6 项」的电价一起藏;③ 无命中=默认语义,始终全列) ──
@@ -279,7 +287,7 @@ const statusText = computed(() => {
   const missing = s.priceTotal - s.priceOk
   const parts = [`本月电价 ${s.priceOk}/${s.priceTotal}${missing > 0 ? `（缺 ${missing} 项）` : ' ✓'}`]
   if (!s.poolSnapshotAt) parts.push('本月尚未生成池核算')
-  else if (!s.stale) parts.push(`快照与参数一致 ✓ 生成于 ${hhmm(s.poolSnapshotAt)}`)
+  else if (!s.stale) parts.push(`改过的参数和抄表都已重算 ✓ 生成于 ${hhmm(s.poolSnapshotAt)}`)
   return parts.join(' · ')
 })
 
@@ -299,7 +307,11 @@ function bumpPending() {
   const s = status.value
   if (!s) return
   s.pendingChanges++
-  if (s.poolSnapshotAt || s.billBatchAt) s.stale = true
+  if (s.poolSnapshotAt || s.billBatchAt) {
+    s.stale = true
+    // 本地先把「参数」记进过期来源,抽屉里那条「改了 N 项参数」才出得来(下次拉 status 以后端为准)
+    if (s.staleSources && !s.staleSources.includes('param')) s.staleSources.push('param')
+  }
 }
 async function put(req: ParamPutReq): Promise<boolean> {
   // 写口自守:全屏参数写全走这一个漏斗,守这一处 = 六个调用方一次到位(照 BillNoticesView 口径)。
@@ -497,13 +509,21 @@ const alertGroups = computed<AlertGroup[]>(() => {
   const s = status.value
   if (!s) return []
   const gs: AlertGroup[] = []
+  // 过期来源分参数 / 抄表(METER-TIMELINE-SPEC §5):pendingChanges 只数参数,抄表只说改过、不数条数
+  // (抄表一次写会落一整段月份,按条数计没有意义 —— 后端也不给)
+  const srcs = staleSources(s)
+  const hint = s.lastChangeAt ? `最近改动 ${hhmm(s.lastChangeAt)}` : undefined
+  const srcItems = [
+    ...(srcs.includes('param') ? [{ text: `自上次重算起改了 ${s.pendingChanges} 项参数` }] : []),
+    ...(srcs.includes('meter') ? [{ text: '自上次重算起抄表数据（读数或表档案）有改动' }] : []),
+  ].map((it, i) => (i === 0 ? { ...it, hint } : it))
   if (s.stale) gs.push({
     key: 'stale',
     title: '本月快照过期',
-    desc: '计费参数改过，但池核算 / 楼栋损耗 / 催缴单还是改参之前生成的 —— 屏上那些金额不会自己跟着变，'
+    desc: `${staleWho(s)}改过，但池核算 / 楼栋损耗 / 催缴单还是改之前生成的 —— 屏上那些金额不会自己跟着变，`
       + '重算一次才对得上（已确认、已导出的户照旧跳过）。',
     items: [
-      { text: `自上次重算起改了 ${s.pendingChanges} 项参数`, hint: s.lastChangeAt ? `最近改动 ${hhmm(s.lastChangeAt)}` : undefined },
+      ...srcItems,
       ...(canRecalc.value ? [] : [{ text: '重算是写操作，先点右上「编辑模式」' }]),
     ],
     action: canRecalc.value ? { label: '重算本月', icon: 'refresh-cw', busy: busy.value, run: onRecalc } : undefined,
@@ -511,7 +531,7 @@ const alertGroups = computed<AlertGroup[]>(() => {
   if (otherMonths.value.length) gs.push({
     key: 'others',
     title: '其他月份受影响',
-    desc: '这些月的快照也早于最近一次参数改动。「自某月起长期」的参数改一次会波及其后所有月份，'
+    desc: '这些月的快照也早于最近一次参数或抄表改动。「自某月起长期」的参数、从某月起改的表档案，改一次都会波及其后的月份，'
       + '不重算的话那几个月的池核算 / 催缴单还是老金额。',
     items: otherMonths.value.map((m, i) => ({
       text: m,
@@ -694,11 +714,11 @@ const FIXED_RULES = [
       </div>
     </Card>
 
-    <!-- ③ 核算口径(按期 / 栋;人话句子) -->
+    <!-- ③ 计算方式(按期 / 栋;人话句子) -->
     <Card id="sec-rule" surface="white" :padding="0" class="pm-card">
       <div class="pm-cardhead">
         <div class="pm-cardtitles">
-          <span class="pm-cardtitle">③ 核算口径（按栋）</span>
+          <span class="pm-cardtitle">③ 计算方式（按栋）</span>
           <span class="pm-cardsub">损耗核算方式、总表取数、损耗核算归组、不计入合计的电表、供电局对账；无专属设置的按默认显示</span>
         </div>
       </div>
@@ -763,7 +783,7 @@ const FIXED_RULES = [
             </span>
           </div>
         </div>
-        <div v-if="!ruleGroups.zones.length && !ruleGroups.buildings.length && !ruleGroups.others.length && !gLine" class="pm-none">本期区无核算口径项</div>
+        <div v-if="!ruleGroups.zones.length && !ruleGroups.buildings.length && !ruleGroups.others.length && !gLine" class="pm-none">本期区没有要设的计算方式</div>
       </div>
     </Card>
 

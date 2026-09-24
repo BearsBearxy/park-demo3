@@ -42,6 +42,8 @@ class ReviewGuardChainIT extends AbstractMysqlIT {
         jdbc.update("DELETE FROM tenant_price_cfg WHERE acct_month IN (?,?)", YM, OTHER);
         jdbc.update("DELETE FROM param_change_log WHERE acct_month IN (?,?)", YM, OTHER);
         jdbc.update("DELETE FROM report_amount WHERE year=2031");
+        jdbc.update("DELETE FROM alloc_loss_note WHERE ym IN (?,?)", YM, OTHER);
+        jdbc.update("DELETE FROM alloc_loss_result WHERE ym IN (?,?)", YM, OTHER);
     }
 
     // ══ params:守的是 body 的 acctMonth,不是 URL 的 ym ══════════════════════
@@ -88,6 +90,37 @@ class ReviewGuardChainIT extends AbstractMysqlIT {
     void alloc_generate_isBlockedByAllocLossAlone() throws Exception {
         seedApproved("alloc-loss:" + YM, "alloc-loss");
         assertThat(code(post("/api/alloc/generate?ym=" + YM))).isEqualTo(423);
+    }
+
+    /**
+     * alloc-loss 审掉之后,楼栋损耗的备注也写不进去。
+     *
+     * 备注是这一屏唯一的写口,而它写的就是这个月损耗快照的一部分 —— 月审过/锁账后还能改字,
+     * 等于审核只挡住了数字、挡不住说明。只守 ALLOC_LOSS 不守 ALLOC:本写口只落 alloc_loss_note,
+     * 不碰 alloc_pool_result(与 generate 一次守两把键的分工不同)。
+     */
+    @Test
+    void allocLoss_note_is423() throws Exception {
+        // 两个月都先种一行损耗快照:备注只能挂在「该月真有损耗行」的组头上(saveLossNote 的 404),
+        // 不种的话下面那条反向对照会 404 而不是放行,证不出「这条路本身是通的」。
+        seedLossRow(YM);
+        seedLossRow(OTHER);
+        seedApproved("alloc-loss:" + YM, "alloc-loss");
+        assertThat(code(putJson("/api/alloc/loss/note",
+            "{\"ym\":\"" + YM + "\",\"headBuildingId\":13,\"note\":\"审过了还能改\"}"))).isEqualTo(423);
+        // 同一把锁,换个没审的月就该放行 —— 否则「挡住了」可能只是这条路径整条不通
+        assertThat(code(putJson("/api/alloc/loss/note",
+            "{\"ym\":\"" + OTHER + "\",\"headBuildingId\":13,\"note\":\"没审的月照写\"}"))).isEqualTo(0);
+        // 上面那条 423 必须是守卫给的,不是「该月没损耗行」给的 —— 同一个已审月
+        // 换一个根本没损耗行的楼栋,守卫仍然先手,还是 423 而不是 404。
+        assertThat(code(putJson("/api/alloc/loss/note",
+            "{\"ym\":\"" + YM + "\",\"headBuildingId\":20,\"note\":\"这栋没损耗行\"}"))).isEqualTo(423);
+    }
+
+    /** 损耗快照一行(只填非空列):备注写口要求组头在该月真有行。 */
+    private void seedLossRow(String ym) {
+        jdbc.update("INSERT INTO alloc_loss_result (ym, zone, head_building_id, variant, generated_at)"
+            + " VALUES (?,?,?,?,NOW())", ym, "p1", 13, "net");
     }
 
     // ══ bill-notices:交付轴照样过审核轴 ═══════════════════════════════════

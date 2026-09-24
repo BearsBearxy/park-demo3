@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onDeactivated } from 'vue'
 import { contractApi } from '@/api/contract'
-import type { ContractDTO, ContractDetailDTO, BillingLineDTO, PropertyType } from '@/types/contract'
+import type { ContractDTO, ContractDetailDTO, BillingLineDTO, PropertyType, ContractTerminatePreviewDTO } from '@/types/contract'
 import { POWER_TYPE_LABEL, lineMonthly, defaultBillMode, feeLabel, inferPropertyType, PROPERTY_TYPE_LABEL, BUILDING_RENT_KEYS } from '@/types/contract'
 import { fpMoney } from '@/utils/money'
 import FPSectionLabel from '@/components/fp/FPSectionLabel.vue'
@@ -11,6 +11,8 @@ import FPContractTimeline from './FPContractTimeline.vue'
 import FPContractChain from './FPContractChain.vue'
 import Avatar from '@/components/ds/Avatar.vue'
 import Button from '@/components/ds/Button.vue'
+import DatePicker from '@/components/ds/DatePicker.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
 import { iconFor } from '@/components/ds/icon'
 import { useAuthStore } from '@/stores/auth'
 
@@ -28,19 +30,56 @@ const detail = ref<ContractDetailDTO | null>(null)
 
 // ─── 操作:终止 / 删除(确认弹窗) ──────────────────────────
 const askTerminate = ref(false)
+// 解约日,默认今天。收进合同的到期日 —— 出账判「这个月算不算数」只看起止日期重叠,
+// 不收的话终止等于没发生(后面每个月照出满月租金)。时间轴那行「已终止 · X · 提前解约」印的也是它。
+const todayStr = () => new Date().toLocaleDateString('sv-SE')   // sv-SE = YYYY-MM-DD,按本机时区
+const termOn = ref(todayStr())
 const askDelete = ref(false)
 const busy = ref(false)
+// 两个确认框都 Teleport 到 body:页签切走(KeepAlive 停用)时子树不在了,框还会盖在别的屏上
+onDeactivated(() => { askTerminate.value = false; askDelete.value = false })
 
 const canTerminate = computed(() =>
   ['active', 'expiring', 'draft'].includes(props.contract?.status ?? ''))
 const canRenew = computed(() =>
   !['terminated', 'renewed'].includes(props.contract?.status ?? ''))
 
+// ── 终止框里的表(METER-TIMELINE-SPEC §3.6):这户在解约月挂着的表,勾上的自解约次月起空置 ──
+// 表清单是独立数据源、独立错误槽;错误只在成功那一支清。没拿到清单不放行确认 —— 不然勾选状态是空的,
+// 确认下去就等于「一块都不空置」,而用户以为已经处理过了。
+const preview = ref<ContractTerminatePreviewDTO | null>(null)
+const previewErr = ref('')
+const vacate = ref(new Set<number>())
+let pvSeq = 0
+async function loadPreview() {
+  const c = props.contract
+  if (!c) return
+  const my = ++pvSeq
+  preview.value = null
+  try {
+    const p = await contractApi.terminatePreview(c.id, termOn.value)
+    if (my !== pvSeq) return                            // 换了解约日 / 换了合同:旧回包作废
+    preview.value = p
+    vacate.value = new Set(p.meters.filter(m => m.checked).map(m => m.meterId))   // 房号对得上合同场地的默认勾
+    previewErr.value = ''
+  } catch (e) {
+    if (my === pvSeq) previewErr.value = (e as { message?: string })?.message || '服务异常'
+  }
+}
+watch([askTerminate, termOn], ([open]) => { if (open) void loadPreview() })
+function toggleVacate(id: number) {
+  const s = new Set(vacate.value)
+  if (s.has(id)) s.delete(id); else s.add(id)
+  vacate.value = s
+}
+const canConfirmTerminate = computed(() => !busy.value && !!preview.value && !previewErr.value)
+
 async function doTerminate() {
-  if (!props.contract || busy.value) return
+  if (!props.contract || !canConfirmTerminate.value) return
+  const ids = preview.value!.meters.map(m => m.meterId).filter(id => vacate.value.has(id))
   busy.value = true
   try {
-    const dto = await contractApi.terminate(props.contract.id)
+    const dto = await contractApi.terminate(props.contract.id, termOn.value, ids)
     askTerminate.value = false
     emit('terminated', dto)
   } catch (e) {
@@ -69,7 +108,9 @@ async function doDelete() {
 watch(() => props.contract, async (c) => {
   detail.value = null
   askTerminate.value = false
+  termOn.value = todayStr()   // 换合同要重置:上一户改过的解约日不该跟着带到下一户
   askDelete.value = false
+  pvSeq++; preview.value = null; previewErr.value = ''   // 上一户的表清单不许带到下一户的终止框里
   if (!c) return
   const d = await contractApi.detail(c.id)
   if (props.contract !== c) return   // 竞态守卫:快速换行时旧详情弃写(审计4)
@@ -337,9 +378,38 @@ const contactLine = computed(() =>
           <h3>终止合同</h3>
           <p>确认终止合同「{{ contract.contractNo }}」?其占用的单元将变为空置。</p>
         </div>
+        <div class="cd-dlg-b">
+          <label for="cd-term-on">解约日期</label>
+          <DatePicker field-id="cd-term-on" :model-value="termOn" aria-label="解约日期"
+                      @update:model-value="termOn = ($event as string) || todayStr()" />
+          <p class="cd-term-note">
+            到期日收到这一天,解约当月按天折;这天之后不再出租金、容量费,也不进公摊名册。
+            之前已生成的月份不变。
+          </p>
+          <p class="cd-term-note">解约当月水电按月抄表，整月仍算原租户。</p>
+
+          <!-- 这户在解约月挂着的表(SPEC §3.6):勾上的自解约次月起空置,不再挂这户;房号对得上合同场地的默认勾 -->
+          <div class="cd-vac">
+            <div class="cd-vac-h">
+              这户在解约月挂着的表<template v-if="preview && preview.meters.length"> · 勾上的自 {{ preview.vacateFrom }} 起空置</template>
+            </div>
+            <FPLoadError v-if="previewErr" @retry="loadPreview">
+              <span class="cd-vac-err">表清单没加载出来:{{ previewErr }} —— 加载出来之前不能终止。</span>
+            </FPLoadError>
+            <div v-else-if="!preview" class="cd-vac-empty">加载中…</div>
+            <div v-else-if="!preview.meters.length" class="cd-vac-empty">解约月没有挂在这户名下的表。</div>
+            <div v-else class="cd-vac-list">
+              <label v-for="m in preview.meters" :key="m.meterId" class="cd-vac-row">
+                <input type="checkbox" :checked="vacate.has(m.meterId)" @change="toggleVacate(m.meterId)" />
+                <span class="nm">{{ m.label }}</span>
+                <span v-if="m.roomNo" class="rm">{{ m.roomNo }}</span>
+              </label>
+            </div>
+          </div>
+        </div>
         <div class="cd-dlg-f">
           <Button variant="gray" size="sm" @click="askTerminate = false">取消</Button>
-          <Button variant="danger" size="sm" :disabled="busy" @click="doTerminate">
+          <Button variant="danger" size="sm" :disabled="!canConfirmTerminate" @click="doTerminate">
             <template #leading><component :is="iconFor('x-circle')" :size="14" /></template>
             确认终止
           </Button>
@@ -443,4 +513,18 @@ const contactLine = computed(() =>
 .cd-dlg-h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .cd-dlg-h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
 .cd-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:20px 22px 20px; }
+/* 终止确认里的解约日:日期在上、后果一句在下。这一句是这个弹窗唯一说清「下游会怎样」的地方 */
+.cd-dlg-b { padding:14px 22px 0; }
+.cd-dlg-b label { display:block; margin-bottom:6px; font-size:12.5px; color:var(--text-muted); }
+.cd-term-note { margin:10px 0 0; font-size:12px; line-height:1.55; color:var(--text-muted); }
+/* 解约月挂着的表:列表限高自滚(一户十几块表不把确认钮挤出屏),行内名字省略号,390 宽不横滚 */
+.cd-vac { margin-top:14px; }
+.cd-vac-h { margin-bottom:6px; font-size:12px; color:var(--text-secondary); }
+.cd-vac-empty { padding:8px 0; font-size:12px; color:var(--text-muted); }
+.cd-vac-err { flex:1 1 160px; min-width:0; overflow-wrap:anywhere; }
+.cd-vac-list { max-height:180px; overflow-y:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:4px; }
+.cd-vac-row { display:flex; align-items:center; gap:8px; min-width:0; padding:5px 6px; font-size:12px; cursor:pointer; border-radius:var(--radius-sm); }
+.cd-vac-row:hover { background:var(--bg-hover); }
+.cd-vac-row .nm { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-primary); }
+.cd-vac-row .rm { flex:0 0 auto; font-family:var(--font-mono); color:var(--text-muted); }
 </style>

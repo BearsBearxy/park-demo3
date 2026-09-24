@@ -4,11 +4,13 @@
 // 校验红显/保存请求构造/tfoot 页脚)。全部纯函数,useMeterWorkbench.spec.ts 锁定。
 // v4 useMeterFilters(搜索/待核/占位口径)与 meterBindQueue(桶映射/一键挂预估)的可复用逻辑并入本文件。
 import type {
-  MeterDTO, MeterReadingDTO, MeterReadingReq, MeterBindingRowDTO, BindBucket, BindStatus,
+  MeterDTO, MeterReadingDTO, MeterReadingReq, MeterBindingRowDTO, BindBucket, BindStatus, MeterRowSrc,
 } from '@/api/meters'
+import { EARLIEST } from '@/views/meters/meterTimeline'
 import { readingFlags, type MeterReadingFlags } from '@/utils/meterLogic'
 import { groupMeterBlocks, blockLoss, sideRank, roomRank, type BlockSums, type BlockLoss, type MeterLoc } from '@/utils/meterGroup'
 import { inSubSigma } from '@/utils/meterSplit'
+import { zoneLabel } from '@/utils/zoneLabel'
 
 // ── 搜索/待核/占位口径(迁自 v4 useMeterFilters,S2-BIND-SPEC §2) ──────────────
 
@@ -34,18 +36,12 @@ export function isMeaningfulName(s: string | null | undefined): boolean {
   return t !== '' && t !== '-' && t !== '—' && t !== '（空）' && t !== '(空)' && !t.includes('已停用')
 }
 
-// 已停用(V68,账期口径同后端 MeterService.retired):自 retiredYm 起(含当月)不在服务中;
-// ym 缺省(未选账期)= 一律按在用,不误藏。
-export function isRetiredMeter(m: { retiredYm: string | null }, ym?: string): boolean {
-  return m.retiredYm != null && !!ym && ym >= m.retiredYm
-}
-// 未启用(V87,与停用对称):启用账期前不在服务中;导入更早月份源册含此表时后端自动放宽
-export function isNotYetActive(m: { activeFromYm: string | null }, ym?: string): boolean {
-  return m.activeFromYm != null && !!ym && ym < m.activeFromYm
-}
-// 已退场(V88):退租/拆表,自该月起不再显示;历史月不受影响
-export function isRemovedMeter(m: { removedYm: string | null }, ym?: string): boolean {
-  return m.removedYm != null && !!ym && ym >= m.removedYm
+// METER-TIMELINE-SPEC §1.3:站在该月的状态段(MeterDTO.status 已是 list(ym) 投影好的那一段)。
+// 在用 / 停用 = 在册上(停用照常显示,只是不进各分母);已拆 / 还没有状态段 = 本月不在册,
+// 只在「已拆」「未在册」「本月有变化」三个筛选项里出现。
+export type OffRegister = 'removed' | 'notYet'
+export function offRegister(m: Pick<MeterDTO, 'status'>): OffRegister | null {
+  return m.status === 'removed' ? 'removed' : m.status == null ? 'notYet' : null
 }
 
 // 待核:租户表 + 未挂 tenant_id + 原文有意义
@@ -68,24 +64,39 @@ export interface WorkbenchRow {
   prevR: MeterReadingDTO | null       // 上月读数(prev 基准/新建预填)
   bind: MeterBindingRowDTO | null     // 绑定报表行(后端未就绪/非租户表=null)
   tenantLabel: string | null          // 库内全名 > 企业名称原文
-  prevTotal: number | null            // 本月读数自带 prev > 上月读数行至
+  // 底数:有本月读数 = 它自己的上月行至(后端算用量只认这一格);没有 = 上月读数的本月行至(新录时预填)
+  prevTotal: number | null
   prevSegs: PrevSegs                  // 同上,四段
   factor: number                      // 有读数=录入时倍率快照;无=档案倍率
   flags: MeterReadingFlags            // 漏抄/倒走/时段不符(meterLogic)
   pending: boolean                    // 待核
   placeholder: boolean                // 占位槽
-  retired: boolean                    // 已停用(V68,按选定账期判;照常显示,只是不进各分母)
+  retired: boolean                    // 本月在停用段(照常显示,只是不进各分母)
+  off: OffRegister | null             // 本月不在册:已拆 / 还没有状态段
+  noBase: boolean                     // 缺底数:有本月行至、没有上月行至(算不出用量,不算已抄)
+  zoneOdd: boolean                    // 表档案写的期区 ≠ 它挂的楼栋的期区(两个字段自相矛盾)
   unbound: boolean                    // 待绑定:binding manual(各桶)+override_stale
   ready: boolean                      // 派生就绪:auto+auto_bld+override
   tou: boolean                        // 分时表:电表且 本月/上月读数带任一分时段
+  book: BookMark                      // 本月导入的册子里有没有这块表(SPEC §10.4,按期区×表类判)
   status: RowStatus
 }
 
+// SPEC §10.4:seen = 本月册子里有这块表;missing = 同期区同表类这个月有记录、唯独没有它;
+// none = 同期区同表类这个月一笔都没有(不逐行打标,表格上方一句)。
+// 不进 rowStatus:它与已抄 / 待核等并存,是另一条轴。
+export type BookMark = 'seen' | 'missing' | 'none'
+
 export type RowStatus =
   | 'pending' | 'unbound' | 'touMismatch' | 'negative' | 'missing' | 'read' | 'placeholder' | 'retired'
+  | 'zoneOdd' | 'noBase' | OffRegister
 
 export const STATUS_META: Record<RowStatus, { label: string; cls: string }> = {
+  removed: { label: '已拆', cls: 'dim' },
+  notYet: { label: '未在册', cls: 'dim' },
   retired: { label: '已停用', cls: 'dim' },
+  noBase: { label: '缺底数', cls: 'amber' },
+  zoneOdd: { label: '期区对不上', cls: 'bad' },
   read: { label: '已抄', cls: 'ok' },
   missing: { label: '未抄', cls: 'amber' },
   negative: { label: '倒走', cls: 'bad' },
@@ -103,14 +114,21 @@ const hasSegs = (r: MeterReadingDTO | null) =>
 // 状态列单徽标,最差优先:待核＞待绑定＞时段不符＞倒走＞未抄＞已抄＞占位。
 // 占位槽不计未抄/已抄(v4 summarizeBinding 同口径),故 placeholder 判定先于 missing/read;
 // 对非占位行两序等价,规范列出的优先序原样保持。
-export function rowStatus(x: Pick<WorkbenchRow, 'pending' | 'unbound' | 'placeholder' | 'retired' | 'flags' | 'r'>): RowStatus {
-  if (x.retired) return 'retired'   // 停用最优先:本月不在服务中,其余维度无意义
+export function rowStatus(
+  x: Pick<WorkbenchRow, 'pending' | 'unbound' | 'placeholder' | 'retired' | 'flags' | 'r'>
+    & Partial<Pick<WorkbenchRow, 'zoneOdd' | 'off' | 'noBase'>>): RowStatus {
+  if (x.off) return x.off           // 本月不在册:其余维度都无意义
+  if (x.retired) return 'retired'   // 停用:本月不在服务中,其余维度无意义
+  // 期区对不上排第二:这一行连站在哪个页签里都不对,待核/待绑定都是后话。
+  // (2026-09-23 南盛物流案:一期抄表里出现一行二车间,半年无人发觉)
+  if (x.zoneOdd) return 'zoneOdd'
   if (x.pending) return 'pending'
   if (x.unbound) return 'unbound'
   if (x.flags.touMismatch) return 'touMismatch'
   if (x.flags.negative) return 'negative'
   if (x.placeholder) return 'placeholder'
   if (x.r?.currTotal == null) return 'missing'
+  if (x.noBase) return 'noBase'
   return 'read'
 }
 
@@ -123,15 +141,14 @@ export function buildRows(
   prevReadings: MeterReadingDTO[],
   bindRows: MeterBindingRowDTO[] | null,
   tenantNameById?: Map<number, string>,
-  ym?: string,                        // V68 停用判定账期;省略=一律在用
 ): WorkbenchRow[] {
   const rByMeter = new Map(readings.map(r => [r.meterId, r]))
   const pByMeter = new Map(prevReadings.map(r => [r.meterId, r]))
   const bByMeter = new Map((bindRows ?? []).map(b => [b.meterId, b]))
-  // V87 未启用(2026-08-04 用户裁定):后面月份才出现的表在该月**完全不出现**——不是停用、
-  // 不进任何筛选,行根本不产;停用(retired)则照常产行显示,只是不进各分母(见 matchStatus)
-  // 未启用/已退场(V87/V88)不产行:前者=还没出现,后者=退租拆表;停用(retired)照常产行显示
-  return meters.filter(m => !isNotYetActive(m, ym) && !isRemovedMeter(m, ym)).map(m => {
+  const booked = new Set(meters.filter(m => m.bookSeen).map(bookKey))
+  // 不在册的表(已拆 / 还没有状态段)也产行,由 matchStatus 挡在「全部」和各分母之外 ——
+  // 它们只在自己那两个筛选项里出现,点开能改回来(旧版不产行,设错一格就在所有月份找不回来)
+  return meters.map(m => {
     const r = rByMeter.get(m.id) ?? null
     const prevR = pByMeter.get(m.id) ?? null
     const bind = bByMeter.get(m.id) ?? null
@@ -139,21 +156,28 @@ export function buildRows(
     const placeholder = isPlaceholderMeter(m)
     const unbound = !!bind && UNBOUND_STATUS.has(bind.status)
     const flags = readingFlags(r ?? NO_READING)
+    // 有本月读数就只认它自己的上月行至:后端算用量只看这一格,拿上月读数顶上去会显出一个不存在的底数
+    const prevTotal = r ? r.prevTotal : prevR?.currTotal ?? null
     const x: WorkbenchRow = {
       m, r, prevR, bind,
       tenantLabel: m.tenantId != null ? (tenantNameById?.get(m.tenantId) ?? m.tenantName) : m.tenantName,
-      prevTotal: r?.prevTotal ?? prevR?.currTotal ?? null,
-      prevSegs: {
-        sharp: r?.prevSharp ?? prevR?.currSharp ?? null,
-        peak: r?.prevPeak ?? prevR?.currPeak ?? null,
-        flat: r?.prevFlat ?? prevR?.currFlat ?? null,
-        valley: r?.prevValley ?? prevR?.currValley ?? null,
-      },
+      prevTotal,
+      prevSegs: r
+        ? { sharp: r.prevSharp, peak: r.prevPeak, flat: r.prevFlat, valley: r.prevValley }
+        : {
+            sharp: prevR?.currSharp ?? null, peak: prevR?.currPeak ?? null,
+            flat: prevR?.currFlat ?? null, valley: prevR?.currValley ?? null,
+          },
       factor: r?.factorSnap ?? m.factor,
       flags, pending, placeholder, unbound,
-      retired: isRetiredMeter(m, ym),
+      retired: m.status === 'retired',
+      off: offRegister(m),
+      noBase: r?.currTotal != null && prevTotal == null,
+      // 两边都有值才比 —— 没挂楼栋(buildingZone 空)不算矛盾
+      zoneOdd: !!m.buildingZone && m.buildingZone !== m.zone,
       ready: !!bind && READY_STATUS.has(bind.status),
       tou: m.kind === 'elec' && (hasSegs(r) || hasSegs(prevR)),
+      book: m.bookSeen ? 'seen' : booked.has(bookKey(m)) ? 'missing' : 'none',
       status: 'read',
     }
     x.status = rowStatus(x)
@@ -164,32 +188,80 @@ export function buildRows(
 // 状态 tooltip:列全维度(徽标只显最差一维,悬停出全部命中维度)
 export function statusDims(x: WorkbenchRow): string {
   const dims: string[] = []
-  if (x.retired) return `已停用:自 ${x.m.retiredYm} 起不计,不进抄表进度与公摊分母(表仍显示)`
+  // 按状态段说话(SPEC §6):停用 2024-03 ~ 2024-08 / 自 2024-09 起已拆
+  if (x.off === 'removed') return `自 ${x.m.statusFrom} 起已拆:本月不在册上,不进抄表进度与公摊分母`
+  if (x.off === 'notYet') return '本月还不在册:不进抄表进度与公摊分母'
+  if (x.retired) return `${x.m.statusUntil ? `停用 ${x.m.statusFrom} ~ ${x.m.statusUntil}` : `自 ${x.m.statusFrom} 起停用`}`
+    + ':这几个月不进抄表进度与公摊分母(表仍在册上显示)'
+  if (x.zoneOdd) dims.push(`期区对不上:表的档案写着${zoneLabel(x.m.zone)},`
+    + `它挂的楼栋却在${zoneLabel(x.m.buildingZone ?? '')}。`
+    + `筛期区用的是前者、位置显示用的是后者,所以它会出现在不对的页签里。请核对原册`)
   if (x.pending) dims.push('待核:企业名称原文未匹配租户档案')
-  if (x.unbound) dims.push(`待绑定:${x.bind?.status === 'override_stale' ? '人工绑定不覆盖本月' : BIND_BUCKET_LABEL[x.bind?.bucket ?? 'no_contract']}`)
+  if (x.unbound) dims.push(`待绑定:${x.bind?.status !== 'override_stale' ? BIND_BUCKET_LABEL[x.bind?.bucket ?? 'no_contract']
+    : x.bind.contractId == null && x.bind.pinnedContractNo
+      ? `人工绑定的 ${x.bind.pinnedContractNo} 不是这一段租户的合同,没有采用`   // 换户后没重钉(SPEC §3.6)
+      : '绑的那份合同本月没生效'}`)
   if (x.flags.touMismatch) dims.push('时段不符:尖峰平谷用量之和与总用量不符')
   if (x.flags.negative) dims.push('倒走:总用量为负,疑换表/抄错')
   if (x.placeholder) dims.push('占位槽:空/停用原文,不计入待核与抄表进度')
-  else dims.push(x.r?.currTotal == null ? '未抄:本月总示数为空' : '已抄')
+  else if (x.r?.currTotal == null) dims.push('未抄:本月总示数为空')
+  else dims.push(x.noBase ? '缺底数:有本月行至、没有上月行至,算不出用量,不算已抄' : '已抄')
   return dims.join(' · ')
+}
+
+// ── 本月册子已核(SPEC §10.4) ──
+const bookKey = (m: Pick<MeterDTO, 'zone' | 'kind'>) => `${m.zone}|${m.kind}`
+const kindBook = (k: string) => (k === 'water' ? '水表' : '电表')
+const BOOK_SRC: Record<MeterRowSrc, string> = { migrate: '按旧档案补记', import: '导入', manual: '手改', contract: '合同终止' }
+// 记录是这一版上线后才开始记的(SPEC §10.2 不回填):更早导入过的月份也会显示成「没有」
+export const BOOK_REDO = '上线前的导入没有记下册子里有哪些表:把那个月的册子再导一次就能标上,值没变的档案不会被改。'
+
+// 企业名称旁的小标签「本月册子没有」的悬停;null = 不打标。
+// 停用 / 不在册的行不打(同待核:本月不在服务中),与「本月册子里没有」筛选同口径。
+export function bookTip(x: WorkbenchRow): string | null {
+  if (x.book !== 'missing' || x.off || x.retired) return null
+  const from = x.m.assignFrom === EARLIEST ? '最早' : `自 ${x.m.assignFrom} 起`
+  return `这个月导入的册子里没有这块表;显示的是${from}那一行(${BOOK_SRC[x.m.assignSrc!]})`
+}
+
+// 表格上方那一句:给定行里「一笔都没有」的期区 × 表类合成一句;没有 = ''
+export function bookGapText(rows: WorkbenchRow[]): string {
+  const zones = new Map<string, Set<string>>()   // 表类 → 这个月一笔都没有的期区
+  for (const x of rows) {
+    if (x.book !== 'none') continue
+    if (!zones.has(x.m.kind)) zones.set(x.m.kind, new Set())
+    zones.get(x.m.kind)!.add(x.m.zone)
+  }
+  if (!zones.size) return ''
+  const what = [...zones].map(([k, zs]) => `${[...zs].map(zoneLabel).join('、')}的${kindBook(k)}`).join('、')
+  return `这个月还没导入过${what}册子,这些表的档案都是沿用的。${BOOK_REDO}`
+}
+
+// 抽屉「档案变更」页签顶部那一句
+export function bookLine(x: WorkbenchRow): string {
+  if (x.book === 'seen')
+    return `本月册子:${x.m.bookFile ?? '文件名没有记下'} · ${(x.m.bookAt ?? '').replace('T', ' ').slice(0, 16)}`
+  if (x.book === 'missing') return '这个月导入的册子里没有这块表'
+  return `这个月还没导入过${zoneLabel(x.m.zone)}的${kindBook(x.m.kind)}册子。${BOOK_REDO}`
 }
 
 // ── 统计卡与状态筛选(§1:各卡独立计数;点卡=互斥设置状态筛选) ────────────────
 
 export type StatusFilter =
-  | 'all' | RowStatus            // 状态 Select 八项
+  | 'all' | RowStatus            // 状态 Select 各项
   | 'tenant' | 'anomaly' | 'attention' | 'ready'   // 统计卡粗粒度维度
-  // V87/V88 隐藏表两项:这两类在 buildRows 就不产行,故不是"行的状态"而是"换一批行"——
-  // 由 MeterView 的 hiddenRows 重建行集,matchStatus 对普通行集恒 false(它们本来就不在里面)
-  | 'removed' | 'notYet'
+  | 'changed'                    // 本月有变化:该表在本月有自己的归属行 / 状态行,且与上一行不同(后端判)
+  | 'bookMissing'                // 本月册子里没有:同期区同表类这个月导入过册子,唯独没有这块表(= 打了标签的行)
 
 // 维度谓词:统计卡计数与状态筛选共用同一口径。
-// 已抄/未抄以租户表为分母(标题行进度条口径:总数=已抄+未抄),非租户表读数经 归属 筛选查看。
-// V68 已停用表:除「已停用」筛选项外全维排除(默认隐藏 + 统计卡分母排除,一处生效)。
+// 已抄/未抄以租户表为分母(标题行进度条口径:总数=已抄+未抄;缺底数算未抄),非租户表读数经 归属 筛选查看。
+// 停用表:除「已停用」筛选项外全维排除(「全部」照常显示,统计卡分母排除,一处生效)。
+// 不在册的表(已拆 / 未在册):连「全部」都不出现,只在自己那一项和「本月有变化」里。
 export function matchStatus(x: WorkbenchRow, s: StatusFilter): boolean {
-  // 隐藏表两项不是行状态:普通行集里根本没有这类行(buildRows 已滤掉),恒 false;
-  // 选中它们时 MeterView 换一批行进来并把状态位传 'all',不会走到这里
-  if (s === 'removed' || s === 'notYet') return false
+  // 本月起停用 / 已拆也是本月的变化,所以排在不在册、停用那两道闸前面
+  if (s === 'changed') return x.m.changedThisMonth
+  if (s === 'removed' || s === 'notYet') return x.off === s
+  if (x.off) return false
   if (s === 'retired') return x.retired
   // 停用行「全部」筛选照常显示(2026-08-04 用户裁定:停用=这个月还在只是不用,须在表格可见);
   // 其余统计维度(租户表/已抄/未抄/待核…)仍排除=不进任何分母
@@ -197,8 +269,9 @@ export function matchStatus(x: WorkbenchRow, s: StatusFilter): boolean {
   if (x.retired) return false
   switch (s) {
     case 'tenant': return x.m.ownership === 'tenant'
-    case 'read': return x.m.ownership === 'tenant' && x.r?.currTotal != null
-    case 'missing': return x.m.ownership === 'tenant' && x.r?.currTotal == null
+    case 'read': return x.m.ownership === 'tenant' && x.r?.currTotal != null && !x.noBase
+    case 'missing': return x.m.ownership === 'tenant' && (x.r?.currTotal == null || x.noBase)
+    case 'noBase': return x.noBase
     case 'negative': return x.flags.negative
     case 'touMismatch': return x.flags.touMismatch
     case 'anomaly': return x.flags.negative || x.flags.touMismatch
@@ -207,6 +280,11 @@ export function matchStatus(x: WorkbenchRow, s: StatusFilter): boolean {
     case 'attention': return x.pending || x.unbound
     case 'placeholder': return x.placeholder
     case 'ready': return x.ready
+    // 期区对不上:不进任何统计卡口径(它不是抄表的一个环节,是档案坏了),
+    // 但状态下拉里能单独筛出来查。
+    case 'zoneOdd': return x.zoneOdd
+    // 不进统计卡;停用 / 不在册已被上面两道闸挡掉,与 bookTip 打标同口径
+    case 'bookMissing': return x.book === 'missing'
   }
 }
 
@@ -279,8 +357,14 @@ export function segCheck(
 
 export type CurrField = 'currTotal' | 'currSharp' | 'currPeak' | 'currFlat' | 'currValley'
 export const CURR_FIELDS: readonly CurrField[] = ['currTotal', 'currSharp', 'currPeak', 'currFlat', 'currValley']
+// 上月行至只在「没有底数」的行上开放录入(SPEC §3.4:新表首月录起始底数)
+export type PrevField = 'prevTotal' | 'prevSharp' | 'prevPeak' | 'prevFlat' | 'prevValley'
+export const PREV_FIELDS: readonly PrevField[] = ['prevTotal', 'prevSharp', 'prevPeak', 'prevFlat', 'prevValley']
+export type DraftField = CurrField | PrevField
+const PREV_SEG: Record<PrevField, keyof PrevSegs | null> =
+  { prevTotal: null, prevSharp: 'sharp', prevPeak: 'peak', prevFlat: 'flat', prevValley: 'valley' }
 // 单表草稿:字段→输入框原文(''=清空该值);未编辑字段缺席
-export type MeterDraft = Partial<Record<CurrField, string>>
+export type MeterDraft = Partial<Record<DraftField, string>>
 
 export function numOrNull(s: string): number | null {
   const t = s.trim()
@@ -289,17 +373,30 @@ export function numOrNull(s: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-// 本月行至有效值:草稿在场取草稿(非法文本视 null),否则服务器读数
-export function effCurr(x: Pick<WorkbenchRow, 'r'>, d: MeterDraft | undefined, f: CurrField): number | null {
-  const raw = d?.[f]
-  if (raw != null) return numOrNull(raw)
-  return x.r?.[f] ?? null
+type DraftBase = Pick<WorkbenchRow, 'r' | 'prevTotal' | 'prevSegs'>
+// 服务器侧的值:本月行至取本月读数;上月行至取行上的底数(见 WorkbenchRow.prevTotal)
+export function serverVal(x: DraftBase, f: DraftField): number | null {
+  if (f in PREV_SEG) {
+    const k = PREV_SEG[f as PrevField]
+    return k ? x.prevSegs[k] : x.prevTotal
+  }
+  return x.r?.[f as CurrField] ?? null
 }
 
+// 有效值:草稿在场取草稿(非法文本视 null),否则服务器值
+export function effVal(x: DraftBase, d: MeterDraft | undefined, f: DraftField): number | null {
+  const raw = d?.[f]
+  if (raw != null) return numOrNull(raw)
+  return serverVal(x, f)
+}
+
+// 行上开不开「上月行至」输入:按服务器侧判(敲着字不会让格子消失)
+export const baseOpen = (x: Pick<WorkbenchRow, 'prevTotal'>) => x.prevTotal == null
+
 // 脏行判定:任一格草稿数值与服务器不等(数值等价如 "5"=5 不算脏)
-export function draftRowDirty(x: Pick<WorkbenchRow, 'r'>, d: MeterDraft | undefined): boolean {
+export function draftRowDirty(x: DraftBase, d: MeterDraft | undefined): boolean {
   if (!d) return false
-  return CURR_FIELDS.some(f => d[f] != null && numOrNull(d[f]!) !== (x.r?.[f] ?? null))
+  return [...CURR_FIELDS, ...PREV_FIELDS].some(f => d[f] != null && numOrNull(d[f]!) !== serverVal(x, f))
 }
 
 export function draftDirtyIds(rows: WorkbenchRow[], draft: Map<number, MeterDraft>): number[] {
@@ -307,9 +404,10 @@ export function draftDirtyIds(rows: WorkbenchRow[], draft: Map<number, MeterDraf
   return rows.filter(x => draftRowDirty(x, draft.get(x.m.id))).map(x => x.m.id)
 }
 
-// 用量列实时重算:总示数被草稿改动时按 (本月−上月)×倍率,否则用服务器派生 usageTotal
-export function rowUsage(x: Pick<WorkbenchRow, 'r' | 'prevTotal' | 'factor'>, d: MeterDraft | undefined): number | null {
-  if (d?.currTotal != null) return segUsage(x.prevTotal, numOrNull(d.currTotal), x.factor)
+// 用量列实时重算:总示数(本月或底数)被草稿改动时按 (本月−上月)×倍率,否则用服务器派生 usageTotal
+export function rowUsage(x: DraftBase & Pick<WorkbenchRow, 'factor'>, d: MeterDraft | undefined): number | null {
+  if (d?.currTotal != null || d?.prevTotal != null)
+    return segUsage(effVal(x, d, 'prevTotal'), effVal(x, d, 'currTotal'), x.factor)
   return x.r?.usageTotal ?? null
 }
 
@@ -320,35 +418,31 @@ export function draftRowIssues(x: WorkbenchRow, d: MeterDraft | undefined): stri
   if (u != null && u < 0) issues.push('倒走:总用量为负,疑换表/抄错')
   if (x.m.kind === 'elec') {
     const c = segCheck(
-      [x.prevSegs.sharp, x.prevSegs.peak, x.prevSegs.flat, x.prevSegs.valley],
-      [effCurr(x, d, 'currSharp'), effCurr(x, d, 'currPeak'), effCurr(x, d, 'currFlat'), effCurr(x, d, 'currValley')],
-      x.prevTotal, effCurr(x, d, 'currTotal'), x.factor)
+      [effVal(x, d, 'prevSharp'), effVal(x, d, 'prevPeak'), effVal(x, d, 'prevFlat'), effVal(x, d, 'prevValley')],
+      [effVal(x, d, 'currSharp'), effVal(x, d, 'currPeak'), effVal(x, d, 'currFlat'), effVal(x, d, 'currValley')],
+      effVal(x, d, 'prevTotal'), effVal(x, d, 'currTotal'), x.factor)
     if (c.ok === false) issues.push(`时段不符:Σ段 ${c.segSum} ≠ 总 ${c.total}(差 ${c.diff})`)
   }
   return issues
 }
 
-// 保存请求(§7.2):有读数=在服务器行基础上覆写五格(prev/note 保留);无读数=prev 预填上月行至
+// 保存请求(§7.2):十格一律取有效值 —— 有读数=服务器行打底(note 保留),无读数=上月行至预填;草稿覆写
 export function draftReq(x: WorkbenchRow, d: MeterDraft | undefined, ym: string): MeterReadingReq {
-  const r = x.r
-  const req: MeterReadingReq = r
-    ? {
-        meterId: x.m.id, ym: r.ym, prevTotal: r.prevTotal, currTotal: r.currTotal,
-        prevSharp: r.prevSharp, prevPeak: r.prevPeak, prevFlat: r.prevFlat, prevValley: r.prevValley,
-        currSharp: r.currSharp, currPeak: r.currPeak, currFlat: r.currFlat, currValley: r.currValley,
-        note: r.note,
-      }
-    : {
-        meterId: x.m.id, ym, prevTotal: x.prevTotal, currTotal: null,
-        prevSharp: x.prevSegs.sharp, prevPeak: x.prevSegs.peak,
-        prevFlat: x.prevSegs.flat, prevValley: x.prevSegs.valley,
-        currSharp: null, currPeak: null, currFlat: null, currValley: null, note: null,
-      }
-  for (const f of CURR_FIELDS) req[f] = effCurr(x, d, f)
+  const req: MeterReadingReq = { meterId: x.m.id, ym: x.r?.ym ?? ym, note: x.r?.note ?? null }
+  for (const f of [...PREV_FIELDS, ...CURR_FIELDS]) req[f] = effVal(x, d, f)
   return req
 }
 
-// tfoot 页脚(§7.1):已抄/未抄按有效本月总示数;Σ用量=当前筛选行草稿实时合计,全空=null
+// 本月还不在册的表录了本月读数:保存时后端会让它自本月起在册(SPEC §3.4 自愈,本月止任一格非空才算)。
+// 屏上要先说一声,不能悄悄把一块表挂上册。
+// 只算本月还没有读数的表:自愈只在新录一条(createReading)时发生,改已有的读数(updateReading)不补在册 ——
+// 撤销导入留下的自动建档表、第一行状态被挪晚的表都会是「不在册却有读数」,对它们承诺在册就是假话。
+export function healRows(rows: WorkbenchRow[], draft: Map<number, MeterDraft>): WorkbenchRow[] {
+  return rows.filter(x => x.off === 'notYet' && !x.r && draftRowDirty(x, draft.get(x.m.id))
+    && CURR_FIELDS.some(f => effVal(x, draft.get(x.m.id), f) != null))
+}
+
+// tfoot 页脚(§7.1):已抄 = 本月总示数与底数都在(草稿实时,缺底数不算);Σ用量=当前筛选行草稿实时合计,全空=null
 export interface GridFooter { read: number; missing: number; usageSum: number | null }
 
 export function gridFooter(rows: WorkbenchRow[], draft: Map<number, MeterDraft>): GridFooter {
@@ -356,7 +450,7 @@ export function gridFooter(rows: WorkbenchRow[], draft: Map<number, MeterDraft>)
   let usageSum: number | null = null
   for (const x of rows) {
     const d = draft.get(x.m.id)
-    if (effCurr(x, d, 'currTotal') != null) read++
+    if (effVal(x, d, 'currTotal') != null && effVal(x, d, 'prevTotal') != null) read++
     else missing++
     const u = rowUsage(x, d)
     if (u != null) usageSum = round2((usageSum ?? 0) + u)
@@ -378,10 +472,10 @@ export interface BuildingGroup {
 
 // 段用量草稿口径同 rowUsage:该段被草稿改动按(本月−上月)×倍率,否则服务器派生
 const SEG_MAP = [
-  ['sharp', 'currSharp', 'usageSharp'],
-  ['peak', 'currPeak', 'usagePeak'],
-  ['flat', 'currFlat', 'usageFlat'],
-  ['valley', 'currValley', 'usageValley'],
+  ['sharp', 'currSharp', 'usageSharp', 'prevSharp'],
+  ['peak', 'currPeak', 'usagePeak', 'prevPeak'],
+  ['flat', 'currFlat', 'usageFlat', 'prevFlat'],
+  ['valley', 'currValley', 'usageValley', 'prevValley'],
 ] as const
 
 // draft 是可选的第三参:分组与排序压根不看草稿(只读 ownership/位置/sortNo),给了才顺带把
@@ -428,8 +522,9 @@ export function groupUsage(rows: WorkbenchRow[], draft: Map<number, MeterDraft>)
     if (!inSubSigma(x.m)) continue
     const d = draft.get(x.m.id)
     acc('total', rowUsage(x, d))
-    for (const [k, c, sv] of SEG_MAP) {
-      acc(k, d?.[c] != null ? segUsage(x.prevSegs[k], numOrNull(d[c]!), x.factor) : (x.r?.[sv] ?? null))
+    for (const [k, c, sv, p] of SEG_MAP) {
+      acc(k, d?.[c] != null || d?.[p] != null
+        ? segUsage(effVal(x, d, p), effVal(x, d, c), x.factor) : (x.r?.[sv] ?? null))
     }
   }
   // 累加后统一 round2 防浮点尾差(meterGroup 同法)
@@ -571,10 +666,10 @@ export function buildingTotals(rows: WorkbenchRow[]): BuildingTotals | null {
 export type BindQueueBucket = BindBucket | 'pending' | 'stale'
 export const BIND_BUCKET_LABEL: Record<BindQueueBucket, string> = {
   date_missing: '缺日期', ambiguous: '多合同', bld_mismatch: '口径错位',
-  no_contract: '无合同', pending: '待核', stale: '绑定过期',
+  no_contract: '无合同', pending: '待核', stale: '绑定不适用',
 }
 export const BIND_STATUS_NOTE: Record<BindStatus, string> = {
-  auto: '自动', auto_bld: '对位', override: '人工', override_stale: '过期',
+  auto: '自动', auto_bld: '对位', override: '人工', override_stale: '不适用',
   manual: '待处理', pending: '待核', placeholder: '占位',
 }
 
@@ -593,7 +688,17 @@ export function bindReason(qb: BindQueueBucket, row: MeterBindingRowDTO): string
     case 'ambiguous': return `${n} 份合同覆盖本月,需人工选定`
     case 'bld_mismatch': return `楼栋对位落空(口径错位),${n} 份候选`
     case 'no_contract': return '该户无有效合同(补合同是业务动作)'
-    case 'stale': return `${row.contractNo ?? ''} 不覆盖本月,请复核`
+    // 「过期」曾被读成「这份合同到期了」。它说的是:有人把这块表指给了这一份,而本月不在它的租期内
+    // (往往是还没开始),它的前后期里也没有能接上本月的。候选=本月这户能用的合同,点一下就改过去。
+    // 合同号不重复:它就印在这句话左边那一格里(MeterDetailDrawer 的 .md-bstat .val)。
+    // 钉的是别户的合同(换户后没重钉,METER-TIMELINE-SPEC §3.6):后端不采用、contractId 为空 —— 不是「本月没生效」
+    case 'stale':
+      if (row.contractId == null && row.pinnedContractNo)
+        return `人工绑定的是 ${row.pinnedContractNo},它不是这一段租户的合同,没有采用`
+          + (n ? `;下面 ${n} 份是本月这户能用的` : ';该户本月也没有别的有效合同')
+      return n
+        ? `这一份本月还没生效或已到期,它的前后期也没有接上本月的;下面 ${n} 份是本月这户能用的`
+        : '这一份本月还没生效或已到期,该户本月也没有别的有效合同'
   }
 }
 

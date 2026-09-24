@@ -42,8 +42,10 @@ public class BillNoticeController {
     @Operation(summary = "单据明细(单头+明细行,行序=场地段→表序→段序;含取价审计链)") @GetMapping("/{id}")
     public BillNoticeDetailDTO detail(@PathVariable Integer id) { return svc.detail(id); }
 
-    @Operation(summary = "作废(仅 draft/issued 可作废;已作废 409)") @PostMapping("/{id}/void")
-    public BillNoticeDTO voidNotice(@PathVariable Integer id) { return svc.voidNotice(id); }
+    @Operation(summary = "作废(未作废的单都可作废,含已确认/已导出;已作废 409;理由必填并落审计)") @PostMapping("/{id}/void")
+    public BillNoticeDTO voidNotice(@PathVariable Integer id, @Valid @RequestBody BillDeliveryDTO.VoidReq req) {
+        return svc.voidNotice(id, req.reason());
+    }
 
     @Operation(summary = "签发(仅 draft 可签发;签发后不被重跑覆盖,须先作废)") @PostMapping("/{id}/issue")
     public BillNoticeDTO issue(@PathVariable Integer id) { return svc.issue(id); }
@@ -53,6 +55,12 @@ public class BillNoticeController {
     @PostMapping("/confirm")
     public BillDeliveryDTO.Confirm confirm(@Valid @RequestBody BillDeliveryDTO.Req req) {
         return svc.confirm(req.ym(), req.tenantIds());
+    }
+
+    @Operation(summary = "取消确认(confirmed→draft,理由必填并留痕;已导出/已作废单跳过并计数)")
+    @PostMapping("/unconfirm")
+    public BillDeliveryDTO.Unconfirm unconfirm(@Valid @RequestBody BillDeliveryDTO.UnconfirmReq req) {
+        return svc.unconfirm(req.ym(), req.tenantIds(), req.reason());
     }
 
     @Operation(summary = "标记已导出(draft/confirmed→exported,刷新导出时间;已作废单不动)")

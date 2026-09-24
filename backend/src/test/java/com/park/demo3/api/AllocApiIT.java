@@ -11,6 +11,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.junit.jupiter.api.Assertions.*;
 
 // 公摊分摊(PB-ALLOCATION-SPEC):规则 CRUD 守卫、生成快照/幂等/manual 保留/缺抄警告、
 // 抽屉 stale、损耗链、对账派生、elec-cost 桥。@Transactional 回滚;写数据用 2099 远期槽;
@@ -224,8 +225,9 @@ class AllocApiIT extends AbstractMysqlIT {
         String ym = "2091-01";   // 独占槽:全库(含种子与其它用例)无数据落该月
         int t1 = createTenant("IT停用池户");
         int mOff = createMeter("IT已停公共电", "p1", "share", null, null);
-        mvc.perform(put("/api/meters/" + mOff).header("Authorization", auth()).contentType("application/json")
-                .content("{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT已停公共电\",\"ownership\":\"share\",\"retiredYm\":\"2090-12\"}"))
+        // 自 2090-12 起停用(METER-TIMELINE-SPEC §3.4 状态段;原先是 PUT 带 retiredYm)
+        mvc.perform(post("/api/meters/" + mOff + "/status").header("Authorization", auth()).contentType("application/json")
+                .content("{\"fromYm\":\"2090-12\",\"status\":\"retired\"}"))
                 .andExpect(jsonPath("$.code").value(0));
         int rOff = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"name\":\"IT全停池\",\"method\":\"direct\","
                 + "\"feeKey\":\"share_elec_floor\",\"meterIds\":[" + mOff + "],"
@@ -508,8 +510,11 @@ class AllocApiIT extends AbstractMysqlIT {
         meterMapper.updateById(mk);
         mvc.perform(post("/api/alloc/generate").param("ym", "2099-04").header("Authorization", auth()))
                 .andExpect(jsonPath("$.code").value(0))
+                // 文案 2026-09-23 按「屏上不写开发用语」改过:「未计入…公摊池分母」→「没算进…公摊池」。
+                // 断言跟着改成钉**告警点没点到这件事**,不钉那个已经不存在的词。
                 .andExpect(jsonPath("$.data.warnings", org.hamcrest.Matchers.hasItem(
-                        org.hamcrest.Matchers.containsString("公摊池分母"))));
+                        org.hamcrest.Matchers.allOf(org.hamcrest.Matchers.containsString("存疑表"),
+                                org.hamcrest.Matchers.containsString("公摊池")))));
         mvc.perform(get("/api/alloc/pools").param("ym", "2099-04").header("Authorization", auth()))
                 .andExpect(jsonPath(my + ".qtyTotal").value(100.0))
                 // 过滤表达式是 indefinite path,取回的是 JSONArray → 用 hasItem 包一层
@@ -572,10 +577,322 @@ class AllocApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data.recon[0].sumC").value(500.0))
                 .andExpect(jsonPath("$.data.recon[0].sumD").value(520.0))
                 .andExpect(jsonPath("$.data.recon[0].lossVsC").value(-1100.0))
-                .andExpect(jsonPath("$.data.recon[0].rateVsC").value(-0.6875));
+                .andExpect(jsonPath("$.data.recon[0].rateVsC").value(-0.6875))
+                // 行名从库里的表名/栋名现拼(屏上一眼看出这一行管哪几栋),不是写死的「供电局总表 / 各栋」
+                .andExpect(jsonPath("$.data.recon[0].supplyLabel").value("IT-PE供电局总表"))
+                .andExpect(jsonPath("$.data.recon[0].sumLabel").value("除IT-PE-A座外各栋"))
+                // b1 被剔掉了,但它没钉 loss_c_meter —— 它的 C 是自家总表Σ 不是供电局读数,
+                // 拿来当供电侧加回去就是拼一个假总计。所以这个月**只有一条**,不发「全部楼栋」。
+                .andExpect(jsonPath("$.data.recon.length()").value(1));
         // 无快照月:generated=false
         mvc.perform(get("/api/alloc/loss").param("ym", "2099-12").header("Authorization", auth()))
                 .andExpect(jsonPath("$.data.generated").value(false));
+    }
+
+    // ── 对账「真正总计」那一行(用户 2026-09-23:「1期的楼栋损耗加上一行真正总计」)──────────
+    // 一期A座配了 loss_recon=0 —— 它走自己那条独立供电链路,不在「B-G座总电」底下。补这一行之前
+    // 屏上只有前一组:tfoot 合计写 101,604.40 而对账区写 63,054.40,差着一整栋而屏上一个字都没说。
+    //
+    // ⚠ 用合成表档案复现,不是直接跑 2024-02 —— 测试库是 Flyway 从零建的全新库,`meter` /
+    //   `meter_reading` **没有任何种子**(V45 原文:「无种子:档案由首次导入真实抄表 Excel 建档」),
+    //   开发库里那 1100 块表是导进去的。所以真月锚点钉在 AllocServiceTest.reconRow_* 那一层
+    //   (纯函数,逐格)。这里的四个读数按 2024-02 一期实测值原样摆,算出来的每一格与开发库逐分相等:
+    //     B-G座总电 68,320.00 / A座总电(=A座 c_qty)38,550.00 / A座 d_qty 34,876.50
+    //     其余六栋 Σc=63,054.40  Σd=62,923.96
+    @Test
+    void poolLoss_recon_totalRow_whenExcludedUnitHasOwnSupplyMeter() throws Exception {
+        String ym = "2099-08";
+        int bEx = building2("IT-TR-独立座", 1), bIn = building2("IT-TR-普通座", 1);
+        int t = createTenant("IT-TR户");
+        // 被剔掉那栋自己那块供电局表(loss_c_meter 把它的 C 钉死成这一块)
+        int cEx = createMeter("IT-TR独立座总电", "p1", "infra", null, bEx);
+        reading(cEx, ym, "0", "38550");
+        reading(createMeter("IT-TR独立座户表", "p1", "tenant", t, bEx), ym, "0", "34876.50");
+        reading(createMeter("IT-TR普通座总表", "p1", "infra", null, bIn), ym, "0", "63054.40");
+        reading(createMeter("IT-TR普通座户表", "p1", "tenant", t, bIn), ym, "0", "62923.96");
+        int mSup = createMeter("IT-TR供电局总表", "p1", "ops", null, null);
+        reading(mSup, ym, "0", "68320");
+        allocCfg("building:" + bEx, "loss_recon", "0");
+        allocCfg("building:" + bEx, "loss_c_meter", String.valueOf(cEx));
+        allocCfg("p1", "loss_supply_meter", String.valueOf(mSup));
+        // 同月另起一个期区:二期没有被剔掉的栋 —— 用来证明「没有排除项就不许多发这一行」
+        int bP2 = building2("IT-TR-二期车间", 2);
+        reading(createMeter("IT-TR二期总表", "p2", "infra", null, bP2), ym, "0", "13750");
+        reading(createMeter("IT-TR二期户表", "p2", "tenant", t, bP2), ym, "0", "13704.70");
+        int mSup2 = createMeter("IT-TR二期供电局总表", "p2", "ops", null, null);
+        reading(mSup2, ym, "0", "13000");
+        allocCfg("p2", "loss_supply_meter", String.valueOf(mSup2));
+
+        java.util.List<java.util.Map<String, Object>> p1 = reconOf(ym, "p1");
+        assertEquals(2, p1.size(), "剔掉了一栋且它有自己那块供电局表,应有「除…外各栋」+「全部楼栋」两组");
+        // 第一组:那块供电局表管得着的那几栋(被剔掉的那栋,名字里点出来)
+        assertEquals("IT-TR供电局总表", p1.get(0).get("supplyLabel"));
+        assertEquals("除IT-TR-独立座外各栋", p1.get(0).get("sumLabel"));
+        num(p1.get(0), "supplyQty", "68320.00");
+        num(p1.get(0), "sumC", "63054.40");
+        num(p1.get(0), "sumD", "62923.96");
+        num(p1.get(0), "lossVsC", "-5265.60");
+        num(p1.get(0), "rateVsC", "-0.0771");
+        // 第二组=真正总计:供电侧把那栋自己那块表加回来,合计换成全部楼栋
+        assertEquals("IT-TR供电局总表 + IT-TR独立座总电", p1.get(1).get("supplyLabel"));
+        assertEquals("全部楼栋", p1.get(1).get("sumLabel"));
+        num(p1.get(1), "supplyQty", "106870.00");
+        num(p1.get(1), "sumC", "101604.40");
+        num(p1.get(1), "sumD", "97800.46");
+        num(p1.get(1), "lossVsC", "-5265.60");
+        num(p1.get(1), "rateVsC", "-0.0493");
+        num(p1.get(1), "lossVsD", "-9069.54");
+        num(p1.get(1), "rateVsD", "-0.0849");
+        // 供电侧真的把那栋加回去了,不是只换了个标签:两组的率必须不同
+        assertNotEquals(String.valueOf(p1.get(0).get("rateVsC")), String.valueOf(p1.get(1).get("rateVsC")),
+                "总计行的率不该与上一组相同");
+        // 「全部楼栋」的合计 == 屏上 tfoot 那一行(两处对不上正是本行要防的)
+        String body = mvc.perform(get("/api/alloc/loss").param("ym", ym).header("Authorization", auth()))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        java.util.List<Object> d = JsonPath.read(body, "$.data.units[?(@.zone=='p1')].dQty");
+        assertEquals(0, d.stream().map(v -> new java.math.BigDecimal(String.valueOf(v)))
+                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add)
+                .compareTo(new java.math.BigDecimal("97800.46")), "对账总计行的分表合计必须等于 tfoot 合计");
+
+        // ── 二期不许多出这一行:一个 loss_recon=0 的楼栋都没有,再发一条就是把同一个数写两遍 ──
+        java.util.List<java.util.Map<String, Object>> p2 = reconOf(ym, "p2");
+        assertEquals(1, p2.size(), "没有被剔掉的栋,只该有一条对账");
+        assertEquals("IT-TR二期供电局总表", p2.get(0).get("supplyLabel"));
+        // 没有被剔掉的栋 -> 合计就叫「各栋」,不拼「除…外」
+        assertEquals("各栋", p2.get(0).get("sumLabel"));
+        num(p2.get(0), "sumC", "13750.00");
+        num(p2.get(0), "sumD", "13704.70");
+    }
+
+    private int building2(String name, int phase) throws Exception {
+        return postId("/api/buildings", "{\"name\":\"" + name + "\",\"phase\":" + phase + ",\"floorCount\":5,"
+                + "\"totalArea\":10000,\"rentableArea\":9000}");
+    }
+
+    /** 整月重算 ym 后取该期区的对账条目(一条=屏上两行)。 */
+    private java.util.List<java.util.Map<String, Object>> reconOf(String ym, String zone) throws Exception {
+        price("elec_commercial", ym, "0.79416875");
+        p2Prices(ym);
+        mvc.perform(post("/api/alloc/generate").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0));
+        String body = mvc.perform(get("/api/alloc/loss").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.data.generated").value(true))
+                // ⚠ 不带字符集的 getContentAsString() 按 ISO-8859-1 解,中文行名会变成乱码 —— 断言当场红
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        return JsonPath.read(body, "$.data.recon[?(@.zone=='" + zone + "')]");
+    }
+
+    /** 数值格逐格钉死。JSON 数字的落地类型(Double/BigDecimal)随 provider 变,统一按十进制值比。 */
+    private static void num(java.util.Map<String, Object> row, String key, String expect) {
+        Object v = row.get(key);
+        assertNotNull(v, key + " 不该为空");
+        assertEquals(0, new java.math.BigDecimal(String.valueOf(v)).compareTo(new java.math.BigDecimal(expect)),
+                key + " 应为 " + expect + ",实际 " + v);
+    }
+
+    /**
+     * 被剔掉的那栋当月没有读数(c_qty=0)-> 不发总计行,也不能崩。
+     * 把 0 度当供电侧加进去,那一行的损耗会凭空多出一整栋的量,而屏上照样显示、没人看得出来。
+     */
+    @Test
+    void poolLoss_recon_excludedUnitWithoutReading_noTotalRow() throws Exception {
+        String ym = "2099-06";
+        int bEx = postId("/api/buildings", "{\"name\":\"IT-RC-独立座\",\"phase\":1,\"floorCount\":5,"
+                + "\"totalArea\":10000,\"rentableArea\":9000}");
+        int bIn = postId("/api/buildings", "{\"name\":\"IT-RC-普通座\",\"phase\":1,\"floorCount\":5,"
+                + "\"totalArea\":10000,\"rentableArea\":9000}");
+        int t = createTenant("IT-RC户");
+        int cEx = createMeter("IT-RC独立座总电", "p1", "infra", null, bEx);   // 钉成它的 C:本月**不抄**
+        int dEx = createMeter("IT-RC独立座户表", "p1", "tenant", t, bEx);
+        int cIn = createMeter("IT-RC普通座总表", "p1", "infra", null, bIn);
+        int dIn = createMeter("IT-RC普通座户表", "p1", "tenant", t, bIn);
+        int mSup = createMeter("IT-RC供电局总表", "p1", "ops", null, null);
+        reading(cEx, ym, "0", "0");          // 抄了但没走字 -> 该栋 c_qty=0.00(无读数的栋压根不成组)
+        reading(dEx, ym, "0", "300");
+        reading(cIn, ym, "0", "800"); reading(dIn, ym, "0", "760");
+        reading(mSup, ym, "0", "1000");
+        allocCfg("building:" + bEx, "loss_recon", "0");
+        allocCfg("building:" + bEx, "loss_c_meter", String.valueOf(cEx));   // 钉了表,但那块表本月没读数
+        allocCfg("p1", "loss_supply_meter", String.valueOf(mSup));
+        price("elec_commercial", ym, "0.79416875");
+        p2Prices(ym);
+        mvc.perform(post("/api/alloc/generate").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0));
+        mvc.perform(get("/api/alloc/loss").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.data.recon.length()").value(1))
+                .andExpect(jsonPath("$.data.recon[0].sumLabel").value("除IT-RC-独立座外各栋"))
+                .andExpect(jsonPath("$.data.recon[0].supplyQty").value(1000.0))
+                .andExpect(jsonPath("$.data.recon[0].sumC").value(800.0));
+    }
+
+    /**
+     * 该期区的单元被排光了 -> 第一行是废行,不发。
+     *
+     * 不挡的话屏上会出「供电局表 vs 除X外各栋总表合计 = 0.00,损耗量 = −整个供电量,
+     * 原损耗率 −100%」—— 一条没人能看懂的假告警。库里 2023-10 的一期就是这个形状
+     * (只有 A座 一行、而 A座 正是被排的那栋),只是恰好被「期区供电表当月无读数」挡住了。
+     */
+    @Test
+    void poolLoss_recon_allUnitsExcluded_noPartialRow() throws Exception {
+        String ym = "2099-07";
+        int bEx = postId("/api/buildings", "{\"name\":\"IT-RC2-独立座\",\"phase\":1,\"floorCount\":5,"
+                + "\"totalArea\":10000,\"rentableArea\":9000}");
+        int t = createTenant("IT-RC2户");
+        int cEx = createMeter("IT-RC2独立座总电", "p1", "infra", null, bEx);
+        int dEx = createMeter("IT-RC2独立座户表", "p1", "tenant", t, bEx);
+        int mSup = createMeter("IT-RC2供电局总表", "p1", "ops", null, null);
+        reading(cEx, ym, "0", "500"); reading(dEx, ym, "0", "460");
+        reading(mSup, ym, "0", "1000");
+        allocCfg("building:" + bEx, "loss_recon", "0");
+        allocCfg("building:" + bEx, "loss_c_meter", String.valueOf(cEx));
+        allocCfg("p1", "loss_supply_meter", String.valueOf(mSup));
+        price("elec_commercial", ym, "0.79416875");
+        p2Prices(ym);
+        mvc.perform(post("/api/alloc/generate").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0));
+        // 只剩「全部楼栋」那一组(供电侧 1000+500=1500),没有那条 sumC=0 的废行
+        mvc.perform(get("/api/alloc/loss").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.data.recon.length()").value(1))
+                .andExpect(jsonPath("$.data.recon[0].sumLabel").value("全部楼栋"))
+                .andExpect(jsonPath("$.data.recon[0].supplyQty").value(1500.0))
+                .andExpect(jsonPath("$.data.recon[0].sumC").value(500.0));
+    }
+
+    /**
+     * 被排栋的 c_qty 刚好把期区供电量抵消成 0 -> 不发总计行,**而不是 500**。
+     *
+     * MeterService.usage 不夹负(换表/回零就会出负用量),而第二行拿 supply+outSupply 做除数。
+     * 没这道守卫的话是 ArithmeticException: Division undefined -> GET /alloc/loss 整条 500,整屏打不开。
+     * 第一行本来就有这道守卫(supply.signum()==0 就 continue),第二行漏了。
+     */
+    @Test
+    void poolLoss_recon_totalSupplyCancelsToZero_noCrash() throws Exception {
+        String ym = "2099-08";
+        int bEx = postId("/api/buildings", "{\"name\":\"IT-RC3-独立座\",\"phase\":1,\"floorCount\":5,"
+                + "\"totalArea\":10000,\"rentableArea\":9000}");
+        int bIn = postId("/api/buildings", "{\"name\":\"IT-RC3-普通座\",\"phase\":1,\"floorCount\":5,"
+                + "\"totalArea\":10000,\"rentableArea\":9000}");
+        int t = createTenant("IT-RC3户");
+        int cEx = createMeter("IT-RC3独立座总电", "p1", "infra", null, bEx);
+        int dEx = createMeter("IT-RC3独立座户表", "p1", "tenant", t, bEx);
+        int cIn = createMeter("IT-RC3普通座总表", "p1", "infra", null, bIn);
+        int dIn = createMeter("IT-RC3普通座户表", "p1", "tenant", t, bIn);
+        int mSup = createMeter("IT-RC3供电局总表", "p1", "ops", null, null);
+        reading(cEx, ym, "1000", "0");       // 换表回零:c_qty = −1000,正好抵消供电侧
+        reading(dEx, ym, "0", "50");
+        reading(cIn, ym, "0", "800"); reading(dIn, ym, "0", "760");
+        reading(mSup, ym, "0", "1000");
+        allocCfg("building:" + bEx, "loss_recon", "0");
+        allocCfg("building:" + bEx, "loss_c_meter", String.valueOf(cEx));
+        allocCfg("p1", "loss_supply_meter", String.valueOf(mSup));
+        price("elec_commercial", ym, "0.79416875");
+        p2Prices(ym);
+        mvc.perform(post("/api/alloc/generate").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0));
+        // 打得开(不是 500),且只剩第一行
+        mvc.perform(get("/api/alloc/loss").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.recon.length()").value(1))
+                .andExpect(jsonPath("$.data.recon[0].sumLabel").value("除IT-RC3-独立座外各栋"));
+    }
+
+    // == 备注(V127 alloc_loss_note):楼栋损耗屏唯一的写入口 ===============================
+
+    /**
+     * 整批里最要紧的一条:**重算之后备注还在**。
+     *
+     * 备注若落成 alloc_loss_result 的一列,generate 的 deleteByYm + insertBatch 每重算一次就把它抹平 ——
+     * 而这一屏的人正是「改完参数 -> 重算 -> 再看」的用法,等于每次都白填。V92 bill_note_override 是同一个坑。
+     * 前置做足:先证明写得进去、读得出来,再重算,否则「重算后还在」可能只是「压根没写进去」。
+     */
+    @Test
+    void lossNote_survivesRegenerate() throws Exception {
+        String ym = "2099-05";
+        int b = lossScenario(ym, "IT-NOTE");
+        putNote(ym, b, "表在门卫室,2月已校");
+        mvc.perform(get("/api/alloc/loss").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.data.units[?(@.headBuildingId==" + b + ")].note")
+                        .value("表在门卫室,2月已校"));
+        // 重算整月(loss 快照先删后插)
+        mvc.perform(post("/api/alloc/generate").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0));
+        mvc.perform(get("/api/alloc/loss").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.data.units[?(@.headBuildingId==" + b + ")].note")
+                        .value("表在门卫室,2月已校"));
+    }
+
+    /** 改写=覆盖不新增行;清空=真的删掉(读回来是 null 不是空串);再清一次仍 200。 */
+    @Test
+    void lossNote_upsertThenClearToNull() throws Exception {
+        String ym = "2099-04";
+        int b = lossScenario(ym, "IT-NOTE2");
+        putNote(ym, b, "初版");
+        putNote(ym, b, "改过一次");
+        mvc.perform(get("/api/alloc/loss").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.data.units[?(@.headBuildingId==" + b + ")].note").value("改过一次"));
+        // 清空 -> 删行。MyBatis-Plus 的 updateById 跳 null 这个坑在这里整个不存在(走原生 upsert / DELETE),
+        // 但「清空能不能清掉」仍要钉:清不掉的话屏上那格永远擦不干净。
+        putNote(ym, b, "");
+        String body = mvc.perform(get("/api/alloc/loss").param("ym", ym).header("Authorization", auth()))
+                .andReturn().getResponse().getContentAsString();
+        java.util.List<Object> note = JsonPath.read(body,
+                "$.data.units[?(@.headBuildingId==" + b + ")].note");
+        org.junit.jupiter.api.Assertions.assertNull(note.get(0), "清空备注要删行,不是存一个空串");
+        putNote(ym, b, "");   // 幂等:屏上连点两次不报错
+    }
+
+    /** 楼栋不存在 -> 404;月份格式不对 -> 400。写口的两道入参门,别让脏键落进表里。 */
+    @Test
+    void lossNote_rejectsUnknownBuildingAndBadYm() throws Exception {
+        mvc.perform(put("/api/alloc/loss/note").header("Authorization", auth()).contentType("application/json")
+                .content("{\"ym\":\"2099-05\",\"headBuildingId\":999999,\"note\":\"x\"}"))
+                .andExpect(jsonPath("$.code").value(404));
+        mvc.perform(put("/api/alloc/loss/note").header("Authorization", auth()).contentType("application/json")
+                .content("{\"ym\":\"2099-5\",\"headBuildingId\":1,\"note\":\"x\"}"))
+                .andExpect(jsonPath("$.code").value(400));
+    }
+
+    /**
+     * 楼栋存在,但它在这个月不是损耗行的组头 -> 404,不能默默落一行脏数据。
+     *
+     * 楼栋分组是按月变的(loss_head 是版本链),只校「楼栋存在」不够:
+     * 写到一个非组头的楼栋上会 200 落库,却永远贴不回屏上 ——
+     * 写成功了却什么都没发生,调用方拿不到任何反馈。
+     * 前置做足:先证明同一个月的真组头写得进去,否则 404 可能只是这条路整条不通。
+     */
+    @Test
+    void lossNote_rejectsBuildingWithoutLossRowThatMonth() throws Exception {
+        String ym = "2099-09";
+        int b = lossScenario(ym, "IT-NOROW");
+        putNote(ym, b, "真组头写得进去");   // 前置:通路是活的
+        int other = postId("/api/buildings", "{\"name\":\"IT-NOROW-旁栋\",\"phase\":1,\"floorCount\":5,"
+                + "\"totalArea\":10000,\"rentableArea\":9000}");   // 建了楼但一块表都没,不成组
+        mvc.perform(put("/api/alloc/loss/note").header("Authorization", auth()).contentType("application/json")
+                .content("{\"ym\":\"" + ym + "\",\"headBuildingId\":" + other + ",\"note\":\"x\"}"))
+                .andExpect(jsonPath("$.code").value(404));
+    }
+
+    private void putNote(String ym, int buildingId, String note) throws Exception {
+        mvc.perform(put("/api/alloc/loss/note").header("Authorization", auth()).contentType("application/json")
+                .content("{\"ym\":\"" + ym + "\",\"headBuildingId\":" + buildingId
+                        + ",\"note\":\"" + note + "\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+    }
+
+    /** 一栋楼 + 总表/户表各一块 + 当月电价,生成后该栋在损耗表里有一行。返回楼栋 id。 */
+    private int lossScenario(String ym, String tag) throws Exception {
+        int b = postId("/api/buildings", "{\"name\":\"" + tag + "座\",\"phase\":1,\"floorCount\":5,"
+                + "\"totalArea\":10000,\"rentableArea\":9000}");
+        int t = createTenant(tag + "户");
+        reading(createMeter(tag + "总表", "p1", "infra", null, b), ym, "0", "1000");
+        reading(createMeter(tag + "户表", "p1", "tenant", t, b), ym, "0", "900");
+        price("elec_commercial", ym, "0.79416875");
+        p2Prices(ym);
+        mvc.perform(post("/api/alloc/generate").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0));
+        mvc.perform(get("/api/alloc/loss").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.data.units[?(@.headBuildingId==" + b + ")].cQty").value(1000.0));
+        return b;
     }
 
     // ── 刀I §I1:园区损耗池 G 基数 = Σ(fee_key='park_loss_pool' 的 p1 规则当月净量),跨多条规则、跨 method ──
@@ -899,6 +1216,22 @@ class AllocApiIT extends AbstractMysqlIT {
                 + "\"startDate\":\"2099-01-01\",\"endDate\":\"2099-12-31\"}");
     }
 
+    /** 2099-11 之前就到期的合同 = 真退租(inForceState 的 'no')。与 future/none 两态区分开用。 */
+    private void expiredContract(String no, int tenantId, int buildingId, Integer unitId) throws Exception {
+        postId("/api/contracts", "{\"contractNo\":\"" + no + "\",\"tenantId\":" + tenantId
+                + ",\"buildingId\":" + buildingId + (unitId == null ? "" : ",\"unitId\":" + unitId)
+                + ",\"rentArea\":500,\"status\":\"active\","
+                + "\"startDate\":\"2098-01-01\",\"endDate\":\"2098-12-31\"}");
+    }
+
+    /** 2099-11 之后才起租 = 还没进场(inForceState 的 'future'),不该被报「已退租」。 */
+    private void futureContract(String no, int tenantId, int buildingId, Integer unitId) throws Exception {
+        postId("/api/contracts", "{\"contractNo\":\"" + no + "\",\"tenantId\":" + tenantId
+                + ",\"buildingId\":" + buildingId + (unitId == null ? "" : ",\"unitId\":" + unitId)
+                + ",\"rentArea\":500,\"status\":\"active\","
+                + "\"startDate\":\"2100-03-01\",\"endDate\":\"2101-02-28\"}");
+    }
+
     private int locMeter(String name, int buildingId, String spot, String subName) throws Exception {
         return postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"" + name + "\","
                 + "\"ownership\":\"share\",\"buildingId\":" + buildingId
@@ -1051,7 +1384,9 @@ class AllocApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath(my + ".members.length()").value(1))
                 .andExpect(jsonPath(my + ".members[0].tenantId").value(t2))
                 .andExpect(jsonPath(my + ".members[0].src").value("month"))
-                .andExpect(jsonPath(my + ".members[0].inForce").value("no"));
+                // ⚠ 2026-09-23 从 "no" 改成 "none":t2 一份合同都没建过,那是「没有合同档案」不是「已退租」。
+                //   旧值把两件事写成一件,屏上一律显「已退租」(实测 吴跃平#335 每月被报一次)。
+                .andExpect(jsonPath(my + ".members[0].inForce").value("none"));
         // none 法不摊:全额挂亏(盈亏=−应分摊),验证四法分支
         int rNone = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"none\",\"feeKey\":\"share_elec_floor\","
                 + "\"meterIds\":[" + m + "],\"buildingId\":" + b + ",\"feeName\":\"IT-V69不分摊\"}");
@@ -1192,6 +1527,10 @@ class AllocApiIT extends AbstractMysqlIT {
         int tIn = createTenant("IT-V69在租户");
         int tGone = createTenant("IT-V69走了的户");
         contract("IT-V69-D1", tIn, b, u);
+        // ⚠ 2026-09-23:这户原来**一份合同都不给**就指望它进 removed。那是在测一个 bug ——
+        //   「没有合同档案」和「退租」是两回事(实测 吴跃平#335 零合同,每个月被报一次已退租)。
+        //   真退租要有一份已到期的合同,否则它现在是 none,不该出现在「已退租」里。
+        expiredContract("IT-V69-D0", tGone, b, u);
         int m = locMeter("IT-V69D四西灯", b, "四楼西侧", "电表①");
         int rule = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"floor\",\"coefficient\":1,"
                 + "\"feeKey\":\"share_elec_floor\",\"meterIds\":[" + m + "],\"buildingId\":" + b + ","
@@ -1240,6 +1579,50 @@ class AllocApiIT extends AbstractMysqlIT {
         // added 抑制 + removed 只收 'no' → 该池整条不进提醒条
         mvc.perform(get("/api/alloc/member-diff").param("ym", "2099-11").header("Authorization", auth()))
                 .andExpect(jsonPath(my).isEmpty());
+        // ── 2026-09-23:「已退租」原来还吞着两种不是退租的情况(实测三个月 84 条,真退租 0 条) ──
+        // 破坏验证:把 inForceState 的 future/none 两个分支删掉 → 下面两段各自红。
+        int tFuture = createTenant("IT-V69下月才进场");
+        futureContract("IT-V69-D7", tFuture, b, u);
+        int tNoDoc = createTenant("IT-V69零合同档案");
+        int rState = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"floor\",\"coefficient\":1,"
+                + "\"feeKey\":\"share_elec_floor\",\"meterIds\":[" + m + "],\"buildingId\":" + b + ","
+                + "\"floorLabel\":\"四楼\",\"side\":\"西侧\",\"feeName\":\"IT-V69五态\","
+                + "\"members\":[{\"tenantId\":" + tFuture + ",\"weight\":1},"
+                + "{\"tenantId\":" + tNoDoc + ",\"weight\":1},{\"tenantId\":" + tGone + ",\"weight\":1}]}");
+        // 池配置面板上三个人的状态各不相同,不再一律写「已退租」
+        mvc.perform(get("/api/alloc/pools").param("ym", "2099-11").header("Authorization", auth()))
+                .andExpect(jsonPath("$.data.rows[?(@.ruleId==" + rState + ")]"
+                        + ".members[?(@.tenantId==" + tFuture + ")].inForce").value("future"))
+                .andExpect(jsonPath("$.data.rows[?(@.ruleId==" + rState + ")]"
+                        + ".members[?(@.tenantId==" + tNoDoc + ")].inForce").value("none"))
+                .andExpect(jsonPath("$.data.rows[?(@.ruleId==" + rState + ")]"
+                        + ".members[?(@.tenantId==" + tGone + ")].inForce").value("no"));
+        // 「已退租」提示只收真退租那一个:下月进场的、零档案的都不进
+        String st = "$.data[?(@.ruleId==" + rState + ")]";
+        mvc.perform(get("/api/alloc/member-diff").param("ym", "2099-11").header("Authorization", auth()))
+                .andExpect(jsonPath(st + ".removed[?(@.tenantId==" + tGone + ")].inForce").value("no"))
+                .andExpect(jsonPath(st + ".removed[?(@.tenantId==" + tFuture + ")]").isEmpty())
+                .andExpect(jsonPath(st + ".removed[?(@.tenantId==" + tNoDoc + ")]").isEmpty());
+
+        // ── 电梯池不把首层户报成「新在租」(引擎 skip1F 把首层桶整桶剔掉,勾进去金额还是 0) ──
+        // 破坏验证:把 memberDiff 里那个 lift/onlyFirstFloor 过滤删掉 → 下面第一行红。
+        int u1 = unit(b, 1, "101");
+        int t1F = createTenant("IT-V69一楼户");
+        contract("IT-V69-D5", t1F, b, u1);
+        int rLift = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"floor\",\"coefficient\":1,"
+                + "\"feeKey\":\"share_elec_elevator\",\"meterIds\":[" + m + "],\"buildingId\":" + b + ","
+                + "\"feeName\":\"IT-V69货梯\",\"members\":[{\"tenantId\":" + tGone + ",\"weight\":1}]}");
+        int rFloor = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"floor\",\"coefficient\":1,"
+                + "\"feeKey\":\"share_elec_floor\",\"meterIds\":[" + m + "],\"buildingId\":" + b + ","
+                + "\"feeName\":\"IT-V69整栋灯\",\"members\":[{\"tenantId\":" + tGone + ",\"weight\":1}]}");
+        mvc.perform(get("/api/alloc/member-diff").param("ym", "2099-11").header("Authorization", auth()))
+                // 电梯池:一楼户不报
+                .andExpect(jsonPath("$.data[?(@.ruleId==" + rLift + ")].added[?(@.tenantId==" + t1F + ")]").isEmpty())
+                // 同一个一楼户,楼层公共池照报 —— 首层只对电梯免,消防/楼层公共含首层
+                .andExpect(jsonPath("$.data[?(@.ruleId==" + rFloor + ")].added[?(@.tenantId==" + t1F + ")]").exists())
+                // 四楼户在电梯池里照报(压的只是首层,不是把整条提示关掉)
+                .andExpect(jsonPath("$.data[?(@.ruleId==" + rLift + ")].added[?(@.tenantId==" + tIn + ")]").exists());
+
         // 生成时点名报数:缺日期户未进自动名册
         price("elec_commercial", "2099-11", "0.79416875");
         p2Prices("2099-11");
@@ -1420,5 +1803,54 @@ class AllocApiIT extends AbstractMysqlIT {
                 .andExpect(status().isOk());
         mvc.perform(post("/api/alloc/generate").param("ym", "2099-01").header("Authorization", "Bearer " + viewer))
                 .andExpect(status().isForbidden());
+        // 备注是本屏唯一的写口,权限与 generate 同档(/api/alloc/** -> BILLING_RUN_EDIT)。
+        mvc.perform(put("/api/alloc/loss/note").header("Authorization", "Bearer " + viewer)
+                .contentType("application/json")
+                .content("{\"ym\":\"2099-01\",\"headBuildingId\":1,\"note\":\"x\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    // ── METER-TIMELINE-SPEC §5 池(B3,槽 2085-03):绑定不分月、归属分月。+1 绑定的表只在该月归属属公摊类时计入
+    //    (与 pool-candidates 同口径 —— 否则某月起归了租户的表,户单按表收一遍、池又按 +1 摊一遍);
+    //    -1 扣减表照旧(扣的本来就是户表);池行的绑定表带回该月状态段与起始月(池编辑灰显「自 M 起已拆/停用」) ──
+    @Test
+    void pool_plusOneBindCountsOnlyWhilePoolOwned_minusOneKept_bindStatusShown() throws Exception {
+        String ym = "2085-03";
+        int t = createTenant("IT池归属户");
+        int mShare = createMeter("IT池公摊留", "p1", "share", null, null);
+        int mGone = createMeter("IT池公摊改户", "p1", "share", null, null);
+        int mDeduct = createMeter("IT池扣减户表", "p1", "tenant", t, null);
+        int mRet = createMeter("IT池停用表", "p1", "share", null, null);
+        reading(mShare, ym, "0", "100");
+        reading(mGone, ym, "0", "50");
+        reading(mDeduct, ym, "0", "10");
+        // mGone 自本月起归了租户(按月写一行,之前的月份仍是公摊);mRet 自上月起停用
+        mvc.perform(put("/api/meters/assign").header("Authorization", auth()).contentType("application/json")
+                .content("{\"ym\":\"" + ym + "\",\"mode\":\"from\",\"meterIds\":[" + mGone + "],"
+                        + "\"patch\":{\"ownership\":\"tenant\",\"tenantId\":" + t + "},\"alsoMigrateCopies\":false}"))
+                .andExpect(jsonPath("$.code").value(0));
+        mvc.perform(post("/api/meters/" + mRet + "/status").header("Authorization", auth()).contentType("application/json")
+                .content("{\"fromYm\":\"2085-02\",\"status\":\"retired\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+        int rule = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"name\":\"IT池归属分月\",\"method\":\"direct\","
+                + "\"feeKey\":\"share_elec_floor\",\"meters\":[{\"meterId\":" + mShare + ",\"sign\":1},"
+                + "{\"meterId\":" + mGone + ",\"sign\":1},{\"meterId\":" + mDeduct + ",\"sign\":-1},"
+                + "{\"meterId\":" + mRet + ",\"sign\":1}],\"members\":[{\"tenantId\":" + t + "}]}");
+        price("elec_commercial", ym, "0.79416875");
+        p2Prices(ym);
+        mvc.perform(post("/api/alloc/generate").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0));
+
+        String pools = new String(mvc.perform(get("/api/alloc/pools").param("ym", ym).header("Authorization", auth()))
+                .andReturn().getResponse().getContentAsByteArray(), java.nio.charset.StandardCharsets.UTF_8);
+        java.util.Map<String, Object> row = ((java.util.List<java.util.Map<String, Object>>) JsonPath.read(pools, "$.data.rows"))
+                .stream().filter(r -> Integer.valueOf(rule).equals(r.get("ruleId"))).findFirst().orElseThrow();
+        // 100(公摊)− 10(扣减户表)= 90;本月归了租户的那块 50 不进,停用表不进
+        assertEquals(90.0, ((Number) row.get("qtyTotal")).doubleValue(), 0.001, "池用量: " + row);
+        java.util.Map<Object, java.util.List<Object>> st = ((java.util.List<java.util.Map<String, Object>>) row.get("meters"))
+                .stream().collect(java.util.stream.Collectors.toMap(b -> b.get("meterId"),
+                        b -> java.util.Arrays.asList(b.get("status"), b.get("statusFrom"))));
+        assertEquals(java.util.Arrays.asList("retired", "2085-02"), st.get(mRet));
+        assertEquals(java.util.Arrays.asList("active", "1900-01"), st.get(mShare));
     }
 }

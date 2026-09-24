@@ -14,6 +14,7 @@ const pool = (p: Partial<AllocPoolRowDTO>): AllocPoolRowDTO => ({
   ruleId: 1, zone: 'p2', name: '一车间消防', bookBlock: null, bookKey: null, groupLabel: '一车间', method: 'floor',
   stdKind: null, roundScale: 2, baseKey: null, sortNo: 10, note: null,
   buildingId: 13, buildingName: '一车间', floorLabel: null, side: null, feeName: '消防',
+  feeKey: 'share_elec_fire',   // 合计副标题的单位跟它走(水池记吨),夹具原来整个缺这一格
   autoName: '一车间·消防', autoMembers: false, members: [],
   meters: [{ meterId: 9, name: '一车间消防', sign: 1, label: '一车间·电表①', spot: '一车间', subName: '电表①', meterType: '公共用电' }], links: [], lines: [],
   qtyTotal: null, qtySharp: null, qtyPeak: null, qtyFlat: null, qtyValley: null,
@@ -336,10 +337,15 @@ describe('V73 逐表行辅助', () => {
     expect(costPerLine(pool({ lines: [line({}), line({ meterId: 2, costAmount: null })] }))).toBe(false)
     expect(costPerLine(pool({ lines: [] }))).toBe(false)
   })
-  it('poolSubtotal 只在多表池出(单表池池行=表行)', () => {
+  // 文案 2026-09-23:单表池原来 return null,结果 98 个池里 84 个(78 单表 + 6 零表)
+  // 屏上一个单位都没有 —— 列头「用量」不写单位(电池水池混排)。现在单表池也出,
+  // 只是不写「合计」二字(没东西可合);量和金额都为空才真的不出。
+  it('poolSubtotal:多表池写「合计」,单表池只写数+单位,两者皆空才 null', () => {
     expect(poolSubtotal(pool({ lines: [line({}), line({ meterId: 2 })], qtyTotal: 403.5, costAmount: 449.5 })))
-      .toBe('Σ 403.5 度 / 449.5 元')
-    expect(poolSubtotal(pool({ lines: [line({})], qtyTotal: 135.8, costAmount: 151.3 }))).toBeNull()
+      .toBe('合计 403.5 度 · 449.5 元')
+    expect(poolSubtotal(pool({ lines: [line({})], qtyTotal: 135.8, costAmount: 151.3 })))
+      .toBe('135.8 度 · 151.3 元')
+    expect(poolSubtotal(pool({ lines: [line({})], qtyTotal: null, costAmount: null }))).toBeNull()
   })
   it('lineLabel:sign=-1 前缀「−」(冲减载体一眼可辨)', () => {
     expect(lineLabel(line({}))).toBe('A座·天面·东侧货梯·电表①')
@@ -388,10 +394,10 @@ describe('§I3 lineUseName / poolSubtitle 名称列与首行副标题', () => {
   it('多表池:自然键与 Σ 合计并列(Σ 只在池首行)', () =>
     expect(poolSubtitle(pool({
       bookKey: 'A东侧货梯', lines: [line({}), line({ meterId: 2 })], qtyTotal: 403.5, costAmount: 449.5,
-    }), '东侧货梯')).toBe('A东侧货梯 · Σ 403.5 度 / 449.5 元'))
+    }), '东侧货梯')).toBe('A东侧货梯 · 合计 403.5 度 · 449.5 元'))
   it('无自然键=只剩 Σ;两者都无=null', () => {
     expect(poolSubtitle(pool({ bookKey: null, lines: [line({}), line({ meterId: 2 })], qtyTotal: 10, costAmount: 11 }), '货梯'))
-      .toBe('Σ 10 度 / 11 元')
+      .toBe('合计 10 度 · 11 元')
     expect(poolSubtitle(pool({ bookKey: null, lines: [line({})] }), '货梯')).toBeNull()
   })
 })
@@ -445,7 +451,8 @@ describe('§I3/§I4 原册块1 逐格验收', () => {
   it('r7 名称是 D 列「大堂」而不是 A 列「A1大堂」,自然键退到副标题', () => {
     const r = rows()[2]
     expect(lineUseName(r.lines[0], poolFeeLabel(r))).toBe('大堂')
-    expect(poolSubtitle(r, '大堂')).toBe('A1大堂')
+    // 单表池的量+单位也跟在自然键后面(2026-09-23:之前单表池整条不出,屏上没单位)
+    expect(poolSubtitle(r, '大堂')).toBe('A1大堂 · 101.51 度 · 113.1 元')
   })
   it('r10 园区路灯:园区级池楼层空,由表给出「一楼」', () => expect(shown(rows()[5])[0]).toBe('一楼'))
 
@@ -488,7 +495,15 @@ describe('§I3 多表池逐行身份(红线八池的显示口径)', () => {
       .toEqual(['东侧货梯', '西侧货梯', '客梯1', '客梯2（到-1楼）'])
   })
   it('自然键+Σ 落池首行副标题', () =>
-    expect(poolSubtitle(r, '东侧货梯')).toBe('A东侧货梯 · Σ 403.5 度 / 449.5 元'))
+    expect(poolSubtitle(r, '东侧货梯')).toBe('A东侧货梯 · 合计 403.5 度 · 449.5 元'))
+  // ⚠ 单位跟费项走,不是写死的「度」。2026-09-23 报障:一期园区·绿化水池的 153 是**吨**,
+  //   屏上印成「Σ 153 度 / 680.85 元」(Σ 同日按用户原话「看不懂」换成「合计」)。全库 3 个水池都中。
+  //   破坏验证:把 poolSubtotal 里的 qtyUnit(r.feeKey) 改回写死 '度' → 本行红。
+  it('水池的合计记吨不记度', () =>
+    expect(poolSubtitle(pool({
+      feeKey: 'share_green_water', bookKey: null, qtyTotal: 153, costAmount: 680.85,
+      lines: [line({}), line({ meterId: 2 })],
+    }), '园区绿化水表1')).toBe('合计 153 吨 · 680.85 元'))
   it('单表池两种取法结果相同(占绝大多数,本刀不应改动它们)', () => {
     const s = pool({ zone: 'p1', ruleId: 33, bookKey: 'A4西侧走廊灯', buildingId: 13, floorLabel: '四楼西侧',
       lines: [line({ meterId: 9, floorLabel: '四楼', useName: '走廊灯/西侧租户' })] })
@@ -522,16 +537,17 @@ describe('§I4 合计不许双计(fold_qty 源池已被目标池吃掉)', () => 
     expect(foldQtySrcIds([pool({ ruleId: 1 }), pool({ ruleId: 2 })]).size).toBe(0))
 })
 
-describe('buildLossReconRows 对账区两行', () => {
+describe('buildLossReconRows 对账区(一条铺两行)', () => {
   const recon: AllocLossReconDTO = {
-    zone: 'p1', supplyQty: 68320, sumC: 68000, sumD: 66500,
+    zone: 'p1', supplyLabel: 'B-G座总电', sumLabel: '除一期 A座外各栋',
+    supplyQty: 68320, sumC: 68000, sumD: 66500,
     lossVsC: -320, rateVsC: -0.0047, lossVsD: -1820, rateVsD: -0.0266,
   }
-  it('两行:标签不拼数字;供电局读数单独落 supplyQty,各栋总表合计 / 分表合计落 sumQty', () => {
-    const rows = buildLossReconRows(recon)
+  it('两行:标签不拼数字,行名由后端的 supplyLabel/sumLabel 拼出;供电侧读数单独落 supplyQty,合计落 sumQty', () => {
+    const rows = buildLossReconRows([recon])
     expect(rows).toHaveLength(2)
-    expect(rows[0].label).toBe('供电局总表 vs 各栋总表合计')
-    expect(rows[1].label).toBe('供电局总表 vs 各栋分表合计')
+    expect(rows[0].label).toBe('B-G座总电 vs 除一期 A座外各栋总表合计')
+    expect(rows[1].label).toBe('B-G座总电 vs 除一期 A座外各栋分表合计')
     expect(rows[0]).toMatchObject({ supplyQty: 68320, sumQty: 68000, loss: -320, rate: -0.0047 })
     expect(rows[1]).toMatchObject({ supplyQty: 68320, sumQty: 66500, loss: -1820, rate: -0.0266 })
   })

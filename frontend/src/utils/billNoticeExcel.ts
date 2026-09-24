@@ -687,7 +687,7 @@ export function buildReconSummary(rows: ReconRow[], sheets: { companyId: number 
   aoa.push(['合计', new Set(rows.map(r => r.tenantId)).size, r2(rows.reduce((a, r) => a + r.amount, 0))])
   const unset = rows.filter(r => r.companyId == null)
   if (unset.length) {
-    aoa.push([], ['未设收款公司清单'], ['租户', '费用项', '金额(元)'])
+    aoa.push([], ['单未落收款公司清单'], ['租户', '费用项', '金额(元)'])
     for (const r of unset) aoa.push([r.tenantName ?? `#${r.tenantId}`, billFeeLabel(r.feeKey), r2(r.amount)])
   }
   return aoa

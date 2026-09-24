@@ -21,6 +21,9 @@ const ROWS = [
   // 第 4 路(R1 落库 / R2 上屏):review_log。authorizer 恒 null —— 审核不走提权。
   { source: 'review', ts: '2026-08-17T14:00:00', actor: 'li.sh', action: 'approve',
     target: 'salary:2026-07', detail: null, authorizer: null },
+  // 第 5 路(METER-TIMELINE-SPEC §5):meter_archive_log。action = 表.动作,target/detail 后端拼好
+  { source: 'meter', ts: '2026-08-16T11:20:00', actor: 'zhao.cb', action: 'assign.update',
+    target: 'B座3楼·电表② · 2024-02', detail: '旧户甲 → 新户乙 · 导入 · 2024-02抄表.xlsx', authorizer: null },
 ]
 
 const logs = vi.fn()
@@ -61,6 +64,22 @@ describe('SystemLogsView', () => {
     const w = mountView()
     const opts = w.findAllComponents(Select)[0].props('options') as { value: string; label: string }[]
     expect(opts.map(o => o.value)).toContain('review')
+  })
+
+  // 第 5 路。破坏验证:删 SRC.meter → 退回「其他」红;删 ACTION 里 'assign.update' → 露出裸码红;
+  //   删 SRC_OPTS 的 meter → 最后一条红。
+  it('❗表档案那一路显「表档案 / 改归属」,不是「其他 / assign.update」,且筛得出来', async () => {
+    const w = mountView()
+    await flushPromises()
+    const row = w.get('[data-src="meter"]')
+    expect(row.text()).toContain('表档案')
+    expect(row.text()).not.toContain('其他')
+    expect(row.text()).toContain('改归属')
+    expect(row.text()).not.toContain('assign.update')
+    expect(row.text()).toContain('B座3楼·电表② · 2024-02')
+    expect(row.text()).toContain('旧户甲 → 新户乙 · 导入')
+    const opts = w.findAllComponents(Select)[0].props('options') as { value: string; label: string }[]
+    expect(opts.find(o => o.value === 'meter')?.label).toBe('表档案')
   })
 
   it('三路来源各自渲染出可区分的徽标', async () => {

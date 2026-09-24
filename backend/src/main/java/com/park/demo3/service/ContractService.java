@@ -10,11 +10,14 @@ import com.park.demo3.dto.*;
 import com.park.demo3.entity.*;
 import com.park.demo3.mapper.*;
 import com.park.demo3.security.NoReviewGuard;
+import com.park.demo3.security.ReviewGuard;
+import com.park.demo3.security.ReviewKind;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
@@ -30,15 +33,18 @@ public class ContractService {
     private final ContractBillingTermMapper terms;   // V51 起仅作「其他费项」留档表(§1.1 零静默丢弃)
     private final ContractUnitMapper contractUnits;  // V58 附加单元(主单元在 unit_id),floorInfo 显「等N单元」
     private final BillingTermUnitMapper termUnits;   // S15:计费行↔单元绑定(V91),整组替换时快照回挂防孤儿
+    private final MeterTimelineService timeline;     // 终止联动:解约次月起写空置行(METER-TIMELINE-SPEC §3.6)
+    private final ReviewGuard reviewGuard;
 
     public ContractService(ContractMapper contracts, TenantMapper tenants,
                            BuildingMapper buildings, UnitMapper units,
                            ContractBillingTermMapper terms, ContractUnitMapper contractUnits,
-                           BillingTermUnitMapper termUnits) {
+                           BillingTermUnitMapper termUnits, MeterTimelineService timeline, ReviewGuard reviewGuard) {
         this.contracts = contracts; this.tenants = tenants;
         this.buildings = buildings; this.units   = units;
         this.terms = terms; this.contractUnits = contractUnits;
         this.termUnits = termUnits;
+        this.timeline = timeline; this.reviewGuard = reviewGuard;
     }
 
     /** 全量列表;asOfDate 非空 → 某日在租过滤(§5.2/§8⑦):非草稿且 startDate≤asOf≤endDate。 */
@@ -232,16 +238,93 @@ public class ContractService {
         }
     }
 
-    /** 终止合同;单元状态读时派生,终止后自动回 vacant。 */
-    @NoReviewGuard(reason = "只写 contract.status 一列;历史月的在租名册按起止日期重叠判、不看 status(AllocService 那一段注释:active 是今天的状态),且只在已守的 generate 那一刻被读")
-    public ContractDTO terminate(Integer id) {
+    /** 终止合同;单元状态读时派生,终止后自动回 vacant。
+     *
+     *  <p><b>终止日同时收进 end_date</b>(2026-09-23 修)。原来只写 status 一列 ——
+     *  而全链判「这个月算不算数」的 {@code MeterBindingService.covers} 只排 draft,terminated 照过:
+     *  提前解约的合同后面每个月照出满月租金、照算容量费、照进公摊名册。屏上还更糟:合同抽屉的时间轴
+     *  第 153 行印的是「已终止 · {endDate} · 提前解约」—— 把原到期日当成解约日印出来。
+     *  收 end_date 之后 covers 自然在解约日之后不再命中,解约当月按天折,历史月一个字不变。
+     *
+     *  <p>不改 covers 去排 terminated:那会连**解约之前**的月份一起停掉,而那些月人确实在租。
+     *  期限原文(term_text/V55)留着原始凭据,不受影响。
+     *
+     *  <p><b>勾选的表自解约次月起写空置行</b>(METER-TIMELINE-SPEC §3.6)。表档案带月份,这一步不再是
+     *  「只写无 ym 的 contract 表」,所以守卫是真的:空置行的区间里有审核锁 423、有含这块表的已确认/已导出单 409,
+     *  整个拒(合同也不终止)。不勾表 = 原行为,不碰档案、不过守卫。 */
+    @Transactional
+    public ContractDTO terminate(Integer id, LocalDate terminatedOn, List<Integer> vacateMeterIds) {
         Contract c = contracts.selectById(id);
         if (c == null) throw new BizException(ResultCode.NOT_FOUND, "合同不存在");
         if ("terminated".equals(c.getStatus()))
             throw new BizException(ResultCode.CONFLICT, "合同已终止");
+        LocalDate on = terminatedOn != null ? terminatedOn : LocalDate.now(ZoneId.of("Asia/Shanghai"));
+        if (c.getStartDate() != null && on.isBefore(c.getStartDate()))
+            throw new BizException(ResultCode.CONFLICT, "终止日期不能早于起租日期");
+        // 先判后写:冻结了就一行都不写(写了再判,外层事务会看见已写的那一半)
+        List<MeterAssign> vacate = vacatePlan(c, YearMonth.from(on), vacateMeterIds);
         c.setStatus("terminated");
+        // 已经自然到期的合同:终止只是补个状态,不把到期日往后推
+        if (c.getEndDate() == null || on.isBefore(c.getEndDate())) c.setEndDate(on);
         contracts.updateById(c);
+        MeterTimelineService.Ctx ctx = MeterTimelineService.Ctx.of("contract");
+        for (MeterAssign a : vacate) timeline.writeAssign(a, ctx);
         return dtoOf(contracts.selectById(id));
+    }
+
+    /** 终止确认框(SPEC §3.6):这一户在解约月挂着的表;房号与这份合同计费行位置的房号对得上的默认勾选。 */
+    public ContractTerminatePreviewDTO terminatePreview(Integer id, LocalDate terminatedOn) {
+        Contract c = contracts.selectById(id);
+        if (c == null) throw new BizException(ResultCode.NOT_FOUND, "合同不存在");
+        YearMonth on = YearMonth.from(terminatedOn != null ? terminatedOn : LocalDate.now(ZoneId.of("Asia/Shanghai")));
+        // 「合同场地」= 计费行位置,与催缴单定场地(BillNoticeService.pin)同一个来源、同一套房号 token
+        Set<String> rooms = new HashSet<>();
+        for (ContractBillingTerm t : terms.selectList(new QueryWrapper<ContractBillingTerm>().eq("contract_id", id)))
+            rooms.addAll(BillNoticeService.tok(t.getLocation()));
+        return new ContractTerminatePreviewDTO(on.plusMonths(1).toString(), hung(c, on.toString()).stream()
+            .map(m -> new ContractTerminatePreviewDTO.Meter(m.getId(), BillNoticeService.meterTag(m), m.getRoomNo(),
+                !Collections.disjoint(BillNoticeService.roomTokens(m), rooms)))
+            .toList());
+    }
+
+    // 这一户在 ym 挂着的表:站在 ym 看租户是它、在册且没拆(停用的也在册,一样跟着空置)
+    private List<MeterAt> hung(Contract c, String ym) {
+        if (c.getTenantId() == null) return List.of();
+        return timeline.metersAt(ym).stream()
+            .filter(m -> c.getTenantId().equals(m.getTenantId()) && m.getStatus() != null && !"removed".equals(m.getStatus()))
+            .toList();
+    }
+
+    /**
+     * 解约次月起的空置行:tenant 置空、contract 置空,其余照次月那一段抄(src=contract;SPEC §3.6)。
+     * 只写次月那一行(有就改它,没有就插一行),后面已有的行一个不碰(R4)。解约当月整月仍算原租户(水电一月一次读数)。
+     * 勾的表必须是这一户在解约月挂着的,否则 400;次月那一段已经不是这一户(已换租)的不写。
+     * 冻结闸同 MeterService.frozenOf:先 frozenMonths,查出来的月交给 reviewGuard(审核锁 423),其余冻结 409 整批拒。
+     */
+    private List<MeterAssign> vacatePlan(Contract c, YearMonth on, List<Integer> meterIds) {
+        if (meterIds == null || meterIds.isEmpty()) return List.of();
+        Map<Integer, MeterAt> mine = hung(c, on.toString()).stream().collect(Collectors.toMap(MeterAt::getId, m -> m));
+        String from = on.plusMonths(1).toString(), maxGen = timeline.maxGeneratedYm();
+        List<MeterAssign> out = new ArrayList<>();
+        List<String> frozen = new ArrayList<>();
+        for (Integer mid : new LinkedHashSet<>(meterIds)) {
+            MeterAt m = mine.get(mid);
+            if (m == null) throw new BizException(ResultCode.BAD_REQUEST,
+                "表 id " + mid + " 在 " + on + " 不挂在这一户名下,不能随合同空置");
+            List<MeterAssign> rows = timeline.rows(mid).assign();
+            MeterAssign row = MeterService.rowAt(rows, mid, from);
+            if (!c.getTenantId().equals(row.getTenantId())) continue;
+            // 租户标记清掉:rowAt 照上一段抄来的 tenant_manual=1 会让下月导入按 G2 保留空置、新户写不进来(PLAN §2.5)
+            row.setTenantId(null); row.setTenantName(null); row.setContractId(null); row.setTenantManual(0);
+            List<MeterTimelineService.Frozen> f = timeline.frozenMonths(mid,
+                MeterService.span(MeterService.fromsOf(rows, MeterAssign::getFromYm), from, maxGen));
+            reviewGuard.assertEditable(ReviewKind.METERS, f.stream().map(MeterTimelineService.Frozen::ym).toList(), null);
+            if (!f.isEmpty()) frozen.add(m.getName() + "(id " + mid + "):" + MeterService.frozenText(f));
+            out.add(row);
+        }
+        if (!frozen.isEmpty())
+            throw new BizException(ResultCode.CONFLICT, "要空置的表在这些月份冻结了,合同没有终止:" + String.join(";", frozen));
+        return out;
     }
 
     /** 续签(§5.3):旧合同 status='renewed'(非 terminated),新合同 parentContractId=旧 id 并继承计费行;
@@ -265,6 +348,10 @@ public class ContractService {
         c.setTenantId(old.getTenantId());
         c.setBuildingId(old.getBuildingId());
         c.setUnitId(old.getUnitId());
+        // V59 合同性质随租期走(2026-09-23 补):原来这一行没有,整租合同一续签就回落 DB 默认 normal,
+        // 而「排除整租防双算」有六个消费者(KPI 月租金合计/楼栋卡三项/租金行/容量费/分析屏到期与对标)——
+        // 火炬园那份 180 万的整栋合同续一次签,这六处同时失效,底下 26 户的单照出、整栋的单也出。
+        c.setKind(old.getKind());
         c.setRentArea(req.rentArea() != null ? req.rentArea() : old.getRentArea());
         c.setMonthlyRent(req.monthlyRent() != null ? req.monthlyRent() : old.getMonthlyRent());
         c.setDeposit(req.deposit() != null ? req.deposit() : old.getDeposit());
@@ -304,7 +391,7 @@ public class ContractService {
     }
 
     // ponytail: 留档费项行经 FK ON DELETE CASCADE 随删(V48),直接 deleteById
-    @NoReviewGuard(reason = "级联路径逐条查过 V48/V54/V56/V58/V63/V91:CASCADE 到的全是无 ym 列的合同子表,meter.contract_id 是 SET NULL(等价解绑),bill_notice_line.contract_id 无 FK(V89 的出账快照),没有一条通向带 ym 的表")
+    @NoReviewGuard(reason = "级联路径逐条查过 V48/V54/V56/V58/V63/V91:CASCADE 到的全是无 ym 列的合同子表,meter_assign.contract_id 是 SET NULL(等价解绑),bill_notice_line.contract_id 无 FK(V89 的出账快照),没有一条通向带 ym 的表")
     public void delete(Integer id) {
         if (contracts.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "合同不存在");
         contracts.deleteById(id);

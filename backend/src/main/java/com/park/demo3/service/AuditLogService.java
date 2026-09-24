@@ -37,15 +37,21 @@ public class AuditLogService {
             l.setTs(LocalDateTime.now());
             l.setActor(actor());
             l.setAction(action);
-            l.setTarget(target);
+            // 截到列宽(V102:target 128 / detail 255)。不截的话超长的理由整条 INSERT 失败,
+            // 被下面的 catch 吞成一行服务端日志 —— 审计凭空少一条,屏上什么都看不出来(unconfirm 原来就这样)。
+            l.setTarget(cut(target, 128));
             // 显式传的授权人优先；没传就看本次请求是不是靠提权放行的（WriteAccessManager 塞的）。
             // 这一句让所有现存调用点自动记上授权人，一处都不用改。
             l.setAuthorizer(authorizer != null ? authorizer : ElevationStore.currentAuthorizer());
-            l.setDetail(detail);
+            l.setDetail(cut(detail, 255));
             logs.insert(l);
         } catch (Exception e) {
             log.error("审计日志写入失败(业务未受影响) action={} target={}", action, target, e);
         }
+    }
+
+    private static String cut(String s, int max) {
+        return s == null || s.length() <= max ? s : s.substring(0, max);
     }
 
     private static String actor() {

@@ -31,8 +31,21 @@ public class ContractController {
         return svc.update(id, req);
     }
 
-    @Operation(summary = "终止合同（其占用单元派生回空置）") @PostMapping("/{id}/terminate")
-    public ContractDTO terminate(@PathVariable Integer id) { return svc.terminate(id); }
+    @Operation(summary = "终止合同（解约日收进 end_date；其占用单元派生回空置；vacateMeterIds 自解约次月起写空置行）")
+    @PostMapping("/{id}/terminate")
+    public ContractDTO terminate(@PathVariable Integer id,
+                                 @RequestBody(required = false) ContractTerminateReq req) {
+        return svc.terminate(id, req == null ? null : req.terminatedOn(), req == null ? null : req.vacateMeterIds());
+    }
+
+    @Operation(summary = "终止确认框取数（这一户在解约月挂着的表；房号对得上合同场地的默认勾选；on 空=今天）")
+    @GetMapping("/{id}/terminate-preview")
+    public ContractTerminatePreviewDTO terminatePreview(@PathVariable Integer id,
+            @RequestParam(required = false)
+            @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
+            java.time.LocalDate on) {
+        return svc.terminatePreview(id, on);
+    }
 
     @Operation(summary = "续签合同（原合同终止，新合同继承租户/楼栋/单元）") @PostMapping("/{id}/renew")
     public ContractDTO renew(@PathVariable Integer id, @Valid @RequestBody ContractRenewReq req) {

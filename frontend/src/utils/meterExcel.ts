@@ -260,10 +260,12 @@ export async function buildMeterTemplate(ym: string, zones?: ZoneLite[]): Promis
 
 // ── 当月导出:6 sheet 同构真实版式,可改后直接重导(修正回路,同 PV 导出口径) ──
 // 结构化最小类型(与 api/meters.ts DTO 兼容,不 import 保持纯函数独立可测)
+// status = 站在导出月的状态段(METER-TIMELINE-SPEC §1.3);档案各列也是那个月的值(调用方传 list(ym) 的结果)
 export interface MeterLite {
   id: number; kind: string; zone: string; name: string
   area?: string | null; spot?: string | null; tenantName?: string | null
   meterType?: string | null; subName?: string | null; code?: string | null; factor?: number | null
+  status: string | null
 }
 export interface MeterReadingLite {
   meterId: number
@@ -278,7 +280,9 @@ export function buildMeterExportAoa(
 ): (string | number)[][] {
   const byMeter = new Map(readings.map(r => [r.meterId, r]))
   const aoa = buildMeterTemplateAoa(zone, kind, ym).slice(0, kind === 'elec' ? 3 : 2)   // 标题+表头,去示例行
-  for (const m of meters.filter(m => m.zone === zone && m.kind === kind)) {
+  // SPEC §6:只导站在该月在册的表 —— 在用与停用(停用照样在册上);已拆 / 还不在册的不导
+  const onRegister = (m: MeterLite) => m.status === 'active' || m.status === 'retired'
+  for (const m of meters.filter(m => m.zone === zone && m.kind === kind && onRegister(m))) {
     const r = byMeter.get(m.id)
     const base: (string | number)[] = [m.name, m.area ?? '', m.spot ?? '', m.tenantName ?? '',
       m.meterType ?? '', m.subName ?? '', m.code ?? '', m.factor ?? 1]

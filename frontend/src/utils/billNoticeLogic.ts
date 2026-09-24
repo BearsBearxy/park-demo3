@@ -3,7 +3,8 @@
 // fee_key 词汇沿用 alloc_result 现值(spec §4:不造第三套)——公摊类标签 2026-08-08 起转「租户单口径」。
 // v1 的单据类/状态字典与按单 KPI 已随「屏上不显单据类/收款主体/状态」拍板删除。
 // S5 刀4:租金板块(fee_group='rent' 落库行)按 premise 分块 groupRentByPremise;公摊行名=纯费项名 + billFeeTitle 悬浮。
-import { ALLOC_FEE_LABEL } from '@/utils/allocLogic'
+import { ALLOC_FEE_LABEL, qtyUnit } from '@/utils/allocLogic'
+import { WARN_CODES, WARN_COPY, warnCopy, warnItemText } from './billNoticeWarnCopy'
 import { FEE_NAME, feeLabel, inferPropertyType, type FeeKey, type PropertyType } from '@/types/contract'
 
 const r2 = (v: number) => Math.round(v * 100) / 100
@@ -14,6 +15,11 @@ const r2 = (v: number) => Math.round(v * 100) / 100
 // 此处逐条钉死与之脱钩(即便当前取值与 alloc 相同,也写出来,免得那边改词把单据词汇拖着走)。
 export const BILL_FEE_LABEL: Record<string, string> = {
   ...ALLOC_FEE_LABEL,
+  // 合同侧费项键:缺了它们 billFeeLabel 回落原始 key,屏上直接印出「rent_office」「rent_dorm」
+  // (2026-09-23 用户截图)。单一事实源 types/contract.FEE_NAME,不手抄第二份。
+  // ⚠ 排掉 mgmt/infra:FEE_NAME 里这两个不带段前缀,而同屏租金明细走 rentFeeName 印的是
+  //   「厂房企业管理服务费」—— 并进来会让同一笔钱在抽屉与对账表里出现两个名字。
+  ...Object.fromEntries(Object.entries(FEE_NAME).filter(([k]) => k !== 'mgmt' && k !== 'infra')),
   share_elec_floor: '楼层公共',
   share_elec_fire: '消防用电',   // 二期纸单原文(全册 0 次「消防照明」);一期无 fire 键
   share_elec_elevator: '电梯用电',
@@ -238,7 +244,7 @@ export function billQtyCell(l: {
   amount: number
 }): QtyCell {
   const p = l.priceSnap
-  const raw = `${l.qty ?? '–'} ${l.feeKey.includes('water') ? '吨' : '度'}`
+  const raw = `${l.qty ?? '–'} ${qtyUnit(l.feeKey)}`
   const dq = p != null && l.qty != null ? fitScale(l.qty, p, l.amount) : null
   if (dq != null) return { qty: l.qty, unit: '', title: null, price: showPrice(p!, dq) }
   const base = l.baseSnap
@@ -314,7 +320,7 @@ const shareSrcName = (l: FeeTitleLine): string =>
 // 返回值含前导分隔(多数支为「 —— …」,损耗支为「 总表…」),src + why 逐字等于改前的整串
 function shareWhy(l: FeeTitleLine): string {
   const water = l.feeKey.includes('water')
-  const unit = water ? '吨' : '度'
+  const unit = qtyUnit(l.feeKey)
   if (l.amount === 0) {
     return ` —— ${l.qty ? '本月摊到你这儿不足一分钱' : '这块表本月没走字'},不收钱`
   }
@@ -433,7 +439,7 @@ const money = (v: number) =>
 // 倍率列被 colspan 吞掉的那格信息。⚠ 真表名后端 DTO 未下发(只有 meterId/meterLabel),
 // 撞号且倍率相同的仍分不开,待 detail() 补 meterName 后收口。
 function meterWhy(l: FeeTitleLine, showFactor: boolean): string {
-  const unit = l.feeKey.includes('water') ? '吨' : '度'
+  const unit = qtyUnit(l.feeKey)
   const name = (l.meterLabel ?? '未标表') + (showFactor && l.factorSnap != null ? `(倍率 ${num(l.factorSnap)})` : '')
   if (l.amount === 0) return `${name} ${l.qty ? `用了 ${num(l.qty)} ${unit},` : '本月没走字,'}不收钱`
   const p = billQtyCell(l).price
@@ -604,8 +610,12 @@ export interface NoticeLike {
   totalAmount: number
   prevDue: number
   lineCount: number
-  warn: string | null
+  warns: NoticeAlert[]
 }
+
+/** 一条告警(V126)。code 是类别,payload/hint 是实例数据;屏上的字由 WARN_COPY 的 fmt 出。 */
+export interface NoticeAlert { code: string; payload: string; hint: string }
+
 export interface TenantNoticeRow {
   tenantId: number
   tenantName: string | null
@@ -614,11 +624,13 @@ export interface TenantNoticeRow {
   totalAmount: number          // 水电合计=Σ
   prevDue: number
   premiseText: string | null   // 各单场地按逗号拆项去重合并
-  warn: string | null          // 各单 warn 按分号拆项去重、换行连接(悬浮原文)
+  // 各单告警按 (code, payload) 去重合并,序=WARN_CODES 组序 → payload 自然序。
+  // 去重键与后端 Warn.key()、DB 的 uk_warn 严格同口径:hint 差一个字不算两条。
+  alerts: NoticeAlert[]
   offbook: boolean             // 账外户降淡(offbook 是户级标,该户单据全为 offbook 才算)
 }
 export function aggregateByTenant(notices: NoticeLike[]): TenantNoticeRow[] {
-  interface Acc { row: TenantNoticeRow; premises: Set<string>; warns: Set<string> }
+  interface Acc { row: TenantNoticeRow; premises: Set<string>; alerts: Map<string, NoticeAlert> }
   const accs: Acc[] = []
   const byTenant = new Map<number, Acc>()
   for (const n of notices) {
@@ -627,9 +639,9 @@ export function aggregateByTenant(notices: NoticeLike[]): TenantNoticeRow[] {
       a = {
         row: {
           tenantId: n.tenantId, tenantName: n.tenantName, noticeIds: [],
-          lineCount: 0, totalAmount: 0, prevDue: 0, premiseText: null, warn: null, offbook: true,
+          lineCount: 0, totalAmount: 0, prevDue: 0, premiseText: null, alerts: [], offbook: true,
         },
-        premises: new Set(), warns: new Set(),
+        premises: new Set(), alerts: new Map(),
       }
       byTenant.set(n.tenantId, a)
       accs.push(a)
@@ -642,11 +654,14 @@ export function aggregateByTenant(notices: NoticeLike[]): TenantNoticeRow[] {
     r.tenantName ??= n.tenantName
     if (n.noticeKind !== 'offbook') r.offbook = false
     for (const p of (n.premiseText ?? '').split(',')) { const t = p.trim(); if (t) a.premises.add(t) }
-    for (const w of (n.warn ?? '').split(';')) { const t = w.trim(); if (t) a.warns.add(t) }
+    for (const w of n.warns ?? []) a.alerts.set(`${w.code}|${w.payload}`, w)   // 后见的 hint 不覆盖首见?用 set 覆盖:同键 hint 必然同值(后端按首见落库)
   }
   for (const a of accs) {
     a.row.premiseText = a.premises.size ? [...a.premises].join(',') : null
-    a.row.warn = a.warns.size ? [...a.warns].join('\n') : null
+    // 排序:先按 WARN_CODES 的组序,同组再按 payload 的自然序(数字房号按数值,其余按字典序)
+    a.row.alerts = [...a.alerts.values()].sort((x, y) =>
+      (WARN_CODES.indexOf(x.code as never) - WARN_CODES.indexOf(y.code as never))
+      || x.payload.localeCompare(y.payload, 'zh', { numeric: true }))
   }
   return accs.map(a => a.row)
 }
@@ -739,14 +754,98 @@ export function rentByTenant(contracts: { tenantId: number; monthlyRent: number 
 }
 
 // ── v2 KPI:户数/水电总额/月租金合计(参考)/警告户数(随当前期 tab 联动) ──
-export function tenantKpis(rows: { totalAmount: number; rent: number | null; warn: string | null }[]): {
+// warned 的口径一个字没动:数的仍是**户**(rows 已按期别 tab 过滤过),只是判据从
+// 「warn 串非空」换成「alerts 非空」。屏上 KPI 的标题也仍是「警告户数」。
+export function tenantKpis(rows: { totalAmount: number; rent: number | null; alerts: NoticeAlert[] }[]): {
   count: number; total: number; rent: number; warned: number
 } {
   let total = 0, rent = 0, warned = 0
   for (const r of rows) {
     total += r.totalAmount ?? 0
     rent += r.rent ?? 0
-    if (r.warn) warned++
+    if (r.alerts.length) warned++
   }
   return { count: rows.length, total: r2(total), rent: r2(rent), warned }
+}
+
+// ── 告警分组(FPAlertPanel 的 AlertGroup 数据源) ────────────────────────────
+//
+// 纯函数,照 utils/poolLedgerLogic.ts 的 meterDiffGroup 那条先例:字段名直接对齐 FPAlertPanel 的
+// AlertGroup,屏里 gs.push(...) 就能用,不在 .vue 里再转一层 —— 那样单测就盯不住分组逻辑了。
+//
+// drawer:false 的类别(今天只有 W_TOTAL_NEGATIVE)不进这里:FPAlertPanel §6-3 明文
+// 「只报不给动作的告警不许进来」。它的落点仍是列表行尾「!」与明细抽屉横幅。
+export interface NoticeAlertGroup {
+  key: string
+  title: string
+  desc: string
+  tone: 'warn'
+  items: { text: string; hint?: string }[]
+  route: string
+  actionLabel: string
+}
+export function buildNoticeAlertGroups(
+  rows: { tenantName: string | null; alerts: NoticeAlert[] }[],
+): NoticeAlertGroup[] {
+  // 同一条告警可能落在多户身上(如两户各有一块表没挂合同),条目按「户 + 该条的字」去重
+  const byCode = new Map<string, Map<string, { text: string; hint?: string }>>()
+  for (const r of rows) {
+    for (const a of r.alerts) {
+      const c = warnCopy(a.code)
+      if (!c || !c.drawer) continue
+      const text = warnItemText(a.code, a.payload, a.hint)
+      const who = r.tenantName ?? ''
+      const m = byCode.get(a.code) ?? new Map()
+      m.set(`${who}|${text}`, { text, hint: who || undefined })
+      byCode.set(a.code, m)
+    }
+  }
+  return WARN_CODES
+    .filter(code => byCode.has(code))
+    .map(code => {
+      const c = WARN_COPY[code]
+      return {
+        key: code, title: c.title, desc: c.desc, tone: 'warn' as const,
+        items: [...byCode.get(code)!.values()],
+        route: c.route, actionLabel: c.actionLabel,
+      }
+    })
+}
+
+// 一户的告警按类分组。两个落点共用这一份:列表行尾「!」的悬浮(warnSummaryLines)、
+// 明细抽屉标题行上的徽标与点开面板(BillNoticesView)。组序用 WARN_CODES,不按入参顺序。
+//
+// ⚠ 不复用 buildNoticeAlertGroups:它按 FPAlertPanel §6-3 滤掉了 drawer:false 的类
+// (今天是 W_TOTAL_NEGATIVE),而这两个落点要把这户的告警**全部**说完 —— 滤掉就成了亮着灯却没有字。
+export interface WarnGroup {
+  code: string
+  title: string
+  items: string[]
+  route: string
+  actionLabel: string
+}
+export function warnGroupsOf(alerts: NoticeAlert[]): WarnGroup[] {
+  const byCode = new Map<string, string[]>()
+  for (const a of alerts) {
+    const t = warnItemText(a.code, a.payload, a.hint)
+    const items = byCode.get(a.code) ?? []
+    if (!items.includes(t)) items.push(t)
+    byCode.set(a.code, items)
+  }
+  return WARN_CODES.filter(c => byCode.has(c)).map(c => ({
+    code: c, title: WARN_COPY[c].title, items: byCode.get(c)!,
+    route: WARN_COPY[c].route, actionLabel: WARN_COPY[c].actionLabel,
+  }))
+}
+
+// 一户的告警摘要:**一类一行 = 块头 + 该类的条目**。落点是列表行尾「!」的悬浮。
+//
+// 只列条目不给块头,屏上就是几个光秃秃的名字 ——「A101旭化成水 / 旭化成二楼水1 / 旭化成二楼水2」,
+// 看的人不知道这三个名字在说什么(2026-09-23 用户原话:每个租户的卡里面还是莫名其妙的提示)。
+export function warnSummaryLines(alerts: NoticeAlert[]): string {
+  return warnGroupsOf(alerts).map(g => {
+    const body = g.items.join('、')
+    // 条目本身就是块头那一类(本期合计为负)不复述,免得屏上出现「X:X」
+    return body === g.title ? body : `${g.title}:${body}`
+  }).join('\n')
 }

@@ -37,8 +37,8 @@ public final class ParamRegistry {
     private static final Set<ScopeKind> S_TENANT = EnumSet.of(ScopeKind.TENANT);
     private static final Set<ScopeKind> S_GLOBAL_ONLY = EnumSet.of(ScopeKind.GLOBAL);
     private static final Map<Integer, String> LOSS_VARIANT_OPTS = Map.of(
-        0, "按损耗量核算（率 = −(分表合计 − 总表 − 公摊分摊度数 − 调整度数) ÷ 分母 + 加点）",
-        1, "仅按公摊分摊度数（率 = 公摊分摊度数 ÷ 分母 + 加点）",
+        0, "按损耗量核算（率 = −(分表合计 − 总表 − 公摊分摊度数 − 调整度数) ÷ 分摊基数 + 加点）",
+        1, "仅按公摊分摊度数（率 = 公摊分摊度数 ÷ 分摊基数 + 加点）",
         2, "不核算（只列示用量）");
     private static final Map<Integer, String> ZONE_CALC_KIND_OPTS = Map.of(
         0, "平价制（单一商业价 × 用量）",
@@ -87,7 +87,7 @@ public final class ParamRegistry {
         price("elevator_area_base", "A座电梯分摊面积基数", "㎡", Group.MONTHLY, S_ZONE, "from", true, ValueKind.NUMBER, null,
             "A座电梯分摊标准 = 电梯池成本 ÷ 分摊面积基数（元/㎡）", "源册逐月手改；本月未填沿用上一版本", null);
         alloc("loss_adj_qty", "损耗调整度数", "度", Group.MONTHLY, S_BUILDING, "month", true, ValueKind.NUMBER, null,
-            "收取损耗率 = −(分表合计 − 总表 − 公摊分摊度数 − 调整度数) ÷ 分母 + 加点", "正数多收（加大损耗），负数少收；按楼栋设，仅当月", null);
+            "收取损耗率 = −(分表合计 − 总表 − 公摊分摊度数 − 调整度数) ÷ 分摊基数 + 加点", "正数多收（加大损耗），负数少收；按楼栋设，仅当月", null);
         alloc("loss_rate_manual", "损耗率（手工指定）", "比率", Group.MONTHLY, S_BUILDING, "month", true, ValueKind.RATE, null,
             "填写后直接作为该栋收取损耗率，公式算出的率并列备查", "源册手填常量的统一入口（如 B座 0.0156、二三四车间 0.0015）", null);
         alloc("extra_qty", "公摊池加减度数", "度", Group.MONTHLY, S_RULE, "month", true, ValueKind.NUMBER, null,
@@ -143,7 +143,7 @@ public final class ParamRegistry {
 
         // ── ③ 核算口径(结构性,默认 from;栋级人话句子) spec §3.3 ──
         alloc("loss_variant", "损耗核算方式", "", Group.RULE, S_BUILDING, "from", false, ValueKind.ENUM, LOSS_VARIANT_OPTS,
-            "按损耗量核算：率 = −(分表合计 − 总表 − 公摊分摊度数 − 调整度数) ÷ 分母 + 加点；仅按公摊分摊度数：率 = 公摊分摊度数 ÷ 分母 + 加点；不核算：只列示用量",
+            "按损耗量核算：率 = −(分表合计 − 总表 − 公摊分摊度数 − 调整度数) ÷ 分摊基数 + 加点；仅按公摊分摊度数：率 = 公摊分摊度数 ÷ 分摊基数 + 加点；不核算：只列示用量",
             "B座 / C座 2023-11 起仅按公摊分摊度数；G座 不核算", null);
         alloc("zone_calc_kind", "计费口径", "", Group.RULE, S_ZONE, "from", false, ValueKind.ENUM, ZONE_CALC_KIND_OPTS,
             "决定该期区的公摊池怎么算钱：平价制 = (用量 + 加减度数) × 单一商业价；分时制 = 尖峰平谷四段电价 + 管理费",
@@ -156,8 +156,8 @@ public final class ParamRegistry {
             "是否参与「供电局总表 与 各栋总表合计 / 各栋分表合计」两行对账", "A座 独立供电线路，不参与", null);
         alloc("loss_exclude", "不计入楼栋合计的电表", "", Group.RULE, S_METER, "from", false, ValueKind.BOOL, null,
             "该表不计入所在楼栋的总表合计与分表合计", "抄表册合计明确剔除的行（力美C201电 / 四车间工地 / 广告字分表）", null);
-        alloc("loss_denom_cable", "损耗率分母", "", Group.RULE, S_ZONE_BUILDING, "from", false, ValueKind.BOOL, null,
-            "收取损耗率的分母取 仅总表 或 总表 + 铝缆", "二期 2023-08、09 含铝缆，2023-10 起仅总表；可按期或按栋设", null);
+        alloc("loss_denom_cable", "损耗率分摊基数", "", Group.RULE, S_ZONE_BUILDING, "from", false, ValueKind.BOOL, null,
+            "收取损耗率的分摊基数取 仅总表 或 总表 + 铝缆", "二期 2023-08、09 含铝缆，2023-10 起仅总表；可按期或按栋设", null);
         alloc("loss_supply_meter", "供电局对账总表", "", Group.RULE, S_ZONE, "from", false, ValueKind.REF_METER, null,
             "对账供给侧 = 该总表读数（不参与任何楼栋损耗）", "一期 B-G座总电；二期 二期总电", null);
         alloc("frozen_2023", "2023 年冻结单价（仅备查）", "元", Group.RULE, S_RULE, "from", false, ValueKind.MONEY, null,

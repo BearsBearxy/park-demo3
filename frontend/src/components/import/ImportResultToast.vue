@@ -3,7 +3,9 @@
 import { ref, computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
-import type { ImportResultDTO } from '@/types/import'
+import type { ImportResultDTO, ImportChange } from '@/types/import'
+import { buildingApi } from '@/api/building'
+import { OWNERSHIP_LABEL } from '@/utils/meterSplit'
 
 // summary: 智能整表多段导入时,各段「年月期·导入/跳过/错误」一行一段
 // go: 传了就多一个按钮(文案即它),点击 emit('go') —— 导入中心「去查看」(SIDEBAR-UX-REDESIGN §9 P0b);其余 16 个消费方不传,一个字不变
@@ -18,6 +20,28 @@ const notices = computed(() => props.result.notices ?? [])
 // 抄表导入的身份匹配分档(METER-IMPORT-SPEC §4);其余导入器无 matches 即不显示。
 // 「新建」是异常放大器:重导老文件时应≈0,暴涨=身份判错。
 const MATCH_LABEL: Record<string, string> = { code: '按编码命中', addr: '按位置命中', name: '按标识命中', new: '新建' }
+// 抄表导入的档案变化(METER-TIMELINE-SPEC §3.2):表 · 字段 · 旧 → 新 · 影响哪几个月。其余导入器不给
+const showChanges = ref(false)
+const changes = computed(() => props.result.changes ?? [])
+const FIELD_LABEL: Record<string, string> = {
+  tenant: '企业名称', buildingId: '楼栋', ownership: '归属', area: '区域', spot: '位置', floorLabel: '楼层',
+  side: '方位', roomNo: '房号', subName: '表名称', contractId: '钉的合同', status: '状态',
+}
+const STATUS_LABEL: Record<string, string> = { active: '在用', retired: '停用', removed: '已拆' }
+// 楼栋在变化里是 id:有楼栋变化才去拉一次楼栋名(拉不到就留 id)
+const bldName = ref(new Map<string, string>())
+if (changes.value.some(c => c.field === 'buildingId'))
+  buildingApi.list().then(bs => { bldName.value = new Map(bs.map(b => [String(b.id), b.name])) }).catch(() => {})
+function chgVal(c: ImportChange, v: string | null): string {
+  if (v == null || v === '') return c.field === 'status' ? '不在册' : '空'
+  if (c.field === 'status') return STATUS_LABEL[v] ?? v
+  if (c.field === 'ownership') return OWNERSHIP_LABEL[v as keyof typeof OWNERSHIP_LABEL] ?? v
+  if (c.field === 'buildingId') return bldName.value.get(v) ?? `楼栋 #${v}`
+  if (c.field === 'contractId') return `合同 #${v}`
+  return v
+}
+const chgSpan = (c: ImportChange) => (c.until ? `影响 ${c.from} ~ ${c.until}` : `影响 ${c.from} 起`)
+
 const matchStats = computed(() => {
   const ms = props.result.matches
   if (!ms?.length) return null
@@ -50,6 +74,19 @@ const matchStats = computed(() => {
       </div>
       <div v-if="summary" class="ir-summary">
         <div v-for="(ln, i) in summary.split('\n')" :key="i" class="ir-summary-line">{{ ln }}</div>
+      </div>
+      <!-- 档案变化(抄表导入):逐条「表 · 字段 · 旧 → 新 · 影响哪几个月」 -->
+      <div v-if="changes.length" class="ir-errs ir-notes ir-chg">
+        <button class="ir-errs-toggle" @click="showChanges = !showChanges">
+          <component :is="iconFor(showChanges ? 'chevron-down' : 'chevron-right')" :size="14" />
+          {{ changes.length }} 处表档案改动
+        </button>
+        <ul v-if="showChanges" class="ir-errs-list">
+          <li v-for="(c, i) in changes" :key="i">
+            <span class="ir-errs-label" :title="c.label">{{ c.label }}</span>
+            <span class="ir-errs-reason">{{ FIELD_LABEL[c.field] ?? c.field }} {{ chgVal(c, c.before) }} → {{ chgVal(c, c.after) }} · {{ chgSpan(c) }}</span>
+          </li>
+        </ul>
       </div>
       <!-- 刀G 提示区:已成功导入但有需知会的处置(与下方「未导入」严格分开) -->
       <div v-if="notices.length" class="ir-errs ir-notes">
@@ -115,6 +152,7 @@ const matchStats = computed(() => {
 .ir-summary-line { font-size:11.5px; font-family:var(--font-mono); color:var(--text-secondary); }
 
 .ir-notes .ir-errs-toggle { color: var(--text-secondary); }
+.ir-chg .ir-errs-reason { color: var(--text-secondary); min-width: 0; overflow-wrap: anywhere; }
 .ir-errs { padding:12px 20px 0; }
 .ir-errs-toggle { display:flex; align-items:center; gap:6px; border:none; background:transparent; cursor:pointer; font-family:var(--font-sans); font-size:12.5px; font-weight:var(--fw-medium); color:var(--text-secondary); padding:6px 0; }
 .ir-errs-list { list-style:none; margin:6px 0 0; padding:8px 10px; max-height:180px; overflow:auto; background:var(--surface-card); border-radius:var(--radius-md); }

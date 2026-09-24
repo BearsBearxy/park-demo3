@@ -1,14 +1,15 @@
 package com.park.demo3.service;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.AutoLinkResultDTO;
+import com.park.demo3.dto.MeterBindReq;
 import com.park.demo3.dto.MeterBindingDTO;
 import com.park.demo3.dto.MeterUsageSummaryDTO;
 import com.park.demo3.entity.Building;
 import com.park.demo3.entity.Contract;
 import com.park.demo3.entity.ContractBillingTerm;
 import com.park.demo3.entity.Meter;
+import com.park.demo3.entity.MeterAssign;
 import com.park.demo3.entity.MeterReading;
 import com.park.demo3.entity.Tenant;
 import com.park.demo3.mapper.BuildingMapper;
@@ -18,6 +19,8 @@ import com.park.demo3.mapper.MeterMapper;
 import com.park.demo3.mapper.MeterReadingMapper;
 import com.park.demo3.mapper.TenantMapper;
 import com.park.demo3.security.NoReviewGuard;
+import com.park.demo3.security.ReviewGuard;
+import com.park.demo3.security.ReviewKind;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
@@ -49,13 +52,16 @@ public class MeterBindingService {
     private final TenantMapper tenants;
     private final BuildingMapper buildings;
     private final ContractBillingTermMapper billingTerms;
+    private final MeterTimelineService timeline;
+    private final ReviewGuard reviewGuard;
 
     public MeterBindingService(MeterMapper meters, MeterReadingMapper readings,
                                ContractMapper contracts, TenantMapper tenants, BuildingMapper buildings,
-                               ContractBillingTermMapper billingTerms) {
+                               ContractBillingTermMapper billingTerms, MeterTimelineService timeline,
+                               ReviewGuard reviewGuard) {
         this.meters = meters; this.readings = readings;
         this.contracts = contracts; this.tenants = tenants; this.buildings = buildings;
-        this.billingTerms = billingTerms;
+        this.billingTerms = billingTerms; this.timeline = timeline; this.reviewGuard = reviewGuard;
     }
 
     // 费项位置标签(2026-08-04 用户要求"不单止办公室,要把单元也显示出来"):
@@ -90,16 +96,31 @@ public class MeterBindingService {
             famContracts.computeIfAbsent(root.getOrDefault(c.getTenantId(), c.getTenantId()),
                 k -> new ArrayList<>()).add(c);
         }
+        // 递增段/续签链:parent_contract_id 连成的单链(V57 link_type new|renew|escalation)。
+        // 规则1 按月落段要用它 —— 见下面 segmentCovering 的注释。
+        Map<Integer, Integer> chainRoot = new HashMap<>();
+        for (Contract c : byId.values()) chainRoot.put(c.getId(), chainRootOf(c, byId));
+        Map<Integer, List<Contract>> chainMembers = new HashMap<>();   // 链首 id → 本链非草稿各段
+        for (Contract c : byId.values()) {
+            if ("draft".equals(c.getStatus())) continue;
+            chainMembers.computeIfAbsent(chainRoot.get(c.getId()), k -> new ArrayList<>()).add(c);
+        }
         Map<Integer, MeterReading> readByMeter = readingsByMeter(ym);
         Map<Integer, String> bName = buildings.selectList(null).stream()
             .collect(Collectors.toMap(Building::getId, Building::getName));
         // 费项位置标签(每合同一次;整表一读同 contracts.selectList 口径,行内按 seq,id 序保租金行居首)
-        Map<Integer, List<String>> locsByContract = billingTerms.selectList(null).stream()
+        Map<Integer, List<ContractBillingTerm>> termsByContract = billingTerms.selectList(null).stream()
             .sorted(Comparator.comparing((ContractBillingTerm t) -> t.getSeq() == null ? 0 : t.getSeq())
                 .thenComparing(ContractBillingTerm::getId))
-            .collect(Collectors.groupingBy(ContractBillingTerm::getContractId, LinkedHashMap::new, Collectors.toList()))
-            .entrySet().stream()
+            .collect(Collectors.groupingBy(ContractBillingTerm::getContractId, LinkedHashMap::new, Collectors.toList()));
+        Map<Integer, List<String>> locsByContract = termsByContract.entrySet().stream()
             .collect(Collectors.toMap(Map.Entry::getKey, e -> locLabels(e.getValue())));
+        // 位置原文(去重,同催缴单 S6 定位的 locsByContract 口径):房号对位与改归属建议用
+        Map<Integer, List<String>> rawLocs = termsByContract.entrySet().stream()
+            .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().stream().map(ContractBillingTerm::getLocation)
+                .filter(l -> l != null && !l.isBlank()).map(String::trim).distinct().toList()));
+        List<Contract> inForce = byId.values().stream().filter(c -> covers(c, first, last)).toList();
+        Map<Integer, String> tenantNames = new HashMap<>();   // 建议里的户名,按需逐户取
 
         List<MeterBindingDTO.Row> rows = new ArrayList<>();
         Map<String, Integer> counts = new HashMap<>();
@@ -107,20 +128,31 @@ public class MeterBindingService {
         BUCKETS.forEach(b -> manual.put(b, 0));
         int missing = 0;
 
-        for (Meter m : meters.selectFiltered(null, null)) {
-            // 非租户表(含 park 园区自担)不参与绑定;已停用表本月不在服务中,不进待核/待绑定分母(V68);
+        // 归属/合同钉/状态都站在 ym 取(METER-TIMELINE-SPEC §2):钉的合同只对它那一段有效
+        for (MeterAt m : timeline.metersAt(ym)) {
+            // 非租户表(含 park 园区自担)不参与绑定;本月不在服务中(未在册/停用/已拆)不进待核/待绑定分母;
             // shadow=疑似重复建档,同 AllocService 排除口径(V75 §F1),不进绑定分母
-            if (!"tenant".equals(m.getOwnership()) || MeterService.outOfService(m, ym)
+            if (!"tenant".equals(m.getOwnership()) || MeterService.outOfService(m)
                 || "shadow".equals(m.getSuspect())) continue;
             boolean hasReading = usable(readByMeter.get(m.getId()));
             if (!hasReading) missing++;
 
             String status; String bucket = null; Contract chosen = null; List<Contract> cands = List.of();
+            // 规则1(2026-09-23 改写):人工绑定钉的是**一份合同**,不是它的某一段。
+            // 递增段与续签是同一份合同的分期(V57 link_type escalation|renew,拆链 spec §1「派生一视同仁」),
+            // 租金那边一直是按月挑段的(BillNoticeService 走 covers()),只有这里钉死一段 ——
+            // 于是旭化成 2023-08 那张单上租金挂 C2024M-022A#2、水电挂 #3(2023-10-27 才生效),全库 203 行。
+            Contract pinned = m.getContractId() == null ? null : byId.get(m.getContractId());
+            // METER-TIMELINE-SPEC §3.6:钉的合同不属于这一段的租户家族(换户后没重钉)→ 不采用,回落自动规则;
+            // 自动也定不出才是 override_stale,且不拿那份别户的合同当本月的归属
+            boolean ownPin = pinned != null && m.getTenantId() != null
+                && Objects.equals(root.getOrDefault(pinned.getTenantId(), pinned.getTenantId()),
+                    root.getOrDefault(m.getTenantId(), m.getTenantId()));
+            Contract seg = ownPin ? segmentCovering(pinned, chainMembers, chainRoot, first, last) : null;
             if (m.getTenantId() == null) {
                 status = meaningless(m.getTenantName()) ? "placeholder" : "pending";
-            } else if (m.getContractId() != null) {   // 规则1:override 直接采用,确定不覆盖才警示
-                chosen = byId.get(m.getContractId());
-                status = staleFor(chosen, first, last) ? "override_stale" : "override";
+            } else if (seg != null) {
+                status = "override"; chosen = seg;   // seg==pinned 即原先的「直接采用」
             } else {
                 List<Contract> fam = famContracts.getOrDefault(
                     root.getOrDefault(m.getTenantId(), m.getTenantId()), List.of());
@@ -149,19 +181,38 @@ public class MeterBindingService {
                     if (!noDates.isEmpty()) { bucket = "date_missing"; cands = noDates; }   // 唯一时 UI 一键确认=写 override
                     else bucket = "no_contract";   // 含「有日期但不覆盖该月」:该月无可用合同
                 }
+                // 钉过合同、本月落不到段、自动也定不出 → override_stale(不是 manual:有人指认过,
+                // 该留着他指的那一份)。候选照给 —— 原先这一档候选恒空,抽屉上只剩「该户无候选合同」,
+                // 而该户本月明明有能用的合同,除了解绑没有第二条出路。
+                if (pinned != null && "manual".equals(status)) {
+                    status = "override_stale"; bucket = null; chosen = ownPin ? pinned : null;
+                }
             }
             if ("manual".equals(status)) manual.merge(bucket, 1, Integer::sum);
             else counts.merge(status, 1, Integer::sum);
-            Integer cid = chosen != null ? chosen.getId() : m.getContractId();
+            Integer cid = chosen == null ? null : chosen.getId();
             boolean noBind = "pending".equals(status) || "placeholder".equals(status);
+            // 钉的那份没被直接用上时把它带出去:屏上要说清「钉的是哪份、本月落在哪份」,
+            // 不静默替换(§2「不设静默兜底」)。落回同一份时为 null,contractNo 已经是它。
+            String pinNo = pinned != null && !noBind && (chosen == null || !pinned.getId().equals(chosen.getId()))
+                ? pinned.getContractNo() : null;
+            // SPEC §3.6 待绑定 / 场地未定(房号对不上所用合同,判据同催缴单 Pin.undecided)→ 给「从本月起改归 X」的建议
+            Contract sug = "manual".equals(status) || "override_stale".equals(status)
+                || chosen != null && BillNoticeService.pin(m, chosen.getId(), rawLocs).undecided()
+                ? suggest(m, inForce, rawLocs, root) : null;
             rows.add(new MeterBindingDTO.Row(m.getId(), status, bucket,
                 noBind ? null : cid,
-                chosen == null ? null : chosen.getContractNo(),
+                chosen == null ? null : chosen.getContractNo(), pinNo,
                 noBind || cid == null ? List.of() : locsByContract.getOrDefault(cid, List.of()),
                 cands.stream().map(c -> new MeterBindingDTO.Candidate(c.getId(), c.getContractNo(),
                     bName.get(c.getBuildingId()), c.getStartDate(), c.getEndDate(),
                     locsByContract.getOrDefault(c.getId(), List.of()))).toList(),
-                hasReading));
+                hasReading,
+                sug == null ? null : new MeterBindingDTO.Suggestion(sug.getTenantId(),
+                    tenantNames.computeIfAbsent(sug.getTenantId(), id -> {
+                        Tenant t = tenants.selectById(id);
+                        return t == null ? null : t.getCompanyName();
+                    }), sug.getId(), sug.getContractNo())));
         }
         MeterBindingDTO.Summary summary = new MeterBindingDTO.Summary(
             counts.getOrDefault("auto", 0), counts.getOrDefault("auto_bld", 0),
@@ -170,42 +221,57 @@ public class MeterBindingService {
         return new MeterBindingDTO(summary, rows);
     }
 
-    // ── 人工绑定/解绑(写 override;§3) ──
-    // 2026-09-09 裁定(此前挂在 ReviewGuardCoverageTest.PENDING_ADJUDICATION 里等人拍板):不守。
-    @NoReviewGuard(reason = "只写 meter.contract_id 一列,meter 表的两个月份列(active_from_ym/retired_ym)不碰;绑定进的是读侧派生 resolveBinding(ym),而落库的两处都在守卫后面且各自按 ym 存快照 —— alloc_result 是「按 ym 先删后插」的表(AllocService §1),唯一写者 generate(ym) 开头就守 ALLOC 与 ALLOC_LOSS;bill_notice_line.contract_id 是出账时的归属快照(V89 建表注释:绑定是表级属性,不快照则回溯漂移),唯一写者 BillNoticeService.generate(ym) 守 BILL_NOTICES。所以改绑定动不了已审月已经存下来的数,重算那条路本来就被守着;反过来挂上唯一能用的 assertNoLockedMonth 就是「任一月审过 → 全园区的表再也不能改绑定」")
+    // ── 人工绑定/解绑(写 override;§3)。合同钉在归属行上,只对那一段有效(METER-TIMELINE-SPEC §3.6):
+    //    mode=correct 钉到 ym 所在的那一段,from 自 ym 起写一行;之后的段一格不动(R4)。
+    //    受影响区间(那一段起到下一段之前,链尾取到库里最大已生成月)有冻结月:审核锁 423,其余 409 点名。 ──
     @Transactional
-    public void bind(Integer meterId, Integer contractId) {
+    public void bind(Integer meterId, MeterBindReq req) {
         Meter m = meters.selectById(meterId);
         if (m == null) throw new BizException(ResultCode.NOT_FOUND, "表不存在");
-        if (contractId != null && contracts.selectById(contractId) == null)
+        if (req.contractId() != null && contracts.selectById(req.contractId()) == null)
             throw new BizException(ResultCode.NOT_FOUND, "合同不存在");
-        m.setContractId(contractId);   // null=解绑(FieldStrategy.ALWAYS 落库)
-        meters.updateById(m);
+        List<MeterAssign> rows = timeline.rows(meterId).assign();
+        String from = MeterService.targetFrom(rows, req.ym(), req.mode());
+        MeterAssign row = MeterService.rowAt(rows, meterId, from);
+        if (Objects.equals(row.getContractId(), req.contractId())) return;   // 那一段本来就钉着它(null = 本来就没钉)
+        row.setContractId(req.contractId());
+        List<String> months = MeterService.span(MeterService.fromsOf(rows, MeterAssign::getFromYm), from,
+            timeline.maxGeneratedYm());
+        // 冻结闸口径同 MeterService.frozenOf:审核锁那几个月交给 reviewGuard(423),其余冻结 409
+        List<MeterTimelineService.Frozen> f = timeline.frozenMonths(meterId, months);
+        reviewGuard.assertEditable(ReviewKind.METERS, f.stream().map(MeterTimelineService.Frozen::ym).toList(), null);
+        if (!f.isEmpty())
+            throw new BizException(ResultCode.CONFLICT, "要改的月份里有冻结的,这次没有改:"
+                + MeterService.label(m) + ":" + MeterService.frozenText(f));
+        timeline.writeAssign(row, MeterTimelineService.Ctx.of("manual"));
     }
 
     // ── 按企业名称原文=租户档案名(含别名,V86) 精确唯一匹配批量挂 tenant_id;幂等(§3) ──
-    // 同 bind,同一次裁定(2026-09-09)。
-    @NoReviewGuard(reason = "同 bind 的数据流:只写 meter.tenant_id,且 WHERE 限定 ownership='tenant' AND tenant_id IS NULL —— 从空到有,不改任何已有绑定,已审月出账时用的归属快照(bill_notice_line.contract_id / 按 ym 存的 alloc_result)一个都动不到。而且它一次扫全库,连「这批写落在哪几个月」都不存在,挂上守卫只能是 assertNoLockedMonth,后果是任一月审过 → 批量挂租户功能永久失效")
+    @NoReviewGuard(reason = "逐行查冻结,不是不查:只补 ownership='tenant' AND tenant_id IS NULL 的归属行(从空到有,不改任何已有绑定),每一行按它自己的区间(那一段起到下一段之前,链尾到最大已生成月)查 frozenMonths —— 其中含审核锁(同一张 review_state、METERS、submitted/approved)与已确认/已导出的催缴单,冻结的行跳过、计入 skipped。一次扫全库,整批用 reviewGuard 只能是 assertNoLockedMonth,后果是任一月审过 → 批量挂租户功能永久失效")
     @Transactional
     public AutoLinkResultDTO autoLinkByName() {
         Map<String, List<Tenant>> byName = new HashMap<>();
         for (Tenant t : tenants.selectList(null))
             for (String n : TenantService.matchNames(t))
                 byName.computeIfAbsent(n, k -> new ArrayList<>()).add(t);
-        int linked = 0, skipped = 0;
-        // 收敛下推:前两个 continue 条件即 WHERE(被它们跳过的行既不进 linked 也不进 skipped,计数不变);
-        // meaningless() 含占位名集合判断,留在 Java 侧不下推
-        for (Meter m : meters.selectList(new QueryWrapper<Meter>()
-                .eq("ownership", "tenant").isNull("tenant_id"))) {
-            if (meaningless(m.getTenantName())) continue;   // 仅待核表
-            List<Tenant> hit = byName.get(m.getTenantName().trim());
-            if (hit != null && hit.size() == 1) {
-                m.setTenantId(hit.get(0).getId());
-                meters.updateById(m);
-                linked++;
-            } else skipped++;
-        }
-        return new AutoLinkResultDTO(linked, skipped);
+        // 逐行就地补(METER-TIMELINE-SPEC:归属按月分段,每一段按它自己的企业名称原文认);计数按表,不按行。
+        // 这一段的区间里有冻结月(SPEC §4)→ 跳过,算 skipped(PLAN §1)。
+        Set<Integer> linked = new java.util.HashSet<>(), skipped = new java.util.HashSet<>();
+        MeterTimelineService.Ctx ctx = MeterTimelineService.Ctx.of("manual");
+        String maxGen = timeline.maxGeneratedYm();
+        for (List<MeterAssign> rows : timeline.latest().assigns().values())
+            for (MeterAssign a : rows) {
+                if (!"tenant".equals(a.getOwnership()) || a.getTenantId() != null) continue;
+                if (meaningless(a.getTenantName())) continue;   // 仅待核行
+                List<Tenant> hit = byName.get(a.getTenantName().trim());
+                if (hit != null && hit.size() == 1 && timeline.frozenMonths(a.getMeterId(), MeterService.span(
+                        MeterService.fromsOf(rows, MeterAssign::getFromYm), a.getFromYm(), maxGen)).isEmpty()) {
+                    a.setTenantId(hit.get(0).getId());
+                    timeline.writeAssign(a, ctx);
+                    linked.add(a.getMeterId());
+                } else skipped.add(a.getMeterId());
+            }
+        return new AutoLinkResultDTO(linked.size(), skipped.size());
     }
 
     // ── 户×月聚合(S3 输入面;仅 ownership=tenant 且已挂租户的表;复用 MeterService.usage) ──
@@ -214,9 +280,9 @@ public class MeterBindingService {
         Map<Integer, String> tName = tenants.selectList(null).stream()
             .collect(Collectors.toMap(Tenant::getId, Tenant::getCompanyName));
         Map<String, Agg> byKey = new LinkedHashMap<>();
-        for (Meter m : meters.selectFiltered(null, null)) {
+        for (MeterAt m : timeline.metersAt(ym)) {
             if (!"tenant".equals(m.getOwnership()) || m.getTenantId() == null
-                || MeterService.outOfService(m, ym)
+                || MeterService.outOfService(m)
                 || "shadow".equals(m.getSuspect())) continue;   // 停用/未启用/shadow重复建档不进计费输入面(V68/V87/V75)
             Agg a = byKey.computeIfAbsent(m.getTenantId() + "|" + m.getKind(), k -> {
                 Agg n = new Agg(); n.tenantId = m.getTenantId(); n.kind = m.getKind(); return n;
@@ -273,10 +339,46 @@ public class MeterBindingService {
         return !c.getStartDate().isAfter(last) && !c.getEndDate().isBefore(first);
     }
 
-    // override 失效:仅起止齐全且确定不覆盖才警示(缺日期无法断言,不标——缺口由 date_missing 报表追)
-    private static boolean staleFor(Contract c, LocalDate first, LocalDate last) {
-        return c == null || (c.getStartDate() != null && c.getEndDate() != null
-            && (c.getStartDate().isAfter(last) || c.getEndDate().isBefore(first)));
+    // 链首:沿 parent_contract_id 上溯。guard 防脏数据成环(分叉告警在前端 chain.ts,这里只求不挂)
+    private static Integer chainRootOf(Contract c, Map<Integer, Contract> byId) {
+        Contract w = c;
+        for (int guard = 0; guard < 64; guard++) {
+            Contract p = w.getParentContractId() == null ? null : byId.get(w.getParentContractId());
+            if (p == null || p.getId().equals(w.getId())) break;
+            w = p;
+        }
+        return w.getId();
+    }
+
+    // 规则1 的按月落段:钉的那份所在链上覆盖 ym 的那一段。
+    //  · 缺起止日期的绑定原样采用 —— date_missing 桶的「一键确认」写的就是这种,
+    //    拒用会让那批表永久变红(§4.5 原本用 staleFor 保的就是这一条);
+    //  · 段是对租期的分区,正常恰好命中一段;0 段(链断了/该月这户真没合同)或多段(脏数据)
+    //    都返回 null,交给规则 2-5 的自动归属去判,判不出才是 override_stale。
+    private static Contract segmentCovering(Contract pinned, Map<Integer, List<Contract>> chainMembers,
+                                            Map<Integer, Integer> chainRoot, LocalDate first, LocalDate last) {
+        if (pinned.getStartDate() == null || pinned.getEndDate() == null) return pinned;
+        if (covers(pinned, first, last)) return pinned;
+        List<Contract> hit = chainMembers.getOrDefault(chainRoot.get(pinned.getId()), List.of())
+            .stream().filter(c -> covers(c, first, last)).toList();
+        return hit.size() == 1 ? hit.get(0) : null;
+    }
+
+    // SPEC §3.6 改归属建议:本月在租、场地(计费行位置原文)房号含这块表房号的**他户**合同;
+    // 多份先按楼栋收窄,仍不止一份就不猜。房号两侧的抽法用催缴单 S6 定位那一套(BillNoticeService.roomTokens / tok)。
+    // ponytail: 同一户月中换段(两段都与本月重叠)会算成两份 → 不给建议;真撞上再按家族去重。
+    private static Contract suggest(MeterAt m, List<Contract> inForce, Map<Integer, List<String>> locs,
+                                    Map<Integer, Integer> root) {
+        Set<String> rt = BillNoticeService.roomTokens(m);
+        if (rt.isEmpty()) return null;
+        Integer fam = m.getTenantId() == null ? null : root.getOrDefault(m.getTenantId(), m.getTenantId());
+        List<Contract> hit = inForce.stream()
+            .filter(c -> c.getTenantId() != null && !Objects.equals(fam, root.getOrDefault(c.getTenantId(), c.getTenantId())))
+            .filter(c -> locs.getOrDefault(c.getId(), List.of()).stream()
+                .anyMatch(l -> BillNoticeService.tok(l).stream().anyMatch(rt::contains)))
+            .toList();
+        if (hit.size() > 1) hit = hit.stream().filter(c -> Objects.equals(c.getBuildingId(), m.getBuildingId())).toList();
+        return hit.size() == 1 ? hit.get(0) : null;
     }
 
     private static BigDecimal nsum(BigDecimal a, BigDecimal b) {

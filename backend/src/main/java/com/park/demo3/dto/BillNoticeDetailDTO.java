@@ -8,7 +8,7 @@ public record BillNoticeDetailDTO(
     Integer payCompanyId, String payCompanyName,
     String noticeKind, String premiseText,
     BigDecimal totalAmount, BigDecimal prevDue,
-    String status, String warn,
+    String status, List<NoticeWarnDTO> warns,
     List<Line> lines) {
 
     public record Line(
@@ -18,5 +18,8 @@ public record BillNoticeDetailDTO(
         String priceKey, String priceScope, String priceMonth, String ruleBranch,
         Integer poolRuleId, String shareSrc, BigDecimal baseSnap,
         BigDecimal amount, String note, String feeGroup,   // feeGroup(V90):rent/elec/water 板块分组
-        String poolName) {}                                 // 公摊行来源池名(S5 §3.2 行名=「费项·池名」);非公摊行 null
+        String poolName,                                    // 公摊行来源池名(S5 §3.2 行名=「费项·池名」);非公摊行 null
+        // METER-TIMELINE-SPEC §5:表行与当月档案比。archiveTenantName 非 null = 这块表本月现挂的不是本单这一户
+        // (一致或非表行 = 两个都 null);archiveTenantId 为空 = 档案上没认出户,name 取企业名称原文,空串 = 空置
+        Integer archiveTenantId, String archiveTenantName) {}
 }

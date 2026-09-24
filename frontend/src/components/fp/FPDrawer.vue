@@ -62,7 +62,16 @@ onBeforeUnmount(() => {
             <h3 style="margin:0;font-size:var(--fs-h3);font-weight:var(--fw-semibold);color:var(--text-primary)">{{ title }}</h3>
             <slot name="badge" />
           </div>
-          <p v-if="subtitle" style="margin:4px 0 0;font-size:var(--fs-label);color:var(--text-muted)">{{ subtitle }}</p>
+          <!-- submeta:副标题行右边还能再挂东西(催缴单挂告警徽标)。
+               ⚠ 塞了 submeta 才切 flex + 单行截断:那一路要求「有没有徽标高度都一样」,
+                 而另外 30 个用 subtitle 的屏本来是可换行的,不能替它们改掉。 -->
+          <p v-if="subtitle || $slots.submeta"
+             :style="$slots.submeta
+               ? 'margin:4px 0 0;height:20px;display:flex;align-items:center;gap:6px;overflow:hidden;font-size:var(--fs-label);color:var(--text-muted)'
+               : 'margin:4px 0 0;font-size:var(--fs-label);color:var(--text-muted)'">
+            <span :style="$slots.submeta ? 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' : undefined">{{ subtitle }}</span>
+            <slot name="submeta" />
+          </p>
         </div>
         <button class="fp-dwr-x" @click="emit('close')" aria-label="关闭">
           <component :is="iconFor('x')" :size="18" />

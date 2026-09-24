@@ -249,3 +249,11 @@ export function lineMonthly(l: LineCalc, kva?: number | null): number | null {
     default: return num(l.amountOverride)   // per_month
   }
 }
+
+// GET /api/contracts/{id}/terminate-preview(METER-TIMELINE-SPEC §3.6):终止确认框里「这户在解约月挂着的表」。
+// vacateFrom=解约次月(勾上的表自这个月起空置);checked=表房号与合同计费行位置对得上(默认勾选);
+// label=屏上怎么称呼这块表(与催缴单告警同一口径,裸数字表名已回落「位置 + 表序」)
+export interface ContractTerminatePreviewDTO {
+  vacateFrom: string
+  meters: { meterId: number; label: string; roomNo: string | null; checked: boolean }[]
+}

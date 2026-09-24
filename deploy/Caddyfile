@@ -23,3 +23,33 @@ atrilink.com, www.atrilink.com {
 # 裸 IP 访问的实际结果(2026-08-30 实测,不是当初以为的 404):Caddy 的自动跳转层对**所有**
 # Host 生效,http://<IP>/ 拿到 308 跳 https://<IP>/,而证书只签了域名,握手随即失败。
 # 结论不变 —— 明文入口关死,只是机制是"跳转后握手失败"而非"匹配不到站点返 404"。
+
+# 宣传页(2026-09-23)。**独立站点块、独立证书**——没有并进上面 atrilink.com 那一行,
+# 是冲着上面那条警告来的:同一行里多一个域名,它的 ACME challenge 失败会拖垮**整张**证书。
+# 拆成两块之后 promo 签不出来只有 promo 没 HTTPS,产品那张证书不受牵连。
+#
+# 静态文件由 Caddy 自己发,不另起 nginx 容器 —— file_server 就是干这个的,
+# 视频拖进度条需要的 Range 请求它原生支持,再套一层 nginx 只是多一个会坏的零件。
+# 文件在宿主机 /opt/promo,compose 里以只读 bind mount 挂进来(63MB,其中 59MB 是视频,
+# 不打进镜像:改一张图就重发一版镜像不划算,rsync 完即生效)。
+#
+# ⚠ 上线顺序不能反(同上面那条):先在万网加 promo 的 A 记录并确认解析生效,再改这个文件。
+promo.atrilink.com {
+	root * /srv/promo
+	file_server
+	encode gzip
+
+	header Strict-Transport-Security "max-age=31536000"
+
+	# 缓存策略翻译自宣传页仓的 _headers(那是 Cloudflare 的格式,Caddy 不认)。
+	# ⚠ 规则不许重叠:header 指令会叠加,命中两条就拼成
+	#   "max-age=3600, max-age=31536000, immutable" 这种自相矛盾的值(_headers 里记了这个坑,
+	#   线上 gsap 真拿到过)。下面每条路径互不相交,/ 是精确匹配只命中首页本身。
+	header /assets/* Cache-Control "public, max-age=31536000, immutable"
+	header /vendor/* Cache-Control "public, max-age=31536000, immutable"
+	header /styles.css Cache-Control "public, max-age=3600"
+	header /main.js Cache-Control "public, max-age=3600"
+	header /favicon.svg Cache-Control "public, max-age=86400"
+	header /index.html Cache-Control "public, max-age=0, must-revalidate"
+	header / Cache-Control "public, max-age=0, must-revalidate"
+}

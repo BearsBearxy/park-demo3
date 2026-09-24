@@ -267,6 +267,24 @@ describe('buildSlotCells 抽屉方格', () => {
     // 槽名取附表10列名(elecStd=「基准电费」),不另起炉灶
     expect(cells.find(c => c.colId === 'elecMaint')).toMatchObject({ companyId: 3, inherit: '继承自基准电费' })
   })
+  // 2026-09-23:注册表只有十槽,而后端 payColOf 能路由到二十三个。没登记的槽以前一张卡都不出,
+  // 于是用户把看得见的格子全设满、后端照样找不到收款公司(投诉「设了还说没设」的真根因之一)。
+  // 破坏验证:把 buildSlotCells 的遍历改回 `for (const s of COL_SLOTS)` → 本条立刻红。
+  it('没登记进注册表的槽,本月有钱也要出格(否则这笔钱在屏上无处可设)', () => {
+    const cs = buildSlotCells(7, { dorm: false, amounts: new Map([['elevatorMaint', 600], ['transformerMaint', 300]]) },
+      new Map([[payKey(7, 'elevatorMaint'), 4]]), cos)
+    expect(cs.map(c => c.colId)).toEqual(['elevatorMaint', 'transformerMaint'])
+    expect(cs.find(c => c.colId === 'elevatorMaint')).toMatchObject({ companyId: 4, companyName: '积前', amount: 600 })
+    // 没设的那张仍是缺口格,和登记过的槽一个待遇
+    expect(cs.find(c => c.colId === 'transformerMaint')).toMatchObject({ companyId: null, amount: 300 })
+    // 槽名走附表10列名,不印原始 colId
+    expect(cs.map(c => c.label)).toEqual(['电梯维护费', '变压器维护费'])
+  })
+  // 注册表本身没被撑大 —— 收款簿的缺口徽标(slotGap)分母是全期户数、不看这户有没有这笔钱,
+  // 把注册表铺到二十三槽会给它算出假缺口。扩的只是「出卡」这一处。
+  it('注册表没被这次改动撑大(收款簿缺口徽标不受影响)', () => {
+    expect(COL_SLOTS.length).toBe(10)
+  })
   it('非宿舍户不出 dormRent 格', () => {
     expect(cells.some(c => c.colId === 'dormRent')).toBe(false)
     expect(buildSlotCells(7, { dorm: true, amounts: new Map() }, map, cos).some(c => c.colId === 'dormRent')).toBe(true)

@@ -427,4 +427,39 @@ class ParamApiIT extends AbstractMysqlIT {
         mvc.perform(get("/api/params").param("ym", "2099-05").param("zone", "p3").header("Authorization", auth()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0));
     }
+
+    // ── METER-TIMELINE-SPEC §5 需重算的第二个来源(B3,槽 2085-07):抄表改动(data_change_log)晚于快照也算过期;
+    //    status 分得出是哪边改的(staleSources / lastChangeSource),pendingChanges 仍只数参数 ──
+    @Test
+    void status_staleFromMeterChange_sourcesDistinguished() throws Exception {
+        String ym = "2085-07";
+        Integer rid = jdbc.queryForObject("SELECT MIN(id) FROM alloc_rule", Integer.class);
+        // 快照时间用 Java 钟写(与 data_change_log.changed_at 同一口钟;容器 MySQL 的 NOW() 是 UTC)
+        jdbc.update("INSERT INTO alloc_pool_result(ym,rule_id,qty_total,cost_amount,generated_at) VALUES(?,?,0,0,?)",
+                ym, rid, java.time.LocalDateTime.now().minusHours(1));
+        mvc.perform(get("/api/params/status").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.data.stale").value(false))
+                .andExpect(jsonPath("$.data.staleSources.length()").value(0));
+
+        String res = body(mvc.perform(post("/api/meters").header("Authorization", auth()).contentType("application/json")
+                .content("{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT需重算抄表\",\"ownership\":\"share\"}"))
+                .andExpect(jsonPath("$.code").value(0)));
+        int m = JsonPath.read(res, "$.data.id");
+        mvc.perform(post("/api/meters/readings").header("Authorization", auth()).contentType("application/json")
+                .content("{\"meterId\":" + m + ",\"ym\":\"" + ym + "\",\"prevTotal\":0,\"currTotal\":10}"))
+                .andExpect(jsonPath("$.code").value(0));
+        mvc.perform(get("/api/params/status").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.data.stale").value(true))
+                .andExpect(jsonPath("$.data.lastChangeSource").value("meter"))
+                .andExpect(jsonPath("$.data.staleSources").value(org.hamcrest.Matchers.contains("meter")))
+                .andExpect(jsonPath("$.data.pendingChanges").value(0))
+                .andExpect(jsonPath("$.data.lastChangeAt").isNotEmpty());
+
+        Thread.sleep(1100);   // 两张流水都是 DATETIME(0):同一秒分不出先后
+        putRow("{\"key\":\"elec_flat\",\"scope\":\"\",\"acctMonth\":\"" + ym + "\",\"value\":1.0}", null);
+        mvc.perform(get("/api/params/status").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.data.lastChangeSource").value("param"))
+                .andExpect(jsonPath("$.data.staleSources").value(org.hamcrest.Matchers.contains("param", "meter")))
+                .andExpect(jsonPath("$.data.pendingChanges").value(1));
+    }
 }

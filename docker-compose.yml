@@ -79,6 +79,8 @@ services:
       - "443:443"
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # 宣传页静态文件(63MB)。只读挂载,不进镜像;目录不存在时 Caddy 起得来但 promo 站返 404。
+      - /opt/promo:/srv/promo:ro
       - caddy-data:/data       # 证书在这里,删卷=重新签发=撞 Let's Encrypt 周限额
       - caddy-config:/config
     depends_on:

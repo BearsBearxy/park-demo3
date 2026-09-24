@@ -3,8 +3,8 @@ import {
   meterSearchHit, isMeaningfulName, isPendingMeter, isPlaceholderMeter,
   buildRows, rowStatus, cardCounts, matchStatus, filterRows,
   segUsage, segCheck, buildingTotals, groupByBuilding,
-  effCurr, draftRowDirty, draftDirtyIds, rowUsage, draftRowIssues, draftReq, gridFooter,
-  bindQueueBucket, autoLinkEstimate, statusDims,
+  effVal, draftRowDirty, draftDirtyIds, rowUsage, draftRowIssues, draftReq, gridFooter, healRows, baseOpen,
+  bindQueueBucket, bindReason, autoLinkEstimate, statusDims, bookTip, bookGapText, bookLine, BOOK_REDO,
   flattenGroups, buildWindow, offsetOf, ROW_H, BSUM_H, floorRankOf,
   type WorkbenchRow, type WorkbenchFilter, type MeterDraft, type BuildingGroup, type DisplayItem,
 } from './useMeterWorkbench'
@@ -21,7 +21,9 @@ function mkM(p: Partial<MeterDTO & MeterLoc> = {}): MeterDTO & MeterLoc {
     floorLabel: null, side: null, roomNo: null,
     tenantName: null, tenantId: null, buildingId: null, ownership: 'share',
     meterType: null, deviceType: null, subName: null, code: null,
-    factor: 1, retiredYm: null, activeFromYm: null, removedYm: null, sortNo: seq, readingCount: 0, ...p,
+    factor: 1, sortNo: seq, readingCount: 0,
+    status: 'active', statusFrom: '1900-01', statusUntil: null,
+    assignFrom: '1900-01', assignUntil: null, assignSrc: 'migrate', changedThisMonth: false, ...p,
   }
 }
 function mkR(meterId: number, p: Partial<MeterReadingDTO> = {}): MeterReadingDTO {
@@ -125,7 +127,8 @@ describe('rowStatus — 状态最差优先:待核＞待绑定＞时段不符＞�
   it('未抄/已抄;占位槽不计未抄', () => {
     const m = mkM({ ownership: 'tenant', tenantId: 1 })
     expect(buildRows([m], [], [], null)[0].status).toBe('missing')
-    expect(buildRows([m], [mkR(m.id, { currTotal: 8, usageTotal: 2 })], [], null)[0].status).toBe('read')
+    // 已抄 = 本月行至与底数都在(后端没有底数就算不出用量,SPEC §3.4 缺底数不算已抄)
+    expect(buildRows([m], [mkR(m.id, { prevTotal: 6, currTotal: 8, usageTotal: 2 })], [], null)[0].status).toBe('read')
     const ph = mkM({ ownership: 'tenant', tenantName: '（空）' })
     expect(buildRows([ph], [], [], null)[0].status).toBe('placeholder')
   })
@@ -133,6 +136,29 @@ describe('rowStatus — 状态最差优先:待核＞待绑定＞时段不符＞�
     const flags = { missing: true, negative: false, touMismatch: false }
     expect(rowStatus({ pending: false, unbound: false, placeholder: true, retired: false, flags, r: null })).toBe('placeholder')
     expect(rowStatus({ pending: false, unbound: false, placeholder: false, retired: false, flags, r: null })).toBe('missing')
+  })
+
+  // 2026-09-23 南盛物流案:表 243 档案写 zone=p1、它挂的楼却是二期二车间。
+  // 筛期区用 zone、位置显示用楼栋 —— 于是一期抄表里出现了一行二车间,半年无人发觉。
+  it('期区对不上:表档案的期区 ≠ 它挂的楼栋的期区', () => {
+    const odd = mkM({ ownership: 'tenant', tenantId: 1, zone: 'p1', buildingZone: 'p2' })
+    const row = buildRows([odd], [mkR(odd.id, { currTotal: 8, usageTotal: 2 })], [], null)[0]
+    expect(row.zoneOdd, '两边不同 → 标出来').toBe(true)
+    // 抢在待核/待绑定/已抄之前:这一行站在哪个页签里都不对
+    expect(row.status).toBe('zoneOdd')
+    expect(statusDims(row)).toContain('期区对不上')
+    // 停用仍然最优先(本月不在服务中,其余维度无意义)
+    const retiredOdd = mkM({ ownership: 'tenant', tenantId: 1, zone: 'p1', buildingZone: 'p2', status: 'retired', statusFrom: '2020-01' })
+    expect(buildRows([retiredOdd], [], [], null)[0].status).toBe('retired')
+  })
+  it('期区对得上 / 没挂楼栋 → 不标(否则全库满屏红)', () => {
+    const same = mkM({ ownership: 'tenant', tenantId: 1, zone: 'p1', buildingZone: 'p1' })
+    expect(buildRows([same], [mkR(same.id, { currTotal: 8, usageTotal: 2 })], [], null)[0].zoneOdd).toBe(false)
+    const noBld = mkM({ ownership: 'tenant', tenantId: 1, zone: 'p1', buildingZone: null })
+    expect(buildRows([noBld], [mkR(noBld.id, { currTotal: 8, usageTotal: 2 })], [], null)[0].zoneOdd).toBe(false)
+    // 旧夹具(根本没这一格)也不能被标
+    const legacy = mkM({ ownership: 'tenant', tenantId: 1, zone: 'p1' })
+    expect(buildRows([legacy], [mkR(legacy.id, { currTotal: 8, usageTotal: 2 })], [], null)[0].zoneOdd).toBe(false)
   })
 })
 
@@ -144,7 +170,7 @@ describe('cardCounts / matchStatus — 统计卡独立计数,不受徽标优先�
   const m5 = mkM({ ownership: 'infra' })                                      // 非租户表:不进 已抄/未抄
   const rows = buildRows(
     [m1, m2, m3, m4, m5],
-    [mkR(m2.id, { currTotal: 5, usageTotal: -2 }), mkR(m3.id, { currTotal: 9, usageTotal: 3 })],
+    [mkR(m2.id, { prevTotal: 7, currTotal: 5, usageTotal: -2 }), mkR(m3.id, { prevTotal: 6, currTotal: 9, usageTotal: 3 })],
     [],
     [mkB(m2.id, { status: 'manual', bucket: 'date_missing' }), mkB(m3.id, { status: 'override' })])
   it('租户表总数=已抄+未抄 恰好切分;各维独立', () => {
@@ -174,45 +200,178 @@ describe('cardCounts / matchStatus — 统计卡独立计数,不受徽标优先�
   })
 })
 
-describe('已停用(V68 账期口径)— 默认全维隐藏,「已停用」筛选项调出', () => {
+// METER-TIMELINE-SPEC §1.3 / §6:在不在册、停用都由 list(ym) 投影好的状态段决定(MeterDTO.status),
+// 前端不再拿账期列自己比月份。
+describe('状态段(站在本月)— 停用照常显示不进分母;已拆 / 未在册只在自己那一项里', () => {
   const live = mkM({ ownership: 'tenant', tenantId: 1 })
-  const gone = mkM({ ownership: 'tenant', tenantId: 2, retiredYm: '2024-05' })
-  const build = (ym?: string) => buildRows([live, gone], [], [], null, undefined, ym)
+  const idle = mkM({ ownership: 'tenant', tenantId: 2, status: 'retired', statusFrom: '2024-03', statusUntil: '2024-08' })
+  const gone = mkM({ ownership: 'tenant', tenantId: 3, status: 'removed', statusFrom: '2024-09' })
+  const later = mkM({ ownership: 'tenant', tenantId: 4, status: null, statusFrom: null })
+  const rows = buildRows([live, idle, gone, later], [], [], null)
+  const ids = (p: Partial<WorkbenchFilter>) => filterRows(rows, F(p)).map(x => x.m.id)
 
-  it('账期口径不追溯:停用月之前仍在用,停用当月起停用;不传 ym=一律在用', () => {
-    expect(build('2024-04').map(x => x.retired)).toEqual([false, false])
-    expect(build('2024-05').map(x => x.retired)).toEqual([false, true])   // 含当月
-    expect(build('2024-09').map(x => x.retired)).toEqual([false, true])
-    expect(build().map(x => x.retired)).toEqual([false, false])
+  it('徽标:已停用 / 已拆 / 未在册', () => {
+    expect(rows.map(x => x.status)).toEqual(['missing', 'retired', 'removed', 'notYet'])
+    expect(rows.map(x => x.off)).toEqual([null, null, 'removed', 'notYet'])
   })
-  it('停用行状态徽标=已停用(最优先),统计卡分母与默认筛选都排除', () => {
-    const rows = build('2024-05')
-    expect(rows[1].status).toBe('retired')
-    expect(statusDims(rows[1])).toContain('已停用')
+  it('悬停按状态段说话:停用 2024-03 ~ 2024-08 / 自 2024-09 起已拆;链尾写「自 M 起停用」', () => {
+    expect(statusDims(rows[1])).toContain('停用 2024-03 ~ 2024-08')
+    expect(statusDims(rows[2])).toContain('自 2024-09 起已拆')
+    expect(statusDims(rows[3])).toContain('本月还不在册')
+    const open = buildRows([mkM({ status: 'retired', statusFrom: '2024-03', statusUntil: null })], [], [], null)[0]
+    expect(statusDims(open)).toContain('自 2024-03 起停用')
+    // 不再教人「清空账期」
+    for (const x of [...rows, open]) expect(statusDims(x)).not.toContain('账期')
+  })
+  it('「全部」:在用 + 停用;已拆与未在册不在里面', () => {
+    expect(ids({})).toEqual([live.id, idle.id])
+  })
+  it('各自的筛选项只调出自己那一批', () => {
+    expect(ids({ status: 'retired' })).toEqual([idle.id])
+    expect(ids({ status: 'removed' })).toEqual([gone.id])
+    expect(ids({ status: 'notYet' })).toEqual([later.id])
+  })
+  it('统计卡:停用与不在册都不进分母(租户表总数只剩在用那一块)', () => {
     const c = cardCounts(rows)
-    expect(c.tenant).toBe(1)       // 停用表不进租户表分母
-    expect(c.missing).toBe(1)      // 只剩在用表未抄
-    // 2026-08-04 用户裁定:停用=这个月还在只是不用,「全部」筛选须显示(带徽标),分母仍排除
-    expect(filterRows(rows, F()).map(x => x.m.id)).toEqual([live.id, gone.id])
-    expect(filterRows(rows, F({ status: 'missing' })).map(x => x.m.id)).toEqual([live.id])
-    expect(filterRows(rows, F({ status: 'retired' })).map(x => x.m.id)).toEqual([gone.id])
+    expect(c.tenant).toBe(1)
+    expect(c.missing).toBe(1)
   })
+})
 
-  it('未启用(V87):后面月份才出现的表在早月完全不产行(≠停用),首现月起正常出现', () => {
-    const late = mkM({ ownership: 'tenant', tenantId: 3, activeFromYm: '2024-05' })
-    const rows4 = buildRows([live, late], [], [], null, undefined, '2024-04')
-    expect(rows4.map(x => x.m.id)).toEqual([live.id])          // 2024-04 根本不存在
-    const rows5 = buildRows([live, late], [], [], null, undefined, '2024-05')
-    expect(rows5.map(x => x.m.id)).toEqual([live.id, late.id]) // 首现月起正常出现
-    expect(rows5[1].retired).toBe(false)
+describe('本月有变化(SPEC §6)— 按后端给的 changedThisMonth 筛,含本月起停用 / 已拆的表', () => {
+  const same = mkM({ ownership: 'tenant', tenantId: 1 })
+  const moved = mkM({ ownership: 'tenant', tenantId: 2, changedThisMonth: true })
+  const idleNow = mkM({ ownership: 'tenant', tenantId: 3, status: 'retired', statusFrom: '2024-05', changedThisMonth: true })
+  const goneNow = mkM({ ownership: 'tenant', tenantId: 4, status: 'removed', statusFrom: '2024-05', changedThisMonth: true })
+  const rows = buildRows([same, moved, idleNow, goneNow], [], [], null)
+  it('三块本月有自己那一行的表都出来,没变的不出', () => {
+    expect(filterRows(rows, F({ status: 'changed' })).map(x => x.m.id)).toEqual([moved.id, idleNow.id, goneNow.id])
   })
+  it('不是统计卡维度:不改任何分母', () => {
+    expect(cardCounts(rows).tenant).toBe(2)
+  })
+})
 
-  it('已退场(V88):退租表自退场月起不产行,历史月照常显示(≠停用)', () => {
-    const goneAway = mkM({ ownership: 'tenant', tenantId: 4, removedYm: '2024-03' })
-    const feb = buildRows([live, goneAway], [], [], null, undefined, '2024-02')
-    expect(feb.map(x => x.m.id)).toEqual([live.id, goneAway.id])   // 历史月照常
-    const mar = buildRows([live, goneAway], [], [], null, undefined, '2024-03')
-    expect(mar.map(x => x.m.id)).toEqual([live.id])                // 退场月起消失
+// METER-TIMELINE-SPEC §10.4:按期区 × 表类看这个月导入的册子。夹具四组,每组形状不同(不许全组同形):
+//   一期电 = 整段零记录(同期区的水表却有记录 —— 期区与表类两个维度都要看);
+//   二期电 = 三块里一块有、两块没有(另有停用 / 已拆各一块也没有);三期电 = 整段零记录(与一期电合成一句)。
+describe('本月册子(SPEC §10.4)— 一笔都没有只出一句;有记录才逐行打标,只标没有的', () => {
+  const t = { ownership: 'tenant' as const }
+  const p1a = mkM({ ...t, tenantId: 1 })
+  const p1b = mkM({ ...t, tenantId: 2, zone: 'p1' })
+  const p2seen = mkM({ ...t, tenantId: 3, zone: 'p2', bookSeen: true, bookFile: '二期电 2024-05.xlsx', bookAt: '2026-09-24T10:30:00' })
+  const p2old = mkM({ ...t, tenantId: 4, zone: 'p2' })                                      // 自最早那一行照抄
+  const p2imp = mkM({ ...t, tenantId: 5, zone: 'p2', assignFrom: '2024-02', assignSrc: 'import' })
+  const p2idle = mkM({ ...t, tenantId: 6, zone: 'p2', status: 'retired', statusFrom: '2024-03' })
+  const p2gone = mkM({ ...t, tenantId: 7, zone: 'p2', status: 'removed', statusFrom: '2024-03' })
+  const p1w = mkM({ ...t, tenantId: 8, zone: 'p1', kind: 'water', bookSeen: true })
+  const p3 = mkM({ ...t, tenantId: 9, zone: 'p3' })
+  const rows = buildRows([p1a, p1b, p2seen, p2old, p2imp, p2idle, p2gone, p1w, p3], [], [], null)
+  const row = (id: number) => rows.find(x => x.m.id === id)!
+
+  it('按期区 × 表类分三种:整段零 = none,同段有记录的没出现 = missing,出现 = seen', () => {
+    expect(rows.map(x => x.book)).toEqual(['none', 'none', 'seen', 'missing', 'missing', 'missing', 'missing', 'seen', 'none'])
+  })
+  it('整段零记录:一块都不打标,只出表格上方那一句(原句)', () => {
+    expect(bookTip(row(p1a.id))).toBeNull()
+    expect(bookTip(row(p1b.id))).toBeNull()
+    expect(bookGapText([row(p1a.id), row(p1b.id)]))
+      .toBe(`这个月还没导入过一期的电表册子,这些表的档案都是沿用的。${BOOK_REDO}`)
+  })
+  it('多个期区合成一句;有记录的段不进这句', () => {
+    expect(bookGapText(rows)).toBe(`这个月还没导入过一期、三期的电表册子,这些表的档案都是沿用的。${BOOK_REDO}`)
+    expect(bookGapText([row(p2seen.id), row(p2old.id), row(p1w.id)])).toBe('')
+  })
+  it('部分有:只标没出现的那几块;悬停写是哪一段、来源四种说法', () => {
+    expect(bookTip(row(p2seen.id)), '册子里有的行不标').toBeNull()
+    expect(bookTip(row(p1w.id))).toBeNull()
+    expect(bookTip(row(p2old.id))).toBe('这个月导入的册子里没有这块表;显示的是最早那一行(按旧档案补记)')
+    expect(bookTip(row(p2imp.id))).toBe('这个月导入的册子里没有这块表;显示的是自 2024-02 起那一行(导入)')
+    const src = (assignSrc: 'manual' | 'contract') =>
+      bookTip(buildRows([mkM({ bookSeen: true }), mkM({ assignFrom: '2024-04', assignSrc })], [], [], null)[1])
+    expect(src('manual')).toBe('这个月导入的册子里没有这块表;显示的是自 2024-04 起那一行(手改)')
+    expect(src('contract')).toBe('这个月导入的册子里没有这块表;显示的是自 2024-04 起那一行(合同终止)')
+  })
+  it('停用 / 不在册的行不打标(同待核:本月不在服务中)', () => {
+    expect(row(p2idle.id).book).toBe('missing')
+    expect(bookTip(row(p2idle.id))).toBeNull()
+    expect(bookTip(row(p2gone.id))).toBeNull()
+  })
+  it('筛选「本月册子里没有」= 打了标签的那几行;不是统计卡维度,分母不变', () => {
+    expect(filterRows(rows, F({ status: 'bookMissing' })).map(x => x.m.id)).toEqual([p2old.id, p2imp.id])
+    expect(filterRows(rows, F({ status: 'bookMissing', zone: 'p1' }))).toEqual([])
+    expect(filterRows(rows, F({ status: 'bookMissing', kind: 'water' }))).toEqual([])
+    expect(cardCounts(rows).tenant).toBe(7)   // 9 块减停用、已拆各一;打没打标都在分母里
+  })
+  it('抽屉顶部那一句:文件名 · 时间 / 册子里没有这块表 / 整段还没导入过', () => {
+    expect(bookLine(row(p2seen.id))).toBe('本月册子:二期电 2024-05.xlsx · 2026-09-24 10:30')
+    expect(bookLine(row(p1w.id))).toBe('本月册子:文件名没有记下 · ')
+    expect(bookLine(row(p2old.id))).toBe('这个月导入的册子里没有这块表')
+    expect(bookLine(row(p1a.id))).toBe(`这个月还没导入过一期的电表册子。${BOOK_REDO}`)
+  })
+})
+
+describe('缺底数(SPEC §3.4)— 有本月行至、没有上月行至:不算已抄,开放录入起始底数', () => {
+  const fresh = mkM({ ownership: 'tenant', tenantId: 1 })                 // 新表首月:有本月读数,没有底数
+  const ok = mkM({ ownership: 'tenant', tenantId: 2 })
+  const rows = buildRows([fresh, ok],
+    [mkR(fresh.id, { prevTotal: null, currTotal: 120 }), mkR(ok.id, { prevTotal: 100, currTotal: 130, usageTotal: 30 })],
+    [], null)
+  it('徽标「缺底数」,算未抄不算已抄;租户表总数 = 已抄 + 未抄 仍成立', () => {
+    expect(rows[0].noBase).toBe(true)
+    expect(rows[0].status).toBe('noBase')
+    expect(statusDims(rows[0])).toContain('缺底数')
+    const c = cardCounts(rows)
+    expect([c.read, c.missing, c.tenant]).toEqual([1, 1, 2])
+    expect(filterRows(rows, F({ status: 'noBase' })).map(x => x.m.id)).toEqual([fresh.id])
+  })
+  it('有本月读数时底数只认它自己的上月行至(后端算用量只看这一格),不拿上月读数顶上去', () => {
+    const m = mkM()
+    const [x] = buildRows([m], [mkR(m.id, { prevTotal: null, currTotal: 50 })], [mkR(m.id, { ym: '2024-04', currTotal: 40 })], null)
+    expect(x.prevTotal).toBeNull()
+    expect(x.noBase).toBe(true)
+    expect(baseOpen(x)).toBe(true)
+    expect(baseOpen(rows[1])).toBe(false)
+  })
+  it('底数写进草稿:用量实时算出、页脚计已抄、保存请求带上这一格', () => {
+    const d: MeterDraft = { prevTotal: '100' }
+    expect(draftRowDirty(rows[0], d)).toBe(true)
+    expect(rowUsage(rows[0], d)).toBe(20)
+    expect(gridFooter(rows, new Map()).read).toBe(1)
+    expect(gridFooter(rows, new Map([[fresh.id, d]])).read).toBe(2)
+    expect(draftReq(rows[0], d, '2024-05')).toMatchObject({ prevTotal: 100, currTotal: 120 })
+  })
+})
+
+describe('healRows(SPEC §3.4)— 未在册的表录了本月读数,保存前要点名', () => {
+  const later = mkM({ status: null })
+  const live = mkM()
+  const rows = buildRows([later, live], [], [], null)
+  it('未在册 + 本月止有值 → 点名;只填底数 / 在册的表 → 不点名', () => {
+    expect(healRows(rows, new Map([[later.id, { currTotal: '5' }], [live.id, { currTotal: '5' }]])).map(x => x.m.id))
+      .toEqual([later.id])
+    expect(healRows(rows, new Map([[later.id, { prevTotal: '5' }]]))).toEqual([])
+    expect(healRows(rows, new Map([[later.id, { currTotal: '' }]]))).toEqual([])
+  })
+  // 自愈只在新录一条时发生(后端 createReading);改已有的读数不补在册 —— 对它承诺「将从 M 起在册」是假话
+  it('未在册但本月已有读数(改读数走 updateReading)→ 不点名', () => {
+    const had = mkM({ status: null })
+    const rs = buildRows([had], [mkR(had.id, { currTotal: 3 })], [], null)
+    expect(healRows(rs, new Map([[had.id, { currTotal: '5' }]]))).toEqual([])
+  })
+})
+
+// METER-TIMELINE-SPEC §3.6:钉的合同不是这一段租户的(换户后没重钉)→ 后端不采用,contractId 为空、带出 pinnedContractNo
+describe('钉了别户合同的 override_stale — 不说成「本月没生效」', () => {
+  it('bindReason 与抄表屏悬停都说「不是这一段租户的合同」;钉的是本户的那一种照旧', () => {
+    const pinned = mkB(1, { status: 'override_stale', contractId: null, pinnedContractNo: 'C-009' })
+    expect(bindReason('stale', pinned)).toBe('人工绑定的是 C-009,它不是这一段租户的合同,没有采用;该户本月也没有别的有效合同')
+    const m = mkM({ ownership: 'tenant', tenantId: 7, tenantName: '力灏' })
+    const x = buildRows([m], [], [], [mkB(m.id, { status: 'override_stale', contractId: null, pinnedContractNo: 'C-009' })])[0]
+    expect(statusDims(x)).toContain('待绑定:人工绑定的 C-009 不是这一段租户的合同,没有采用')
+    expect(statusDims(x)).not.toContain('本月没生效')
+    const own = buildRows([m], [], [], [mkB(m.id, { status: 'override_stale', contractId: 5, contractNo: 'C-005' })])[0]
+    expect(statusDims(own)).toContain('待绑定:绑的那份合同本月没生效')
   })
 })
 
@@ -220,7 +379,7 @@ describe('filterRows — 电水/分区/楼栋/归属/状态/搜索 链', () => {
   const a = mkM({ kind: 'elec', zone: 'p1', buildingId: 11, ownership: 'tenant', tenantId: 1 })
   const b = mkM({ kind: 'elec', zone: 'p2', buildingId: 12, ownership: 'share', name: '走廊灯' })
   const c = mkM({ kind: 'water', zone: 'p1', ownership: 'tenant', tenantId: 2 })
-  const rows = buildRows([a, b, c], [mkR(a.id, { currTotal: 3, usageTotal: 1 })], [], null,
+  const rows = buildRows([a, b, c], [mkR(a.id, { prevTotal: 2, currTotal: 3, usageTotal: 1 })], [], null,
     new Map([[1, '力灏实业'], [2, '碳紫科技']]))
   it('kind/zone/building/own 过滤', () => {
     expect(filterRows(rows, F()).map(x => x.m.id)).toEqual([a.id, b.id])
@@ -237,14 +396,14 @@ describe('filterRows — 电水/分区/楼栋/归属/状态/搜索 链', () => {
 })
 
 describe('草稿式编辑(v5.1 §7)— effCurr/脏行/用量重算/校验红显/请求构造/tfoot 页脚', () => {
-  it('effCurr:草稿覆盖服务器;空串=清空;非法文本=null;未编辑字段回落读数', () => {
+  it('effVal:草稿覆盖服务器;空串=清空;非法文本=null;未编辑字段回落读数', () => {
     const m = mkM()
     const [x] = buildRows([m], [mkR(m.id, { currTotal: 100, currSharp: 5 })], [], null)
-    expect(effCurr(x, undefined, 'currTotal')).toBe(100)
-    expect(effCurr(x, { currTotal: '120.5' }, 'currTotal')).toBe(120.5)
-    expect(effCurr(x, { currTotal: '' }, 'currTotal')).toBeNull()
-    expect(effCurr(x, { currTotal: 'abc' }, 'currTotal')).toBeNull()
-    expect(effCurr(x, { currTotal: '120' }, 'currSharp')).toBe(5)
+    expect(effVal(x, undefined, 'currTotal')).toBe(100)
+    expect(effVal(x, { currTotal: '120.5' }, 'currTotal')).toBe(120.5)
+    expect(effVal(x, { currTotal: '' }, 'currTotal')).toBeNull()
+    expect(effVal(x, { currTotal: 'abc' }, 'currTotal')).toBeNull()
+    expect(effVal(x, { currTotal: '120' }, 'currSharp')).toBe(5)
   })
 
   it('draftRowDirty/draftDirtyIds:数值等价("100"=100)不算脏;无读数录空不算;真改动才算', () => {
@@ -301,16 +460,18 @@ describe('草稿式编辑(v5.1 §7)— effCurr/脏行/用量重算/校验红显/
     })
   })
 
-  it('gridFooter:已抄/未抄按有效总示数(草稿实时);Σ用量=非空行合计,全空=null', () => {
+  it('gridFooter:已抄/未抄按有效总示数与底数(草稿实时);Σ用量=非空行合计,全空=null', () => {
     const m1 = mkM({ factor: 1 }), m2 = mkM(), m3 = mkM()
     const rows = buildRows([m1, m2, m3],
-      [mkR(m1.id, { prevTotal: 0, currTotal: 10, factorSnap: 1, usageTotal: 10 })], [], null)
+      [mkR(m1.id, { prevTotal: 0, currTotal: 10, factorSnap: 1, usageTotal: 10 })],
+      [mkR(m2.id, { ym: '2024-04', currTotal: 1 })], null)
     expect(gridFooter(rows, new Map())).toEqual({ read: 1, missing: 2, usageSum: 10 })
     const draft = new Map<number, MeterDraft>([
       [m1.id, { currTotal: '' }],          // 清空:已抄→未抄,用量不可算
-      [m2.id, { currTotal: '5' }],         // 新录:未抄→已抄,但 prev 缺→用量仍 null
+      [m2.id, { currTotal: '5' }],         // 新录:上月行至 1 作底数 → 已抄,用量 4
+      [m3.id, { currTotal: '7' }],         // 新录但没有底数(缺底数)→ 仍算未抄
     ])
-    expect(gridFooter(rows, draft)).toEqual({ read: 1, missing: 2, usageSum: null })
+    expect(gridFooter(rows, draft)).toEqual({ read: 1, missing: 2, usageSum: 4 })
     expect(gridFooter([], new Map())).toEqual({ read: 0, missing: 0, usageSum: null })
   })
 })
@@ -497,6 +658,20 @@ describe('bindQueueBucket / autoLinkEstimate — v4 meterBindQueue 口径并入'
     expect(bindQueueBucket({ status: 'override_stale' })).toBe('stale')
     expect(bindQueueBucket({ status: 'manual', bucket: 'ambiguous' })).toBe('ambiguous')
     expect(bindQueueBucket({ status: 'manual' })).toBe('no_contract')
+  })
+  // ⚠ 「过期」曾被用户读成「这份合同到期了」(2026-09-23 报障:合同明明覆盖这个月还写过期)。
+  //   这一档说的是「有人把这块表指给了这一份,而本月不在它的租期内」——往往是它还没开始。
+  //   破坏验证:把 'stale' 那一支改回 `${contractNo} 不覆盖本月,请复核` → 本行红。
+  it('stale 的话要说清是绑定不适用、不是合同到期;有候选时指到候选上', () => {
+    const base = { meterId: 1, status: 'override_stale', contractNo: 'C2024M-022A#3', hasReading: true } as const
+    const withCands = bindReason('stale', { ...base, candidates: [
+      { contractId: 419, contractNo: 'C2024M-022A#2', buildingName: 'A座', startDate: null, endDate: null },
+      { contractId: 423, contractNo: 'C2024M-022#2', buildingName: 'A座', startDate: null, endDate: null },
+    ] })
+    expect(withCands).toContain('本月还没生效或已到期')
+    expect(withCands).toContain('2 份')          // 候选数报出来:原先这一档候选恒空,屏上只剩「该户无候选合同」
+    expect(withCands).not.toContain('C2024M-022A#3')   // 合同号在左边那一格,别印第二遍
+    expect(bindReason('stale', base)).toContain('该户本月也没有别的有效合同')
   })
   it('一键挂预估:精确全等且档案内唯一才计入', () => {
     const tenantNames = ['锂朋科技', '嘉荣', '嘉荣', '力灏']

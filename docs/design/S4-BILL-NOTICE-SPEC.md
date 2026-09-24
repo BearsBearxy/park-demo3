@@ -15,6 +15,13 @@
 | 3 | 账外户 | **`tenant.offbook` 标（V89）**；账外户照常出单但 `notice_kind='offbook'`，不进应收口径；名单按 BOOK-STRUCTURE-2024-02 的 10 个账外 sheet 落 fixes 脚本 | BILL-DERIVE-SPEC §6.8 建议出单+标记 |
 | 4 | `kind='master_lease'` 整租合同 | **派生引擎直接排除**（现仅 S10-0135 火炬园一份），防与散户双算 | 与 KPI 口径一致 |
 
+> **2026-09-23 补：这个标记原来会被续签弄丢。** `kind` 页面上改不了（V59 起只有一条 SQL 写过它，
+> PUT 刻意不碰以防误抹），而 `ContractService.renew` 逐字段抄了 17 项、偏偏漏了它 —— 整租合同
+> 续一次签就回落 DB 默认 `normal`，六个消费者（KPI 月租金合计／楼栋卡月租金·户数·面积／租金行／
+> 容量费／分析屏到期预测与同类对标）同时失效：火炬园那份 180 万的整栋合同会跟底下 26 户（合计 31 万）
+> 一起出单、一起进 KPI。S10-0135 到期日 2024-02-29，当时还没续过签，所以库里没有错账。
+> 已在 `renew()` 补 `c.setKind(old.getKind())`，断言在 `ContractServiceTest.renew_继承整租标记`，破坏验证过。
+
 另两项复核修正随定案落地：
 
 - **amountOverride 语义以代码为准**：它是 `per_month` 模式的值字段，不是全局 override。修正实体注释与前端注释（**V52 迁移文件不动**——改已应用迁移会炸 Flyway checksum）。纸面价覆盖惯例（仁恒）本就按「翻成 per_month + amount_override」落地，与代码一致。

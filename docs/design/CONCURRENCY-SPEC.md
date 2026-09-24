@@ -261,6 +261,7 @@
 | 公共电核算 | → `billing-chain:{year}-{month}` | 见 §3.2 |
 | 催缴单 | → `billing-chain:{year}-{month}` | 见 §3.2 |
 | 计费参数 | → `billing-chain:{year}-{month}` | 见 §3.2 |
+| 楼栋损耗 | → `billing-chain:{year}-{month}` | 见 §3.2；2026-09-23 补 —— 本屏开了「备注」这一个写口（`PUT /alloc/loss/note`），不新开 `alloc-loss:*` 锁 |
 
 **E. 窗口级 `editMode`（2 个）**
 
@@ -281,7 +282,9 @@
 
 **三屏各锁各的等于没锁**：A 在参数页重算 2024-02，B 同时在催缴单页点生成，两把不同的锁全放行。
 
-→ 合并为一把 **`billing-chain:{year}-{month}`**，四个写面（三屏 + 系数簿窗口）共占。
+→ 合并为一把 **`billing-chain:{year}-{month}`**，五个写面（计费参数 / 公共电核算 / 楼栋损耗 / 催缴单 四屏 + 系数簿窗口）共占。
+  楼栋损耗屏 2026-09-23 加入：它写的 `alloc_loss_note` 与 `alloc_loss_result` 是 `generate(ym)` 同一批，
+  另开一把锁等于没锁（`NAV_SCOPE_PREFIX` 里也要有 `alloc-loss` 这一项，否则侧栏圆点永远不亮且不报错）。
 
 ### 3.3 残留风险：充电桩桩库是 car/ebike 共享表
 

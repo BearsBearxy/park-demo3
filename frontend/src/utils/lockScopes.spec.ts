@@ -91,10 +91,11 @@ describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
      *   同时认领是设计内的,所以这里是集合相等,不是「恰好一个」。
      */
     const SAMPLES: Record<string, { scopes: string[]; navs: string[] }> = {
-      paramCenter: { scopes: [S.paramCenter(2025, 6)], navs: ['params', 'alloc', 'bill-notices'] },
-      poolLedger:  { scopes: [S.poolLedger(2025, 6)],  navs: ['params', 'alloc', 'bill-notices'] },
-      billNotices: { scopes: [S.billNotices(2025, 6)], navs: ['params', 'alloc', 'bill-notices'] },
-      coefBook:    { scopes: [S.coefBook(2025, 6)],    navs: ['params', 'alloc', 'bill-notices'] },
+      // alloc-loss 2026-09-23 进认领集:楼栋损耗屏开了备注写入口,占的是同一把 billing-chain 月锁
+      paramCenter: { scopes: [S.paramCenter(2025, 6)], navs: ['params', 'alloc', 'alloc-loss', 'bill-notices'] },
+      poolLedger:  { scopes: [S.poolLedger(2025, 6)],  navs: ['params', 'alloc', 'alloc-loss', 'bill-notices'] },
+      billNotices: { scopes: [S.billNotices(2025, 6)], navs: ['params', 'alloc', 'alloc-loss', 'bill-notices'] },
+      coefBook:    { scopes: [S.coefBook(2025, 6)],    navs: ['params', 'alloc', 'alloc-loss', 'bill-notices'] },
       ledger:      { scopes: [S.ledger(3, 2025, 6)],   navs: ['ledger'] },
       elecCost:    { scopes: [S.elecCost(2025, 6)],    navs: ['elec-cost'] },
       bookTemplate: {

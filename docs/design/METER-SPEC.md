@@ -15,6 +15,9 @@
 - **唯一键 (kind, zone, name)**：同区同类标识唯一；导入按此 upsert——花名册随导入自动建档/刷新描述字段。
 - 无种子：档案由首次导入真实文件建立（约 1100 块），也可手工增删（有读数的表删除 409 守卫）。
 
+> 2026-09-24 起 meter 上只留资产列（kind zone name code factor device_type meter_type sort_no suspect is_dorm_room）；
+> area / spot / tenant_name 等归属列按月一段一段记在 `meter_assign`，带月份的读取站在那个月取（METER-TIMELINE-SPEC §1 §2）。
+
 ### meter_reading 月度读数
 - `id、meter_id FK(删表由 409 挡,不级联)、ym CHAR(7)(YYYY-MM)、prev_total/curr_total、prev_sharp/peak/flat/valley、curr_sharp/peak/flat/valley(均 DECIMAL(14,2) NULL——水表只有 total,公共电表常只有 total)、factor_snap DECIMAL(10,2) NOT NULL(录入/导入时快照表倍率;之后改倍率不回溯历史,同 PV price_snap 口径)、note、source VARCHAR(12)(manual/import)、时间戳`
 - **唯一键 (meter_id, ym)**：一表一月一条；重复导入幂等覆盖（先删后插）。
@@ -23,6 +26,8 @@
 
 ## 2. 接口（/api/meters,GET=viewer 可读、写=admin,SecurityConfig 统一门）
 - 档案:GET /api/meters（可选 kind/zone 过滤）、POST、PUT /{id}、DELETE /{id}（有读数 409）
+  > 2026-09-24 起 GET 多一个 `ym`（站在那个月看，切月重拉）；PUT /{id} 只收资产列，归属与在册状态按月写走
+  > `PUT /assign`、`POST|DELETE /{id}/status`（METER-TIMELINE-SPEC §2 §3，接口见实施计划 2026-09-24-meter-timeline-plan §1）。
 - 读数:GET /years（数据驱动年下拉）、GET /readings?ym=、POST /readings（同表同月 409）、PUT /readings/{id}、DELETE /readings/{id}
 - 导入:POST /import——行自带 kind/zone/name/ym+档案描述字段+读数;表按 (kind,zone,name) 建档或刷新,读数按 (表,ym) 覆盖;kind/zone/ym 非法与 name 空=行级错误跳过,不整批拦。
 
@@ -49,6 +54,9 @@ v1 档案是"原样字符串",用户裁定难懂:要与主数据关联、按 Exc
 - `ownership VARCHAR(8) NOT NULL DEFAULT 'share'`：`tenant`(租户表)/`share`(园区公摊)/`ops`(园区经营)/`infra`(配电总表)
 - `tenant_name` 保留=Excel 企业名称原文（未匹配兜底+对账审计）;`spot`=方位（几楼几室/东西侧/高低区）。
 - 回填方式：重导真实文件即回填（导入刷新档案字段）,V46 不写数据迁移。
+
+> 2026-09-24 起这几列（连同 V63 的 contract_id、三组人工标记）搬进 `meter_assign` 按月分段，V129 从 meter 上删掉；
+> 导入只写导入月那一行，不再「刷新档案」改到别的月份（METER-TIMELINE-SPEC §1.2 §3.2）。
 
 ### 6.2 租户名/方位拆分（前端纯函数 splitTenantSpot,spec 锁定;租户库=tenants api companyName 全量）
 - 括号「X（Y）」(全半角括号均认)：两段先各自对租户库**全等**匹配→命中者为租户、另一段为方位（1-3楼（力灏）→租户力灏+方位1-3楼;邓宇峰（高区）→租户邓宇峰+方位高区）;都命中取 X;都不命中→按方位特征正则(见下)判方位段,余段为租户候选。
@@ -100,6 +108,10 @@ v1 档案是"原样字符串",用户裁定难懂:要与主数据关联、按 Exc
 ## 8. 表停用与园区自担归属（V68,2026-07-29 用户拍板）
 
 ### 8.1 停用 = 账期口径 `retired_ym`,不是布尔 status
+
+> 2026-09-24 起本节被 METER-TIMELINE-SPEC §1.3 §3.4 取代：`retired_ym`（和 V87 / V88 的 `active_from_ym` / `removed_ym`）
+> 换成按月分段的 `meter_status`（在用 / 停用 / 已拆，只记起始月），V129 删列；停用的表**照常显示在册上**，标「已停用」、不进分母，
+> 不再默认隐藏；判定唯一点改为 `MeterService.outOfService(MeterAt)`。下面「PUT /{id} 写 retiredYm」「默认隐藏」两处作废，账期口径的理由仍成立。
 - 字段：`meter.retired_ym CHAR(7) NULL`「自该账期起停用（含当月不计）;NULL=在用」。
 - 判定唯一定义点 `MeterService.retired(m, ym) = m.retiredYm != null && ym >= m.retiredYm`;前端同名口径 `useMeterWorkbench.isRetiredMeter(m, ym)`（ym 缺省=一律在用,不误藏）。
 - **为什么不是布尔**：系统是账期驱动的。布尔 `status='retired'` 会追溯污染历史月——今天标停用,回看 2024-03 也显示停用,抄表进度分母、公摊分表Σ、损耗残差全部失真。账期口径让「停用前的月」原样保留。

@@ -77,6 +77,14 @@ export function payColOf(
 }
 
 // ── paymap 缓存与解析 ────────────────────────────────────
+// 「这张单还没落到收款公司」的统一话术(2026-09-23)。屏上共 7 处同源,读的都是
+// bill_notice.pay_company_id —— **生成时快照**,不是 paymap 的当前状态。所以不能说成
+// 「该户有费项未设置收款公司」:用户设完收款公司这句话也不会消失(单确实还没拆),
+// 照旧文案读就是「设了还说没设」。说清楚它说的是单,以及怎么让它消失。
+export const GAP_TIP = '该户有单还没落到收款公司;设好归属后要重新生成本月催缴单才会拆单(提示,不阻断)'
+/** 同一判据的计数说法,给弹窗/结果句用。 */
+export const gapWord = (n: number) => `${n} 户的单还没落到收款公司`
+
 export const payKey = (tenantId: number, colId: string) => `${tenantId}|${colId}`
 export type PayMap = Map<string, number>     // payKey → companyId(落库值)
 export type PayStash = Map<string, number>   // payKey → companyId(未保存暂存,压过落库值)
@@ -236,7 +244,7 @@ export function buildReconSheets(notices: PayNoticeIn[]): ReconSheet[] {
 // rent 行的 mgmt/infra 要段类型才知道落哪列,段类型从同 premise 块里的 rent_* 行反推
 // (groupRentByPremise 同一套判定,与后端 BillNoticeService 落 payCol 的口径一致)。
 // ⚠ 映射不到槽的行(段类型缺失的 mgmt/infra、未知费项键)不进结果 —— 它们在后端也拿不到收款公司,
-// 屏上以「该户有费项未指定收款公司」的橙点体现,而不是伪造一个格子让用户以为设了就好了。
+// 屏上以橙点(GAP_TIP)体现,而不是伪造一个格子让用户以为设了就好了。
 export function slotAmounts(details: {
   noticeKind: string
   lines: { feeKey: string; premise: string | null; amount: number; feeGroup?: string | null }[]
@@ -290,7 +298,16 @@ export function buildSlotCells(
 ): SlotCell[] {
   const coName = new Map(companies.map(c => [c.id, c.short || c.name]))
   const out: SlotCell[] = []
-  for (const s of COL_SLOTS) {
+  // 遍历「注册表 ∪ 本月真有钱的槽」(2026-09-23):注册表只登记了十个槽(2026-08-12 调研口径),
+  // 而后端 payColOf 能路由到二十三个 —— 没登记的槽在抽屉里一张卡都不出,于是用户把看得见的
+  // 格子全设满,后端照样找不到收款公司(实测有户的钱全落在 elevatorMaint/transformerMaint/
+  // factoryMgmtFee 三个没登记的槽上,两个入口都改不掉)。
+  // 只扩**出卡**这一处,不动 COL_SLOTS 本身:PayBookWindow 的缺口徽标(slotGap)分母是全期户数、
+  // 不看这户有没有这笔钱,把注册表铺到二十三槽会给它算出假缺口(2026-09-23 对抗复查)。
+  const extra: ColSlot[] = [...ctx.amounts.keys()]
+    .filter(c => !SLOT_BY_COL.has(c))
+    .map(colId => ({ colId: colId as S10ColId, feeKeys: [] }))
+  for (const s of [...COL_SLOTS, ...extra]) {
     const amount = ctx.amounts.get(s.colId) ?? null
     // 宿舍户的 dormRent 格恒出(整单通吃,没算出金额也要能指定);其余槽有钱才出
     if (amount == null && !(s.wholeNotice && ctx.dorm)) continue

@@ -140,6 +140,24 @@ UPDATE contract SET status='active' WHERE status IN ('expiring','expired');
 
 `FPContractStatus` 组件加 `renewed` 态（label「已续签」，蓝灰）。`summary()` 的 active/expiring 计数改用派生桶。
 
+### 5.1b 终止会把解约日收进 `endDate`（2026-09-23 修）
+
+`POST /contracts/{id}/terminate` 接一个可选的 `terminatedOn`（空=今天，Asia/Shanghai）：
+写 `status='terminated'`，并且 **`endDate = min(原endDate, terminatedOn)`**。解约日早于起租日 → 409。
+
+> **为什么必须收这一列。** 出账那一侧判「这个月这份合同算不算数」只有一条判据 ——
+> `MeterBindingService.covers`（非草稿 + 起止齐全 + 月区间重叠），它**不看 status**。
+> 所以原来那个只写 status 的终止，在出账链上等于没发生：提前解约的合同后面每个月照出满月租金、
+> 照算容量费、照进公摊名册。屏上更糟——本抽屉的时间轴印的是「已终止 · {endDate} · 提前解约」，
+> 把**原到期日**当成解约日印了出来。
+>
+> **不改 `covers` 去排 terminated**：那会连解约**之前**的月份一起停掉，而那些月人确实在租；
+> 而且 `covers` 有四个消费者（表归属／租金行／容量费／公摊名册），动它是全链改动。
+> 原始凭据在 `term_text`（期限原文，V55）里，不受影响。
+
+断言在 `ContractServiceTest`：解约当月 `covers` 仍 true、次月 false、解约前的月份不变；
+解约日晚于到期日不把到期日往后推；不传取今天；早于起租拒绝。四条各自破坏验证过。
+
 ### 5.2「某日期在租」时段筛选
 
 列表工具栏加一个日期选择器；选定日期 D → 列出 **`status ≠ draft` 且 `startDate ≤ D ≤ endDate`** 的合同（即该日在执行中的租约，含当日仍在期内的 renewed/terminated 历史期）。

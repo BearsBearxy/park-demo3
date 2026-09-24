@@ -246,6 +246,7 @@ loss_rate_manual(组头, month) 非空 ⇒ I = 手工率（覆盖上式；快照
 1. 保存后状态条：「参数已改 N 项（自上次重算起），本月池核算/楼栋损耗/催缴单为旧快照」+ [重算本月]。
 2. [重算本月] = `POST /api/params/recalc?ym`：`AllocService.generate(ym)` → `BillNoticeService.generate(ym)`（已确认/已导出户照旧跳过并计数）→ 返回摘要 `{pools, lossUnits, notices, skippedConfirmed, warnings}` → 状态条变「快照与参数一致 ✓ 生成于 …」+ 日志记 `recalc`。
 3. 其它屏常驻状态：公共电核算 / 楼栋损耗 / 催缴单 三屏头部显示「参数版本 与 快照 一致 ✓ / 参数已更新，本页为旧快照 ⚠ [去重算]」（判据 §6.3）。
+   > 2026-09-24 起让本月过期的不只是参数：抄表读数与表档案的改动也算，屏上按来源说「计费参数 / 抄表数据 / 两者」改过还没重算（METER-TIMELINE-SPEC §1.5 §5）。
 4. 「影响预览」不做（YAGNI）：改参影响范围=本月（month）或本月及以后（from），状态条文字直接说明；已生成的其它月份若受 from 影响，状态条列出「另有 2024-02 也受影响，请切到该月重算」。
 
 ### 5.6 其它入口的收敛
@@ -256,6 +257,7 @@ loss_rate_manual(组头, month) 非空 ⇒ I = 手工率（覆盖上式；快照
 | 公共电核算 编辑态「系数(月)」「加度(月)」两列 | 改为只读显示当月生效值 + 「来自」徽标 + 点击跳本页（带 ym 与池高亮） |
 | 公共电核算 池抽屉「③怎么摊」 | 只留结构 5 项；「基数」「默认加度」输入框删除 → 只读一行「当月分母 … · 加度 … → 去计费参数页改」；仅新建池表单保留「初始分母」（§2.4） |
 | 楼栋损耗 「本月口径」面板 | **删除**；标题栏加「本月口径 → 计费参数」链接；G 格悬浮给分解式；行内「调整度数/调整损耗/G调整」三格改只读（G调整删除），点击跳本页 |
+| 楼栋损耗 「备注」列 | **例外：这一格可写**（用户 2026-09-23）。本屏因此不再是「零写入口」，而是「唯一的写入口是备注」——备注不是参数、不参与任何计算，没有版本链也没有生效方式，收敛到本页没有意义。其余每一格仍是派生值，一格都不可写。写口 `PUT /api/alloc/loss/note`（落独立表 `alloc_loss_note`，generate 不碰，重算不丢；POOL-ENGINE-SPEC §6），编辑态与锁/审核走出账链同一套（`billing-chain:{ym}` + `ReviewKind.ALLOC_LOSS`） |
 | 抽屉「只改本月」勾选（成员） | 文案改「自本月起（版本组）」（S14 已改语义，文案未改） |
 
 ---
@@ -274,6 +276,9 @@ loss_rate_manual(组头, month) 非空 ⇒ I = 手工率（覆盖上式；快照
 
 ### 6.3 stale 判据
 `stale(ym) = max(param_change_log.ts where action<>'recalc' and (mode='from' and acct_month<=ym or mode='month' and acct_month=ym)) > alloc_pool_result.generated_at(ym)`；催缴单同理对 bill 批次时间。
+
+> 2026-09-24 起（METER-TIMELINE-SPEC §1.5 §5）：上式的 max 并入 `data_change_log` 该月最新一条（source = `meter-archive` | `meter-reading`），
+> 取两边较晚的那次；`status` 多给 `lastChangeSource`（param | meter）与 `staleSources`（让本月过期的来源），`pendingChanges` 仍只数参数。
 
 ---
 

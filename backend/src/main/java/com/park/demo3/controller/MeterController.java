@@ -19,22 +19,65 @@ public class MeterController {
     private final MeterService svc;
     public MeterController(MeterService svc) { this.svc = svc; }
 
-    @Operation(summary = "表档案列表(可选 kind/zone 过滤;含读数条数)") @GetMapping
+    @Operation(summary = "表档案列表(可选 kind/zone 过滤;含读数条数;站在 ym 看,缺省=各表最新一行)") @GetMapping
     public List<MeterDTO> list(@RequestParam(required = false) @Pattern(regexp = "elec|water") String kind,
-                               @RequestParam(required = false) @Pattern(regexp = "p\\d+|dorm") String zone) {
-        return svc.list(kind, zone);
+                               @RequestParam(required = false) @Pattern(regexp = "p\\d+|dorm") String zone,
+                               @RequestParam(required = false) @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String ym) {
+        return svc.list(kind, zone, ym);
     }
 
-    @Operation(summary = "新增表(同区同类同名 409)") @PostMapping
+    @Operation(summary = "新增表(同区同类同名 409;自 fromYm 起在册,缺省 1900-01;这段月份有审核锁 423)") @PostMapping
     public MeterDTO create(@Valid @RequestBody MeterReq req) { return svc.create(req); }
 
-    @Operation(summary = "编辑表(改倍率只影响之后新录读数,历史快照不回溯)") @PutMapping("/{id}")
-    public MeterDTO update(@PathVariable Integer id, @Valid @RequestBody MeterReq req) {
+    @Operation(summary = "编辑表的资产列(名称/编码/表类/表类型/倍率/存疑标,不分月;改倍率只影响之后新录读数)") @PutMapping("/{id}")
+    public MeterDTO update(@PathVariable Integer id, @Valid @RequestBody MeterAssetReq req) {
         return svc.update(id, req);
     }
 
-    @Operation(summary = "删除表(有读数或绑公摊池 409;不存在 404)") @DeleteMapping("/{id}")
-    public void delete(@PathVariable Integer id) { svc.delete(id); }
+    // ── METER-TIMELINE-SPEC §3.3 §3.4:按月改归属与状态。受影响区间有冻结月 → 审核锁 423 / 其余 409 点名,一行不写 ──
+    @Operation(summary = "按月改归属(correct=更正 ym 所在那一段 / from=自 ym 起变更;meterIds 同房间一起写;改到的组置人工标记;返回写了哪几行)")
+    @PutMapping("/assign")
+    public List<MeterTimelineDTO.Written> assign(@Valid @RequestBody MeterAssignReq req) { return svc.assignByMonth(req); }
+
+    @Operation(summary = "改回按册子:清掉 ym 所在那一段的三组人工标记(位置三列回到按位置原文解析)")
+    @PostMapping("/assign/clear-manual")
+    public void clearManual(@Valid @RequestBody MeterClearManualReq req) { svc.clearManual(req); }
+
+    @Operation(summary = "一块表的归属段 / 状态段 / 档案变更记录,以及站在 ym 改归属的两个选项(区间与冻结月)和同房间的表")
+    @GetMapping("/{id}/timeline")
+    public MeterTimelineDTO timeline(@PathVariable Integer id,
+                                     @RequestParam @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String ym) {
+        return svc.timelineOf(id, ym);
+    }
+
+    @Operation(summary = "写一行状态:自 fromYm 起 在用/停用/已拆;replaceFromYm = 把那一行挪到 fromYm(改月)")
+    @PostMapping("/{id}/status")
+    public void writeStatus(@PathVariable Integer id, @Valid @RequestBody MeterStatusReq req) { svc.writeStatusRow(id, req); }
+
+    @Operation(summary = "删一行状态(撤回误标;第一行不能删 409)")
+    @DeleteMapping("/{id}/status/{fromYm}")
+    public void deleteStatus(@PathVariable Integer id,
+                             @PathVariable @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String fromYm) {
+        svc.dropStatusRow(id, fromYm);
+    }
+
+    @Operation(summary = "写这一行状态前的影响:区间、冻结月、区间里的非零用量月、所在公摊池、钉的合同")
+    @GetMapping("/{id}/status-impact")
+    public MeterTimelineDTO.StatusImpact statusImpact(@PathVariable Integer id,
+            @RequestParam @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String fromYm,
+            @RequestParam @Pattern(regexp = "active|retired|removed") String status) {
+        return svc.statusImpact(id, fromYm, status);
+    }
+
+    @Operation(summary = "删表前看影响:读数条数、所在公摊池、明细里有它的催缴单(草稿/已作废可随表一起删,已确认/已导出要先作废)")
+    @GetMapping("/{id}/delete-impact")
+    public MeterDeleteDTO.Impact deleteImpact(@PathVariable Integer id) { return svc.deleteImpact(id); }
+
+    @Operation(summary = "删除表(有读数、绑公摊池 409;明细里有它的催缴单:已确认/已导出 409,草稿/已作废带 dropDraftNotices "
+        + "连单一起删、那几个月记需重算,不带 409;不存在 404)") @DeleteMapping("/{id}")
+    public void delete(@PathVariable Integer id, @RequestParam(defaultValue = "false") boolean dropDraftNotices) {
+        svc.delete(id, dropDraftNotices);
+    }
 
     @Operation(summary = "有读数的账期('YYYY-MM' 升序;空表=[],默认月数据驱动)") @GetMapping("/months")
     public List<String> months() { return svc.months(); }
@@ -70,22 +113,32 @@ public class MeterController {
             @RequestParam(required = false) @Pattern(regexp = "elec|water") String kind,
             @RequestParam(required = false) @Pattern(regexp = "p\\d+|dorm") String zone,
             @RequestParam(defaultValue = "true") boolean cascade,
-            @RequestParam(defaultValue = "true") boolean dropEmptyMeters) {
-        return svc.batchDelete(ym, kind, zone, cascade, dropEmptyMeters, false);
+            @RequestParam(defaultValue = "true") boolean dropEmptyMeters,
+            @RequestParam(defaultValue = "false") boolean dropDraftNotices) {
+        return svc.batchDelete(ym, kind, zone, cascade, dropEmptyMeters, dropDraftNotices, false);
     }
 
-    @Operation(summary = "批量删除本期读数(不可逆;级联派生快照与空表档案默认开,可关;写 import_log 留痕)")
+    @Operation(summary = "批量删除本期读数(不可逆;级联派生快照与空表档案默认开,可关;dropDraftNotices 连带删该月草稿/已作废催缴单,"
+            + "该月有已确认/已导出的单 409;写 import_log 留痕)")
     @DeleteMapping("/readings")
     public MeterDeleteDTO deleteByYm(
             @RequestParam @Pattern(regexp = "\\d{4}-\\d{2}") String ym,
             @RequestParam(required = false) @Pattern(regexp = "elec|water") String kind,
             @RequestParam(required = false) @Pattern(regexp = "p\\d+|dorm") String zone,
             @RequestParam(defaultValue = "true") boolean cascade,
-            @RequestParam(defaultValue = "true") boolean dropEmptyMeters) {
-        return svc.batchDelete(ym, kind, zone, cascade, dropEmptyMeters, true);
+            @RequestParam(defaultValue = "true") boolean dropEmptyMeters,
+            @RequestParam(defaultValue = "false") boolean dropDraftNotices) {
+        return svc.batchDelete(ym, kind, zone, cascade, dropEmptyMeters, dropDraftNotices, true);
     }
 
-    @Operation(summary = "批量导入(表按 kind+zone+name 建档/刷新,读数按 表+ym 幂等覆盖;行级错误跳过不整批拦)")
+    @Operation(summary = "批量导入(表按 kind+zone+name 建档/刷新,读数按 表+ym 幂等覆盖;行级错误跳过不整批拦;"
+        + "档案只写导入月那一行,返回 batchId 与逐表逐字段的 changes)")
     @PostMapping("/import")
     public MeterImportResultDTO importRows(@Valid @RequestBody MeterImportRequest req) { return svc.importRows(req); }
+
+    @Operation(summary = "撤销一次导入的档案改动(按变更记录逆序还原,读数不动;之后又改过或波及冻结月则整批拒并列出;返回还原条数)")
+    @PostMapping("/import-batches/{batchId}/revert")
+    public int revertImport(@PathVariable @Pattern(regexp = "[0-9a-f-]{36}") String batchId) {
+        return svc.revertImport(batchId);
+    }
 }

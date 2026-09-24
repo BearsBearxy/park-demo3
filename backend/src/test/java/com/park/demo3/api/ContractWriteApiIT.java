@@ -324,6 +324,38 @@ class ContractWriteApiIT extends AbstractMysqlIT {
         assertThat(st).containsExactly("vacant");
     }
 
+    // ⚠ 线路断言:解约日要真的从 JSON 走到 end_date 上。字段名拼错、@RequestBody 收不到,
+    //   后端都会安静地退回「今天」—— 屏上看不出来,下个月的单才看得出来。
+    //   判据本身(收不收、收成哪天)在 ContractServiceTest,那几条各自破坏验证过。
+    @Test
+    void terminate_withDate_cutsEndDate() throws Exception {
+        int id = createContract(uniqueNo(), firstTenantId(), firstBuildingId(), null,
+                "2026-01-01", "2028-12-31", "active");
+
+        mvc.perform(post("/api/contracts/" + id + "/terminate")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"terminatedOn\":\"2026-06-15\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.status").value("terminated"))
+                .andExpect(jsonPath("$.data.endDate").value("2026-06-15"));
+    }
+
+    @Test
+    void terminate_dateBeforeStart_returns409InBody() throws Exception {
+        int id = createContract(uniqueNo(), firstTenantId(), firstBuildingId(), null,
+                "2026-01-01", "2028-12-31", "active");
+
+        mvc.perform(post("/api/contracts/" + id + "/terminate")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"terminatedOn\":\"2025-12-31\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value("终止日期不能早于起租日期"));
+    }
+
     @Test
     void terminate_twice_returns409InBody() throws Exception {
         int id = createContract(uniqueNo(), firstTenantId(), firstBuildingId(), null,
@@ -469,5 +501,136 @@ class ContractWriteApiIT extends AbstractMysqlIT {
 
         List<Integer> hit = JsonPath.read(getBody("/api/contracts"), "$.data[?(@.id==" + id + ")].id");
         assertThat(hit).isEmpty();
+    }
+
+    // ══ METER-TIMELINE-SPEC §3.6 终止合同联动表档案(B3)。独占 2085 年 ══
+
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Autowired com.park.demo3.mapper.ReviewStateMapper reviewStateMapper;
+    @Autowired com.park.demo3.mapper.BillNoticeMapper noticeMapper;
+    @Autowired com.park.demo3.mapper.BillNoticeLineMapper noticeLineMapper;
+
+    private int postId(String url, String body) throws Exception {
+        String res = mvc.perform(post(url).header("Authorization", "Bearer " + token)
+                .contentType("application/json").content(body))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        return JsonPath.read(res, "$.data.id");
+    }
+
+    /** 新户 + 2085-01-01 起的合同,计费行位置「B座302室」(合同场地的房号 = 302)。 */
+    private int[] tenantWithContract(String tag) throws Exception {
+        int t = postId("/api/tenants", "{\"companyName\":\"IT终止" + tag + System.nanoTime() + "\",\"businessType\":\"IT\"}");
+        int c = postId("/api/contracts", "{\"contractNo\":\"" + uniqueNo() + "\",\"tenantId\":" + t
+                + ",\"buildingId\":" + firstBuildingId() + ",\"startDate\":\"2085-01-01\",\"endDate\":\"2099-12-31\","
+                + "\"deposit\":0,\"status\":\"active\",\"billingLines\":[{\"propertyType\":\"factory\","
+                + "\"location\":\"B座302室\",\"feeKey\":\"rent_factory\",\"area\":100,\"unitPrice\":10}]}");
+        return new int[]{t, c};
+    }
+
+    /** 1900-01 起挂在 tenantId 名下的表(建表缺省起始月)。 */
+    private int meter(String name, int tenantId) throws Exception {
+        return postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"" + name
+                + "\",\"ownership\":\"tenant\",\"tenantId\":" + tenantId + "}");
+    }
+
+    private org.springframework.test.web.servlet.ResultActions terminateReq(int id, String on, int... meterIds)
+            throws Exception {
+        return mvc.perform(post("/api/contracts/" + id + "/terminate").header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"terminatedOn\":\"" + on + "\",\"vacateMeterIds\":" + java.util.Arrays.toString(meterIds) + "}"));
+    }
+
+    /** 这块表的归属行:[from_ym, tenant_id, contract_id, src],按 from_ym 升序。 */
+    private List<List<Object>> assignRows(int meterId) {
+        return jdbc.query("SELECT from_ym, tenant_id, contract_id, src FROM meter_assign WHERE meter_id=? ORDER BY from_ym",
+                (rs, i) -> java.util.Arrays.asList(rs.getString(1), (Object) rs.getObject(2), rs.getObject(3), rs.getString(4)),
+                meterId);
+    }
+
+    // 预览:这户在解约月挂着的表,房号对得上合同场地的默认勾选;终止:勾的表自解约次月起写一行空置
+    // (tenant/contract 置空、src=contract),之前那一段一个字不动,没勾的表不动,留一条档案变更
+    @Test
+    void terminate_previewChecksRoomMatch_vacatesOnlyCheckedFromNextMonth() throws Exception {
+        int[] tc = tenantWithContract("甲");
+        int t = tc[0], c = tc[1];
+        int m302 = meter("IT终止302电", t), m509 = meter("IT终止509电", t);
+
+        String pv = getBody("/api/contracts/" + c + "/terminate-preview?on=2085-03-15");
+        assertThat((String) JsonPath.read(pv, "$.data.vacateFrom")).isEqualTo("2085-04");
+        assertThat((List<Integer>) JsonPath.read(pv, "$.data.meters[*].meterId")).containsExactlyInAnyOrder(m302, m509);
+        assertThat((List<Boolean>) JsonPath.read(pv, "$.data.meters[?(@.meterId==" + m302 + ")].checked")).containsExactly(true);
+        assertThat((List<Boolean>) JsonPath.read(pv, "$.data.meters[?(@.meterId==" + m509 + ")].checked")).containsExactly(false);
+
+        terminateReq(c, "2085-03-15", m302).andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.status").value("terminated"));
+        assertThat(assignRows(m302)).containsExactly(
+                java.util.Arrays.asList("1900-01", t, null, "manual"),
+                java.util.Arrays.asList("2085-04", null, null, "contract"));
+        assertThat(assignRows(m509)).containsExactly(java.util.Arrays.asList("1900-01", t, null, "manual"));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM meter_archive_log WHERE meter_id=? AND src='contract'"
+                + " AND tbl='assign' AND from_ym='2085-04' AND action='insert'", Integer.class, m302)).isEqualTo(1);
+    }
+
+    // 空置行的区间里有冻结月 → 整个拒、一行都不写、合同也不终止:含这块表的已导出单 409,审核锁 423;
+    // 勾了不挂在这户名下的表 → 400
+    @Test
+    void terminate_vacateFrozen_refusesWhole_contractStaysActive() throws Exception {
+        int[] tc = tenantWithContract("乙");
+        int t = tc[0], c = tc[1];
+        int m = meter("IT终止冻结302电", t);
+        int other = meter("IT终止别户302电", tenantWithContract("丙")[0]);
+
+        terminateReq(c, "2085-03-15", m, other).andExpect(jsonPath("$.code").value(400));
+
+        // 走 mapper 不走 jdbc:同一事务里 MyBatis 一级缓存会把上一次 lockedNotices 的空结果缓住,绕过 mapper 写库它看不见
+        var n = new com.park.demo3.entity.BillNotice();
+        n.setYm("2085-06"); n.setTenantId(t); n.setNoticeKind("combined"); n.setStatus("exported");
+        n.setTotalAmount(java.math.BigDecimal.ZERO); n.setGeneratedAt(java.time.LocalDateTime.now());
+        noticeMapper.insert(n);
+        var l = new com.park.demo3.entity.BillNoticeLine();
+        l.setNoticeId(n.getId()); l.setLineNo(1); l.setFeeKey("elec"); l.setMeterId(m); l.setAmount(java.math.BigDecimal.ZERO);
+        noticeLineMapper.insert(l);
+        String res = terminateReq(c, "2085-03-15", m).andExpect(jsonPath("$.code").value(409))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        assertThat((String) JsonPath.read(res, "$.message")).contains("2085-06").contains("已导出");
+        assertThat(assignRows(m)).hasSize(1);
+        assertThat(jdbc.queryForObject("SELECT status FROM contract WHERE id=?", String.class, c)).isEqualTo("active");
+
+        noticeMapper.deleteById(n.getId());
+        var s = new com.park.demo3.entity.ReviewState();
+        s.setReviewKey(com.park.demo3.security.ReviewKey.of(com.park.demo3.security.ReviewKind.METERS, null, "2085-04").raw());
+        s.setKind(com.park.demo3.security.ReviewKind.METERS.code()); s.setPeriod("2085-04"); s.setStatus("approved");
+        reviewStateMapper.insert(s);
+        terminateReq(c, "2085-03-15", m).andExpect(jsonPath("$.code").value(423));
+        assertThat(assignRows(m)).hasSize(1);
+        assertThat(jdbc.queryForObject("SELECT status FROM contract WHERE id=?", String.class, c)).isEqualTo("active");
+    }
+
+    private Integer assignCol(String col, int meterId, String fromYm) {
+        return jdbc.queryForObject("SELECT " + col + " FROM meter_assign WHERE meter_id=? AND from_ym=?", Integer.class,
+                meterId, fromYm);
+    }
+
+    // 空置行不带上一段的租户人工标记:抽屉里挂过户的表(tenant_manual=1)随合同空置后,
+    // 下月导入新户的册子照常写进来(带着标记会被 G2 挡住,新户的水电一直挂不上)
+    @Test
+    void terminate_vacateRowClearsTenantManual_nextImportWritesNewTenant() throws Exception {
+        int[] tc = tenantWithContract("丁");
+        int t = tc[0], c = tc[1];
+        int m = meter("IT终止人工302电", t);
+        mvc.perform(put("/api/meters/assign").header("Authorization", "Bearer " + token).contentType("application/json")
+                .content("{\"ym\":\"2085-03\",\"mode\":\"correct\",\"meterIds\":[" + m + "],"
+                        + "\"patch\":{\"tenantName\":\"IT终止丁名\"},\"alsoMigrateCopies\":false}"))
+                .andExpect(jsonPath("$.code").value(0));
+        assertThat(assignCol("tenant_manual", m, "1900-01")).isEqualTo(1);
+        terminateReq(c, "2085-03-15", m).andExpect(jsonPath("$.code").value(0));
+        assertThat(assignCol("tenant_manual", m, "2085-04")).isZero();
+        mvc.perform(post("/api/meters/import").header("Authorization", "Bearer " + token).contentType("application/json")
+                .content("{\"rows\":[{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT终止人工302电\",\"ym\":\"2085-05\","
+                        + "\"tenantName\":\"IT终止新户\",\"currTotal\":1}]}"))
+                .andExpect(jsonPath("$.code").value(0));
+        assertThat(jdbc.queryForObject("SELECT tenant_name FROM meter_assign WHERE meter_id=? AND from_ym='2085-05'",
+                String.class, m)).isEqualTo("IT终止新户");
     }
 }

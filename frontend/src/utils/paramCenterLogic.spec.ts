@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   baseRefLabel, copyPrevMonthKeys, forbiddenText, groupRows, pendingSummary, prevYm, rangeBadge, sourceLabel, staleText,
+  staleSources, staleTitle, staleWhat, staleWho,
   tenantExceptionDelReqs, tenantExceptionReqs,
   type ParamRow, type ParamStatus,
 } from './paramCenterLogic'
@@ -118,7 +119,7 @@ describe('tenantExceptionReqs / tenantExceptionDelReqs ④ 户级例外写序列
 describe('forbiddenText 页面禁词(spec §5.2 / §8.4)', () => {
   it.each(['building:13', 'rule:23', 'meter:307', 'tenant:5', 'p1', 'p2', 'dorm', '默认·所有月份', '组C只取此总表 building:13 默认·所有月份'])(
     '「%s」→ 禁', s => expect(forbiddenText(s)).toBe(true))
-  it.each(['一期 B座', '招商中心净电（池）', '仅 2024-02', '2023-11 起长期', '长期', '', '仅按公摊分摊度数（率 = 公摊分摊度数 ÷ 分母 + 加点）'])(
+  it.each(['一期 B座', '招商中心净电（池）', '仅 2024-02', '2023-11 起长期', '长期', '', '仅按公摊分摊度数（率 = 公摊分摊度数 ÷ 分摊基数 + 加点）'])(
     '「%s」→ 放行', s => expect(forbiddenText(s)).toBe(false))
 })
 
@@ -152,7 +153,7 @@ describe('staleText 其它三屏 stale 条(spec §5.5.3:池屏看池快照,催�
     poolSnapshotAt: '2026-08-16T14:02:11', billBatchAt: '2026-08-16T14:03:40', stale: true, otherMonthsAffected: [], ...p,
   })
   it('改动晚于池快照 → 池屏文案', () => {
-    expect(staleText(st(), 'pool')).toBe('参数于 08-16 15:30 更新，本屏为旧快照')
+    expect(staleText(st(), 'pool')).toBe('参数于 08-16 15:30 更新，本屏数字还是改之前算的')
   })
   it('池已重生成、催缴单未重生成 → 池屏一致,催缴单屏仍旧', () => {
     const s = st({ poolSnapshotAt: '2026-08-16T15:31:00' })
@@ -163,6 +164,42 @@ describe('staleText 其它三屏 stale 条(spec §5.5.3:池屏看池快照,催�
     expect(staleText(st({ poolSnapshotAt: null }), 'pool')).toBe('')
     expect(staleText(st({ lastChangeAt: null }), 'bill')).toBe('')
     expect(staleText(null, 'pool')).toBe('')
+  })
+  // METER-TIMELINE-SPEC §5:需重算多了「抄表」这个来源(档案与读数改动,后端 staleSources / lastChangeSource)。
+  // 破坏验证:把 staleText 的 `${staleWhat(s)}于` 换回写死的 `参数于` → 本条红。
+  it('❗抄表让本月过期 → 说抄表,不说参数', () => {
+    expect(staleText(st({ lastChangeSource: 'meter', staleSources: ['meter'] }), 'pool'))
+      .toBe('抄表于 08-16 15:30 更新，本屏数字还是改之前算的')
+  })
+  // 破坏验证:把 staleText 的两来源分支删掉(只留单来源那句)→ 本条红(会说成「参数和抄表于 15:30 更新」)。
+  it('❗两个来源都在 → 两个都点名,时间只说最近一次', () => {
+    expect(staleText(st({ lastChangeSource: 'meter', staleSources: ['param', 'meter'] }), 'bill'))
+      .toBe('参数和抄表都改过，最近一次在 08-16 15:30，本屏数字还是改之前算的')
+  })
+})
+
+describe('需重算的来源(staleSources / staleWhat / staleWho / staleTitle)', () => {
+  const st = (p: Partial<ParamStatus> = {}): ParamStatus => ({
+    priceOk: 6, priceTotal: 6, pendingChanges: 0, lastChangeAt: '2026-08-16T15:30:00',
+    poolSnapshotAt: '2026-08-16T14:02:11', billBatchAt: '2026-08-16T14:03:40', stale: true, otherMonthsAffected: [], ...p,
+  })
+  it('只有参数 / 只有抄表 / 两个都有:组名三种说法', () => {
+    expect(staleTitle(st({ lastChangeSource: 'param', staleSources: ['param'] }))).toBe('改过参数还没重算')
+    expect(staleTitle(st({ lastChangeSource: 'meter', staleSources: ['meter'] }))).toBe('改过抄表还没重算')
+    expect(staleTitle(st({ lastChangeSource: 'param', staleSources: ['meter', 'param'] }))).toBe('改过参数和抄表还没重算')
+  })
+  it('句首主语跟来源走', () => {
+    expect(staleWho(st({ staleSources: ['param'] }))).toBe('计费参数')
+    expect(staleWho(st({ staleSources: ['meter'] }))).toBe('抄表数据（读数或表档案）')
+    expect(staleWho(st({ staleSources: ['param', 'meter'] }))).toBe('计费参数和抄表数据')
+  })
+  // 破坏验证:删掉 `if (s?.lastChangeSource) has.add(...)` → 本条红(只剩 param)。
+  it('❗lastChangeSource 那一边必算进来(staleSources 漏给也不丢)', () => {
+    expect(staleSources(st({ lastChangeSource: 'meter', staleSources: ['param'] }))).toEqual(['param', 'meter'])
+  })
+  it('旧后端两个字段都没给 → 按参数说(与改之前的文案一致)', () => {
+    expect(staleWhat(st())).toBe('参数')
+    expect(staleWhat(null)).toBe('参数')
   })
 })
 

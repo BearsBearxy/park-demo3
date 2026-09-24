@@ -32,8 +32,8 @@ import FPLoadError from '@/components/fp/FPLoadError.vue'
 import {
   allocApi,
   type AllocCandidatesDTO, type AllocFeeKey, type AllocInForce, type AllocLinkType, type AllocMemberDiffDTO,
-  type AllocMeterDiffDTO, type AllocMethod, type AllocMethodEditable, type AllocPoolLineDTO, type AllocPoolRowDTO,
-  type AllocPoolsDTO, type AllocRuleDTO, type AllocStdKind, type AllocZone,
+  type AllocMeterDiffDTO, type AllocMethod, type AllocMethodEditable, type AllocPoolLineDTO, type AllocPoolMeterDTO,
+  type AllocPoolRowDTO, type AllocPoolsDTO, type AllocRuleDTO, type AllocStdKind, type AllocZone,
 } from '@/api/alloc'
 import { paramsApi, type ParamRowDTO, type ParamStatusDTO } from '@/api/params'
 import { metersApi, type MeterDTO } from '@/api/meters'
@@ -42,7 +42,7 @@ import type { TenantDTO } from '@/types/tenant'
 import { buildingApi } from '@/api/building'
 import type { BuildingDTO } from '@/types/building'
 import { ALLOC_FEE_KEYS, ALLOC_FEE_LABEL } from '@/utils/allocLogic'
-import { baseRefLabel, rangeBadge, staleText } from '@/utils/paramCenterLogic'
+import { baseRefLabel, rangeBadge, staleText, staleTitle, staleWho } from '@/utils/paramCenterLogic'
 import { PARAM_DEFS } from '@/utils/paramRegistry'
 import { useTabsStore } from '@/stores/tabs'
 import { useZonesStore } from '@/stores/zones'
@@ -211,8 +211,16 @@ async function loadRules() {
 // 主数据清单(页签切回回拉:租户改名/楼栋单元/抄表建档后不显旧清单)
 function loadMasters() {
   buildingApi.list().then(bs => { buildings.value = bs }).catch(() => {})
-  metersApi.list('elec').then(ms => { meters.value = ms }).catch(() => {})
+  loadMeters()
   tenantApi.list().then(ts => { tenants.value = ts }).catch(() => {})
+}
+// 表档案按月分段(METER-TIMELINE-SPEC §2):站在本页账期取(标签、在册状态都是这个月的),切月重拉;旧月回包晚到就丢
+let meterSeq = 0
+const metersYm = ref('')   // 手上这份 meters 是站在哪个月取的;切月重拉失败时旧月那份不拿来说本月的在册状态
+function loadMeters() {
+  const my = ++meterSeq, at = ym.value
+  metersApi.list('elec', undefined, at || undefined)
+    .then(ms => { if (my === meterSeq) { meters.value = ms; metersYm.value = at } }).catch(() => {})
 }
 onReactivated(() => { loadMasters(); refreshStatus() })
 
@@ -235,7 +243,7 @@ onMounted(() => {
 // 换账期:上次生成的告警不再适用;cfgDirty 同理 —— 它记的是「**这个月**改过参数还没重算」,
 // 换到别的月还亮着就是误报(在 8 月改了参数,切到 9/10 月那条橙条一路跟着,而那些月根本没动过),
 // 用户分不清哪个月真的需要重算。2026-08-15 用户点名。
-watch(ym, () => { genWarnings.value = []; cfgDirty.value = false; if (period.picked) loadMonth() })
+watch(ym, () => { genWarnings.value = []; cfgDirty.value = false; loadMeters(); if (period.picked) loadMonth() })
 
 const ruleById = computed(() => new Map(rules.value.map(r => [r.id, r])))
 const buildingOpts = computed(() => [{ value: '', label: '(园区级,不挂楼栋)' },
@@ -331,7 +339,7 @@ async function onGenerate() {
   //    没读到本月现状也能按下去,蒙着眼覆盖快照(2026-08-29 复审 Finding 1)
   if (!editMode.value) return
   if (generating.value || loadErr.value) return
-  if (generated.value && !confirm(`重新生成 ${ym.value}:按月先删后插覆盖池/损耗快照。读数或配置已变时数字将按当前数据重算。确认?`)) return
+  if (generated.value && !confirm(`重新生成 ${ym.value}:这个月的核算结果会整个换成按现在的读数和配置重算一遍,原来的数字被盖掉。确认?`)) return
   generating.value = true
   try {
     const res = await allocApi.generate(ym.value)
@@ -368,6 +376,12 @@ const stdCell = (r: AllocPoolRowDTO) => stdDisplay(r, frozenNote.value.get(r.rul
 const rowArea = (r: AllocPoolRowDTO, ln: AllocPoolLineDTO | null) => lineArea(ln, poolArea(r))
 const rowFloor = (r: AllocPoolRowDTO, ln: AllocPoolLineDTO | null) => lineFloor(ln, poolFloor(r))
 const rowName = (r: AllocPoolRowDTO, ln: AllocPoolLineDTO | null) => lineUseName(ln, poolFeeLabel(r))
+// 这一格显示的是本行电表的用途,所以池名只能从悬停里拿 —— 原来写 `r.warn ?? r.autoName ?? r.name`,
+// 池一旦有告警,池名就整个看不见了(2024-02 实测 rule 42 就是这样)。改成池名恒在,告警追加在后面。
+const poolTitle = (r: AllocPoolRowDTO) => {
+  const nm = `池:${r.autoName || r.name}`
+  return r.warn ? `${nm}\n${r.warn}` : nm
+}
 
 // ── 池参数只读镜像(S21 §2.4):编辑态「分摊基数 / 加减度数」两列 + 抽屉③一行,值=站在本月的生效值(不是月行也不是默认列),
 //    徽标=生效方式(仅本月 / 长期);写入口只在计费参数页(点击带 ym+池高亮跳过去) ──
@@ -416,9 +430,9 @@ const nameList = (ts: { tenantName: string | null }[]) =>
 const alertGroups = computed<AlertGroup[]>(() => {
   const gs: AlertGroup[] = []
   if (staleMsg.value) gs.push({
-    key: 'stale', title: '快照过期',
-    desc: '计费参数(电价/系数/加减度数)在本月快照生成之后又改过 —— 屏上数字仍是改参前算的。'
-      + '不重算,公共电核算 / 楼栋损耗 / 催缴单三处都停在旧口径,出账就按旧数走。',
+    key: 'stale', title: staleTitle(status.value),   // 参数 / 抄表两个来源(METER-TIMELINE-SPEC §5)
+    desc: `${staleWho(status.value)}在本月生成核算结果之后又改过 —— 屏上数字还是改之前算的。`
+      + '不重算的话,公共电核算、楼栋损耗、催缴单三处都还是旧数字,出账就按旧的走。',
     items: [{ text: staleMsg.value }],
     action: { label: '去计费参数页重算', icon: 'refresh-cw',
       run: () => { alertOpen.value = false; gotoParams(undefined, null, true) } },
@@ -454,7 +468,7 @@ const alertGroups = computed<AlertGroup[]>(() => {
     // action(只报不给动作),是立这条门禁之前就有的存量问题,不在这次改动范围内,这里不顺手扩大改。
     if (cfgAction) gs.push({
       key: 'cfg', title: '待重算',
-      desc: '池配置或月度参数改过,屏上数字仍是生成快照时的旧口径 —— 不重新生成,公共电核算的数字就一直按旧配置走。',
+      desc: '池配置或月度参数改过,屏上数字还是上次生成时算的 —— 不重新生成,公共电核算就一直按旧配置走。',
       items: [{ text: `${ym.value} 配置已变,请重新生成` }],
       action: cfgAction,
     })
@@ -635,6 +649,7 @@ function openPoolDlg(r?: AllocPoolRowDTO) {
   // §H4:挂栋却没录楼层的池,打开时高亮定位三格
   locTodo.value = !!r && poolLocKind(r) === 'todo'
   floorByTenant.value = new Map(r ? r.members.map(m => [m.tenantId, m.floorLabel] as [number, string | null]) : [])
+  boundSt.value = new Map(r ? r.meters.map(m => [m.meterId, m] as [number, AllocPoolMeterDTO]) : [])
   if (r) {
     const rule = ruleById.value.get(r.ruleId)
     form.value = {
@@ -696,20 +711,54 @@ watch([() => form.value.buildingId, () => form.value.floorLabel, () => form.valu
   () => { if (poolDlg.value) loadCands() })
 
 // 电表勾选行=候选 ∪ 已绑但不在本定位的表(货梯/招商子表这类,标「其他位置」)
-interface MeterRow { meterId: number; label: string; meterType: string | null; ownership: string; other: boolean }
+// off = 站在本月这块表不计的原因(METER-TIMELINE-SPEC §5:已拆 / 停用 / 不在册的表池引擎自该月起不算,行灰显)
+interface MeterRow { meterId: number; label: string; meterType: string | null; ownership: string; other: boolean; off: string | null }
+// 打开抽屉那一刻池里已有的表及其本月状态段(GET /pools 下发);候选只含在用的表,全库搜到的表看 meters(同样站在本月取)
+const boundSt = ref(new Map<number, AllocPoolMeterDTO>())
+const meterById = computed(() => new Map(meters.value.map(m => [m.id, m])))
+function offText(id: number): string | null {
+  const st = boundSt.value.get(id) ?? (metersYm.value === ym.value ? meterById.value.get(id) : undefined)
+  if (!st || st.status === undefined || st.status === 'active') return null   // undefined = 旧后端没给,不猜
+  if (st.status === 'removed') return `自 ${st.statusFrom} 起已拆，不计`
+  if (st.status === 'retired') return `自 ${st.statusFrom} 起停用，不计`
+  return `${ym.value} 不在册，不计`
+}
 const meterRows = computed<MeterRow[]>(() => {
   const rows: MeterRow[] = cands.value.meters.map(m => ({
-    meterId: m.meterId, label: m.label, meterType: m.meterType, ownership: m.ownership, other: false }))
+    meterId: m.meterId, label: m.label, meterType: m.meterType, ownership: m.ownership, other: false, off: null }))
   const has = new Set(rows.map(r => r.meterId))
   for (const s of form.value.meters) if (!has.has(s.meterId))
-    rows.push({ meterId: s.meterId, label: s.label, meterType: null, ownership: '', other: true })
+    rows.push({ meterId: s.meterId, label: s.label, meterType: null, ownership: '', other: true, off: offText(s.meterId) })
   return rows
 })
 const signOf = (id: number) => form.value.meters.find(m => m.meterId === id)?.sign ?? null
-function toggleBind(id: number, label: string) {
-  const i = form.value.meters.findIndex(m => m.meterId === id)
-  if (i >= 0) form.value.meters.splice(i, 1)
-  else form.value.meters.push({ meterId: id, sign: 1, label })
+// SPEC §5:移出打开抽屉时就在池里的表 → 先查它哪些月有读数,确认框点名这些月。池绑定不分月,
+// 移出之后重新生成哪个月都不再算它。本次刚勾上的表直接取消,不问。取消确认 → 把勾选框拨回去
+// (@change 时浏览器已经把框取消了,而 form 没变,Vue 不会替我们重画)。
+async function toggleBind(id: number, label: string, e?: Event) {
+  const f = form.value
+  const i = f.meters.findIndex(m => m.meterId === id)
+  if (i < 0) { f.meters.push({ meterId: id, sign: 1, label }); return }
+  if (boundSt.value.has(id) && !(await confirmUnbind(id, label))) {
+    if (e?.target instanceof HTMLInputElement) e.target.checked = true
+    return
+  }
+  if (form.value !== f) return                         // 等读数期间抽屉换了池 / 关了:这次点击作废
+  const j = f.meters.findIndex(m => m.meterId === id)
+  if (j >= 0) f.meters.splice(j, 1)
+}
+async function confirmUnbind(id: number, label: string): Promise<boolean> {
+  let months: string[]
+  try {
+    months = (await metersApi.meterReadings(id))
+      .filter(r => r.usageTotal != null && r.usageTotal !== 0).map(r => r.ym).sort()
+  } catch (err) {
+    return confirm(`移出「${label}」?这块表哪些月有读数没查到(${errMsg(err, '读数没加载出来')})。\n`
+      + '移出后,重新生成哪个月本池都不再算它。')
+  }
+  if (!months.length) return true
+  return confirm(`移出「${label}」?\n这 ${months.length} 个月有读数(用量非零):${months.join('、')}\n`
+    + '移出后,这些月重新生成时本池不再算它的用量。')
 }
 function toggleSign(id: number) {
   const m = form.value.meters.find(x => x.meterId === id)
@@ -736,7 +785,7 @@ const meterSearchRows = computed<MeterRow[]>(() => {
       && (m.name.includes(kw) || (m.subName ?? '').includes(kw) || (m.spot ?? '').includes(kw)
         || (m.area ?? '').includes(kw) || (m.tenantName ?? '').includes(kw) || (m.code ?? '').includes(kw)))
     .slice(0, 40)
-    .map((m): MeterRow => ({ meterId: m.id, label: meterLabelOf(m), meterType: m.meterType, ownership: '', other: true }))
+    .map((m): MeterRow => ({ meterId: m.id, label: meterLabelOf(m), meterType: m.meterType, ownership: '', other: true, off: offText(m.id) }))
   return [...base, ...extra]
 })
 
@@ -866,7 +915,7 @@ async function delPool() {
   if (!editMode.value) return
   const f = form.value
   if (f.id == null) return
-  if (!confirm(`确认删除池「${formAutoName.value}」?已有核算结果的池不可删除(历史月已快照)。`)) return
+  if (!confirm(`确认删除池「${formAutoName.value}」?已经出过账的池删不掉。`)) return
   try {
     await allocApi.deleteRule(f.id)
     poolDlg.value = false
@@ -908,7 +957,7 @@ async function delPool() {
         </Button>
         <!-- 加载失败时禁生成:generate 是按月先删后插,读不到本月现状就按下去等于蒙着眼覆盖快照 -->
         <Button v-if="editMode && canGen" variant="outline" size="sm" :disabled="generating || !!loadErr"
-                :title="loadErr ? '本月数据没加载出来 —— 先重试,否则生成会覆盖看不见的快照' : undefined"
+                :title="loadErr ? '本月数据没加载出来 —— 先重试,否则生成会把你现在看不见的数字直接盖掉' : undefined"
                 @click="onGenerate">
           <template #leading><component :is="iconFor(generated ? 'refresh-cw' : 'play')" :size="14" /></template>
           {{ generated ? '重新生成' : '生成本月' }}
@@ -937,7 +986,7 @@ async function delPool() {
     <div v-if="!generated && !loadErr" class="pl-bar">
       <component :is="iconFor('info')" :size="14" />
       <span>{{ year }}年{{ month }}月未生成 —— 池配置照常展示,数值列为'–'。
-        <template v-if="editMode && canGen">点「生成本月」按当月读数与价目落快照。</template>
+        <template v-if="editMode && canGen">点「生成本月」,按当月读数与价目算出结果。</template>
         <template v-else-if="canGen">进入右上角「编辑模式」可生成。</template>
       </span>
     </div>
@@ -966,16 +1015,22 @@ async function delPool() {
             <th rowspan="2" class="pl-grp-th" :class="fixThCls" :style="fixFloor"
                 title="原册 C 列那一格(楼层+方位写在一起,如「四楼西侧」);
 橙色「(未录)」=挂了楼栋却没录楼层,点开池名在抽屉里补;按层份池楼层空=整栋、园区级池不挂楼栋,均留空">楼层</th>
+            <!-- 列名 2026-09-23 从「池名称」改过来:§I3 起这一列**逐行**显本行电表的用途(原册 D 列),
+                 池名只在悬停里。旧列名加旧说明让人把表名读成池名(报障:「园区绿化水表1」)。
+                 实测 2024-02 的 100 条逐表行里,85 条与旧说明承诺的口径对不上。 -->
             <th rowspan="2" class="pl-grp-th" :class="fixThCls" :style="fixName"
-                title="原册 A 列自然键(如「A4西侧走廊灯」);无自然键的显费项名。悬停行内池名可看系统全名">池名称</th>
+                title="原册 D 列那一格:**这一行电表**的用途/归属(取电表档案的企业名称,空则取表标识名)。
+池自己的名字在悬停里;池只有一块表时两者常常同字。">用途</th>
             <th rowspan="2" class="pl-grp-th" :style="w(230)"
                 title="一表一行(原册结构):区域·位置·用途·表号;「−」=以 sign=-1 从本池冲减">电表</th>
-            <th rowspan="2" class="pl-grp-th" :style="w(62)" title="当月读数的倍率快照,非档案现值">倍率</th>
+            <th rowspan="2" class="pl-grp-th" :style="w(62)" title="这是当月读数当时用的倍率,不是电表档案里现在的倍率">倍率</th>
             <th rowspan="2" class="pl-grp-th" :style="w(96)">上月行至</th>
             <th rowspan="2" class="pl-grp-th" :style="w(96)">本月行至</th>
-            <th :colspan="segDefs.length" class="pl-grp-th">用量(kWh)</th>
+            <!-- 单位不写进列头:同一张表里电池与水池混排(实测 2024-02 有 3 个绿化水池),
+                 写死 kWh 会把吨标成度。单位跟着每个池的费项走,印在该池首行的 Σ 副标题上。 -->
+            <th :colspan="segDefs.length" class="pl-grp-th">用量</th>
             <th rowspan="2" class="pl-grp-th" :style="w(104)"
-                title="逐表金额(p1/宿舍逐表ROUND口径);二期为池级一次ROUND,逐表金额不存在→按池合并显池级合计">应分摊(元)</th>
+                title="一期与宿舍:每块表各自四舍五入后的金额。二期:整个池只四舍五入一次,单表金额算不出来,按池合并显示池的合计">应分摊(元)</th>
             <th rowspan="2" class="pl-grp-th" :style="w(112)">分摊语义</th>
             <th rowspan="2" class="pl-grp-th" :style="w(110)">分摊标准</th>
             <th rowspan="2" class="pl-grp-th" :style="w(156)" title="分摊基数（层数或面积）站在本月的生效值 + 生效方式；走面积基数的池显「面积基数」并注明取自哪一条。只读 —— 点格子去计费参数页改">分摊基数（当月）</th>
@@ -1019,7 +1074,7 @@ async function delPool() {
               <!-- §I3:池名称=**本行电表**的用途(原册 D 列);池级自然键(A 列)退到首行副标题 -->
               <td :class="fixCls" :style="fixName">
                 <span class="pl-pname" :class="{ click: editMode }"
-                      :title="r.warn ?? r.autoName ?? r.name"
+                      :title="poolTitle(r)"
                       @click="editMode && openPoolDlg(r)">
                   <span class="nm">{{ rowName(r, ln) }}</span>
                   <span v-if="r.warn" class="pl-warn" :title="r.warn">!</span>
@@ -1200,18 +1255,19 @@ async function delPool() {
           </div>
           <input v-model="meterQ" class="pl-bindq" type="text" placeholder="搜表名 / 位置 / 表号(本位置 + 全库)" />
           <div class="pl-bindlist">
-            <label v-for="m in meterSearchRows" :key="m.meterId" class="pl-bindrow">
+            <label v-for="m in meterSearchRows" :key="m.meterId" class="pl-bindrow" :class="{ off: m.off }">
               <input type="checkbox" :checked="signOf(m.meterId) != null"
-                     @change="toggleBind(m.meterId, m.label)" />
+                     @change="toggleBind(m.meterId, m.label, $event)" />
               <span class="nm">{{ m.label }}</span>
               <span v-if="m.ownership === 'infra'" class="pl-chip infra">总表 · 一般不入池</span>
-              <span v-if="m.other" class="pl-chip">其他位置</span>
+              <span v-if="m.off" class="pl-chip">{{ m.off }}</span>
+              <span v-else-if="m.other" class="pl-chip">其他位置</span>
               <span class="meta">{{ m.meterType ?? '' }}</span>
               <button v-if="signOf(m.meterId) != null" type="button" class="pl-sign"
                       :class="{ neg: signOf(m.meterId)! < 0 }"
-                      title="+1=计入池 / −1=从池剔除(广告字分表/火炬园/招商子表)"
+                      title="点一下切换:这块表的量是加进这个池,还是从池里扣掉(广告字分表 / 火炬园 / 招商子表这类要扣)"
                       @click.prevent="toggleSign(m.meterId)">
-                {{ signOf(m.meterId)! < 0 ? '−1' : '+1' }}
+                {{ signOf(m.meterId)! < 0 ? '从池里扣掉' : '加进池' }}
               </button>
             </label>
             <div v-if="meterSearchRows.length === 0" class="pl-bindempty">
@@ -1258,7 +1314,7 @@ async function delPool() {
                       @update:model-value="form.roundScale = +$event" />
             </div>
             <div class="pl-bindhead">
-              <span class="pl-sectitle" style="flex:1">折入链(links,本池 ← 源池)· {{ form.links.length }} 条</span>
+              <span class="pl-sectitle" style="flex:1">从别的池折进来的标准 · {{ form.links.length }} 条</span>
               <Button variant="outline" size="sm" @click="addLink">
                 <template #leading><component :is="iconFor('plus')" :size="14" /></template>
                 加一条
@@ -1319,7 +1375,7 @@ async function delPool() {
             </div>
             <!-- §D.5 列头:份额两种模式(空=按楼层自动分/填值=显式覆盖);楼层来自后端读时解析 -->
             <div v-if="form.method === 'floor'" class="pl-bindhdr">
-              <span class="nm">受益人 · 楼层(自动解析)</span>
+              <span class="nm">受益人 · 楼层(系统自动算出)</span>
               <span class="wt" title="留空=按楼层自动分:该户所在的每一层各摊 1 份(层内多户按面积拆),未定层户合摊 1 份;
 填数=显式份额覆盖该户(1=整份,0.5=半份)——账册已核对的池请勿改动">份额</span>
             </div>
@@ -1331,7 +1387,7 @@ async function delPool() {
                 <span class="nm">{{ t.name }}</span>
                 <span v-if="t.unitNo" class="pl-chip">{{ t.unitNo }}</span>
                 <span v-if="floorByTenant.get(t.tenantId)" class="pl-chip floor"
-                      title="该户在本池楼栋解析出的楼层(合同单元→户内电表两级回退),按层摊时每层各占 1 份">
+                      title="这个楼层先按合同里的单元算;合同没写单元就用这户户内电表的楼层。按层摊时,这户占的每一层各算一份">
                   {{ floorByTenant.get(t.tenantId) }}
                 </span>
                 <span v-else-if="floorByTenant.has(t.tenantId)" class="pl-chip nofloor"
@@ -1339,6 +1395,12 @@ async function delPool() {
                   未定层
                 </span>
                 <span v-if="t.inForce === 'no'" class="pl-chip gone">已退租</span>
+                <!-- 2026-09-23:这两档原来都写「已退租」。实测被这么标的户里,一类是下个月才起租、
+                     一类是合同表里一行都没有 —— 都不是退租,照着摘人会把还没进场的户摘掉。 -->
+                <span v-else-if="t.inForce === 'future'" class="pl-chip nodate"
+                      title="合同起租日在本月之后,这个月还没进场">还没进场</span>
+                <span v-else-if="t.inForce === 'none'" class="pl-chip nodate"
+                      title="这户名下一份非草稿合同都没有 —— 去合同管理补档案">没有合同档案</span>
                 <span v-else-if="t.inForce === 'unknown'" class="pl-chip nodate"
                       title="补齐合同起止日期后才能判定在租">合同缺起止日期</span>
                 <span v-else-if="t.other" class="pl-chip">非本定位</span>
@@ -1355,9 +1417,9 @@ async function delPool() {
                   : '该定位本月无在租租户' }}
               </div>
             </div>
-            <label class="pl-chkline" title="勾上=写自本月起的受益人版本组(此前月份与默认长期名单不动,本月及以后沿用这份直到下一版本)">
+            <label class="pl-chkline" title="勾上:这份名单从本月起用,一直沿用到你下次再改。之前的月份和那份长期名单都不动">
               <input type="checkbox" v-model="form.monthOnly" />
-              自本月（{{ ym }}）起（版本组）改受益人名单,不动此前月份与默认长期名单
+              只改本月（{{ ym }}）起的受益人名单,之前的月份和长期名单不动
             </label>
           </template>
         </div>
@@ -1562,10 +1624,14 @@ td.ct { text-align: center; }
 .pl-bindrow { display: flex; align-items: center; gap: 8px; padding: 5px 4px; font-size: 12.5px; cursor: pointer; border-radius: var(--radius-sm); }
 .pl-bindrow:hover { background: var(--bg-hover); }
 .pl-bindrow.gone .nm { color: var(--text-disabled); text-decoration: line-through; }
+/* 本月已拆 / 停用 / 不在册的表:池引擎不算它,名字压成次要色(不划线 —— 它没从池里删,只是这个月不计) */
+.pl-bindrow.off .nm { color: var(--text-muted); font-weight: var(--fw-regular); }
 .pl-bindrow .nm { font-weight: var(--fw-medium); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pl-bindrow .meta { flex: 1; color: var(--text-muted); font-size: var(--fs-micro); overflow: hidden; text-overflow: ellipsis; }
 .pl-bindempty { text-align: center; color: var(--text-disabled); font-size: var(--fs-label); padding: 12px 0; }
-.pl-sign { flex: 0 0 auto; border: 1px solid var(--border-subtle); background: var(--ok-soft); color: var(--ok-text); font-family: var(--font-mono); font-size: 11.5px; border-radius: var(--radius-full); padding: 1px 9px; cursor: pointer; }
+/* 原来这颗钮只显 +1 / −1,不悬停不知道是加还是扣(2026-09-23 屏上文案复查)。改成写字之后
+   不再是等宽数字,去掉 mono;宽度随字走,所以不设固定宽 */
+.pl-sign { flex: 0 0 auto; border: 1px solid var(--border-subtle); background: var(--ok-soft); color: var(--ok-text); font-size: 11.5px; border-radius: var(--radius-full); padding: 1px 9px; cursor: pointer; white-space: nowrap; }
 .pl-sign.neg { background: var(--danger-soft); color: var(--hue-red); }
 .pl-linkrow { display: flex; align-items: center; gap: 8px; }
 .pl-iconbtn { width: 26px; height: 26px; border: none; background: transparent; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-muted); display: inline-grid; place-items: center; }

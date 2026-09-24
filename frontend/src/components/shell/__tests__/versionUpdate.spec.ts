@@ -113,8 +113,16 @@ describe('本次更新弹窗', () => {
     const dlg = document.querySelector('.wn')!
     expect(dlg.querySelector('.wn-ver')!.textContent).toBe(`v${POP.version}`)
     expect(dlg.querySelector('.wn-sub')!.textContent).toBe(POP.headline)
+    // 按 chip 认块,不按下标 —— 空的那组整块不渲染(v-if),这版没有「新增」时 wn-sec[0] 就是「改进」。
+    // 同一份 spec 底下那条早写过这个教训(0.14.0 两次撞上:写死位置,换一版内容就坏)。
+    const secN = (chip: string) => {
+      const sec = [...dlg.querySelectorAll('.wn-sec')].find(s => s.querySelector(`.wn-chip.${chip}`))
+      return sec ? Number(/(\d+) 项/.exec(sec.textContent ?? '')?.[1]) : 0
+    }
     // 「新增」把重点那条也算进去(它在弹窗顶上单独一张卡)
-    expect(dlg.querySelectorAll('.wn-sec')[0].textContent).toContain(`${POP.added.length + (POP.feature ? 1 : 0)} 项`)
+    expect(secN('add')).toBe(POP.added.length + (POP.feature ? 1 : 0))
+    expect(secN('imp')).toBe(POP.improved.length)
+    expect(secN('fix')).toBe(POP.fixed.length)
     expect(dlg.querySelectorAll('.wn-fix li').length).toBe(POP.fixed.length)
     w.unmount()
   })

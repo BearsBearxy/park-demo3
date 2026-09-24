@@ -98,7 +98,8 @@ class PoolSeedIT extends AbstractMysqlIT {
         // ⚠该表只存在于真实数据库(dev/生产是导入进去的),迁移种子库里没有这一行 → 本断言在种子库上是空集
         // 通过,真正的证据在 dev 库;它在这里的作用是:哪天有人在真实数据库上把它改回 register,这条会红。
         assertThat(jdbc.queryForList(
-                "select ownership from meter where kind='elec' and zone='p2' and name='永龙反向有功'",
+                "select a.ownership from meter m join meter_assign a on a.meter_id=m.id"
+                        + " where m.kind='elec' and m.zone='p2' and m.name='永龙反向有功'",
                 String.class)).doesNotContain("register");
     }
 
@@ -185,9 +186,10 @@ class PoolSeedIT extends AbstractMysqlIT {
         assertThat(excluded).containsExactlyInAnyOrder(
                 "四车间工地", "力美C201电", "五车间装饰灯新表", "火炬园广告字电", "六车间广告字新表");
         List<Map<String, Object>> zs = jdbc.queryForList(
-                "select building_id, ownership from meter where kind='elec' and zone='p1'"
-                        + " and name in ('招商中心电1','招商中心电2')");
-        assertThat(zs).hasSize(2);
+                "select m.name, a.building_id, a.ownership from meter m join meter_assign a on a.meter_id=m.id"
+                        + " where m.kind='elec' and m.zone='p1' and m.name in ('招商中心电1','招商中心电2')");
+        // 两块表都在,且每块的每一段(V128 灌数复制到各段)都满足下面两条
+        assertThat(zs.stream().map(r -> r.get("name")).collect(Collectors.toSet())).hasSize(2);
         for (Map<String, Object> m : zs) {
             assertThat(m.get("building_id")).isEqualTo(aId);
             assertThat(m.get("ownership")).isEqualTo("share");

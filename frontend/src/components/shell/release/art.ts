@@ -6,8 +6,12 @@ import Art0130 from './Art0130.vue'
 import Art0140 from './Art0140.vue'
 import Art0150 from './Art0150.vue'
 import Art0160 from './Art0160.vue'
+import Art0190 from './Art0190.vue'
+import Art0200 from './Art0200.vue'
 
 export const RELEASE_ART: Record<string, Component> = {
+  '0.20.0': Art0200,
+  '0.19.0': Art0190,
   '0.16.0': Art0160,
   '0.15.0': Art0150,
   '0.14.0': Art0140,

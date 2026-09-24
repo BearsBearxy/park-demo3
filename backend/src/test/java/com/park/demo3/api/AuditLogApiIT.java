@@ -97,6 +97,52 @@ class AuditLogApiIT extends AbstractMysqlIT {
     }
 
     @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Autowired com.fasterxml.jackson.databind.ObjectMapper json;
+
+    // ══════════ 第 5 张来源表 meter_archive_log(METER-TIMELINE-SPEC §5)══════════
+
+    /**
+     * 表档案写入进操作日志:「表 · 月 · 旧 → 新 · 来源」。前后像用产品那个 ObjectMapper 序列化实体
+     * (与 MeterTimelineService.record 同一条路),所以 JSON 里的 null 字段、字段名大小写都和真数据一样。
+     * 四处齐了才算接上(同 review 那一路):分支全列别名、actors 并集、白名单、以及 src=meter 单查不 500。
+     */
+    @Test
+    void meterArchiveLogJoinsTheTimeline() throws Exception {
+        String op = "it_mal_" + (System.nanoTime() % 1000000);
+        java.util.Map<String, Object> seed = jdbc.queryForMap("SELECT id, name FROM meter ORDER BY id LIMIT 1");
+        int mid = ((Number) seed.get("id")).intValue();
+        var before = new com.park.demo3.entity.MeterAssign();
+        before.setMeterId(mid); before.setFromYm("2085-01"); before.setTenantName("IT旧户");
+        var after = new com.park.demo3.entity.MeterAssign();
+        after.setMeterId(mid); after.setFromYm("2085-01");                       // tenantName = null(空置)
+        var st = new com.park.demo3.entity.MeterStatus();
+        st.setMeterId(mid); st.setFromYm("2085-02"); st.setStatus("retired");
+        String ins = "INSERT INTO meter_archive_log (meter_id, tbl, from_ym, action, before_json, after_json, src,"
+                   + " file_name, row_ref, operator, at) VALUES (?,?,?,?,?,?,?,?,?,?,NOW())";
+        try {
+            jdbc.update(ins, mid, "assign", "2085-01", "update", json.writeValueAsString(before),
+                    json.writeValueAsString(after), "contract", null, null, op);
+            jdbc.update(ins, mid, "status", "2085-02", "insert", null, json.writeValueAsString(st),
+                    "import", "三月册.xlsx", null, op);
+            jdbc.update(ins, 999999999, "status", "2085-03", "delete", json.writeValueAsString(st), null,
+                    "manual", null, "撤销导入 x", op);
+
+            String only = logs("?src=meter&size=50&actor=" + op);
+            assertThat(total(only)).isEqualTo(3);
+            assertThat((List<String>) JsonPath.read(only, "$.data.rows[*].source")).containsOnly("meter");
+            assertThat((List<String>) JsonPath.read(only, "$.data.rows[*].action"))
+                .containsExactlyInAnyOrder("assign.update", "status.insert", "status.delete");
+            assertThat((List<String>) JsonPath.read(only, "$.data.rows[*].target")).containsExactlyInAnyOrder(
+                seed.get("name") + " · 2085-01", seed.get("name") + " · 2085-02", "#999999999 · 2085-03");
+            assertThat((List<String>) JsonPath.read(only, "$.data.rows[*].detail")).containsExactlyInAnyOrder(
+                "IT旧户 → — · 合同终止", "— → 停用 · 导入 · 三月册.xlsx", "停用 → — · 手改 · 撤销导入 x");
+            assertThat((List<String>) JsonPath.read(logs("?size=1"), "$.data.actors")).contains(op);
+            assertThat((List<String>) JsonPath.read(logs("?size=500&actor=" + op), "$.data.rows[*].source"))
+                .as("不带 src 也并进时间线").hasSize(3).containsOnly("meter");
+        } finally {
+            jdbc.update("DELETE FROM meter_archive_log WHERE operator=?", op);
+        }
+    }
 
     // ══════════ 时间线 ══════════
 

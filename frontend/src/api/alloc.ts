@@ -188,6 +188,10 @@ export interface AllocPoolMeterDTO {
   spot: string | null
   subName: string | null
   meterType: string | null
+  // METER-TIMELINE-SPEC §5:站在该月这块表的状态段(null=未在册)与这一段的起始月,池编辑灰显「自 M 起已拆,不计」。
+  // 可选只为不逼既有夹具补字段:GET /pools 恒下发
+  status?: 'active' | 'retired' | 'removed' | null
+  statusFrom?: string | null
 }
 export interface AllocPoolLinkDTO { ruleId: number; name: string; type: AllocLinkType }
 // V73 逐表明细行(原册一表一行:A座天面四部梯各占一行),来自 alloc_pool_meter_result 快照。
@@ -227,8 +231,12 @@ export interface AllocPoolNetPartDTO {
   sign: number
   qty: number | null
 }
-// 在租三态(2026-07-30):yes=在租;no=已退租;unknown=合同缺起止日期,判不了(不等于退租)
-export type AllocInForce = 'yes' | 'no' | 'unknown'
+// 在租五态。2026-07-30 先摘出 unknown;2026-09-23 再摘出 future / none ——
+// 旧的 no 把「下个月才起租」和「压根没有合同档案」一起写成「已退租」,
+// 实测三个月 84 条「已退租」提示里真退租 0 条(尧萍 2024-03-01 才起租、吴跃平零合同)。
+//   yes=在租 | unknown=有合同但缺起止日期,判不了 | future=还没进场
+//   none=没有合同档案 | no=真退租(有日期的合同全已到期)
+export type AllocInForce = 'yes' | 'no' | 'unknown' | 'future' | 'none'
 // 受益人一行:src=month(该月覆盖)/default(默认长期行);unitNo 按池定位取,取不到=null
 export interface AllocPoolMemberDTO {
   tenantId: number
@@ -301,6 +309,9 @@ export interface AllocPoolRowDTO {
   floorLabel: string | null
   side: string | null
   feeName: string | null
+  // 用量单位跟它走(allocLogic.qtyUnit:含 water 记吨,其余记度)。
+  // 2026-09-23 补:原来这一格没下发,屏上列头与 Σ 副标题把单位写死成「度」。
+  feeKey: AllocFeeKey
   autoName: string               // 按定位自动生成的池名(前端只读展示)
   // 园区级池未显式勾受益人 → 后端按「该期全园在租名册」自动摊(不进 member-diff 提醒条)
   autoMembers: boolean
@@ -356,8 +367,19 @@ export interface AllocLossUnitDTO {
   gParts?: { name: string; qty: number }[] | null
   gDiv?: number | null
 }
+/**
+ * 对账行。**一个期区 1~2 条**(POOL-ENGINE-SPEC §6.2),每条在屏上铺成两行(vs 总表合计 / vs 分表合计):
+ *  · 第 1 条 = 供电局那块期区总表管得着的那几栋。`loss_recon=0` 的栋(一期A座是独立供电链路)不进合计。
+ *  · 第 2 条 = 把被排除的栋并回来的全部楼栋;**只在该期区确实有被排除的栋、且它们各有自己那块
+ *    供电局表时后端才发**(二期没有,就不会凭空多一行重复的数)。
+ * supplyLabel / sumLabel 由后端从库里的表名、栋名现拼,屏上一眼看出这一行管哪几栋
+ * (如「B-G座总电」vs「除一期 A座外各栋」/「B-G座总电 + A座总电」vs「全部楼栋」)——
+ * ⚠ 屏上的行名必须用这两个字段拼,不许在前端另起一套名字,不然两处一改就不同步。
+ */
 export interface AllocLossReconDTO {
   zone: AllocZone
+  supplyLabel: string
+  sumLabel: string
   supplyQty: number | null
   sumC: number | null
   sumD: number | null
@@ -403,4 +425,12 @@ export const allocApi = {
   meterDiff: (ym: string): Promise<AllocMeterDiffDTO[]> =>
     http.get('/alloc/meter-diff', { params: { ym } }),
   loss: (ym: string): Promise<AllocLossDTO> => http.get('/alloc/loss', { params: { ym } }),
+  /**
+   * 楼栋损耗屏唯一的写口:只改备注,按 (ym, headBuildingId) 定位。其余每一格都是引擎算出来的,
+   * 要改去计费参数页改参数再重算(S21-PARAM-CENTER-SPEC §5.6)。
+   * note 传空串 = 删掉备注(后端 `note.isEmpty()` → deleteNote,幂等)。备注落独立表 alloc_loss_note,
+   * generate 一格不碰 —— 重算之后备注仍在原来那个 (ym, headBuildingId) 上。
+   */
+  saveLossNote: (req: { ym: string; headBuildingId: number; note: string }): Promise<void> =>
+    http.put('/alloc/loss/note', req),
 }

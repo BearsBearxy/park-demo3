@@ -99,6 +99,9 @@ public class PermissionRegistry {
         add(null, "/api/bills/paymap", Perm.BILLING_ISSUE_EDIT);
         add(null, "/api/bills/**",     Perm.BILLING_RUN_EDIT);
         add(null, "/api/bill-notices/confirm",        Perm.BILLING_ISSUE_EDIT);
+        // 取消确认与确认同一个权限点:签发岗自己的动作自己撤,对应审核轴的 recall(本人撤回)
+        // 而不是 withdraw(审核员作废别人的判断)。必须排在下面那条 /** 之前,否则被 catch-all 吃掉。
+        add(null, "/api/bill-notices/unconfirm",      Perm.BILLING_ISSUE_EDIT);
         add(null, "/api/bill-notices/mark-exported",  Perm.BILLING_ISSUE_EDIT);
         add(null, "/api/bill-notices/{id}/issue",     Perm.BILLING_ISSUE_EDIT);
         add(null, "/api/bill-notices/{id}/void",      Perm.BILLING_ISSUE_EDIT);
@@ -113,6 +116,12 @@ public class PermissionRegistry {
         // ⚠ 抄表导入必须显式排在 /api/meters/** 之前,否则被 meter-master 吃掉 ——
         //   财务专员在导入中心看得见「园区抄表」磁贴、点下去 403(RBAC-SPEC §2:导入属 meter-reading)
         add(HttpMethod.POST, "/api/meters/import", Perm.METER_READING_EDIT);
+        // 表档案按月写(METER-TIMELINE-SPEC §3.3 §3.4):归属段、清人工标记、状态段 —— 与建表/改档案同一档。
+        // 与下面的 /api/meters/** 同值;单列出来是钉住它们:哪天 /** 被拆细,这几条不会跟着掉进别的档。
+        add(HttpMethod.PUT,    "/api/meters/assign",              Perm.METER_MASTER_EDIT);
+        add(HttpMethod.POST,   "/api/meters/assign/clear-manual", Perm.METER_MASTER_EDIT);
+        add(HttpMethod.POST,   "/api/meters/{id}/status",         Perm.METER_MASTER_EDIT);
+        add(HttpMethod.DELETE, "/api/meters/{id}/status/{fromYm}", Perm.METER_MASTER_EDIT);
         add(null, "/api/meters",    Perm.METER_MASTER_EDIT);
         add(null, "/api/meters/**", Perm.METER_MASTER_EDIT);
 

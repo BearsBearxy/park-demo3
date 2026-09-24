@@ -34,9 +34,9 @@ class QueryHygieneTest {
 
     // 2026-08-18 实测存量,共 98 处。数字含义 = 该文件里的代码命中数(注释里提到这句话不计)。
     static final Map<String, Integer> LEGACY = Map.ofEntries(
-        entry("AllocService.java", 27),          // 池核算引擎内部,改它要配「重生成 + 逐户对账到分」的回归
+        entry("AllocService.java", 23),          // 池核算引擎内部,改它要配「重生成 + 逐户对账到分」的回归
         entry("AnalysisService.java", 3),
-        entry("BillNoticeService.java", 10),
+        entry("BillNoticeService.java", 9),
         entry("BillsService.java", 3),
         entry("BuildingService.java", 11),
         entry("ContractService.java", 8),
@@ -46,7 +46,7 @@ class QueryHygieneTest {
         entry("LedgerService.java", 1),
         entry("MeterBindingService.java", 6),
         entry("MeterService.java", 1),
-        entry("ParamService.java", 5),
+        entry("ParamService.java", 4),
         entry("PriceCfgService.java", 1),
         entry("PvMeterService.java", 2),
         entry("PvService.java", 1),

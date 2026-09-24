@@ -425,8 +425,10 @@ class AllocServiceTest {
         assertEquals("按 7 层拆:一楼 2 户 / 二楼 1 户 / 三楼 3 户 / 四楼 2 户 / 五楼 3 户 / 六楼 1 户 / 七楼 1 户",
             AllocService.floorNote(AllocService.floorBucketsOf(mems)));
         // 7 桶 > 分母 6.00 → §E5 告警(spec §E5 点名的 4 个池之外,rule 22 也超)
-        assertEquals("池「二期 六车间·电梯+低压电房照明」按 7 层拆但账册分母为 6 层,"
-                + "摊出超应分摊 165.99 元,请核对系数或成员楼层",
+        // 文案 2026-09-23 去开发用语:「账册分母」→「分摊基数」(屏上那个字段就叫这个)、
+        // 「按 N 层拆」→「实际摊到 N 层」。数字与判据一格未动。
+        assertEquals("池「二期 六车间·电梯+低压电房照明」实际摊到 7 层,但分摊基数只填了 6 层,"
+                + "摊出去的比应分摊多了 165.99 元,请核对分摊基数或成员的楼层",
             AllocService.floorCoefWarn("二期 六车间·电梯+低压电房照明",
                 AllocService.floorBucketsOf(mems).size(), d("6.00"), sum(split), d("995.74")));
     }
@@ -587,8 +589,8 @@ class AllocServiceTest {
         var split = AllocService.floorBuckets(mems, d("145.37"));
         assertEquals(9, AllocService.floorBucketsOf(mems).size());
         assertEquals(0, sum(split).compareTo(d("1308.33")));
-        assertEquals("池「二期 一车间·电梯+低压电房照明」按 9 层拆但账册分母为 5.8 层,"
-                + "摊出超应分摊 465.19 元,请核对系数或成员楼层",
+        assertEquals("池「二期 一车间·电梯+低压电房照明」实际摊到 9 层,但分摊基数只填了 5.8 层,"
+                + "摊出去的比应分摊多了 465.19 元,请核对分摊基数或成员的楼层",
             AllocService.floorCoefWarn("二期 一车间·电梯+低压电房照明",
                 AllocService.floorBucketsOf(mems).size(), d("5.80"), sum(split), d("843.14")));
     }
@@ -606,8 +608,8 @@ class AllocServiceTest {
             AllocService.floorBucketsOf(mems).size(), d("3.00"), sum(split), d("718.08")));
     }
 
-    private static com.park.demo3.entity.Meter meter(int tenantId, int buildingId, String ownership, String floorLabel) {
-        var m = new com.park.demo3.entity.Meter();
+    private static MeterAt meter(int tenantId, int buildingId, String ownership, String floorLabel) {
+        var m = new MeterAt();
         m.setTenantId(tenantId); m.setBuildingId(buildingId);
         m.setOwnership(ownership); m.setFloorLabel(floorLabel);
         return m;
@@ -712,6 +714,48 @@ class AllocServiceTest {
         return u;
     }
 
+    // ── 对账行的算式与舍入(POOL-ENGINE-SPEC §6.2;2026-09-23「加一行真正总计」)──────────
+    // 锚点逐格取自开发库 2024-02 一期实测(alloc_loss_result / meter_reading 直查,不是照抄任务书):
+    //   B-G座总电(meter 266)= (4012.03 − 4003.49) × 8000 = 68,320.00
+    //   A座总电 (meter 179)= (1465.56 − 1439.86) × 1500 = 38,550.00 = A座(building 13)的 c_qty
+    //   除A座外六栋(20..25)Σ c_qty = 63,054.40  Σ d_qty = 62,923.96
+    //   全部楼栋 Σ c_qty = 101,604.40           Σ d_qty = 97,800.46
+    // 两行的供电侧不同、合计口径也不同,lossVsC 恰好同为 −5265.60(因为并回来的那一栋两边同加 38,550);
+    // 真正被「总计行」改掉的是 **率** 与 **分表侧**:−0.0771→−0.0493、−5396.04→−9069.54。
+    @Test
+    void reconRow_partialAndTotal_2024_02Anchor() {
+        // 第一行:那块供电局表(B-G座总电)管得着的六栋
+        var part = AllocService.reconRow("p1", "B-G座总电", "除一期 A座外各栋",
+            d("68320.00"), d("63054.40"), d("62923.96"));
+        assertEquals("p1", part.zone());
+        assertEquals("B-G座总电", part.supplyLabel());
+        assertEquals("除一期 A座外各栋", part.sumLabel());
+        assertEquals(0, part.supplyQty().compareTo(d("68320.00")));
+        assertEquals(0, part.lossVsC().compareTo(d("-5265.60")));
+        assertEquals(0, part.rateVsC().compareTo(d("-0.0771")));
+        assertEquals(0, part.lossVsD().compareTo(d("-5396.04")));
+        assertEquals(0, part.rateVsD().compareTo(d("-0.0790")));
+
+        // 第二行=真正总计:供电侧把 A座总电 加回来,合计口径换成全部楼栋
+        var all = AllocService.reconRow("p1", "B-G座总电 + A座总电", "全部楼栋",
+            d("68320.00").add(d("38550.00")), d("101604.40"), d("97800.46"));
+        assertEquals("B-G座总电 + A座总电", all.supplyLabel());
+        assertEquals("全部楼栋", all.sumLabel());
+        assertEquals(0, all.supplyQty().compareTo(d("106870.00")));
+        assertEquals(0, all.sumC().compareTo(d("101604.40")));
+        assertEquals(0, all.sumD().compareTo(d("97800.46")));
+        assertEquals(0, all.lossVsC().compareTo(d("-5265.60")));
+        assertEquals(0, all.rateVsC().compareTo(d("-0.0493")));
+        assertEquals(0, all.lossVsD().compareTo(d("-9069.54")));
+        assertEquals(0, all.rateVsD().compareTo(d("-0.0849")));
+        // 两行的率不同。⚠这里只钉 reconRow 这个纯函数「供电侧不同 ⇒ 率不同」,**抓不到**
+        // 「调用方忘了把 A座 加回去」—— 上面两次调用的供电侧都是本测试自己硬编码传进来的,
+        // reconRow 对调用方怎么拼供电侧一无所知。实测:把 AllocService 里的 supply.add(outSupply)
+        // 改成 supply,本文件 61/61 仍全绿。真正钉住调用方的是 AllocApiIT
+        // .poolLoss_recon_totalRow_whenExcludedUnitHasOwnSupplyMeter 里 supplyQty=106870.00 那条。
+        assertNotEquals(0, all.rateVsC().compareTo(part.rateVsC()));
+    }
+
     // ── 在租三态(2026-07-30 修「判断不了→写成已退租」)──
     private static final java.time.LocalDate F = java.time.LocalDate.parse("2024-02-01");
     private static final java.time.LocalDate L = java.time.LocalDate.parse("2024-02-29");
@@ -725,12 +769,15 @@ class AllocServiceTest {
     }
 
     @Test
-    void inForceState_threeWay() {
+    void inForceState_fiveWay() {
         // 日期齐全且覆盖 → yes
         assertEquals("yes", AllocService.inForceState(
             java.util.List.of(dated("2023-03-20", "2031-03-19")), F, L));
-        // 日期齐全但不覆盖 → no
-        assertEquals("no", AllocService.inForceState(
+        // ⚠ 2026-09-23:这两行原来都断言 "no",屏上写「已退租」。
+        //   上一行的合同是**下个月才起租**(尧萍 S10-0112 就是这个形状,2024-03-01 起租却在
+        //   2024-02 被报已退租);下一行才是真退租。三个月合计 84 条这类提示,真退租 0 条。
+        //   破坏验证:把 inForceState 里的 future 分支删掉 → 本行红。
+        assertEquals("future", AllocService.inForceState(
             java.util.List.of(dated("2024-03-01", "2025-02-28")), F, L));
         assertEquals("no", AllocService.inForceState(
             java.util.List.of(dated("2022-01-01", "2023-12-31")), F, L));
@@ -739,14 +786,21 @@ class AllocServiceTest {
         // 一端 NULL 同样判不了 → unknown
         assertEquals("unknown", AllocService.inForceState(java.util.List.of(dated("2023-01-01", null)), F, L));
         assertEquals("unknown", AllocService.inForceState(java.util.List.of(dated(null, "2031-01-01")), F, L));
-        // 多合同取最优:yes > unknown > no
+        // 多合同取最优:yes > unknown > future > none > no
         assertEquals("yes", AllocService.inForceState(
             java.util.List.of(dated(null, null), dated("2023-03-20", "2031-03-19")), F, L));
         assertEquals("unknown", AllocService.inForceState(
             java.util.List.of(dated("2022-01-01", "2023-12-31"), dated(null, null)), F, L));
-        // 无非草稿合同 → no(不是 unknown:空集不该当成判不了)
-        assertEquals("no", AllocService.inForceState(java.util.List.of(), F, L));
-        // 草稿不算在租(covers 已挡)
+        // 一份已到期 + 一份下月起租 → future(人要回来,不该被摘出池)
+        assertEquals("future", AllocService.inForceState(
+            java.util.List.of(dated("2022-01-01", "2023-12-31"), dated("2024-03-01", "2025-02-28")), F, L));
+        // ⚠ 无非草稿合同 → none(原来是 no)。吴跃平#335 contract 表零行,每个月被报一次「已退租」。
+        //   破坏验证:把 none 改回 no → 本行红。
+        assertEquals("none", AllocService.inForceState(java.util.List.of(), F, L));
+        // 草稿不算在租(covers 已挡)。⚠这是**防御分支**,生产路径构造不出来:loadRoster 在调用前
+        //   就按 !"draft".equals(status) 滤光了草稿(形参名就叫 nonDraft)。所以这条只钉「真把草稿喂
+        //   进来也不会被当成在租」,**不**代表五态注释里 no 的语义(那条说的是「有日期且全都已到期」,
+        //   而本夹具这份草稿跨着本月、一天没到期)。别拿这行去反推 no 的定义。
         var draft = dated("2023-03-20", "2031-03-19");
         draft.setStatus("draft");
         assertEquals("no", AllocService.inForceState(java.util.List.of(draft), F, L));
@@ -764,8 +818,8 @@ class AllocServiceTest {
     }
 
     // ── V77 §G3 电表标签位置段:缺了要说出来,不能静默少一截 ──
-    private static com.park.demo3.entity.Meter lm(String area, String spot, String floorLabel, String side) {
-        var m = new com.park.demo3.entity.Meter();
+    private static MeterAt lm(String area, String spot, String floorLabel, String side) {
+        var m = new MeterAt();
         m.setArea(area); m.setSpot(spot); m.setFloorLabel(floorLabel); m.setSide(side);
         m.setTenantName("已停用"); m.setSubName("电表①");
         return m;
@@ -867,8 +921,8 @@ class AllocServiceTest {
         var b = new com.park.demo3.entity.Building(); b.setId(id); b.setZone(zone); return b;
     }
 
-    private static com.park.demo3.entity.Meter meterOn(int buildingId, String zone) {
-        var m = new com.park.demo3.entity.Meter();
+    private static MeterAt meterOn(int buildingId, String zone) {
+        var m = new MeterAt();
         m.setBuildingId(buildingId); m.setZone(zone); m.setKind("elec"); return m;
     }
 

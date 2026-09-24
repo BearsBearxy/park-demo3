@@ -52,24 +52,26 @@ public class ParamService {
     private final BillNoticeMapper notices;
     private final BuildingMapper buildings;
     private final AllocRuleMapper rules;
-    private final MeterMapper meters;
+    private final MeterTimelineService timeline;
     private final TenantMapper tenants;
     private final PriceCfgService priceCfg;      // 价目缓存失效
     private final AllocService alloc;            // @Lazy:AllocService 写参数走本类,本类重算又调它 —— 懒代理断环
     private final BillNoticeService billNotice;
     private final com.park.demo3.security.PermissionGuard guard;   // 按 cfg_key 分月度/口径两档
     private final ReviewGuard reviewGuard;
+    private final DataChangeLogMapper dataChanges;   // 需重算的第二个来源:抄表档案/读数改动(METER-TIMELINE-SPEC §1.5 §5)
 
     public ParamService(AllocCfgMapper allocCfgs, TenantPriceCfgMapper priceCfgs, ParamChangeLogMapper logs,
                         AllocPoolResultMapper poolResults, AllocLossResultMapper lossResults, BillNoticeMapper notices,
-                        BuildingMapper buildings, AllocRuleMapper rules, MeterMapper meters, TenantMapper tenants,
+                        BuildingMapper buildings, AllocRuleMapper rules, MeterTimelineService timeline, TenantMapper tenants,
                         PriceCfgService priceCfg, @Lazy AllocService alloc, @Lazy BillNoticeService billNotice,
-                        com.park.demo3.security.PermissionGuard guard, ReviewGuard reviewGuard) {
+                        com.park.demo3.security.PermissionGuard guard, ReviewGuard reviewGuard,
+                        DataChangeLogMapper dataChanges) {
         this.allocCfgs = allocCfgs; this.priceCfgs = priceCfgs; this.logs = logs;
         this.poolResults = poolResults; this.lossResults = lossResults; this.notices = notices;
-        this.buildings = buildings; this.rules = rules; this.meters = meters; this.tenants = tenants;
+        this.buildings = buildings; this.rules = rules; this.timeline = timeline; this.tenants = tenants;
         this.priceCfg = priceCfg; this.alloc = alloc; this.billNotice = billNotice; this.guard = guard;
-        this.reviewGuard = reviewGuard;
+        this.reviewGuard = reviewGuard; this.dataChanges = dataChanges;
     }
 
     // ══════════ 读:站在 ym 看的全部生效参数行 ══════════
@@ -318,8 +320,9 @@ public class ParamService {
             n.baseKeyOfRule.put(r.getId(), r.getBaseKey());
         }
         for (Tenant t : tenants.selectList(null)) n.tenant.put(t.getId(), t.getCompanyName());
-        List<Meter> ms = meters.selectList(null);
-        for (Meter m : ms) {
+        // 名字表没有月份语境:站在各表最新一行(METER-TIMELINE-SPEC §2)
+        List<MeterAt> ms = timeline.metersAt(MeterTimeline.LATEST);
+        for (MeterAt m : ms) {
             n.meter.put(m.getId(), m.getName()); n.zoneOfMeter.put(m.getId(), m.getZone());
             if (m.getTenantId() != null && m.getZone() != null)
                 n.zonesOfTenant.computeIfAbsent(m.getTenantId(), k -> new HashSet<>()).add(m.getZone());
@@ -681,15 +684,17 @@ public class ParamService {
         QueryWrapper<ParamChangeLog> pending = monthCond(new QueryWrapper<ParamChangeLog>().in("action", "set", "delete"), ym);
         if (baseline != null) pending.gt("ts", baseline);
         int pendingChanges = Math.toIntExact(logs.selectCount(pending));
+        // 池 ∪ 催缴单的月:只有催缴单、没有池快照的月(「重新生成」不要求先生成池)也会过期
         List<String> others = new ArrayList<>();
-        for (Object o : poolResults.selectObjs(new QueryWrapper<AllocPoolResult>().select("DISTINCT ym").orderByAsc("ym"))) {
-            String m = String.valueOf(o);
+        for (String m : months())
             if (!m.equals(ym) && snap(m).stale) others.add(m);
-        }
-        return new ParamStatusDTO(ok.size(), PriceCfgService.ELEC_KEYS.size(), pendingChanges, s.lastChange, s.pool, s.bill, s.stale, others);
+        return new ParamStatusDTO(ok.size(), PriceCfgService.ELEC_KEYS.size(), pendingChanges, s.lastChange, s.pool, s.bill, s.stale, others,
+            s.lastChangeSource, s.staleSources);
     }
 
-    private record Snap(LocalDateTime pool, LocalDateTime bill, LocalDateTime lastChange, boolean stale) {}
+    /** lastChange = 参数与抄表两个来源里较晚的那次改动;lastChangeSource / staleSources 的取值 param | meter。 */
+    private record Snap(LocalDateTime pool, LocalDateTime bill, LocalDateTime lastChange, boolean stale,
+                        String lastChangeSource, List<String> staleSources) {}
 
     private Snap snap(String ym) {
         List<AllocPoolResult> p = poolResults.selectList(new QueryWrapper<AllocPoolResult>().eq("ym", ym)
@@ -705,9 +710,23 @@ public class ParamService {
         LocalDateTime pool = p.isEmpty() ? null : p.get(0).getGeneratedAt();
         LocalDateTime bill = b.isEmpty() ? null : b.get(0).getGeneratedAt();
         if (!rc.isEmpty() && bill != null && rc.get(0).getTs().isAfter(bill)) bill = rc.get(0).getTs();
-        LocalDateTime last = c.isEmpty() ? null : c.get(0).getTs();
-        boolean stale = last != null && ((pool != null && last.isAfter(pool)) || (bill != null && last.isAfter(bill)));
-        return new Snap(pool, bill, last, stale);
+        // METER-TIMELINE-SPEC §5:lastChange 并入 data_change_log(档案与读数改动)。两张流水都由 Java 时钟写,
+        // 与快照 generated_at 同一口钟(类头注),可以直接比。
+        List<DataChangeLog> d = dataChanges.selectList(new QueryWrapper<DataChangeLog>().eq("ym", ym)
+            .orderByDesc("changed_at").orderByDesc("id").last("LIMIT 1"));
+        LocalDateTime param = c.isEmpty() ? null : c.get(0).getTs();
+        LocalDateTime meter = d.isEmpty() ? null : d.get(0).getChangedAt();
+        boolean meterLater = meter != null && (param == null || meter.isAfter(param));
+        LocalDateTime last = meterLater ? meter : param;
+        List<String> by = new ArrayList<>();
+        if (after(param, pool, bill)) by.add("param");
+        if (after(meter, pool, bill)) by.add("meter");
+        return new Snap(pool, bill, last, !by.isEmpty(), last == null ? null : meterLater ? "meter" : "param", by);
+    }
+
+    // 改动晚于池快照或催缴单批次任一个 = 那份快照是改之前算的(spec §6.3 判据,两个来源同一口径)
+    private static boolean after(LocalDateTime change, LocalDateTime pool, LocalDateTime bill) {
+        return change != null && ((pool != null && change.isAfter(pool)) || (bill != null && change.isAfter(bill)));
     }
 
     // 影响 ym 的日志行:from 且 acct_month<=ym,或 month 且 acct_month=ym

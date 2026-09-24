@@ -39,7 +39,7 @@ interface MonthCell {
    * "N 行" 只是它的一个特例，没理由让别的屏为了显一句话去凑一个行数。
    */
   badge?: string
-  /** 参数改动晚于快照 → 屏上数字是旧的。只换底色，不加边框（布局稳定铁律）。 */
+  /** 参数或抄表改动晚于快照 → 屏上数字是旧的。只换底色，不加边框（布局稳定铁律）。 */
   stale?: boolean
   /**
    * 这个月的审核态 → 卡右下角一枚角标（SIDEBAR-UX-REDESIGN §9.2-4）。
@@ -166,7 +166,7 @@ watchPostEffect(() => {
             :key="m.month"
             class="bmm-card"
             :class="[m.hasData ? 'has' : 'blank', { cur: m.cur, stale: m.hasData && m.stale }]"
-            :title="m.hasData && m.stale ? '参数改动晚于快照 —— 屏上数字是旧的，需重算' : undefined"
+            :title="m.hasData && m.stale ? '参数或抄表改动晚于快照 —— 屏上数字是旧的，需重算' : undefined"
             @click="emit('pick', y.year, m.month)"
           >
             <span class="bmm-month">{{ m.month }}月</span>

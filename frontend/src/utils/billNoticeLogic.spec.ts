@@ -6,6 +6,7 @@ import {
   groupByBuilding, groupDormExcelStyle, groupExcelStyle, groupRentByPremise, lineNoteKey, mergeMaintRows,
   mergeNoteKey, noteDisplay, noteKeyId, priceScopeLabel,
   rentAreaText, rentByTenant, rentFeeName, resolvePhase, segLabel, tenantBuildings, tenantKpis,
+  warnSummaryLines,
   type DormLineBase, type NoticeLike, type RentLineBase, type UtilRowLine,
 } from './billNoticeLogic'
 
@@ -25,6 +26,22 @@ describe('billFeeLabel 费项字典(spec §4:沿用 alloc_result 现值,不造�
     expect(billFeeLabel('share_elec_loss')).toBe('线路损耗')
     expect(billFeeLabel('share_elec_light')).toBe('路灯公摊')
     expect(billFeeLabel('share_green_water')).toBe('绿化水公摊')
+  })
+  // 2026-09-23 用户截图:收款槽卡片的副标题直接印出了原始 key「rent_office」「rent_dorm」——
+  // 字典缺这批合同侧费项键,billFeeLabel 回落成了 key 本身。
+  // 破坏验证:去掉 BILL_FEE_LABEL 里的 ...FEE_NAME 展开 → 前三条全红。
+  it('合同侧费项键有中文名,不回落原始 key', () => {
+    expect(billFeeLabel('rent_office')).toBe('办公室租金')
+    expect(billFeeLabel('rent_dorm')).toBe('宿舍租金')
+    expect(billFeeLabel('elevator')).toBe('电梯维护费')
+    expect(billFeeLabel('transformer')).toBe('变压器维护费')
+    expect(billFeeLabel('land_tax')).toBe('土地使用税')
+  })
+  // mgmt/infra 刻意不并:FEE_NAME 里它们不带段前缀,而租金明细走 rentFeeName 印「厂房企业管理服务费」。
+  // 并进来会让同一笔钱在抽屉与对账表里出现两个名字。破坏验证:去掉那个 filter → 本条红。
+  it('mgmt/infra 不并进字典(段前缀归 rentFeeName 管)', () => {
+    expect(billFeeLabel('mgmt')).toBe('mgmt')
+    expect(billFeeLabel('infra')).toBe('infra')
   })
   it('公共电核算屏词汇不被拖走(ALLOC_FEE_LABEL 原样)', () => {
     expect(ALLOC_FEE_LABEL.share_elec_floor).toBe('楼层照明')
@@ -725,7 +742,7 @@ describe('auditTitle 取价审计链悬浮', () => {
 describe('aggregateByTenant 租户聚合(v2 拍板1:一个租户一条)', () => {
   const n = (id: number, tenantId: number, over: Partial<NoticeLike> = {}): NoticeLike => ({
     id, tenantId, tenantName: `户${tenantId}`, noticeKind: 'combined', premiseText: null,
-    totalAmount: 0, prevDue: 0, lineCount: 0, warn: null, ...over,
+    totalAmount: 0, prevDue: 0, lineCount: 0, warns: [], ...over,
   })
   it('同户多单合并(含宿舍单):行数/合计/上期欠费=Σ,noticeIds 保单据序,户序按首现', () => {
     const rs = aggregateByTenant([
@@ -739,13 +756,37 @@ describe('aggregateByTenant 租户聚合(v2 拍板1:一个租户一条)', () => 
     expect(rs[0].totalAmount).toBe(100.3)
     expect(rs[0].prevDue).toBe(1.5)
   })
-  it('场地按逗号拆项去重合并;warn 按分号拆项去重、换行连接', () => {
+  it('场地按逗号拆项去重合并;告警按 (code,payload) 去重', () => {
+    const w = (code: string, payload = '', hint = '') => ({ code, payload, hint })
     const rs = aggregateByTenant([
-      n(1, 1, { premiseText: 'A座602室,B座201室', warn: '缺价;表未归属' }),
-      n(2, 1, { premiseText: 'A座602室', warn: '缺价' }),
+      n(1, 1, { premiseText: 'A座602室,B座201室',
+        warns: [w('W_PRICE_MISSING', 'elec_sharp'), w('W_METER_NO_CONTRACT', '798', '甲表')] }),
+      n(2, 1, { premiseText: 'A座602室', warns: [w('W_PRICE_MISSING', 'elec_sharp')] }),
     ])
     expect(rs[0].premiseText).toBe('A座602室,B座201室')
-    expect(rs[0].warn).toBe('缺价\n表未归属')
+    // 同 (code,payload) 只留一条 —— 户级告警被逐单复制,不去重屏上会重复印
+    expect(rs[0].alerts.map(a => `${a.code}|${a.payload}`))
+      .toEqual(['W_METER_NO_CONTRACT|798', 'W_PRICE_MISSING|elec_sharp'])
+  })
+  // 去重键是 (code,payload) 不是整条对象:hint 差一个字不算两条 ——
+  // 与后端 Warn.key() 和 DB 的 uk_warn 严格同口径,两边一差就是一次整月回滚。
+  it('同 code 同 payload、hint 不同 → 仍是一条', () => {
+    const rs = aggregateByTenant([
+      n(1, 1, { warns: [{ code: 'W_ROOM_MISMATCH', payload: '544', hint: '甲表' }] }),
+      n(2, 1, { warns: [{ code: 'W_ROOM_MISMATCH', payload: '544', hint: '乙表' }] }),
+    ])
+    expect(rs[0].alerts).toHaveLength(1)
+  })
+  // 排序:先 WARN_CODES 组序,同组按 payload 自然序(数字房号按数值,不是字典序)
+  it('同 code 多 payload → 按数值序,不是字典序', () => {
+    const rs = aggregateByTenant([
+      n(1, 1, { warns: [
+        { code: 'W_ROOM_MISMATCH', payload: '633', hint: '' },
+        { code: 'W_ROOM_MISMATCH', payload: '84', hint: '' },
+        { code: 'W_ROOM_MISMATCH', payload: '544', hint: '' },
+      ] }),
+    ])
+    expect(rs[0].alerts.map(a => a.payload)).toEqual(['84', '544', '633'])
   })
   it('offbook=该户单据全为账外(户级标,混合不降淡)', () => {
     expect(aggregateByTenant([n(1, 1, { noticeKind: 'offbook' })])[0].offbook).toBe(true)
@@ -865,9 +906,13 @@ describe('rentByTenant 月租金(参考)合计', () => {
 })
 
 describe('tenantKpis KPI(v2:户数/水电总额/月租金合计(参考)/警告户数)', () => {
-  const r = (totalAmount: number, rent: number | null, warn: string | null) => ({ totalAmount, rent, warn })
+  // warned 的口径没变:数的仍是**户**,只是判据从「warn 串非空」换成「alerts 非空」
+  const a = (code: string) => ({ code, payload: '', hint: '' })
+  const r = (totalAmount: number, rent: number | null, alerts: { code: string; payload: string; hint: string }[]) =>
+    ({ totalAmount, rent, alerts })
   it('四格;无在租合同户 rent=null 记 0', () =>
-    expect(tenantKpis([r(100.5, 2000, null), r(0.25, null, '缺价'), r(-10, 1.05, '负数')]))
+    expect(tenantKpis([r(100.5, 2000, []), r(0.25, null, [a('W_PRICE_MISSING')]),
+                       r(-10, 1.05, [a('W_TOTAL_NEGATIVE')])]))
       .toEqual({ count: 3, total: 90.75, rent: 2001.05, warned: 2 }))
   it('空期=全 0', () => expect(tenantKpis([])).toEqual({ count: 0, total: 0, rent: 0, warned: 0 }))
 })
@@ -952,4 +997,49 @@ describe('buildUtilRows 水电明细拍平', () => {
     expect(ls.map(r => r.no)).toEqual([1, 2])
     expect(ls[0].nk).toEqual({ feeKey: 'elec', premiseKey: 'A座', meterKey: '9', segKey: 'peak' })
   })
+})
+
+// 落点:列表行尾「!」的悬浮 + 明细抽屉的户头横幅。两处都只有这一个数据源。
+describe('warnSummaryLines 一户的告警摘要(一类一行 = 块头 + 条目)', () => {
+  const A = (code: string, payload = '', hint = '') => ({ code, payload, hint })
+
+  // ⚠ 真屏事故(2026-09-23 租户旭化成):屏上只有三个光秃秃的表名,没有一个字说这是什么问题。
+  //   破坏验证:把 `${WARN_COPY[c].title}:` 这段前缀删掉 → 本行红。
+  it('每一行都以块头开头,不许只有裸条目', () => {
+    const out = warnSummaryLines([A('W_METER_NO_CONTRACT', '405', 'A101旭化成水')])
+    expect(out).toBe('表没挂上合同:A101旭化成水')
+  })
+
+  // ⚠ 同上那起:三块表要并成一行,不是三行一模一样的块头。
+  //   破坏验证:把 byCode 去掉、改成 alerts.map(一条一行) → 本行红。
+  it('同一类的多个条目并成一行,顺序按入参', () => {
+    expect(warnSummaryLines([
+      A('W_METER_NO_CONTRACT', '405', 'A101旭化成水'),
+      A('W_METER_NO_CONTRACT', '409', '旭化成二楼水1'),
+      A('W_METER_NO_CONTRACT', '410', '旭化成二楼水2'),
+    ])).toBe('表没挂上合同:A101旭化成水、旭化成二楼水1、旭化成二楼水2')
+  })
+
+  it('同一类里字一样的条目去重(两块表落同一个房号只说一次)', () => {
+    expect(warnSummaryLines([A('W_ROOM_MISMATCH', '544'), A('W_ROOM_MISMATCH', '544')]))
+      .toBe('房号两边对不上:房号 544')
+  })
+
+  // ⚠ 组序是屏上的块序,与 buildNoticeAlertGroups 共用 WARN_CODES —— 不随入参顺序飘。
+  //   破坏验证:把 WARN_CODES.filter(...) 换成 [...byCode.keys()] → 本行红。
+  it('多类按 WARN_CODES 的组序排,不按入参顺序', () => {
+    expect(warnSummaryLines([
+      A('W_PRICE_MISSING', 'elec_sharp'),
+      A('W_METER_NO_CONTRACT', '405', 'A101旭化成水'),
+    ]).split('\n')).toEqual(['表没挂上合同:A101旭化成水', '这个月缺价:尖段电价'])
+  })
+
+  // ⚠ 这两个落点要把这户的告警**全部**说完:drawer:false 的类(§6-3 不进屏级抽屉)在这里照出,
+  //   否则行尾「!」亮着灯、悬浮里却一个字都没有。
+  //   破坏验证:改成复用 buildNoticeAlertGroups(它滤掉 drawer:false) → 本行红。
+  it('不进屏级抽屉的类(本期合计为负)照样出,且不复述成「X:X」', () => {
+    expect(warnSummaryLines([A('W_TOTAL_NEGATIVE')])).toBe('本期合计为负')
+  })
+
+  it('无告警出空串(横幅与「!」都不渲染)', () => expect(warnSummaryLines([])).toBe(''))
 })

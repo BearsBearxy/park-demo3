@@ -39,8 +39,13 @@ class DataHomeServiceTest {
     com.park.demo3.mapper.ElecCostEntryMapper elecCostEntries =
         Mockito.mock(com.park.demo3.mapper.ElecCostEntryMapper.class);
 
+    // V126:告警搬到 bill_notice_warn 子表;本类用例不碰告警,mock 回空
+    com.park.demo3.mapper.BillNoticeWarnMapper noticeWarns =
+        Mockito.mock(com.park.demo3.mapper.BillNoticeWarnMapper.class);
+
     DataHomeService svc = new DataHomeService(ledger, s10, salary, office, pv, charging, elec, contractService,
-        meterReadings, poolResults, lossResults, billNotices, paramService, companies, amounts, elecCostEntries);
+        meterReadings, poolResults, lossResults, billNotices, noticeWarns, paramService, companies,
+        amounts, elecCostEntries);
 
     // ── helpers ──
     S10Record s10Row(String acctMonth, int phase, LocalDateTime updated) {
@@ -114,7 +119,7 @@ class DataHomeServiceTest {
         when(billNotices.selectList(any())).thenReturn(List.of());
         when(contractService.list(any())).thenReturn(List.of());
         when(paramService.status(anyString())).thenReturn(
-            new ParamStatusDTO(0, 0, 0, null, null, null, false, List.of()));
+            new ParamStatusDTO(0, 0, 0, null, null, null, false, List.of(), null, List.of()));
     }
 
     // ══ 旧契约的 7 个测试已随重设计删除 ══════════════════════════════
@@ -359,7 +364,7 @@ class DataHomeServiceTest {
         stubAllEmpty();
         when(meterReadings.selectDistinctYms()).thenReturn(List.of("2026-06"));
         when(paramService.status(anyString()))
-            .thenReturn(new ParamStatusDTO(6, 6, 0, null, null, null, false, List.of()));
+            .thenReturn(new ParamStatusDTO(6, 6, 0, null, null, null, false, List.of(), null, List.of()));
 
         DataHomeOverviewDTO o = svc.overview(null);
         assertThat(o.chain().steps().get(0).status()).isEqualTo("done");
@@ -370,7 +375,7 @@ class DataHomeServiceTest {
         stubAllEmpty();
         when(meterReadings.selectDistinctYms()).thenReturn(List.of("2026-06"));
         when(paramService.status(anyString()))
-            .thenReturn(new ParamStatusDTO(5, 6, 0, null, null, null, false, List.of()));
+            .thenReturn(new ParamStatusDTO(5, 6, 0, null, null, null, false, List.of(), null, List.of()));
 
         DataHomeOverviewDTO o = svc.overview(null);
         assertThat(o.chain().steps().get(0).status()).isEqualTo("current");
@@ -380,11 +385,11 @@ class DataHomeServiceTest {
 
     // ══ 前置条 blockers(spec §2.1) ══════════════════════════════════
     @Test void blockers_都没问题时为空数组() {
-        assertThat(DataHomeService.buildBlockers(0, false)).isEmpty();
+        assertThat(DataHomeService.buildBlockers(0, false, null)).isEmpty();
     }
 
     @Test void blockers_合同缺计费行时出一条() {
-        var bs = DataHomeService.buildBlockers(219, false);
+        var bs = DataHomeService.buildBlockers(219, false, null);
         assertThat(bs).hasSize(1);
         assertThat(bs.get(0).kind()).isEqualTo("contract-gap");
         assertThat(bs.get(0).text()).contains("219");
@@ -392,15 +397,25 @@ class DataHomeServiceTest {
     }
 
     @Test void blockers_参数过期时出一条() {
-        var bs = DataHomeService.buildBlockers(0, true);
+        var bs = DataHomeService.buildBlockers(0, true, List.of("param"));
         assertThat(bs).hasSize(1);
         assertThat(bs.get(0).kind()).isEqualTo("param-stale");
         assertThat(bs.get(0).go()).isEqualTo("params");
     }
 
     @Test void blockers_两个问题都在时出两条_合同在前() {
-        assertThat(DataHomeService.buildBlockers(219, true))
+        assertThat(DataHomeService.buildBlockers(219, true, List.of("param")))
             .extracting(DataHomeOverviewDTO.Blocker::kind)
             .containsExactly("contract-gap", "param-stale");
+    }
+
+    // METER-TIMELINE-SPEC §5:需重算按来源说 —— 只改了读数/表档案时不许说成改了参数(同前端 staleWho)
+    @Test void blockers_过期来源按参数_抄表_两者分别说() {
+        assertThat(DataHomeService.buildBlockers(0, true, List.of("meter")).get(0).text())
+            .startsWith("抄表数据（读数或表档案）改过").doesNotContain("参数");
+        assertThat(DataHomeService.buildBlockers(0, true, List.of("param")).get(0).text()).startsWith("计费参数改过");
+        assertThat(DataHomeService.buildBlockers(0, true, List.of("param", "meter")).get(0).text())
+            .startsWith("计费参数和抄表数据改过");
+        assertThat(DataHomeService.buildBlockers(0, true, null).get(0).text()).startsWith("计费参数改过");
     }
 }

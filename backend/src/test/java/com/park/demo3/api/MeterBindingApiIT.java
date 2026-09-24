@@ -115,9 +115,21 @@ class MeterBindingApiIT extends AbstractMysqlIT {
         return rows.get(0);
     }
 
+    /** 续签一期:parent_contract_id 连上,link_type=renew(递增段拆链落的是 escalation,同一条链) */
+    private int renew(int contractId, String no, String start, String end) throws Exception {
+        String res = mvc.perform(post("/api/contracts/" + contractId + "/renew").header("Authorization", auth())
+                .contentType("application/json").content("{\"contractNo\":\"" + no + "\",\"startDate\":\""
+                        + start + "\",\"endDate\":\"" + end + "\"}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        return JsonPath.read(res, "$.data.id");
+    }
+
+    // 钉到 1900-01 那一段(建表没给月份)= 对所有月份生效,与按段写之前的「钉整块表」同一效果
     private void bind(int meterId, String contractIdJson) throws Exception {
         mvc.perform(put("/api/meters/" + meterId + "/bind").header("Authorization", auth())
-                .contentType("application/json").content("{\"contractId\":" + contractIdJson + "}"))
+                .contentType("application/json")
+                .content("{\"contractId\":" + contractIdJson + ",\"ym\":\"2099-08\",\"mode\":\"correct\"}"))
                 .andExpect(jsonPath("$.code").value(0));
     }
 
@@ -162,11 +174,69 @@ class MeterBindingApiIT extends AbstractMysqlIT {
 
         // 守卫:合同不存在 404;表不存在 404
         mvc.perform(put("/api/meters/" + mid + "/bind").header("Authorization", auth())
-                .contentType("application/json").content("{\"contractId\":99999999}"))
+                .contentType("application/json").content("{\"contractId\":99999999,\"ym\":\"2099-08\",\"mode\":\"correct\"}"))
                 .andExpect(jsonPath("$.code").value(404));
         mvc.perform(put("/api/meters/99999999/bind").header("Authorization", auth())
-                .contentType("application/json").content("{\"contractId\":null}"))
+                .contentType("application/json").content("{\"contractId\":null,\"ym\":\"2099-08\",\"mode\":\"correct\"}"))
                 .andExpect(jsonPath("$.code").value(404));
+    }
+
+    // ── 规则1 按月落段(2026-09-23 改写) ─────────────────────────────────────────
+    // 人工绑定钉的是**一份合同**,不是它的某一段:递增段与续签是同一份合同的分期(V57 link_type),
+    // 租金那边一直按月挑段(BillNoticeService 走 covers()),绑定这边原先钉死一段 ——
+    // 于是旭化成 2023-08 那张单上租金挂 C2024M-022A#2、水电挂 #3(2023-10-27 才生效),全库 203 行。
+    @Test
+    void 人工绑定按月落到本链覆盖该月的那一段() throws Exception {
+        int t = createTenant("IT落段户", null);
+        int b1 = buildingIds().get(0);
+        int seg1 = createContract(t, b1, "2099-01-01", "2099-06-30");
+        String no2 = "IT-SEG2-" + System.nanoTime();
+        int seg2 = renew(seg1, no2, "2099-07-01", "2099-12-31");
+        int mid = createMeter("elec", "IT落段表", t, b1, "IT落段户");
+        bind(mid, String.valueOf(seg2));   // 用户钉在后一段上
+
+        // 钉的那段覆盖本月 → 就是它,不多说一句
+        Map<String, Object> r = row(binding("2099-08"), mid);
+        assertThat(r.get("status")).isEqualTo("override");
+        assertThat(r.get("contractId")).isEqualTo(seg2);
+        assertThat(r.get("pinnedContractNo")).isNull();
+
+        // 翻到前一段的月份 → 落到同链的前一段,不再标「过期」;钉的那份带出去,屏上要说清
+        String body = binding("2099-03");
+        r = row(body, mid);
+        assertThat(r.get("status")).isEqualTo("override");
+        assertThat(r.get("contractId")).isEqualTo(seg1);
+        assertThat(r.get("pinnedContractNo")).isEqualTo(no2);
+        assertThat((int) JsonPath.read(body, "$.data.summary.overrideStale")).isZero();
+
+        // 链上没有覆盖该月的段,但该户另有一份覆盖(全库 338 份合同是断头链首,链里找不到前身)
+        // → 退回自动归属,并把被跳过的那份带出去
+        int other = createContract(t, b1, "2098-01-01", "2098-12-31");
+        r = row(binding("2098-03"), mid);
+        assertThat(r.get("status")).isEqualTo("auto");
+        assertThat(r.get("contractId")).isEqualTo(other);
+        assertThat(r.get("pinnedContractNo")).isEqualTo(no2);
+    }
+
+    // 落不到段、自动也定不出 → 仍是 override_stale(有人指认过,该留着他指的那份),
+    // 但候选照给:原先这一档候选恒空,抽屉上只剩「该户无候选合同」,除了解绑没有第二条出路。
+    @Test
+    void 落不到段也定不出时仍标过期但候选不再是空的() throws Exception {
+        int t = createTenant("IT过期户", null);
+        List<Integer> bs = buildingIds();
+        int b1 = bs.get(0), b2 = bs.get(1);
+        int pin = createContract(t, b1, "2099-07-01", "2099-12-31");
+        createContract(t, b2, "2098-01-01", "2098-12-31");   // 两份都覆盖 2098-03,都不在表所在栋
+        createContract(t, b2, "2098-01-01", "2098-12-31");
+        int mid = createMeter("elec", "IT过期表", t, b1, "IT过期户");
+        bind(mid, String.valueOf(pin));
+
+        String body = binding("2098-03");
+        Map<String, Object> r = row(body, mid);
+        assertThat(r.get("status")).isEqualTo("override_stale");
+        assertThat(r.get("contractId")).isEqualTo(pin);   // 钉的那份留着,不静默改掉
+        assertThat((List<?>) r.get("candidates")).hasSize(2);
+        assertThat((int) JsonPath.read(body, "$.data.summary.overrideStale")).isEqualTo(1);
     }
 
     // ── manual 分桶:date_missing(候选一键确认)/no_contract/auto_bld 对位唯一/bld_mismatch/ambiguous ──
@@ -363,11 +433,10 @@ class MeterBindingApiIT extends AbstractMysqlIT {
         int shadow = createMeter("elec", "IT影子重复表", t, null, "IT绑影子户");
         createReading(real, "2093-06", "0", "100", null);
         createReading(shadow, "2093-06", "0", "77", null);
-        // PUT 全量打标(MeterReq.suspect 三态,显式传 shadow)
+        // PUT 资产列打标(MeterAssetReq.suspect 三态,显式传 shadow)
         mvc.perform(put("/api/meters/" + shadow).header("Authorization", auth())
                 .contentType("application/json")
-                .content("{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT影子重复表\",\"ownership\":\"tenant\","
-                        + "\"tenantId\":" + t + ",\"tenantName\":\"IT绑影子户\",\"suspect\":\"shadow\"}"))
+                .content("{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT影子重复表\",\"suspect\":\"shadow\"}"))
                 .andExpect(jsonPath("$.code").value(0));
 
         // binding:shadow 表不出行,真表照常
@@ -385,5 +454,138 @@ class MeterBindingApiIT extends AbstractMysqlIT {
         assertThat(elec).hasSize(1);
         assertThat(elec.get(0).get("meterCount")).isEqualTo(1);
         assertThat(((Number) elec.get(0).get("usageTotal")).doubleValue()).isEqualTo(100.0);
+    }
+
+    // ══ METER-TIMELINE-SPEC §3.6(B2):合同钉按段写、钉的别户合同不采用、auto-link 跳过冻结行、改归属建议。独占 2087 年 ══
+
+    @Autowired com.park.demo3.mapper.ReviewStateMapper reviewStateMapper;
+
+    private org.springframework.test.web.servlet.ResultActions bindReq(int meterId, String contractIdJson, String ym,
+                                                                      String mode) throws Exception {
+        return mvc.perform(put("/api/meters/" + meterId + "/bind").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"contractId\":" + contractIdJson + ",\"ym\":\"" + ym + "\",\"mode\":\"" + mode + "\"}"));
+    }
+
+    private void lockReview(String ym) {
+        var s = new com.park.demo3.entity.ReviewState();
+        s.setReviewKey(com.park.demo3.security.ReviewKey.of(com.park.demo3.security.ReviewKind.METERS, null, ym).raw());
+        s.setKind(com.park.demo3.security.ReviewKind.METERS.code()); s.setPeriod(ym); s.setStatus("approved");
+        reviewStateMapper.insert(s);
+    }
+
+    // 合同钉只对那一段有效:from = 自 ym 起写一行,之前的月份不钉(R3);correct = 钉 / 解 ym 所在的那一段;
+    // 区间里有审核锁 → 423,一格不写
+    @Test
+    void bind_ymMode_pinsOnlyThatSegment_reviewLock423() throws Exception {
+        int t = createTenant("IT按段钉户", null);
+        int b1 = buildingIds().get(0);
+        int c = createContract(t, b1, "2087-01-01", "2087-12-31");
+        int mid = createMeter("elec", "IT按段钉表", t, b1, "IT按段钉户");
+        bindReq(mid, String.valueOf(c), "2087-06", "from").andExpect(jsonPath("$.code").value(0));
+        assertThat(row(binding("2087-03"), mid).get("status")).isEqualTo("auto");
+        assertThat(row(binding("2087-08"), mid).get("status")).isEqualTo("override");
+        bindReq(mid, "null", "2087-08", "correct").andExpect(jsonPath("$.code").value(0));   // 解的是 6 月起那一段
+        assertThat(row(binding("2087-08"), mid).get("status")).isEqualTo("auto");
+        assertThat(row(binding("2087-06"), mid).get("status")).as("更正的是 6 月起那一段,不是在 8 月新写一行").isEqualTo("auto");
+        createReading(mid, "2087-09", "0", "10", null);   // 最大已生成月 ≥ 2087-09
+        lockReview("2087-07");
+        bindReq(mid, String.valueOf(c), "2087-06", "correct").andExpect(jsonPath("$.code").value(423));
+        assertThat(row(binding("2087-08"), mid).get("status")).isEqualTo("auto");
+    }
+
+    // SPEC §3.6:钉的合同不属于这一段的租户家族 → 不采用。自动定得出就用自动的(并带出钉的那份);
+    // 自动也定不出 → override_stale,且不拿那份别户的合同当归属
+    @Test
+    void pinnedContractOfOtherFamily_notAdopted() throws Exception {
+        int b1 = buildingIds().get(0);
+        int t1 = createTenant("IT家族甲", null), t2 = createTenant("IT家族乙", null), t3 = createTenant("IT家族丙", null);
+        int c1 = createContract(t1, b1, "2087-01-01", "2087-12-31");
+        int c2 = createContract(t2, b1, "2087-01-01", "2087-12-31");
+        int m1 = createMeter("elec", "IT换户表甲", t1, b1, "IT家族甲");
+        int m3 = createMeter("elec", "IT换户表丙", t3, b1, "IT家族丙");   // 丙本月没有合同
+        bindReq(m1, String.valueOf(c2), "2087-03", "correct").andExpect(jsonPath("$.code").value(0));
+        bindReq(m3, String.valueOf(c2), "2087-03", "correct").andExpect(jsonPath("$.code").value(0));
+        String body = binding("2087-03");
+        Map<String, Object> r1 = row(body, m1);
+        assertThat(r1.get("status")).isEqualTo("auto");
+        assertThat(r1.get("contractId")).isEqualTo(c1);
+        assertThat(r1.get("pinnedContractNo")).asString().startsWith("IT-S2-");
+        Map<String, Object> r3 = row(body, m3);
+        assertThat(r3.get("status")).isEqualTo("override_stale");
+        assertThat(r3.get("contractId")).isNull();
+        assertThat(r3.get("pinnedContractNo")).asString().startsWith("IT-S2-");
+    }
+
+    // PLAN §1 auto-link:这一段的区间里有冻结月(审核锁)→ 跳过,算 skipped,tenant_id 不写
+    @Test
+    void autoLinkByName_skipsFrozenRows() throws Exception {
+        int tid = createTenant("IT冻结挂名公司", null);
+        int p = createMeter("elec", "IT冻结待核表", null, null, "IT冻结挂名公司");
+        createReading(p, "2087-02", "0", "10", null);   // 最大已生成月 ≥ 2087-02
+        lockReview("2087-02");
+        mvc.perform(post("/api/meters/auto-link-by-name").header("Authorization", auth()))
+                .andExpect(jsonPath("$.data.linked").value(0));
+        assertThat(row(binding("2087-03"), p).get("status")).isEqualTo("pending");
+        assertThat(tid).isPositive();
+    }
+
+    /** 本月在租的合同,带一条位置为 location 的计费行(location 为 null = 不带计费行)。 */
+    private int leaseWithRoom(int tenantId, int buildingId, String location) throws Exception {
+        String lines = location == null ? "" : ",\"billingLines\":[{\"propertyType\":\"office\",\"location\":\"" + location
+                + "\",\"feeKey\":\"rent_office\",\"area\":40,\"unitPrice\":19}]";
+        String res = mvc.perform(post("/api/contracts").header("Authorization", auth()).contentType("application/json")
+                .content("{\"contractNo\":\"IT-S2-SUG" + System.nanoTime() + "\",\"tenantId\":" + tenantId
+                        + ",\"buildingId\":" + buildingId + ",\"startDate\":\"2087-01-01\",\"endDate\":\"2087-12-31\","
+                        + "\"rentArea\":40,\"monthlyRent\":760,\"deposit\":0,\"status\":\"active\"" + lines + "}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        return JsonPath.read(res, "$.data.id");
+    }
+
+    // SPEC §3.6 待绑定 / 场地未定 → 建议「从本月起改归」本月在租、场地房号含这块表房号的**他户**:
+    //   ① 表挂的户本月没合同(manual)→ 给;② 表挂的户有合同但房号对不上(场地未定)→ 给;
+    //   ③ 待绑定但场地含这个房号的只有自家的合同 → 不给(不建议改归给自己)
+    @Test
+    void binding_suggestsOtherTenantWhoseLeaseCoversTheRoom() throws Exception {
+        int b1 = buildingIds().get(0);
+        int newT = createTenant("IT新签户301", null), oldT = createTenant("IT旧户501", null),
+            noneT = createTenant("IT无约户", null);
+        int c = leaseWithRoom(newT, b1, "A座三楼301室");
+        leaseWithRoom(newT, b1, null);                     // 新签户同栋两份 → 它自己的表对位不唯一(ambiguous)
+        leaseWithRoom(oldT, b1, "A座五楼501室");
+        int orphan = createMeter("elec", "IT无约301电", noneT, b1, "IT无约户");
+        int moved = createMeter("elec", "IT旧户301电", oldT, b1, "IT旧户501");
+        int own = createMeter("elec", "IT新签301电", newT, b1, "IT新签户301");
+        String body = binding("2087-03");
+        for (int mid : new int[]{orphan, moved}) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> sug = (Map<String, Object>) row(body, mid).get("suggestion");
+            assertThat(sug).as("meter " + mid).containsEntry("tenantId", newT)
+                    .containsEntry("tenantName", "IT新签户301").containsEntry("contractId", c);
+        }
+        assertThat(row(body, orphan).get("status")).isEqualTo("manual");
+        assertThat(row(body, moved).get("status")).isEqualTo("auto");
+        assertThat(row(body, own).get("status")).isEqualTo("manual");
+        assertThat(row(body, own).get("suggestion")).isNull();
+    }
+
+    // SPEC §3.6 换租写新行时不继承合同钉:自 5 月起改归乙户,那一行的钉是空的(乙户没合同 → manual,不是钉了甲户合同的 override_stale);
+    // 5 月之前的那一段照旧钉着甲户的合同
+    @Test
+    void assignFromWithNewTenant_doesNotInheritPin() throws Exception {
+        int b1 = buildingIds().get(0);
+        int t1 = createTenant("IT钉甲户", null), t2 = createTenant("IT钉乙户", null);
+        int c1 = createContract(t1, b1, "2087-01-01", "2087-12-31");
+        int mid = createMeter("elec", "IT换租钉表", t1, b1, "IT钉甲户");
+        bindReq(mid, String.valueOf(c1), "2087-03", "correct").andExpect(jsonPath("$.code").value(0));
+        mvc.perform(put("/api/meters/assign").header("Authorization", auth()).contentType("application/json")
+                .content("{\"ym\":\"2087-05\",\"mode\":\"from\",\"meterIds\":[" + mid + "],"
+                        + "\"patch\":{\"tenantId\":" + t2 + ",\"tenantName\":\"IT钉乙户\"},\"alsoMigrateCopies\":false}"))
+                .andExpect(jsonPath("$.code").value(0));
+        assertThat(row(binding("2087-03"), mid).get("status")).isEqualTo("override");
+        Map<String, Object> r = row(binding("2087-06"), mid);
+        assertThat(r.get("status")).isEqualTo("manual");
+        assertThat(r.get("pinnedContractNo")).isNull();
     }
 }
