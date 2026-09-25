@@ -697,10 +697,13 @@ class MeterApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data.imported").value(1))
                 .andExpect(jsonPath("$.data.skipped").value(0))
                 .andExpect(jsonPath("$.data.notices.length()").value(1))
+                // 提示写展示名(配电总表 · 楼栋名),不露 infra / 楼栋 id 这类代号
                 .andExpect(jsonPath("$.data.notices[0].reason")
-                        .value(org.hamcrest.Matchers.containsString("infra")))
+                        .value(org.hamcrest.Matchers.containsString("配电总表 · IT-G2-招商中心")))
                 .andExpect(jsonPath("$.data.notices[0].reason")
-                        .value(org.hamcrest.Matchers.containsString(String.valueOf(b2))));
+                        .value(org.hamcrest.Matchers.containsString("园区公摊 · ")))
+                .andExpect(jsonPath("$.data.notices[0].reason")
+                        .value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("infra"))));
         mvc.perform(get("/api/meters").param("kind", "elec").param("zone", "p1").header("Authorization", auth()))
                 .andExpect(jsonPath("$.data[?(@.code=='IT770020')].ownership").value("share"))
                 .andExpect(jsonPath("$.data[?(@.code=='IT770020')].buildingId").value(b1))
@@ -2176,5 +2179,196 @@ class MeterApiIT extends AbstractMysqlIT {
         assertThat(readYms(ab[1])).containsExactly("2083-04");
         assertThat(statusChain(ab[1])).containsExactly("2083-04:active", "2083-06:active");
         assertThat(statusChain(ab[0])).containsExactly("2083-03:active", "2083-04:removed", "2083-06:removed");
+    }
+
+    // ── 认表:编码优先占位 + 无码行不认有码异名表 + 复合名只报租户表(2026-09-25 用户实测二期 2023-08 原册)。独占 2078 ──
+
+    private Double currOf(int meterId, String ym) throws Exception {
+        java.util.List<Double> v = JsonPath.read(utf8(mvc.perform(get("/api/meters/" + meterId + "/readings")
+                .header("Authorization", auth())).andReturn()), "$.data[?(@.ym=='" + ym + "')].currTotal");
+        return v.isEmpty() ? null : v.get(0);
+    }
+
+    // 同一批:无码的临电行在前、按位置认得到同址的有码真表;真表那一行按编码认 → 临电行让开,新建临电表,
+    // 真表拿到自己的读数,不再被 G6 拒。缺标识列(名字是拼出来的、两行一样)的册子同理,只能靠编码占位分开
+    @Test
+    void importCodeFirst_uncodedTempRowBeforeCodedRow_realMeterKeepsItsReading() throws Exception {
+        String loc = ",\"area\":\"ITR一车间\",\"spot\":\"四楼401室\"";
+        int real = idOf(imp(null, irow("ITR谢福兵电", "2078-07", loc + ",\"code\":\"ITR-0081\",\"factor\":20,\"currTotal\":0")));
+        String res = imp(null,
+                irow("ITR谢福兵临电", "2078-08", loc + ",\"factor\":1,\"prevTotal\":0,\"currTotal\":18.2"),
+                irow("ITR谢福兵电", "2078-08", loc + ",\"code\":\"ITR-0081\",\"factor\":20,\"prevTotal\":0,\"currTotal\":5.9"));
+        assertThat(reasons(res, "errors")).isEmpty();
+        assertThat(reasons(res, "notices")).isEmpty();   // 真表本批就在:不是换表,也不必问「是不是同一块」
+        java.util.List<String> by = JsonPath.read(res, "$.data.matches[*].matchBy");
+        java.util.List<Integer> ids = JsonPath.read(res, "$.data.matches[*].meterId");
+        assertThat(by).containsExactly("new", "code");
+        assertThat(ids.get(1)).isEqualTo(real);
+        assertThat(currOf(real, "2078-08")).isEqualTo(5.9);
+        assertThat(currOf(ids.get(0), "2078-08")).isEqualTo(18.2);
+        assertThat(statusChain(ids.get(0))).containsExactly("2078-08:active");
+
+        String loc2 = ",\"area\":\"ITR一车间\",\"spot\":\"五楼502室\"";
+        String bare = "{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"ITR一车间-五楼502室\",\"ym\":\"";
+        int real2 = idOf(imp(null, bare + "2078-07\"" + loc2 + ",\"code\":\"ITR-0076\",\"currTotal\":0}"));
+        String res2 = imp(null, bare + "2078-08\"" + loc2 + ",\"prevTotal\":0,\"currTotal\":42.9}",
+                bare + "2078-08\"" + loc2 + ",\"code\":\"ITR-0076\",\"prevTotal\":0,\"currTotal\":76.95}");
+        assertThat(reasons(res2, "errors")).isEmpty();
+        java.util.List<Integer> ids2 = JsonPath.read(res2, "$.data.matches[*].meterId");
+        assertThat(ids2.get(0)).isNotEqualTo(real2);
+        assertThat(ids2.get(1)).isEqualTo(real2);
+        assertThat(currOf(real2, "2078-08")).isEqualTo(76.95);
+    }
+
+    // 真表本月册子里没有行(飞浪临电 / 张炳南临电 那种):无码的临电行按位置认到有码、名字不同的真表 → 不认,
+    // 按新表建;真表这个月不被写。出提示点名认到的表与编码,G9 同址提示照出
+    @Test
+    void importUncodedRow_codedMeterWithOtherName_notClaimed_newMeterAndNotice() throws Exception {
+        String loc = ",\"area\":\"ITR二车间\",\"spot\":\"五楼501室\"";
+        int real = idOf(imp(null, irow("ITR张炳南电", "2078-07", loc + ",\"code\":\"ITR-0025\",\"currTotal\":0")));
+        String res = imp(null, irow("ITR张炳南临电", "2078-08", loc + ",\"prevTotal\":0,\"currTotal\":18.2"));
+        assertThat((String) JsonPath.read(res, "$.data.matches[0].matchBy")).isEqualTo("new");
+        int temp = idOf(res);
+        assertThat(temp).isNotEqualTo(real);
+        assertThat(readYms(real)).containsExactly("2078-07");
+        assertThat(assignRow(real, "2078-08")).isNull();
+        assertThat(currOf(temp, "2078-08")).isEqualTo(18.2);
+        assertThat(statusChain(temp)).containsExactly("2078-08:active");
+        assertThat(reasons(res, "notices")).hasSize(2)
+                .anySatisfy(r -> assertThat(r).contains("没有编码").contains("「ITR张炳南电」有编码 ITR-0025")
+                        .contains("已按新表建了「ITR张炳南临电」"))
+                .anySatisfy(r -> assertThat(r).contains("可能是换表").contains("ITR张炳南电"));
+    }
+
+    // 反例:无码行与有码表同名(新疆三林电那种)照旧按位置认上;缺标识列的册子(名字是拼出来的,比不了)也照旧认
+    @Test
+    void importUncodedRow_sameNameOrSynthesizedName_stillClaimsCodedMeterByAddr() throws Exception {
+        String loc = ",\"area\":\"ITR三车间\",\"spot\":\"一楼102室\"";
+        int real = idOf(imp(null, irow("ITR新疆三林电", "2078-07", loc + ",\"code\":\"ITR-0041\",\"currTotal\":0")));
+        String res = imp(null, irow("ITR新疆三林电", "2078-08", loc + ",\"prevTotal\":0,\"currTotal\":3"));
+        assertThat((String) JsonPath.read(res, "$.data.matches[0].matchBy")).isEqualTo("addr");
+        assertThat(idOf(res)).isEqualTo(real);
+        assertThat(reasons(res, "notices")).isEmpty();
+        String bare = imp(null, irow("ITR三车间-一楼102室", "2078-09", loc + ",\"prevTotal\":3,\"currTotal\":4"));
+        assertThat((String) JsonPath.read(bare, "$.data.matches[0].matchBy")).isEqualTo("addr");
+        assertThat(idOf(bare)).isEqualTo(real);
+        // 期区对不上的编码行(G5 行级错误)不占位:同批的无码行照旧认上
+        String g5 = imp(null, "{\"kind\":\"elec\",\"zone\":\"p2\",\"name\":\"ITR错码行\",\"ym\":\"2078-10\","
+                + "\"code\":\"ITR-0041\",\"currTotal\":9}", irow("ITR新疆三林电", "2078-10", loc + ",\"prevTotal\":4,\"currTotal\":5"));
+        assertThat(reasons(g5, "errors")).singleElement().asString().contains("填错");
+        assertThat(idOf(g5)).isEqualTo(real);
+    }
+
+    // 复合名提示只报租户表(嘉荣、科文 两户共用一表);公用表(园区生活水泵、消防控制室 / 保安亭、路灯等)不报
+    @Test
+    void importCompositeName_warnsOnlyForTenantRows() throws Exception {
+        imp(null, irow("ITR嘉荣科文电", "2078-07", ",\"currTotal\":0"), irow("ITR保安亭路灯", "2078-07", ",\"currTotal\":0"));
+        String res = imp(null,
+                irow("ITR嘉荣科文电", "2078-08", ",\"tenantName\":\"IT嘉荣、IT科文\",\"ownership\":\"tenant\",\"currTotal\":1"),
+                irow("ITR保安亭路灯", "2078-08", ",\"tenantName\":\"IT保安亭、路灯等\",\"ownership\":\"share\",\"currTotal\":1"));
+        java.util.List<Integer> at = JsonPath.read(res, "$.data.notices[*].rowIndex");
+        assertThat(at).containsExactly(0);
+        assertThat(reasons(res, "notices")).singleElement().asString().contains("复合名").contains("IT嘉荣、IT科文");
+    }
+
+    // 编码占位不一律让开:同一块表在两个 sheet 各出现一次(一次带码、一次无码,标识名相同)→ 两次都认到它,
+    // 不悄悄新建「X#2」;读数相同照过,读数不同交给 G6 报错
+    @Test
+    void importCodeClaim_uncodedDuplicateOfClaimedMeter_sameMeterThenG6() throws Exception {
+        String loc = ",\"area\":\"ITR六车间\",\"spot\":\"一楼\"";
+        int real = idOf(imp(null, irow("ITR三林电", "2078-07", loc + ",\"code\":\"ITR-0141\",\"currTotal\":0")));
+        String same = imp(null,
+                irow("ITR三林电", "2078-08", loc + ",\"code\":\"ITR-0141\",\"prevTotal\":0,\"currTotal\":3.5"),
+                irow("ITR三林电", "2078-08", loc + ",\"prevTotal\":0,\"currTotal\":3.5"));
+        assertThat(reasons(same, "errors")).isEmpty();
+        assertThat(reasons(same, "notices")).isEmpty();
+        java.util.List<Integer> ids = JsonPath.read(same, "$.data.matches[*].meterId");
+        assertThat(ids).containsExactly(real, real);
+        String differ = imp(null,
+                irow("ITR三林电", "2078-09", loc + ",\"code\":\"ITR-0141\",\"prevTotal\":3.5,\"currTotal\":4.5"),
+                irow("ITR三林电", "2078-09", loc + ",\"prevTotal\":3.5,\"currTotal\":5.5"));
+        assertThat(reasons(differ, "errors")).singleElement().asString().contains("以第 1 行为准");
+        java.util.List<Integer> ids2 = JsonPath.read(differ, "$.data.matches[*].meterId");
+        assertThat(ids2).containsExactly(real);
+        assertThat(currOf(real, "2078-09")).isEqualTo(4.5);
+        // 缺标识列的册子(名字是拼出来的、两行一样)读数相同:同样认同一块,不新建
+        String loc2 = ",\"area\":\"ITR六车间\",\"spot\":\"二楼\"";
+        int real2 = idOf(imp(null, irow("ITR六车间-二楼", "2078-07", loc2 + ",\"code\":\"ITR-0142\",\"currTotal\":0")));
+        String dup = imp(null,
+                irow("ITR六车间-二楼", "2078-08", loc2 + ",\"code\":\"ITR-0142\",\"prevTotal\":0,\"currTotal\":2.5"),
+                irow("ITR六车间-二楼", "2078-08", loc2 + ",\"prevTotal\":0,\"currTotal\":2.5"));
+        java.util.List<Integer> ids3 = JsonPath.read(dup, "$.data.matches[*].meterId");
+        assertThat(ids3).containsExactly(real2, real2);
+    }
+
+    // 无码行比名字的四处边界:表名末尾新建时撞名加的「#n」不算异名;表名是拼出来的(区域-位置)按同名;
+    // 「已拆」行不比;没认同址那块时,按标识名只认同址或没区域的表(别处的同名表不认:读数不串过去、区域不被改)
+    @Test
+    void importUncodedRow_nameCompare_hashSuffixSynthesizedRemovedFarNamesake() throws Exception {
+        // ① 「ITR天面电」(码 0201)在天面;同名新码的表在一楼建成「ITR天面电#2」→ 此后一楼无码的「ITR天面电」认 #2
+        String l1 = ",\"area\":\"ITR七车间\",\"spot\":\"天面\"", l2 = ",\"area\":\"ITR七车间\",\"spot\":\"一楼\"";
+        int m1 = idOf(imp(null, irow("ITR天面电", "2078-07", l1 + ",\"code\":\"ITR-0201\",\"currTotal\":0")));
+        int m2 = idOf(imp(null, irow("ITR天面电", "2078-07", l2 + ",\"code\":\"ITR-0202\",\"currTotal\":0")));
+        assertThat(meterMapper.selectById(m2).getName()).isEqualTo("ITR天面电#2");
+        String r1 = imp(null, irow("ITR天面电", "2078-08", l2 + ",\"prevTotal\":0,\"currTotal\":1.5"));
+        assertThat((String) JsonPath.read(r1, "$.data.matches[0].matchBy")).isEqualTo("addr");
+        assertThat(idOf(r1)).isEqualTo(m2);
+        assertThat(readYms(m1)).containsExactly("2078-07");
+        // ② 表名是拼出来的(缺标识列的册子建的)、有码;带标识名的无码行同址照认
+        String l3 = ",\"area\":\"ITR七车间\",\"spot\":\"二楼\"";
+        int syn = idOf(imp(null, irow("ITR七车间-二楼", "2078-07", l3 + ",\"code\":\"ITR-0203\",\"currTotal\":0")));
+        String r2 = imp(null, irow("ITR某户电", "2078-08", l3 + ",\"prevTotal\":0,\"currTotal\":2.5"));
+        assertThat((String) JsonPath.read(r2, "$.data.matches[0].matchBy")).isEqualTo("addr");
+        assertThat(idOf(r2)).isEqualTo(syn);
+        // ③ 编码栏写「已拆」的行(看着像无码)标识名不同,照旧按位置认到有码的那块并标拆
+        String l4 = ",\"area\":\"ITR七车间\",\"spot\":\"三楼\"";
+        int old = idOf(imp(null, irow("ITR拆表电", "2078-07", l4 + ",\"code\":\"ITR-0204\",\"currTotal\":0")));
+        String r3 = imp(null, irow("ITR拆表旧名", "2078-08", l4 + ",\"code\":\"已拆\",\"prevTotal\":0,\"currTotal\":3.5"));
+        assertThat(idOf(r3)).isEqualTo(old);
+        assertThat(statusChain(old)).containsExactly("2078-07:active", "2078-09:removed");
+        // ④ 五楼无码的「ITR甲电」按位置认到有码的「ITR乙电」→ 不认;四楼那块同名的「ITR甲电」也不认 → 在五楼新建
+        String far = ",\"area\":\"ITR七车间\",\"spot\":\"四楼\"", l5 = ",\"area\":\"ITR七车间\",\"spot\":\"五楼\"";
+        int jia = idOf(imp(null, irow("ITR甲电", "2078-07", far + ",\"currTotal\":0")));
+        int yi = idOf(imp(null, irow("ITR乙电", "2078-07", l5 + ",\"code\":\"ITR-0205\",\"currTotal\":0")));
+        String r4 = imp(null, irow("ITR甲电", "2078-08", l5 + ",\"prevTotal\":0,\"currTotal\":4.5"));
+        assertThat((String) JsonPath.read(r4, "$.data.matches[0].matchBy")).isEqualTo("new");
+        assertThat(idOf(r4)).isNotIn(jia, yi);
+        assertThat(readYms(jia)).containsExactly("2078-07");
+        assertThat(assignRow(jia, "2078-08")).isNull();
+    }
+
+    // 真表档案里还没有编码、这一批才头一回带码:有码行先认(编码写回档案),
+    // 同址无码的临电行随后让开它 → 新建临电表;真表拿到真读数,不被 G6 拒
+    @Test
+    void importCodeFirst_realMeterUncodedInArchive_codedRowGoesFirst() throws Exception {
+        String loc = ",\"area\":\"ITR八车间\",\"spot\":\"五楼502室\"";
+        int real = idOf(imp(null, irow("ITR驰鸿电", "2078-07", loc + ",\"currTotal\":0")));
+        String res = imp(null,
+                irow("ITR驰鸿临电", "2078-08", loc + ",\"prevTotal\":0,\"currTotal\":42.9"),
+                irow("ITR驰鸿电", "2078-08", loc + ",\"code\":\"ITR-0301\",\"factor\":40,\"prevTotal\":0,\"currTotal\":76.95"));
+        assertThat(reasons(res, "errors")).isEmpty();
+        assertThat(reasons(res, "notices")).isEmpty();
+        java.util.List<Integer> ids = JsonPath.read(res, "$.data.matches[*].meterId");
+        assertThat(ids.get(1)).isEqualTo(real);
+        assertThat(ids.get(0)).isNotEqualTo(real);
+        assertThat(currOf(real, "2078-08")).isEqualTo(76.95);
+        assertThat(currOf(ids.get(0), "2078-08")).isEqualTo(42.9);
+        assertThat(meterMapper.selectById(real).getCode()).isEqualTo("ITR-0301");
+    }
+
+    // 新建时撞名、名字被加了 #2 的临电表:重导同一本册子认得回它(按名字收窄时去掉 #n 再比),不报位置歧义
+    @Test
+    void importReimport_hashSuffixedTempMeter_matchedAgainNotAmbiguous() throws Exception {
+        String loc = ",\"area\":\"ITR九车间\",\"spot\":\"二楼201室\",\"tenantName\":\"ITR飞浪\"";
+        imp(null, irow("ITR飞浪电", "2078-07", loc + ",\"code\":\"ITR-0065\",\"currTotal\":0"));
+        int gone = idOf(imp(null, irow("ITR飞浪临电", "2078-07", ",\"area\":\"ITR九车间\",\"spot\":\"一楼\",\"currTotal\":0")));
+        statusReq(gone, "2078-08", "removed", null).andExpect(jsonPath("$.code").value(0));
+        String row = irow("ITR飞浪临电", "2078-08", loc + ",\"prevTotal\":0,\"currTotal\":18.2");
+        int temp = idOf(imp(null, row));
+        assertThat(meterMapper.selectById(temp).getName()).isEqualTo("ITR飞浪临电#2");
+        String again = imp(null, row);
+        assertThat(reasons(again, "errors")).isEmpty();
+        assertThat((String) JsonPath.read(again, "$.data.matches[0].matchBy")).isEqualTo("addr");
+        assertThat(idOf(again)).isEqualTo(temp);
     }
 }
