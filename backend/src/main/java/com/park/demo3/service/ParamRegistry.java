@@ -50,6 +50,10 @@ public final class ParamRegistry {
         6, "F：电费 + 公摊（去电梯）+ 电力管理费",
         7, "G：电费 + 公摊 + 电力管理费 + 附加电表电费");
 
+    private static final Map<Integer, String> ROUND_SCALE_OPTS = Map.of(
+        2, "四舍五入到 2 位",
+        3, "四舍五入到 3 位");
+
     private static final Map<String, Def> DEFS = new LinkedHashMap<>();
 
     private static void price(String key, String label, String unit, Group group, Set<ScopeKind> scopes, String mode,
@@ -124,6 +128,11 @@ public final class ParamRegistry {
             "分摊标准 = 算式值 + 附加金额", "广联 +100", null);
         alloc("price_override", "公摊池指定单价", "元/度", Group.CONSTANT, S_RULE, "from", false, ValueKind.MONEY, null,
             "公摊池成本 = 用量 × 指定单价（不取价目）", "宿舍路灯 1.13156875 / 绿化水 4.45", null);
+        // 2026-09-26 D5:取整位从公摊池本体挪进参数表,可按月换(源册二期绿化水泵 2023-12 前 2 位、2024-01 起 3 位)。
+        // ENUM 只许 2 / 3 —— valueOk 按字典挡,INT 挡不住 4。没有行 = 2 位。
+        alloc("round_scale", "分摊标准小数位", "", Group.CONSTANT, S_RULE, "from", false, ValueKind.ENUM, ROUND_SCALE_OPTS,
+            "分摊标准 = 算式值四舍五入到本位数 + 折入单价 + 附加金额",
+            "未设置 = 2 位；二期消防水稳压泵 / 绿化水泵 / 路灯 / 五车间与六车间广告字灯、一期绿化水 为 3 位", null);
         // 光伏分栋分析的年锚点与五条判据线(PV-ANALYSIS-SPEC §04)。判据线是**人定的** ——
         // 只有让用户看得见、改得动,「越线了」才退回成一句可复算的事实,而不是屏替他下的结论。
         // 六键都只有全局一档;Group.CONSTANT 而非 MONTHLY(ParamPermissionSplitTest 钉死

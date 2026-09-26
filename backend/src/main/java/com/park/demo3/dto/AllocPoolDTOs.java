@@ -12,12 +12,15 @@ public final class AllocPoolDTOs {
     // V69:label=「楼层·电表①」位置化标签(不再露内部标识名);spot/subName/meterType 供 hover 明细
     // status/statusFrom(METER-TIMELINE-SPEC §5,只在 GET /pools 有值):站在该月这块表的状态段
     // (active/retired/removed,null=未在册)与这一段的起始月,给池编辑灰显「自 M 起已拆,不计」
+    // src(V131,只在响应里有值,请求体里忽略):这一行来自初始版('default')还是按月版本组('month'),同 PoolMember.src
     public record MeterBind(Integer meterId, String name, Integer sign,
                             String label, String spot, String subName, String meterType,
-                            String status, String statusFrom) {
-        public MeterBind(Integer meterId, String name, Integer sign) { this(meterId, name, sign, null, null, null, null, null, null); }
+                            String status, String statusFrom, String src) {
+        public MeterBind(Integer meterId, String name, Integer sign) { this(meterId, name, sign, null, null, null, null, null, null, null); }
     }
-    public record Link(Integer ruleId, String name, String type) {}
+    public record Link(Integer ruleId, String name, String type, String src) {
+        public Link(Integer ruleId, String name, String type) { this(ruleId, name, type, null); }
+    }
 
     // V73 逐表明细行(原册一表一行:A座天面四部梯各占一行)。快照读出,不现算。
     // costAmount:仅 p1/dorm「逐表 ROUND 再求和」口径有值;p2 池级一次 ROUND、净额池/手输量池 → null,

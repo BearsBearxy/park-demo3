@@ -7,4 +7,5 @@ public class AllocRuleMeter {
     private Integer ruleId;
     private Integer meterId;
     private Integer sign;         // +1计入/-1从池剔除(V64)
+    private String acctMonth;     // V131 ''=初始版;'YYYY-MM'=版本组(自该月起前滚,同 alloc_rule_member)
 }

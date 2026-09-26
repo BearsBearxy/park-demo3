@@ -130,7 +130,7 @@ const ZONE_OPTS = computed(() => zones.list.map(z => ({ value: z.code, label: z.
 
 // ── 数据(竞态守卫:快速切年月只接受最新一次请求) ──
 const pools = ref<AllocPoolsDTO | null>(null)
-// S21:池参数只读镜像(分母/加度/2023 冻结价披露)= 计费参数页同一读口,只拉 rule: 三个键(全期别一份,随月不随 zone)
+// S21:池参数只读镜像(分母/加度/2023 冻结价披露/取整位)= 计费参数页同一读口,只拉 rule: 四个键(全期别一份,随月不随 zone)
 const paramRows = ref<ParamRowDTO[]>([])
 const status = ref<ParamStatusDTO | null>(null)
 const rules = ref<AllocRuleDTO[]>([])
@@ -162,10 +162,11 @@ async function loadMonth() {
   try {
     const [ps, pr, df, md, st] = await Promise.all([
       allocApi.pools(ym.value),
-      // 三个只读镜像键(分母/加度/2023 冻结价)本就只在 rule: 作用域出现,scope 前缀过滤是防御性的
+      // 四个只读镜像键(分母/加度/2023 冻结价/取整位)本就只在 rule: 作用域出现,scope 前缀过滤是防御性的
       // 从没筛掉过东西,不加也一样(2026-08-29 撤:曾为 Finding 3 的 zoneCalcKind 加过 zone_calc_kind
       // 键并去掉这个过滤,该用法已随「换期不许变列数」改回列常量一起删,见 poolLedgerLogic.ts)。
-      paramsApi.list(ym.value, 'all', { key: 'coefficient,extra_qty,frozen_2023' })
+      // round_scale(V131 D5):抽屉「高级」里既有池的取整位只读一行,值同样站在本月取
+      paramsApi.list(ym.value, 'all', { key: 'coefficient,extra_qty,frozen_2023,round_scale' })
         .catch(() => [] as ParamRowDTO[]),
       allocApi.memberDiff(ym.value).catch(() => [] as AllocMemberDiffDTO[]),
       allocApi.meterDiff(ym.value).catch(() => [] as AllocMeterDiffDTO[]),
@@ -250,7 +251,7 @@ const buildingOpts = computed(() => [{ value: '', label: '(园区级,不挂楼�
   ...buildings.value.map(b => ({ value: String(b.id), label: b.name }))])
 
 // ── 分带表体(§H4.2b):按原册块分带(一期 7 块;二期/宿舍无块回落楼栋),楼层成列;
-// 带尾出块合计(口径同原册 SUM 区间),tfoot 出全期合计(均剔 ref 行) ──
+// 带尾出块合计(口径同原册 SUM 区间),tfoot 出全期合计(均剔没出应分摊的 ref 行,G1) ──
 const bands = computed(() => groupPoolsByBookBlock(pools.value?.rows ?? [], zone.value))
 const foot = computed(() => poolFooter(bands.value))
 const generated = computed(() => pools.value?.generated ?? false)
@@ -392,7 +393,7 @@ const EMPTY_CELL: ParamCell = { text: '–', full: '未设置', badge: '', tone:
 const paramCells = computed(() => {
   const m = new Map<string, ParamCell>()
   for (const r of paramRows.value) {
-    if (r.mode == null || (r.key !== 'coefficient' && r.key !== 'extra_qty')) continue
+    if (r.mode == null || (r.key !== 'coefficient' && r.key !== 'extra_qty' && r.key !== 'round_scale')) continue
     const b = rangeBadge(r)
     const baseRef = baseRefLabel(r)
     m.set(`${r.scope}|${r.key}`, { text: fmt(r.value), full: r.valueText, tone: b.tone, range: r.rangeText, baseRef,
@@ -401,7 +402,8 @@ const paramCells = computed(() => {
   }
   return m
 })
-const paramCell = (ruleId: number, key: 'coefficient' | 'extra_qty'): ParamCell => paramCells.value.get(`rule:${ruleId}|${key}`) ?? EMPTY_CELL
+type PoolParamKey = 'coefficient' | 'extra_qty' | 'round_scale'
+const paramCell = (ruleId: number, key: PoolParamKey): ParamCell => paramCells.value.get(`rule:${ruleId}|${key}`) ?? EMPTY_CELL
 // 抽屉③只读句:「分摊基数 5.7（2023-12 起长期）· 加减度数 +170（仅本月）」;走面积基数的池写「分摊基数 148,918.01 ㎡（取自「园区分摊面积基数」）」
 function roParamLine(ruleId: number): string {
   const c = paramCell(ruleId, 'coefficient'), e = paramCell(ruleId, 'extra_qty')
@@ -409,11 +411,16 @@ function roParamLine(ruleId: number): string {
   const extra = e.tone === 'inherit' ? '加减度数 未设置' : `加减度数 ${e.full}（${e.range}）`
   return `${coef} · ${extra}`
 }
+// V131 D5:取整位挪成池参数(按月生效),既有池在抽屉「高级」里只读一句;没有行 = 引擎按 2 位(AllocService.roundScaleOf)
+function roRoundLine(ruleId: number): string {
+  const c = paramCell(ruleId, 'round_scale')
+  return c.tone === 'inherit' ? '分摊标准小数位 未设置（按 2 位）' : `分摊标准小数位 ${c.full}（${c.range}）`
+}
 const router = useRouter()
 const tabs = useTabsStore()
-// 深链协议:KeepAlive 缓存实例只在 setup 消费 query,必须 openFresh;section 按键归区(加减度数=① 本月参数,分摊基数=② 长期常数);
+// 深链协议:KeepAlive 缓存实例只在 setup 消费 query,必须 openFresh;section 按键归区(加减度数=① 本月参数,分摊基数/取整位=② 长期常数);
 // edit=1:[去重算] 落地直接进编辑态(重算按钮只在编辑态出)
-function gotoParams(ruleId?: number, key: 'coefficient' | 'extra_qty' | null = null, edit = false) {
+function gotoParams(ruleId?: number, key: PoolParamKey | null = null, edit = false) {
   tabs.openFresh('params', { pin: true })
   const section = key === 'extra_qty' ? 'monthly' : 'constant'
   router.push({ path: '/params', query: { ym: ym.value, zone: zone.value, section,
@@ -517,7 +524,8 @@ interface PoolForm {
   meters: { meterId: number; sign: number; label: string }[]
   links: { ruleId: string; type: AllocLinkType }[]
   members: { tenantId: number; tenantName: string; unitNo: string | null; weight: number | null; inForce: AllocInForce }[]
-  monthOnly: boolean                  // 受益人自本月起(写 acct_month 版本组,不动此前月份与默认长期名单)
+  // 自本月起(memberMonth=ym):受益人、绑定表、折入链三处都按月写版本组,不动此前月份与长期那一份(V131 D4/D7)
+  monthOnly: boolean
   oldName: string                     // 存量池名(定位三项全空时后端保留原名,此处照实展示)
 }
 const form = ref<PoolForm>(emptyForm())
@@ -536,7 +544,7 @@ const METHOD_TEXT: Record<AllocMethodEditable, string> = {
 const METHOD_HINT: Record<AllocMethodEditable, string> = {
   area: '按受益户租赁面积摊（分摊基数 = 受益面积合计 ㎡）', floor: '按层份摊（分摊基数 = 层数，可小数）',
   direct: '整笔给唯一受益户', none: '不摊给租户,全额挂园区亏',
-  loss: '并入损耗链', ref: '只出分摊标准供别池折入,不出应分摊',
+  loss: '并入损耗链', ref: '只出分摊标准供别池折入,不摊给租户;标准折进别的池时应分摊照算',
   carrier: '表已在别池以「−」冲减,本行只陈列用量,不出应分摊、不入金额合计',
 }
 const isManualPool = computed(() => form.value.method === 'manual')
@@ -662,7 +670,8 @@ function openPoolDlg(r?: AllocPoolRowDTO) {
       links: r.links.map(l => ({ ruleId: String(l.ruleId), type: l.type })),
       members: r.members.map(m => ({ tenantId: m.tenantId, tenantName: m.tenantName ?? `#${m.tenantId}`,
         unitNo: m.unitNo, weight: m.weight, inForce: m.inForce })),
-      monthOnly: r.members.some(m => m.src === 'month'),
+      // D7:三处里任一处站在本月的有效组来自按月版本,就默认勾上
+      monthOnly: [...r.members, ...r.meters, ...r.links].some(x => x.src === 'month'),
       oldName: r.name,
     }
   } else form.value = emptyForm()
@@ -732,8 +741,9 @@ const meterRows = computed<MeterRow[]>(() => {
   return rows
 })
 const signOf = (id: number) => form.value.meters.find(m => m.meterId === id)?.sign ?? null
-// SPEC §5:移出打开抽屉时就在池里的表 → 先查它哪些月有读数,确认框点名这些月。池绑定不分月,
-// 移出之后重新生成哪个月都不再算它。本次刚勾上的表直接取消,不问。取消确认 → 把勾选框拨回去
+// SPEC §5:移出打开抽屉时就在池里的表 → 先查它哪些月有读数,确认框点名这些月。V131 起绑定按月分版本:
+// 勾了「只改本月起」只点名本月及以后的月(之前的月份不动);没勾改的是长期那一份,照旧全列。
+// 本次刚勾上的表直接取消,不问。取消确认 → 把勾选框拨回去
 // (@change 时浏览器已经把框取消了,而 form 没变,Vue 不会替我们重画)。
 async function toggleBind(id: number, label: string, e?: Event) {
   const f = form.value
@@ -748,13 +758,14 @@ async function toggleBind(id: number, label: string, e?: Event) {
   if (j >= 0) f.meters.splice(j, 1)
 }
 async function confirmUnbind(id: number, label: string): Promise<boolean> {
+  const from = form.value.monthOnly ? ym.value : ''
   let months: string[]
   try {
     months = (await metersApi.meterReadings(id))
-      .filter(r => r.usageTotal != null && r.usageTotal !== 0).map(r => r.ym).sort()
+      .filter(r => r.usageTotal != null && r.usageTotal !== 0 && r.ym >= from).map(r => r.ym).sort()
   } catch (err) {
     return confirm(`移出「${label}」?这块表哪些月有读数没查到(${errMsg(err, '读数没加载出来')})。\n`
-      + '移出后,重新生成哪个月本池都不再算它。')
+      + (from ? `移出后,${from} 起重新生成时本池不再算它。` : '移出后,重新生成哪个月本池都不再算它。'))
   }
   if (!months.length) return true
   return confirm(`移出「${label}」?\n这 ${months.length} 个月有读数(用量非零):${months.join('、')}\n`
@@ -1004,7 +1015,7 @@ async function delPool() {
          进编辑模式就把整张表顶下去一行 —— 它顶的是整张表,不是 §5 允许的「编辑区自身」,不适用那条豁免。 -->
     <!-- fp-stale 带 pointer-events:none —— 旧数据不许被点、被录(安全项,见 base.css) -->
     <div class="pl-tablearea" :class="{ 'fp-stale': veil }" :aria-busy="veil">
-    <!-- 台账式宽表:分带(Excel 式分隔带)+tfoot 合计(ref 行不计) -->
+    <!-- 台账式宽表:分带(Excel 式分隔带)+tfoot 合计(没出应分摊的 ref 行不计) -->
     <div class="pl-wrap">
       <table class="pl-table">
         <thead>
@@ -1167,7 +1178,7 @@ async function delPool() {
             </td>
           </tr>
         </tbody>
-        <!-- tfoot 合计:Σ度数(总列)/Σ应分摊,ref 纯标准行不计(锚 L126/W126) -->
+        <!-- tfoot 合计:Σ度数(总列)/Σ应分摊,没出应分摊的 ref 纯标准行不计(锚 L126/W126;G1 依据见 bandFooter) -->
         <tfoot>
           <tr>
             <th class="pl-fix" :style="fixArea"><span class="pl-foot-lbl">合　计</span></th>
@@ -1179,7 +1190,7 @@ async function delPool() {
             <th><span class="pl-foot-v">{{ fmt2(foot.cost) }}</span></th>
             <!-- 列数算式同带尾小计:已占 3 + 4 + segDefs.length + 1 = segDefs.length + 8 -->
             <th :colspan="colCount - segDefs.length - 8">
-              <span class="pl-foot-note">纯标准行(ref)不入合计;冲减载体(carrier)只计度数不计金额</span>
+              <span class="pl-foot-note">纯标准行只计出了应分摊的;冲减载体只计度数不计金额</span>
             </th>
           </tr>
         </tfoot>
@@ -1310,8 +1321,15 @@ async function delPool() {
           <div v-if="advOpen" class="pl-otherbox">
             <div class="pl-formrow">
               <Select v-model="form.stdKind" label="分摊标准算式(按册复刻)" :options="STD_OPTS" size="sm" />
-              <Select :model-value="String(form.roundScale)" label="四舍五入位数" :options="ROUND_OPTS" size="sm"
+              <!-- V131 D5:取整位挪成池参数按月生效;只有新建池在这里选初始值(后端落成初始版本行,同初始分摊基数) -->
+              <Select v-if="form.id == null" :model-value="String(form.roundScale)" label="四舍五入位数" :options="ROUND_OPTS" size="sm"
                       @update:model-value="form.roundScale = +$event" />
+            </div>
+            <div v-if="form.id != null" class="pl-roparam">
+              <span>{{ roRoundLine(form.id) }}</span>
+              <button type="button" class="pl-more" @click="gotoParams(form.id!, 'round_scale')">
+                <component :is="iconFor('arrow-right')" :size="13" />去计费参数页改
+              </button>
             </div>
             <div class="pl-bindhead">
               <span class="pl-sectitle" style="flex:1">从别的池折进来的标准 · {{ form.links.length }} 条</span>
@@ -1417,12 +1435,15 @@ async function delPool() {
                   : '该定位本月无在租租户' }}
               </div>
             </div>
-            <label class="pl-chkline" title="勾上:这份名单从本月起用,一直沿用到你下次再改。之前的月份和那份长期名单都不动">
-              <input type="checkbox" v-model="form.monthOnly" />
-              只改本月（{{ ym }}）起的受益人名单,之前的月份和长期名单不动
-            </label>
           </template>
         </div>
+        <!-- V131 D7:「只改本月起」管三处(电表 / 折入的标准 / 受益人),从「摊给谁」里挪到抽屉级,
+             园区自担等所有分摊方式都出 -->
+        <label class="pl-chkline"
+               title="勾上：这三处按这次保存的用，从本月起用到下一个按月改过的月份之前；之前的月份和长期那一份都不动。不勾：改的是长期那一份，还在用长期那一份的月份都跟着变。名称、分摊方式、费项这些不分月，勾不勾都是所有月份一起改。">
+          <input type="checkbox" v-model="form.monthOnly" />
+          只改本月起（{{ ym }}）：电表、折入的标准、受益人都从这个月起用，之前的月份不动
+        </label>
       </div>
       <template #footer>
         <Button v-if="form.id != null" variant="outline" size="sm" @click="delPool">
