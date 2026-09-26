@@ -167,6 +167,7 @@ UPDATE contract SET status='active' WHERE status IN ('expiring','expired');
 ### 5.3 续签链
 
 - **renew 行为改**：旧合同 `status = 'renewed'`（非 `terminated`）；新合同 `parent_contract_id = 旧合同 id`。
+  **〔2026-09-27 改〕** 续签当时新合同已起租（起租日 ≤ 今天）才标 renewed，否则旧合同照常在租、之后也不自动改标（用户 2026-07-28 裁定，见 `backend/scripts/fixes/contract-status-fix.sql`）；已终止或已有下一期的不能续（409）。
 - **列表默认每链只显最新一期**：链 = 沿 `parentContractId` 上溯的合同序列；最新期 = 不被任何其他合同当作 `parentContractId` 的那一期。前端构建 `parent→child` 映射，只渲染叶子（最新期），**可展开看历史各期**（展开行内联渲染祖先期，只读）。
 - `ponytail:` 链聚合在前端做（列表已全量），不新增 `/chain` 端点；DTO 带 `parentContractId` 足够前端还原链。
 
@@ -264,7 +265,7 @@ BillingLineReq(
 | GET | `/api/contracts` | 全量列表；`ContractDTO.status` = 派生桶，含 `parentContractId`。时段筛选/链聚合前端本地做（`ponytail:` 无新参数） |
 | GET | `/api/contracts/{id}` | `ContractDetailDTO` 含 `billingLines`（带 `propertyType`，按 `propertyType,location,seq` 排序） |
 | PUT | `/api/contracts/{id}` | `ContractCreateReq` 含 `billingLines`（带 `propertyType`）；整组替换，`fee_key` 越界该段钉死集 → 400；落库后反算缓存 |
-| POST | `/api/contracts/{id}/renew` | renew：旧合同 `status='renewed'`、新合同 `parentContractId=旧 id`（`ContractRenewReq` 不变） |
+| POST | `/api/contracts/{id}/renew` | renew：新合同 `parentContractId=旧 id`；续签当时新合同已起租才把旧合同标 `renewed`，否则不变（2026-09-27 改，§5.3）；`ContractRenewReq` 加可选 `linkType` |
 
 **前端筛选态（非服务端参数，契约记此）**：`activeOn: string | null`（某日在租）；链聚合按 `parentContractId` 前端还原、默认显叶子可展开。
 

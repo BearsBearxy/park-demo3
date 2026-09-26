@@ -41,8 +41,13 @@ onDeactivated(() => { askTerminate.value = false; askDelete.value = false })
 
 const canTerminate = computed(() =>
   ['active', 'expiring', 'draft'].includes(props.contract?.status ?? ''))
+// 已有下一期的也不能续(再续会分叉):新一期起租前旧合同照常在租、状态不是 renewed,光看状态拦不住(后端同样 409)
+const hasNext = computed(() => (props.chain ?? []).some(x => x.c.parentContractId === props.contract?.id))
+// 下一期是递增段(同一份合同到年限涨价):旧段不说「已续签」,与续签框「递增不算续签」一致
+const nextIsEscalation = computed(() => (props.chain ?? []).some(x =>
+  x.c.parentContractId === props.contract?.id && x.c.linkType === 'escalation'))
 const canRenew = computed(() =>
-  !['terminated', 'renewed'].includes(props.contract?.status ?? ''))
+  !['terminated', 'renewed'].includes(props.contract?.status ?? '') && !hasNext.value)
 
 // ── 终止框里的表(METER-TIMELINE-SPEC §3.6):这户在解约月挂着的表,勾上的自解约次月起空置 ──
 // 表清单是独立数据源、独立错误槽;错误只在成功那一支清。没拿到清单不放行确认 —— 不然勾选状态是空的,
@@ -186,14 +191,17 @@ function ctTimeline(c: ContractDTO) {
     steps.push({ state: 'now',     t: '执行中',  m: `已执行约 ${elapsed} 个月 · 距到期 ${c.daysToEnd} 天` })
     steps.push({ state: 'pending', t: '到期',    m: c.endDate || '—' })
   } else if (c.status === 'expiring') {
-    steps.push({ state: 'now',     t: '即将到期', m: `剩余 ${c.daysToEnd} 天 · 建议尽快续签` })
+    // 已有下一期(提前续签/递增,旧合同照常在租到期满)就不再劝续签 —— 续签钮此时也是灰的
+    steps.push({ state: 'now',     t: '即将到期', m: `剩余 ${c.daysToEnd} 天 · ${hasNext.value ? '下一期已签' : '建议尽快续签'}` })
     steps.push({ state: 'pending', t: '到期',    m: c.endDate || '—' })
   } else if (c.status === 'expired') {
     steps.push({ state: 'end', t: '已到期', m: c.endDate || '—' })
   } else if (c.status === 'terminated') {
     steps.push({ state: 'end', t: '已终止', m: (c.endDate || '—') + ' · 提前解约' })
   } else if (c.status === 'renewed') {
-    steps.push({ state: 'end', t: '已续签', m: (c.endDate || '—') + ' · 被新一期取代' })
+    steps.push(nextIsEscalation.value
+      ? { state: 'end', t: '已递增', m: (c.endDate || '—') + ' · 进入下一价格档' }
+      : { state: 'end', t: '已续签', m: (c.endDate || '—') + ' · 被新一期取代' })
   }
   return steps
 }
@@ -235,7 +243,8 @@ const contactLine = computed(() =>
           <div class="cd-inline-no">{{ contract.contractNo }}</div>
           <div class="cd-inline-sub">{{ subtitle }}</div>
         </div>
-        <FPContractStatus :status="contract.status" />
+        <FPContractStatus :status="contract.status"
+                          :label="contract.status === 'renewed' && nextIsEscalation ? '已递增' : undefined" />
       </div>
       <!-- 终止/删除/编辑/续签 四个写按钮同一权限点(RBAC-SPEC §2 contract:edit);无权时整条操作区不出现,详情照常显示 -->
       <div v-if="auth.can('contract:edit')" class="cd-inline-actions">

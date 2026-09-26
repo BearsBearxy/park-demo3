@@ -25,6 +25,13 @@ export const CHANGELOG: ReleaseNote[] = [
   // 「重新生成的月份起变」:应分摊落在池快照里,不重新生成就不变;「审过的月份不变」:AllocService.generate 开头
   // reviewGuard.assertEditable(ALLOC / ALLOC_LOSS),审核锁着的月份生成不了;「户的收费不变」:两池摊出仍只走折入标准
   // (allocatedAmount=0),PoolMonthlyConfigIT.g1_… 的户级断言组钉住。
+  // 同版并入(用户 2026-09-27 拍板):续签对话框加「递增」,新段 link_type=escalation。「涨价那次不计入续签率」的出处:
+  // expiry.logic.ts 有 escalation 后继的前段是 midTier、不进分母,续签命中只认 linkType=renew 的后继 —— 所以换段那一下
+  // 既不算一次到期也不算一次续签;新的递增段自己到期后照常进分母(expiry.logic.spec 「只有末档 tier2 是一次真到期」)。
+  // 「整户跳过」的出处:ContractService.importFull 该户有任一 escalation 段即整行跳过(ESCALATION-SPLIT-SPEC §4)。
+  // 修复一行(对抗复查 F1):master 的 ContractService.renew 一续签就把旧合同标 renewed,新合同还没起租时旧合同
+  // 从月租金合计、楼栋出租率、单元占用里掉出去(IT 实测单元 occupied→vacant、KPI 82880→74880);现在新合同起租后才标
+  // (用户 2026-07-28 裁定,contract-status-fix.sql)。ContractWriteApiIT.renew_asEscalation_…_inForceOldStaysActive 钉住。
   {
     version: '0.22.0',
     date: '2026-09-26',
@@ -36,12 +43,16 @@ export const CHANGELOG: ReleaseNote[] = [
         + '原来只有受益人能这样改。',
       to: 'alloc',
     },
-    added: [],
+    added: [
+      { icon: 'trending-up', title: '合同管理的续签能选递增', desc: '续签时能选「递增」，涨价那次不计入续签率；这户再导合同汇总册会整户跳过。', to: 'contracts' },
+    ],
     improved: [
       { icon: 'sliders-horizontal', title: '分摊标准小数位', desc: '原来在池的「高级」里改，现在到计费参数页改，能从某个月起改；新建池仍在「高级」里选。', to: 'params' },
       { icon: 'sigma', title: '公共电核算的二期合计', desc: '五、六车间广告字灯池出应分摊，计入合计了。各月重新生成后才变，审过的月份和户的收费不变。', to: 'alloc' },
     ],
-    fixed: [],
+    fixed: [
+      '合同管理：提前续签后，旧合同在新合同起租前就不算在租了',
+    ],
   },
   // 功能更新(RELEASE-NOTES-SPEC §2.1 第 3 问是):用户 2026-09-25 线上导入二期 2023-08 原册,同址的「谢福兵临电」(无码)
   // 被按位置认成有码的「谢福兵电」,真表那一行被判同批重复没导(master 的 MeterService.importRows 按行序认表 + G6)——

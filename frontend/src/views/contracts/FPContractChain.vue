@@ -5,6 +5,9 @@ import type { ContractDTO } from '@/types/contract'
 import FPContractStatus from '@/components/fp/FPContractStatus.vue'
 const props = defineProps<{ chain: { c: ContractDTO; seq: number }[]; currentId: number }>()
 const emit = defineEmits<{ jump: [ContractDTO] }>()
+// 被递增段取代的那一期写「已递增」,不写「已续签」(与续签框「递增不算续签」一致)
+const escalatedAway = (id: number) =>
+  props.chain.some(x => x.c.parentContractId === id && x.c.linkType === 'escalation')
 </script>
 
 <template>
@@ -22,7 +25,8 @@ const emit = defineEmits<{ jump: [ContractDTO] }>()
         <span class="cc-range">{{ it.c.startDate ? it.c.startDate + ' → ' + it.c.endDate : '—' }}</span>
       </span>
       <span v-if="it.c.linkType === 'escalation'" class="cc-esc">递增</span>
-      <FPContractStatus :status="it.c.status" />
+      <FPContractStatus :status="it.c.status"
+                        :label="it.c.status === 'renewed' && escalatedAway(it.c.id) ? '已递增' : undefined" />
     </button>
   </div>
 </template>

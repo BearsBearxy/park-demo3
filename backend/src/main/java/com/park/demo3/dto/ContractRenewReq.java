@@ -10,5 +10,7 @@ public record ContractRenewReq(
     LocalDate signDate,
     @DecimalMin("0") BigDecimal monthlyRent,
     @DecimalMin("0") BigDecimal deposit,
-    @DecimalMin("0") BigDecimal rentArea
+    @DecimalMin("0") BigDecimal rentArea,
+    // 新段 link_type(ESCALATION-SPLIT-SPEC §1):空=renew 换约;escalation=同一份合同到年限涨价的递增段
+    @Pattern(regexp = "renew|escalation") String linkType
 ) {}

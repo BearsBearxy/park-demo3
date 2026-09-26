@@ -117,3 +117,54 @@ describe('合同终止框 · 解约月挂着的表', () => {
     expect(terminatePreview.mock.calls[1]).toEqual([42, '2024-06-15'])
   })
 })
+
+// 续签钮(对抗复查 F5):新一期起租前旧合同照常在租、状态仍是 active,光看状态拦不住再续一次 → 链上有下一期就禁用
+// 破坏验证:canRenew 去掉 chain 那一条 → 第二条断言红
+describe('续签钮 · 已有下一期不能再续', () => {
+  const renewBtn = (w: VueWrapper) => w.findAll('button').find(b => b.text().includes('续签'))!
+  it('没有下一期可点;链上有 parent 指向它的下一期就禁用', async () => {
+    const solo = mount(ContractDrawer, { props: { contract: CONTRACT, chain: [{ c: CONTRACT, seq: 1 }] } })
+    mounted.push(solo)
+    await flushPromises()
+    expect(renewBtn(solo).attributes('disabled')).toBeUndefined()
+    const next = { ...CONTRACT, id: 43, contractNo: 'C2024M-042#2', parentContractId: 42, status: 'future' }
+    const w = mount(ContractDrawer, { props: { contract: CONTRACT, chain: [{ c: CONTRACT, seq: 1 }, { c: next, seq: 2 }] } })
+    mounted.push(w)
+    await flushPromises()
+    expect(renewBtn(w).attributes('disabled')).toBeDefined()
+  })
+
+  // 破坏验证:ctTimeline 的 expiring 分支不看 hasNext → 第二条断言红
+  it('即将到期但已有下一期:时间轴不再写「建议尽快续签」', async () => {
+    const soon = { ...CONTRACT, status: 'expiring', daysToEnd: 40 }
+    const next = { ...CONTRACT, id: 43, contractNo: 'C2024M-042#2', parentContractId: 42, status: 'future' }
+    const lone = mount(ContractDrawer, { props: { contract: soon, chain: [{ c: soon, seq: 1 }] } })
+    mounted.push(lone)
+    await flushPromises()
+    expect(lone.text()).toContain('剩余 40 天 · 建议尽快续签')
+    const w = mount(ContractDrawer, { props: { contract: soon, chain: [{ c: soon, seq: 1 }, { c: next, seq: 2 }] } })
+    mounted.push(w)
+    await flushPromises()
+    expect(w.text()).toContain('剩余 40 天 · 下一期已签')
+    expect(w.text()).not.toContain('建议尽快续签')
+  })
+
+  // 递增段的前一段(文案复查):徽标与时间轴都不说「已续签」,与续签框「递增不算续签」一致;下一期是续签的照旧
+  // 破坏验证:nextIsEscalation 恒 false → 递增那组两条断言红
+  it('前一段被递增取代写「已递增」,被续签取代仍写「已续签」', async () => {
+    const old = { ...CONTRACT, status: 'renewed' }
+    const esc = { ...CONTRACT, id: 43, contractNo: 'C2024M-042#2', parentContractId: 42, status: 'active', linkType: 'escalation' as const }
+    const w = mount(ContractDrawer, { props: { contract: old, chain: [{ c: old, seq: 1 }, { c: esc, seq: 2 }] } })
+    mounted.push(w)
+    await flushPromises()
+    expect(w.text()).toContain('已递增')
+    expect(w.text()).toContain('2025-12-31 · 进入下一价格档')
+    expect(w.text()).not.toContain('已续签')
+    const ren = { ...esc, linkType: 'renew' as const }
+    const w2 = mount(ContractDrawer, { props: { contract: old, chain: [{ c: old, seq: 1 }, { c: ren, seq: 2 }] } })
+    mounted.push(w2)
+    await flushPromises()
+    expect(w2.text()).toContain('2025-12-31 · 被新一期取代')
+    expect(w2.text()).not.toContain('已递增')
+  })
+})

@@ -159,6 +159,24 @@ class ContractFullImportApiIT extends AbstractMysqlIT {
         assertThat((String) JsonPath.read(res, "$.data.report[1].action")).isEqualTo("created");
     }
 
+    // ─── 续签选「递增」建的段:该户整户跳过(ESCALATION-SPLIT-SPEC §4 防线同样拦得住) ────
+
+    @Test
+    void renewedAsEscalation_thenImportFull_tenantSkipped() throws Exception {
+        String name = newTenant();
+        int oldId = newContract(name, "2097-01-01", "2097-12-31");
+        postJson("/api/contracts/" + oldId + "/renew", "{\"contractNo\":\"IT-FI-ESC-" + System.nanoTime()
+                + "\",\"startDate\":\"2098-01-01\",\"endDate\":\"2098-12-31\",\"linkType\":\"escalation\"}");
+
+        String res = importFull(row(name, "\"termText\":\"递增后重导\""));
+        assertThat((int) (Integer) JsonPath.read(res, "$.data.result.skipped")).isEqualTo(1);
+        assertThat((String) JsonPath.read(res, "$.data.report[0].action")).isEqualTo("skipped");
+        // 对话框建的段没人「拆」过:原因只说有递增段、点名是哪份、说清是整户跳过
+        assertThat((String) JsonPath.read(res, "$.data.result.errors[0].reason"))
+                .contains("有递增段「IT-FI-ESC-").contains("整户合同导入跳过").doesNotContain("已拆");
+        assertThat(ofTenant(name)).hasSize(2);   // 没另建合同
+    }
+
     // ─── 未匹配租户:行级错误 ──────────────────────────────────
 
     @Test

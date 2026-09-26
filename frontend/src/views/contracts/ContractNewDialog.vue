@@ -2,7 +2,7 @@
 // 合同弹窗(新增/编辑/续签三态) — 样式 1:1 LedgerNewCompanyDialog/FinDialogs(.ct-mask/.ct-dlg 居中弹窗,
 // Teleport to body,回车提交,错误行内提示);字段多,两列排布。
 // 无 prop=新增(emit created);initial=编辑(全字段回填,提交走 update);renewFrom=续签(租户/楼栋/单元锁定,
-// 提交走 renew,原合同将标记已续签)。编辑/续签成功 emit saved 携带最新 DTO,由父级刷新 list+summary+drawer。
+// 提交走 renew,可选续签/递增;续签当时新一期已起租才把原合同标已续签)。编辑/续签成功 emit saved 携带最新 DTO,由父级刷新 list+summary+drawer。
 // 计费(CONTRACT-CARD-SPEC §6.2 单一编辑):选物业类型 → 钉死费用组自动出现(无自由加费用名);条件项 checkbox
 // 勾选落行(电梯/变压器填月额,infra 为 per_sqm 填面积×单价);宿舍门禁/网络只填间数;空地为附加段。
 // 月租金/租赁面积由计费行汇总(不双录入,无独立月租金输入)。
@@ -98,6 +98,12 @@ const termType = ref('')          // ''|explicit|multiple|relative|none
 const tierPriceNote = ref('')
 const status = ref('active')
 const remark = ref('')
+// 续签态二选一:新段记成续签换约还是递增段(link_type;递增那次换段不计入续签率,expiry.logic midTier)
+const LINK_OPTS = [
+  { value: 'renew', label: '续签（换新约）' },
+  { value: 'escalation', label: '递增（同一份合同到年限涨价）' },
+] as const
+const linkType = ref<'renew' | 'escalation'>('renew')
 
 const err = ref('')
 const submitting = ref(false)
@@ -434,6 +440,7 @@ async function submit() {
         monthlyRent: num(monthlyRent.value),
         deposit: num(deposit.value),
         rentArea: num(rentArea.value),
+        linkType: linkType.value,
       })
       emit('saved', dto)
       return
@@ -522,13 +529,25 @@ async function submit() {
       <div class="ct-dlg" role="dialog" aria-modal="true" @mousedown.stop
            @input.capture="dirty = true" @change.capture="dirty = true">
         <div class="ct-dlg-h">
-          <h3>{{ mode === 'edit' ? '编辑合同' : mode === 'renew' ? '续签合同' : '新增合同' }}</h3>
-          <p v-if="mode === 'renew'">为「{{ renewFrom?.contractNo }}」创建续签新约,租户/楼栋/单元沿用原合同。提交后原合同将标记为已续签。</p>
+          <h3>{{ mode === 'edit' ? '编辑合同' : mode === 'renew' ? (linkType === 'escalation' ? '合同递增' : '续签合同') : '新增合同' }}</h3>
+          <!-- 续签当时新一期已起租才把原合同标已续签(ContractService.renew,2026-07-28 裁定);没起租的原合同照常在租,之后也不会自动改标 -->
+          <p v-if="mode === 'renew'">为「{{ renewFrom?.contractNo }}」{{ linkType === 'escalation' ? '建下一个价格档,不算续签' : '创建下一期' }},租户/楼栋/单元沿用原合同。新一期起租日不晚于今天的,原合同标记为{{ linkType === 'escalation' ? '已递增' : '已续签' }};晚于今天的,原合同照常在租。</p>
           <p v-else-if="mode === 'edit'">修改该合同的字段并保存(全量提交)。</p>
           <p v-else>录入一份租赁合同。执行中/即将到期的合同将计入月租金、占用所选单元并派生楼栋出租率。</p>
         </div>
         <div class="ct-dlg-b fp-fsheet-bd">
           <div class="ct-grid">
+            <!-- 续签态:新段记成续签换约还是递增段(link_type),默认续签 -->
+            <div v-if="mode === 'renew'" class="ct-field ct-field-wide">
+              <div id="ct-link-lab" class="lab">这一期记成</div>
+              <div class="ct-links" role="radiogroup" aria-labelledby="ct-link-lab">
+                <label v-for="o in LINK_OPTS" :key="o.value" class="ct-link" :class="{ on: linkType === o.value }">
+                  <input type="radio" name="ct-link" :value="o.value" v-model="linkType" />{{ o.label }}
+                </label>
+              </div>
+              <!-- 合同汇总册导入按户拦(ContractService.importFull,ESCALATION-SPLIT-SPEC §4):选的那一刻就要说 -->
+              <p v-if="linkType === 'escalation'" class="ct-link-note">选递增后，这户再导合同汇总册会整户跳过，这户别的合同也不再被导入更新。</p>
+            </div>
             <div class="ct-field">
               <div class="lab">合同号 <i>*</i></div>
               <input ref="inputRef" class="ct-in" :class="{ err: err === '请输入合同号' }" v-model="contractNo"
@@ -792,7 +811,7 @@ async function submit() {
           <!-- 计费明细没到位时保存=清空计费行,按钮直接点不动(不只靠 submit 里 return) -->
           <Button variant="filled" size="sm" :disabled="submitting || (mode === 'edit' && !detailLoaded)" @click="submit">
             <template #leading><component :is="iconFor('check')" :size="14" /></template>
-            {{ mode === 'edit' ? '保存' : mode === 'renew' ? '续签' : '创建' }}
+            {{ mode === 'edit' ? '保存' : mode === 'renew' ? (linkType === 'escalation' ? '递增' : '续签') : '创建' }}
           </Button>
         </div>
       </div>
@@ -814,6 +833,11 @@ async function submit() {
 .ct-field .lab { font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); margin-bottom:7px; }
 .ct-field .lab i { color:var(--hue-red); font-style:normal; }
 .ct-field-wide { grid-column:1 / -1; }
+.ct-links { display:flex; flex-wrap:wrap; gap:8px; }
+.ct-link { flex:1 1 auto; display:flex; align-items:center; gap:8px; padding:8px 12px; border:1px solid var(--border-control); border-radius:var(--radius-md); font-size:var(--fs-body); color:var(--text-primary); cursor:pointer; }
+.ct-link.on { border-color:var(--hue-blue); background:var(--accent-blue); }
+.ct-link input { margin:0; accent-color:var(--hue-blue); }
+.ct-link-note { margin:6px 0 0; font-size:12px; line-height:1.5; color:var(--text-muted); }
 /* 高度对齐设计系统 md=36(ds/Input 与 ds/Select 同档):此前 38/40px,而同一表单网格里的
    下拉已是 ds/Select 的 36px,并排就差 2~4px。改这里而不是改 Select —— 36 是三个 ds 控件
    (Button/Input/Select)共同的 md 档,38/40 才是各表单自己发明的。 */

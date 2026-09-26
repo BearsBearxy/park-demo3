@@ -327,24 +327,37 @@ public class ContractService {
         return out;
     }
 
-    /** 续签(§5.3):旧合同 status='renewed'(非 terminated),新合同 parentContractId=旧 id 并继承计费行;
-     *  可覆盖字段空则继承旧值。 */
+    /** 续签(§5.3):新合同 parentContractId=旧 id 并继承计费行;可覆盖字段空则继承旧值。
+     *  续签当时新一期已起租(起租日 ≤ 今天)才把旧合同标 renewed,否则旧合同照常在租、之后也不自动改标(用户 2026-07-28 裁定)。
+     *  已终止的、已有下一期的不能续(链是单链,再续会分叉)。 */
     @NoReviewGuard(reason = "旧合同标 renewed 再插一份新合同并复制计费行,两张表都无 ym 列;续签期即使覆盖已审月也只改下一次 generate 的输入,改不了已落库的分摊与催缴单行")
     @Transactional
     public ContractDTO renew(Integer id, ContractRenewReq req) {
         Contract old = contracts.selectById(id);
         if (old == null) throw new BizException(ResultCode.NOT_FOUND, "合同不存在");
+        // 原来只有前端按钮拦(ContractDrawer canRenew),接口直调能续已终止的、能给同一份续两次(chain.ts 分叉只告警取 id 大的)
+        if ("terminated".equals(old.getStatus())) throw new BizException(ResultCode.CONFLICT, "合同已终止,不能续签");
+        Contract next = contracts.selectList(new QueryWrapper<Contract>().eq("parent_contract_id", id))
+            .stream().findFirst().orElse(null);
+        if (next != null)
+            throw new BizException(ResultCode.CONFLICT, "该合同已有下一期「" + next.getContractNo() + "」,不能再续签");
         requireUniqueNo(req.contractNo(), null);
         if (req.startDate() != null && req.endDate() != null && req.endDate().isBefore(req.startDate()))
             throw new BizException(ResultCode.CONFLICT, "结束日期不能早于开始日期");
 
-        old.setStatus("renewed");   // V54:被续签取代,区别主动终止 terminated
-        contracts.updateById(old);
+        // V54 renewed = 被续签取代(区别主动终止 terminated)。只在新一期已起租时标:用户 2026-07-28 裁定「继任者尚未上任
+        // 就把现任标成卸任」是误用(contract-status-fix.sql 把 33 份覆盖今天的 renewed 改回 active),在租的旧合同
+        // 标了 renewed 会从月租金合计、楼栋出租率、单元占用里掉出去,直到新一期起租。递增段与续签同一条规矩。
+        if (req.startDate() == null || !req.startDate().isAfter(LocalDate.now(ZoneId.of("Asia/Shanghai")))) {
+            old.setStatus("renewed");
+            contracts.updateById(old);
+        }
 
         Contract c = new Contract();
         c.setContractNo(req.contractNo());
         c.setParentContractId(old.getId());   // V54 续签链
-        c.setLinkType("renew");               // V57 链接类型(ESCALATION-SPLIT-SPEC §1)
+        // V57 链接类型(ESCALATION-SPLIT-SPEC §1):缺省 renew;escalation=递增段,其余与续签一致
+        c.setLinkType(req.linkType() == null ? "renew" : req.linkType());
         c.setTenantId(old.getTenantId());
         c.setBuildingId(old.getBuildingId());
         c.setUnitId(old.getUnitId());
@@ -504,8 +517,10 @@ public class ContractService {
 
             // 已拆递增链防线(ESCALATION-SPLIT-SPEC §4):该户存在 escalation 段即整行跳过——
             // 拆链后原行价与起点已按末档改写且带 parent,重导会匹配失败另建重复合同并拍回旧值。
-            if (ofTenant.stream().anyMatch(o -> "escalation".equals(o.getLinkType()))) {
-                String reason = "该户已拆递增链,合同导入跳过(ESCALATION-SPLIT-SPEC §4)";
+            // 递增段可能是脚本拆链拆出来的,也可能是续签时选「递增」建的,所以只说「有」不说「已拆」;按户拦,该户别的合同也跳过
+            Contract esc = ofTenant.stream().filter(o -> "escalation".equals(o.getLinkType())).findFirst().orElse(null);
+            if (esc != null) {
+                String reason = "该户有递增段「" + esc.getContractNo() + "」,整户合同导入跳过(ESCALATION-SPLIT-SPEC §4)";
                 errors.add(new ImportError(i, label, reason));
                 report.add(new ContractFullImportRequest.Item(i, label, t.getId(), null, null, "skipped", reason));
                 continue;
