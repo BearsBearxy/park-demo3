@@ -6,7 +6,9 @@ import http from './index'
 // 值域由后端 /api/zones 数据驱动(p\d+|dorm),不再写死。放宽后编译器不再帮忙查
 // 字典下标 —— 所有 label 取值必须走 zoneLabel() 的兜底。
 export type AllocZone = string
-// none=不分摊全额挂亏;ref=纯标准行(只出std不出应分摊,不入合计)— POOL-ENGINE-SPEC §2
+// none=不分摊全额挂亏;ref=纯标准行(出 std 供别池折入,不摊到户)— POOL-ENGINE-SPEC §2。
+//   G1(0.22.0):ref 池若是站在 ym 有效的 fold_price 链的源池,costAmount 照普通池算(段量×段价)、
+//   allocatedAmount=0、gapAmount=−costAmount,并进应分摊合计;其余 ref(折入目标如 #12 加价档)costAmount=null,不入合计
 // carrier(V73)=冲减载体:表已在别池以 sign=-1 冲减,本行只陈列用量不出应分摊、不入金额合计(账册 W89 为空)
 // V81 起后端还会返回 'manual'(§H4.2e 原册 r12/r47-49 四个无电表行,qty/cost 恒 null)。
 // 拆两层:AllocMethod=后端真实值域(读侧一律用它);AllocMethodEditable=屏上可选值域,
@@ -63,12 +65,14 @@ export interface AllocRuleReq {
   members: AllocMemberDTO[]
   // S3-B1 增量(AllocRuleReq 增 sign/round_scale/std_kind/base_key/links);
   // meters 含 sign 与 meterIds 同发,后端以 meters 优先
+  // roundScale:只有新建池(POST)读,2 不落行、3 落 alloc_cfg rule:{id}.round_scale 初始版本行;PUT 忽略(V131,既有池在计费参数页改)
   roundScale?: number
   stdKind?: AllocStdKind | null
   baseKey?: string | null
   meters?: AllocRuleMeterReq[]
   links?: AllocRuleLinkReq[]
   // V69:池名由后端按定位自动生成并覆盖 name;memberMonth=null 写默认长期行,'YYYY-MM' 只覆盖该月
+  // V131:memberMonth 同时管受益人、绑定表、折入链 —— 非空 = M 时三处各自与站在 M 的有效组比,相同不写、不同就写 M 起的版本组
   floorLabel?: string | null
   side?: string | null
   feeName?: string | null
@@ -192,8 +196,11 @@ export interface AllocPoolMeterDTO {
   // 可选只为不逼既有夹具补字段:GET /pools 恒下发
   status?: 'active' | 'retired' | 'removed' | null
   statusFrom?: string | null
+  // V131:这一行来自初始版('default')还是按月版本组('month'),同受益人 src;请求体里后端忽略。可选=既有夹具不补字段
+  src?: 'default' | 'month' | null
 }
-export interface AllocPoolLinkDTO { ruleId: number; name: string; type: AllocLinkType }
+// V131:links 是站在 ym 的有效组(按 dst 池分版本);src 同上
+export interface AllocPoolLinkDTO { ruleId: number; name: string; type: AllocLinkType; src?: 'default' | 'month' | null }
 // V73 逐表明细行(原册一表一行:A座天面四部梯各占一行),来自 alloc_pool_meter_result 快照。
 // costAmount 只在 p1/dorm「逐表 ROUND 再求和」口径下有值;p2 池级一次 ROUND、净额池/手输量池 → null,
 // 此时应分摊列由池行 rowspan 显池级合计(不把池金额按比例摊回逐表冒充逐表数)。
@@ -299,7 +306,7 @@ export interface AllocPoolRowDTO {
   groupLabel: string             // =楼栋名,无楼栋='园区级'
   method: AllocMethod
   stdKind: AllocStdKind | null
-  roundScale: number
+  roundScale: number             // V131:alloc_cfg rule:{id}.round_scale 站在 ym 的生效值,没有行 = 2
   baseKey: string | null
   sortNo: number                 // 保 Excel 原行序
   note: string | null
@@ -326,7 +333,7 @@ export interface AllocPoolRowDTO {
   qtyFlat: number | null
   qtyValley: number | null
   extraQty: number | null        // 加度/扣度(进标准分子不进应分摊)
-  costAmount: number | null      // 应分摊(W/AD)
+  costAmount: number | null      // 应分摊(W/AD);ref 只有 fold_price 源池有值(G1)
   baseSnap: number | null        // 分摊基数快照(层数T/面积AA)
   stdValue: number | null        // 分摊标准(V/AC,已含 foldAdd)
   foldAdd: number | null         // 折入叠加档(0.005/0.007)

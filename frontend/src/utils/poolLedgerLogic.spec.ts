@@ -213,14 +213,34 @@ describe('manual 无电表行', () => {
   })
 })
 
-describe('poolFooter/bandFooter 合计(ref 行剔除)', () => {
-  it('Σ度数/Σ应分摊,ref 不计', () => {
+describe('poolFooter/bandFooter 合计(没出应分摊的 ref 行剔除)', () => {
+  // G1 前这条是「ref 不计」(夹具 ref 行 costAmount=999 也剔);G1 起 ref 只有没出应分摊的才剔。
+  // 破坏验证:bandFooter 的跳过条件去掉 `&& r.costAmount == null`(退回 ref 一律不计)→ 下一条红;
+  //           跳过条件只留 `folded.has(r.ruleId)`(ref 一律计)→ 本条红(#12 的 1664.8 度混进 Σ度数)
+  it('Σ度数/Σ应分摊;没出应分摊的 ref(折入目标 #12 加价档,源册 L64/W64 空)度数也不计', () => {
     const bands = groupPoolsByBookBlock([
       pool({ ruleId: 1, qtyTotal: 100.5, costAmount: 111.18 }),
       pool({ ruleId: 2, sortNo: 20, qtyTotal: 200, costAmount: 222.42 }),
-      pool({ ruleId: 3, sortNo: 30, method: 'ref', qtyTotal: 999, costAmount: 999 }),
+      pool({ ruleId: 12, sortNo: 30, method: 'ref', qtyTotal: 1664.8, costAmount: null }),
     ], 'p2')
     expect(poolFooter(bands)).toEqual({ qty: 300.5, cost: 333.6 })
+  })
+  // 锚点 = 2024-02 二期 21 个池的引擎实测值(scripts/pool-recon/out/2024-02/engine.json,G1 前 #15/#21 cost=null),
+  // #15/#21 的应分摊按 G1 取源册 W77=1019.75 / W113=704.62(报告 G1:引擎段量 × 源册段价逐分相等)。
+  // 金额合计 = 源册 W126=SUM(W4:W125)=14333.60;度数 = 源册各池头行 L 之和 16663.66 − T3 的 670.06。
+  it('G1:2024-02 二期计入两块广告字池 → 应分摊合计 14333.60 = 源册 W126', () => {
+    const P2: [number, AllocMethod, number, number | null][] = [
+      [4, 'area', 3.6, 3.23], [9, 'area', 2417.4, 2163.85], [13, 'area', 103.8, 104.46],
+      [18, 'area', 777.4, 685.09], [19, 'none', 2152.4, 1717.05], [2, 'floor', 160.8, 141.27],
+      [3, 'floor', 860, 843.14], [5, 'floor', 253.5, 222.75], [6, 'floor', 988.8, 1015.55],
+      [7, 'floor', 220.2, 196.67], [8, 'floor', 708, 686.33], [10, 'floor', 267.3, 229.59],
+      [11, 'floor', 1664.8, 1719.52], [12, 'ref', 1664.8, null], [14, 'floor', 318.9, 283.4],
+      [15, 'ref', 1065.9, 1019.75], [16, 'floor', 1207.54, 1238.78], [17, 'carrier', 670.06, null],
+      [20, 'floor', 546.4, 561.96], [21, 'ref', 800, 704.62], [22, 'floor', 806.8, 796.59],
+    ]
+    const bands = groupPoolsByBookBlock(P2.map(([ruleId, method, qtyTotal, costAmount], i) =>
+      pool({ ruleId, method, qtyTotal, costAmount, sortNo: i })), 'p2')
+    expect(poolFooter(bands)).toEqual({ qty: 15993.6, cost: 14333.6 })
   })
   it('未生成月全 null=null', () =>
     expect(poolFooter(groupPoolsByBookBlock([pool({})], 'p2'))).toEqual({ qty: null, cost: null }))
@@ -324,6 +344,8 @@ describe('buildPoolExportAoa 导出逐表平表(V73)', () => {
     expect(last[0]).toBe('合计')
     expect(last[9]).toBe(100)
     expect(last[14]).toBe(111.42)
+    // G1 起纯标准行不再一律不计 —— 合计行的说明跟着改(原句「ref 行不计」会把两块广告字池说反)
+    expect(last[19]).toBe('纯标准行只计出了应分摊的;冲减载体只计度数不计金额')
   })
 })
 

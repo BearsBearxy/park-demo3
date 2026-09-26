@@ -14,6 +14,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -36,6 +37,8 @@ public class AllocService {
     private final AllocRuleMeterMapper ruleMeters;
     private final AllocRuleMemberMapper ruleMembers;
     private final AllocRuleLinkMapper ruleLinks;
+    private final AllocRuleVersionMapper ruleVersions;   // V131 绑定表/折入链版本组登记(空组靠它存在)
+    private final MeterMapper meterMaster;               // 只读:改池日志里给增减的表报名字
     private final AllocCfgMapper cfgs;
     private final AllocResultMapper results;
     private final AllocPoolResultMapper poolResults;
@@ -57,7 +60,8 @@ public class AllocService {
     private final ReviewGuard reviewGuard;
 
     public AllocService(AllocRuleMapper rules, AllocRuleMeterMapper ruleMeters, AllocRuleMemberMapper ruleMembers,
-                        AllocRuleLinkMapper ruleLinks, AllocCfgMapper cfgs, AllocResultMapper results,
+                        AllocRuleLinkMapper ruleLinks, AllocRuleVersionMapper ruleVersions, MeterMapper meterMaster,
+                        AllocCfgMapper cfgs, AllocResultMapper results,
                         AllocPoolResultMapper poolResults, AllocPoolMeterResultMapper poolMeterResults,
                         AllocLossResultMapper lossResults, AllocLossNoteMapper lossNotes, MeterTimelineService timeline,
                         MeterReadingMapper readings, TenantMapper tenants, BuildingMapper buildings,
@@ -68,6 +72,7 @@ public class AllocService {
                         ReviewGuard reviewGuard) {
         this.reviewGuard = reviewGuard;
         this.rules = rules; this.ruleMeters = ruleMeters; this.ruleMembers = ruleMembers; this.ruleLinks = ruleLinks;
+        this.ruleVersions = ruleVersions; this.meterMaster = meterMaster;
         this.cfgs = cfgs; this.results = results; this.poolResults = poolResults;
         this.poolMeterResults = poolMeterResults; this.lossResults = lossResults; this.lossNotes = lossNotes;
         this.timeline = timeline; this.readings = readings;
@@ -126,11 +131,57 @@ public class AllocService {
     // ''=初始版最小——03 版本组自动沿用到 04/05…直到更晚版本覆盖,重生成历史月取历史版本组。
     // ''(空串)字典序恒小于 'YYYY-MM',天然满足「初始版最小」;全部行都在未来(>ym)= 空名单。
     static List<AllocRuleMember> pickMembers(List<AllocRuleMember> rows, String ym) {
-        String best = rows.stream().map(m -> m.getAcctMonth() == null ? "" : m.getAcctMonth())
+        return pickGroup(rows, AllocRuleMember::getAcctMonth, List.of(), ym);
+    }
+
+    // 版本组前滚的通用形(受益人 / V131 绑定表 / V131 折入链共用一把):候选月 = 行的 acct_month ∪ declared
+    // (alloc_rule_version 登记的起始月),取 ≤ym 的最大者整组返回;那一组一行都没有 = 空组(「从 M 起一块都不绑」);
+    // 没有 ≤ym 的候选(全在未来)= 空。受益人不登记版本表,declared 恒空,行为与旧 pickMembers 逐行相同。
+    static <T> List<T> pickGroup(List<T> rows, Function<T, String> monthOf, Collection<String> declared, String ym) {
+        String best = Stream.concat(rows.stream().map(r -> monthOr(monthOf.apply(r))), declared.stream())
             .filter(am -> am.compareTo(ym) <= 0).max(Comparator.naturalOrder()).orElse(null);
         return best == null ? List.of()
-            : rows.stream().filter(m -> best.equals(m.getAcctMonth() == null ? "" : m.getAcctMonth())).toList();
+            : rows.stream().filter(r -> best.equals(monthOr(monthOf.apply(r)))).toList();
     }
+
+    private static String monthOr(String m) { return m == null ? "" : m; }
+
+    // 全表行按 key(绑定表=池 / 折入链=dst 池)分组,各组站在 ym 取版本组;空组不进结果(没有行的 key 天然是空组)
+    static <T> Map<Integer, List<T>> pickByKey(List<T> rows, Function<T, Integer> keyOf, Function<T, String> monthOf,
+                                              Map<Integer, Set<String>> declared, String ym) {
+        Map<Integer, List<T>> out = new HashMap<>();
+        rows.stream().collect(groupingBy(keyOf)).forEach((k, rs) -> {
+            List<T> g = pickGroup(rs, monthOf, declared.getOrDefault(k, Set.of()), ym);
+            if (!g.isEmpty()) out.put(k, g);
+        });
+        return out;
+    }
+
+    static final String PART_METER = "meter", PART_LINK = "link";
+
+    // V131 版本表:part → 池 id → 登记过的起始月(全表 < 池数 × 改过的月数,量级几十行)
+    private Map<String, Map<Integer, Set<String>>> declaredVersions() {
+        Map<String, Map<Integer, Set<String>>> out = new HashMap<>();
+        for (AllocRuleVersion v : ruleVersions.selectList(new QueryWrapper<>()))
+            out.computeIfAbsent(v.getPart(), k -> new HashMap<>())
+                .computeIfAbsent(v.getRuleId(), k -> new HashSet<>()).add(v.getAcctMonth());
+        return out;
+    }
+
+    // 站在 ym(空 = 初始版 '')的绑定表 / 入向折入链有效组
+    private static Map<Integer, List<AllocRuleMeter>> bindsAt(List<AllocRuleMeter> rows,
+                                                              Map<String, Map<Integer, Set<String>>> ver, String ym) {
+        return pickByKey(rows, AllocRuleMeter::getRuleId, AllocRuleMeter::getAcctMonth,
+            ver.getOrDefault(PART_METER, Map.of()), ym == null ? "" : ym);
+    }
+
+    private static Map<Integer, List<AllocRuleLink>> linksAt(List<AllocRuleLink> rows,
+                                                             Map<String, Map<Integer, Set<String>>> ver, String ym) {
+        return pickByKey(rows, AllocRuleLink::getDstRuleId, AllocRuleLink::getAcctMonth,
+            ver.getOrDefault(PART_LINK, Map.of()), ym == null ? "" : ym);
+    }
+
+    private static String srcOf(String acctMonth) { return blank(acctMonth) ? "default" : "month"; }
 
     List<AllocRuleMember> resolveMembers(Integer ruleId, String ym) {
         return pickMembers(ruleMembers.selectByRule(ruleId), ym);
@@ -528,13 +579,13 @@ public class AllocService {
     // ── 规则 CRUD(整体保存:rule+meterIds+members 随行覆盖) ──
     // S21 §2.4:DTO 的 coefficient/extraQty 回传 alloc_cfg rule:{id} 版本链站在 ym 的生效值(ym 空=初始版本 '' 行,
     // 即旧「默认列」语义);两列不再存 alloc_rule。
+    // V131:绑定表/折入链同样回站在 ym 的有效版本组(ym 空 = 初始版 '',同 cfgEffective(null));受益人仍回全部版本行。
     public List<AllocRuleDTO> ruleList(String zone, String ym) {
-        Map<Integer, List<AllocRuleMeter>> mByRule = ruleMeters.selectList(null).stream()
-            .collect(groupingBy(AllocRuleMeter::getRuleId));
+        Map<String, Map<Integer, Set<String>>> ver = declaredVersions();
+        Map<Integer, List<AllocRuleMeter>> mByRule = bindsAt(ruleMeters.selectList(null), ver, ym);
         Map<Integer, List<AllocRuleMember>> memByRule = ruleMembers.selectList(null).stream()
             .collect(groupingBy(AllocRuleMember::getRuleId));
-        Map<Integer, List<AllocRuleLink>> linkByDst = ruleLinks.selectList(null).stream()
-            .collect(groupingBy(AllocRuleLink::getDstRuleId));
+        Map<Integer, List<AllocRuleLink>> linkByDst = linksAt(ruleLinks.selectList(null), ver, ym);
         List<AllocRule> all = rules.selectByZone(null);
         Map<Integer, String> nameById = new HashMap<>();
         for (AllocRule r : all) nameById.put(r.getId(), r.getName());
@@ -554,52 +605,191 @@ public class AllocService {
 
     @Transactional
     public AllocRuleDTO createRule(AllocRuleReq req) {
-        assertRuleEditable(req);
+        String month = memberMonth(req);
+        // 新池:站在 M 的有效组是空的 —— M 非空时,提交了表/折入才写 M 组(D4 同 updateRule)
+        Part pm = part(List.<AllocRuleMeter>of(), AllocRuleMeter::getAcctMonth, AllocService::bindKey,
+            Set.of(), bindKeys(reqBinds(req)), month);
+        Part pl = part(List.<AllocRuleLink>of(), AllocRuleLink::getAcctMonth, AllocService::linkKey,
+            Set.of(), linkKeys(reqLinks(null, req)), month);
+        assertRuleEditable(month, List.of(List.of()));   // 新池三部分都没有后续版本 → 守 [M, 最大已生成月]
         validateRule(req, null);
         AllocRule r = new AllocRule();
         apply(r, req);
         r.setSortNo(rules.maxSortNo() + 1);
         rules.insert(r);
-        saveChildren(r.getId(), req);
+        saveChildren(r.getId(), req, true, pm, pl);
         // S21 §2.4 新建池例外:初始分母/初始加度落成 rule:{id} 的 '' from 行(同表同版本链);池建成后只在参数页改
         if (req.coefficient() != null)
             saveCfg(new AllocCfgReq("rule:" + r.getId(), "coefficient", "", req.coefficient(), "新建池初始分母", "from"), true);
         if (req.extraQty() != null && req.extraQty().signum() != 0)
             saveCfg(new AllocCfgReq("rule:" + r.getId(), "extra_qty", "", req.extraQty(), "新建池初始加度", "from"), true);
+        // D5 同上:取整位只存 rule:{id}.round_scale 版本链,没有行 = 2,故只在 ≠2 时落初始版本行
+        if (req.roundScale() != null && req.roundScale() != 2)
+            saveCfg(new AllocCfgReq("rule:" + r.getId(), "round_scale", "", BigDecimal.valueOf(req.roundScale()),
+                "新建池初始取整位", "from"), true);
         params.logRuleChange("set", r.getId(), r.getName(), "新建池 · 方法 " + r.getMethod()
-            + " · 费项 " + r.getFeeKey() + " · 受益人 " + (req.members() == null ? 0 : req.members().size()) + " 户");
-        return ruleById(r.getId());
+            + " · 费项 " + r.getFeeKey() + " · 受益人 " + (req.members() == null ? 0 : req.members().size()) + " 户"
+            + (pm.write() ? " · 绑定表 " + pm.now().size() + " 块" : "") + (pl.write() ? " · 折入 " + pl.now().size() + " 条" : ""),
+            month);
+        return ruleById(r.getId(), month);
     }
 
     @Transactional
     public AllocRuleDTO updateRule(Integer id, AllocRuleReq req) {
         AllocRule r = rules.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "规则不存在");
-        assertRuleEditable(req);
-        validateRule(req, id);
         // ⚠ 旧值必须**在先删后插之前**抓下来(RBAC-SPEC §7.1):下面 deleteByRuleMonth + saveChildren
         // 一走,层份/成员的旧值就再也查不回来了。系数簿改层份走的正是这条路径,
         // 之前一行日志都没写 —— 同一个窗口里改管理费有痕、改层份无痕。
         String month = memberMonth(req);
-        int wasMembers = (int) ruleMembers.selectByRule(id).stream()
+        List<AllocRuleMember> memRows = ruleMembers.selectByRule(id);
+        int wasMembers = (int) memRows.stream()
             .filter(m -> month.equals(m.getAcctMonth() == null ? "" : m.getAcctMonth())).count();
+        // D4:绑定表/折入链与站在 M 的有效组(原始行,不经当月在服务过滤)比,相同就不写
+        Map<String, Map<Integer, Set<String>>> ver = declaredVersions();
+        Part pm = part(ruleMeters.selectByRule(id), AllocRuleMeter::getAcctMonth, AllocService::bindKey,
+            ver.getOrDefault(PART_METER, Map.of()).getOrDefault(id, Set.of()), bindKeys(reqBinds(req)), month);
+        Part pl = part(ruleLinks.selectList(new QueryWrapper<AllocRuleLink>().eq("dst_rule_id", id)),
+            AllocRuleLink::getAcctMonth, AllocService::linkKey,
+            ver.getOrDefault(PART_LINK, Map.of()).getOrDefault(id, Set.of()), linkKeys(reqLinks(id, req)), month);
+        // 受益人同一把(对抗复查 A3/A4):抽屉级「只改本月起」对三处一起勾,只改表 / 折入 / 备注的保存会原样带回受益人 ——
+        // 不判相同就会给受益人拍一份 M 月快照,以后改长期名单对 M 起的月不再生效;没真写的部分也不进守卫
+        Part pb = part(memRows, AllocRuleMember::getAcctMonth, AllocService::memberKey, Set.of(), memberKeys(req), month);
+        List<List<String>> written = new ArrayList<>();
+        if (pb.write()) written.add(pb.months());
+        if (pm.write()) written.add(pm.months());
+        if (pl.write()) written.add(pl.months());
+        assertRuleEditable(month, written);
+        validateRule(req, id);
         String wasMethod = r.getMethod();
         String wasFee = r.getFeeKey();
+        AllocRule before = new AllocRule();
+        org.springframework.beans.BeanUtils.copyProperties(r, before);
 
-        apply(r, req);   // 既有池:coefficient/extraQty 入参忽略,分母/加度只在参数页按版本改
+        apply(r, req);   // 既有池:coefficient/extraQty/roundScale 入参忽略,分母/加度/取整位只在参数页按版本改
+        // A1:名称 / 方法 / 费项 / 算式 / 基数键 / 备注在 alloc_rule 上不分月,改了对所有月生效(updateById 填 updatedAt 之前比)
+        boolean allMonths = !r.equals(before);
         rules.updateById(r);
-        ruleMeters.deleteByRule(id);
-        ruleMembers.deleteByRuleMonth(id, month);   // 只覆盖目标月,其他月已出账口径不动
-        saveChildren(id, req);
+        if (pb.write()) ruleMembers.deleteByRuleMonth(id, month);   // 只覆盖目标月,其他月已出账口径不动
+        saveChildren(id, req, pb.write(), pm, pl);
 
         int nowMembers = req.members() == null ? 0 : req.members().size();
         StringBuilder note = new StringBuilder("改池");
-        if (!month.isEmpty()) note.append("(").append(month).append(")");
-        if (wasMembers != nowMembers) note.append(" · 受益人 ").append(wasMembers).append("→").append(nowMembers).append(" 户");
+        if (!month.isEmpty()) note.append("(").append(month).append(" 起)");
+        if (pb.write() && wasMembers != nowMembers) note.append(" · 受益人 ").append(wasMembers).append("→").append(nowMembers).append(" 户");
         if (!java.util.Objects.equals(wasMethod, r.getMethod())) note.append(" · 方法 ").append(wasMethod).append("→").append(r.getMethod());
         if (!java.util.Objects.equals(wasFee, r.getFeeKey())) note.append(" · 费项 ").append(wasFee).append("→").append(r.getFeeKey());
-        params.logRuleChange("set", id, r.getName(), note.toString());
-        return ruleById(id);
+        note.append(childNote(pm, pl));
+        // param_change_log.note 是 VARCHAR(255),前面还要拼池名(≤64)
+        String n = note.length() > 180 ? note.substring(0, 179) + "…" : note.toString();
+        // 带 acct_month=M:「需重算」只点 ≥M 的已生成月(monthCond 的 from 语义),M 之前的月不受这次改动影响;
+        // 同时改了不分月的字段就记 ''(同改初始版),全部已生成月都点亮
+        params.logRuleChange("set", id, r.getName(), n, allMonths ? "" : month);
+        return ruleById(id, month);
+    }
+
+    // D4 一个部分(绑定表 / 折入链)这次写不写。was=站在 M(空 = 初始版 '')的有效组,now=请求里的集合;
+    // months=该部分出现过的全部版本起始月(行 ∪ 版本表),守卫用它找「下一个版本」。
+    // memberMonth 空 = 替换初始版,照写(同旧行为);M 非空 = 集合相同就一行不写,不同才写 M 组并登记版本表 ——
+    // 系数簿这类只改受益人的按月编辑会原样带回绑定表,不能顺手给它拍一份 M 月快照,否则以后改初始版对 M 起的月不起作用。
+    record Part(boolean write, Set<String> was, Set<String> now, List<String> months) {}
+
+    static <T> Part part(List<T> rows, Function<T, String> monthOf, Function<T, String> keyOf,
+                         Set<String> declared, Set<String> now, String month) {
+        Set<String> was = pickGroup(rows, monthOf, declared, month).stream().map(keyOf)
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+        List<String> months = Stream.concat(rows.stream().map(r -> monthOr(monthOf.apply(r))), declared.stream())
+            .distinct().toList();
+        return new Part(month.isEmpty() || !was.equals(now), was, now, months);
+    }
+
+    private static String bindKey(AllocRuleMeter b) { return b.getMeterId() + "|" + (b.getSign() == null ? 1 : b.getSign()); }
+    private static String linkKey(AllocRuleLink l) { return l.getSrcRuleId() + "|" + l.getLinkType(); }
+    private static String memberKey(AllocRuleMember m) { return m.getTenantId() + "|" + weightKey(m.getWeight()); }
+    // 库里 1.00 与请求里的 1 算同一个层份
+    private static String weightKey(BigDecimal w) { return w == null ? "" : w.stripTrailingZeros().toPlainString(); }
+
+    // 请求里的受益人,同 saveChildren:空 tenantId 丢掉,同一户只取第一次出现
+    private static Set<String> memberKeys(AllocRuleReq req) {
+        Set<String> out = new LinkedHashSet<>();
+        Set<Integer> seen = new HashSet<>();
+        for (AllocMemberDTO m : req.members() == null ? List.<AllocMemberDTO>of() : req.members())
+            if (m.tenantId() != null && seen.add(m.tenantId())) out.add(m.tenantId() + "|" + weightKey(m.weight()));
+        return out;
+    }
+
+    // 请求里的绑定表:meters(携 sign)优先,回退旧式 meterIds(sign 全=1);同一块表只取第一次出现。
+    // meters 与 meterIds 都为 null = 空集(= 清空绑定;查过调用方,见回报),不是「不改」。
+    private static List<AllocPoolDTOs.MeterBind> reqBinds(AllocRuleReq req) {
+        List<AllocPoolDTOs.MeterBind> in = req.meters() != null && !req.meters().isEmpty() ? req.meters()
+            : (req.meterIds() == null ? List.<Integer>of() : req.meterIds()).stream()
+                .map(mid -> new AllocPoolDTOs.MeterBind(mid, null, 1)).toList();
+        Map<Integer, AllocPoolDTOs.MeterBind> out = new LinkedHashMap<>();
+        for (AllocPoolDTOs.MeterBind b : in)
+            if (b.meterId() != null)
+                out.putIfAbsent(b.meterId(), new AllocPoolDTOs.MeterBind(b.meterId(), null, b.sign() == null ? 1 : b.sign()));
+        return new ArrayList<>(out.values());
+    }
+
+    // 请求里的入向折入链(src=links[i].ruleId → dst=本池):丢掉空源 / 自环 / 未知类型,(源,类型)去重。
+    // ruleId=null(新建池还没 id)时不判自环 —— 请求里不可能出现一个还不存在的 id。
+    private static List<AllocPoolDTOs.Link> reqLinks(Integer ruleId, AllocRuleReq req) {
+        List<AllocPoolDTOs.Link> out = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (AllocPoolDTOs.Link l : req.links() == null ? List.<AllocPoolDTOs.Link>of() : req.links()) {
+            if (l.ruleId() == null || l.ruleId().equals(ruleId)
+                    || !("fold_price".equals(l.type()) || "fold_qty".equals(l.type()))
+                    || !seen.add(l.ruleId() + "|" + l.type())) continue;
+            out.add(l);
+        }
+        return out;
+    }
+
+    private static Set<String> bindKeys(List<AllocPoolDTOs.MeterBind> bs) {
+        Set<String> out = new LinkedHashSet<>();
+        for (AllocPoolDTOs.MeterBind b : bs) out.add(b.meterId() + "|" + b.sign());
+        return out;
+    }
+
+    private static Set<String> linkKeys(List<AllocPoolDTOs.Link> ls) {
+        Set<String> out = new LinkedHashSet<>();
+        for (AllocPoolDTOs.Link l : ls) out.add(l.ruleId() + "|" + l.type());
+        return out;
+    }
+
+    // 改池日志里绑定表 / 折入的增减:「 · 绑定表 +五车间电梯 −火炬园广告字电(扣减) · 折入 +六车间广告字新表(折入单价)」
+    private String childNote(Part pm, Part pl) {
+        StringBuilder sb = new StringBuilder();
+        if (pm.write() && !pm.was().equals(pm.now())) {
+            Set<Integer> ids = new HashSet<>();
+            for (String k : pm.was()) ids.add(Integer.valueOf(k.substring(0, k.indexOf('|'))));
+            for (String k : pm.now()) ids.add(Integer.valueOf(k.substring(0, k.indexOf('|'))));
+            Map<Integer, String> name = new HashMap<>();
+            for (Meter m : meterMaster.selectBatchIds(ids)) name.put(m.getId(), m.getName());
+            sb.append(" · 绑定表").append(delta(pm, k -> {
+                int mid = Integer.parseInt(k.substring(0, k.indexOf('|')));
+                return name.getOrDefault(mid, "#" + mid) + (k.endsWith("|-1") ? "(扣减)" : "");
+            }));
+        }
+        if (pl.write() && !pl.was().equals(pl.now())) {
+            Set<Integer> ids = new HashSet<>();
+            for (String k : pl.was()) ids.add(Integer.valueOf(k.substring(0, k.indexOf('|'))));
+            for (String k : pl.now()) ids.add(Integer.valueOf(k.substring(0, k.indexOf('|'))));
+            Map<Integer, String> name = new HashMap<>();
+            for (AllocRule x : rules.selectBatchIds(ids)) name.put(x.getId(), x.getName());
+            sb.append(" · 折入").append(delta(pl, k -> {
+                int rid = Integer.parseInt(k.substring(0, k.indexOf('|')));
+                return name.getOrDefault(rid, "#" + rid) + (k.endsWith("|fold_price") ? "(折入单价)" : "(折入度数)");
+            }));
+        }
+        return sb.toString();
+    }
+
+    private static String delta(Part p, Function<String, String> label) {
+        StringBuilder sb = new StringBuilder();
+        for (String k : p.now()) if (!p.was().contains(k)) sb.append(" +").append(label.apply(k));
+        for (String k : p.was()) if (!p.now().contains(k)) sb.append(" −").append(label.apply(k));
+        return sb.toString();
     }
 
     @NoReviewGuard(reason = "有结果的池删不掉(既有 409),能删的池从没生成过任何期间数据")
@@ -610,7 +800,7 @@ public class AllocService {
             throw new BizException(ResultCode.CONFLICT, "该规则已有分摊结果,不可删除(历史月已快照)");
         int members = ruleMembers.selectByRule(id).size();
         rules.deleteById(id);   // 绑定表/受益人 FK 级联删
-        params.logRuleChange("delete", id, r.getName(), "删池 · 连带受益人 " + members + " 条");
+        params.logRuleChange("delete", id, r.getName(), "删池 · 连带受益人 " + members + " 条", "");
     }
 
     private void validateRule(AllocRuleReq req, Integer existingId) {
@@ -646,12 +836,22 @@ public class AllocService {
         return req.memberMonth() == null ? "" : req.memberMonth().trim();
     }
 
-    // 受益人按月存:memberMonth 非空=只覆盖那一个月,守它即可;空=长期默认行(所有未被月度行覆盖的月的取值来源),
-    // 没有「被写月」这个概念,退回 R-4 的粗闸「该 kind 有任一锁月就整体拒」。
-    private void assertRuleEditable(AllocRuleReq req) {
-        String month = memberMonth(req);
-        if (month.isEmpty()) reviewGuard.assertNoLockedMonth(ReviewKind.ALLOC, null);
-        else reviewGuard.assertEditable(ReviewKind.ALLOC, month, null);
+    // memberMonth 空 = 改初始版(所有未被月版本覆盖的月的取值来源),没有「被写月」,退回 R-4 的粗闸
+    // 「该 kind 有任一锁月就整体拒」。
+    // M 非空(D4):本次真写的每一部分都从 M 生效到**该部分**的下一个版本之前(没有下一个 = 到库里最大已生成月),
+    // 三部分(受益人 / 绑定表 / 折入链)的下一个版本各不相同,守它们的并集 = 最远的那个终点。
+    // 受益人走的是同一个入口 —— 旧实现只守 M 一个月,M 之后被新名单前滚改掉的已审月没人守,这里一起修。
+    // partMonths = 每个被写部分出现过的全部版本起始月。
+    private void assertRuleEditable(String month, List<List<String>> partMonths) {
+        if (month.isEmpty()) { reviewGuard.assertNoLockedMonth(ReviewKind.ALLOC, null); return; }
+        String until = partMonths.isEmpty() ? null : month;   // 各部分下一版本起点的最大者;null = 有一部分是链尾
+        for (List<String> ms : partMonths) {
+            String next = MeterTimeline.until(ms, month);
+            if (next == null) { until = null; break; }
+            if (next.compareTo(until) > 0) until = next;
+        }
+        reviewGuard.assertEditable(ReviewKind.ALLOC,
+            MeterTimeline.affectedMonths(month, until, timeline.maxGeneratedYm()), null);
     }
 
     private void apply(AllocRule r, AllocRuleReq req) {
@@ -676,37 +876,35 @@ public class AllocService {
         r.setName(finalName);
         r.setMethod(req.method()); r.setFeeKey(req.feeKey());   // S21:coefficient/extraQty 两列退出引擎,不再写(恒 NULL/0)
         r.setNote(req.note() == null || req.note().isBlank() ? null : req.note().trim());
-        r.setRoundScale(req.roundScale() == null ? 2 : req.roundScale());
+        // D5:round_scale 列退出引擎、不再写;取整位走 alloc_cfg rule:{id}.round_scale(新建池见 createRule)
         r.setStdKind(req.stdKind() == null || req.stdKind().isBlank() ? null : req.stdKind());
         r.setBaseKey(req.baseKey() == null || req.baseKey().isBlank() ? null : req.baseKey().trim());
     }
 
-    private void saveChildren(Integer ruleId, AllocRuleReq req) {
-        // 绑定表:meters(携sign)优先,回退旧式 meterIds(sign 全=1)
-        List<AllocPoolDTOs.MeterBind> binds = req.meters() != null && !req.meters().isEmpty() ? req.meters()
-            : (req.meterIds() == null ? List.<Integer>of() : req.meterIds()).stream()
-                .map(mid -> new AllocPoolDTOs.MeterBind(mid, null, 1)).toList();
-        Set<Integer> seenM = new HashSet<>();
-        for (AllocPoolDTOs.MeterBind b : binds) {
-            if (b.meterId() == null || !seenM.add(b.meterId())) continue;
-            AllocRuleMeter rm = new AllocRuleMeter();
-            rm.setRuleId(ruleId); rm.setMeterId(b.meterId());
-            rm.setSign(b.sign() == null ? 1 : b.sign());
-            ruleMeters.insert(rm);
+    private void saveChildren(Integer ruleId, AllocRuleReq req, boolean members, Part pm, Part pl) {
+        String month = memberMonth(req);
+        // 绑定表:只替换目标版本组(''=初始版),其他月的版本不动;M 组(含空组)同时登记版本表
+        if (pm.write()) {
+            ruleMeters.deleteByRuleMonth(ruleId, month);
+            for (AllocPoolDTOs.MeterBind b : reqBinds(req)) {
+                AllocRuleMeter rm = new AllocRuleMeter();
+                rm.setRuleId(ruleId); rm.setMeterId(b.meterId()); rm.setSign(b.sign()); rm.setAcctMonth(month);
+                ruleMeters.insert(rm);
+            }
+            if (!month.isEmpty()) ruleVersions.upsert(ruleId, PART_METER, month);
         }
-        // 入向折入链整体覆盖(src=links[i].ruleId → dst=本规则;环在 generate 拓扑序时 409)
-        ruleLinks.deleteByDst(ruleId);
-        Set<String> seenL = new HashSet<>();
-        for (AllocPoolDTOs.Link l : req.links() == null ? List.<AllocPoolDTOs.Link>of() : req.links()) {
-            if (l.ruleId() == null || l.ruleId().equals(ruleId)
-                    || !("fold_price".equals(l.type()) || "fold_qty".equals(l.type()))
-                    || !seenL.add(l.ruleId() + "|" + l.type())) continue;
-            AllocRuleLink lk = new AllocRuleLink();
-            lk.setSrcRuleId(l.ruleId()); lk.setDstRuleId(ruleId); lk.setLinkType(l.type());
-            ruleLinks.insert(lk);
+        // 入向折入链同上(src=links[i].ruleId → dst=本规则;环在 generate 拓扑序时按站在该月的有效链 409)
+        if (pl.write()) {
+            ruleLinks.deleteByDstMonth(ruleId, month);
+            for (AllocPoolDTOs.Link l : reqLinks(ruleId, req)) {
+                AllocRuleLink lk = new AllocRuleLink();
+                lk.setSrcRuleId(l.ruleId()); lk.setDstRuleId(ruleId); lk.setLinkType(l.type()); lk.setAcctMonth(month);
+                ruleLinks.insert(lk);
+            }
+            if (!month.isEmpty()) ruleVersions.upsert(ruleId, PART_LINK, month);
         }
-        // loss 规则无 member(受益人=当月有用电量的全部租户,生成时动态取)
-        if ("loss".equals(req.method())) return;
+        // loss 规则无 member(受益人=当月有用电量的全部租户,生成时动态取);members=false:与站在 M 的有效组相同,不写
+        if ("loss".equals(req.method()) || !members) return;
         Set<Integer> seen = new HashSet<>();
         for (AllocMemberDTO m : req.members() == null ? List.<AllocMemberDTO>of() : req.members()) {
             if (m.tenantId() == null || !seen.add(m.tenantId())) continue;
@@ -717,11 +915,17 @@ public class AllocService {
         }
     }
 
-    private AllocRuleDTO ruleById(Integer id) {
+    // 写后回传:绑定表/折入链取站在本次生效月(空 = 初始版)的有效组 —— 全部版本叠在一起回会出现重复行
+    private AllocRuleDTO ruleById(Integer id, String month) {
         Map<Integer, String> nameById = new HashMap<>();
         for (AllocRule r : rules.selectByZone(null)) nameById.put(r.getId(), r.getName());
-        return toDTO(rules.selectById(id), ruleMeters.selectByRule(id), ruleMembers.selectByRule(id),
-            ruleLinks.selectList(new QueryWrapper<AllocRuleLink>().eq("dst_rule_id", id)), nameById, cfgEffective(null));
+        Map<String, Map<Integer, Set<String>>> ver = declaredVersions();
+        return toDTO(rules.selectById(id),
+            bindsAt(ruleMeters.selectByRule(id), ver, month).getOrDefault(id, List.of()),
+            ruleMembers.selectByRule(id),
+            linksAt(ruleLinks.selectList(new QueryWrapper<AllocRuleLink>().eq("dst_rule_id", id)), ver, month)
+                .getOrDefault(id, List.of()),
+            nameById, cfgEffective(null));
     }
 
     private static AllocRuleDTO toDTO(AllocRule r, List<AllocRuleMeter> binds, List<AllocRuleMember> mems,
@@ -732,12 +936,18 @@ public class AllocService {
             r.getFeeKey(), r.getNote(), r.getSortNo(),
             binds.stream().map(AllocRuleMeter::getMeterId).toList(),
             mems.stream().map(m -> new AllocMemberDTO(m.getTenantId(), m.getWeight(), m.getAcctMonth())).toList(),
-            r.getRoundScale(), r.getStdKind(), r.getBaseKey(),
+            roundScaleOf(cfg, r.getId()), r.getStdKind(), r.getBaseKey(),
             binds.stream().map(b -> new AllocPoolDTOs.MeterBind(b.getMeterId(), null,
-                b.getSign() == null ? 1 : b.getSign())).toList(),
+                b.getSign() == null ? 1 : b.getSign(), null, null, null, null, null, null, srcOf(b.getAcctMonth()))).toList(),
             inLinks.stream().map(l -> new AllocPoolDTOs.Link(l.getSrcRuleId(),
-                ruleNameById.get(l.getSrcRuleId()), l.getLinkType())).toList(),
+                ruleNameById.get(l.getSrcRuleId()), l.getLinkType(), srcOf(l.getAcctMonth()))).toList(),
             r.getFloorLabel(), r.getSide(), r.getFeeName());
+    }
+
+    // D5 取整位:alloc_cfg rule:{id}.round_scale 版本链站在该月的值(cfg = VersionResolver 扁平表),没有行 = 2
+    static int roundScaleOf(Map<String, BigDecimal> cfg, Integer ruleId) {
+        BigDecimal v = cfg.get("rule:" + ruleId + "|round_scale");
+        return v == null ? 2 : v.intValue();
     }
 
     // ── 参数(读=默认行∪当月行原值,解析「月行优先」由读侧完成;写=单行 upsert,value=null 删行回退默认) ──
@@ -1010,6 +1220,8 @@ public class AllocService {
                        // 三态挂零判别:有绑定记录的规则 id(未按在册过滤)——bindsByRule 已剔除不在服务中的表,
                        // 光看它分不清「从未绑表」和「绑了但本月全停」,后者要挂零陈列不报缺读数
                        Set<Integer> boundRules,
+                       // G1:任一版本里当过 fold_price 源的池(同 boundRules 按任一版本认)
+                       Set<Integer> priceSrcRules,
                        // 刀2:楼栋 → 楼层 → 租户 → 租金行绑定面积Σ(rentAreaByBuildingFloor 产物,层定位 area 池用)
                        Map<Integer, Map<Integer, Map<Integer, BigDecimal>>> rentAreaByBuildingFloorTenant,
                        List<String> warnings) {}
@@ -1085,10 +1297,22 @@ public class AllocService {
             }
         }
         List<AllocRuleMeter> rawBinds = ruleMeters.selectList(null);
+        // 三态挂零判别仍按「任一版本有过绑定行」:站在 ym 的版本组是空组(从某月起有意不绑)也是挂零陈列,不报缺读数
         Set<Integer> boundRules = rawBinds.stream().map(AllocRuleMeter::getRuleId).collect(Collectors.toSet());
-        Map<Integer, List<AllocRuleMeter>> bindsByRule = rawBinds.stream()
+        Map<String, Map<Integer, Set<String>>> ver = declaredVersions();
+        // V131:先按池取站在 ym 的版本组,再按当月在服务过滤 —— 反过来的话,组内表全停用时会回退到更早的版本组
+        Map<Integer, List<AllocRuleMeter>> bindsByRule = bindsAt(rawBinds, ver, ym).values().stream()
+            .flatMap(List::stream)
             .filter(b -> bindCounts(b, meterById.get(b.getMeterId())))   // 停用表的绑定当月不生效(V68);+1 表按当月归属
             .collect(groupingBy(AllocRuleMeter::getRuleId));
+        // V131:入向折入链按 dst 池取站在 ym 的版本组;成环检查 / fold 叠加都用这一份
+        List<AllocRuleLink> rawLinks = ruleLinks.selectList(null);
+        List<AllocRuleLink> linkList = linksAt(rawLinks, ver, ym).values().stream()
+            .flatMap(List::stream).toList();
+        // G1 源池判定按任一版本:源册 2023-08/09 两块广告字池没折进任何池(消防设施 / 绿化水泵那两月是手输 +0.01),
+        // W76/W106 照样算、照样进二期合计行 —— 只看站在 ym 的有效链,这两个月就漏了(对抗复查 A2)
+        Set<Integer> priceSrcRules = rawLinks.stream().filter(l -> "fold_price".equals(l.getLinkType()))
+            .map(AllocRuleLink::getSrcRuleId).collect(Collectors.toSet());
         // 受益人:版本组前滚(S14,acct_month≤ym 最大版本组),解析后进 ctx——引擎与读侧看到的是同一份当月受益人
         Map<Integer, List<AllocRuleMember>> membersByRule = new HashMap<>();
         ruleMembers.selectList(null).stream().collect(groupingBy(AllocRuleMember::getRuleId))
@@ -1126,10 +1350,10 @@ public class AllocService {
         if (suspects > 0) warnings.add("本月有 " + suspects + " 块存疑表(疑似重复建档)本月有读数,但没算进楼栋的分表合计、楼栋总表和公摊池,"
             + "请在抄表屏「只看存疑」逐条认对后合并或补齐档案");
         return new Ctx(ym, meterById, readingByMeter, cfg, areaByTenant, areaByBuildingTenant,
-            rules.selectByZone(null), bindsByRule, membersByRule, ruleLinks.selectList(null),
+            rules.selectByZone(null), bindsByRule, membersByRule, linkList,
             buildingById, inForceByZone(ro.covering(), ro.unitsByContract(), zoneOfBuilding),
             areaByZone,
-            ro.unitsByTenant(), tenantMeters(meterById.values()), ro.nameById(), boundRules,
+            ro.unitsByTenant(), tenantMeters(meterById.values()), ro.nameById(), boundRules, priceSrcRules,
             rentAreaByBldFloor, warnings);
     }
 
@@ -1212,7 +1436,9 @@ public class AllocService {
             PoolCalc p = pools.get(rule.getId());
             if (p == null) continue;
             // S13 §4 V64 加价档:ref 池挂了显式层份成员=价目直供池(户=std×weight),放行;
-            // 其余 ref(纯标准行/fold 源)与缺读数照旧不出户级。cost 保持 null=不入池合计,不双计货梯表。
+            // 其余纯标准 ref 与缺读数照旧不出户级(cost 保持 null=不入池合计,不双计货梯表)。
+            // G1 起 fold_price 源 ref 池有 cost 会走进 memberAmounts,但 ref 分支只给带层份的受益人出行 ——
+            // 它们没有受益人,户级一行不出,户的收费不变。
             boolean refWeighted = "ref".equals(rule.getMethod()) && p.std() != null
                 && ctx.membersByRule().getOrDefault(rule.getId(), List.of()).stream()
                     .anyMatch(m -> m.getWeight() != null);
@@ -1255,7 +1481,7 @@ public class AllocService {
                 ? ctx.areaByBuildingTenant().getOrDefault(rule.getBuildingId(), Map.of())
                 : ctx.areaByTenant();
         List<Contribution> out = new ArrayList<>();
-        BigDecimal cost = p.cost();   // ref 价目直供池为 null(S13 §4),下游用到处均须判空
+        BigDecimal cost = p.cost();   // ref 价目直供池为 null(S13 §4;fold_price 源 ref 池 G1 起有值),下游用到处均须判空
         BigDecimal qty = nz(p.qtyTotal());
         BigDecimal effPrice = cost == null || qty.signum() == 0 ? null : cost.divide(qty, 6, RoundingMode.HALF_UP);
         if (auto && "floor".equals(rule.getMethod()))
@@ -1937,13 +2163,13 @@ public class AllocService {
             if (!allOff) warns.add(0, "缺读数,本月未核算");
         }
 
-        // 分摊标准 std(§3.3):未舍入值先除基数再ROUND;direct=cost;none=null;ref=只出std不出cost
+        // 分摊标准 std(§3.3):未舍入值先除基数再ROUND;direct=cost;none=null;ref=出std(cost 见下方 G1)
         BigDecimal base = null, std = null;
         if (q.any()) {
             base = rule.getBaseKey() != null
                 ? priceCfg.resolve(rule.getBaseKey(), ym, null, zone) : coefficientOf(rule, ctx);
             if (rule.getBaseKey() != null && base == null) warns.add("基数键 " + rule.getBaseKey() + " 未取到值");
-            int scale = rule.getRoundScale() == null ? 2 : rule.getRoundScale();
+            int scale = roundScaleOf(ctx.cfg(), rule.getId());   // D5:参数表按 ym 取,没有行 = 2(列已退出引擎)
             BigDecimal stdAdd = cfgVal(ctx, "rule:" + rule.getId(), "std_add");
             String kind = rule.getStdKind() != null ? rule.getStdKind()
                 : (KIND_TOU.equals(calcKind(zone, ctx.cfg())) ? "amount_over_base" : "qty_price_over_base");
@@ -1957,9 +2183,14 @@ public class AllocService {
                 };
             };
         }
-        // 纯标准行(ref)与冲减载体(carrier,V73 火炬园)都不出应分摊、不入合计:
-        // carrier 的表已在别池以 sign=-1 冲减,钱走账单侧单独收,本行只陈列用量(账册 W89 为空)
-        if ("ref".equals(rule.getMethod()) || "carrier".equals(rule.getMethod())) cost = null;
+        // 冲减载体(carrier,V73 火炬园)不出应分摊、不入合计:它的表已在别池以 sign=-1 冲减,钱走账单侧单独收,
+        // 本行只陈列用量(账册 W89 为空)。
+        // ref 分两种(G1,2026-09-26):任一版本里是某条 fold_price 链的**源池**(二期两块广告字新表)→ 保留 cost
+        // (同普通池:段量 × 段价),计入应分摊合计 —— 源册 W76/W106 有金额、W119/W125 的 SUM 区间含它们;
+        // 摊出仍只走折入标准,它自己没有受益人。其余 ref(#12 广联加价档:折入目标、与 #11 共用表 47)仍为 null,
+        // 否则表 47 的钱在合计里算两次。
+        if ("carrier".equals(rule.getMethod())
+                || ("ref".equals(rule.getMethod()) && !ctx.priceSrcRules().contains(rule.getId()))) cost = null;
 
         stack.pop();
         PoolCalc pc = new PoolCalc(q.any() ? q.total() : null,
@@ -2003,10 +2234,10 @@ public class AllocService {
         requireYm(ym);
         Map<Integer, AllocPoolResult> snap = new HashMap<>();
         for (AllocPoolResult r : poolResults.selectByYm(ym)) snap.put(r.getRuleId(), r);
-        Map<Integer, List<AllocRuleMeter>> bindsByRule = ruleMeters.selectList(null).stream()
-            .collect(groupingBy(AllocRuleMeter::getRuleId));
-        Map<Integer, List<AllocRuleLink>> linksByDst = ruleLinks.selectList(null).stream()
-            .collect(groupingBy(AllocRuleLink::getDstRuleId));
+        // V131:池行的绑定表/折入链 = 站在 ym 的有效版本组(未按在服务过滤 —— 抽屉要看见「自 M 起已拆」的灰行)
+        Map<String, Map<Integer, Set<String>>> ver = declaredVersions();
+        Map<Integer, List<AllocRuleMeter>> bindsByRule = bindsAt(ruleMeters.selectList(null), ver, ym);
+        Map<Integer, List<AllocRuleLink>> linksByDst = linksAt(ruleLinks.selectList(null), ver, ym);
         Map<Integer, MeterAt> meterById = new HashMap<>();
         for (MeterAt m : timeline.metersAt(ym)) meterById.put(m.getId(), m);
         MeterTimelineService.View view = timeline.viewAt(ym);   // 绑定表的状态段起始月(池编辑灰显「自 M 起已拆」)
@@ -2069,7 +2300,7 @@ public class AllocService {
             rows.add(new AllocPoolDTOs.PoolRow(r.getId(), r.getZone(), r.getName(),
                 r.getBookBlock(), r.getBookKey(),
                 b == null ? "园区级" : b.getName(),
-                r.getMethod(), r.getStdKind(), r.getRoundScale(), r.getBaseKey(), r.getSortNo(), r.getNote(),
+                r.getMethod(), r.getStdKind(), roundScaleOf(cfgEff, r.getId()), r.getBaseKey(), r.getSortNo(), r.getNote(),
                 r.getBuildingId(), b == null ? null : b.getName(),
                 r.getFloorLabel(), r.getSide(), r.getFeeName(),
                 poolName(r.getZone(), b == null ? null : b.getName(), r.getFloorLabel(), r.getSide(), r.getFeeName()),
@@ -2085,7 +2316,8 @@ public class AllocService {
                 bindsByRule.getOrDefault(r.getId(), List.of()).stream()
                     .map(m -> bindDTO(m, meterById.get(m.getMeterId()), view.status(m.getMeterId()))).toList(),
                 linksByDst.getOrDefault(r.getId(), List.of()).stream()
-                    .map(l -> new AllocPoolDTOs.Link(l.getSrcRuleId(), nameById.get(l.getSrcRuleId()), l.getLinkType())).toList(),
+                    .map(l -> new AllocPoolDTOs.Link(l.getSrcRuleId(), nameById.get(l.getSrcRuleId()), l.getLinkType(),
+                        srcOf(l.getAcctMonth()))).toList(),
                 lineByRule.getOrDefault(r.getId(), List.of()).stream()
                     .map(ln -> lineDTO(ln, meterById.get(ln.getMeterId()))).toList(),
                 netParts(bindsByRule.getOrDefault(r.getId(), List.of()), meterById, rdByMeter,
@@ -2189,9 +2421,9 @@ public class AllocService {
         int sign = b.getSign() == null ? 1 : b.getSign();
         String st = s == null ? null : s.getStatus(), from = s == null ? null : s.getFromYm();
         if (m == null) return new AllocPoolDTOs.MeterBind(b.getMeterId(), "#" + b.getMeterId(), sign,
-            "#" + b.getMeterId(), null, null, null, st, from);
+            "#" + b.getMeterId(), null, null, null, st, from, srcOf(b.getAcctMonth()));
         return new AllocPoolDTOs.MeterBind(b.getMeterId(), m.getName(), sign,
-            meterLabel(m), m.getSpot(), m.getSubName(), m.getMeterType(), st, from);
+            meterLabel(m), m.getSpot(), m.getSubName(), m.getMeterType(), st, from, srcOf(b.getAcctMonth()));
     }
 
     // V82 §H4.2a:一期定位归一后,规则的位置是原册 C 列的**一格**(『四楼西侧』/『天面』),
@@ -2405,9 +2637,10 @@ public class AllocService {
     public List<AllocPoolDTOs.MeterDiff> meterDiff(String ym) {
         requireYm(ym);
         Ctx ctx = loadCtx(ym);                                 // 已按 outOfService(m) 过滤当月不在服务的表
+        // D7:「被池绑着」按任一版本算(同删表挡 / 表抽屉) —— 不看站在 ym 的有效组
         Set<Integer> bound = new HashSet<>();
-        for (List<AllocRuleMeter> bs : ctx.bindsByRule().values())
-            for (AllocRuleMeter b : bs) bound.add(b.getMeterId());
+        for (AllocRuleMeter b : ruleMeters.selectList(new QueryWrapper<AllocRuleMeter>().select("DISTINCT meter_id")))
+            bound.add(b.getMeterId());
         List<AllocPoolDTOs.MeterDiff> out = new ArrayList<>();
         for (MeterAt m : ctx.meterById().values())
             if (needsPool(m.getOwnership(), ctx.readingByMeter().containsKey(m.getId()), bound.contains(m.getId())))

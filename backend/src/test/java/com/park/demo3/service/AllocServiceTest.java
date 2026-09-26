@@ -987,4 +987,89 @@ class AllocServiceTest {
         for (String o : java.util.List.of("tenant", "park", "infra", "ops", "register"))
             assertFalse(AllocService.needsPool(o, true, false), o + " 不该进提醒条");
     }
+
+    // ══ V131 绑定表 / 折入链按月版本(2026-09-26 D1–D4):取组与写不写,纯函数 ══
+
+    private static com.park.demo3.entity.AllocRuleMeter bind(int meterId, int sign, String month) {
+        com.park.demo3.entity.AllocRuleMeter b = new com.park.demo3.entity.AllocRuleMeter();
+        b.setRuleId(1); b.setMeterId(meterId); b.setSign(sign); b.setAcctMonth(month);
+        return b;
+    }
+
+    private static java.util.List<Integer> meterIds(java.util.List<com.park.demo3.entity.AllocRuleMeter> bs) {
+        return bs.stream().map(com.park.demo3.entity.AllocRuleMeter::getMeterId).toList();
+    }
+
+    private static java.util.List<Integer> pickAt(java.util.List<com.park.demo3.entity.AllocRuleMeter> rows,
+                                                  java.util.Set<String> declared, String ym) {
+        return meterIds(AllocService.pickGroup(rows, com.park.demo3.entity.AllocRuleMeter::getAcctMonth, declared, ym));
+    }
+
+    // '' 与月版本:'' 管到第一个月版本之前;月版本自起始月前滚到下一个版本之前
+    @Test
+    void pickGroup_initialAndMonthVersions() {
+        var rows = java.util.List.of(bind(59, 1, ""), bind(59, 1, "2023-10"), bind(58, -1, "2023-10"));
+        assertEquals(java.util.List.of(59), pickAt(rows, java.util.Set.of(), "2023-09"));
+        assertEquals(java.util.List.of(59, 58), pickAt(rows, java.util.Set.of(), "2023-10"));
+        assertEquals(java.util.List.of(59, 58), pickAt(rows, java.util.Set.of(), "2024-02"));   // 前滚
+        assertEquals(java.util.List.of(59), pickAt(rows, java.util.Set.of(), ""));              // ym 空 = 初始版
+    }
+
+    // ym 早于所有版本(没有 '' 行)= 空,不回退到未来的组
+    @Test
+    void pickGroup_ymBeforeEveryVersion_isEmpty() {
+        var rows = java.util.List.of(bind(47, 1, "2023-12"));
+        assertTrue(pickAt(rows, java.util.Set.of(), "2023-11").isEmpty());
+        assertEquals(java.util.List.of(47), pickAt(rows, java.util.Set.of(), "2023-12"));
+    }
+
+    // 空组:版本表登记了 2023-08 而行表没有 2023-08 的行 → 08、09 取到空组(不回退 ''),10 起是 10 月组
+    @Test
+    void pickGroup_declaredMonthWithoutRows_isEmptyGroup() {
+        var rows = java.util.List.of(bind(21, 1, ""), bind(21, 1, "2023-10"));
+        var declared = java.util.Set.of("2023-08", "2023-10");
+        assertEquals(java.util.List.of(21), pickAt(rows, declared, "2023-07"));
+        assertTrue(pickAt(rows, declared, "2023-08").isEmpty());
+        assertTrue(pickAt(rows, declared, "2023-09").isEmpty());
+        assertEquals(java.util.List.of(21), pickAt(rows, declared, "2023-10"));
+    }
+
+    // pickByKey:各池独立取组;站在 ym 是空组的池不进结果
+    @Test
+    void pickByKey_perRule_emptyGroupsDropped() {
+        var r1 = bind(1, 1, ""); r1.setRuleId(9);
+        var r2 = bind(2, 1, ""); r2.setRuleId(13);
+        var got = AllocService.pickByKey(java.util.List.of(r1, r2),
+            com.park.demo3.entity.AllocRuleMeter::getRuleId, com.park.demo3.entity.AllocRuleMeter::getAcctMonth,
+            java.util.Map.of(9, java.util.Set.of("2023-08")), "2023-09");
+        assertEquals(java.util.Set.of(13), got.keySet());
+    }
+
+    // D4 写不写:memberMonth 空 = 替换初始版,照写;M 非空 = 与站在 M 的有效组按集合比(顺序无关),相同不写
+    @Test
+    void part_sameSetSkips_differentWrites_emptyMonthAlwaysWrites() {
+        var rows = java.util.List.of(bind(59, 1, ""), bind(58, -1, ""));
+        java.util.function.Function<com.park.demo3.entity.AllocRuleMeter, String> key = b -> b.getMeterId() + "|" + b.getSign();
+        var same = new java.util.LinkedHashSet<>(java.util.List.of("58|-1", "59|1"));   // 顺序反过来
+        assertFalse(AllocService.part(rows, com.park.demo3.entity.AllocRuleMeter::getAcctMonth, key,
+            java.util.Set.of(), same, "2023-10").write());
+        assertTrue(AllocService.part(rows, com.park.demo3.entity.AllocRuleMeter::getAcctMonth, key,
+            java.util.Set.of(), java.util.Set.of("59|1"), "2023-10").write());
+        assertTrue(AllocService.part(rows, com.park.demo3.entity.AllocRuleMeter::getAcctMonth, key,
+            java.util.Set.of(), same, "").write());
+        // 同一块表换正负号 = 不同
+        assertTrue(AllocService.part(rows, com.park.demo3.entity.AllocRuleMeter::getAcctMonth, key,
+            java.util.Set.of(), java.util.Set.of("59|1", "58|1"), "2023-10").write());
+        // M 落在空组上:提交空集 = 相同,不写
+        assertFalse(AllocService.part(rows, com.park.demo3.entity.AllocRuleMeter::getAcctMonth, key,
+            java.util.Set.of("2023-08"), java.util.Set.of(), "2023-09").write());
+    }
+
+    // D5 取整位:rule:{id}.round_scale 没有行 = 2
+    @Test
+    void roundScaleOf_defaultsToTwo() {
+        assertEquals(2, AllocService.roundScaleOf(java.util.Map.of(), 13));
+        assertEquals(3, AllocService.roundScaleOf(java.util.Map.of("rule:13|round_scale", d("3.00000000")), 13));
+        assertEquals(2, AllocService.roundScaleOf(java.util.Map.of("rule:15|round_scale", d("3")), 13));   // 别的池不串
+    }
 }

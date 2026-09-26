@@ -117,6 +117,11 @@ export const PARAM_DEFS: ParamDef[] = [
   { key: 'price_override', label: '公摊池指定单价', unit: '元/度', group: 'constant', defaultMode: 'from', monthlyCheck: false, valueKind: 'money',
     formula: '公摊池成本 = 用量 × 指定单价（不取价目）',
     hint: '宿舍路灯 1.13156875 / 绿化水 4.45' },
+  // V131(2026-09-26 D5):取整位从 alloc_rule.round_scale 列挪成池参数,按月生效;没有行 = 2 位
+  { key: 'round_scale', label: '分摊标准小数位', unit: '', group: 'constant', defaultMode: 'from', monthlyCheck: false, valueKind: 'enum',
+    enumOptions: { 2: '四舍五入到 2 位', 3: '四舍五入到 3 位' },
+    formula: '分摊标准 = 算式值四舍五入到本位数 + 折入单价 + 附加金额',
+    hint: '未设置 = 2 位；二期消防水稳压泵 / 绿化水泵 / 路灯 / 五车间与六车间广告字灯、一期绿化水 为 3 位' },
   // 光伏分栋分析的年锚点与五条判据线(PV-ANALYSIS-SPEC §04)。顺序与后端 ParamRegistry static{} 逐位对齐 —— spec 按下标比对
   { key: 'pv_yield_anchor_h', label: '光伏年等效利用小时锚点', unit: '小时', group: 'constant', defaultMode: 'from', monthlyCheck: false, valueKind: 'number',
     hint: '本地实测值，已含组串损耗、逆变器效率、线损、温度与积灰' },

@@ -41,7 +41,7 @@ public class ParamService {
     //   Task 14 验收时 E座 2023-08 调整度数、任何栋的手工收取率都无处首次录入,只能绕道 API(spec §10 ①)。
     static final Set<String> LOSS_BUILDING_KEYS = Set.of("loss_variant", "loss_head", "loss_c_meter", "loss_recon", "loss_denom_cable",
         "loss_adj_qty", "loss_adj_rate", "loss_rate_manual");
-    static final Set<String> POOL_KEYS = Set.of("coefficient", "extra_qty", "manual_qty", "price_override", "std_add");
+    static final Set<String> POOL_KEYS = Set.of("coefficient", "extra_qty", "manual_qty", "price_override", "std_add", "round_scale");
     private static final Pattern LOSS_BASE_FORM_B = Pattern.compile("loss_base_form_b(\\d+)");
 
     private final AllocCfgMapper allocCfgs;
@@ -195,6 +195,7 @@ public class ParamService {
                 case "loss_c_meter" -> "全部总表";
                 case "loss_recon" -> "参与";
                 case "loss_denom_cable" -> "仅总表";
+                case "round_scale" -> d.enumOptions().get(2);   // 没有行 = 2 位(AllocService.roundScaleOf)
                 default -> "";
             };
         }
@@ -547,10 +548,13 @@ public class ParamService {
      * 落在 param_change_log 而不是 auth_audit_log：它是计费口径的变更，
      * 参数历史页读的就是这张表，改规则和改参数本来就该在同一条时间线上。
      * 规则不是数值，所以 old/new 走 note 记文字描述。
+     *
+     * month = 这次改动的生效月(按月改池,2026-09-26 D4);'' = 改初始版 / 删池。落在 acct_month(mode=from)上,
+     * 于是 monthCond 只把 ≥month 的已生成月算作受影响 —— 状态条「需重算」不再把 month 之前的月一起点亮。
      */
     @NoReviewGuard(reason = "只写 param_change_log 审计流水,不碰期间数据")
-    public void logRuleChange(String action, Integer ruleId, String ruleName, String note) {
-        log(action, false, "rule:" + ruleId, "", "", "from", null, null,
+    public void logRuleChange(String action, Integer ruleId, String ruleName, String note, String month) {
+        log(action, false, "rule:" + ruleId, "", month == null ? "" : month, "from", null, null,
             (ruleName == null ? "" : ruleName + " ") + (note == null ? "" : note), null);
     }
 

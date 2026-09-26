@@ -404,6 +404,24 @@
   "tenantEditable" : false,
   "pairedWith" : null
 }, {
+  "key" : "round_scale",
+  "table" : "alloc",
+  "label" : "分摊标准小数位",
+  "unit" : "",
+  "group" : "constant",
+  "scopes" : [ "rule" ],
+  "defaultMode" : "from",
+  "monthlyCheck" : false,
+  "valueKind" : "enum",
+  "enumOptions" : {
+    "2" : "四舍五入到 2 位",
+    "3" : "四舍五入到 3 位"
+  },
+  "formula" : "分摊标准 = 算式值四舍五入到本位数 + 折入单价 + 附加金额",
+  "hint" : "未设置 = 2 位；二期消防水稳压泵 / 绿化水泵 / 路灯 / 五车间与六车间广告字灯、一期绿化水 为 3 位",
+  "tenantEditable" : false,
+  "pairedWith" : null
+}, {
   "key" : "pv_yield_anchor_h",
   "table" : "alloc",
   "label" : "光伏年等效利用小时锚点",

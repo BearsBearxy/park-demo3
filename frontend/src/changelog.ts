@@ -19,6 +19,30 @@
 import type { ReleaseNote } from '@/types/changelog'
 
 export const CHANGELOG: ReleaseNote[] = [
+  // 功能更新(RELEASE-NOTES-SPEC §2.1 第 1、2、3 问都是):公摊池的绑定表、折入链能按月设(V131,计划 D1–D4/D7),
+  // 抽屉里「只改本月起」从「摊给谁」挪到抽屉级、管三处(原来只管受益人);取整位挪进计费参数页按月生效(D5,用法变了);
+  // G1:二期 #15/#21 两块广告字灯池(纯标准行、fold_price 源)出应分摊并进合计 —— 金额会变。
+  // 「重新生成的月份起变」:应分摊落在池快照里,不重新生成就不变;「审过的月份不变」:AllocService.generate 开头
+  // reviewGuard.assertEditable(ALLOC / ALLOC_LOSS),审核锁着的月份生成不了;「户的收费不变」:两池摊出仍只走折入标准
+  // (allocatedAmount=0),PoolMonthlyConfigIT.g1_… 的户级断言组钉住。
+  {
+    version: '0.22.0',
+    date: '2026-09-26',
+    headline: '池的电表和折入能按月改，二期合计会变',
+    feature: {
+      icon: 'calendar-clock',
+      title: '公共电核算的池能按月改',
+      desc: '在编辑模式里点开一个池，勾上「只改本月起」，这次改的电表、折入的标准和受益人从这个月起用，之前的月份不动。'
+        + '原来只有受益人能这样改。',
+      to: 'alloc',
+    },
+    added: [],
+    improved: [
+      { icon: 'sliders-horizontal', title: '分摊标准小数位', desc: '原来在池的「高级」里改，现在到计费参数页改，能从某个月起改；新建池仍在「高级」里选。', to: 'params' },
+      { icon: 'sigma', title: '公共电核算的二期合计', desc: '五、六车间广告字灯池出应分摊，计入合计了。各月重新生成后才变，审过的月份和户的收费不变。', to: 'alloc' },
+    ],
+    fixed: [],
+  },
   // 功能更新(RELEASE-NOTES-SPEC §2.1 第 3 问是):用户 2026-09-25 线上导入二期 2023-08 原册,同址的「谢福兵临电」(无码)
   // 被按位置认成有码的「谢福兵电」,真表那一行被判同批重复没导(master 的 MeterService.importRows 按行序认表 + G6)——
   // 重导那个月的册子后真表读数、用量、金额会变。现在:有码行先认表并占住当月;无码行按位置认到有码且异名的表不认、另建一块并提示。

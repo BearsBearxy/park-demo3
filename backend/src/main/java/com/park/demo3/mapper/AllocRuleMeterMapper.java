@@ -7,7 +7,8 @@ public interface AllocRuleMeterMapper extends BaseMapper<AllocRuleMeter> {
     default List<AllocRuleMeter> selectByRule(Integer ruleId) {
         return selectList(new QueryWrapper<AllocRuleMeter>().eq("rule_id", ruleId).orderByAsc("id"));
     }
-    default void deleteByRule(Integer ruleId) {
-        delete(new QueryWrapper<AllocRuleMeter>().eq("rule_id", ruleId));
+    // V131 按月版本:整组覆盖只作用于目标版本组(''=初始版),其他月的版本不动
+    default void deleteByRuleMonth(Integer ruleId, String acctMonth) {
+        delete(new QueryWrapper<AllocRuleMeter>().eq("rule_id", ruleId).eq("acct_month", acctMonth));
     }
 }

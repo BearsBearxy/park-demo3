@@ -28,7 +28,7 @@ class ParamRegistryTest {
         // ②
         "mgmt_fee", "mgmt_fee_commercial", "capacity_fee", "water", "water_pipe",
         "lamp_area_base", "green_area_base", "area_base", "park_share_div", "loss_adj_rate",
-        "coefficient", "std_add", "price_override",
+        "coefficient", "std_add", "price_override", "round_scale",   // round_scale:2026-09-26 取整位进参数表(D5)
         // 光伏分栋分析:年锚点 + 五条判据线(PV-ANALYSIS-SPEC §04),只有全局一档
         "pv_yield_anchor_h", "pv_band_sigma", "pv_band_run",
         "pv_crit_cover_month", "pv_crit_ledger", "pv_crit_yield_ratio",
@@ -97,6 +97,12 @@ class ParamRegistryTest {
         assertNull(ParamRegistry.defaultMode("loss_g_adj"));
         assertEquals(Table.PRICE, ParamRegistry.tableOf("water"));
         assertEquals(Table.ALLOC, ParamRegistry.tableOf("loss_head"));
+        // D5 取整位:池级、自某月起长期、只许 2 / 3(ENUM 字典即 valueOk 的值域)
+        assertEquals("from", ParamRegistry.defaultMode("round_scale"));
+        assertEquals(Table.ALLOC, ParamRegistry.tableOf("round_scale"));
+        assertTrue(ParamRegistry.allowed("round_scale", "rule:13"));
+        assertFalse(ParamRegistry.allowed("round_scale", "p2"));
+        assertEquals(Set.of(2, 3), ParamRegistry.get("round_scale").enumOptions().keySet());
     }
 
     // ④ 退役键不注册(写入 400 由 PriceCfgService/AllocService 用 allowed 挡)

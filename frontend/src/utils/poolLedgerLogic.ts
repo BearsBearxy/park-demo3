@@ -1,4 +1,4 @@
-// 池核算纯逻辑(POOL-ENGINE-SPEC §6,S3-B1 刀2):分带分组/tfoot 合计(ref 行剔除)/
+// 池核算纯逻辑(POOL-ENGINE-SPEC §6,S3-B1 刀2):分带分组/tfoot 合计(没出应分摊的 ref 行剔除)/
 // 分摊语义标签/分摊标准折入披露/导出 AOA/损耗对账区行格式化。poolLedgerLogic.spec.ts 锁定。
 // BOOK-REBUILD-SPEC §H4 前端:分带改原册块(不再按楼栋)、池名称优先原册自然键 book_key、
 // 「楼层」列归一为一格 floor_label、带尾按原册 SUM 区间出合计行。
@@ -154,7 +154,14 @@ export function foldQtySrcIds(rows: AllocPoolRowDTO[]): Set<number> {
   return s
 }
 // ── 带尾合计(§H4.2b:原册 7 个块各有一行合计,口径与该块 SUM 区间一致) ──
-// Σ度数/Σ应分摊,ref 行(纯标准行)与 §I4 折入源行不计;全 null=null(未生成月显'–')。
+// Σ度数/Σ应分摊,没出应分摊的 ref 行(纯标准行,如 #12 加价档)与 §I4 折入源行不计;全 null=null(未生成月显'–')。
+// G1(2026-09-26):ref 行里出了应分摊的(任一版本里是 fold_price 链的源池,二期两块广告字池 #15/#21;
+// 2023-08/09 没折进任何池也出,同源册)
+// 度数、金额**都计**。依据是源册二期合计行:L126=SUM(L4:L125) 与 W126=SUM(W4:W125) 同一区间,两池头行
+// L77/W77、L113/W113 都在区间里(2024-02:1065.9 度 / 1019.75 元、800 度 / 704.62 元,W126=14333.60);
+// #12 那一行 L64/W64 是空的。L126 本身把分段行也加了进去(31986.3),不能直接比;按头行比:2024-02 引擎
+// 二期计入两池 Σ度数=15993.60 = 源册各池头行 L 之和 16663.66 − 670.06(五车间电梯扣火炬园广告字,报告 T3
+// 只差显示用量),不计两池还要再少 1865.90。
 // ⚠原册 r31「A座电梯及楼层公共电合计」的怪癖 —— `S31=SUM(S13:S30)` 起于 13,而
 // `AD31/AE31/AF31=SUM(…12:…30)` 起于 12,同一合计行两列取不同区间。根因是块首 r12
 // (联塑精铟)无电表、S 列空只有手输金额。这里按册复刻但**不特判行号**:用量列 null 天然
@@ -165,7 +172,7 @@ export function bandFooter(rows: AllocPoolRowDTO[]): { qty: number | null; cost:
   let cost: number | null = null
   const folded = foldQtySrcIds(rows)
   for (const r of rows) {
-    if (r.method === 'ref' || folded.has(r.ruleId)) continue
+    if ((r.method === 'ref' && r.costAmount == null) || folded.has(r.ruleId)) continue
     if (r.qtyTotal != null) qty = r2((qty ?? 0) + r.qtyTotal)
     if (r.costAmount != null) cost = r2((cost ?? 0) + r.costAmount)
   }
@@ -301,7 +308,7 @@ export function buildPoolExportAoa(bands: PoolBand[], ym: string, zoneLabel: str
   const foot = poolFooter(bands)
   // 列位与表头对齐:区域/楼层/池名称/原册块/电表/表编码/倍率/上月/本月 共 9 格,之后才是用量·总
   aoa.push(['合计', '', '', '', '', '', '', '', '', c(foot.qty), '', '', '', '',
-    c(foot.cost), '', '', '', '', 'ref 行不计;carrier 只计度数不计金额'])
+    c(foot.cost), '', '', '', '', '纯标准行只计出了应分摊的;冲减载体只计度数不计金额'])
   return aoa
 }
 
