@@ -151,7 +151,7 @@ class ContractCardApiIT extends AbstractMysqlIT {
         return JsonPath.read(getBody("/api/contracts/" + id), "$.data.contract.status");
     }
 
-    // ─── 续签链:parentContractId + 旧合同 renewed + 计费行继承 ─────
+    // ─── 续签链:parentContractId + 旧合同在新一期起租前照常在租 + 计费行继承 ─────
 
     @Test
     void renew_setsParentAndInheritsBillingLinesWithPropertyType() throws Exception {
@@ -169,9 +169,9 @@ class ContractCardApiIT extends AbstractMysqlIT {
                 .andReturn().getResponse().getContentAsString();
         int newId = JsonPath.read(r, "$.data.id");
 
-        // 新合同 parentContractId 指向旧;旧合同展示态 renewed
+        // 新合同 parentContractId 指向旧;新一期半年后才起租 → 旧合同照常在租(2026-07-28 裁定,起租前不标 renewed)
         assertThat((Integer) JsonPath.read(r, "$.data.parentContractId")).isEqualTo(oldId);
-        assertThat(statusOf(oldId)).isEqualTo("renewed");
+        assertThat(statusOf(oldId)).isEqualTo("active");
         // 计费行继承,propertyType 保留
         String d = getBody("/api/contracts/" + newId);
         assertThat((List<String>) JsonPath.read(d, "$.data.billingLines[*].feeKey")).containsExactly("rent_factory");

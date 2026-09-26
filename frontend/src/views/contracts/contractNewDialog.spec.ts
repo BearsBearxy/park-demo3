@@ -3,13 +3,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
-import type { ContractDTO, ContractCreateReq, ContractDetailDTO } from '@/types/contract'
+import type { ContractDTO, ContractCreateReq, ContractDetailDTO, ContractRenewReq } from '@/types/contract'
 
 // CONTRACT-CARD-V2-SPEC §6:期限原文三件套(termText/termType/tierPriceNote)在编辑弹窗可录可存。
 // 原文留档为参考,不参与计费(§1),此处只验「回填 → 提交」链路不丢字段。
 
 vi.mock('@/api/contract', () => ({
-  contractApi: { detail: vi.fn(), update: vi.fn(), create: vi.fn() },
+  contractApi: { detail: vi.fn(), update: vi.fn(), create: vi.fn(), renew: vi.fn() },
 }))
 vi.mock('@/api/tenant', () => ({ tenantApi: { list: vi.fn(async () => []) } }))
 vi.mock('@/api/building', () => ({
@@ -294,5 +294,81 @@ describe('合同弹窗 · 单元多选(FPUnitPicker)', () => {
     const [, req] = vi.mocked(contractApi.update).mock.calls[0] as [number, ContractCreateReq]
     expect(req.unitId).toBe(31)
     expect(req.extraUnitIds).toEqual([30, 32])
+  })
+})
+
+// 续签对话框二选一(ESCALATION-SPLIT-SPEC §1 link_type):续签换约 / 递增段,默认续签;选的值进请求体。
+describe('合同弹窗 · 续签时选续签或递增', () => {
+  const from = { ...initial, id: 9, contractNo: 'S10-0204' } as ContractDTO
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(contractApi.renew).mockResolvedValue(from)
+  })
+  const mountRenew = () => mount(ContractNewDialog, {
+    props: { renewFrom: from },
+    global: { stubs: { teleport: true } },
+  })
+  async function submitWithNo(w: ReturnType<typeof mountRenew>) {
+    await w.find('input.ct-in').setValue('S10-0204#2')
+    await w.findAll('.ct-dlg-f button')[1].trigger('click')
+    await flushPromises()
+    return vi.mocked(contractApi.renew).mock.calls[0] as [number, ContractRenewReq]
+  }
+
+  it('两个选项,默认选中续签;不动它提交 linkType=renew', async () => {
+    const w = mountRenew()
+    await flushPromises()
+    const opts = w.findAll('.ct-link')
+    expect(opts.map((o) => o.text())).toEqual(['续签（换新约）', '递增（同一份合同到年限涨价）'])
+    expect(opts.map((o) => (o.find('input').element as HTMLInputElement).checked)).toEqual([true, false])
+    const [id, req] = await submitWithNo(w)
+    expect(id).toBe(9)
+    expect(req.linkType).toBe('renew')
+  })
+
+  it('选递增:请求体 linkType=escalation,其余字段照旧', async () => {
+    const w = mountRenew()
+    await flushPromises()
+    await w.findAll('.ct-link input')[1].setValue()
+    const [, req] = await submitWithNo(w)
+    expect(req.linkType).toBe('escalation')
+    expect(req.contractNo).toBe('S10-0204#2')
+    expect(req.monthlyRent).toBe(5570)
+  })
+
+  // 对抗复查 F3/F6:选了递增,标题、说明、按钮都不能再说「续签」;整户跳过要在选的地方说;单选组要有名字
+  // 破坏验证:把标题/按钮的三元去掉、删掉 ct-link-note、删掉 aria-labelledby → 各自那行红
+  it('选递增:标题/按钮换成递增,说明不说「提交后原合同标已续签」,选项下写明整户跳过导入', async () => {
+    const w = mountRenew()
+    await flushPromises()
+    const head = () => w.find('.ct-dlg-h').text()
+    const btn = () => w.findAll('.ct-dlg-f button')[1].text()
+    expect(head()).toContain('续签合同')
+    expect(btn()).toBe('续签')
+    expect(w.find('.ct-link-note').exists()).toBe(false)
+    await w.findAll('.ct-link input')[1].setValue()
+    expect(head()).toContain('合同递增')
+    expect(head()).not.toContain('续签合同')
+    expect(head()).toContain('不算续签')
+    expect(head()).toContain('新一期起租日不晚于今天的,原合同标记为已递增;晚于今天的,原合同照常在租')
+    expect(head()).not.toContain('已续签')
+    expect(head()).not.toContain('提交后原合同将标记为已续签')
+    expect(btn()).toBe('递增')
+    expect(w.find('.ct-link-note').text()).toBe('选递增后，这户再导合同汇总册会整户跳过，这户别的合同也不再被导入更新。')
+    const g = w.find('[role=radiogroup]')
+    const lab = w.find('#' + g.attributes('aria-labelledby'))
+    expect(lab.text()).toBe('这一期记成')
+  })
+
+  it('编辑态没有这两个选项', async () => {
+    vi.mocked(contractApi.detail).mockResolvedValue({
+      contract: initial,
+      tenant: { companyName: '周兴', contactName: '', contactPhone: '', businessType: '', status: 1 },
+      billingLines: [],
+      extraUnitIds: [],
+    })
+    const w = mountEdit()
+    await flushPromises()
+    expect(w.findAll('.ct-link')).toHaveLength(0)
   })
 })

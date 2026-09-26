@@ -392,12 +392,107 @@ class ContractWriteApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data.tenantId").value(tid))
                 .andExpect(jsonPath("$.data.buildingId").value(bu[0]))
                 .andExpect(jsonPath("$.data.unitId").value(bu[1]))
-                .andExpect(jsonPath("$.data.monthlyRent").value(8000.0));
+                .andExpect(jsonPath("$.data.monthlyRent").value(8000.0))
+                // 不带 linkType = 续签换约(到期墙续签率只认这一种后继)
+                .andExpect(jsonPath("$.data.linkType").value("renew"));
 
-        // 旧合同回读已续签(V54:renew 改置 renewed,非 terminated);新合同 parentContractId 指旧
+        // 旧合同覆盖今天、新一期 2029 才起租:旧合同照常在租,不标 renewed(用户 2026-07-28 裁定,contract-status-fix.sql)
         mvc.perform(get("/api/contracts/" + oldId).header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contract.status").value("active"));
+    }
+
+    // 递增段(ESCALATION-SPLIT-SPEC §1):新段 link_type=escalation,父指针指前段;前段覆盖今天、新段还没起租 →
+    // 前段照常在租,单元仍占用(对抗复查 F1:原来标 renewed,单元变空置、租金掉出月租金合计,直到新段起租)
+    @Test
+    void renew_asEscalation_writesLinkType_inForceOldStaysActive() throws Exception {
+        int[] bu = findVacantUnit();
+        int oldId = createContract(uniqueNo(), firstTenantId(), bu[0], bu[1],
+                "2026-01-01", "2028-12-31", "active");
+        mvc.perform(post("/api/contracts/" + oldId + "/renew")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"contractNo\":\"" + uniqueNo() + "\",\"startDate\":\"2029-01-01\","
+                        + "\"endDate\":\"2031-12-31\",\"linkType\":\"escalation\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.linkType").value("escalation"))
+                .andExpect(jsonPath("$.data.status").value("future"))
+                .andExpect(jsonPath("$.data.parentContractId").value(oldId));
+        mvc.perform(get("/api/contracts/" + oldId).header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.data.contract.status").value("active"));
+        List<String> unit = JsonPath.read(getBody("/api/buildings/" + bu[0]), "$.data.units[?(@.id==" + bu[1] + ")].status");
+        assertThat(unit).containsExactly("occupied");
+    }
+
+    // 新一期已起租(起租日 ≤ 今天)才算被取代:旧合同标 renewed
+    @Test
+    void renew_successorAlreadyStarted_oldRenewed() throws Exception {
+        int oldId = createContract(uniqueNo(), firstTenantId(), firstBuildingId(), null,
+                "2019-01-01", "2019-12-31", "active");
+        mvc.perform(post("/api/contracts/" + oldId + "/renew")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"contractNo\":\"" + uniqueNo() + "\",\"startDate\":\"2020-01-01\","
+                        + "\"endDate\":\"2020-12-31\",\"linkType\":\"escalation\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+        mvc.perform(get("/api/contracts/" + oldId).header("Authorization", "Bearer " + token))
                 .andExpect(jsonPath("$.data.contract.status").value("renewed"));
+    }
+
+    // 已有下一期的再续会分叉(chain.ts 只告警取 id 大的):第二次 409,不建第二份后继(对抗复查 F5)
+    @Test
+    void renew_twice_returns409InBody_noFork() throws Exception {
+        int oldId = createContract(uniqueNo(), firstTenantId(), firstBuildingId(), null,
+                "2026-01-01", "2028-12-31", "active");
+        String firstNo = uniqueNo();
+        mvc.perform(post("/api/contracts/" + oldId + "/renew")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"contractNo\":\"" + firstNo + "\",\"startDate\":\"2029-01-01\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+        mvc.perform(post("/api/contracts/" + oldId + "/renew")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"contractNo\":\"" + uniqueNo() + "\",\"startDate\":\"2029-01-01\",\"linkType\":\"escalation\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value("该合同已有下一期「" + firstNo + "」,不能再续签"));
+        List<Integer> kids = JsonPath.read(getBody("/api/contracts"), "$.data[?(@.parentContractId==" + oldId + ")].id");
+        assertThat(kids).hasSize(1);
+    }
+
+    // 已终止的不能续:原来接口直调会把 terminated 改写成 renewed(对抗复查 F5)
+    @Test
+    void renew_terminated_returns409InBody_statusKept() throws Exception {
+        int oldId = createContract(uniqueNo(), firstTenantId(), firstBuildingId(), null,
+                "2026-01-01", "2028-12-31", "active");
+        mvc.perform(post("/api/contracts/" + oldId + "/terminate").header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.code").value(0));
+        mvc.perform(post("/api/contracts/" + oldId + "/renew")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"contractNo\":\"" + uniqueNo() + "\",\"startDate\":\"2029-01-01\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value("合同已终止,不能续签"));
+        mvc.perform(get("/api/contracts/" + oldId).header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.data.contract.status").value("terminated"));
+    }
+
+    // 只许 renew|escalation:new 是链首,不能由续签造出来
+    @Test
+    void renew_invalidLinkType_returnsHttp400() throws Exception {
+        int oldId = createContract(uniqueNo(), firstTenantId(), firstBuildingId(), null,
+                "2026-01-01", "2028-12-31", "active");
+        mvc.perform(post("/api/contracts/" + oldId + "/renew")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"contractNo\":\"" + uniqueNo() + "\",\"linkType\":\"new\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+        mvc.perform(get("/api/contracts/" + oldId).header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.data.contract.status").value("active"));
     }
 
     @Test
