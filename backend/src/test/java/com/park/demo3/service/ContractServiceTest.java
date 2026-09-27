@@ -221,7 +221,7 @@ class ContractServiceTest {
         Mockito.when(cm.selectById(77)).thenAnswer(inv -> saved[0]);
 
         svc.renew(5, new ContractRenewReq("IT-RENEW-KIND", LocalDate.of(2024, 3, 1),
-            LocalDate.of(2025, 2, 28), null, null, null, null));
+            LocalDate.of(2025, 2, 28), null, null, null, null, null));
 
         assertThat(saved[0].getKind()).isEqualTo("master_lease");
         assertThat(saved[0].getParentContractId()).isEqualTo(5);

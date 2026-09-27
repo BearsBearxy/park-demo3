@@ -19,6 +19,32 @@
 import type { ReleaseNote } from '@/types/changelog'
 
 export const CHANGELOG: ReleaseNote[] = [
+  // 功能更新(RELEASE-NOTES-SPEC §2.1 第 1 问是):续签对话框加「递增」,新段 link_type=escalation(用户 2026-09-27 拍板)。
+  // 原本并在 0.22.0 那段里,PR #58 合并时这个提交还没推上去,0.22.0 已照原样上线,所以另起一版。
+  // 「不计入续签率」的出处:expiry.logic.ts 有 escalation 后继的前段是 midTier、不进分母,续签命中只认 linkType=renew 的后继
+  // —— 换段那一下既不算一次到期也不算一次续签;新的递增段自己到期后照常进分母(expiry.logic.spec「只有末档 tier2 是一次真到期」)。
+  // 「上一段写已递增」:ContractDrawer 的 nextIsEscalation、FPContractChain 的 escalatedAway。
+  // 「整户跳过」的出处:ContractService.importFull 该户有任一 escalation 段即整行跳过(ESCALATION-SPLIT-SPEC §4)。
+  // 修复一行(对抗复查 F1):master 的 ContractService.renew 一续签就把旧合同标 renewed,新合同还没起租时旧合同
+  // 从月租金合计、楼栋出租率、单元占用里掉出去(IT 实测单元 occupied→vacant、KPI 82880→74880);现在新合同起租后才标
+  // (用户 2026-07-28 裁定,contract-status-fix.sql)。ContractWriteApiIT.renew_asEscalation_…_inForceOldStaysActive 钉住。
+  {
+    version: '0.23.0',
+    date: '2026-09-27',
+    headline: '续签能选递增，提前续签的旧合同照常在租',
+    feature: {
+      icon: 'trending-up',
+      title: '续签能选递增',
+      desc: '在合同管理里点「续签」，能选「递增」：同一份合同到年限涨价，建下一个价格档。'
+        + '涨价那次不计入续签率，上一段写「已递增」。这户再导合同汇总册会整户跳过。',
+      to: 'contracts',
+    },
+    added: [],
+    improved: [],
+    fixed: [
+      '合同管理：提前续签后，旧合同在新合同起租前就不算在租了',
+    ],
+  },
   // 功能更新(RELEASE-NOTES-SPEC §2.1 第 1、2、3 问都是):公摊池的绑定表、折入链能按月设(V131,计划 D1–D4/D7),
   // 抽屉里「只改本月起」从「摊给谁」挪到抽屉级、管三处(原来只管受益人);取整位挪进计费参数页按月生效(D5,用法变了);
   // G1:二期 #15/#21 两块广告字灯池(纯标准行、fold_price 源)出应分摊并进合计 —— 金额会变。

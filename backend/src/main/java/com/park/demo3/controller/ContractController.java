@@ -47,7 +47,8 @@ public class ContractController {
         return svc.terminatePreview(id, on);
     }
 
-    @Operation(summary = "续签合同（原合同终止，新合同继承租户/楼栋/单元）") @PostMapping("/{id}/renew")
+    @Operation(summary = "续签合同（新合同继承租户/楼栋/单元与计费行；续签当时新合同已起租则原合同标已续签，否则原合同照常在租；"
+        + "已终止或已有下一期的 409；linkType=escalation 记为递增段，缺省 renew）") @PostMapping("/{id}/renew")
     public ContractDTO renew(@PathVariable Integer id, @Valid @RequestBody ContractRenewReq req) {
         return svc.renew(id, req);
     }

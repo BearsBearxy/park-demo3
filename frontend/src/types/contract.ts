@@ -84,6 +84,7 @@ export interface ContractRenewReq {
   monthlyRent?: number | null   // 空=继承旧合同
   deposit?: number | null
   rentArea?: number | null
+  linkType?: 'renew' | 'escalation'   // 新段链接类型:缺省 renew 换约;escalation=同一份合同到年限涨价
 }
 
 export interface ContractSummaryDTO {
