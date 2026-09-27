@@ -1,0 +1,10 @@
+__pycache__/
+# 可重生的中间产物(recon.py run 会重出);报告 report.md / diff.csv / import-result.json / prices-filled.json 留着
+out*/*/expected.json
+out*/*/engine.json
+out*/*/readings-*.json
+out*/*/master.json
+out*/*/runner.log
+out*/*/extra.json
+out*/*/sheet.json
+out/book-report.json

@@ -1,0 +1,31 @@
+{
+  "seq" : 99,
+  "file" : "mgmt",
+  "opIndex" : 83,
+  "ref" : "P1-29 复查 mgmt[37] 收款映射改",
+  "op" : "other",
+  "method" : "PUT",
+  "path" : "/api/bills/paymap",
+  "body" : {
+    "tenantId" : 160,
+    "feeKey" : "infraShop",
+    "companyId" : 5
+  },
+  "beforeDetailSig" : "paymap:(160,infraShop)=2",
+  "beforeSnapshot" : {
+    "tenantId" : 160,
+    "feeKey" : "infraShop",
+    "companyId" : 2
+  },
+  "beforeSnapshotSha" : "9ca2f8e40060da8f80f8c2add67c7280438a0a160f8b1646679a8282f4083db0",
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : null,
+  "afterDetail" : {
+    "tenantId" : 160,
+    "feeKey" : "infraShop",
+    "companyId" : 5
+  }
+}

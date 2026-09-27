@@ -1,0 +1,25 @@
+{
+  "seq" : 6,
+  "file" : "four",
+  "opIndex" : 5,
+  "ref" : "§4B / FIX1",
+  "op" : "other",
+  "method" : "PUT",
+  "path" : "/api/bills/paymap",
+  "body" : {
+    "tenantId" : 24,
+    "feeKey" : "transformerMaint",
+    "companyId" : 3
+  },
+  "beforeDetailSig" : "paymap:(24,transformerMaint)=absent",
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : null,
+  "afterDetail" : {
+    "tenantId" : 24,
+    "feeKey" : "transformerMaint",
+    "companyId" : 3
+  }
+}

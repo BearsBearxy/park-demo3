@@ -1,0 +1,25 @@
+{
+  "seq" : 8,
+  "file" : "four",
+  "opIndex" : 7,
+  "ref" : "§4B / 复查 four[缺] 56/landRent",
+  "op" : "other",
+  "method" : "PUT",
+  "path" : "/api/bills/paymap",
+  "body" : {
+    "tenantId" : 56,
+    "feeKey" : "landRent",
+    "companyId" : 1
+  },
+  "beforeDetailSig" : "paymap:(56,landRent)=absent",
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : null,
+  "afterDetail" : {
+    "tenantId" : 56,
+    "feeKey" : "landRent",
+    "companyId" : 1
+  }
+}

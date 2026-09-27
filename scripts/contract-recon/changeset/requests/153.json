@@ -1,0 +1,25 @@
+{
+  "seq" : 153,
+  "file" : "empty",
+  "opIndex" : 53,
+  "ref" : "P1-42 复查 empty[9] 收款映射",
+  "op" : "other",
+  "method" : "PUT",
+  "path" : "/api/bills/paymap",
+  "body" : {
+    "tenantId" : 393,
+    "feeKey" : "transformerMaint",
+    "companyId" : 1
+  },
+  "beforeDetailSig" : "paymap:(393,transformerMaint)=absent",
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : null,
+  "afterDetail" : {
+    "tenantId" : 393,
+    "feeKey" : "transformerMaint",
+    "companyId" : 1
+  }
+}

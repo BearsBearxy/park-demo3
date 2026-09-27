@@ -1,0 +1,1425 @@
+[
+ {
+  "ref": "§3 / P2-05(K-03) 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 32,
+   "saveAs": "$unit401"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/32/units",
+   "json": {
+    "floor": 4,
+    "unitNo": "401",
+    "area": 0
+   }
+  },
+  "pre": {
+   "楼栋32": "二期 三车间 / zone p2 / floor_count 6",
+   "楼栋32 unitNo=401": "不存在(存在则 409;改取其 id 作 $unit401,不重建)"
+  },
+  "expect": {
+   "返回 UnitDTO.id": "记为 $unit401(临时库实测为 734,线上以返回为准)",
+   "floor": 4,
+   "unitNo": "401",
+   "area": 0
+  },
+  "evidence": "租2402!邓宇峰 B67「二期10号楼(三车间)401单元」;水2402!邓宇峰 J114;表41「邓宇峰三车间电」挂楼栋32四楼401室;管中旺 S10-0159 挂32(映射先例)",
+  "why": "R13 不新建楼栋、缺的单元补建面积0;158 主单元要挂 32/4F/401"
+ },
+ {
+  "ref": "§3 / P2-05(K-03)",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 158,
+   "contractNo": "S10-0158",
+   "tenantId": 24
+  },
+  "set": {
+   "buildingId": 32,
+   "unitId": "$unit401",
+   "startDate": "2023-10-01",
+   "endDate": "2026-09-30",
+   "termType": "explicit",
+   "termText": "2023年10月01日至2026年09月30日(纸约4.2表;基础设施每三年递增10%,期内不换档)",
+   "kva": 10.0,
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):纸约(帮管好)二期10号楼(三车间)401单元2100㎡仅基础设施1.96(三年期内不递增)+电梯636+变压器159+10kVA;2023-10册自2023-09-14起收且电梯/变压器两项标签互换,照纸约待核;2025-01~04台账(档309)按租金12060口径收,与纸约不符待核",
+   "status": "active"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "二期10号楼（三车间）401单元",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 1.96,
+     "area": 2100.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约4.2 2100㎡×1.96=4116/月(每三年+10%,2023-10-01~2026-09-30期内不换档);租2402!邓宇峰 E67/F67/H67",
+     "seq": 0,
+     "unitIds": null
+    },
+    {
+     "location": "二期10号楼（三车间）401单元",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 636.0,
+     "note": "纸约4.5 电梯费每月636(159元/梯/层);租2402!邓宇峰 H68;租2310 同额标在变压器行(G74),标签互换待核",
+     "seq": 1,
+     "unitIds": null
+    },
+    {
+     "location": "二期10号楼（三车间）401单元",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约4.3.1B 不足150KVA按159元/月/户;租2402!邓宇峰 H69;租2310 同额标在电梯行(G73),标签互换待核",
+     "seq": 2,
+     "unitIds": null
+    }
+   ]
+  },
+  "pre": {
+   "contract": {
+    "contractNo": "S10-0158",
+    "tenantId": 24,
+    "buildingId": 15,
+    "unitId": null,
+    "status(存储态)": "active",
+    "startDate": null,
+    "endDate": null,
+    "kva": null,
+    "rentArea": "0.00",
+    "monthlyRent": "12060.00",
+    "remark": "由附表10归属派生(月租=最新非零月值)",
+    "lineCount": 0,
+    "termType": null,
+    "termText": null
+   },
+   "contract_unit": "0 行",
+   "tenant24.parentId": 60
+  },
+  "expect": {
+   "monthlyRent": "4911.00",
+   "rentArea": "2100.00",
+   "buildingArea": "1680.00",
+   "unitPrice": null,
+   "mgmtFeePrice": null,
+   "infraFeePrice": "1.9600",
+   "elevatorFee": "636.00",
+   "transformerFee": "159.00",
+   "lineCount": 3,
+   "warnings": null,
+   "buildingId": 32,
+   "unitId": "$unit401",
+   "kva": "10.00",
+   "绑定": "3 行都不绑单元(无租金行,R14)"
+  },
+  "evidence": "纸约(帮管好,租2310!邓宇峰 嵌图 r69/r74;截图 13.png)4.2/4.3.1B/4.5;租2402!邓宇峰 单二 B63~H70(H70=4911,落款G77帮管好);水2402!邓宇峰 I116「10千伏安」×22.6=226",
+  "why": "真实合同补录:纸约起止、楼栋15→32+主单元401、kva10、三条计费行;无租金行→rent_area 由 syncScalarCache 回退 infra 面积 2100",
+  "reviewFix": [
+   "复查 four[1]:pre.contract 改硬门(lineCount=0、startDate=null、buildingId=15 任一不符不发请求);补 termType/termText 现值"
+  ]
+ },
+ {
+  "ref": "§4B / FIX1",
+  "op": "other",
+  "target": {
+   "tenantId": 60,
+   "feeKey": "landRent"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 60,
+    "feeKey": "landRent",
+    "companyId": 1
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(60,landRent) 不存在;存在则跳过,不覆盖(脚本 ON DUPLICATE KEY 保留旧值)",
+   "management_company": "1=创显"
+  },
+  "expect": {
+   "paymap": "(60,landRent)→1"
+  },
+  "evidence": "租2402!邓宇峰 C4=44984.2 在创显列(含天面931);天面改 rent_land 后仍留创显单",
+  "why": "不补则 rent_land 行与火炬园费项落「未设收款公司」单;56/landRent(三龙天面)不写,待拍板"
+ },
+ {
+  "ref": "§4B / FIX1",
+  "op": "other",
+  "target": {
+   "tenantId": 24,
+   "feeKey": "infraFactory"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 24,
+    "feeKey": "infraFactory",
+    "companyId": 3
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(24,infraFactory) 不存在;存在则跳过,不覆盖(脚本 ON DUPLICATE KEY 保留旧值)",
+   "management_company": "3=帮管好"
+  },
+  "expect": {
+   "paymap": "(24,infraFactory)→3"
+  },
+  "evidence": "租2402!邓宇峰 单二 E6/E7/E8/E16 在帮管好列,落款 G77 帮管好",
+  "why": "不补则 rent_land 行与火炬园费项落「未设收款公司」单;56/landRent(三龙天面)不写,待拍板"
+ },
+ {
+  "ref": "§4B / FIX1",
+  "op": "other",
+  "target": {
+   "tenantId": 24,
+   "feeKey": "elevatorMaint"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 24,
+    "feeKey": "elevatorMaint",
+    "companyId": 3
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(24,elevatorMaint) 不存在;存在则跳过,不覆盖(脚本 ON DUPLICATE KEY 保留旧值)",
+   "management_company": "3=帮管好"
+  },
+  "expect": {
+   "paymap": "(24,elevatorMaint)→3"
+  },
+  "evidence": "同上",
+  "why": "不补则 rent_land 行与火炬园费项落「未设收款公司」单;56/landRent(三龙天面)不写,待拍板"
+ },
+ {
+  "ref": "§4B / FIX1",
+  "op": "other",
+  "target": {
+   "tenantId": 24,
+   "feeKey": "transformerMaint"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 24,
+    "feeKey": "transformerMaint",
+    "companyId": 3
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(24,transformerMaint) 不存在;存在则跳过,不覆盖(脚本 ON DUPLICATE KEY 保留旧值)",
+   "management_company": "3=帮管好"
+  },
+  "expect": {
+   "paymap": "(24,transformerMaint)→3"
+  },
+  "evidence": "同上",
+  "why": "不补则 rent_land 行与火炬园费项落「未设收款公司」单;56/landRent(三龙天面)不写,待拍板"
+ },
+ {
+  "ref": "§4B / FIX1",
+  "op": "other",
+  "target": {
+   "tenantId": 24,
+   "feeKey": "elecBasic"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 24,
+    "feeKey": "elecBasic",
+    "companyId": 3
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(24,elecBasic) 不存在;存在则跳过,不覆盖(脚本 ON DUPLICATE KEY 保留旧值)",
+   "management_company": "3=帮管好"
+  },
+  "expect": {
+   "paymap": "(24,elecBasic)→3"
+  },
+  "evidence": "同上(容量费226 = 租2402!邓宇峰 E16 帮管好列)",
+  "why": "不补则 rent_land 行与火炬园费项落「未设收款公司」单;56/landRent(三龙天面)不写,待拍板"
+ },
+ {
+  "ref": "§4B / 复查 four[缺] 56/landRent",
+  "op": "other",
+  "target": {
+   "tenantId": 56,
+   "feeKey": "landRent"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 56,
+    "feeKey": "landRent",
+    "companyId": 1
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(56,landRent) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(56,landRent)→1"
+  },
+  "evidence": "租2309!三龙 落款 G45/G64 创显;signers.py:三龙全部行落款创显",
+  "why": "三龙天面改 rent_land 后不补则每月一张 pay_company_id=NULL 的 249.60 单;收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "§3 FIX2",
+  "op": "param.put",
+  "target": {
+   "key": "green_rate",
+   "scope": "tenant:24"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/params",
+   "json": {
+    "key": "green_rate",
+    "scope": "tenant:24",
+    "acctMonth": "",
+    "mode": "from",
+    "value": 0.01,
+    "note": "火炬园邓宇峰 绿化水收取价0.01例外(水2402!邓宇峰 J129/K129=2100×0.01=21,源册M109;同S13§3)",
+    "correction": null
+   }
+  },
+  "pre": {
+   "tenant_price_cfg": "scope=tenant:24 cfg_key=green_rate 无行(断言26)"
+  },
+  "expect": {
+   "GET /api/params": "tenant:24 green_rate acctMonth=\"\" mode=from value=0.01"
+  },
+  "evidence": "水2402!邓宇峰 J129/K129 = 2100×0.01 = 21(源册 M109 组);先例 tenant:54 / tenant:9 green_rate 0.01(S13§3)",
+  "why": "引擎默认用池核算率 0.008 → 16.80,册面收 21;照 S13§3 建户级例外"
+ },
+ {
+  "ref": "§1 / P2-01(K-01)",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 200,
+   "contractNo": "S10-0200",
+   "tenantId": 56
+  },
+  "set": {
+   "signDate": "2022-06-24",
+   "termText": "主合同（编号CQ-5701-20220621-SLSW，2022年06月24日签订，二期五号楼七层701室/5701室）：租赁期限从（该）租赁物业竣工验收报告载明验收日期次日起计六年止，物业于2022年07月24日移交；补充协议（二期五号楼天面空地24.96㎡）：租赁期限从2023年01月01日起至2028年07月23日止。 | 系统起止2023-01-01~2028-07-23取补充协议区间,主约起算日推定(移交2022-07-24/计租2022-09-07)待核(2026-09-27)",
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):纸约CQ-5701-20220621-SLSW 3866.83㎡不含税17.2/5/1.8+电梯750+变压器250,补充协议天面空地24.96×10(rent_land);册面分两单(1006.03按含税19.4/5.45+2860.8不含税)去税后与纸约全等;第四~六年档(+10%)未录,台账2025-10仍首档价,换档日待核;移交2022-07-24,计租2022-09-07",
+   "status": "active"
+  },
+  "lines": {
+   "remove": [
+    6818,
+    6819
+   ],
+   "update": [],
+   "add": [
+    {
+     "location": "二期五号楼七层701室",
+     "propertyType": "factory",
+     "feeKey": "rent_factory",
+     "feeName": "厂房租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 17.2,
+     "area": 3866.83,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "真实合同补录(2026-09-27):纸约附表 租金5701室 3866.83×不含税17.2(含税19.4);原行1006.03×19.4=租2309!三龙E36/F36 含税单",
+     "seq": 0,
+     "unitIds": [
+      565
+     ]
+    },
+    {
+     "location": "二期五号楼七层701室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 3866.83,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "原文「企业管理服务费」 | 纸约附表 企业管理服务费 3866.83×不含税5(含税5.45);原行1006.03×5.45=租2309!三龙E37/F37",
+     "seq": 1,
+     "unitIds": [
+      565
+     ]
+    },
+    {
+     "location": "二期五号楼七层701室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 1.8,
+     "area": 3866.83,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约附表 基础设施 3866.83×不含税1.8(含税1.93);租2309!三龙 E53/F53/H53=6960.29",
+     "seq": 2,
+     "unitIds": null
+    },
+    {
+     "location": "二期五号楼七层701室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 750.0,
+     "note": "纸约附表 5梯(3货2客)×150元/梯/层/月(首层不算)=750;租2309!三龙 H54",
+     "seq": 3,
+     "unitIds": null
+    },
+    {
+     "location": "二期五号楼七层701室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 250.0,
+     "note": "纸约附表 大于150KVA按1元/KVA:250kVA=250;租2309!三龙 H55",
+     "seq": 4,
+     "unitIds": null
+    },
+    {
+     "location": "二期五号楼天面空地",
+     "propertyType": "land",
+     "feeKey": "rent_land",
+     "feeName": "空地租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 10.0,
+     "area": 24.96,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "补充协议 天面空地24.96㎡×不含税10=249.6,2023-01-01~2028-07-23;租2309!三龙 B56/E56/F56",
+     "seq": 5,
+     "unitIds": null
+    }
+   ]
+  },
+  "pre": {
+   "contract": {
+    "contractNo": "S10-0200",
+    "tenantId": 56,
+    "buildingId": 34,
+    "unitId": 565,
+    "status(存储态)": "active",
+    "startDate": "2023-01-01",
+    "endDate": "2028-07-23",
+    "signDate": null,
+    "kva": "250.00",
+    "rentArea": "1006.03",
+    "monthlyRent": "24999.84",
+    "termText": "主合同（编号CQ-5701-20220621-SLSW，2022年06月24日签订，二期五号楼七层701室/5701室）：租赁期限从（该）租赁物业竣工验收报告载明验收日期次日起计六年止，物业于2022年07月24日移交；补充协议（二期五号楼天面空地24.96㎡）：租赁期限从2023年01月01日起至2028年07月23日止。",
+    "remark": "由附表10归属派生(月租=最新非零月值)",
+    "lineCount": 2
+   },
+   "lines": {
+    "6818": {
+     "contractId": 200,
+     "location": "二期五号楼七层701室",
+     "propertyType": "factory",
+     "feeKey": "rent_factory",
+     "billMode": "per_sqm_month",
+     "area": "1006.03",
+     "unitPrice": "19.4000",
+     "amountOverride": null,
+     "seq": 0,
+     "source": "import",
+     "unitIds": [
+      565
+     ]
+    },
+    "6819": {
+     "contractId": 200,
+     "location": "二期五号楼七层701室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "billMode": "per_sqm_month",
+     "area": "1006.03",
+     "unitPrice": "5.4500",
+     "amountOverride": null,
+     "seq": 1,
+     "source": "import",
+     "unitIds": [
+      565
+     ]
+    }
+   }
+  },
+  "expect": {
+   "monthlyRent": "94053.52",
+   "rentArea": "3866.83",
+   "buildingArea": "3093.46",
+   "unitPrice": "17.2000",
+   "mgmtFeePrice": "5.0000",
+   "infraFeePrice": "1.8000",
+   "elevatorFee": "750.00",
+   "transformerFee": "250.00",
+   "lineCount": 6,
+   "warnings": [
+    "计费行 二期五号楼七层701室|rent_factory|1006.03 被删除,其 1 个单元绑定已随之删除",
+    "计费行 二期五号楼七层701室|mgmt|1006.03 被删除,其 1 个单元绑定已随之删除"
+   ],
+   "signDate": "2022-06-24",
+   "起止/kva/unitId": "2023-01-01~2028-07-23 / 250 / 565 不动",
+   "绑定": "rent_factory、mgmt 两行绑 565;其余 4 行不绑"
+  },
+  "evidence": "纸约 CQ-5701-20220621-SLSW 附表+补充协议(截图 11.png/12.png;租2309!三龙 嵌图 r31~r79);租2309!三龙 单一 B36~H38 + 单二 B51~H57(去税后与纸约逐格全等);水2402!三龙 E16/E22 按 3866.83 摊",
+  "why": "R01 真实合同补录 + R04 存纸约不含税价 + R06 天面空地走 rent_land/land;6818/6819 是 import 行,删了按新行重建才能标 manual(R08),起止/kva/单元不动,递增档不拆"
+ },
+ {
+  "ref": "§2A+§2B / P2-02(K-02)、P2-03",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 359,
+   "contractNo": "S10-0204#1",
+   "tenantId": 60
+  },
+  "set": {
+   "remark": "2024年02月01日至2024年09月30日；2023年10月01日至2024年09月30日 | 计费行更正(2026-09-27):天面(铁皮棚)93.10改rent_land,水电册公摊按4551 | 递增链重锚(2026-09-27):按纸约三档75000/82500/94875,原拆链锚错到第二档;本段宿舍价复原19/2;宿舍544、645两间未录(租2402!邓宇峰 B44/B48,-1584.26/月)待补",
+   "status": "renewed"
+  },
+  "lines": {
+   "remove": [],
+   "update": [
+    {
+     "id": 7183,
+     "unitPrice": 9.6799
+    },
+    {
+     "id": 7184,
+     "unitPrice": 5.0
+    },
+    {
+     "id": 7185,
+     "unitPrice": 1.8
+    },
+    {
+     "id": 7188,
+     "feeKey": "rent_land",
+     "propertyType": "land",
+     "feeName": "空地租金",
+     "unitPrice": 10.0,
+     "unitIds": [
+      566
+     ]
+    },
+    {
+     "id": 7189,
+     "unitPrice": 19.0
+    },
+    {
+     "id": 8206,
+     "unitPrice": 19.0
+    },
+    {
+     "id": 8207,
+     "unitPrice": 19.0
+    },
+    {
+     "id": 8208,
+     "unitPrice": 19.0
+    },
+    {
+     "id": 8209,
+     "unitPrice": 19.0
+    },
+    {
+     "id": 8210,
+     "unitPrice": 19.0
+    },
+    {
+     "id": 8211,
+     "unitPrice": 19.0
+    },
+    {
+     "id": 7190,
+     "unitPrice": 2.0
+    },
+    {
+     "id": 8213,
+     "unitPrice": 2.0
+    },
+    {
+     "id": 8214,
+     "unitPrice": 2.0
+    },
+    {
+     "id": 8215,
+     "unitPrice": 2.0
+    },
+    {
+     "id": 8216,
+     "unitPrice": 2.0
+    },
+    {
+     "id": 8217,
+     "unitPrice": 2.0
+    },
+    {
+     "id": 8218,
+     "unitPrice": 2.0
+    }
+   ],
+   "add": []
+  },
+  "pre": {
+   "contract": {
+    "contractNo": "S10-0204#1",
+    "status(存储态)": "renewed",
+    "linkType": "new",
+    "parentContractId": null,
+    "startDate": "2023-03-01",
+    "endDate": "2026-02-28",
+    "rentArea": "4644.10",
+    "monthlyRent": "75145.28",
+    "remark": "2024年02月01日至2024年09月30日；2023年10月01日至2024年09月30日",
+    "lineCount": 34
+   },
+   "lines": {
+    "7183": {
+     "contractId": 359,
+     "location": "二期13座二楼",
+     "propertyType": "factory",
+     "feeKey": "rent_factory",
+     "billMode": "per_sqm_month",
+     "area": "4551.00",
+     "unitPrice": "8.8000",
+     "amountOverride": null,
+     "seq": 0,
+     "source": "manual",
+     "unitIds": [
+      567
+     ]
+    },
+    "7184": {
+     "contractId": 359,
+     "location": "二期13座二楼",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "billMode": "per_sqm_month",
+     "area": "4551.00",
+     "unitPrice": "4.5455",
+     "amountOverride": null,
+     "seq": 1,
+     "source": "manual",
+     "unitIds": [
+      567
+     ]
+    },
+    "7185": {
+     "contractId": 359,
+     "location": "二期13座二楼",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "billMode": "per_sqm_month",
+     "area": "4551.00",
+     "unitPrice": "1.6364",
+     "amountOverride": null,
+     "seq": 2,
+     "source": "manual",
+     "unitIds": [
+      567
+     ]
+    },
+    "7188": {
+     "contractId": 359,
+     "location": "二期13座天面",
+     "propertyType": "factory",
+     "feeKey": "rent_factory",
+     "billMode": "per_sqm_month",
+     "area": "93.10",
+     "unitPrice": "9.0909",
+     "amountOverride": null,
+     "seq": 5,
+     "source": "manual",
+     "unitIds": [
+      566
+     ]
+    },
+    "7189": {
+     "contractId": 359,
+     "location": "宿舍楼四座229室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "billMode": "per_sqm_month",
+     "area": "31.05",
+     "unitPrice": "17.2727",
+     "amountOverride": null,
+     "seq": 6,
+     "source": "manual",
+     "unitIds": [
+      492
+     ]
+    },
+    "8206": {
+     "contractId": 359,
+     "location": "宿舍楼四座644室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "billMode": "per_sqm_month",
+     "area": "36.53",
+     "unitPrice": "17.2727",
+     "amountOverride": null,
+     "seq": 10,
+     "source": "manual",
+     "unitIds": [
+      519
+     ]
+    },
+    "8207": {
+     "contractId": 359,
+     "location": "宿舍楼四座641室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "billMode": "per_sqm_month",
+     "area": "36.96",
+     "unitPrice": "17.2727",
+     "amountOverride": null,
+     "seq": 10,
+     "source": "manual",
+     "unitIds": [
+      518
+     ]
+    },
+    "8208": {
+     "contractId": 359,
+     "location": "宿舍楼四座646室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "billMode": "per_sqm_month",
+     "area": "36.53",
+     "unitPrice": "17.2727",
+     "amountOverride": null,
+     "seq": 10,
+     "source": "manual",
+     "unitIds": [
+      520
+     ]
+    },
+    "8209": {
+     "contractId": 359,
+     "location": "宿舍楼四座647室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "billMode": "per_sqm_month",
+     "area": "36.53",
+     "unitPrice": "17.2727",
+     "amountOverride": null,
+     "seq": 10,
+     "source": "manual",
+     "unitIds": [
+      521
+     ]
+    },
+    "8210": {
+     "contractId": 359,
+     "location": "宿舍楼四座649室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "billMode": "per_sqm_month",
+     "area": "35.66",
+     "unitPrice": "17.2727",
+     "amountOverride": null,
+     "seq": 10,
+     "source": "manual",
+     "unitIds": [
+      523
+     ]
+    },
+    "8211": {
+     "contractId": 359,
+     "location": "宿舍楼四座650室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "billMode": "per_sqm_month",
+     "area": "35.53",
+     "unitPrice": "17.2727",
+     "amountOverride": null,
+     "seq": 10,
+     "source": "manual",
+     "unitIds": [
+      524
+     ]
+    },
+    "7190": {
+     "contractId": 359,
+     "location": "宿舍楼四座229室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "billMode": "per_sqm_month",
+     "area": "31.05",
+     "unitPrice": "1.8182",
+     "amountOverride": null,
+     "seq": 7,
+     "source": "manual",
+     "unitIds": [
+      492
+     ]
+    },
+    "8213": {
+     "contractId": 359,
+     "location": "宿舍楼四座644室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "billMode": "per_sqm_month",
+     "area": "36.53",
+     "unitPrice": "1.8182",
+     "amountOverride": null,
+     "seq": 11,
+     "source": "manual",
+     "unitIds": [
+      519
+     ]
+    },
+    "8214": {
+     "contractId": 359,
+     "location": "宿舍楼四座641室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "billMode": "per_sqm_month",
+     "area": "36.96",
+     "unitPrice": "1.8182",
+     "amountOverride": null,
+     "seq": 11,
+     "source": "manual",
+     "unitIds": [
+      518
+     ]
+    },
+    "8215": {
+     "contractId": 359,
+     "location": "宿舍楼四座646室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "billMode": "per_sqm_month",
+     "area": "36.53",
+     "unitPrice": "1.8182",
+     "amountOverride": null,
+     "seq": 11,
+     "source": "manual",
+     "unitIds": [
+      520
+     ]
+    },
+    "8216": {
+     "contractId": 359,
+     "location": "宿舍楼四座647室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "billMode": "per_sqm_month",
+     "area": "36.53",
+     "unitPrice": "1.8182",
+     "amountOverride": null,
+     "seq": 11,
+     "source": "manual",
+     "unitIds": [
+      521
+     ]
+    },
+    "8217": {
+     "contractId": 359,
+     "location": "宿舍楼四座649室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "billMode": "per_sqm_month",
+     "area": "35.66",
+     "unitPrice": "1.8182",
+     "amountOverride": null,
+     "seq": 11,
+     "source": "manual",
+     "unitIds": [
+      523
+     ]
+    },
+    "8218": {
+     "contractId": 359,
+     "location": "宿舍楼四座650室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "billMode": "per_sqm_month",
+     "area": "35.53",
+     "unitPrice": "1.8182",
+     "amountOverride": null,
+     "seq": 11,
+     "source": "manual",
+     "unitIds": [
+      524
+     ]
+    }
+   }
+  },
+  "expect": {
+   "monthlyRent": "82522.27",
+   "rentArea": "4551.00",
+   "buildingArea": "3640.80",
+   "unitPrice": "9.6799",
+   "mgmtFeePrice": "5.0000",
+   "infraFeePrice": "1.8000",
+   "elevatorFee": "600.00",
+   "transformerFee": "300.00",
+   "lineCount": 34,
+   "warnings": [
+    "计费行 二期13座天面|rent_factory|93.1 被删除,其 1 个单元绑定已随之删除"
+   ],
+   "绑定": "7188 仍绑 566;其余 33 行按 (location|feeKey|area) 自动回挂原绑定"
+  },
+  "evidence": "天面:租2402!邓宇峰 B39 93.1×10、水2402!邓宇峰 E16/E23 公摊4551不含天面。单价:纸约 CQ-13201-20230301-DYF(截图 14.png;租2310!邓宇峰 嵌图 r29/r36)首档 44053.2/22755/8191.8 = 75000;租2402!邓宇峰 F34=9.6799 F35=5 F36=1.8 F39=10 宿舍 F40/F41、F44/F45、F48/F49=19/2",
+  "why": "§2A 天面 93.10 rent_factory→rent_land/land(分摊面积 4644.10→4551);§2B 拆链错锚把 #1 全链缩 ×0.909091,改回纸约首档与册面价。status 回传存储态 renewed(不改)"
+ },
+ {
+  "ref": "§2A+§2B / P2-02(K-02)、P2-03",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 360,
+   "contractNo": "S10-0204#2",
+   "tenantId": 60
+  },
+  "set": {
+   "remark": "2024年02月01日至2024年09月30日；2023年10月01日至2024年09月30日 | 计费行更正(2026-09-27):天面(铁皮棚)93.10改rent_land,水电册公摊按4551 | 递增链重锚(2026-09-27):按纸约三档75000/82500/94875,原拆链锚错到第二档;本段天面/宿舍价沿用拆链值待核",
+   "status": "active"
+  },
+  "lines": {
+   "remove": [],
+   "update": [
+    {
+     "id": 7198,
+     "unitPrice": 10.6479
+    },
+    {
+     "id": 7199,
+     "unitPrice": 5.5
+    },
+    {
+     "id": 7200,
+     "unitPrice": 1.98
+    },
+    {
+     "id": 7203,
+     "feeKey": "rent_land",
+     "propertyType": "land",
+     "feeName": "空地租金",
+     "unitIds": [
+      566
+     ]
+    }
+   ],
+   "add": []
+  },
+  "pre": {
+   "contract": {
+    "contractNo": "S10-0204#2",
+    "status(存储态)": "active",
+    "linkType": "escalation",
+    "parentContractId": 359,
+    "startDate": "2026-03-01",
+    "endDate": "2029-02-28",
+    "rentArea": "4644.10",
+    "monthlyRent": "82522.73",
+    "remark": "2024年02月01日至2024年09月30日；2023年10月01日至2024年09月30日",
+    "lineCount": 34
+   },
+   "lines": {
+    "7198": {
+     "contractId": 360,
+     "location": "二期13座二楼",
+     "propertyType": "factory",
+     "feeKey": "rent_factory",
+     "billMode": "per_sqm_month",
+     "area": "4551.00",
+     "unitPrice": "9.6800",
+     "amountOverride": null,
+     "seq": 0,
+     "source": "manual",
+     "unitIds": [
+      567
+     ]
+    },
+    "7199": {
+     "contractId": 360,
+     "location": "二期13座二楼",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "billMode": "per_sqm_month",
+     "area": "4551.00",
+     "unitPrice": "5.0000",
+     "amountOverride": null,
+     "seq": 1,
+     "source": "manual",
+     "unitIds": [
+      567
+     ]
+    },
+    "7200": {
+     "contractId": 360,
+     "location": "二期13座二楼",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "billMode": "per_sqm_month",
+     "area": "4551.00",
+     "unitPrice": "1.8000",
+     "amountOverride": null,
+     "seq": 2,
+     "source": "manual",
+     "unitIds": [
+      567
+     ]
+    },
+    "7203": {
+     "contractId": 360,
+     "location": "二期13座天面",
+     "propertyType": "factory",
+     "feeKey": "rent_factory",
+     "billMode": "per_sqm_month",
+     "area": "93.10",
+     "unitPrice": "10.0000",
+     "amountOverride": null,
+     "seq": 5,
+     "source": "manual",
+     "unitIds": [
+      566
+     ]
+    }
+   }
+  },
+  "expect": {
+   "monthlyRent": "90022.32",
+   "rentArea": "4551.00",
+   "buildingArea": "3640.80",
+   "unitPrice": "10.6479",
+   "mgmtFeePrice": "5.5000",
+   "infraFeePrice": "1.9800",
+   "elevatorFee": "600.00",
+   "transformerFee": "300.00",
+   "lineCount": 34,
+   "warnings": [
+    "计费行 二期13座天面|rent_factory|93.1 被删除,其 1 个单元绑定已随之删除"
+   ],
+   "绑定": "7203 仍绑 566;其余自动回挂"
+  },
+  "evidence": "纸约三档表第二档 2026-03-01~2029-02-28 48458.52/25030.5/9010.98 = 82500(= contract_rent_tier 105);单价 = 月额/4551;天面同 359",
+  "why": "§2A 天面改 rent_land;§2B #2 厂房三行 → 10.6479/5.5/1.98(4551×10.6479=48458.59,+0.07 分位差不追);天面10、宿舍19/2 纸约表无此两项,沿用不动"
+ },
+ {
+  "ref": "§2A+§2B / P2-02(K-02)、P2-03",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 204,
+   "contractNo": "S10-0204",
+   "tenantId": 60
+  },
+  "set": {
+   "remark": "2024年02月01日至2024年09月30日；2023年10月01日至2024年09月30日 | 计费行更正(2026-09-27):天面(铁皮棚)93.10改rent_land,水电册公摊按4551 | 递增链重锚(2026-09-27):按纸约三档75000/82500/94875,原拆链锚错到第二档;本段天面/宿舍价沿用拆链值待核",
+   "status": "active"
+  },
+  "lines": {
+   "remove": [
+    6843,
+    6844,
+    6845,
+    6848
+   ],
+   "update": [],
+   "add": [
+    {
+     "location": "二期13座二楼",
+     "propertyType": "factory",
+     "feeKey": "rent_factory",
+     "feeName": "厂房租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 12.2451,
+     "area": 4551.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约第三档55727.3/4551=12.2451(4551×12.2451=55727.45,+0.15不追)(2026-09-27)",
+     "seq": 0,
+     "unitIds": [
+      567
+     ]
+    },
+    {
+     "location": "二期13座二楼",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 6.325,
+     "area": 4551.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "原文「企业管理服务费」 | 纸约第三档28785.08/4551=6.325(2026-09-27)",
+     "seq": 1,
+     "unitIds": [
+      567
+     ]
+    },
+    {
+     "location": "二期13座二楼",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.277,
+     "area": 4551.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约第三档10362.63/4551=2.277(2026-09-27)",
+     "seq": 2,
+     "unitIds": [
+      567
+     ]
+    },
+    {
+     "location": "二期13座天面",
+     "propertyType": "land",
+     "feeKey": "rent_land",
+     "feeName": "空地租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 11.5,
+     "area": 93.1,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "天面铁皮棚(补充协议931/月;租2402!邓宇峰 E39/F39 93.1×10)→rent_land,水电册公摊按4551不含天面(2026-09-27);本段11.5为拆链×1.15推出,纸约无据待核",
+     "seq": 5,
+     "unitIds": [
+      566
+     ]
+    }
+   ]
+  },
+  "pre": {
+   "contract": {
+    "contractNo": "S10-0204",
+    "status(存储态)": "active",
+    "linkType": "escalation",
+    "parentContractId": 360,
+    "startDate": "2029-03-01",
+    "endDate": "2032-02-28",
+    "rentArea": "4644.10",
+    "monthlyRent": "94696.14",
+    "remark": "2024年02月01日至2024年09月30日；2023年10月01日至2024年09月30日",
+    "lineCount": 34
+   },
+   "lines": {
+    "6843": {
+     "contractId": 204,
+     "location": "二期13座二楼",
+     "propertyType": "factory",
+     "feeKey": "rent_factory",
+     "billMode": "per_sqm_month",
+     "area": "4551.00",
+     "unitPrice": "11.1320",
+     "amountOverride": null,
+     "seq": 0,
+     "source": "import",
+     "unitIds": [
+      567
+     ]
+    },
+    "6844": {
+     "contractId": 204,
+     "location": "二期13座二楼",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "billMode": "per_sqm_month",
+     "area": "4551.00",
+     "unitPrice": "5.7500",
+     "amountOverride": null,
+     "seq": 1,
+     "source": "import",
+     "unitIds": [
+      567
+     ]
+    },
+    "6845": {
+     "contractId": 204,
+     "location": "二期13座二楼",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "billMode": "per_sqm_month",
+     "area": "4551.00",
+     "unitPrice": "2.0700",
+     "amountOverride": null,
+     "seq": 2,
+     "source": "import",
+     "unitIds": [
+      567
+     ]
+    },
+    "6848": {
+     "contractId": 204,
+     "location": "二期13座天面",
+     "propertyType": "factory",
+     "feeKey": "rent_factory",
+     "billMode": "per_sqm_month",
+     "area": "93.10",
+     "unitPrice": "11.5000",
+     "amountOverride": null,
+     "seq": 5,
+     "source": "import",
+     "unitIds": [
+      566
+     ]
+    }
+   }
+  },
+  "expect": {
+   "monthlyRent": "103320.76",
+   "rentArea": "4551.00",
+   "buildingArea": "3640.80",
+   "unitPrice": "12.2451",
+   "mgmtFeePrice": "6.3250",
+   "infraFeePrice": "2.2770",
+   "elevatorFee": "600.00",
+   "transformerFee": "300.00",
+   "lineCount": 34,
+   "warnings": [
+    "计费行 二期13座天面|rent_factory|93.1 被删除,其 1 个单元绑定已随之删除"
+   ],
+   "绑定": "新建 4 行按 unitIds 绑(567/567/567/566);其余 30 行自动回挂"
+  },
+  "evidence": "纸约三档表第三档 2029-03-01~2032-02-28 55727.3/28785.08/10362.63 = 94875(= contract_rent_tier 106);天面同 359",
+  "why": "§2A 天面改 rent_land;§2B #3 厂房三行 → 12.2451/6.325/2.277;天面 11.5、宿舍 21.85/2.30 纸约无据,不动(remark 记待核)。4 行原为 import,删后重建标 manual(R08);status 回传 active(GET 返回派生态 future,不能照抄)"
+ },
+ {
+  "ref": "§4 / P2-06(K-04)",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 198,
+   "contractNo": "S10-0198",
+   "tenantId": 54
+  },
+  "set": {
+   "remark": "真实合同补日期(2026-08-09):起止为推定(签约单2022-09-16,纸约九年自验收日,验收日待核);第四~六年档(132,720.27/43,652.71/15,698.96)未录待换档;纸约=六车间6-7层+天面空地,首三年110679.10不含税,计费行7条与纸约逐格全等 | 天面空地56/40改rent_land(2026-09-27;水电册路灯/绿化按7281.52)",
+   "status": "active"
+  },
+  "lines": {
+   "remove": [
+    6804,
+    6805
+   ],
+   "update": [],
+   "add": [
+    {
+     "location": "二期六号楼天面空地",
+     "propertyType": "land",
+     "feeKey": "rent_land",
+     "feeName": "空地租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 10.0,
+     "area": 56.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "天面空地(租2402!罗立剑 B39/B40 56/40×10)→rent_land,水电册路灯/绿化按7281.52不含天面(2026-09-27)",
+     "seq": 5,
+     "unitIds": [
+      566
+     ]
+    },
+    {
+     "location": "二期六号楼天面空地",
+     "propertyType": "land",
+     "feeKey": "rent_land",
+     "feeName": "空地租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 10.0,
+     "area": 40.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "天面空地(租2402!罗立剑 B39/B40 56/40×10)→rent_land,水电册路灯/绿化按7281.52不含天面(2026-09-27)",
+     "seq": 6,
+     "unitIds": [
+      566
+     ]
+    }
+   ]
+  },
+  "pre": {
+   "contract": {
+    "contractNo": "S10-0198",
+    "status(存储态)": "active",
+    "startDate": "2022-09-16",
+    "endDate": "2031-09-15",
+    "rentArea": "7377.52",
+    "monthlyRent": "162853.44",
+    "remark": "真实合同补日期(2026-08-09):起止为推定(签约单2022-09-16,纸约九年自验收日,验收日待核);第四~六年档(132,720.27/43,652.71/15,698.96)未录待换档;纸约=六车间6-7层+天面空地,首三年110679.10不含税,计费行7条与纸约逐格全等",
+    "lineCount": 7
+   },
+   "lines": {
+    "6804": {
+     "contractId": 198,
+     "location": "二期六号楼天面空地",
+     "propertyType": "factory",
+     "feeKey": "rent_factory",
+     "billMode": "per_sqm_month",
+     "area": "56.00",
+     "unitPrice": "10.0000",
+     "amountOverride": null,
+     "seq": 5,
+     "source": "import",
+     "unitIds": [
+      566
+     ]
+    },
+    "6805": {
+     "contractId": 198,
+     "location": "二期六号楼天面空地",
+     "propertyType": "factory",
+     "feeKey": "rent_factory",
+     "billMode": "per_sqm_month",
+     "area": "40.00",
+     "unitPrice": "10.0000",
+     "amountOverride": null,
+     "seq": 6,
+     "source": "import",
+     "unitIds": [
+      566
+     ]
+    }
+   }
+  },
+  "expect": {
+   "monthlyRent": "162853.44",
+   "rentArea": "7281.52",
+   "buildingArea": "5825.22",
+   "unitPrice": "15.2000",
+   "mgmtFeePrice": "5.0000",
+   "infraFeePrice": "1.8000",
+   "elevatorFee": "1200.00",
+   "transformerFee": "500.00",
+   "lineCount": 7,
+   "warnings": [
+    "计费行 二期六号楼天面空地|rent_factory|56 被删除,其 1 个单元绑定已随之删除",
+    "计费行 二期六号楼天面空地|rent_factory|40 被删除,其 1 个单元绑定已随之删除"
+   ],
+   "绑定": "两条 rent_land 绑 566;其余 5 行自动回挂 575/576"
+  },
+  "evidence": "租2402!罗立剑 B39/B40「二期六号楼 天面空地」56×10、40×10;水2402!罗立剑 E16/E23 路灯/绿化按 7281.52(不含 96㎡)",
+  "why": "天面改空地(用户拍板①,R06):rent_factory→rent_land/land,分摊面积 7377.52→7281.52,月额 162,853.44 不变;原为 import 行,删后重建标 manual(R08)。40㎡ 自 2023-11-15 单独成段未做(待拍板)"
+ },
+ {
+  "ref": "P2-38 / P2-42",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 143,
+   "contractNo": "S10-0143",
+   "tenantId": 9
+  },
+  "set": {
+   "status": "active",
+   "remark": "由附表10归属派生(月租=最新非零月值) | 状态更正(2026-09-27):renewed→active(本段覆盖今天);zbn23(474)为覆盖2023-08/09催缴单的前段,保留;链方向(474应为链头)待改"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [],
+   "整组": "billingLines 传 null(不动计费行,不触发重建/缓存同步);extraUnitIds 传 null"
+  },
+  "pre": {
+   "contract": {
+    "contractNo": "S10-0143",
+    "tenantId": 9,
+    "status(存储态)": "renewed",
+    "linkType": "new",
+    "parentContractId": null,
+    "startDate": "2023-10-10",
+    "endDate": "2026-10-09",
+    "rentArea": "1243.00",
+    "monthlyRent": "2840.28",
+    "remark": "由附表10归属派生(月租=最新非零月值)",
+    "lineCount": 3
+   },
+   "zbn23(474)": {
+    "contractNo": "zbn23",
+    "status(存储态)": "active",
+    "linkType": "renew",
+    "parentContractId": 143,
+    "startDate": "2023-01-01",
+    "endDate": "2023-09-30",
+    "monthlyRent": "2840.28",
+    "lineCount": 3
+   },
+   "2023-08 催缴单": "tenant 9 combined 单 15 行 contract_id=474(dev);2023-10/2024-02 行挂 143"
+  },
+  "expect": {
+   "143.status": "active(GET 派生态 active)",
+   "143 其余字段": "与 pre 相同(rentArea 1243.00 / monthlyRent 2840.28 / 3 行计费行 id 不变)",
+   "zbn23(474)": "一字不动:active / 2023-01-01~2023-09-30 → 2023-08、2023-09 仍被覆盖",
+   "status(存储态)": "active",
+   "rentArea": "1243.00",
+   "monthlyRent": "2840.28",
+   "lineCount": 3
+  },
+  "evidence": "报告 P2-38(zbn23 为 UI 续签建出,143 被续签动作置 renewed)、P2-42(143 覆盖今天却为 renewed);R11 status 不写 renewed",
+  "why": "只改 143 的 status。覆盖判定 MeterBindingService.covers 只看「非 draft + 起止重叠」,不看 renewed/active,也不看链;474 的日期与状态不动 → 2023-08/09 覆盖不变。143 改 active 后 KPI 在租月租 +2840.28(本段 2023-10-10~2026-10-09 覆盖今天)",
+  "reviewFix": [
+   "复查 method-idempotency:expect 补可机核的 status(存储态)/rentArea/monthlyRent/lineCount"
+  ]
+ }
+]

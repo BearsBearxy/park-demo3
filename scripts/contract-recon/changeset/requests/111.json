@@ -1,0 +1,36 @@
+{
+  "seq" : 111,
+  "file" : "empty",
+  "opIndex" : 11,
+  "ref" : "P1-42 周应佳 单元",
+  "op" : "other",
+  "method" : "POST",
+  "path" : "/api/buildings/13/units",
+  "body" : {
+    "floor" : 4,
+    "unitNo" : "435",
+    "area" : 63.23
+  },
+  "beforeDetailSig" : null,
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : {
+    "id" : 746,
+    "floor" : 4,
+    "unitNo" : "435",
+    "area" : 63.23,
+    "derivedArea" : 0,
+    "status" : "vacant",
+    "tenantId" : null,
+    "tenantName" : null,
+    "companyName" : null,
+    "businessType" : null,
+    "contractNo" : null,
+    "monthlyRent" : null,
+    "crossBuilding" : null,
+    "homeBuildingName" : null
+  },
+  "afterDetail" : null
+}

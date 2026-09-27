@@ -1,0 +1,36 @@
+{
+  "seq" : 106,
+  "file" : "empty",
+  "opIndex" : 6,
+  "ref" : "P2-07 罗立剑宿舍 C#1 单元",
+  "op" : "other",
+  "method" : "POST",
+  "path" : "/api/buildings/29/units",
+  "body" : {
+    "floor" : 4,
+    "unitNo" : "443",
+    "area" : 36.09
+  },
+  "beforeDetailSig" : null,
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : {
+    "id" : 741,
+    "floor" : 4,
+    "unitNo" : "443",
+    "area" : 36.09,
+    "derivedArea" : 0,
+    "status" : "vacant",
+    "tenantId" : null,
+    "tenantName" : null,
+    "companyName" : null,
+    "businessType" : null,
+    "contractNo" : null,
+    "monthlyRent" : null,
+    "crossBuilding" : null,
+    "homeBuildingName" : null
+  },
+  "afterDetail" : null
+}

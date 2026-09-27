@@ -1,0 +1,45 @@
+{
+  "seq" : 174,
+  "file" : "merge",
+  "opIndex" : 12,
+  "ref" : "P1-29",
+  "op" : "tenant.delete",
+  "method" : "DELETE",
+  "path" : "/api/tenants/386",
+  "body" : null,
+  "beforeDetailSig" : "tenant:SEAN",
+  "beforeSnapshot" : {
+    "tenant" : {
+      "id" : 386,
+      "companyName" : "SEAN",
+      "contactName" : null,
+      "contactPhone" : null,
+      "businessType" : "配套服务",
+      "status" : 1,
+      "categoryId" : null,
+      "phase" : 4,
+      "since" : null,
+      "monthlyRent" : 0,
+      "leasedArea" : 0,
+      "primaryBuilding" : "—",
+      "contractCount" : 0,
+      "remark" : "宿舍二栋商铺4104(补充租户批,正名待核)",
+      "parentId" : null,
+      "parentName" : null,
+      "aliases" : null
+    },
+    "contracts" : [ ]
+  },
+  "beforeSnapshotSha" : "38db69879d69b3ee0298015a5b6aee93e8f642d9b309dceef1831ca98d7b9576",
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : null,
+  "afterDetail" : {
+    "code" : 404,
+    "message" : "资源不存在",
+    "data" : null,
+    "traceId" : "a25f4c574cbc42bd"
+  }
+}

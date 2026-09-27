@@ -1,0 +1,45 @@
+{
+  "seq" : 173,
+  "file" : "merge",
+  "opIndex" : 11,
+  "ref" : "P1-06",
+  "op" : "tenant.delete",
+  "method" : "DELETE",
+  "path" : "/api/tenants/364",
+  "body" : null,
+  "beforeDetailSig" : "tenant:欧培仪",
+  "beforeSnapshot" : {
+    "tenant" : {
+      "id" : 364,
+      "companyName" : "欧培仪",
+      "contactName" : null,
+      "contactPhone" : null,
+      "businessType" : "未分类",
+      "status" : 1,
+      "categoryId" : null,
+      "phase" : 1,
+      "since" : null,
+      "monthlyRent" : 0,
+      "leasedArea" : 0,
+      "primaryBuilding" : "—",
+      "contractCount" : 0,
+      "remark" : "2024-03汇总补档·已退租历史租户(B方案 2026-07-26)",
+      "parentId" : null,
+      "parentName" : null,
+      "aliases" : null
+    },
+    "contracts" : [ ]
+  },
+  "beforeSnapshotSha" : "55b23d6bb05f001a810edbe416dca0d603067d0c6303bea8ba76a34217a0ea62",
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : null,
+  "afterDetail" : {
+    "code" : 404,
+    "message" : "资源不存在",
+    "data" : null,
+    "traceId" : "40761fbcce3c4756"
+  }
+}

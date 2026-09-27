@@ -1,0 +1,4314 @@
+[ {
+  "file" : "four",
+  "opIndex" : 0,
+  "ref" : "§3 / P2-05(K-03) 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 32,
+    "saveAs" : "$unit401"
+  },
+  "requests" : [ 1 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$unit401=734" ]
+}, {
+  "file" : "four",
+  "opIndex" : 1,
+  "ref" : "§3 / P2-05(K-03)",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 158,
+    "contractNo" : "S10-0158",
+    "tenantId" : 24
+  },
+  "requests" : [ 2 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ "contract_unit", "tenant24.parentId" ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ "绑定" ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ "monthlyRent: 12060.00 → 0.00" ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "four",
+  "opIndex" : 2,
+  "ref" : "§4B / FIX1",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 60,
+    "feeKey" : "landRent"
+  },
+  "requests" : [ 3 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "four",
+  "opIndex" : 3,
+  "ref" : "§4B / FIX1",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 24,
+    "feeKey" : "infraFactory"
+  },
+  "requests" : [ 4 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "four",
+  "opIndex" : 4,
+  "ref" : "§4B / FIX1",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 24,
+    "feeKey" : "elevatorMaint"
+  },
+  "requests" : [ 5 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "four",
+  "opIndex" : 5,
+  "ref" : "§4B / FIX1",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 24,
+    "feeKey" : "transformerMaint"
+  },
+  "requests" : [ 6 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "four",
+  "opIndex" : 6,
+  "ref" : "§4B / FIX1",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 24,
+    "feeKey" : "elecBasic"
+  },
+  "requests" : [ 7 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "four",
+  "opIndex" : 7,
+  "ref" : "§4B / 复查 four[缺] 56/landRent",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 56,
+    "feeKey" : "landRent"
+  },
+  "requests" : [ 8 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "four",
+  "opIndex" : 8,
+  "ref" : "§3 FIX2",
+  "op" : "param.put",
+  "status" : "ok",
+  "target" : {
+    "key" : "green_rate",
+    "scope" : "tenant:24"
+  },
+  "requests" : [ 9 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "four",
+  "opIndex" : 9,
+  "ref" : "§1 / P2-01(K-01)",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 200,
+    "contractNo" : "S10-0200",
+    "tenantId" : 56
+  },
+  "requests" : [ 10 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ "起止/kva/unitId", "绑定" ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 1
+  },
+  "lostLineFields" : [ {
+    "id" : 6819,
+    "location" : "二期五号楼七层701室",
+    "fee_key" : "mgmt",
+    "note" : "原文「企业管理服务费」",
+    "tax_rate" : null,
+    "params" : null
+  } ],
+  "droppedLineFields" : {
+    "note" : 6,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "four",
+  "opIndex" : 10,
+  "ref" : "§2A+§2B / P2-02(K-02)、P2-03",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 359,
+    "contractNo" : "S10-0204#1",
+    "tenantId" : 60
+  },
+  "requests" : [ 11 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ "绑定" ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 15
+  },
+  "lostLineFields" : [ {
+    "id" : 7184,
+    "location" : "二期13座二楼",
+    "fee_key" : "mgmt",
+    "note" : "原文「企业管理服务费」",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 7189,
+    "location" : "宿舍楼四座229室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 7192,
+    "location" : "宿舍楼四座229室",
+    "fee_key" : "access",
+    "note" : "2024年02月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8206,
+    "location" : "宿舍楼四座644室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8207,
+    "location" : "宿舍楼四座641室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8208,
+    "location" : "宿舍楼四座646室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8209,
+    "location" : "宿舍楼四座647室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8210,
+    "location" : "宿舍楼四座649室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8211,
+    "location" : "宿舍楼四座650室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8220,
+    "location" : "宿舍楼四座644室",
+    "fee_key" : "access",
+    "note" : "2023年10月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8221,
+    "location" : "宿舍楼四座641室",
+    "fee_key" : "access",
+    "note" : "2023年10月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8222,
+    "location" : "宿舍楼四座646室",
+    "fee_key" : "access",
+    "note" : "2023年10月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8223,
+    "location" : "宿舍楼四座647室",
+    "fee_key" : "access",
+    "note" : "2023年10月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8224,
+    "location" : "宿舍楼四座649室",
+    "fee_key" : "access",
+    "note" : "2023年10月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8225,
+    "location" : "宿舍楼四座650室",
+    "fee_key" : "access",
+    "note" : "2023年10月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  } ],
+  "notes" : [ ]
+}, {
+  "file" : "four",
+  "opIndex" : 11,
+  "ref" : "§2A+§2B / P2-02(K-02)、P2-03",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 360,
+    "contractNo" : "S10-0204#2",
+    "tenantId" : 60
+  },
+  "requests" : [ 12 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ "绑定" ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 15
+  },
+  "lostLineFields" : [ {
+    "id" : 7199,
+    "location" : "二期13座二楼",
+    "fee_key" : "mgmt",
+    "note" : "原文「企业管理服务费」",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 7204,
+    "location" : "宿舍楼四座229室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 7207,
+    "location" : "宿舍楼四座229室",
+    "fee_key" : "access",
+    "note" : "2024年02月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8234,
+    "location" : "宿舍楼四座644室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8235,
+    "location" : "宿舍楼四座641室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8236,
+    "location" : "宿舍楼四座646室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8237,
+    "location" : "宿舍楼四座647室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8238,
+    "location" : "宿舍楼四座649室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8239,
+    "location" : "宿舍楼四座650室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8248,
+    "location" : "宿舍楼四座644室",
+    "fee_key" : "access",
+    "note" : "2023年10月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8249,
+    "location" : "宿舍楼四座641室",
+    "fee_key" : "access",
+    "note" : "2023年10月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8250,
+    "location" : "宿舍楼四座646室",
+    "fee_key" : "access",
+    "note" : "2023年10月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8251,
+    "location" : "宿舍楼四座647室",
+    "fee_key" : "access",
+    "note" : "2023年10月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8252,
+    "location" : "宿舍楼四座649室",
+    "fee_key" : "access",
+    "note" : "2023年10月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8253,
+    "location" : "宿舍楼四座650室",
+    "fee_key" : "access",
+    "note" : "2023年10月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  } ],
+  "notes" : [ ]
+}, {
+  "file" : "four",
+  "opIndex" : 12,
+  "ref" : "§2A+§2B / P2-02(K-02)、P2-03",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 204,
+    "contractNo" : "S10-0204",
+    "tenantId" : 60
+  },
+  "requests" : [ 13 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ "绑定" ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ "monthlyRent: 94696.14 → 94696.15" ],
+    "noteLoss" : 15
+  },
+  "lostLineFields" : [ {
+    "id" : 6844,
+    "location" : "二期13座二楼",
+    "fee_key" : "mgmt",
+    "note" : "原文「企业管理服务费」",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 6849,
+    "location" : "宿舍楼四座229室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 6852,
+    "location" : "宿舍楼四座229室",
+    "fee_key" : "access",
+    "note" : "2024年02月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8178,
+    "location" : "宿舍楼四座644室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8179,
+    "location" : "宿舍楼四座641室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8180,
+    "location" : "宿舍楼四座646室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8181,
+    "location" : "宿舍楼四座647室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8182,
+    "location" : "宿舍楼四座649室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8183,
+    "location" : "宿舍楼四座650室",
+    "fee_key" : "rent_dorm",
+    "note" : "宿舍费用：\r\n2024年2-3月",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8192,
+    "location" : "宿舍楼四座644室",
+    "fee_key" : "access",
+    "note" : "2023年10月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8193,
+    "location" : "宿舍楼四座641室",
+    "fee_key" : "access",
+    "note" : "2023年10月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8194,
+    "location" : "宿舍楼四座646室",
+    "fee_key" : "access",
+    "note" : "2023年10月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8195,
+    "location" : "宿舍楼四座647室",
+    "fee_key" : "access",
+    "note" : "2023年10月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8196,
+    "location" : "宿舍楼四座649室",
+    "fee_key" : "access",
+    "note" : "2023年10月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8197,
+    "location" : "宿舍楼四座650室",
+    "fee_key" : "access",
+    "note" : "2023年10月01日至2024年09月30日",
+    "tax_rate" : null,
+    "params" : null
+  } ],
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "four",
+  "opIndex" : 13,
+  "ref" : "§4 / P2-06(K-04)",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 198,
+    "contractNo" : "S10-0198",
+    "tenantId" : 54
+  },
+  "requests" : [ 14 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ "绑定" ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 1
+  },
+  "lostLineFields" : [ {
+    "id" : 6800,
+    "location" : "二期六号楼六层601室、七层701室",
+    "fee_key" : "mgmt",
+    "note" : "原文「企业管理服务费」",
+    "tax_rate" : null,
+    "params" : null
+  } ],
+  "droppedLineFields" : {
+    "note" : 2,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "four",
+  "opIndex" : 14,
+  "ref" : "P2-38 / P2-42",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 143,
+    "contractNo" : "S10-0143",
+    "tenantId" : 9
+  },
+  "requests" : [ 15 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ "2023-08 催缴单" ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ "143.status", "143 其余字段", "zbn23(474)" ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "notes" : [ "lines 三组全空 → billingLines 传 null(不重建计费行)" ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 0,
+  "ref" : "P1-07",
+  "op" : "contract.create",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 133,
+    "contractNo" : "S10-0018B#1"
+  },
+  "requests" : [ 16 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ "新合同 id=475" ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 1,
+  "ref" : "P1-07",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 18,
+    "contractNo" : "S10-0018",
+    "tenantId" : 133
+  },
+  "requests" : [ 17 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 2,
+  "ref" : "P1-08",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 26,
+    "contractNo" : "S10-0026",
+    "tenantId" : 155
+  },
+  "requests" : [ 18 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 3,
+  "ref" : "P1-09",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 25,
+    "contractNo" : "S10-0025",
+    "tenantId" : 154
+  },
+  "requests" : [ 19 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 4,
+  "ref" : "P1-10",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 28,
+    "contractNo" : "S10-0028",
+    "tenantId" : 158
+  },
+  "requests" : [ 20 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 5,
+  "ref" : "P1-11",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 322,
+    "contractNo" : "S10-0024#1",
+    "tenantId" : 153
+  },
+  "requests" : [ 21 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 6,
+  "ref" : "P1-11",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 24,
+    "contractNo" : "S10-0024",
+    "tenantId" : 153
+  },
+  "requests" : [ 22 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 7,
+  "ref" : "P1-12",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 323,
+    "contractNo" : "S10-0027#1",
+    "tenantId" : 157
+  },
+  "requests" : [ 23 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 8,
+  "ref" : "P1-12",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 324,
+    "contractNo" : "S10-0027#2",
+    "tenantId" : 157
+  },
+  "requests" : [ 24 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 9,
+  "ref" : "P1-12",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 27,
+    "contractNo" : "S10-0027",
+    "tenantId" : 157
+  },
+  "requests" : [ 25 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 10,
+  "ref" : "P1-13",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 21,
+    "contractNo" : "S10-0021",
+    "tenantId" : 150
+  },
+  "requests" : [ 26 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 11,
+  "ref" : "P1-14",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 19,
+    "contractNo" : "S10-0019",
+    "tenantId" : 135
+  },
+  "requests" : [ 27 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 12,
+  "ref" : "P1-15",
+  "op" : "contract.create",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 149,
+    "contractNo" : "S10-0020B#1"
+  },
+  "requests" : [ 28 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ "新合同 id=476" ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 13,
+  "ref" : "P1-15",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 20,
+    "contractNo" : "S10-0020",
+    "tenantId" : 149
+  },
+  "requests" : [ 29 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 14,
+  "ref" : "P1-16",
+  "op" : "contract.create",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 152,
+    "contractNo" : "S10-0023B#1"
+  },
+  "requests" : [ 30 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ "新合同 id=477" ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 15,
+  "ref" : "P1-16",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 23,
+    "contractNo" : "S10-0023",
+    "tenantId" : 152
+  },
+  "requests" : [ 31 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 16,
+  "ref" : "P1-17",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 326,
+    "contractNo" : "S10-0031#1",
+    "tenantId" : 165
+  },
+  "requests" : [ 32 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 1
+  },
+  "lostLineFields" : [ {
+    "id" : 7086,
+    "location" : "一期G座首层、二层、三层、四层整层",
+    "fee_key" : "rent_factory",
+    "note" : "物业移交日期：2024年1月1日，装修期至2024年4月20日",
+    "tax_rate" : null,
+    "params" : null
+  } ],
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 17,
+  "ref" : "P1-17",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 325,
+    "contractNo" : "S10-0031#2",
+    "tenantId" : 165
+  },
+  "requests" : [ 33 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 1
+  },
+  "lostLineFields" : [ {
+    "id" : 7085,
+    "location" : "一期G座首层、二层、三层、四层整层",
+    "fee_key" : "rent_factory",
+    "note" : "物业移交日期：2024年1月1日，装修期至2024年4月20日",
+    "tax_rate" : null,
+    "params" : null
+  } ],
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 18,
+  "ref" : "P1-17",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 31,
+    "contractNo" : "S10-0031",
+    "tenantId" : 165
+  },
+  "requests" : [ 34 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 1
+  },
+  "lostLineFields" : [ {
+    "id" : 6747,
+    "location" : "一期G座首层、二层、三层、四层整层",
+    "fee_key" : "rent_factory",
+    "note" : "物业移交日期：2024年1月1日，装修期至2024年4月20日",
+    "tax_rate" : null,
+    "params" : null
+  } ],
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 19,
+  "ref" : "P1-18",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 68,
+    "contractNo" : "S10-0068",
+    "tenantId" : 139
+  },
+  "requests" : [ 35 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 20,
+  "ref" : "P1-19",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 75,
+    "contractNo" : "S10-0075",
+    "tenantId" : 147
+  },
+  "requests" : [ 36 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 2,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 21,
+  "ref" : "P1-20",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 327,
+    "contractNo" : "S10-0069#1",
+    "tenantId" : 140
+  },
+  "requests" : [ 37 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 2,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 22,
+  "ref" : "P1-20",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 69,
+    "contractNo" : "S10-0069",
+    "tenantId" : 140
+  },
+  "requests" : [ 38 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 2,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 23,
+  "ref" : "P1-22",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 330,
+    "contractNo" : "S10-0074#1",
+    "tenantId" : 146
+  },
+  "requests" : [ 39 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 24,
+  "ref" : "P1-22",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 74,
+    "contractNo" : "S10-0074",
+    "tenantId" : 146
+  },
+  "requests" : [ 40 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 25,
+  "ref" : "P1-23",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 329,
+    "contractNo" : "S10-0072#1",
+    "tenantId" : 144
+  },
+  "requests" : [ 41 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 26,
+  "ref" : "P1-23",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 72,
+    "contractNo" : "S10-0072",
+    "tenantId" : 144
+  },
+  "requests" : [ 42 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 27,
+  "ref" : "P1-25",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 331,
+    "contractNo" : "S10-0077#1",
+    "tenantId" : 159
+  },
+  "requests" : [ 43 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 28,
+  "ref" : "P1-25",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 332,
+    "contractNo" : "S10-0077#2",
+    "tenantId" : 159
+  },
+  "requests" : [ 44 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 29,
+  "ref" : "P1-25",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 77,
+    "contractNo" : "S10-0077",
+    "tenantId" : 159
+  },
+  "requests" : [ 45 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 30,
+  "ref" : "P1-26",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 336,
+    "contractNo" : "S10-0082#1",
+    "tenantId" : 164
+  },
+  "requests" : [ 46 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 31,
+  "ref" : "P1-26",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 82,
+    "contractNo" : "S10-0082",
+    "tenantId" : 164
+  },
+  "requests" : [ 47 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 32,
+  "ref" : "P1-27",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 79,
+    "contractNo" : "S10-0079",
+    "tenantId" : 161
+  },
+  "requests" : [ 48 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 1
+  },
+  "lostLineFields" : [ {
+    "id" : 6734,
+    "location" : "宿舍楼四座625室",
+    "fee_key" : "access",
+    "note" : "2023.11-17-2024.11.16",
+    "tax_rate" : null,
+    "params" : null
+  } ],
+  "droppedLineFields" : {
+    "note" : 2,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 33,
+  "ref" : "P1-28",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 66,
+    "contractNo" : "S10-0066",
+    "tenantId" : 137
+  },
+  "requests" : [ 49 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 3
+  },
+  "lostLineFields" : [ {
+    "id" : 8096,
+    "location" : "宿舍楼四座532室",
+    "fee_key" : "access",
+    "note" : "2024.02.01-2025.01.31",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8097,
+    "location" : "宿舍楼四座536室",
+    "fee_key" : "access",
+    "note" : "2024.02.01-2025.01.31",
+    "tax_rate" : null,
+    "params" : null
+  }, {
+    "id" : 8098,
+    "location" : "宿舍楼四座632室",
+    "fee_key" : "access",
+    "note" : "2024.02.01-2025.01.31",
+    "tax_rate" : null,
+    "params" : null
+  } ],
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 34,
+  "ref" : "P1-21",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 328,
+    "contractNo" : "S10-0071#1",
+    "tenantId" : 143
+  },
+  "requests" : [ 50 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 2,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 35,
+  "ref" : "P1-21",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 71,
+    "contractNo" : "S10-0071",
+    "tenantId" : 143
+  },
+  "requests" : [ 51 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 2,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 36,
+  "ref" : "P1-24",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 76,
+    "contractNo" : "S10-0076",
+    "tenantId" : 156
+  },
+  "requests" : [ 52 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 2,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 37,
+  "ref" : "P1-29",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 333,
+    "contractNo" : "S10-0078#1",
+    "tenantId" : 160
+  },
+  "requests" : [ 53 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 38,
+  "ref" : "P1-29",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 78,
+    "contractNo" : "S10-0078",
+    "tenantId" : 160
+  },
+  "requests" : [ 54 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 39,
+  "ref" : "P2-10",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 361,
+    "contractNo" : "S10-0206#1",
+    "tenantId" : 62
+  },
+  "requests" : [ 55 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 40,
+  "ref" : "P2-10",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 206,
+    "contractNo" : "S10-0206",
+    "tenantId" : 62
+  },
+  "requests" : [ 56 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 41,
+  "ref" : "P2-11",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 205,
+    "contractNo" : "S10-0205",
+    "tenantId" : 61
+  },
+  "requests" : [ 57 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 1
+  },
+  "lostLineFields" : [ {
+    "id" : 6877,
+    "location" : "宿舍楼一座304室",
+    "fee_key" : "access",
+    "note" : "2023年11月01日起至2024年10月31日",
+    "tax_rate" : null,
+    "params" : null
+  } ],
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 42,
+  "ref" : "P2-11",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 308,
+    "contractNo" : "C2024M-013",
+    "tenantId" : 61
+  },
+  "requests" : [ 58 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 1
+  },
+  "lostLineFields" : [ {
+    "id" : 7049,
+    "location" : "宿舍楼一座304室",
+    "fee_key" : "access",
+    "note" : "2023年11月01日起至2024年10月31日",
+    "tax_rate" : null,
+    "params" : null
+  } ],
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 43,
+  "ref" : "P2-12",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 362,
+    "contractNo" : "S10-0208#1",
+    "tenantId" : 64
+  },
+  "requests" : [ 59 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 44,
+  "ref" : "P2-12",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 208,
+    "contractNo" : "S10-0208",
+    "tenantId" : 64
+  },
+  "requests" : [ 60 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 45,
+  "ref" : "P2-13",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 363,
+    "contractNo" : "S10-0210#1",
+    "tenantId" : 66
+  },
+  "requests" : [ 61 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 46,
+  "ref" : "P2-13",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 210,
+    "contractNo" : "S10-0210",
+    "tenantId" : 66
+  },
+  "requests" : [ 62 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 47,
+  "ref" : "P2-14",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 364,
+    "contractNo" : "S10-0211#1",
+    "tenantId" : 67
+  },
+  "requests" : [ 63 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 48,
+  "ref" : "P2-14",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 211,
+    "contractNo" : "S10-0211",
+    "tenantId" : 67
+  },
+  "requests" : [ 64 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 49,
+  "ref" : "P1-07 复查 mgmt[0]/[1] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 133,
+    "feeKey" : "factoryRent"
+  },
+  "requests" : [ 65 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 50,
+  "ref" : "P1-07 复查 mgmt[0]/[1] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 133,
+    "feeKey" : "factoryMgmtFee"
+  },
+  "requests" : [ 66 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 51,
+  "ref" : "P1-07 复查 mgmt[0]/[1] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 133,
+    "feeKey" : "infraFactory"
+  },
+  "requests" : [ 67 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 52,
+  "ref" : "P1-07 复查 mgmt[0]/[1] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 133,
+    "feeKey" : "elevatorMaint"
+  },
+  "requests" : [ 68 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 53,
+  "ref" : "P1-07 复查 mgmt[0]/[1] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 133,
+    "feeKey" : "transformerMaint"
+  },
+  "requests" : [ 69 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 54,
+  "ref" : "P1-11 复查 mgmt[5] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 153,
+    "feeKey" : "transformerMaint"
+  },
+  "requests" : [ 70 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 55,
+  "ref" : "P1-12 复查 mgmt[7] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 157,
+    "feeKey" : "factoryRent"
+  },
+  "requests" : [ 71 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 56,
+  "ref" : "P1-12 复查 mgmt[7] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 157,
+    "feeKey" : "factoryMgmtFee"
+  },
+  "requests" : [ 72 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 57,
+  "ref" : "P1-12 复查 mgmt[7] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 157,
+    "feeKey" : "infraFactory"
+  },
+  "requests" : [ 73 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 58,
+  "ref" : "P1-12 复查 mgmt[7] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 157,
+    "feeKey" : "elevatorMaint"
+  },
+  "requests" : [ 74 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 59,
+  "ref" : "P1-12 复查 mgmt[7] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 157,
+    "feeKey" : "transformerMaint"
+  },
+  "requests" : [ 75 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 60,
+  "ref" : "P1-15 复查 mgmt[12]/[13] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 149,
+    "feeKey" : "officeRent"
+  },
+  "requests" : [ 76 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 61,
+  "ref" : "P1-15 复查 mgmt[12]/[13] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 149,
+    "feeKey" : "officeMgmtFee"
+  },
+  "requests" : [ 77 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 62,
+  "ref" : "P1-15 复查 mgmt[12]/[13] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 149,
+    "feeKey" : "elevatorMaint"
+  },
+  "requests" : [ 78 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 63,
+  "ref" : "P1-15 复查 mgmt[12]/[13] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 149,
+    "feeKey" : "factoryRent"
+  },
+  "requests" : [ 79 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 64,
+  "ref" : "P1-15 复查 mgmt[12]/[13] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 149,
+    "feeKey" : "factoryMgmtFee"
+  },
+  "requests" : [ 80 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 65,
+  "ref" : "P1-15 复查 mgmt[12]/[13] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 149,
+    "feeKey" : "infraFactory"
+  },
+  "requests" : [ 81 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 66,
+  "ref" : "P1-15 复查 mgmt[12]/[13] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 149,
+    "feeKey" : "transformerMaint"
+  },
+  "requests" : [ 82 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 67,
+  "ref" : "P1-20 复查 mgmt[21] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 140,
+    "feeKey" : "shopRent"
+  },
+  "requests" : [ 83 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 68,
+  "ref" : "P1-20 复查 mgmt[21] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 140,
+    "feeKey" : "shopMgmtFee"
+  },
+  "requests" : [ 84 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 69,
+  "ref" : "P1-20 复查 mgmt[21] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 140,
+    "feeKey" : "infraShop"
+  },
+  "requests" : [ 85 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 70,
+  "ref" : "P1-24 复查 mgmt[36] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 156,
+    "feeKey" : "shopRent"
+  },
+  "requests" : [ 86 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 71,
+  "ref" : "P1-24 复查 mgmt[36] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 156,
+    "feeKey" : "shopMgmtFee"
+  },
+  "requests" : [ 87 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 72,
+  "ref" : "P1-24 复查 mgmt[36] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 156,
+    "feeKey" : "infraShop"
+  },
+  "requests" : [ 88 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 73,
+  "ref" : "P2-13 复查 mgmt[45] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 66,
+    "feeKey" : "factoryRent"
+  },
+  "requests" : [ 89 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 74,
+  "ref" : "P2-13 复查 mgmt[45] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 66,
+    "feeKey" : "factoryMgmtFee"
+  },
+  "requests" : [ 90 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 75,
+  "ref" : "P2-13 复查 mgmt[45] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 66,
+    "feeKey" : "infraFactory"
+  },
+  "requests" : [ 91 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 76,
+  "ref" : "P2-13 复查 mgmt[45] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 66,
+    "feeKey" : "elevatorMaint"
+  },
+  "requests" : [ 92 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 77,
+  "ref" : "P2-13 复查 mgmt[45] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 66,
+    "feeKey" : "transformerMaint"
+  },
+  "requests" : [ 93 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 78,
+  "ref" : "P2-14 复查 mgmt[47] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 67,
+    "feeKey" : "factoryRent"
+  },
+  "requests" : [ 94 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 79,
+  "ref" : "P2-14 复查 mgmt[47] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 67,
+    "feeKey" : "factoryMgmtFee"
+  },
+  "requests" : [ 95 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 80,
+  "ref" : "P2-14 复查 mgmt[47] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 67,
+    "feeKey" : "infraFactory"
+  },
+  "requests" : [ 96 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 81,
+  "ref" : "P2-14 复查 mgmt[47] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 67,
+    "feeKey" : "transformerMaint"
+  },
+  "requests" : [ 97 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 82,
+  "ref" : "P1-29 复查 mgmt[37] 收款映射改",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 160,
+    "feeKey" : "shopMgmtFee"
+  },
+  "requests" : [ 98 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "mgmt",
+  "opIndex" : 83,
+  "ref" : "P1-29 复查 mgmt[37] 收款映射改",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 160,
+    "feeKey" : "infraShop"
+  },
+  "requests" : [ 99 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 0,
+  "ref" : "P2-07 罗立剑宿舍 A#1 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 29,
+    "saveAs" : "$u29_636"
+  },
+  "requests" : [ 100 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u29_636=735" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 1,
+  "ref" : "P2-07 罗立剑宿舍 A#1 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 29,
+    "saveAs" : "$u29_638"
+  },
+  "requests" : [ 101 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u29_638=736" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 2,
+  "ref" : "P2-07 罗立剑宿舍 A#1 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 29,
+    "saveAs" : "$u29_640"
+  },
+  "requests" : [ 102 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u29_640=737" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 3,
+  "ref" : "P2-07 罗立剑宿舍 A#1 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 29,
+    "saveAs" : "$u29_642"
+  },
+  "requests" : [ 103 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u29_642=738" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 4,
+  "ref" : "P2-07 罗立剑宿舍 B#1 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 29,
+    "saveAs" : "$u29_327"
+  },
+  "requests" : [ 104 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u29_327=739" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 5,
+  "ref" : "P2-07 罗立剑宿舍 C#1 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 29,
+    "saveAs" : "$u29_441"
+  },
+  "requests" : [ 105 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u29_441=740" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 6,
+  "ref" : "P2-07 罗立剑宿舍 C#1 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 29,
+    "saveAs" : "$u29_443"
+  },
+  "requests" : [ 106 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u29_443=741" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 7,
+  "ref" : "P2-07 罗立剑宿舍 D#1 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 29,
+    "saveAs" : "$u29_225"
+  },
+  "requests" : [ 107 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u29_225=742" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 8,
+  "ref" : "P1-41 黄路生(册面只给420/421合计330.28,均分=同层411/422的165.14) 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 13,
+    "saveAs" : "$u13_420"
+  },
+  "requests" : [ 108 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u13_420=743" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 9,
+  "ref" : "P1-41 黄路生(同上) 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 13,
+    "saveAs" : "$u13_421"
+  },
+  "requests" : [ 109 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u13_421=744" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 10,
+  "ref" : "P1-42 周应佳 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 13,
+    "saveAs" : "$u13_428"
+  },
+  "requests" : [ 110 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u13_428=745" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 11,
+  "ref" : "P1-42 周应佳 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 13,
+    "saveAs" : "$u13_435"
+  },
+  "requests" : [ 111 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u13_435=746" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 12,
+  "ref" : "P2-22 温小蓉 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 26,
+    "saveAs" : "$u26_317"
+  },
+  "requests" : [ 112 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u26_317=747" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 13,
+  "ref" : "P2-22 温小蓉 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 26,
+    "saveAs" : "$u26_518"
+  },
+  "requests" : [ 113 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u26_518=748" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 14,
+  "ref" : "P2-22 温小蓉 B 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 26,
+    "saveAs" : "$u26_321"
+  },
+  "requests" : [ 114 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u26_321=749" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 15,
+  "ref" : "P2-23 文广 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 29,
+    "saveAs" : "$u29_534"
+  },
+  "requests" : [ 115 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u29_534=750" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 16,
+  "ref" : "P2-23 文广 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 29,
+    "saveAs" : "$u29_542"
+  },
+  "requests" : [ 116 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u29_542=751" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 17,
+  "ref" : "私人短租 朱海勇 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 29,
+    "saveAs" : "$u29_238"
+  },
+  "requests" : [ 117 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u29_238=752" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 18,
+  "ref" : "私人短租 朱海勇 B 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 29,
+    "saveAs" : "$u29_242"
+  },
+  "requests" : [ 118 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u29_242=753" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 19,
+  "ref" : "私人短租 王伍平 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 29,
+    "saveAs" : "$u29_240"
+  },
+  "requests" : [ 119 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u29_240=754" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 20,
+  "ref" : "私人短租 张永根 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 29,
+    "saveAs" : "$u29_552"
+  },
+  "requests" : [ 120 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u29_552=755" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 21,
+  "ref" : "私人短租 陈玉林 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 29,
+    "saveAs" : "$u29_329"
+  },
+  "requests" : [ 121 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u29_329=756" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 22,
+  "ref" : "私人短租 苏海苗 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 26,
+    "saveAs" : "$u26_606"
+  },
+  "requests" : [ 122 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u26_606=757" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 23,
+  "ref" : "私人短租 侯炳成 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 29,
+    "saveAs" : "$u29_248"
+  },
+  "requests" : [ 123 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u29_248=758" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 24,
+  "ref" : "私人短租 侯炳成 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 29,
+    "saveAs" : "$u29_247"
+  },
+  "requests" : [ 124 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u29_247=759" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 25,
+  "ref" : "私人短租 侯炳成 单元",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "buildingId" : 29,
+    "saveAs" : "$u29_243"
+  },
+  "requests" : [ 125 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "$u29_243=760" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 26,
+  "ref" : "P1-60 / P2-25",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 135,
+    "contractNo" : "S10-0135",
+    "tenantId" : 1
+  },
+  "requests" : [ 126 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ "monthlyRent: 1808871.63 → 0.00" ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 1,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 27,
+  "ref" : "P2-07",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 451,
+    "contractNo" : "S10-0198A#1",
+    "tenantId" : 54
+  },
+  "requests" : [ 127 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ "buildingArea: 116.90 → null", "rentArea: 146.12 → 0.00", "monthlyRent: 3301.85 → 0.00" ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 16,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 28,
+  "ref" : "P2-07",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 452,
+    "contractNo" : "S10-0198B#1",
+    "tenantId" : 54
+  },
+  "requests" : [ 128 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ "buildingArea: 36.06 → null", "rentArea: 45.08 → 0.00", "monthlyRent: 1005.01 → 0.00" ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 29,
+  "ref" : "P2-07",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 453,
+    "contractNo" : "S10-0198C#1",
+    "tenantId" : 54
+  },
+  "requests" : [ 129 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ "buildingArea: 58.44 → null", "rentArea: 73.05 → 0.00", "monthlyRent: 1650.72 → 0.00" ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 8,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 30,
+  "ref" : "P2-07",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 454,
+    "contractNo" : "S10-0198D#1",
+    "tenantId" : 54
+  },
+  "requests" : [ 130 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ "buildingArea: 59.00 → null", "rentArea: 73.75 → 0.00", "monthlyRent: 1607.08 → 0.00" ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 31,
+  "ref" : "P2-08",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 457,
+    "contractNo" : "S10-0145#2",
+    "tenantId" : 11
+  },
+  "requests" : [ 131 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ "#1(145) 真行" ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ "buildingArea: 1280.00 → null", "rentArea: 1600.00 → 0.00", "monthlyRent: 4085.60 → 0.00" ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 32,
+  "ref" : "P2-09",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 458,
+    "contractNo" : "S10-0159#2",
+    "tenantId" : 25
+  },
+  "requests" : [ 132 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ "#1(159) 真行" ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ "buildingArea: 1380.80 → null", "rentArea: 1726.00 → 0.00", "monthlyRent: 4516.26 → 0.00" ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 33,
+  "ref" : "P1-41",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 460,
+    "contractNo" : "HIST-HLS-01",
+    "tenantId" : 392
+  },
+  "requests" : [ 133 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ "rentArea: 330.28 → 0.00" ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 2,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 34,
+  "ref" : "P1-41",
+  "op" : "contract.create",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 392,
+    "contractNo" : "HIST-HLS-02"
+  },
+  "requests" : [ 134 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ "注意" ],
+  "notes" : [ "新合同 id=478" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 35,
+  "ref" : "P1-42",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 473,
+    "contractNo" : "HIST-ZYJ-01",
+    "tenantId" : 393
+  },
+  "requests" : [ 135 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ "rentArea: 158.66 → 0.00" ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 6,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 36,
+  "ref" : "P1-44",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 472,
+    "contractNo" : "SIM-2402-389",
+    "tenantId" : 389
+  },
+  "requests" : [ 136 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 5,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 37,
+  "ref" : "P1-44",
+  "op" : "contract.create",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 389,
+    "contractNo" : "SIM-2402-389B"
+  },
+  "requests" : [ 137 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "droppedLineFields" : {
+    "note" : 5,
+    "taxRate" : 0
+  },
+  "notes" : [ "新合同 id=479" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 38,
+  "ref" : "P2-22",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 462,
+    "contractNo" : "SIM-2402-379",
+    "tenantId" : 379
+  },
+  "requests" : [ 138 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 8,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 39,
+  "ref" : "P2-22",
+  "op" : "contract.create",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 379,
+    "contractNo" : "SIM-2402-379B"
+  },
+  "requests" : [ 139 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "droppedLineFields" : {
+    "note" : 4,
+    "taxRate" : 0
+  },
+  "notes" : [ "新合同 id=480" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 40,
+  "ref" : "P2-23",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 463,
+    "contractNo" : "SIM-2402-380",
+    "tenantId" : 380
+  },
+  "requests" : [ 140 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 8,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 41,
+  "ref" : "P1-55 相邻 / 私人短租宿舍",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 464,
+    "contractNo" : "SIM-2402-381",
+    "tenantId" : 381
+  },
+  "requests" : [ 141 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 42,
+  "ref" : "私人短租宿舍",
+  "op" : "contract.create",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 381,
+    "contractNo" : "SIM-2402-381B"
+  },
+  "requests" : [ 142 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ "新合同 id=481" ]
+}, {
+  "file" : "empty",
+  "opIndex" : 43,
+  "ref" : "私人短租宿舍",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 465,
+    "contractNo" : "SIM-2402-382",
+    "tenantId" : 382
+  },
+  "requests" : [ 143 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 44,
+  "ref" : "私人短租宿舍",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 466,
+    "contractNo" : "SIM-2402-383",
+    "tenantId" : 383
+  },
+  "requests" : [ 144 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 45,
+  "ref" : "私人短租宿舍",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 467,
+    "contractNo" : "SIM-2402-384",
+    "tenantId" : 384
+  },
+  "requests" : [ 145 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 46,
+  "ref" : "私人短租宿舍",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 236,
+    "contractNo" : "S10-0236",
+    "tenantId" : 77
+  },
+  "requests" : [ 146 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 3,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 47,
+  "ref" : "私人短租宿舍",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 240,
+    "contractNo" : "S10-0240",
+    "tenantId" : 81
+  },
+  "requests" : [ 147 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ "monthlyRent: 296.87 → 0.00" ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 9,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 48,
+  "ref" : "P1-41 复查 empty[7] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 392,
+    "feeKey" : "officeRent"
+  },
+  "requests" : [ 148 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 49,
+  "ref" : "P1-41 复查 empty[7] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 392,
+    "feeKey" : "officeMgmtFee"
+  },
+  "requests" : [ 149 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 50,
+  "ref" : "P1-42 复查 empty[9] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 393,
+    "feeKey" : "officeRent"
+  },
+  "requests" : [ 150 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 51,
+  "ref" : "P1-42 复查 empty[9] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 393,
+    "feeKey" : "officeMgmtFee"
+  },
+  "requests" : [ 151 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 52,
+  "ref" : "P1-42 复查 empty[9] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 393,
+    "feeKey" : "elevatorMaint"
+  },
+  "requests" : [ 152 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "empty",
+  "opIndex" : 53,
+  "ref" : "P1-42 复查 empty[9] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 393,
+    "feeKey" : "transformerMaint"
+  },
+  "requests" : [ 153 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "merge",
+  "opIndex" : 0,
+  "ref" : "P1-06",
+  "op" : "tenant.patch",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 114
+  },
+  "requests" : [ 154 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "merge",
+  "opIndex" : 1,
+  "ref" : "P1-06",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 386
+  },
+  "requests" : [ 155 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 1,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "merge",
+  "opIndex" : 2,
+  "ref" : "P1-06 复查 merge[1] 收款映射",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 114,
+    "feeKey" : "landRent"
+  },
+  "requests" : [ 156 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "merge",
+  "opIndex" : 3,
+  "ref" : "P1-06",
+  "op" : "contract.delete",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 8,
+    "tenantId" : 114
+  },
+  "requests" : [ 157 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "引用它的单行: [{status=draft, n=20}]" ]
+}, {
+  "file" : "merge",
+  "opIndex" : 4,
+  "ref" : "P1-06",
+  "op" : "contract.delete",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 134,
+    "tenantId" : 114
+  },
+  "requests" : [ 158 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "引用它的单行: []" ]
+}, {
+  "file" : "merge",
+  "opIndex" : 5,
+  "ref" : "P1-29",
+  "op" : "tenant.patch",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 160
+  },
+  "requests" : [ 159 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "merge",
+  "opIndex" : 6,
+  "ref" : "P1-29",
+  "op" : "meter.assign",
+  "status" : "ok",
+  "target" : {
+    "meterId" : 865,
+    "assignRowId" : 837
+  },
+  "requests" : [ 160 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ ]
+}, {
+  "file" : "merge",
+  "opIndex" : 7,
+  "ref" : "P1-29",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 333
+  },
+  "requests" : [ 161 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "notes" : [ "lines 三组全空 → billingLines 传 null(不重建计费行)" ]
+}, {
+  "file" : "merge",
+  "opIndex" : 8,
+  "ref" : "P1-29",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 78
+  },
+  "requests" : [ 162 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "notes" : [ "lines 三组全空 → billingLines 传 null(不重建计费行)" ]
+}, {
+  "file" : "merge",
+  "opIndex" : 9,
+  "ref" : "P1-29",
+  "op" : "contract.delete",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 469,
+    "tenantId" : 386
+  },
+  "requests" : [ 163 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "引用它的单行: [{status=draft, n=1}]" ]
+}, {
+  "file" : "merge",
+  "opIndex" : 10,
+  "ref" : "P1-06/P1-29",
+  "op" : "other",
+  "status" : "ok",
+  "target" : {
+    "ym" : [ "2023-08", "2023-10", "2024-02" ]
+  },
+  "requests" : [ 164, 165, 166, 167, 168, 169, 170, 171, 172 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "2023-08 有待删租户 364 的单 status=draft", "2023-10 有待删租户 364 的单 status=draft", "2024-02 有待删租户 364 的单 status=draft", "2024-02 有待删租户 386 的单 status=draft", "重生成月份: [2023-08, 2023-10, 2024-02]" ]
+}, {
+  "file" : "merge",
+  "opIndex" : 11,
+  "ref" : "P1-06",
+  "op" : "tenant.delete",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 364
+  },
+  "requests" : [ 173 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "引用计数: {contract=0, bill_notice=0, monthly_ledger=0, s10_record=0, recon_mark=0, bill_pay_company=0, bill_note_override=0, meter_assign=0, alloc_result=0, alloc_rule_member=0, tenant(parent_id)=0}" ]
+}, {
+  "file" : "merge",
+  "opIndex" : 12,
+  "ref" : "P1-29",
+  "op" : "tenant.delete",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 386
+  },
+  "requests" : [ 174 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "引用计数: {contract=0, bill_notice=0, monthly_ledger=0, s10_record=0, recon_mark=0, bill_pay_company=0, bill_note_override=0, meter_assign=0, alloc_result=0, alloc_rule_member=0, tenant(parent_id)=0}" ]
+}, {
+  "file" : "phase2",
+  "opIndex" : 0,
+  "ref" : "P2-06 / §2.5 罗立剑 40㎡ 天面",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 198,
+    "contractNo" : "S10-0198",
+    "tenantId" : 54
+  },
+  "requests" : [ 175 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "phase2",
+  "opIndex" : 1,
+  "ref" : "P2-06 / §2.5 罗立剑 40㎡ 天面",
+  "op" : "contract.create",
+  "status" : "ok",
+  "target" : {
+    "tenantId" : 54,
+    "contractNo" : "SIM-2312-54"
+  },
+  "requests" : [ 176 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "droppedLineFields" : {
+    "note" : 1,
+    "taxRate" : 0
+  },
+  "notes" : [ "新合同 id=482" ]
+}, {
+  "file" : "phase2",
+  "opIndex" : 2,
+  "ref" : "P1-07 陈相钊 A链 302",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 18,
+    "contractNo" : "S10-0018",
+    "tenantId" : 133
+  },
+  "requests" : [ 177 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "notes" : [ "lines 三组全空 → billingLines 传 null(不重建计费行)" ]
+}, {
+  "file" : "phase2",
+  "opIndex" : 3,
+  "ref" : "P1-07 陈相钊 A链 302",
+  "op" : "contract.renew",
+  "status" : "ok",
+  "target" : {
+    "fromContractId" : 18,
+    "fromContractNo" : "S10-0018",
+    "contractNo" : "S10-0018A#2",
+    "tenantId" : 133
+  },
+  "requests" : [ 178, 179 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ "requires 0.22.0(runner 跑本分支代码,不核版本)" ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "新合同 id=483" ]
+}, {
+  "file" : "phase2",
+  "opIndex" : 4,
+  "ref" : "P1-07 陈相钊 B链 217-219",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractNo" : "S10-0018B#1",
+    "tenantId" : 133
+  },
+  "requests" : [ 180 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "notes" : [ "S10-0018B#1 → id 475", "lines 三组全空 → billingLines 传 null(不重建计费行)" ]
+}, {
+  "file" : "phase2",
+  "opIndex" : 5,
+  "ref" : "P1-07 陈相钊 B链 217-219",
+  "op" : "contract.renew",
+  "status" : "ok",
+  "target" : {
+    "fromContractNo" : "S10-0018B#1",
+    "contractNo" : "S10-0018B#2",
+    "tenantId" : 133
+  },
+  "requests" : [ 181, 182 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ "requires 0.22.0(runner 跑本分支代码,不核版本)" ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "S10-0018B#1 → id 475", "新合同 id=484" ]
+}, {
+  "file" : "phase2",
+  "opIndex" : 6,
+  "ref" : "P1-27 沙力海",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 79,
+    "contractNo" : "S10-0079",
+    "tenantId" : 161
+  },
+  "requests" : [ 183 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "notes" : [ "lines 三组全空 → billingLines 传 null(不重建计费行)" ]
+}, {
+  "file" : "phase2",
+  "opIndex" : 7,
+  "ref" : "P1-27 沙力海",
+  "op" : "contract.renew",
+  "status" : "ok",
+  "target" : {
+    "fromContractId" : 79,
+    "fromContractNo" : "S10-0079",
+    "contractNo" : "S10-0079#2",
+    "tenantId" : 161
+  },
+  "requests" : [ 184, 185 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ "requires 0.22.0(runner 跑本分支代码,不核版本)" ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "新合同 id=485" ]
+}, {
+  "file" : "phase2",
+  "opIndex" : 8,
+  "ref" : "P1-27 沙力海",
+  "op" : "contract.renew",
+  "status" : "ok",
+  "target" : {
+    "fromContractNo" : "S10-0079#2",
+    "contractNo" : "S10-0079#3",
+    "tenantId" : 161
+  },
+  "requests" : [ 186, 187 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ "requires 0.22.0(runner 跑本分支代码,不核版本)" ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "S10-0079#2 → id 485", "新合同 id=486" ]
+}, {
+  "file" : "phase2",
+  "opIndex" : 9,
+  "ref" : "P1-17 林锐辉 #1a",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 326,
+    "contractNo" : "S10-0031#1",
+    "tenantId" : 165
+  },
+  "requests" : [ 188 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "phase2",
+  "opIndex" : 10,
+  "ref" : "P1-17 林锐辉 #1b",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 325,
+    "contractNo" : "S10-0031#2",
+    "tenantId" : 165
+  },
+  "requests" : [ 189 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "phase2",
+  "opIndex" : 11,
+  "ref" : "P1-17 林锐辉 #2",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 31,
+    "contractNo" : "S10-0031",
+    "tenantId" : 165
+  },
+  "requests" : [ 190 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "droppedLineFields" : {
+    "note" : 1,
+    "taxRate" : 0
+  },
+  "notes" : [ ]
+}, {
+  "file" : "phase2",
+  "opIndex" : 12,
+  "ref" : "P1-17 林锐辉 #3",
+  "op" : "contract.renew",
+  "status" : "ok",
+  "target" : {
+    "fromContractId" : 31,
+    "fromContractNo" : "S10-0031#2",
+    "contractNo" : "S10-0031",
+    "tenantId" : 165
+  },
+  "requests" : [ 191, 192 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ "requires 0.22.0(runner 跑本分支代码,不核版本)" ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "新合同 id=487" ]
+}, {
+  "file" : "phase2",
+  "opIndex" : 13,
+  "ref" : "P2-07 罗立剑宿舍 A链首期",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 451,
+    "contractNo" : "S10-0198A#1",
+    "tenantId" : 54
+  },
+  "requests" : [ 193 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "notes" : [ "lines 三组全空 → billingLines 传 null(不重建计费行)" ]
+}, {
+  "file" : "phase2",
+  "opIndex" : 14,
+  "ref" : "P2-07 罗立剑宿舍 A链续期",
+  "op" : "contract.renew",
+  "status" : "ok",
+  "target" : {
+    "fromContractId" : 451,
+    "fromContractNo" : "S10-0198A#1",
+    "contractNo" : "S10-0198A#2",
+    "tenantId" : 54
+  },
+  "requests" : [ 194, 195 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ "requires 0.22.0(runner 跑本分支代码,不核版本)" ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "新合同 id=488" ]
+}, {
+  "file" : "phase2",
+  "opIndex" : 15,
+  "ref" : "P1-06 欧培仪(并户后 114)",
+  "op" : "contract.patch",
+  "status" : "ok",
+  "target" : {
+    "contractId" : 386,
+    "contractNo" : "C2024M-026",
+    "tenantId" : 114
+  },
+  "requests" : [ 196 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "identity" : {
+    "blocking" : [ ],
+    "cacheDrift" : [ ],
+    "noteLoss" : 0
+  },
+  "notes" : [ "lines 三组全空 → billingLines 传 null(不重建计费行)" ]
+}, {
+  "file" : "phase2",
+  "opIndex" : 16,
+  "ref" : "P1-06 欧培仪(并户后 114)",
+  "op" : "contract.renew",
+  "status" : "ok",
+  "target" : {
+    "fromContractId" : 386,
+    "fromContractNo" : "C2024M-026",
+    "contractNo" : "C2024M-026#2",
+    "tenantId" : 114
+  },
+  "requests" : [ 197, 198 ],
+  "errors" : [ ],
+  "preMismatch" : [ ],
+  "preUnchecked" : [ "requires 0.22.0(runner 跑本分支代码,不核版本)" ],
+  "expectMismatch" : [ ],
+  "expectUnchecked" : [ ],
+  "notes" : [ "新合同 id=489" ]
+} ]

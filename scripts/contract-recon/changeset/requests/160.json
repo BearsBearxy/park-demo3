@@ -1,0 +1,35 @@
+{
+  "seq" : 160,
+  "file" : "merge",
+  "opIndex" : 6,
+  "ref" : "P1-29",
+  "op" : "meter.assign",
+  "method" : "PUT",
+  "path" : "/api/meters/assign",
+  "body" : {
+    "ym" : "2024-02",
+    "mode" : "correct",
+    "meterIds" : [ 865 ],
+    "patch" : {
+      "tenantId" : 160,
+      "tenantName" : "SENAN"
+    },
+    "alsoMigrateCopies" : false
+  },
+  "beforeDetailSig" : "meter_assign#837={meter_id=865, from_ym=2024-02, tenant_id=386}",
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : [ {
+    "meterId" : 865,
+    "fromYm" : "2024-02",
+    "until" : null
+  } ],
+  "afterDetail" : {
+    "meter_id" : 865,
+    "from_ym" : "2024-02",
+    "tenant_id" : 160,
+    "tenant_name" : "SENAN"
+  }
+}

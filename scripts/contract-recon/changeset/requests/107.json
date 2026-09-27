@@ -1,0 +1,36 @@
+{
+  "seq" : 107,
+  "file" : "empty",
+  "opIndex" : 7,
+  "ref" : "P2-07 罗立剑宿舍 D#1 单元",
+  "op" : "other",
+  "method" : "POST",
+  "path" : "/api/buildings/29/units",
+  "body" : {
+    "floor" : 2,
+    "unitNo" : "225",
+    "area" : 73.75
+  },
+  "beforeDetailSig" : null,
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : {
+    "id" : 742,
+    "floor" : 2,
+    "unitNo" : "225",
+    "area" : 73.75,
+    "derivedArea" : 0,
+    "status" : "vacant",
+    "tenantId" : null,
+    "tenantName" : null,
+    "companyName" : null,
+    "businessType" : null,
+    "contractNo" : null,
+    "monthlyRent" : null,
+    "crossBuilding" : null,
+    "homeBuildingName" : null
+  },
+  "afterDetail" : null
+}

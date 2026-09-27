@@ -1,0 +1,25 @@
+{
+  "seq" : 74,
+  "file" : "mgmt",
+  "opIndex" : 58,
+  "ref" : "P1-12 复查 mgmt[7] 收款映射",
+  "op" : "other",
+  "method" : "PUT",
+  "path" : "/api/bills/paymap",
+  "body" : {
+    "tenantId" : 157,
+    "feeKey" : "elevatorMaint",
+    "companyId" : 6
+  },
+  "beforeDetailSig" : "paymap:(157,elevatorMaint)=absent",
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : null,
+  "afterDetail" : {
+    "tenantId" : 157,
+    "feeKey" : "elevatorMaint",
+    "companyId" : 6
+  }
+}

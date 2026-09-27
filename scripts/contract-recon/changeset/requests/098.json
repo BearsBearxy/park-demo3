@@ -1,0 +1,31 @@
+{
+  "seq" : 98,
+  "file" : "mgmt",
+  "opIndex" : 82,
+  "ref" : "P1-29 复查 mgmt[37] 收款映射改",
+  "op" : "other",
+  "method" : "PUT",
+  "path" : "/api/bills/paymap",
+  "body" : {
+    "tenantId" : 160,
+    "feeKey" : "shopMgmtFee",
+    "companyId" : 5
+  },
+  "beforeDetailSig" : "paymap:(160,shopMgmtFee)=2",
+  "beforeSnapshot" : {
+    "tenantId" : 160,
+    "feeKey" : "shopMgmtFee",
+    "companyId" : 2
+  },
+  "beforeSnapshotSha" : "de8acee5a6f42951d9f232c5eba8f90b679cd4a485934b6854497ac84358cf02",
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : null,
+  "afterDetail" : {
+    "tenantId" : 160,
+    "feeKey" : "shopMgmtFee",
+    "companyId" : 5
+  }
+}

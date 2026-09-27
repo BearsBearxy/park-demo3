@@ -1,0 +1,3 @@
+__pycache__/
+# 整库导出与抽取中间产物(含租户资料、~84MB):extract.py / dbdump.py 可重出,不进仓库
+out/

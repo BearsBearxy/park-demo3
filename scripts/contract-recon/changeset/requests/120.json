@@ -1,0 +1,36 @@
+{
+  "seq" : 120,
+  "file" : "empty",
+  "opIndex" : 20,
+  "ref" : "私人短租 张永根 单元",
+  "op" : "other",
+  "method" : "POST",
+  "path" : "/api/buildings/29/units",
+  "body" : {
+    "floor" : 5,
+    "unitNo" : "552",
+    "area" : 36.41
+  },
+  "beforeDetailSig" : null,
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : {
+    "id" : 755,
+    "floor" : 5,
+    "unitNo" : "552",
+    "area" : 36.41,
+    "derivedArea" : 0,
+    "status" : "vacant",
+    "tenantId" : null,
+    "tenantName" : null,
+    "companyName" : null,
+    "businessType" : null,
+    "contractNo" : null,
+    "monthlyRent" : null,
+    "crossBuilding" : null,
+    "homeBuildingName" : null
+  },
+  "afterDetail" : null
+}

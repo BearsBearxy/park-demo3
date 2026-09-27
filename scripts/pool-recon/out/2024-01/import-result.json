@@ -1,0 +1,2770 @@
+[ {
+  "file" : "readings-p1.json",
+  "rows" : 323,
+  "result" : {
+    "imported" : 321,
+    "skipped" : 2,
+    "errors" : [ {
+      "rowIndex" : 217,
+      "label" : "四车间工地水1",
+      "reason" : "与本批第 216 行认到同一块表的同一个月(2024-01),读数不同;本行没有导入,以第 216 行为准"
+    }, {
+      "rowIndex" : 218,
+      "label" : "四车间工地水2",
+      "reason" : "与本批第 217 行认到同一块表的同一个月(2024-01),读数不同;本行没有导入,以第 217 行为准"
+    } ],
+    "matches" : [ {
+      "rowIndex" : 0,
+      "label" : "A座总电",
+      "matchBy" : "addr",
+      "meterId" : 179
+    }, {
+      "rowIndex" : 1,
+      "label" : "A座自装总表",
+      "matchBy" : "addr",
+      "meterId" : 180
+    }, {
+      "rowIndex" : 2,
+      "label" : "三车间工地",
+      "matchBy" : "code",
+      "meterId" : 181
+    }, {
+      "rowIndex" : 3,
+      "label" : "地下车库东侧照明",
+      "matchBy" : "code",
+      "meterId" : 182
+    }, {
+      "rowIndex" : 4,
+      "label" : "地下车库西侧照明",
+      "matchBy" : "code",
+      "meterId" : 183
+    }, {
+      "rowIndex" : 5,
+      "label" : "生活加压泵",
+      "matchBy" : "code",
+      "meterId" : 184
+    }, {
+      "rowIndex" : 6,
+      "label" : "A座备用电",
+      "matchBy" : "code",
+      "meterId" : 185
+    }, {
+      "rowIndex" : 7,
+      "label" : "A座-电表①",
+      "matchBy" : "code",
+      "meterId" : 186
+    }, {
+      "rowIndex" : 8,
+      "label" : "创显办公室",
+      "matchBy" : "code",
+      "meterId" : 187
+    }, {
+      "rowIndex" : 9,
+      "label" : "A1大堂",
+      "matchBy" : "code",
+      "meterId" : 188
+    }, {
+      "rowIndex" : 10,
+      "label" : "门岗",
+      "matchBy" : "code",
+      "meterId" : 1422
+    }, {
+      "rowIndex" : 11,
+      "label" : "消防中控室",
+      "matchBy" : "code",
+      "meterId" : 190
+    }, {
+      "rowIndex" : 12,
+      "label" : "监控室",
+      "matchBy" : "code",
+      "meterId" : 191
+    }, {
+      "rowIndex" : 13,
+      "label" : "园区路灯",
+      "matchBy" : "code",
+      "meterId" : 192
+    }, {
+      "rowIndex" : 14,
+      "label" : "旭化成电表3",
+      "matchBy" : "code",
+      "meterId" : 193
+    }, {
+      "rowIndex" : 15,
+      "label" : "旭化成电表4",
+      "matchBy" : "code",
+      "meterId" : 194
+    }, {
+      "rowIndex" : 16,
+      "label" : "旭化成1东公",
+      "matchBy" : "code",
+      "meterId" : 195
+    }, {
+      "rowIndex" : 17,
+      "label" : "联塑精铟电",
+      "matchBy" : "code",
+      "meterId" : 196
+    }, {
+      "rowIndex" : 18,
+      "label" : "旭化成电表1",
+      "matchBy" : "code",
+      "meterId" : 197
+    }, {
+      "rowIndex" : 19,
+      "label" : "旭化成电表2",
+      "matchBy" : "code",
+      "meterId" : 198
+    }, {
+      "rowIndex" : 20,
+      "label" : "旭化成电表5新",
+      "matchBy" : "code",
+      "meterId" : 199
+    }, {
+      "rowIndex" : 21,
+      "label" : "旭化成2东公",
+      "matchBy" : "code",
+      "meterId" : 200
+    }, {
+      "rowIndex" : 22,
+      "label" : "成吉电",
+      "matchBy" : "code",
+      "meterId" : 201
+    }, {
+      "rowIndex" : 23,
+      "label" : "合源电",
+      "matchBy" : "code",
+      "meterId" : 202
+    }, {
+      "rowIndex" : 24,
+      "label" : "吴跃平电",
+      "matchBy" : "code",
+      "meterId" : 203
+    }, {
+      "rowIndex" : 25,
+      "label" : "暨南中院电",
+      "matchBy" : "code",
+      "meterId" : 204
+    }, {
+      "rowIndex" : 26,
+      "label" : "羊城电",
+      "matchBy" : "code",
+      "meterId" : 205
+    }, {
+      "rowIndex" : 27,
+      "label" : "A2西侧公共",
+      "matchBy" : "code",
+      "meterId" : 206
+    }, {
+      "rowIndex" : 28,
+      "label" : "仁恒智研电",
+      "matchBy" : "code",
+      "meterId" : 207
+    }, {
+      "rowIndex" : 29,
+      "label" : "采妍电",
+      "matchBy" : "code",
+      "meterId" : 208
+    }, {
+      "rowIndex" : 30,
+      "label" : "林春艳电",
+      "matchBy" : "code",
+      "meterId" : 209
+    }, {
+      "rowIndex" : 31,
+      "label" : "A3西侧公共",
+      "matchBy" : "code",
+      "meterId" : 210
+    }, {
+      "rowIndex" : 32,
+      "label" : "中大A301电1",
+      "matchBy" : "code",
+      "meterId" : 211
+    }, {
+      "rowIndex" : 33,
+      "label" : "中大A304电2",
+      "matchBy" : "code",
+      "meterId" : 212
+    }, {
+      "rowIndex" : 34,
+      "label" : "中大A301公共电1",
+      "matchBy" : "code",
+      "meterId" : 213
+    }, {
+      "rowIndex" : 35,
+      "label" : "刘亚辉电",
+      "matchBy" : "code",
+      "meterId" : 214
+    }, {
+      "rowIndex" : 36,
+      "label" : "A302电",
+      "matchBy" : "code",
+      "meterId" : 215
+    }, {
+      "rowIndex" : 37,
+      "label" : "林观平303电",
+      "matchBy" : "code",
+      "meterId" : 216
+    }, {
+      "rowIndex" : 38,
+      "label" : "建奕国际电",
+      "matchBy" : "code",
+      "meterId" : 217
+    }, {
+      "rowIndex" : 39,
+      "label" : "中大A304公共电1",
+      "matchBy" : "code",
+      "meterId" : 218
+    }, {
+      "rowIndex" : 40,
+      "label" : "优凯A305电",
+      "matchBy" : "code",
+      "meterId" : 219
+    }, {
+      "rowIndex" : 41,
+      "label" : "双成电2",
+      "matchBy" : "code",
+      "meterId" : 220
+    }, {
+      "rowIndex" : 42,
+      "label" : "中大4楼公共",
+      "matchBy" : "code",
+      "meterId" : 221
+    }, {
+      "rowIndex" : 43,
+      "label" : "4楼空调外机电",
+      "matchBy" : "code",
+      "meterId" : 222
+    }, {
+      "rowIndex" : 44,
+      "label" : "招商中心电1",
+      "matchBy" : "code",
+      "meterId" : 223
+    }, {
+      "rowIndex" : 45,
+      "label" : "招商中心电2",
+      "matchBy" : "code",
+      "meterId" : 224
+    }, {
+      "rowIndex" : 46,
+      "label" : "A4东侧总1",
+      "matchBy" : "addr",
+      "meterId" : 226
+    }, {
+      "rowIndex" : 47,
+      "label" : "A4东侧总2",
+      "matchBy" : "addr",
+      "meterId" : 226
+    }, {
+      "rowIndex" : 48,
+      "label" : "A4东侧公共",
+      "matchBy" : "code",
+      "meterId" : 227
+    }, {
+      "rowIndex" : 49,
+      "label" : "精锐佳电",
+      "matchBy" : "code",
+      "meterId" : 228
+    }, {
+      "rowIndex" : 50,
+      "label" : "炳记电",
+      "matchBy" : "code",
+      "meterId" : 229
+    }, {
+      "rowIndex" : 51,
+      "label" : "帷幄电",
+      "matchBy" : "code",
+      "meterId" : 230
+    }, {
+      "rowIndex" : 52,
+      "label" : "幸悦电1",
+      "matchBy" : "code",
+      "meterId" : 231
+    }, {
+      "rowIndex" : 53,
+      "label" : "重瞳电",
+      "matchBy" : "code",
+      "meterId" : 232
+    }, {
+      "rowIndex" : 54,
+      "label" : "林观平445电",
+      "matchBy" : "code",
+      "meterId" : 233
+    }, {
+      "rowIndex" : 55,
+      "label" : "A4西侧总",
+      "matchBy" : "code",
+      "meterId" : 234
+    }, {
+      "rowIndex" : 56,
+      "label" : "A4西侧走廊灯",
+      "matchBy" : "code",
+      "meterId" : 235
+    }, {
+      "rowIndex" : 57,
+      "label" : "A4西侧消防灯",
+      "matchBy" : "code",
+      "meterId" : 236
+    }, {
+      "rowIndex" : 58,
+      "label" : "粤海华创电",
+      "matchBy" : "code",
+      "meterId" : 237
+    }, {
+      "rowIndex" : 59,
+      "label" : "优唯特电",
+      "matchBy" : "code",
+      "meterId" : 238
+    }, {
+      "rowIndex" : 60,
+      "label" : "黄路生电",
+      "matchBy" : "code",
+      "meterId" : 239
+    }, {
+      "rowIndex" : 61,
+      "label" : "沈振电",
+      "matchBy" : "code",
+      "meterId" : 240
+    }, {
+      "rowIndex" : 62,
+      "label" : "MWILLAMA电",
+      "matchBy" : "code",
+      "meterId" : 241
+    }, {
+      "rowIndex" : 63,
+      "label" : "金准智能电",
+      "matchBy" : "code",
+      "meterId" : 242
+    }, {
+      "rowIndex" : 64,
+      "label" : "周应佳电",
+      "matchBy" : "code",
+      "meterId" : 1424
+    }, {
+      "rowIndex" : 65,
+      "label" : "布司曼电",
+      "matchBy" : "code",
+      "meterId" : 244
+    }, {
+      "rowIndex" : 66,
+      "label" : "人才港电",
+      "matchBy" : "code",
+      "meterId" : 245
+    }, {
+      "rowIndex" : 67,
+      "label" : "戎合A501电",
+      "matchBy" : "code",
+      "meterId" : 246
+    }, {
+      "rowIndex" : 68,
+      "label" : "戎合A501公共",
+      "matchBy" : "code",
+      "meterId" : 247
+    }, {
+      "rowIndex" : 69,
+      "label" : "鑫皇503室",
+      "matchBy" : "code",
+      "meterId" : 248
+    }, {
+      "rowIndex" : 70,
+      "label" : "鑫皇电",
+      "matchBy" : "code",
+      "meterId" : 249
+    }, {
+      "rowIndex" : 71,
+      "label" : "鑫皇公共",
+      "matchBy" : "code",
+      "meterId" : 250
+    }, {
+      "rowIndex" : 72,
+      "label" : "A6东侧总",
+      "matchBy" : "code",
+      "meterId" : 251
+    }, {
+      "rowIndex" : 73,
+      "label" : "A6东侧走廊灯",
+      "matchBy" : "code",
+      "meterId" : 252
+    }, {
+      "rowIndex" : 74,
+      "label" : "A6东侧消防灯",
+      "matchBy" : "code",
+      "meterId" : 253
+    }, {
+      "rowIndex" : 75,
+      "label" : "新材料协会电",
+      "matchBy" : "code",
+      "meterId" : 254
+    }, {
+      "rowIndex" : 76,
+      "label" : "次生代电",
+      "matchBy" : "code",
+      "meterId" : 255
+    }, {
+      "rowIndex" : 77,
+      "label" : "宏玥电",
+      "matchBy" : "code",
+      "meterId" : 256
+    }, {
+      "rowIndex" : 78,
+      "label" : "林观平620电",
+      "matchBy" : "code",
+      "meterId" : 257
+    }, {
+      "rowIndex" : 79,
+      "label" : "高建军A电",
+      "matchBy" : "code",
+      "meterId" : 258
+    }, {
+      "rowIndex" : 80,
+      "label" : "碳紫A623电",
+      "matchBy" : "code",
+      "meterId" : 259
+    }, {
+      "rowIndex" : 81,
+      "label" : "可莱恩A602电",
+      "matchBy" : "code",
+      "meterId" : 260
+    }, {
+      "rowIndex" : 82,
+      "label" : "可莱恩A602公共电",
+      "matchBy" : "code",
+      "meterId" : 261
+    }, {
+      "rowIndex" : 83,
+      "label" : "A东侧货梯",
+      "matchBy" : "code",
+      "meterId" : 262
+    }, {
+      "rowIndex" : 84,
+      "label" : "A西侧货梯",
+      "matchBy" : "code",
+      "meterId" : 263
+    }, {
+      "rowIndex" : 85,
+      "label" : "A客梯1",
+      "matchBy" : "code",
+      "meterId" : 264
+    }, {
+      "rowIndex" : 86,
+      "label" : "A客梯2",
+      "matchBy" : "code",
+      "meterId" : 265
+    }, {
+      "rowIndex" : 87,
+      "label" : "B-G座总电",
+      "matchBy" : "addr",
+      "meterId" : 266
+    }, {
+      "rowIndex" : 88,
+      "label" : "B座总电",
+      "matchBy" : "code",
+      "meterId" : 267
+    }, {
+      "rowIndex" : 89,
+      "label" : "四车间工地",
+      "matchBy" : "code",
+      "meterId" : 268
+    }, {
+      "rowIndex" : 90,
+      "label" : "张彦电",
+      "matchBy" : "code",
+      "meterId" : 269
+    }, {
+      "rowIndex" : 91,
+      "label" : "张彦公共电",
+      "matchBy" : "addr",
+      "meterId" : 270
+    }, {
+      "rowIndex" : 92,
+      "label" : "杨文正电",
+      "matchBy" : "code",
+      "meterId" : 271
+    }, {
+      "rowIndex" : 93,
+      "label" : "可莱恩B201电",
+      "matchBy" : "code",
+      "meterId" : 272
+    }, {
+      "rowIndex" : 94,
+      "label" : "可莱恩B201东侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 273
+    }, {
+      "rowIndex" : 95,
+      "label" : "可莱恩B201西侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 274
+    }, {
+      "rowIndex" : 96,
+      "label" : "欧培仪电",
+      "matchBy" : "code",
+      "meterId" : 275
+    }, {
+      "rowIndex" : 97,
+      "label" : "欧培仪东侧公共",
+      "matchBy" : "addr",
+      "meterId" : 276
+    }, {
+      "rowIndex" : 98,
+      "label" : "欧培仪西侧公共",
+      "matchBy" : "addr",
+      "meterId" : 277
+    }, {
+      "rowIndex" : 99,
+      "label" : "碧沃丰B401电",
+      "matchBy" : "code",
+      "meterId" : 278
+    }, {
+      "rowIndex" : 100,
+      "label" : "碧沃丰B401东侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 279
+    }, {
+      "rowIndex" : 101,
+      "label" : "碧沃丰B401西侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 280
+    }, {
+      "rowIndex" : 102,
+      "label" : "B东侧楼梯间",
+      "matchBy" : "addr",
+      "meterId" : 281
+    }, {
+      "rowIndex" : 103,
+      "label" : "B西侧楼梯间",
+      "matchBy" : "addr",
+      "meterId" : 282
+    }, {
+      "rowIndex" : 104,
+      "label" : "B东侧货梯",
+      "matchBy" : "addr",
+      "meterId" : 283
+    }, {
+      "rowIndex" : 105,
+      "label" : "B西侧货梯",
+      "matchBy" : "addr",
+      "meterId" : 284
+    }, {
+      "rowIndex" : 106,
+      "label" : "C座总电",
+      "matchBy" : "code",
+      "meterId" : 285
+    }, {
+      "rowIndex" : 107,
+      "label" : "大为电",
+      "matchBy" : "code",
+      "meterId" : 286
+    }, {
+      "rowIndex" : 108,
+      "label" : "大为电2",
+      "matchBy" : "code",
+      "meterId" : 287
+    }, {
+      "rowIndex" : 109,
+      "label" : "高建军C电",
+      "matchBy" : "code",
+      "meterId" : 288
+    }, {
+      "rowIndex" : 110,
+      "label" : "杨道扬电",
+      "matchBy" : "code",
+      "meterId" : 289
+    }, {
+      "rowIndex" : 111,
+      "label" : "卢志华电",
+      "matchBy" : "code",
+      "meterId" : 290
+    }, {
+      "rowIndex" : 112,
+      "label" : "诺玲电",
+      "matchBy" : "code",
+      "meterId" : 291
+    }, {
+      "rowIndex" : 113,
+      "label" : "大为东侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 292
+    }, {
+      "rowIndex" : 114,
+      "label" : "C2消防",
+      "matchBy" : "code",
+      "meterId" : 293
+    }, {
+      "rowIndex" : 115,
+      "label" : "C2走廊",
+      "matchBy" : "code",
+      "meterId" : 294
+    }, {
+      "rowIndex" : 116,
+      "label" : "张勇电",
+      "matchBy" : "code",
+      "meterId" : 295
+    }, {
+      "rowIndex" : 117,
+      "label" : "李卓伦C203电",
+      "matchBy" : "code",
+      "meterId" : 296
+    }, {
+      "rowIndex" : 118,
+      "label" : "仁恒C207电",
+      "matchBy" : "code",
+      "meterId" : 297
+    }, {
+      "rowIndex" : 119,
+      "label" : "芷泉电",
+      "matchBy" : "code",
+      "meterId" : 298
+    }, {
+      "rowIndex" : 120,
+      "label" : "顺心鸿电",
+      "matchBy" : "code",
+      "meterId" : 299
+    }, {
+      "rowIndex" : 121,
+      "label" : "孙余电",
+      "matchBy" : "code",
+      "meterId" : 304
+    }, {
+      "rowIndex" : 122,
+      "label" : "吴跃平C221电",
+      "matchBy" : "code",
+      "meterId" : 305
+    }, {
+      "rowIndex" : 123,
+      "label" : "李卓伦电",
+      "matchBy" : "code",
+      "meterId" : 306
+    }, {
+      "rowIndex" : 124,
+      "label" : "力美C201电",
+      "matchBy" : "code",
+      "meterId" : 307
+    }, {
+      "rowIndex" : 125,
+      "label" : "力美C201东侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 308
+    }, {
+      "rowIndex" : 126,
+      "label" : "陈相钊电",
+      "matchBy" : "code",
+      "meterId" : 309
+    }, {
+      "rowIndex" : 127,
+      "label" : "力美C301东侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 310
+    }, {
+      "rowIndex" : 128,
+      "label" : "邹同稳C301电",
+      "matchBy" : "code",
+      "meterId" : 311
+    }, {
+      "rowIndex" : 129,
+      "label" : "道磁C401电",
+      "matchBy" : "code",
+      "meterId" : 312
+    }, {
+      "rowIndex" : 130,
+      "label" : "道磁C401东侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 313
+    }, {
+      "rowIndex" : 131,
+      "label" : "可莱恩C402电1",
+      "matchBy" : "code",
+      "meterId" : 314
+    }, {
+      "rowIndex" : 132,
+      "label" : "可莱恩C402电2",
+      "matchBy" : "code",
+      "meterId" : 315
+    }, {
+      "rowIndex" : 133,
+      "label" : "可莱恩C402西侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 316
+    }, {
+      "rowIndex" : 134,
+      "label" : "C东侧楼梯间",
+      "matchBy" : "addr",
+      "meterId" : 317
+    }, {
+      "rowIndex" : 135,
+      "label" : "C西侧楼梯间",
+      "matchBy" : "addr",
+      "meterId" : 318
+    }, {
+      "rowIndex" : 136,
+      "label" : "C东侧货梯电表1",
+      "matchBy" : "code",
+      "meterId" : 319
+    }, {
+      "rowIndex" : 137,
+      "label" : "C东侧货梯电表2",
+      "matchBy" : "code",
+      "meterId" : 320
+    }, {
+      "rowIndex" : 138,
+      "label" : "C东侧货梯电表3",
+      "matchBy" : "code",
+      "meterId" : 321
+    }, {
+      "rowIndex" : 139,
+      "label" : "C西侧货梯",
+      "matchBy" : "addr",
+      "meterId" : 322
+    }, {
+      "rowIndex" : 140,
+      "label" : "D座总电",
+      "matchBy" : "code",
+      "meterId" : 323
+    }, {
+      "rowIndex" : 141,
+      "label" : "翔海借电D",
+      "matchBy" : "code",
+      "meterId" : 324
+    }, {
+      "rowIndex" : 142,
+      "label" : "邱彩云电",
+      "matchBy" : "code",
+      "meterId" : 325
+    }, {
+      "rowIndex" : 143,
+      "label" : "邱彩云东侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 1453
+    }, {
+      "rowIndex" : 144,
+      "label" : "叶子涛电",
+      "matchBy" : "code",
+      "meterId" : 326
+    }, {
+      "rowIndex" : 145,
+      "label" : "D201电",
+      "matchBy" : "code",
+      "meterId" : 327
+    }, {
+      "rowIndex" : 146,
+      "label" : "D201电2",
+      "matchBy" : "code",
+      "meterId" : 328
+    }, {
+      "rowIndex" : 147,
+      "label" : "D201东侧电",
+      "matchBy" : "addr",
+      "meterId" : 329
+    }, {
+      "rowIndex" : 148,
+      "label" : "D201西侧电",
+      "matchBy" : "addr",
+      "meterId" : 330
+    }, {
+      "rowIndex" : 149,
+      "label" : "金纳D301电",
+      "matchBy" : "code",
+      "meterId" : 331
+    }, {
+      "rowIndex" : 150,
+      "label" : "金纳D301东侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 332
+    }, {
+      "rowIndex" : 151,
+      "label" : "金纳D301西侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 333
+    }, {
+      "rowIndex" : 152,
+      "label" : "飞度电",
+      "matchBy" : "code",
+      "meterId" : 334
+    }, {
+      "rowIndex" : 153,
+      "label" : "飞度东侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 335
+    }, {
+      "rowIndex" : 154,
+      "label" : "一元兰欣电",
+      "matchBy" : "code",
+      "meterId" : 336
+    }, {
+      "rowIndex" : 155,
+      "label" : "一元兰欣西侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 337
+    }, {
+      "rowIndex" : 156,
+      "label" : "D东侧楼梯间",
+      "matchBy" : "addr",
+      "meterId" : 338
+    }, {
+      "rowIndex" : 157,
+      "label" : "D西侧楼梯间",
+      "matchBy" : "addr",
+      "meterId" : 339
+    }, {
+      "rowIndex" : 158,
+      "label" : "D东侧货梯",
+      "matchBy" : "addr",
+      "meterId" : 340
+    }, {
+      "rowIndex" : 159,
+      "label" : "D西侧货梯",
+      "matchBy" : "addr",
+      "meterId" : 341
+    }, {
+      "rowIndex" : 160,
+      "label" : "E座总电",
+      "matchBy" : "code",
+      "meterId" : 342
+    }, {
+      "rowIndex" : 161,
+      "label" : "翔海借电E",
+      "matchBy" : "code",
+      "meterId" : 343
+    }, {
+      "rowIndex" : 162,
+      "label" : "F401借电E",
+      "matchBy" : "code",
+      "meterId" : 344
+    }, {
+      "rowIndex" : 163,
+      "label" : "光伏工程",
+      "matchBy" : "addr",
+      "meterId" : 1454
+    }, {
+      "rowIndex" : 164,
+      "label" : "信成洋电",
+      "matchBy" : "code",
+      "meterId" : 345
+    }, {
+      "rowIndex" : 165,
+      "label" : "银纳E103电",
+      "matchBy" : "code",
+      "meterId" : 346
+    }, {
+      "rowIndex" : 166,
+      "label" : "碳紫E104电",
+      "matchBy" : "code",
+      "meterId" : 347
+    }, {
+      "rowIndex" : 167,
+      "label" : "E自助售卖机",
+      "matchBy" : "addr",
+      "meterId" : 348
+    }, {
+      "rowIndex" : 168,
+      "label" : "E座二楼东侧空租",
+      "matchBy" : "code",
+      "meterId" : 349
+    }, {
+      "rowIndex" : 169,
+      "label" : "张文意电",
+      "matchBy" : "code",
+      "meterId" : 350
+    }, {
+      "rowIndex" : 170,
+      "label" : "E二楼东侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 351
+    }, {
+      "rowIndex" : 171,
+      "label" : "天玛E201电",
+      "matchBy" : "code",
+      "meterId" : 352
+    }, {
+      "rowIndex" : 172,
+      "label" : "天玛E201西侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 353
+    }, {
+      "rowIndex" : 173,
+      "label" : "翔海E301电",
+      "matchBy" : "code",
+      "meterId" : 354
+    }, {
+      "rowIndex" : 174,
+      "label" : "翔海E301东侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 357
+    }, {
+      "rowIndex" : 175,
+      "label" : "翔海E301西侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 358
+    }, {
+      "rowIndex" : 176,
+      "label" : "翔海E401电",
+      "matchBy" : "code",
+      "meterId" : 359
+    }, {
+      "rowIndex" : 177,
+      "label" : "翔海E401东侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 360
+    }, {
+      "rowIndex" : 178,
+      "label" : "翔海E401西侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 361
+    }, {
+      "rowIndex" : 179,
+      "label" : "E东侧楼梯间",
+      "matchBy" : "addr",
+      "meterId" : 362
+    }, {
+      "rowIndex" : 180,
+      "label" : "E西侧楼梯间",
+      "matchBy" : "addr",
+      "meterId" : 363
+    }, {
+      "rowIndex" : 181,
+      "label" : "E东侧货梯",
+      "matchBy" : "addr",
+      "meterId" : 364
+    }, {
+      "rowIndex" : 182,
+      "label" : "E西侧货梯",
+      "matchBy" : "addr",
+      "meterId" : 365
+    }, {
+      "rowIndex" : 183,
+      "label" : "F座总电",
+      "matchBy" : "code",
+      "meterId" : 366
+    }, {
+      "rowIndex" : 184,
+      "label" : "翔海借电F",
+      "matchBy" : "code",
+      "meterId" : 367
+    }, {
+      "rowIndex" : 185,
+      "label" : "EF充电车棚",
+      "matchBy" : "addr",
+      "meterId" : 1455
+    }, {
+      "rowIndex" : 186,
+      "label" : "思汗F101电",
+      "matchBy" : "code",
+      "meterId" : 369
+    }, {
+      "rowIndex" : 187,
+      "label" : "思汗F101东侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 370
+    }, {
+      "rowIndex" : 188,
+      "label" : "桑尼号电",
+      "matchBy" : "code",
+      "meterId" : 371
+    }, {
+      "rowIndex" : 189,
+      "label" : "优凯F201东侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 372
+    }, {
+      "rowIndex" : 190,
+      "label" : "优凯F201西侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 373
+    }, {
+      "rowIndex" : 191,
+      "label" : "曾绍良电",
+      "matchBy" : "code",
+      "meterId" : 374
+    }, {
+      "rowIndex" : 192,
+      "label" : "优凯F301东侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 375
+    }, {
+      "rowIndex" : 193,
+      "label" : "优凯F301西侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 376
+    }, {
+      "rowIndex" : 194,
+      "label" : "F401电1",
+      "matchBy" : "code",
+      "meterId" : 377
+    }, {
+      "rowIndex" : 195,
+      "label" : "F401电2",
+      "matchBy" : "addr",
+      "meterId" : 1456
+    }, {
+      "rowIndex" : 196,
+      "label" : "F401东侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 378
+    }, {
+      "rowIndex" : 197,
+      "label" : "F401西侧公共电",
+      "matchBy" : "addr",
+      "meterId" : 379
+    }, {
+      "rowIndex" : 198,
+      "label" : "F东侧楼梯间",
+      "matchBy" : "addr",
+      "meterId" : 380
+    }, {
+      "rowIndex" : 199,
+      "label" : "F西侧楼梯间",
+      "matchBy" : "addr",
+      "meterId" : 381
+    }, {
+      "rowIndex" : 200,
+      "label" : "F东侧货梯",
+      "matchBy" : "addr",
+      "meterId" : 382
+    }, {
+      "rowIndex" : 201,
+      "label" : "F西侧货梯",
+      "matchBy" : "code",
+      "meterId" : 383
+    }, {
+      "rowIndex" : 202,
+      "label" : "G翔海电",
+      "matchBy" : "code",
+      "meterId" : 384
+    }, {
+      "rowIndex" : 203,
+      "label" : "张执盛电表1",
+      "matchBy" : "code",
+      "meterId" : 385
+    }, {
+      "rowIndex" : 204,
+      "label" : "张执盛电表2",
+      "matchBy" : "code",
+      "meterId" : 386
+    }, {
+      "rowIndex" : 205,
+      "label" : "林锐辉电",
+      "matchBy" : "code",
+      "meterId" : 387
+    }, {
+      "rowIndex" : 206,
+      "label" : "园区总水表",
+      "matchBy" : "addr",
+      "meterId" : 388
+    }, {
+      "rowIndex" : 207,
+      "label" : "A座总水",
+      "matchBy" : "addr",
+      "meterId" : 389
+    }, {
+      "rowIndex" : 208,
+      "label" : "园区东侧绿化水1",
+      "matchBy" : "addr",
+      "meterId" : 1459
+    }, {
+      "rowIndex" : 209,
+      "label" : "园区东侧绿化水2",
+      "matchBy" : "addr",
+      "meterId" : 1460
+    }, {
+      "rowIndex" : 210,
+      "label" : "园区西侧绿化水",
+      "matchBy" : "addr",
+      "meterId" : 1461
+    }, {
+      "rowIndex" : 211,
+      "label" : "喷淋水1",
+      "matchBy" : "code",
+      "meterId" : 393
+    }, {
+      "rowIndex" : 212,
+      "label" : "喷淋水2",
+      "matchBy" : "code",
+      "meterId" : 394
+    }, {
+      "rowIndex" : 213,
+      "label" : "消防水1",
+      "matchBy" : "code",
+      "meterId" : 395
+    }, {
+      "rowIndex" : 214,
+      "label" : "消防水2",
+      "matchBy" : "code",
+      "meterId" : 396
+    }, {
+      "rowIndex" : 215,
+      "label" : "三车间工地水1",
+      "matchBy" : "code",
+      "meterId" : 397
+    }, {
+      "rowIndex" : 216,
+      "label" : "三车间工地水2",
+      "matchBy" : "code",
+      "meterId" : 1462
+    }, {
+      "rowIndex" : 219,
+      "label" : "招商中心女厕",
+      "matchBy" : "addr",
+      "meterId" : 401
+    }, {
+      "rowIndex" : 220,
+      "label" : "招商中心男厕",
+      "matchBy" : "code",
+      "meterId" : 402
+    }, {
+      "rowIndex" : 221,
+      "label" : "联塑精铟女厕水",
+      "matchBy" : "addr",
+      "meterId" : 403
+    }, {
+      "rowIndex" : 222,
+      "label" : "联塑精铟男厕水",
+      "matchBy" : "addr",
+      "meterId" : 404
+    }, {
+      "rowIndex" : 223,
+      "label" : "A101旭化成水",
+      "matchBy" : "code",
+      "meterId" : 405
+    }, {
+      "rowIndex" : 224,
+      "label" : "A2西侧男厕水",
+      "matchBy" : "addr",
+      "meterId" : 406
+    }, {
+      "rowIndex" : 225,
+      "label" : "A2西侧女厕水",
+      "matchBy" : "addr",
+      "meterId" : 407
+    }, {
+      "rowIndex" : 226,
+      "label" : "A2西侧成吉专用水",
+      "matchBy" : "addr",
+      "meterId" : 408
+    }, {
+      "rowIndex" : 227,
+      "label" : "旭化成二楼水1",
+      "matchBy" : "code",
+      "meterId" : 409
+    }, {
+      "rowIndex" : 228,
+      "label" : "旭化成二楼水2",
+      "matchBy" : "code",
+      "meterId" : 410
+    }, {
+      "rowIndex" : 229,
+      "label" : "吴跃平水",
+      "matchBy" : "addr",
+      "meterId" : 411
+    }, {
+      "rowIndex" : 230,
+      "label" : "A3西侧女厕水",
+      "matchBy" : "addr",
+      "meterId" : 412
+    }, {
+      "rowIndex" : 231,
+      "label" : "A3西侧男厕水",
+      "matchBy" : "addr",
+      "meterId" : 413
+    }, {
+      "rowIndex" : 232,
+      "label" : "仁恒智研水新",
+      "matchBy" : "addr",
+      "meterId" : 414
+    }, {
+      "rowIndex" : 233,
+      "label" : "采妍水",
+      "matchBy" : "addr",
+      "meterId" : 415
+    }, {
+      "rowIndex" : 234,
+      "label" : "A3东侧女厕水",
+      "matchBy" : "addr",
+      "meterId" : 416
+    }, {
+      "rowIndex" : 235,
+      "label" : "A3东侧男厕水",
+      "matchBy" : "code",
+      "meterId" : 417
+    }, {
+      "rowIndex" : 236,
+      "label" : "刘亚辉水",
+      "matchBy" : "addr",
+      "meterId" : 418
+    }, {
+      "rowIndex" : 237,
+      "label" : "双成水新",
+      "matchBy" : "addr",
+      "meterId" : 419
+    }, {
+      "rowIndex" : 238,
+      "label" : "A座四楼总",
+      "matchBy" : "addr",
+      "meterId" : 420
+    }, {
+      "rowIndex" : 239,
+      "label" : "A4东侧女厕",
+      "matchBy" : "addr",
+      "meterId" : 421
+    }, {
+      "rowIndex" : 240,
+      "label" : "A4东侧男厕",
+      "matchBy" : "addr",
+      "meterId" : 422
+    }, {
+      "rowIndex" : 241,
+      "label" : "精锐佳水",
+      "matchBy" : "addr",
+      "meterId" : 423
+    }, {
+      "rowIndex" : 242,
+      "label" : "帷幄水",
+      "matchBy" : "addr",
+      "meterId" : 424
+    }, {
+      "rowIndex" : 243,
+      "label" : "幸悦水",
+      "matchBy" : "addr",
+      "meterId" : 425
+    }, {
+      "rowIndex" : 244,
+      "label" : "A4西侧女厕水",
+      "matchBy" : "addr",
+      "meterId" : 426
+    }, {
+      "rowIndex" : 245,
+      "label" : "A4西侧男厕水",
+      "matchBy" : "addr",
+      "meterId" : 427
+    }, {
+      "rowIndex" : 246,
+      "label" : "优唯特水",
+      "matchBy" : "addr",
+      "meterId" : 428
+    }, {
+      "rowIndex" : 247,
+      "label" : "沈振水",
+      "matchBy" : "addr",
+      "meterId" : 429
+    }, {
+      "rowIndex" : 248,
+      "label" : "东佛水",
+      "matchBy" : "addr",
+      "meterId" : 1463
+    }, {
+      "rowIndex" : 249,
+      "label" : "戎合A501女厕水",
+      "matchBy" : "addr",
+      "meterId" : 431
+    }, {
+      "rowIndex" : 250,
+      "label" : "戎合A501男厕水",
+      "matchBy" : "addr",
+      "meterId" : 432
+    }, {
+      "rowIndex" : 251,
+      "label" : "鑫皇女厕水",
+      "matchBy" : "addr",
+      "meterId" : 433
+    }, {
+      "rowIndex" : 252,
+      "label" : "鑫皇男厕水",
+      "matchBy" : "addr",
+      "meterId" : 434
+    }, {
+      "rowIndex" : 253,
+      "label" : "A6东侧女厕水",
+      "matchBy" : "addr",
+      "meterId" : 435
+    }, {
+      "rowIndex" : 254,
+      "label" : "A6东侧男厕水",
+      "matchBy" : "addr",
+      "meterId" : 436
+    }, {
+      "rowIndex" : 255,
+      "label" : "新材料协会水",
+      "matchBy" : "addr",
+      "meterId" : 437
+    }, {
+      "rowIndex" : 256,
+      "label" : "高建军A水",
+      "matchBy" : "addr",
+      "meterId" : 438
+    }, {
+      "rowIndex" : 257,
+      "label" : "南宗水1",
+      "matchBy" : "addr",
+      "meterId" : 439
+    }, {
+      "rowIndex" : 258,
+      "label" : "南宗水2",
+      "matchBy" : "addr",
+      "meterId" : 440
+    }, {
+      "rowIndex" : 259,
+      "label" : "可莱恩A602水",
+      "matchBy" : "addr",
+      "meterId" : 441
+    }, {
+      "rowIndex" : 260,
+      "label" : "B座东侧总水",
+      "matchBy" : "addr",
+      "meterId" : 442
+    }, {
+      "rowIndex" : 261,
+      "label" : "B座东侧水表（未知）",
+      "matchBy" : "addr",
+      "meterId" : 443
+    }, {
+      "rowIndex" : 262,
+      "label" : "B座西侧总水",
+      "matchBy" : "addr",
+      "meterId" : 444
+    }, {
+      "rowIndex" : 263,
+      "label" : "杨文正水",
+      "matchBy" : "addr",
+      "meterId" : 445
+    }, {
+      "rowIndex" : 264,
+      "label" : "张彦水",
+      "matchBy" : "addr",
+      "meterId" : 446
+    }, {
+      "rowIndex" : 265,
+      "label" : "可莱恩B201东侧水",
+      "matchBy" : "addr",
+      "meterId" : 447
+    }, {
+      "rowIndex" : 266,
+      "label" : "可莱恩B201西侧水",
+      "matchBy" : "addr",
+      "meterId" : 448
+    }, {
+      "rowIndex" : 267,
+      "label" : "欧培仪东侧水新",
+      "matchBy" : "addr",
+      "meterId" : 449
+    }, {
+      "rowIndex" : 268,
+      "label" : "欧培仪西侧水新",
+      "matchBy" : "addr",
+      "meterId" : 450
+    }, {
+      "rowIndex" : 269,
+      "label" : "碧沃丰B401东侧水",
+      "matchBy" : "addr",
+      "meterId" : 451
+    }, {
+      "rowIndex" : 270,
+      "label" : "碧沃丰B401西侧水",
+      "matchBy" : "addr",
+      "meterId" : 452
+    }, {
+      "rowIndex" : 271,
+      "label" : "C座东侧总水表",
+      "matchBy" : "addr",
+      "meterId" : 453
+    }, {
+      "rowIndex" : 272,
+      "label" : "C座西侧总水表",
+      "matchBy" : "addr",
+      "meterId" : 454
+    }, {
+      "rowIndex" : 273,
+      "label" : "高建军C水",
+      "matchBy" : "addr",
+      "meterId" : 1464
+    }, {
+      "rowIndex" : 274,
+      "label" : "杨道扬水",
+      "matchBy" : "code",
+      "meterId" : 456
+    }, {
+      "rowIndex" : 275,
+      "label" : "卢志华水",
+      "matchBy" : "code",
+      "meterId" : 457
+    }, {
+      "rowIndex" : 276,
+      "label" : "C座首层西侧水",
+      "matchBy" : "code",
+      "meterId" : 458
+    }, {
+      "rowIndex" : 277,
+      "label" : "C座二楼东侧",
+      "matchBy" : "addr",
+      "meterId" : 459
+    }, {
+      "rowIndex" : 278,
+      "label" : "C座二楼西侧",
+      "matchBy" : "addr",
+      "meterId" : 460
+    }, {
+      "rowIndex" : 279,
+      "label" : "陈相钊水",
+      "matchBy" : "addr",
+      "meterId" : 461
+    }, {
+      "rowIndex" : 280,
+      "label" : "邹同稳水",
+      "matchBy" : "addr",
+      "meterId" : 462
+    }, {
+      "rowIndex" : 281,
+      "label" : "道磁C401水新",
+      "matchBy" : "code",
+      "meterId" : 463
+    }, {
+      "rowIndex" : 282,
+      "label" : "可莱恩C402水",
+      "matchBy" : "addr",
+      "meterId" : 464
+    }, {
+      "rowIndex" : 283,
+      "label" : "D座东侧总水",
+      "matchBy" : "addr",
+      "meterId" : 465
+    }, {
+      "rowIndex" : 284,
+      "label" : "D座西侧总水",
+      "matchBy" : "addr",
+      "meterId" : 466
+    }, {
+      "rowIndex" : 285,
+      "label" : "邱彩云水",
+      "matchBy" : "addr",
+      "meterId" : 1483
+    }, {
+      "rowIndex" : 286,
+      "label" : "胡广清水",
+      "matchBy" : "code",
+      "meterId" : 467
+    }, {
+      "rowIndex" : 287,
+      "label" : "叶子涛水2",
+      "matchBy" : "code",
+      "meterId" : 468
+    }, {
+      "rowIndex" : 288,
+      "label" : "汤周杰东侧水",
+      "matchBy" : "addr",
+      "meterId" : 469
+    }, {
+      "rowIndex" : 289,
+      "label" : "汤周杰东侧水2",
+      "matchBy" : "addr",
+      "meterId" : 470
+    }, {
+      "rowIndex" : 290,
+      "label" : "汤周杰西侧水",
+      "matchBy" : "addr",
+      "meterId" : 471
+    }, {
+      "rowIndex" : 291,
+      "label" : "金纳D301东侧水",
+      "matchBy" : "addr",
+      "meterId" : 472
+    }, {
+      "rowIndex" : 292,
+      "label" : "金纳D301西侧水",
+      "matchBy" : "addr",
+      "meterId" : 473
+    }, {
+      "rowIndex" : 293,
+      "label" : "飞度水",
+      "matchBy" : "addr",
+      "meterId" : 474
+    }, {
+      "rowIndex" : 294,
+      "label" : "一元兰欣水",
+      "matchBy" : "addr",
+      "meterId" : 475
+    }, {
+      "rowIndex" : 295,
+      "label" : "E座东侧总水1",
+      "matchBy" : "addr",
+      "meterId" : 1465
+    }, {
+      "rowIndex" : 296,
+      "label" : "E座东侧总水2",
+      "matchBy" : "addr",
+      "meterId" : 1466
+    }, {
+      "rowIndex" : 297,
+      "label" : "E座西侧总水",
+      "matchBy" : "addr",
+      "meterId" : 477
+    }, {
+      "rowIndex" : 298,
+      "label" : "信成洋水",
+      "matchBy" : "addr",
+      "meterId" : 478
+    }, {
+      "rowIndex" : 299,
+      "label" : "银纳E103水",
+      "matchBy" : "addr",
+      "meterId" : 479
+    }, {
+      "rowIndex" : 300,
+      "label" : "碳紫E104水1",
+      "matchBy" : "code",
+      "meterId" : 480
+    }, {
+      "rowIndex" : 301,
+      "label" : "碳紫E104水2",
+      "matchBy" : "code",
+      "meterId" : 481
+    }, {
+      "rowIndex" : 302,
+      "label" : "E二楼东侧水",
+      "matchBy" : "addr",
+      "meterId" : 482
+    }, {
+      "rowIndex" : 303,
+      "label" : "天玛E201水",
+      "matchBy" : "addr",
+      "meterId" : 483
+    }, {
+      "rowIndex" : 304,
+      "label" : "翔海E301东侧水新",
+      "matchBy" : "addr",
+      "meterId" : 1485
+    }, {
+      "rowIndex" : 305,
+      "label" : "翔海E301西侧水新",
+      "matchBy" : "addr",
+      "meterId" : 1486
+    }, {
+      "rowIndex" : 306,
+      "label" : "翔海E401东侧水",
+      "matchBy" : "addr",
+      "meterId" : 486
+    }, {
+      "rowIndex" : 307,
+      "label" : "翔海E401西侧水",
+      "matchBy" : "addr",
+      "meterId" : 487
+    }, {
+      "rowIndex" : 308,
+      "label" : "F座东侧总水",
+      "matchBy" : "addr",
+      "meterId" : 488
+    }, {
+      "rowIndex" : 309,
+      "label" : "F座西侧总水",
+      "matchBy" : "addr",
+      "meterId" : 489
+    }, {
+      "rowIndex" : 310,
+      "label" : "思汗F101自装水",
+      "matchBy" : "addr",
+      "meterId" : 490
+    }, {
+      "rowIndex" : 311,
+      "label" : "思汗F101东侧水新",
+      "matchBy" : "addr",
+      "meterId" : 491
+    }, {
+      "rowIndex" : 312,
+      "label" : "思汗F101西侧水新",
+      "matchBy" : "addr",
+      "meterId" : 492
+    }, {
+      "rowIndex" : 313,
+      "label" : "思汗F101天面水2",
+      "matchBy" : "addr",
+      "meterId" : 493
+    }, {
+      "rowIndex" : 314,
+      "label" : "桑尼号二东侧水",
+      "matchBy" : "addr",
+      "meterId" : 494
+    }, {
+      "rowIndex" : 315,
+      "label" : "桑尼号二西侧水",
+      "matchBy" : "code",
+      "meterId" : 495
+    }, {
+      "rowIndex" : 316,
+      "label" : "桑尼号三东侧水",
+      "matchBy" : "addr",
+      "meterId" : 1478
+    }, {
+      "rowIndex" : 317,
+      "label" : "桑尼号三东侧水2",
+      "matchBy" : "code",
+      "meterId" : 496
+    }, {
+      "rowIndex" : 318,
+      "label" : "F302西侧水2",
+      "matchBy" : "code",
+      "meterId" : 497
+    }, {
+      "rowIndex" : 319,
+      "label" : "F401东侧水",
+      "matchBy" : "code",
+      "meterId" : 498
+    }, {
+      "rowIndex" : 320,
+      "label" : "F401西侧水",
+      "matchBy" : "code",
+      "meterId" : 499
+    }, {
+      "rowIndex" : 321,
+      "label" : "G总水1",
+      "matchBy" : "addr",
+      "meterId" : 500
+    }, {
+      "rowIndex" : 322,
+      "label" : "G总水2",
+      "matchBy" : "code",
+      "meterId" : 501
+    } ],
+    "notices" : [ {
+      "rowIndex" : 16,
+      "label" : "旭化成1东公",
+      "reason" : "表「旭化成1东公」本行企业名称是「公共用电/旭化成 停用」:没有当企业名称写入;自 2023-10 起停用(在册、不计费)"
+    }, {
+      "rowIndex" : 32,
+      "label" : "中大A301电1",
+      "reason" : "表「中大A301电1」本行企业名称是「已停用」:没有当企业名称写入;自 2023-10 起停用(在册、不计费)"
+    }, {
+      "rowIndex" : 33,
+      "label" : "中大A304电2",
+      "reason" : "表「中大A304电2」本行企业名称是「已停用」:没有当企业名称写入;自 2023-10 起停用(在册、不计费)"
+    }, {
+      "rowIndex" : 34,
+      "label" : "中大A301公共电1",
+      "reason" : "表「中大A301公共电1」本行企业名称是「已停用」:没有当企业名称写入;自 2023-10 起停用(在册、不计费)"
+    }, {
+      "rowIndex" : 40,
+      "label" : "优凯A305电",
+      "reason" : "表「优凯A305电」本行企业名称是「已停用」:没有当企业名称写入;自 2023-10 起停用(在册、不计费)"
+    }, {
+      "rowIndex" : 42,
+      "label" : "中大4楼公共",
+      "reason" : "表「中大4楼公共」本行企业名称是「已停用」:没有当企业名称写入;自 2023-10 起停用(在册、不计费)"
+    }, {
+      "rowIndex" : 43,
+      "label" : "4楼空调外机电",
+      "reason" : "表「4楼空调外机电」本行企业名称是「空调外机/已停用」:没有当企业名称写入;自 2023-10 起停用(在册、不计费)"
+    }, {
+      "rowIndex" : 44,
+      "label" : "招商中心电1",
+      "reason" : "表「招商中心电1」按册子推导是「配电总表 · 一期 招商中心」,与人工设定的「园区公摊 · 一期 A座」不同,已保留人工设定"
+    }, {
+      "rowIndex" : 45,
+      "label" : "招商中心电2",
+      "reason" : "表「招商中心电2」按册子推导是「配电总表 · 一期 招商中心」,与人工设定的「园区公摊 · 一期 A座」不同,已保留人工设定"
+    }, {
+      "rowIndex" : 82,
+      "label" : "可莱恩A602公共电",
+      "reason" : "表「可莱恩A602公共电」本行企业名称是「公共用电/可莱恩 停用」:没有当企业名称写入;自 2023-10 起停用(在册、不计费)"
+    }, {
+      "rowIndex" : 125,
+      "label" : "力美C201东侧公共电",
+      "reason" : "表「力美C201东侧公共电」本行企业名称是「公共用电 停用」:没有当企业名称写入;自 2023-10 起停用(在册、不计费)"
+    }, {
+      "rowIndex" : 168,
+      "label" : "E座二楼东侧空租",
+      "reason" : "表「E座二楼东侧空租」本行企业名称为空,档案现为「张文意」(来自其他月份导入),已保留;若该户当月尚未入住/已退租,请在档案页清空"
+    }, {
+      "rowIndex" : 229,
+      "label" : "吴跃平水",
+      "reason" : "表「吴跃平水」企业名称「吴跃平/宏玥」为复合名且未能唯一挂档:若系两户共用一表(如 嘉荣、科文=101、102),请在模板按户拆分,或按租户档案备注的拆分口径人工处理;账单派生前不会自动分摊"
+    } ],
+    "batchId" : "b2b49148-7579-46e3-9823-39db77aa491e",
+    "changes" : [ {
+      "meterId" : 186,
+      "label" : "消防稳压",
+      "field" : "status",
+      "before" : null,
+      "after" : "active",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 233,
+      "label" : "林观平445电",
+      "field" : "status",
+      "before" : null,
+      "after" : "active",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 248,
+      "label" : "鑫皇503室",
+      "field" : "status",
+      "before" : null,
+      "after" : "active",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 268,
+      "label" : "四车间工地",
+      "field" : "status",
+      "before" : null,
+      "after" : "active",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 377,
+      "label" : "F401电1",
+      "field" : "tenant",
+      "before" : "（空）",
+      "after" : "张执盛",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 393,
+      "label" : "喷淋水1",
+      "field" : "area",
+      "before" : "一、二琪、宿舍园区消防水表",
+      "after" : "一、二期宿舍园区消防水表",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 394,
+      "label" : "喷淋水2",
+      "field" : "area",
+      "before" : "一、二琪、宿舍园区消防水表",
+      "after" : "一、二期宿舍园区消防水表",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 395,
+      "label" : "消防水1",
+      "field" : "area",
+      "before" : "一、二琪、宿舍园区消防水表",
+      "after" : "一、二期宿舍园区消防水表",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 396,
+      "label" : "消防水2",
+      "field" : "area",
+      "before" : "一、二琪、宿舍园区消防水表",
+      "after" : "一、二期宿舍园区消防水表",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 1462,
+      "label" : "二期绿化水分表-三车间-水表②",
+      "field" : "tenant",
+      "before" : "三期工地（四车间）",
+      "after" : "三期工地（三车间）",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 1462,
+      "label" : "二期绿化水分表-三车间-水表②",
+      "field" : "spot",
+      "before" : "四车间",
+      "after" : "三车间",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 1462,
+      "label" : "二期绿化水分表-三车间-水表②",
+      "field" : "status",
+      "before" : null,
+      "after" : "active",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 467,
+      "label" : "胡广清水",
+      "field" : "ownership",
+      "before" : "share",
+      "after" : "tenant",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 292,
+      "label" : "一楼东侧公共电",
+      "field" : "tenant",
+      "before" : "公共用电/大为",
+      "after" : "公共用电",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 1454,
+      "label" : "E座",
+      "field" : "status",
+      "before" : null,
+      "after" : "active",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 407,
+      "label" : "A2西侧女厕水",
+      "field" : "tenant",
+      "before" : "公共厕所男厕",
+      "after" : "公共厕所男厕新表",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    } ]
+  }
+}, {
+  "file" : "readings-p2.json",
+  "rows" : 177,
+  "result" : {
+    "imported" : 176,
+    "skipped" : 1,
+    "errors" : [ {
+      "rowIndex" : 24,
+      "label" : "佳亿兴电",
+      "reason" : "编码 220605000139 认到的是宿舍的表「宿舍路灯」(id 834),本行是二期;编码多半填错了,本行没有导入(读数也没写)"
+    } ],
+    "matches" : [ {
+      "rowIndex" : 0,
+      "label" : "二期总电",
+      "matchBy" : "addr",
+      "meterId" : 1
+    }, {
+      "rowIndex" : 1,
+      "label" : "一车间总电",
+      "matchBy" : "code",
+      "meterId" : 2
+    }, {
+      "rowIndex" : 2,
+      "label" : "一车间消防",
+      "matchBy" : "code",
+      "meterId" : 3
+    }, {
+      "rowIndex" : 3,
+      "label" : "一车间电梯",
+      "matchBy" : "code",
+      "meterId" : 4
+    }, {
+      "rowIndex" : 4,
+      "label" : "园区消防水稳压泵",
+      "matchBy" : "code",
+      "meterId" : 5
+    }, {
+      "rowIndex" : 5,
+      "label" : "锂朋电",
+      "matchBy" : "code",
+      "meterId" : 6
+    }, {
+      "rowIndex" : 6,
+      "label" : "新疆三林电",
+      "matchBy" : "code",
+      "meterId" : 7
+    }, {
+      "rowIndex" : 7,
+      "label" : "恩科电",
+      "matchBy" : "code",
+      "meterId" : 8
+    }, {
+      "rowIndex" : 8,
+      "label" : "飞浪电",
+      "matchBy" : "code",
+      "meterId" : 9
+    }, {
+      "rowIndex" : 9,
+      "label" : "魏杰瑜电",
+      "matchBy" : "code",
+      "meterId" : 10
+    }, {
+      "rowIndex" : 10,
+      "label" : "苏明东电",
+      "matchBy" : "code",
+      "meterId" : 11
+    }, {
+      "rowIndex" : 11,
+      "label" : "谢福兵电",
+      "matchBy" : "code",
+      "meterId" : 12
+    }, {
+      "rowIndex" : 12,
+      "label" : "铂超电",
+      "matchBy" : "code",
+      "meterId" : 13
+    }, {
+      "rowIndex" : 13,
+      "label" : "张炳南电",
+      "matchBy" : "code",
+      "meterId" : 14
+    }, {
+      "rowIndex" : 14,
+      "label" : "驰鸿电",
+      "matchBy" : "code",
+      "meterId" : 15
+    }, {
+      "rowIndex" : 15,
+      "label" : "达博普电",
+      "matchBy" : "code",
+      "meterId" : 16
+    }, {
+      "rowIndex" : 16,
+      "label" : "保奔路电",
+      "matchBy" : "code",
+      "meterId" : 17
+    }, {
+      "rowIndex" : 17,
+      "label" : "何育平电",
+      "matchBy" : "code",
+      "meterId" : 18
+    }, {
+      "rowIndex" : 18,
+      "label" : "黎镇源临电",
+      "matchBy" : "addr",
+      "meterId" : 1493
+    }, {
+      "rowIndex" : 19,
+      "label" : "黎镇源电",
+      "matchBy" : "code",
+      "meterId" : 19
+    }, {
+      "rowIndex" : 20,
+      "label" : "中科华贸电",
+      "matchBy" : "code",
+      "meterId" : 20
+    }, {
+      "rowIndex" : 21,
+      "label" : "二车间总电",
+      "matchBy" : "code",
+      "meterId" : 21
+    }, {
+      "rowIndex" : 22,
+      "label" : "二车间消防",
+      "matchBy" : "code",
+      "meterId" : 22
+    }, {
+      "rowIndex" : 23,
+      "label" : "二车间电梯",
+      "matchBy" : "code",
+      "meterId" : 23
+    }, {
+      "rowIndex" : 25,
+      "label" : "广聚运通电",
+      "matchBy" : "code",
+      "meterId" : 1481
+    }, {
+      "rowIndex" : 26,
+      "label" : "健明电",
+      "matchBy" : "code",
+      "meterId" : 24
+    }, {
+      "rowIndex" : 27,
+      "label" : "李李电",
+      "matchBy" : "code",
+      "meterId" : 25
+    }, {
+      "rowIndex" : 28,
+      "label" : "陈曼娜电",
+      "matchBy" : "code",
+      "meterId" : 26
+    }, {
+      "rowIndex" : 29,
+      "label" : "联洛贸易电",
+      "matchBy" : "code",
+      "meterId" : 27
+    }, {
+      "rowIndex" : 30,
+      "label" : "欧伟杰临电",
+      "matchBy" : "new",
+      "meterId" : 1495
+    }, {
+      "rowIndex" : 31,
+      "label" : "欧伟杰电",
+      "matchBy" : "code",
+      "meterId" : 28
+    }, {
+      "rowIndex" : 32,
+      "label" : "火炬园办公室电",
+      "matchBy" : "code",
+      "meterId" : 29
+    }, {
+      "rowIndex" : 33,
+      "label" : "三车间总电",
+      "matchBy" : "code",
+      "meterId" : 30
+    }, {
+      "rowIndex" : 34,
+      "label" : "三车间消防",
+      "matchBy" : "code",
+      "meterId" : 31
+    }, {
+      "rowIndex" : 35,
+      "label" : "三车间电梯",
+      "matchBy" : "code",
+      "meterId" : 32
+    }, {
+      "rowIndex" : 36,
+      "label" : "园区生活水泵、消防控制室",
+      "matchBy" : "code",
+      "meterId" : 33
+    }, {
+      "rowIndex" : 37,
+      "label" : "三至二铝缆",
+      "matchBy" : "code",
+      "meterId" : 34
+    }, {
+      "rowIndex" : 38,
+      "label" : "三至四铝缆",
+      "matchBy" : "code",
+      "meterId" : 35
+    }, {
+      "rowIndex" : 39,
+      "label" : "嘉荣科文电",
+      "matchBy" : "code",
+      "meterId" : 36
+    }, {
+      "rowIndex" : 40,
+      "label" : "艾派斯电",
+      "matchBy" : "code",
+      "meterId" : 37
+    }, {
+      "rowIndex" : 41,
+      "label" : "易立电",
+      "matchBy" : "code",
+      "meterId" : 38
+    }, {
+      "rowIndex" : 42,
+      "label" : "星州电3",
+      "matchBy" : "code",
+      "meterId" : 39
+    }, {
+      "rowIndex" : 43,
+      "label" : "永龙电",
+      "matchBy" : "code",
+      "meterId" : 40
+    }, {
+      "rowIndex" : 44,
+      "label" : "邓宇峰三车间电",
+      "matchBy" : "code",
+      "meterId" : 41
+    }, {
+      "rowIndex" : 45,
+      "label" : "管中旺电",
+      "matchBy" : "code",
+      "meterId" : 42
+    }, {
+      "rowIndex" : 46,
+      "label" : "吉罗德电",
+      "matchBy" : "new",
+      "meterId" : 1494
+    }, {
+      "rowIndex" : 47,
+      "label" : "毅盛离合电",
+      "matchBy" : "code",
+      "meterId" : 44
+    }, {
+      "rowIndex" : 48,
+      "label" : "四车间总电",
+      "matchBy" : "code",
+      "meterId" : 45
+    }, {
+      "rowIndex" : 49,
+      "label" : "四车间消防",
+      "matchBy" : "code",
+      "meterId" : 46
+    }, {
+      "rowIndex" : 50,
+      "label" : "四车间电梯",
+      "matchBy" : "code",
+      "meterId" : 47
+    }, {
+      "rowIndex" : 51,
+      "label" : "园区绿化水泵",
+      "matchBy" : "code",
+      "meterId" : 48
+    }, {
+      "rowIndex" : 52,
+      "label" : "广联临电",
+      "matchBy" : "addr",
+      "meterId" : 1492
+    }, {
+      "rowIndex" : 53,
+      "label" : "广联电",
+      "matchBy" : "code",
+      "meterId" : 49
+    }, {
+      "rowIndex" : 54,
+      "label" : "两岸食品电",
+      "matchBy" : "code",
+      "meterId" : 53
+    }, {
+      "rowIndex" : 55,
+      "label" : "张木兰电",
+      "matchBy" : "code",
+      "meterId" : 54
+    }, {
+      "rowIndex" : 56,
+      "label" : "五车间总电",
+      "matchBy" : "code",
+      "meterId" : 55
+    }, {
+      "rowIndex" : 57,
+      "label" : "五车间消防",
+      "matchBy" : "code",
+      "meterId" : 56
+    }, {
+      "rowIndex" : 58,
+      "label" : "五车间装饰灯新表",
+      "matchBy" : "code",
+      "meterId" : 57
+    }, {
+      "rowIndex" : 59,
+      "label" : "火炬园广告字电",
+      "matchBy" : "code",
+      "meterId" : 58
+    }, {
+      "rowIndex" : 60,
+      "label" : "五车间电梯",
+      "matchBy" : "code",
+      "meterId" : 59
+    }, {
+      "rowIndex" : 61,
+      "label" : "园区保安亭路灯",
+      "matchBy" : "code",
+      "meterId" : 60
+    }, {
+      "rowIndex" : 62,
+      "label" : "园区充电桩",
+      "matchBy" : "code",
+      "meterId" : 61
+    }, {
+      "rowIndex" : 63,
+      "label" : "五连六铝缆",
+      "matchBy" : "code",
+      "meterId" : 62
+    }, {
+      "rowIndex" : 64,
+      "label" : "五连一铝缆",
+      "matchBy" : "code",
+      "meterId" : 63
+    }, {
+      "rowIndex" : 65,
+      "label" : "力灏电",
+      "matchBy" : "code",
+      "meterId" : 64
+    }, {
+      "rowIndex" : 66,
+      "label" : "朱漫钳电",
+      "matchBy" : "code",
+      "meterId" : 65
+    }, {
+      "rowIndex" : 67,
+      "label" : "南一电",
+      "matchBy" : "code",
+      "meterId" : 66
+    }, {
+      "rowIndex" : 68,
+      "label" : "彭云霞电",
+      "matchBy" : "code",
+      "meterId" : 68
+    }, {
+      "rowIndex" : 69,
+      "label" : "方凯鑫五601电",
+      "matchBy" : "code",
+      "meterId" : 69
+    }, {
+      "rowIndex" : 70,
+      "label" : "王红婷电",
+      "matchBy" : "code",
+      "meterId" : 70
+    }, {
+      "rowIndex" : 71,
+      "label" : "张文峰电",
+      "matchBy" : "code",
+      "meterId" : 71
+    }, {
+      "rowIndex" : 72,
+      "label" : "陈土生电",
+      "matchBy" : "code",
+      "meterId" : 72
+    }, {
+      "rowIndex" : 73,
+      "label" : "三龙电",
+      "matchBy" : "code",
+      "meterId" : 73
+    }, {
+      "rowIndex" : 74,
+      "label" : "六车间总",
+      "matchBy" : "code",
+      "meterId" : 74
+    }, {
+      "rowIndex" : 75,
+      "label" : "六车间消防",
+      "matchBy" : "code",
+      "meterId" : 75
+    }, {
+      "rowIndex" : 76,
+      "label" : "六车间广告字新表",
+      "matchBy" : "code",
+      "meterId" : 76
+    }, {
+      "rowIndex" : 77,
+      "label" : "六车间电梯2",
+      "matchBy" : "code",
+      "meterId" : 77
+    }, {
+      "rowIndex" : 78,
+      "label" : "柯建伍电",
+      "matchBy" : "code",
+      "meterId" : 78
+    }, {
+      "rowIndex" : 79,
+      "label" : "方凯鑫六102电",
+      "matchBy" : "code",
+      "meterId" : 79
+    }, {
+      "rowIndex" : 80,
+      "label" : "邓宇峰电",
+      "matchBy" : "code",
+      "meterId" : 80
+    }, {
+      "rowIndex" : 81,
+      "label" : "刘彪电",
+      "matchBy" : "code",
+      "meterId" : 81
+    }, {
+      "rowIndex" : 82,
+      "label" : "欧培敬电",
+      "matchBy" : "code",
+      "meterId" : 82
+    }, {
+      "rowIndex" : 83,
+      "label" : "应塘电",
+      "matchBy" : "code",
+      "meterId" : 83
+    }, {
+      "rowIndex" : 84,
+      "label" : "曹小芳电",
+      "matchBy" : "code",
+      "meterId" : 84
+    }, {
+      "rowIndex" : 85,
+      "label" : "庞俊妨电",
+      "matchBy" : "code",
+      "meterId" : 85
+    }, {
+      "rowIndex" : 86,
+      "label" : "丁天伦电",
+      "matchBy" : "code",
+      "meterId" : 86
+    }, {
+      "rowIndex" : 87,
+      "label" : "石荣杰电",
+      "matchBy" : "code",
+      "meterId" : 87
+    }, {
+      "rowIndex" : 88,
+      "label" : "徐翾电",
+      "matchBy" : "code",
+      "meterId" : 88
+    }, {
+      "rowIndex" : 89,
+      "label" : "罗立剑电",
+      "matchBy" : "code",
+      "meterId" : 89
+    }, {
+      "rowIndex" : 90,
+      "label" : "陈书谨电",
+      "matchBy" : "code",
+      "meterId" : 90
+    }, {
+      "rowIndex" : 91,
+      "label" : "二期总水表",
+      "matchBy" : "code",
+      "meterId" : 91
+    }, {
+      "rowIndex" : 92,
+      "label" : "园区绿化总水",
+      "matchBy" : "code",
+      "meterId" : 92
+    }, {
+      "rowIndex" : 93,
+      "label" : "二期保安室",
+      "matchBy" : "code",
+      "meterId" : 93
+    }, {
+      "rowIndex" : 94,
+      "label" : "一车间低压总水",
+      "matchBy" : "addr",
+      "meterId" : 94
+    }, {
+      "rowIndex" : 95,
+      "label" : "一车间高压总水",
+      "matchBy" : "addr",
+      "meterId" : 95
+    }, {
+      "rowIndex" : 96,
+      "label" : "园区消防水池",
+      "matchBy" : "addr",
+      "meterId" : 96
+    }, {
+      "rowIndex" : 97,
+      "label" : "锂朋水",
+      "matchBy" : "addr",
+      "meterId" : 97
+    }, {
+      "rowIndex" : 98,
+      "label" : "新疆三林水",
+      "matchBy" : "addr",
+      "meterId" : 98
+    }, {
+      "rowIndex" : 99,
+      "label" : "恩科水",
+      "matchBy" : "addr",
+      "meterId" : 99
+    }, {
+      "rowIndex" : 100,
+      "label" : "飞浪水",
+      "matchBy" : "code",
+      "meterId" : 100
+    }, {
+      "rowIndex" : 101,
+      "label" : "飞浪水2",
+      "matchBy" : "code",
+      "meterId" : 101
+    }, {
+      "rowIndex" : 102,
+      "label" : "魏杰瑜水",
+      "matchBy" : "addr",
+      "meterId" : 102
+    }, {
+      "rowIndex" : 103,
+      "label" : "苏明东水",
+      "matchBy" : "addr",
+      "meterId" : 103
+    }, {
+      "rowIndex" : 104,
+      "label" : "谢福兵水",
+      "matchBy" : "addr",
+      "meterId" : 104
+    }, {
+      "rowIndex" : 105,
+      "label" : "铂超水",
+      "matchBy" : "code",
+      "meterId" : 105
+    }, {
+      "rowIndex" : 106,
+      "label" : "张炳南水",
+      "matchBy" : "addr",
+      "meterId" : 106
+    }, {
+      "rowIndex" : 107,
+      "label" : "驰鸿水",
+      "matchBy" : "addr",
+      "meterId" : 107
+    }, {
+      "rowIndex" : 108,
+      "label" : "达博普水",
+      "matchBy" : "addr",
+      "meterId" : 108
+    }, {
+      "rowIndex" : 109,
+      "label" : "保奔路水",
+      "matchBy" : "code",
+      "meterId" : 109
+    }, {
+      "rowIndex" : 110,
+      "label" : "何育平水",
+      "matchBy" : "addr",
+      "meterId" : 110
+    }, {
+      "rowIndex" : 111,
+      "label" : "黎镇源水",
+      "matchBy" : "code",
+      "meterId" : 111
+    }, {
+      "rowIndex" : 112,
+      "label" : "中科华贸水",
+      "matchBy" : "code",
+      "meterId" : 112
+    }, {
+      "rowIndex" : 113,
+      "label" : "二车间低压总水",
+      "matchBy" : "addr",
+      "meterId" : 113
+    }, {
+      "rowIndex" : 114,
+      "label" : "二车间高压总水",
+      "matchBy" : "addr",
+      "meterId" : 114
+    }, {
+      "rowIndex" : 115,
+      "label" : "健明水",
+      "matchBy" : "code",
+      "meterId" : 115
+    }, {
+      "rowIndex" : 116,
+      "label" : "佳亿兴水",
+      "matchBy" : "addr",
+      "meterId" : 1490
+    }, {
+      "rowIndex" : 117,
+      "label" : "广聚运通水",
+      "matchBy" : "addr",
+      "meterId" : 1480
+    }, {
+      "rowIndex" : 118,
+      "label" : "李李103水",
+      "matchBy" : "addr",
+      "meterId" : 116
+    }, {
+      "rowIndex" : 119,
+      "label" : "李李201水",
+      "matchBy" : "addr",
+      "meterId" : 117
+    }, {
+      "rowIndex" : 120,
+      "label" : "陈曼娜水",
+      "matchBy" : "addr",
+      "meterId" : 118
+    }, {
+      "rowIndex" : 121,
+      "label" : "联洛贸易水",
+      "matchBy" : "addr",
+      "meterId" : 119
+    }, {
+      "rowIndex" : 122,
+      "label" : "火炬园办公室水",
+      "matchBy" : "code",
+      "meterId" : 121
+    }, {
+      "rowIndex" : 123,
+      "label" : "三车间低压总水",
+      "matchBy" : "addr",
+      "meterId" : 122
+    }, {
+      "rowIndex" : 124,
+      "label" : "三车间高压总水",
+      "matchBy" : "addr",
+      "meterId" : 123
+    }, {
+      "rowIndex" : 125,
+      "label" : "嘉荣水",
+      "matchBy" : "addr",
+      "meterId" : 124
+    }, {
+      "rowIndex" : 126,
+      "label" : "艾派斯水",
+      "matchBy" : "addr",
+      "meterId" : 125
+    }, {
+      "rowIndex" : 127,
+      "label" : "易立水",
+      "matchBy" : "addr",
+      "meterId" : 126
+    }, {
+      "rowIndex" : 128,
+      "label" : "星州水",
+      "matchBy" : "code",
+      "meterId" : 127
+    }, {
+      "rowIndex" : 129,
+      "label" : "永龙水",
+      "matchBy" : "code",
+      "meterId" : 128
+    }, {
+      "rowIndex" : 130,
+      "label" : "管中旺水1",
+      "matchBy" : "code",
+      "meterId" : 129
+    }, {
+      "rowIndex" : 131,
+      "label" : "管中旺水2",
+      "matchBy" : "code",
+      "meterId" : 130
+    }, {
+      "rowIndex" : 132,
+      "label" : "吉罗德水",
+      "matchBy" : "code",
+      "meterId" : 131
+    }, {
+      "rowIndex" : 133,
+      "label" : "吉罗德水2",
+      "matchBy" : "code",
+      "meterId" : 132
+    }, {
+      "rowIndex" : 134,
+      "label" : "毅盛离合水",
+      "matchBy" : "code",
+      "meterId" : 133
+    }, {
+      "rowIndex" : 135,
+      "label" : "四车间低压总水",
+      "matchBy" : "addr",
+      "meterId" : 134
+    }, {
+      "rowIndex" : 136,
+      "label" : "四车间高压总水",
+      "matchBy" : "addr",
+      "meterId" : 135
+    }, {
+      "rowIndex" : 137,
+      "label" : "氙明水表1",
+      "matchBy" : "code",
+      "meterId" : 136
+    }, {
+      "rowIndex" : 138,
+      "label" : "氙明水表2",
+      "matchBy" : "code",
+      "meterId" : 138
+    }, {
+      "rowIndex" : 139,
+      "label" : "张木兰水",
+      "matchBy" : "code",
+      "meterId" : 139
+    }, {
+      "rowIndex" : 140,
+      "label" : "张木兰水2",
+      "matchBy" : "code",
+      "meterId" : 140
+    }, {
+      "rowIndex" : 141,
+      "label" : "广联水表1",
+      "matchBy" : "code",
+      "meterId" : 141
+    }, {
+      "rowIndex" : 142,
+      "label" : "广联水表2",
+      "matchBy" : "code",
+      "meterId" : 142
+    }, {
+      "rowIndex" : 143,
+      "label" : "两岸食品水",
+      "matchBy" : "code",
+      "meterId" : 143
+    }, {
+      "rowIndex" : 144,
+      "label" : "广联水表3",
+      "matchBy" : "code",
+      "meterId" : 144
+    }, {
+      "rowIndex" : 145,
+      "label" : "广联水表4",
+      "matchBy" : "code",
+      "meterId" : 145
+    }, {
+      "rowIndex" : 146,
+      "label" : "广联水表5",
+      "matchBy" : "code",
+      "meterId" : 147
+    }, {
+      "rowIndex" : 147,
+      "label" : "威玛斯水",
+      "matchBy" : "code",
+      "meterId" : 148
+    }, {
+      "rowIndex" : 148,
+      "label" : "力灏水",
+      "matchBy" : "addr",
+      "meterId" : 149
+    }, {
+      "rowIndex" : 149,
+      "label" : "五车间高压总水",
+      "matchBy" : "addr",
+      "meterId" : 150
+    }, {
+      "rowIndex" : 150,
+      "label" : "朱漫钳水",
+      "matchBy" : "addr",
+      "meterId" : 151
+    }, {
+      "rowIndex" : 151,
+      "label" : "南一水",
+      "matchBy" : "addr",
+      "meterId" : 152
+    }, {
+      "rowIndex" : 152,
+      "label" : "彭云霞水",
+      "matchBy" : "addr",
+      "meterId" : 154
+    }, {
+      "rowIndex" : 153,
+      "label" : "方凯鑫五601水",
+      "matchBy" : "addr",
+      "meterId" : 155
+    }, {
+      "rowIndex" : 154,
+      "label" : "王红婷水",
+      "matchBy" : "addr",
+      "meterId" : 156
+    }, {
+      "rowIndex" : 155,
+      "label" : "张文峰水",
+      "matchBy" : "addr",
+      "meterId" : 157
+    }, {
+      "rowIndex" : 156,
+      "label" : "陈土生水",
+      "matchBy" : "addr",
+      "meterId" : 158
+    }, {
+      "rowIndex" : 157,
+      "label" : "三龙水",
+      "matchBy" : "addr",
+      "meterId" : 159
+    }, {
+      "rowIndex" : 158,
+      "label" : "六车间低压总水",
+      "matchBy" : "addr",
+      "meterId" : 160
+    }, {
+      "rowIndex" : 159,
+      "label" : "六车间高压总水",
+      "matchBy" : "addr",
+      "meterId" : 161
+    }, {
+      "rowIndex" : 160,
+      "label" : "柯建伍水",
+      "matchBy" : "addr",
+      "meterId" : 162
+    }, {
+      "rowIndex" : 161,
+      "label" : "方凯鑫六102水",
+      "matchBy" : "addr",
+      "meterId" : 163
+    }, {
+      "rowIndex" : 162,
+      "label" : "邓宇峰低区水",
+      "matchBy" : "addr",
+      "meterId" : 164
+    }, {
+      "rowIndex" : 163,
+      "label" : "邓宇峰低区水2",
+      "matchBy" : "addr",
+      "meterId" : 165
+    }, {
+      "rowIndex" : 164,
+      "label" : "邓宇峰高区水",
+      "matchBy" : "addr",
+      "meterId" : 166
+    }, {
+      "rowIndex" : 165,
+      "label" : "刘彪水",
+      "matchBy" : "addr",
+      "meterId" : 167
+    }, {
+      "rowIndex" : 166,
+      "label" : "欧培敬水",
+      "matchBy" : "addr",
+      "meterId" : 168
+    }, {
+      "rowIndex" : 167,
+      "label" : "应塘水",
+      "matchBy" : "addr",
+      "meterId" : 169
+    }, {
+      "rowIndex" : 168,
+      "label" : "曹小芳水1",
+      "matchBy" : "addr",
+      "meterId" : 170
+    }, {
+      "rowIndex" : 169,
+      "label" : "曹小芳水2",
+      "matchBy" : "addr",
+      "meterId" : 171
+    }, {
+      "rowIndex" : 170,
+      "label" : "庞俊妨水",
+      "matchBy" : "addr",
+      "meterId" : 172
+    }, {
+      "rowIndex" : 171,
+      "label" : "丁天伦水",
+      "matchBy" : "addr",
+      "meterId" : 173
+    }, {
+      "rowIndex" : 172,
+      "label" : "石荣杰水",
+      "matchBy" : "addr",
+      "meterId" : 174
+    }, {
+      "rowIndex" : 173,
+      "label" : "徐翾水",
+      "matchBy" : "addr",
+      "meterId" : 175
+    }, {
+      "rowIndex" : 174,
+      "label" : "罗立剑水1",
+      "matchBy" : "addr",
+      "meterId" : 176
+    }, {
+      "rowIndex" : 175,
+      "label" : "罗立剑水2",
+      "matchBy" : "addr",
+      "meterId" : 177
+    }, {
+      "rowIndex" : 176,
+      "label" : "陈书谨水",
+      "matchBy" : "addr",
+      "meterId" : 178
+    } ],
+    "notices" : [ {
+      "rowIndex" : 39,
+      "label" : "嘉荣科文电",
+      "reason" : "表「嘉荣科文电」企业名称「嘉荣、科文」为复合名且未能唯一挂档:若系两户共用一表(如 嘉荣、科文=101、102),请在模板按户拆分,或按租户档案备注的拆分口径人工处理;账单派生前不会自动分摊"
+    }, {
+      "rowIndex" : 52,
+      "label" : "广联临电",
+      "reason" : "表「广联临电」企业名称「广联、氙明临电」为复合名且未能唯一挂档:若系两户共用一表(如 嘉荣、科文=101、102),请在模板按户拆分,或按租户档案备注的拆分口径人工处理;账单派生前不会自动分摊"
+    }, {
+      "rowIndex" : 53,
+      "label" : "广联电",
+      "reason" : "表「广联电」企业名称「广联、氙明」为复合名且未能唯一挂档:若系两户共用一表(如 嘉荣、科文=101、102),请在模板按户拆分,或按租户档案备注的拆分口径人工处理;账单派生前不会自动分摊"
+    } ],
+    "batchId" : "2cc8a4d7-f307-4934-9609-04409b1599d6",
+    "changes" : [ {
+      "meterId" : 24,
+      "label" : "健明电",
+      "field" : "status",
+      "before" : null,
+      "after" : "active",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 28,
+      "label" : "欧伟杰电",
+      "field" : "status",
+      "before" : null,
+      "after" : "active",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 44,
+      "label" : "毅盛离合电",
+      "field" : "status",
+      "before" : null,
+      "after" : "active",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 92,
+      "label" : "园区绿化总水",
+      "field" : "ownership",
+      "before" : "share",
+      "after" : "ops",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 131,
+      "label" : "吉罗德水",
+      "field" : "status",
+      "before" : null,
+      "after" : "active",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 132,
+      "label" : "吉罗德水2",
+      "field" : "status",
+      "before" : null,
+      "after" : "active",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    }, {
+      "meterId" : 133,
+      "label" : "毅盛离合水",
+      "field" : "status",
+      "before" : null,
+      "after" : "active",
+      "from" : "2024-01",
+      "until" : "2024-01"
+    } ]
+  }
+} ]

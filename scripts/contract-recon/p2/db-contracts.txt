@@ -1,0 +1,1176 @@
+## T1 C135 S10-0135 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=1808871.63 2023-05-01~2024-02-29 sign=None st=active kind=master_lease link=new parent=None kva=None tt=relative
+   term_text='2023年05月01日起,19元/㎡季付;首次递增2025-11-01,每三年+10%;租期年限待核 | 合同模拟:止租日 2024-02-29 为模拟值(原为空)'
+   remark='由附表10归属派生(月租=最新非零月值) | 补充租户核对:车间一~四整租95203.77㎡ | 合同模拟(2026-08-09 补止租日;⚠台账 2024-10~2025-10 显示仍在租,本值与证据冲突)'
+   units= []
+## T2 C338 S10-0136#1 bld=30:二期 一车间 unit=101 area=714.30 barea=571.44 rent=1559.03 2022-12-01~2025-11-30 sign=None st=renewed kind=normal link=new parent=None kva=50.00 tt=explicit
+   term_text='2022年12月01日至2025年11月30日（基础设施维护费1400元/月）；2025年12月01日至2028年11月30日（基础设施维护费1540元/月）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7102 '二期8栋1层101室' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=714.30 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7103 '二期8栋1层101室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   units= []
+## T2 C136 S10-0136 bld=30:二期 一车间 unit=101 area=714.30 barea=571.44 rent=1699.03 2025-12-01~2028-11-30 sign=None st=active kind=normal link=escalation parent=338 kva=50.00 tt=explicit
+   term_text='2022年12月01日至2025年11月30日（基础设施维护费1400元/月）；2025年12月01日至2028年11月30日（基础设施维护费1540元/月）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6879 '二期8栋1层101室' factory infra 厂房基础设施维护费 per_sqm_month up=2.1560 a=714.30 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6880 '二期8栋1层101室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   units= []
+## T3 C137 S10-0137 bld=30:二期 一车间 unit=103 area=1421.00 barea=1136.80 rent=2944.16 2023-03-01~2026-02-28 sign=None st=active kind=normal link=new parent=None kva=30.00 tt=explicit
+   term_text='2023年3月1日至2026年2月28日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6881 '二期8栋1层103室' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=1421.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6882 '二期8栋1层103室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   units= []
+## T4 C339 S10-0138#1 bld=30:二期 一车间 unit=2F整层 area=3100.00 barea=2480.00 rent=6712.00 2023-09-01~2026-08-31 sign=None st=active kind=normal link=new parent=None kva=70.00 tt=explicit
+   term_text='租赁期限：2023年09月01日至2026年08月31日（基础设施维护费6076元/月，3100㎡）；2026年09月01日至2029年08月31日（6683.6元/月，3100㎡）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7104 '二期8号楼(一车间)2楼整层' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=3100.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7105 '二期8号楼(一车间)2楼整层' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   L7106 '二期8号楼(一车间)2楼整层' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=477.00 rc=None src=manual tax=None note=None
+   units= []
+## T4 C138 S10-0138 bld=30:二期 一车间 unit=2F整层 area=3100.00 barea=2480.00 rent=7319.60 2026-09-01~2029-08-31 sign=None st=active kind=normal link=escalation parent=339 kva=70.00 tt=explicit
+   term_text='租赁期限：2023年09月01日至2026年08月31日（基础设施维护费6076元/月，3100㎡）；2026年09月01日至2029年08月31日（6683.6元/月，3100㎡）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6905 '二期8号楼(一车间)2楼整层' factory infra 厂房基础设施维护费 per_sqm_month up=2.1560 a=3100.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6906 '二期8号楼(一车间)2楼整层' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L6907 '二期8号楼(一车间)2楼整层' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=477.00 rc=None src=import tax=None note=None
+   units= []
+## T5 C340 S10-0139#1 bld=30:二期 一车间 unit=301 area=1550.00 barea=1240.00 rent=3674.00 2023-09-01~2026-08-31 sign=None st=active kind=normal link=new parent=None kva=187.50 tt=explicit
+   term_text='2023年09月01日至2026年08月31日；2026年09月01日至2029年08月31日（租赁面积1550㎡）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7107 '二期8号楼(一车间)301单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=1550.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7108 '二期8号楼(一车间)301单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   L7109 '二期8号楼(一车间)301单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=477.00 rc=None src=manual tax=None note=None
+   units= []
+## T5 C139 S10-0139 bld=30:二期 一车间 unit=301 area=1550.00 barea=1240.00 rent=3977.80 2026-09-01~2029-08-31 sign=None st=active kind=normal link=escalation parent=340 kva=187.50 tt=explicit
+   term_text='2023年09月01日至2026年08月31日；2026年09月01日至2029年08月31日（租赁面积1550㎡）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6896 '二期8号楼(一车间)301单元' factory infra 厂房基础设施维护费 per_sqm_month up=2.1560 a=1550.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6897 '二期8号楼(一车间)301单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L6898 '二期8号楼(一车间)301单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=477.00 rc=None src=import tax=None note=None
+   units= []
+## T6 C140 S10-0140 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=0.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T7 C141 S10-0141 bld=30:二期 一车间 unit=401 area=1700.00 barea=1360.00 rent=3968.00 2023-09-01~2026-08-31 sign=None st=active kind=normal link=new parent=None kva=30.00 tt=multiple
+   term_text='2023年9月1日至2026年8月31日；2026年9月1日至2029年8月31日（租赁面积1700㎡）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6893 '二期8号楼(一车间)401单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=1700.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6894 '二期8号楼(一车间)401单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L6895 '二期8号楼(一车间)401单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=477.00 rc=None src=import tax=None note=None
+   units= []
+## T7 C310 C2024M-015 bld=30:二期 一车间 unit=401 area=1700.00 barea=1360.00 rent=3665.23 2026-09-01~2029-08-31 sign=None st=active kind=normal link=renew parent=141 kva=30.00 tt=multiple
+   term_text='2026年9月1日至2029年8月31日（租赁面积1700㎡）'
+   remark=None
+   L7025 '二期8号楼(一车间)401单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.7819 a=1700.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7026 '二期8号楼(一车间)401单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   L7027 '二期8号楼(一车间)401单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=477.00 rc=None src=manual tax=None note=None
+   units= []
+## T8 C142 S10-0142 bld=30:二期 一车间 unit=402 area=1375.22 barea=1100.18 rent=3331.43 2023-10-01~2024-09-30 sign=None st=active kind=normal link=new parent=None kva=30.00 tt=multiple
+   term_text='主合同表格：租赁期限2023年10月01日至2024年09月30日（租赁面积1300㎡，基础设施维护费2548.00元/月）；补充协议：乙方向出租方租赁空地面积共计75.22平方米，租赁期限从2023年10月07日起至2024年10月06日止（基础设施维护费147.43元/月）'
+   remark='本标的租期 2023-10-07→2024-10-06'
+   L6914 '二期8号楼(一车间)402单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=1300.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6915 '二期8号楼(一车间)402单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L6916 '二期8号楼(一车间)402单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=477.00 rc=None src=import tax=None note=None
+   L6917 '二期8号楼四楼公共电梯厅大堂部分空地' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=75.22 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   units= [(532, 30, '4F整层')]
+## T9 C474 zbn23 bld=30:二期 一车间 unit=501 area=1243.00 barea=994.40 rent=2840.28 2023-01-01~2023-09-30 sign=None st=active kind=normal link=renew parent=143 kva=62.50 tt=None
+   term_text=None
+   remark=None
+   L8591 '二期8号楼(一车间)501单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=1243.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L8592 '二期8号楼(一车间)501单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L8593 '二期8号楼(一车间)501单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=245.00 rc=None src=import tax=None note=None
+   units= []
+## T9 C143 S10-0143 bld=30:二期 一车间 unit=501 area=1243.00 barea=994.40 rent=2840.28 2023-10-10~2026-10-09 sign=None st=renewed kind=normal link=new parent=None kva=62.50 tt=explicit
+   term_text='2023年10月10日至2026年10月9日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6902 '二期8号楼(一车间)501单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=1243.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6903 '二期8号楼(一车间)501单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L6904 '二期8号楼(一车间)501单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=245.00 rc=None src=import tax=None note=None
+   units= []
+## T10 C341 S10-0144#1 bld=30:二期 一车间 unit=502 area=1500.00 barea=1200.00 rent=3395.00 2023-09-01~2026-08-31 sign=None st=active kind=normal link=new parent=None kva=100.00 tt=explicit
+   term_text='2023年09月01日至2026年8月31日（租赁面积1500，基础设施维护费2940元/月）；2026年09月01日至2029年8月31日（租赁面积1500，基础设施维护费3234元/月）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7110 '二期8号楼(一车间)502单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=1500.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7111 '二期8号楼(一车间)502单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   L7112 '二期8号楼(一车间)502单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=296.00 rc=None src=manual tax=None note=None
+   units= []
+## T10 C144 S10-0144 bld=30:二期 一车间 unit=502 area=1500.00 barea=1200.00 rent=3689.00 2026-09-01~2029-08-31 sign=None st=active kind=normal link=escalation parent=341 kva=100.00 tt=explicit
+   term_text='2023年09月01日至2026年8月31日（租赁面积1500，基础设施维护费2940元/月）；2026年09月01日至2029年8月31日（租赁面积1500，基础设施维护费3234元/月）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6911 '二期8号楼(一车间)502单元' factory infra 厂房基础设施维护费 per_sqm_month up=2.1560 a=1500.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6912 '二期8号楼(一车间)502单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L6913 '二期8号楼(一车间)502单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=296.00 rc=None src=import tax=None note=None
+   units= []
+## T11 C145 S10-0145#1 bld=30:二期 一车间 unit=602 area=0.00 barea=None rent=3772.00 2023-08-25~2026-08-24 sign=None st=active kind=normal link=new parent=None kva=30.00 tt=explicit
+   term_text='2023年08月25日至2026年08月24日'
+   remark='补充租户核对:一车间602;补充协议面积1473→1600(基础3136);30KVA'
+   L8583 '主' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L8588 '二期 8号楼\n（一车间）602单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=1600.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L8584 '主' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=477.00 rc=None src=import tax=None note=None
+   L8589 '二期 8号楼\n（一车间）602单元' factory rent_factory 厂房租金 per_sqm_month up=0.0000 a=None sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8585 '主' factory rent_factory 厂房租金 per_sqm_month up=0.0000 a=None sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8590 '二期 8号楼\n（一车间）602单元' factory mgmt 厂房企业管理服务费 per_sqm_month up=0.0000 a=None sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8586 '主' factory mgmt 厂房企业管理服务费 per_sqm_month up=0.0000 a=None sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8587 '主' factory infra 厂房基础设施维护费 per_sqm_month up=0.0000 a=None sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   units= []
+## T11 C457 S10-0145#2 bld=30:二期 一车间 unit=602 area=1600.00 barea=1280.00 rent=4085.60 2026-08-25~2029-08-24 sign=None st=active kind=normal link=escalation parent=145 kva=30.00 tt=explicit
+   term_text='2026年08月25日至2029年08月24日'
+   remark='保奔路段2(基础3449.6)'
+   units= []
+## T12 C342 S10-0146#1 bld=30:二期 一车间 unit=601 area=650.00 barea=520.00 rent=1592.00 2023-04-25~2026-04-24 sign=None st=renewed kind=normal link=new parent=None kva=30.00 tt=explicit
+   term_text='2023年4月25日至2026年4月24日；2026年4月25日至2028年4月24日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7113 '二期8号楼(1车间）6楼601单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=650.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7114 '二期8号楼(1车间）6楼601单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   L7115 '二期8号楼(1车间）6楼601单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   units= []
+## T12 C146 S10-0146 bld=30:二期 一车间 unit=601 area=650.00 barea=520.00 rent=1719.40 2026-04-25~2028-04-24 sign=None st=active kind=normal link=escalation parent=342 kva=30.00 tt=explicit
+   term_text='2023年4月25日至2026年4月24日；2026年4月25日至2028年4月24日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6883 '二期8号楼(1车间）6楼601单元' factory infra 厂房基础设施维护费 per_sqm_month up=2.1560 a=650.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6884 '二期8号楼(1车间）6楼601单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L6885 '二期8号楼(1车间）6楼601单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   units= []
+## T13 C147 S10-0147 bld=30:二期 一车间 unit=603 area=502.00 barea=401.60 rent=1619.92 2023-08-01~2025-07-31 sign=None st=active kind=normal link=new parent=None kva=30.00 tt=explicit
+   term_text='2023年8月1日起至2025年7月31日止'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6899 '二期8号楼603室' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=502.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6900 '二期8号楼603室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L6901 '二期8号楼603室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=477.00 rc=None src=import tax=None note=None
+   units= []
+## T14 C219 S10-0219 bld=30:二期 一车间 unit=702 area=320.00 barea=None rent=1024.70 2023-01-01~2024-02-29 sign=None st=active kind=normal link=new parent=None kva=25.00 tt=explicit
+   term_text='合同模拟 2023-01-01~2024-02-29(推定区间,非纸约)'
+   remark='期限待人工补 | 补充租户核对:一车间702 320㎡;纸质合同期限截图缺,日期待财务补 | 合同模拟(2026-08-09 补:2024-02 有单无在租合同,补 2023-01~2024-02 模拟区间,起止均非纸约)'
+   L7875 '二期8号楼（1车间）702单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=320.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L7876 '二期8号楼（1车间）702单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L7877 '二期8号楼（1车间）702单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=238.50 rc=None src=import tax=None note=None
+   L7878 '二期8号楼（1车间）702单元' factory rent_factory 厂房租金 per_sqm_month up=0.0000 a=320.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7879 '二期8号楼（1车间）702单元' factory mgmt 厂房企业管理服务费 per_sqm_month up=0.0000 a=None sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   units= []
+## T15 C149 S10-0149#1 bld=31:二期 二车间 unit=None area=7202.00 barea=5761.60 rent=14910.92 2023-08-01~2026-07-31 sign=None st=active kind=normal link=new parent=None kva=60.00 tt=explicit
+   term_text='2023年08月01日至2026年07月31日'
+   remark='补充租户核对:二期9号楼(2车间)103、201单元;合同号HJYLS2307001;仅基础设施维护费(免租金模式);原月租15826.80与纸约14910.92差915.88待财务核'
+   L7854 '二期9号楼（2车间）103、201单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=7202.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7855 '二期9号楼（2车间）103、201单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   L7856 '二期9号楼（2车间）103、201单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=636.00 rc=None src=manual tax=None note=None
+   units= []
+## T15 C455 S10-0149#2 bld=31:二期 二车间 unit=None area=7202.00 barea=5761.60 rent=16322.51 2026-08-01~2029-07-31 sign=None st=active kind=normal link=escalation parent=149 kva=60.00 tt=explicit
+   term_text='2026年08月01日至2029年07月31日'
+   remark='协作链段2(基础15527.51)'
+   L7857 '二期9号楼（2车间）103、201单元' factory infra 厂房基础设施维护费 per_sqm_month up=2.1560 a=7202.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7858 '二期9号楼（2车间）103、201单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   L7859 '二期9号楼（2车间）103、201单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=636.00 rc=None src=manual tax=None note=None
+   units= []
+## T15 C456 S10-0149#3 bld=31:二期 二车间 unit=None area=7202.00 barea=5761.60 rent=17875.26 2029-08-01~2032-07-31 sign=None st=active kind=normal link=escalation parent=455 kva=60.00 tt=explicit
+   term_text='2029年08月01日至2032年07月31日'
+   remark='协作链段3(基础17080.26)'
+   L7860 '二期9号楼（2车间）103、201单元' factory infra 厂房基础设施维护费 per_sqm_month up=2.3716 a=7202.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7861 '二期9号楼（2车间）103、201单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   L7862 '二期9号楼（2车间）103、201单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=636.00 rc=None src=manual tax=None note=None
+   units= []
+## T16 C150 S10-0150 bld=31:二期 二车间 unit=301 area=4537.50 barea=3630.00 rent=9688.50 2023-07-25~2026-07-24 sign=None st=renewed kind=normal link=new parent=None kva=62.50 tt=multiple
+   term_text='2023年7月25日起至2026年7月24日；2026年7月25日起至2028年7月24日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6888 '二期9栋301室' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=4537.50 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6889 '二期9栋301室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=636.00 rc=None src=import tax=None note=None
+   L6890 '二期9栋301室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   units= []
+## T16 C309 C2024M-014 bld=31:二期 二车间 unit=301 area=4537.50 barea=3630.00 rent=9782.88 2026-07-25~2028-07-24 sign=None st=active kind=normal link=renew parent=150 kva=62.50 tt=multiple
+   term_text='2026年7月25日起至2028年7月24日'
+   remark=None
+   L7028 '二期9栋301室' factory infra 厂房基础设施维护费 per_sqm_month up=1.9808 a=4537.50 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7029 '二期9栋301室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=636.00 rc=None src=manual tax=None note=None
+   L7030 '二期9栋301室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   units= []
+## T17 C151 S10-0151 bld=31:二期 二车间 unit=401 area=2580.00 barea=2064.00 rent=5851.80 2023-09-10~2024-09-09 sign=None st=active kind=normal link=new parent=None kva=37.50 tt=explicit
+   term_text='2023年9月10日起至2024年9月9日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6908 '二期9号楼(二车间)401单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=2580.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6909 '二期9号楼(二车间)401单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L6910 '二期9号楼(二车间)401单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=636.00 rc=None src=import tax=None note=None
+   units= []
+## T18 C152 S10-0152 bld=31:二期 二车间 unit=403 area=1543.00 barea=1234.40 rent=3819.28 2024-01-10~2025-01-09 sign=None st=active kind=normal link=new parent=None kva=25.00 tt=explicit
+   term_text='2024年1月10日起至2025年1月9日止'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6948 '二期9栋403、404单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=1543.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6949 '二期9栋403、404单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L6950 '二期9栋403、404单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=636.00 rc=None src=import tax=None note=None
+   units= [(550, 31, '404')]
+## T19 C343 S10-0153#1 bld=31:二期 二车间 unit=101 area=5040.00 barea=4032.00 rent=10864.40 2024-01-01~2026-12-31 sign=None st=active kind=normal link=new parent=None kva=350.00 tt=explicit
+   term_text='租赁期限：2024年01月01日起至2026年12月31日（基础设施维护费9878.4元/月）；2027年01月01日起至2028年12月31日（10866.24元/月）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7116 '二期9栋(车间二)101单元、102单元、5楼整层501-504单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=5040.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7117 '二期9栋(车间二)101单元、102单元、5楼整层501-504单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=350.00 rc=None src=manual tax=None note=None
+   L7118 '二期9栋(车间二)101单元、102单元、5楼整层501-504单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=636.00 rc=None src=manual tax=None note=None
+   units= [(551, 31, '501'), (552, 31, '502'), (553, 31, '503'), (554, 31, '504'), (610, 31, '102')]
+## T19 C153 S10-0153 bld=31:二期 二车间 unit=101 area=5040.00 barea=4032.00 rent=11852.24 2027-01-01~2028-12-31 sign=None st=active kind=normal link=escalation parent=343 kva=350.00 tt=explicit
+   term_text='租赁期限：2024年01月01日起至2026年12月31日（基础设施维护费9878.4元/月）；2027年01月01日起至2028年12月31日（10866.24元/月）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6954 '二期9栋(车间二)101单元、102单元、5楼整层501-504单元' factory infra 厂房基础设施维护费 per_sqm_month up=2.1560 a=5040.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6955 '二期9栋(车间二)101单元、102单元、5楼整层501-504单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=350.00 rc=None src=import tax=None note=None
+   L6956 '二期9栋(车间二)101单元、102单元、5楼整层501-504单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=636.00 rc=None src=import tax=None note=None
+   units= [(551, 31, '501'), (552, 31, '502'), (553, 31, '503'), (554, 31, '504'), (610, 31, '102')]
+## T20 C344 S10-0154#1 bld=32:二期 三车间 unit=103 area=1250.00 barea=1000.00 rent=2609.00 2023-05-25~2026-05-24 sign=None st=renewed kind=normal link=new parent=None kva=30.00 tt=explicit
+   term_text='2023年5月25日至2026年5月24日/2026年5月25日至2029年5月24日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7119 '二期10号楼（3车间）1楼103单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=1250.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7120 '二期10号楼（3车间）1楼103单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   units= []
+## T20 C154 S10-0154 bld=32:二期 三车间 unit=103 area=1250.00 barea=1000.00 rent=2854.00 2026-05-25~2029-05-24 sign=None st=active kind=normal link=escalation parent=344 kva=30.00 tt=explicit
+   term_text='2023年5月25日至2026年5月24日/2026年5月25日至2029年5月24日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6886 '二期10号楼（3车间）1楼103单元' factory infra 厂房基础设施维护费 per_sqm_month up=2.1560 a=1250.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6887 '二期10号楼（3车间）1楼103单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   units= []
+## T21 C155 S10-0155 bld=32:二期 三车间 unit=104 area=701.00 barea=560.80 rent=1532.96 2023-07-15~2024-07-14 sign=None st=active kind=normal link=new parent=None kva=30.00 tt=explicit
+   term_text='2023年7月15日起至2024年7月14日（表格「租赁期限」列，手写15、14覆盖印刷标记；租赁面积701㎡，基础设施维护费1374元/月）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6891 '二期10号楼（3车间）104单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=701.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6892 '二期10号楼（3车间）104单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   units= []
+## T22 C345 S10-0156#1 bld=32:二期 三车间 unit=301 area=2325.00 barea=1860.00 rent=5250.00 2023-10-01~2026-09-30 sign=None st=active kind=normal link=new parent=None kva=375.00 tt=explicit
+   term_text='租赁期限：2023年10月01日至2026年09月30日；2026年10月01日至2029年09月30日；2029年10月01日至2032年09月30日（租赁面积均为2325㎡）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7121 '二期10号楼(三车间)301单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=2325.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7122 '二期10号楼(三车间)301单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=375.00 rc=None src=manual tax=None note=None
+   L7123 '二期10号楼(三车间)301单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=318.00 rc=None src=manual tax=None note=None
+   units= []
+## T22 C346 S10-0156#2 bld=32:二期 三车间 unit=301 area=2325.00 barea=1860.00 rent=5705.70 2026-10-01~2029-09-30 sign=None st=renewed kind=normal link=escalation parent=345 kva=375.00 tt=explicit
+   term_text='租赁期限：2023年10月01日至2026年09月30日；2026年10月01日至2029年09月30日；2029年10月01日至2032年09月30日（租赁面积均为2325㎡）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7125 '二期10号楼(三车间)301单元' factory infra 厂房基础设施维护费 per_sqm_month up=2.1560 a=2325.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7126 '二期10号楼(三车间)301单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=375.00 rc=None src=manual tax=None note=None
+   L7127 '二期10号楼(三车间)301单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=318.00 rc=None src=manual tax=None note=None
+   units= []
+## T22 C156 S10-0156 bld=32:二期 三车间 unit=301 area=2325.00 barea=1860.00 rent=6457.61 2029-10-01~2032-09-30 sign=None st=active kind=normal link=escalation parent=346 kva=375.00 tt=explicit
+   term_text='租赁期限：2023年10月01日至2026年09月30日；2026年10月01日至2029年09月30日；2029年10月01日至2032年09月30日（租赁面积均为2325㎡）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6926 '二期10号楼(三车间)301单元' factory infra 厂房基础设施维护费 per_sqm_month up=2.4794 a=2325.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6927 '二期10号楼(三车间)301单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=375.00 rc=None src=import tax=None note=None
+   L6928 '二期10号楼(三车间)301单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=318.00 rc=None src=import tax=None note=None
+   units= []
+## T23 C347 S10-0157#1 bld=32:二期 三车间 unit=302 area=2325.00 barea=1860.00 rent=5250.00 2023-10-01~2026-09-30 sign=None st=active kind=normal link=new parent=None kva=375.00 tt=explicit
+   term_text='租赁期限：2023年10月01日至2026年09月30日；2026年10月01日至2029年09月30日；2029年10月01日至2032年09月30日（租赁面积2325㎡）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7129 '二期10号楼(三车间)302单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=2325.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7130 '二期10号楼(三车间)302单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=375.00 rc=None src=manual tax=None note=None
+   L7131 '二期10号楼(三车间)302单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=318.00 rc=None src=manual tax=None note=None
+   units= []
+## T23 C348 S10-0157#2 bld=32:二期 三车间 unit=302 area=2325.00 barea=1860.00 rent=5705.70 2026-10-01~2029-09-30 sign=None st=renewed kind=normal link=escalation parent=347 kva=375.00 tt=explicit
+   term_text='租赁期限：2023年10月01日至2026年09月30日；2026年10月01日至2029年09月30日；2029年10月01日至2032年09月30日（租赁面积2325㎡）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7132 '二期10号楼(三车间)302单元' factory infra 厂房基础设施维护费 per_sqm_month up=2.1560 a=2325.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7133 '二期10号楼(三车间)302单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=375.00 rc=None src=manual tax=None note=None
+   L7134 '二期10号楼(三车间)302单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=318.00 rc=None src=manual tax=None note=None
+   units= []
+## T23 C157 S10-0157 bld=32:二期 三车间 unit=302 area=2325.00 barea=1860.00 rent=6457.61 2029-10-01~2032-09-30 sign=None st=active kind=normal link=escalation parent=348 kva=375.00 tt=explicit
+   term_text='租赁期限：2023年10月01日至2026年09月30日；2026年10月01日至2029年09月30日；2029年10月01日至2032年09月30日（租赁面积2325㎡）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6930 '二期10号楼(三车间)302单元' factory infra 厂房基础设施维护费 per_sqm_month up=2.4794 a=2325.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6931 '二期10号楼(三车间)302单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=375.00 rc=None src=import tax=None note=None
+   L6932 '二期10号楼(三车间)302单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=318.00 rc=None src=import tax=None note=None
+   units= []
+## T24 C158 S10-0158 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=12060.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T25 C159 S10-0159#1 bld=32:二期 三车间 unit=403 area=1726.00 barea=1380.80 rent=4177.96 2023-12-16~2026-12-15 sign=None st=active kind=normal link=new parent=None kva=12.50 tt=explicit
+   term_text='2023年12月16日至2026年12月15日'
+   remark='补充租户核对:10栋(三车间)403、404单元;12.5KVA'
+   L6945 '二期10栋（三车间）403单元、404单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=1726.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6946 '二期10栋（三车间）403单元、404单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L6947 '二期10栋（三车间）403单元、404单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=636.00 rc=None src=import tax=None note=None
+   units= [(542, 32, '404')]
+## T25 C458 S10-0159#2 bld=32:二期 三车间 unit=403 area=1726.00 barea=1380.80 rent=4516.26 2026-12-16~2029-12-15 sign=None st=active kind=normal link=escalation parent=159 kva=12.50 tt=explicit
+   term_text='2026年12月16日至2029年12月15日'
+   remark='管中旺段2(基础3721.26)'
+   units= []
+## T26 C160 S10-0160 bld=32:二期 三车间 unit=601 area=5200.00 barea=4160.00 rent=10987.00 2024-01-01~2026-12-31 sign=None st=active kind=normal link=new parent=None kva=100.00 tt=multiple
+   term_text='2024年1月1日起至2026年12月31日；2027年1月1日起至2028年12月31日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6951 '二期10栋5楼整层、601单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=5200.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6952 '二期10栋5楼整层、601单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L6953 '二期10栋5楼整层、601单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=636.00 rc=None src=import tax=None note=None
+   units= []
+## T26 C316 C2024M-021 bld=32:二期 三车间 unit=601 area=5200.00 barea=4160.00 rent=11211.12 2027-01-01~2028-12-31 sign=None st=active kind=normal link=renew parent=160 kva=100.00 tt=multiple
+   term_text='2027年1月1日起至2028年12月31日'
+   remark=None
+   L7031 '二期10栋5楼整层、601单元' factory infra 厂房基础设施维护费 per_sqm_month up=2.0031 a=5200.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7032 '二期10栋5楼整层、601单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   L7033 '二期10栋5楼整层、601单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=636.00 rc=None src=manual tax=None note=None
+   units= []
+## T27 C349 S10-0161#1 bld=32:二期 三车间 unit=602 area=2270.00 barea=1816.00 rent=5244.20 2024-01-01~2026-12-31 sign=None st=active kind=normal link=new parent=None kva=40.00 tt=explicit
+   term_text='2024年01月01日起至2026年12月31日；2027年01月01日起至2028年12月31日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7135 '二期10号楼（三车间）602、603、604单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=2270.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7136 '二期10号楼（三车间）602、603、604单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   L7137 '二期10号楼（三车间）602、603、604单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=636.00 rc=None src=manual tax=None note=None
+   units= [(545, 32, '603'), (546, 32, '604')]
+## T27 C161 S10-0161 bld=32:二期 三车间 unit=602 area=2270.00 barea=1816.00 rent=5689.12 2027-01-01~2028-12-31 sign=None st=active kind=normal link=escalation parent=349 kva=40.00 tt=explicit
+   term_text='2024年01月01日起至2026年12月31日；2027年01月01日起至2028年12月31日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6957 '二期10号楼（三车间）602、603、604单元' factory infra 厂房基础设施维护费 per_sqm_month up=2.1560 a=2270.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6958 '二期10号楼（三车间）602、603、604单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L6959 '二期10号楼（三车间）602、603、604单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=636.00 rc=None src=import tax=None note=None
+   units= [(545, 32, '603'), (546, 32, '604')]
+## T28 C162 S10-0162 bld=33:二期 四车间 unit=301 area=9263.00 barea=7410.40 rent=20075.48 2023-10-01~2026-09-30 sign=None st=active kind=normal link=new parent=None kva=330.00 tt=multiple
+   term_text='2023年10月1日至2026年9月30日（基础设施维护费18155.48元/月）；2026年10月1日至2029年9月30日（基础设施维护费19971.03元/月）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6918 '二期11号楼西边301、401、501、601、701单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=9263.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6919 '二期11号楼西边301、401、501、601、701单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=330.00 rc=None src=import tax=None note=None
+   L6920 '二期11号楼西边301、401、501、601、701单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=1590.00 rc=None src=import tax=None note=None
+   units= [(582, 33, '401'), (584, 33, '501'), (585, 33, '601'), (586, 33, '701')]
+## T28 C81 S10-0081 bld=27:一期 宿舍二栋 unit=115 area=500.56 barea=400.45 rent=12172.44 2023-11-10~2026-11-09 sign=None st=active kind=normal link=new parent=None kva=46.25 tt=explicit
+   term_text='2023年11月10日至2026年11月09日'
+   remark='由附表10归属派生(月租=最新非零月值) | 2026-08-03 图纸补齐:物业费三行;纸约用电25kVA与档案46.25(水电册实证)不一致待核;税金12.8%应收租金/履约保证金25529不入计费行'
+   L6736 '宿舍区二号楼首层2115、2104、2105室' shop rent_shop 商铺租金 per_sqm_month up=17.0000 a=500.56 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L7785 '宿舍区二号楼首层2115、2104、2105室' shop mgmt 商铺企业管理服务费 per_sqm_month up=5.0000 a=500.56 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7786 '宿舍区二号楼首层2115、2104、2105室' shop infra 商铺基础设施维护费 per_sqm_month up=2.0000 a=500.56 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7787 '宿舍区二号楼首层2115、2104、2105室' shop transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   units= [(608, 27, '104'), (609, 27, '105')]
+## T28 C439 S10-0081A#1 bld=26:一期 宿舍一栋 unit=309 area=1086.20 barea=868.96 rent=24560.20 2023-11-10~2026-11-09 sign=None st=active kind=normal link=new parent=None kva=None tt=explicit
+   term_text='2023年11月10日至2026年11月09日'
+   remark='广联宿舍:一栋30间长约(网络30间/门禁30间;纸约整数20640+2173系四舍五入,以精确行为准)'
+   L7788 '宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=1086.20 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7789 '宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=1086.20 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7790 '宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=1500.00 rc=None src=manual tax=None note=None
+   L7791 '宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=250.00 rc=None src=manual tax=None note=None
+   units= [(664, 26, '310'), (665, 26, '311'), (666, 26, '313'), (667, 26, '315'), (668, 26, '316'), (669, 26, '318'), (670, 26, '320'), (671, 26, '326'), (672, 26, '328'), (673, 26, '407'), (674, 26, '411'), (675, 26, '413'), (676, 26, '415'), (677, 26, '417'), (678, 26, '421'), (679, 26, '423'), (681, 26, '506'), (682, 26, '511'), (683, 26, '513'), (684, 26, '515'), (685, 26, '516'), (686, 26, '517'), (687, 26, '520'), (688, 26, '521'), (689, 26, '522'), (690, 26, '523'), (691, 26, '524'), (692, 26, '526'), (693, 26, '528')]
+## T28 C440 S10-0081B#1 bld=29:一期 宿舍四栋 unit=627 area=45.08 barea=36.06 rent=1005.01 2023-11-20~2024-11-19 sign=None st=active kind=normal link=new parent=None kva=None tt=explicit
+   term_text='2023年11月20日至2024年11月19日'
+   remark='广联宿舍:四栋627'
+   L7792 '宿舍楼四座627室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=45.08 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7793 '宿舍楼四座627室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=45.08 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7794 '宿舍楼四座627室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L7795 '宿舍楼四座627室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note=None
+   units= []
+## T28 C442 S10-0081D#1 bld=29:一期 宿舍四栋 unit=339 area=364.42 barea=291.54 rent=8236.15 2023-12-03~2024-06-30 sign=None st=active kind=normal link=new parent=None kva=None tt=explicit
+   term_text='2023年12月03日至2024年06月30日'
+   remark='广联宿舍:四栋339~347、349 共10间'
+   L7990 '宿舍楼四座339室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7991 '宿舍楼四座340室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7992 '宿舍楼四座341室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.96 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7993 '宿舍楼四座342室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7994 '宿舍楼四座343室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.09 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7995 '宿舍楼四座344室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7996 '宿舍楼四座345室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7997 '宿舍楼四座346室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7998 '宿舍楼四座347室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7999 '宿舍楼四座349室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=35.66 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8005 '宿舍楼四座339室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8006 '宿舍楼四座340室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8007 '宿舍楼四座341室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.96 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8008 '宿舍楼四座342室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8009 '宿舍楼四座343室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.09 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8010 '宿舍楼四座344室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8011 '宿舍楼四座345室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8012 '宿舍楼四座346室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8013 '宿舍楼四座347室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8014 '宿舍楼四座349室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=35.66 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8035 '宿舍楼四座339室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L8036 '宿舍楼四座340室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L8037 '宿舍楼四座341室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L8038 '宿舍楼四座342室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L8039 '宿舍楼四座343室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L8040 '宿舍楼四座344室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L8041 '宿舍楼四座345室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L8042 '宿舍楼四座346室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L8043 '宿舍楼四座347室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L8044 '宿舍楼四座349室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L8020 '宿舍楼四座339室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.36 rc=None src=manual tax=None note=None
+   L8021 '宿舍楼四座340室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note=None
+   L8022 '宿舍楼四座341室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note=None
+   L8023 '宿舍楼四座342室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note=None
+   L8024 '宿舍楼四座343室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note=None
+   L8025 '宿舍楼四座344室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note=None
+   L8026 '宿舍楼四座345室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note=None
+   L8027 '宿舍楼四座346室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note=None
+   L8028 '宿舍楼四座347室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note=None
+   L8029 '宿舍楼四座349室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note=None
+   units= [(700, 29, '340'), (701, 29, '341'), (702, 29, '342'), (703, 29, '343'), (704, 29, '344'), (705, 29, '345'), (706, 29, '346'), (707, 29, '347'), (708, 29, '349')]
+## T28 C443 S10-0081E#1 bld=29:一期 宿舍四栋 unit=333 area=146.12 barea=116.90 rent=3301.85 2023-12-15~2024-06-30 sign=None st=active kind=normal link=new parent=None kva=None tt=explicit
+   term_text='2023年12月15日至2024年06月30日'
+   remark='广联宿舍:四栋333、335、336、338 共4间'
+   L8050 '宿舍楼四座333室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8051 '宿舍楼四座335室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8052 '宿舍楼四座336室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8053 '宿舍楼四座338室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8057 '宿舍楼四座333室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8058 '宿舍楼四座335室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8059 '宿舍楼四座336室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8060 '宿舍楼四座338室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8071 '宿舍楼四座333室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L8072 '宿舍楼四座335室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L8073 '宿舍楼四座336室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L8074 '宿舍楼四座338室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L8064 '宿舍楼四座333室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.34 rc=None src=manual tax=None note=None
+   L8065 '宿舍楼四座335室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note=None
+   L8066 '宿舍楼四座336室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note=None
+   L8067 '宿舍楼四座338室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note=None
+   units= [(696, 29, '335'), (697, 29, '336'), (698, 29, '338')]
+## T28 C444 S10-0081F#1 bld=29:一期 宿舍四栋 unit=629 area=99.59 barea=79.67 rent=2266.39 2023-12-23~2024-06-30 sign=None st=active kind=normal link=new parent=None kva=None tt=explicit
+   term_text='2023年12月23日至2024年06月30日'
+   remark='广联宿舍:四栋629、634、635 共3间'
+   L8078 '宿舍楼四座629室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=31.05 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8079 '宿舍楼四座634室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=32.01 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8080 '宿舍楼四座635室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8081 '宿舍楼四座629室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=31.05 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8082 '宿舍楼四座634室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=32.01 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8083 '宿舍楼四座635室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8087 '宿舍楼四座629室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L8088 '宿舍楼四座634室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L8089 '宿舍楼四座635室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L8084 '宿舍楼四座629室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.34 rc=None src=manual tax=None note=None
+   L8085 '宿舍楼四座634室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note=None
+   L8086 '宿舍楼四座635室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note=None
+   units= [(712, 29, '634'), (713, 29, '635')]
+## T28 C445 S10-0081G#1 bld=29:一期 宿舍四栋 unit=250 area=35.53 barea=28.42 rent=804.46 2024-01-04~2024-06-30 sign=None st=active kind=normal link=new parent=None kva=None tt=explicit
+   term_text='2024年01月04日至2024年06月30日'
+   remark='广联宿舍:四栋250'
+   L7812 '宿舍楼四座250室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=35.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7813 '宿舍楼四座250室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=35.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7814 '宿舍楼四座250室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L7815 '宿舍楼四座250室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note=None
+   units= []
+## T28 C441 S10-0081C#1 bld=26:一期 宿舍一栋 unit=424 area=36.53 barea=29.22 rent=825.46 2024-01-09~2024-07-08 sign=None st=active kind=normal link=new parent=None kva=None tt=explicit
+   term_text='2024年01月09日至2024年07月08日'
+   remark='广联宿舍:一栋424'
+   L7796 '宿舍楼一座424室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7797 '宿舍楼一座424室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7798 '宿舍楼一座424室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L7799 '宿舍楼一座424室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note=None
+   units= []
+## T28 C446 S10-0081H#1 bld=29:一期 宿舍四栋 unit=631 area=31.93 barea=25.54 rent=728.86 2024-01-09~2024-06-30 sign=None st=active kind=normal link=new parent=None kva=None tt=explicit
+   term_text='2024年01月09日至2024年06月30日'
+   remark='广联宿舍:四栋631'
+   L7816 '宿舍楼四座631室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=31.93 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7817 '宿舍楼四座631室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=31.93 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7818 '宿舍楼四座631室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L7819 '宿舍楼四座631室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note=None
+   units= []
+## T28 C311 C2024M-016 bld=33:二期 四车间 unit=301 area=9263.00 barea=7410.40 rent=19970.81 2026-10-01~2029-09-30 sign=None st=active kind=normal link=renew parent=162 kva=330.00 tt=multiple
+   term_text='2026年10月1日至2029年9月30日（基础设施维护费19971.03元/月）'
+   remark='续签金额待补:（基础设施维护费19971.03元/月）'
+   L7034 '二期11号楼西边301、401、501、601、701单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9487 a=9263.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7035 '二期11号楼西边301、401、501、601、701单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=330.00 rc=None src=manual tax=None note=None
+   L7036 '二期11号楼西边301、401、501、601、701单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=1590.00 rc=None src=manual tax=None note=None
+   units= [(582, 33, '401'), (584, 33, '501'), (585, 33, '601'), (586, 33, '701')]
+## T29 C163 S10-0163 bld=33:二期 四车间 unit=101 area=3705.00 barea=2964.00 rent=7738.80 2023-10-01~2026-09-30 sign=None st=active kind=normal link=new parent=None kva=70.00 tt=multiple
+   term_text='2023年10月1日至2026年9月30日（租赁面积3705㎡，基础设施维护费7261.80元/月）；2026年10月1日至2029年9月30日（租赁面积3705㎡，基础设施维护费7987.98元/月）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6921 '二期11号楼西边101、201单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=3705.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6922 '二期11号楼西边101、201单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L6923 '二期11号楼西边101、201单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=318.00 rc=None src=import tax=None note=None
+   units= [(577, 33, '201')]
+## T29 C312 C2024M-017 bld=33:二期 四车间 unit=101 area=3705.00 barea=2964.00 rent=7988.15 2026-10-01~2029-09-30 sign=None st=active kind=normal link=renew parent=163 kva=70.00 tt=multiple
+   term_text='2026年10月1日至2029年9月30日（租赁面积3705㎡，基础设施维护费7987.98元/月）'
+   remark='续签金额待补:（租赁面积3705㎡，基础设施维护费7987.98元/月）'
+   L7037 '二期11号楼西边101、201单元' factory infra 厂房基础设施维护费 per_sqm_month up=2.0273 a=3705.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7038 '二期11号楼西边101、201单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   L7039 '二期11号楼西边101、201单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=318.00 rc=None src=manual tax=None note=None
+   units= [(577, 33, '201')]
+## T30 C164 S10-0164 bld=33:二期 四车间 unit=703 area=1852.50 barea=1482.00 rent=3869.90 2023-11-25~2026-11-24 sign=None st=active kind=normal link=new parent=None kva=None tt=multiple
+   term_text='2023年11月25日至2026年11月24日/2026年11月25日至2029年11月24日（表格「租赁期限」两行）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6924 '二期11号楼（四车间）703、704单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=1852.50 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6925 '二期11号楼（四车间）703、704单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=239.00 rc=None src=import tax=None note=None
+   units= [(588, 33, '704')]
+## T30 C313 C2024M-018 bld=33:二期 四车间 unit=703 area=1852.50 barea=1482.00 rent=3994.02 2026-11-25~2029-11-24 sign=None st=active kind=normal link=renew parent=164 kva=None tt=multiple
+   term_text='2026年11月25日至2029年11月24日（表格「租赁期限」两行）'
+   remark=None
+   L7040 '二期11号楼（四车间）703、704单元' factory infra 厂房基础设施维护费 per_sqm_month up=2.0270 a=1852.50 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7041 '二期11号楼（四车间）703、704单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=239.00 rc=None src=manual tax=None note=None
+   units= [(588, 33, '704')]
+## T31 C165 S10-0165 bld=33:二期 四车间 unit=None area=0.00 barea=None rent=766.36 2023-01-01~2024-02-29 sign=None st=active kind=normal link=new parent=None kva=None tt=explicit
+   term_text='合同模拟 2023-01-01~2024-02-29(推定区间,非纸约)'
+   remark='由附表10归属派生(月租=最新非零月值) | 合同模拟(2026-08-09 补:2024-02 有单无在租合同,补 2023-01~2024-02 模拟区间,起止均非纸约)'
+   units= []
+## T32 C166 S10-0166 bld=33:二期 四车间 unit=202 area=2200.00 barea=1760.00 rent=5107.00 2023-11-15~2026-11-14 sign=None st=active kind=normal link=new parent=None kva=100.00 tt=multiple
+   term_text='2023年11月15日起至2026年11月14；2026年11月15日起至2029年11月14日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6933 '二期11栋（四车间）202、203、204单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=2200.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6934 '二期11栋（四车间）202、203、204单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L6935 '二期11栋（四车间）202、203、204单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=636.00 rc=None src=import tax=None note=None
+   units= [(579, 33, '203'), (580, 33, '204')]
+## T32 C314 C2024M-019 bld=33:二期 四车间 unit=202 area=2200.00 barea=1760.00 rent=4743.12 2026-11-15~2029-11-14 sign=None st=active kind=normal link=renew parent=166 kva=100.00 tt=multiple
+   term_text='2026年11月15日起至2029年11月14日'
+   remark=None
+   L7042 '二期11栋（四车间）202、203、204单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.7946 a=2200.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7043 '二期11栋（四车间）202、203、204单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   L7044 '二期11栋（四车间）202、203、204单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=636.00 rc=None src=manual tax=None note=None
+   units= [(579, 33, '203'), (580, 33, '204')]
+## T33 C350 S10-0167#1 bld=33:二期 四车间 unit=403 area=650.00 barea=520.00 rent=1910.00 2023-11-15~2026-11-14 sign=None st=active kind=normal link=new parent=None kva=20.00 tt=explicit
+   term_text='2023年11月15日起至2026年11月14日止；2026年11月15日起至2029年11月14日止；2029年11月15日起至2032年11月14日止（租赁面积650㎡）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7138 '二期11号楼403室' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=650.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7139 '二期11号楼403室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   L7140 '二期11号楼403室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=477.00 rc=None src=manual tax=None note=None
+   units= []
+## T33 C351 S10-0167#2 bld=33:二期 四车间 unit=403 area=650.00 barea=520.00 rent=2037.40 2026-11-15~2029-11-14 sign=None st=renewed kind=normal link=escalation parent=350 kva=20.00 tt=explicit
+   term_text='2023年11月15日起至2026年11月14日止；2026年11月15日起至2029年11月14日止；2029年11月15日起至2032年11月14日止（租赁面积650㎡）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7141 '二期11号楼403室' factory infra 厂房基础设施维护费 per_sqm_month up=2.1560 a=650.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7142 '二期11号楼403室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   L7143 '二期11号楼403室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=477.00 rc=None src=manual tax=None note=None
+   units= []
+## T33 C167 S10-0167 bld=33:二期 四车间 unit=403 area=650.00 barea=520.00 rent=2247.61 2029-11-15~2032-11-14 sign=None st=active kind=normal link=escalation parent=351 kva=20.00 tt=explicit
+   term_text='2023年11月15日起至2026年11月14日止；2026年11月15日起至2029年11月14日止；2029年11月15日起至2032年11月14日止（租赁面积650㎡）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6942 '二期11号楼403室' factory infra 厂房基础设施维护费 per_sqm_month up=2.4794 a=650.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6943 '二期11号楼403室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L6944 '二期11号楼403室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=477.00 rc=None src=import tax=None note=None
+   units= []
+## T34 C168 S10-0168 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=0.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T35 C169 S10-0169 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=6487.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T36 C170 S10-0170 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=6588.96 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T37 C171 S10-0171 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=40558.75 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T38 C172 S10-0172 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=13976.59 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T39 C173 S10-0173 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=6864.40 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T40 C174 S10-0174 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=21847.14 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T41 C175 S10-0175 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=6179.80 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T42 C176 S10-0176 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=5352.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T43 C177 S10-0177 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=13260.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T44 C48 S10-0048 bld=11:一期 B-G座 unit=None area=0.00 barea=None rent=1221.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T44 C178 S10-0178 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=1221.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T45 C179 S10-0179 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=1320.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T46 C180 S10-0180 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=1320.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T47 C181 S10-0181 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=5280.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T47 C257 S10-0257 bld=18:散租宿舍 unit=None area=0.00 barea=None rent=1403.35 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T48 C192 S10-0192 bld=34:二期 五车间 unit=101 area=14105.63 barea=11284.50 rent=361444.45 2023-01-01~2025-12-31 sign=None st=active kind=normal link=new parent=None kva=400.00 tt=relative
+   term_text='租赁期限从以下租赁物业竣工验收报告载明验收日期次日起计九年止，经物业交付后，甲乙双方以书面形式确定对应租赁期限的具体日期。'
+   remark='真实合同补录(2026-08-09):起止为推定,验收日待核;第四~六年档(262,533.99/90,459.40/29,946.26)未录,换档时间待验收日确定;纸约容量费 23 元/kVA 与 2024-02 源册实收 22.6(400×22.6=9,040,力灏!J5/K5)不一致,按实收口径不建户级例外,待向物业核实'
+   L6764 '二期五号楼首层101室、二楼201室、三楼301室' factory rent_factory 厂房租金 per_sqm_month up=16.9200 a=14105.63 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6765 '二期五号楼首层101室、二楼201室、三楼301室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.8300 a=14105.63 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='原文「企业管理服务费」'
+   L6766 '二期五号楼首层101室、二楼201室、三楼301室' factory infra 厂房基础设施维护费 per_sqm_month up=1.9300 a=14105.63 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6767 '二期五号楼首层101室、二楼201室、三楼301室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=1605.00 rc=None src=import tax=None note=None
+   L6768 '二期五号楼首层101室、二楼201室、三楼301室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=428.00 rc=None src=import tax=None note=None
+   L6769 '二期五号楼首层101室、二楼201室、三楼301室' factory land_tax 土地使用税 per_sqm_month up=0.8000 a=14105.63 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='原文「土地使用税、房产税」'
+   units= [(368, 34, '101'), (556, 34, '201'), (557, 34, '301')]
+## T49 C353 S10-0193#1 bld=34:二期 五车间 unit=5F整层 area=4835.54 barea=3868.43 rent=81886.40 2022-10-10~2025-10-09 sign=None st=renewed kind=normal link=new parent=None kva=15.00 tt=explicit
+   term_text='2022年10月10日至2025年10月09日/2025年10月10日至2028年10月09日/2028年10月10日至2031年10月09日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7149 '二期12号楼（五车间）五楼整层' factory rent_factory 厂房租金 per_sqm_month up=10.0000 a=4835.54 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7150 '二期12号楼（五车间）五楼整层' factory mgmt 厂房企业管理服务费 per_month up=0.0000 a=4835.54 sh=None coeff=1.0000 ovr=24177.00 rc=None src=manual tax=None note='原文「企业管理服务费」'
+   L7151 '二期12号楼（五车间）五楼整层' factory infra 厂房基础设施维护费 per_month up=0.0000 a=4835.54 sh=None coeff=1.0000 ovr=8704.00 rc=None src=manual tax=None note=None
+   L7152 '二期12号楼（五车间）五楼整层' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=500.00 rc=None src=manual tax=None note=None
+   L7153 '二期12号楼（五车间）五楼整层' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=150.00 rc=None src=manual tax=None note=None
+   units= []
+## T49 C352 S10-0193#2 bld=34:二期 五车间 unit=5F整层 area=4835.54 barea=3868.43 rent=90009.26 2025-10-10~2028-10-09 sign=None st=active kind=normal link=escalation parent=353 kva=15.00 tt=explicit
+   term_text='2022年10月10日至2025年10月09日/2025年10月10日至2028年10月09日/2028年10月10日至2031年10月09日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7144 '二期12号楼（五车间）五楼整层' factory rent_factory 厂房租金 per_sqm_month up=10.9999 a=4835.54 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7145 '二期12号楼（五车间）五楼整层' factory mgmt 厂房企业管理服务费 per_month up=0.0000 a=4835.54 sh=None coeff=1.0000 ovr=26594.48 rc=None src=manual tax=None note='原文「企业管理服务费」'
+   L7146 '二期12号楼（五车间）五楼整层' factory infra 厂房基础设施维护费 per_month up=0.0000 a=4835.54 sh=None coeff=1.0000 ovr=9574.32 rc=None src=manual tax=None note=None
+   L7147 '二期12号楼（五车间）五楼整层' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=500.00 rc=None src=manual tax=None note=None
+   L7148 '二期12号楼（五车间）五楼整层' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=150.00 rc=None src=manual tax=None note=None
+   units= []
+## T49 C193 S10-0193 bld=34:二期 五车间 unit=5F整层 area=4835.54 barea=3868.43 rent=101626.13 2028-10-10~2031-10-09 sign=None st=active kind=normal link=escalation parent=352 kva=15.00 tt=explicit
+   term_text='2022年10月10日至2025年10月09日/2025年10月10日至2028年10月09日/2028年10月10日至2031年10月09日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6770 '二期12号楼（五车间）五楼整层' factory rent_factory 厂房租金 per_sqm_month up=12.4299 a=4835.54 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6771 '二期12号楼（五车间）五楼整层' factory mgmt 厂房企业管理服务费 per_month up=0.0000 a=4835.54 sh=None coeff=1.0000 ovr=30051.84 rc=None src=import tax=None note='原文「企业管理服务费」'
+   L6772 '二期12号楼（五车间）五楼整层' factory infra 厂房基础设施维护费 per_month up=0.0000 a=4835.54 sh=None coeff=1.0000 ovr=10819.01 rc=None src=import tax=None note=None
+   L6773 '二期12号楼（五车间）五楼整层' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=500.00 rc=None src=import tax=None note=None
+   L6774 '二期12号楼（五车间）五楼整层' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=150.00 rc=None src=import tax=None note=None
+   units= []
+## T50 C194 S10-0194 bld=35:二期 六车间 unit=501 area=1700.00 barea=1360.00 rent=31458.00 2022-09-15~2025-09-14 sign=None st=active kind=normal link=new parent=None kva=12.50 tt=explicit
+   term_text='2022年9月15日起至2025年9月14日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6775 '二期13号楼（六车间）501室' factory rent_factory 厂房租金 per_sqm_month up=11.4400 a=1700.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6776 '二期13号楼（六车间）501室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.0000 a=1700.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='原文「企业管理服务费」'
+   L6777 '二期13号楼（六车间）501室' factory infra 厂房基础设施维护费 per_sqm_month up=1.8000 a=1700.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6778 '二期13号楼（六车间）501室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=300.00 rc=None src=import tax=None note=None
+   L6779 '二期13号楼（六车间）501室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=150.00 rc=None src=import tax=None note=None
+   units= []
+## T51 C354 S10-0195#1 bld=35:二期 六车间 unit=502 area=1030.00 barea=824.00 rent=21574.00 2022-10-19~2025-10-18 sign=None st=renewed kind=normal link=new parent=None kva=20.00 tt=explicit
+   term_text='租赁期限：2022年10月19日至2025年10月18日/2025年10月19日至2028年10月18日/2028年10月19日至2031年10月18日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7154 '二期13号楼（六车间）502室' factory rent_factory 厂房租金 per_sqm_month up=13.7000 a=1030.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7155 '二期13号楼（六车间）502室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.0000 a=1030.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='原文「企业管理服务费」'
+   L7156 '二期13号楼（六车间）502室' factory infra 厂房基础设施维护费 per_sqm_month up=1.8000 a=1030.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7157 '二期13号楼（六车间）502室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=300.00 rc=None src=manual tax=None note=None
+   L7158 '二期13号楼（六车间）502室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   units= []
+## T51 C355 S10-0195#2 bld=35:二期 六车间 unit=502 area=1030.00 barea=824.00 rent=23685.50 2025-10-19~2028-10-18 sign=None st=active kind=normal link=escalation parent=354 kva=20.00 tt=explicit
+   term_text='租赁期限：2022年10月19日至2025年10月18日/2025年10月19日至2028年10月18日/2028年10月19日至2031年10月18日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7159 '二期13号楼（六车间）502室' factory rent_factory 厂房租金 per_sqm_month up=15.0700 a=1030.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7160 '二期13号楼（六车间）502室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.5000 a=1030.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='原文「企业管理服务费」'
+   L7161 '二期13号楼（六车间）502室' factory infra 厂房基础设施维护费 per_sqm_month up=1.9800 a=1030.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7162 '二期13号楼（六车间）502室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=300.00 rc=None src=manual tax=None note=None
+   L7163 '二期13号楼（六车间）502室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   units= []
+## T51 C195 S10-0195 bld=35:二期 六车间 unit=502 area=1030.00 barea=824.00 rent=27169.48 2028-10-19~2031-10-18 sign=None st=active kind=normal link=escalation parent=355 kva=20.00 tt=explicit
+   term_text='租赁期限：2022年10月19日至2025年10月18日/2025年10月19日至2028年10月18日/2028年10月19日至2031年10月18日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6780 '二期13号楼（六车间）502室' factory rent_factory 厂房租金 per_sqm_month up=17.3305 a=1030.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6781 '二期13号楼（六车间）502室' factory mgmt 厂房企业管理服务费 per_sqm_month up=6.3250 a=1030.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='原文「企业管理服务费」'
+   L6782 '二期13号楼（六车间）502室' factory infra 厂房基础设施维护费 per_sqm_month up=2.2770 a=1030.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6783 '二期13号楼（六车间）502室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=300.00 rc=None src=import tax=None note=None
+   L6784 '二期13号楼（六车间）502室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   units= []
+## T52 C356 S10-0196#1 bld=35:二期 六车间 unit=503 area=1092.00 barea=873.60 rent=22845.00 2022-11-03~2025-11-02 sign=None st=renewed kind=normal link=new parent=None kva=25.00 tt=explicit
+   term_text='2022年11月03日至2025年11月02日/2025年11月03日至2028年11月02日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7164 '二期13号楼（六车间）第五层503室' factory rent_factory 厂房租金 per_sqm_month up=13.7000 a=1092.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7165 '二期13号楼（六车间）第五层503室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.0000 a=1092.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='原文「企业管理服务费」'
+   L7166 '二期13号楼（六车间）第五层503室' factory infra 厂房基础设施维护费 per_sqm_month up=1.8000 a=1092.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7167 '二期13号楼（六车间）第五层503室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=300.00 rc=None src=manual tax=None note=None
+   L7168 '二期13号楼（六车间）第五层503室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   units= []
+## T52 C196 S10-0196 bld=35:二期 六车间 unit=503 area=1092.00 barea=873.60 rent=25083.71 2025-11-03~2028-11-02 sign=None st=active kind=normal link=escalation parent=356 kva=25.00 tt=explicit
+   term_text='2022年11月03日至2025年11月02日/2025年11月03日至2028年11月02日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6785 '二期13号楼（六车间）第五层503室' factory rent_factory 厂房租金 per_sqm_month up=15.0701 a=1092.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6786 '二期13号楼（六车间）第五层503室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.5000 a=1092.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='原文「企业管理服务费」'
+   L6787 '二期13号楼（六车间）第五层503室' factory infra 厂房基础设施维护费 per_sqm_month up=1.9800 a=1092.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6788 '二期13号楼（六车间）第五层503室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=300.00 rc=None src=import tax=None note=None
+   L6789 '二期13号楼（六车间）第五层503室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   units= []
+## T53 C197 S10-0197 bld=34:二期 五车间 unit=601 area=3264.50 barea=2611.60 rent=61336.00 2022-11-04~2025-11-03 sign=None st=active kind=normal link=new parent=None kva=125.00 tt=explicit
+   term_text='租赁期限2022年11月04日至2025年11月03日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6790 '二期13号楼（六车间）首层102室' factory rent_factory 厂房租金 per_sqm_month up=15.2000 a=1282.50 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6791 '二期13号楼（六车间）首层102室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.0000 a=1282.50 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='原文「企业管理服务费」'
+   L6792 '二期13号楼（六车间）首层102室' factory infra 厂房基础设施维护费 per_sqm_month up=1.8000 a=1282.50 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6793 '二期13号楼（六车间）首层102室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L6794 '二期12号楼（五车间）六楼601室' factory rent_factory 厂房租金 per_sqm_month up=9.7000 a=1982.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6795 '二期12号楼（五车间）六楼601室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.0000 a=1982.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='原文「企业管理服务费」'
+   L6796 '二期12号楼（五车间）六楼601室' factory infra 厂房基础设施维护费 per_sqm_month up=1.8000 a=1982.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6797 '二期12号楼（五车间）六楼601室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=100.00 rc=None src=import tax=None note=None
+   L6798 '二期12号楼（五车间）六楼601室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   units= [(611, 35, '102')]
+## T54 C198 S10-0198 bld=35:二期 六车间 unit=601 area=7377.52 barea=5902.02 rent=162853.44 2022-09-16~2031-09-15 sign=2022-09-16 st=active kind=normal link=new parent=None kva=500.00 tt=relative
+   term_text='租赁期限从以上租赁物业竣工验收报告载明验收日期次日起计九年止，经物业交付后，甲乙双方以书面形式确定对应租赁期限的具体日期。'
+   remark='真实合同补日期(2026-08-09):起止为推定(签约单2022-09-16,纸约九年自验收日,验收日待核);第四~六年档(132,720.27/43,652.71/15,698.96)未录待换档;纸约=六车间6-7层+天面空地,首三年110679.10不含税,计费行7条与纸约逐格全等'
+   L6799 '二期六号楼六层601室、七层701室' factory rent_factory 厂房租金 per_sqm_month up=15.2000 a=7281.52 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6800 '二期六号楼六层601室、七层701室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.0000 a=7281.52 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='原文「企业管理服务费」'
+   L6801 '二期六号楼六层601室、七层701室' factory infra 厂房基础设施维护费 per_sqm_month up=1.8000 a=7281.52 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6802 '二期六号楼六层601室、七层701室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=1200.00 rc=None src=import tax=None note=None
+   L6803 '二期六号楼六层601室、七层701室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=500.00 rc=None src=import tax=None note=None
+   L6804 '二期六号楼天面空地' factory rent_factory 厂房租金 per_sqm_month up=10.0000 a=56.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6805 '二期六号楼天面空地' factory rent_factory 厂房租金 per_sqm_month up=10.0000 a=40.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   units= [(575, 35, '601'), (576, 35, '701')]
+## T54 C451 S10-0198A#1 bld=29:一期 宿舍四栋 unit=None area=146.12 barea=116.90 rent=3301.85 2023-12-22~2024-06-30 sign=None st=active kind=normal link=new parent=None kva=None tt=explicit
+   term_text='2023年12月22日至2024年06月30日'
+   remark='易釆宿舍:四栋636、638、640、642 共4间'
+   units= []
+## T54 C452 S10-0198B#1 bld=29:一期 宿舍四栋 unit=None area=45.08 barea=36.06 rent=1005.01 2024-01-06~2024-06-30 sign=None st=active kind=normal link=new parent=None kva=None tt=explicit
+   term_text='2024年01月06日至2024年06月30日'
+   remark='易釆宿舍:四栋327'
+   units= []
+## T54 C453 S10-0198C#1 bld=29:一期 宿舍四栋 unit=None area=73.05 barea=58.44 rent=1650.72 2024-02-22~2024-08-31 sign=None st=active kind=normal link=new parent=None kva=None tt=explicit
+   term_text='2024年02月22日至2024年08月31日'
+   remark='易釆宿舍:四栋441、443 共2间'
+   units= []
+## T54 C454 S10-0198D#1 bld=29:一期 宿舍四栋 unit=None area=73.75 barea=59.00 rent=1607.08 2024-03-01~2024-08-31 sign=None st=active kind=normal link=new parent=None kva=None tt=explicit
+   term_text='2024年03月01日至2024年08月31日'
+   remark='易釆宿舍:四栋225'
+   units= []
+## T55 C199 S10-0199 bld=35:二期 六车间 unit=None area=1347.50 barea=None rent=15129.38 2022-12-26~2031-12-25 sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值) | kva=15 已移挂厂房链368/369/221(2026-08-09),壳合同卸下,防日后补日期双收容量费'
+   L8556 '二期13号楼' factory rent_factory åŽ‚æˆ¿ç§Ÿé‡‘ per_sqm_month up=0.0000 a=1347.50 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='S13Â§8.6b é\x9d¢ç§¯è½½ä½“è¡Œ(å\x8d•ä»·0ä¸\x8då‡ºç§Ÿé‡‘,å\x8fªä½œå›\xadåŒºé\x9d¢ç§¯æ±\xa0åŸºæ•°;çœŸç§Ÿé‡‘åœ¨ä¸‰æœŸé“¾221/369)'
+   units= []
+## T55 C368 S10-0221#1 bld=17:三期 unit=108 area=1347.50 barea=1078.00 rent=24344.50 2022-12-26~2025-12-25 sign=None st=renewed kind=normal link=new parent=None kva=15.00 tt=explicit
+   term_text='2022年12月26日至2025年12月25日/2025年12月26日至2028年12月25日/2028年12月26日至2031年12月25日（表内"租赁期限"列三阶梯连续期间）'
+   remark='由附表10归属派生(月租=最新非零月值) | kVA=15 归位(2026-08-09):依2024-02二期册刘彪!I5「15千伏安」×22.6=339 实收;纸约70千伏安不一致,照册面收待核(同力灏22.6vs纸约23先例)'
+   L7238 '二期13栋（六车间）第三层301室' factory rent_factory 厂房租金 per_sqm_month up=11.0000 a=1347.50 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7239 '二期13栋（六车间）第三层301室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.0000 a=1347.50 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='原文「企业管理服务费」'
+   L7240 '二期13栋（六车间）第三层301室' factory infra 厂房基础设施维护费 per_sqm_month up=1.8000 a=1347.50 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7241 '二期13栋（六车间）第三层301室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=200.00 rc=None src=manual tax=None note=None
+   L7242 '二期13栋（六车间）第三层301室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   units= []
+## T55 C369 S10-0221#2 bld=17:三期 unit=108 area=1347.50 barea=1078.00 rent=26743.05 2025-12-26~2028-12-25 sign=None st=active kind=normal link=escalation parent=368 kva=15.00 tt=explicit
+   term_text='2022年12月26日至2025年12月25日/2025年12月26日至2028年12月25日/2028年12月26日至2031年12月25日（表内"租赁期限"列三阶梯连续期间）'
+   remark='由附表10归属派生(月租=最新非零月值) | kVA=15 归位(2026-08-09):依2024-02二期册刘彪!I5「15千伏安」×22.6=339 实收;纸约70千伏安不一致,照册面收待核(同力灏22.6vs纸约23先例)'
+   L7243 '二期13栋（六车间）第三层301室' factory rent_factory 厂房租金 per_sqm_month up=12.1000 a=1347.50 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7244 '二期13栋（六车间）第三层301室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.5000 a=1347.50 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='原文「企业管理服务费」'
+   L7245 '二期13栋（六车间）第三层301室' factory infra 厂房基础设施维护费 per_sqm_month up=1.9800 a=1347.50 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7246 '二期13栋（六车间）第三层301室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=200.00 rc=None src=manual tax=None note=None
+   L7247 '二期13栋（六车间）第三层301室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   units= []
+## T55 C221 S10-0221 bld=17:三期 unit=108 area=1347.50 barea=1078.00 rent=30700.66 2028-12-26~2031-12-25 sign=None st=active kind=normal link=escalation parent=369 kva=15.00 tt=explicit
+   term_text='2022年12月26日至2025年12月25日/2025年12月26日至2028年12月25日/2028年12月26日至2031年12月25日（表内"租赁期限"列三阶梯连续期间）'
+   remark='由附表10归属派生(月租=最新非零月值) | kVA=15 归位(2026-08-09):依2024-02二期册刘彪!I5「15千伏安」×22.6=339 实收;纸约70千伏安不一致,照册面收待核(同力灏22.6vs纸约23先例)'
+   L6813 '二期13栋（六车间）第三层301室' factory rent_factory 厂房租金 per_sqm_month up=13.9150 a=1347.50 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6814 '二期13栋（六车间）第三层301室' factory mgmt 厂房企业管理服务费 per_sqm_month up=6.3250 a=1347.50 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='原文「企业管理服务费」'
+   L6815 '二期13栋（六车间）第三层301室' factory infra 厂房基础设施维护费 per_sqm_month up=2.2770 a=1347.50 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6816 '二期13栋（六车间）第三层301室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=200.00 rc=None src=import tax=None note=None
+   L6817 '二期13栋（六车间）第三层301室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   units= []
+## T56 C200 S10-0200 bld=34:二期 五车间 unit=701 area=1006.03 barea=804.82 rent=24999.84 2023-01-01~2028-07-23 sign=None st=active kind=normal link=new parent=None kva=250.00 tt=multiple
+   term_text='主合同（编号CQ-5701-20220621-SLSW，2022年06月24日签订，二期五号楼七层701室/5701室）：租赁期限从（该）租赁物业竣工验收报告载明验收日期次日起计六年止，物业于2022年07月24日移交；补充协议（二期五号楼天面空地24.96㎡）：租赁期限从2023年01月01日起至2028年07月23日止。'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6818 '二期五号楼七层701室' factory rent_factory 厂房租金 per_sqm_month up=19.4000 a=1006.03 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6819 '二期五号楼七层701室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.4500 a=1006.03 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='原文「企业管理服务费」'
+   units= []
+## T57 C357 S10-0201#1 bld=35:二期 六车间 unit=402 area=1100.00 barea=880.00 rent=19315.00 2022-12-10~2025-12-09 sign=None st=renewed kind=normal link=new parent=None kva=10.00 tt=explicit
+   term_text='2022年12月10日至2025年12月09日；2025年12月10日至2028年12月09日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7169 '二期13栋（六车间）第四层402室' factory rent_factory 厂房租金 per_sqm_month up=10.4700 a=1100.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7170 '二期13栋（六车间）第四层402室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.0000 a=1100.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='原文「企业管理服务费」'
+   L7171 '二期13栋（六车间）第四层402室' factory infra 厂房基础设施维护费 per_sqm_month up=1.8000 a=1100.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7172 '二期13栋（六车间）第四层402室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   L7173 '二期13栋（六车间）第四层402室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   units= []
+## T57 C201 S10-0201 bld=35:二期 六车间 unit=402 area=1100.00 barea=880.00 rent=21214.70 2025-12-10~2028-12-09 sign=None st=active kind=normal link=escalation parent=357 kva=10.00 tt=explicit
+   term_text='2022年12月10日至2025年12月09日；2025年12月10日至2028年12月09日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6820 '二期13栋（六车间）第四层402室' factory rent_factory 厂房租金 per_sqm_month up=11.5170 a=1100.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6821 '二期13栋（六车间）第四层402室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.5000 a=1100.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='原文「企业管理服务费」'
+   L6822 '二期13栋（六车间）第四层402室' factory infra 厂房基础设施维护费 per_sqm_month up=1.9800 a=1100.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6823 '二期13栋（六车间）第四层402室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L6824 '二期13栋（六车间）第四层402室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   units= []
+## T58 C202 S10-0202 bld=35:二期 六车间 unit=303 area=1944.00 barea=1555.20 rent=38241.01 2023-02-21~2026-02-20 sign=None st=active kind=normal link=new parent=None kva=7.50 tt=explicit
+   term_text='2023年02月21日至2026年02月20日'
+   remark='2024.02.01-2025.01.31'
+   L6825 '二期13座三楼303室' factory rent_factory 厂房租金 per_sqm_month up=12.2000 a=1944.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6826 '二期13座三楼303室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.0000 a=1944.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='原文「企业管理服务费」'
+   L6827 '二期13座三楼303室' factory infra 厂房基础设施维护费 per_sqm_month up=1.8000 a=1944.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6828 '二期13座三楼303室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=150.00 rc=None src=import tax=None note=None
+   L6829 '二期13座三楼303室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=150.00 rc=None src=import tax=None note=None
+   L6830 '宿舍楼四座527室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=45.08 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6831 '宿舍楼四座527室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=45.08 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6832 '宿舍楼四座527室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=import tax=None note=None
+   L6833 '宿舍楼四座527室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=import tax=None note='2024.02.01-2025.01.31'
+   units= [(509, 29, '527')]
+## T59 C358 S10-0203#1 bld=35:二期 六车间 unit=302 area=1310.00 barea=1048.00 rent=22260.86 2023-02-20~2026-02-19 sign=None st=renewed kind=normal link=new parent=None kva=37.50 tt=explicit
+   term_text='租赁期限：从2023年02月20日起至2029年02月19日止（免租装修期2023-02-20至2023-03-06）；表格分两档：2023年02月20日至2026年02月19日、2026年02月20日至2029年02月19日'
+   remark='2024.02.01-2025.01.31'
+   L7174 '二期13座三楼302室' factory rent_factory 厂房租金 per_sqm_month up=8.7364 a=1310.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7175 '二期13座三楼302室' factory mgmt 厂房企业管理服务费 per_sqm_month up=4.5455 a=1310.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='原文「企业管理服务费」'
+   L7176 '二期13座三楼302室' factory infra 厂房基础设施维护费 per_sqm_month up=1.6364 a=1310.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7177 '二期13座三楼302室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=150.00 rc=None src=manual tax=None note=None
+   L7178 '二期13座三楼302室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=150.00 rc=None src=manual tax=None note=None
+   L8154 '宿舍楼四座232室' dorm rent_dorm 宿舍租金 per_sqm_month up=17.2727 a=46.02 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8155 '宿舍楼四座530室' dorm rent_dorm 宿舍租金 per_sqm_month up=17.2727 a=74.52 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8157 '宿舍楼四座232室' dorm infra 宿舍基础设施维护费 per_sqm_month up=1.8182 a=46.02 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8158 '宿舍楼四座530室' dorm infra 宿舍基础设施维护费 per_sqm_month up=1.8182 a=74.52 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8163 '宿舍楼四座232室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L8164 '宿舍楼四座530室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L8160 '宿舍楼四座232室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note='2024.02.01-2025.01.31'
+   L8161 '宿舍楼四座530室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.34 rc=None src=manual tax=None note='2024.02.01-2025.01.31'
+   units= [(493, 29, '232'), (510, 29, '530')]
+## T59 C203 S10-0203 bld=35:二期 六车间 unit=302 area=1310.00 barea=1048.00 rent=24445.11 2026-02-20~2029-02-19 sign=None st=active kind=normal link=escalation parent=358 kva=37.50 tt=explicit
+   term_text='租赁期限：从2023年02月20日起至2029年02月19日止（免租装修期2023-02-20至2023-03-06）；表格分两档：2023年02月20日至2026年02月19日、2026年02月20日至2029年02月19日'
+   remark='2024.02.01-2025.01.31'
+   L6834 '二期13座三楼302室' factory rent_factory 厂房租金 per_sqm_month up=9.6100 a=1310.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6835 '二期13座三楼302室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.0000 a=1310.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='原文「企业管理服务费」'
+   L6836 '二期13座三楼302室' factory infra 厂房基础设施维护费 per_sqm_month up=1.8000 a=1310.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6837 '二期13座三楼302室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=150.00 rc=None src=import tax=None note=None
+   L6838 '二期13座三楼302室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=150.00 rc=None src=import tax=None note=None
+   L8142 '宿舍楼四座232室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=46.02 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L8143 '宿舍楼四座530室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=74.52 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L8145 '宿舍楼四座232室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=46.02 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L8146 '宿舍楼四座530室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=74.52 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L8151 '宿舍楼四座232室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=import tax=None note=None
+   L8152 '宿舍楼四座530室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=import tax=None note=None
+   L8148 '宿舍楼四座232室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=import tax=None note='2024.02.01-2025.01.31'
+   L8149 '宿舍楼四座530室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.34 rc=None src=import tax=None note='2024.02.01-2025.01.31'
+   units= [(493, 29, '232'), (510, 29, '530')]
+## T60 C359 S10-0204#1 bld=35:二期 六车间 unit=2F整层 area=4644.10 barea=3715.28 rent=75145.28 2023-03-01~2026-02-28 sign=None st=renewed kind=normal link=new parent=None kva=362.50 tt=explicit
+   term_text='租赁期限：从2023年03月01日起至2032年02月28日止。甲方给予乙方45天装修期特别优惠，免收装修期（从2023年03月01日起至2023年04月14日期间）的租金。'
+   remark='2024年02月01日至2024年09月30日；2023年10月01日至2024年09月30日'
+   L7183 '二期13座二楼' factory rent_factory 厂房租金 per_sqm_month up=8.8000 a=4551.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7184 '二期13座二楼' factory mgmt 厂房企业管理服务费 per_sqm_month up=4.5455 a=4551.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='原文「企业管理服务费」'
+   L7185 '二期13座二楼' factory infra 厂房基础设施维护费 per_sqm_month up=1.6364 a=4551.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7186 '二期13座二楼' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=600.00 rc=None src=manual tax=None note=None
+   L7187 '二期13座二楼' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=300.00 rc=None src=manual tax=None note=None
+   L7188 '二期13座天面' factory rent_factory 厂房租金 per_sqm_month up=9.0909 a=93.10 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7189 '宿舍楼四座229室' dorm rent_dorm 宿舍租金 per_sqm_month up=17.2727 a=31.05 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='宿舍费用：\r\n2024年2-3月'
+   L7190 '宿舍楼四座229室' dorm infra 宿舍基础设施维护费 per_sqm_month up=1.8182 a=31.05 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7191 '宿舍楼四座229室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L7192 '宿舍楼四座229室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note='2024年02月01日至2024年09月30日'
+   L8206 '宿舍楼四座644室' dorm rent_dorm 宿舍租金 per_sqm_month up=17.2727 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='宿舍费用：\r\n2024年2-3月'
+   L8207 '宿舍楼四座641室' dorm rent_dorm 宿舍租金 per_sqm_month up=17.2727 a=36.96 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='宿舍费用：\r\n2024年2-3月'
+   L8208 '宿舍楼四座646室' dorm rent_dorm 宿舍租金 per_sqm_month up=17.2727 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='宿舍费用：\r\n2024年2-3月'
+   L8209 '宿舍楼四座647室' dorm rent_dorm 宿舍租金 per_sqm_month up=17.2727 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='宿舍费用：\r\n2024年2-3月'
+   L8210 '宿舍楼四座649室' dorm rent_dorm 宿舍租金 per_sqm_month up=17.2727 a=35.66 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='宿舍费用：\r\n2024年2-3月'
+   L8211 '宿舍楼四座650室' dorm rent_dorm 宿舍租金 per_sqm_month up=17.2727 a=35.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='宿舍费用：\r\n2024年2-3月'
+   L8213 '宿舍楼四座644室' dorm infra 宿舍基础设施维护费 per_sqm_month up=1.8182 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8214 '宿舍楼四座641室' dorm infra 宿舍基础设施维护费 per_sqm_month up=1.8182 a=36.96 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8215 '宿舍楼四座646室' dorm infra 宿舍基础设施维护费 per_sqm_month up=1.8182 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8216 '宿舍楼四座647室' dorm infra 宿舍基础设施维护费 per_sqm_month up=1.8182 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8217 '宿舍楼四座649室' dorm infra 宿舍基础设施维护费 per_sqm_month up=1.8182 a=35.66 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8218 '宿舍楼四座650室' dorm infra 宿舍基础设施维护费 per_sqm_month up=1.8182 a=35.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8227 '宿舍楼四座644室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=58.35 rc=None src=manual tax=None note=None
+   L8228 '宿舍楼四座641室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=58.33 rc=None src=manual tax=None note=None
+   L8229 '宿舍楼四座646室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=58.33 rc=None src=manual tax=None note=None
+   L8230 '宿舍楼四座647室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=58.33 rc=None src=manual tax=None note=None
+   L8231 '宿舍楼四座649室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=58.33 rc=None src=manual tax=None note=None
+   L8232 '宿舍楼四座650室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=58.33 rc=None src=manual tax=None note=None
+   L8220 '宿舍楼四座644室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=9.73 rc=None src=manual tax=None note='2023年10月01日至2024年09月30日'
+   L8221 '宿舍楼四座641室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=9.72 rc=None src=manual tax=None note='2023年10月01日至2024年09月30日'
+   L8222 '宿舍楼四座646室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=9.72 rc=None src=manual tax=None note='2023年10月01日至2024年09月30日'
+   L8223 '宿舍楼四座647室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=9.72 rc=None src=manual tax=None note='2023年10月01日至2024年09月30日'
+   L8224 '宿舍楼四座649室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=9.72 rc=None src=manual tax=None note='2023年10月01日至2024年09月30日'
+   L8225 '宿舍楼四座650室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=9.72 rc=None src=manual tax=None note='2023年10月01日至2024年09月30日'
+   units= [(492, 29, '229'), (518, 29, '641'), (519, 29, '644'), (520, 29, '646'), (521, 29, '647'), (523, 29, '649'), (524, 29, '650'), (566, 35, '天面')]
+## T60 C360 S10-0204#2 bld=35:二期 六车间 unit=2F整层 area=4644.10 barea=3715.28 rent=82522.73 2026-03-01~2029-02-28 sign=None st=active kind=normal link=escalation parent=359 kva=362.50 tt=explicit
+   term_text='租赁期限：从2023年03月01日起至2032年02月28日止。甲方给予乙方45天装修期特别优惠，免收装修期（从2023年03月01日起至2023年04月14日期间）的租金。'
+   remark='2024年02月01日至2024年09月30日；2023年10月01日至2024年09月30日'
+   L7198 '二期13座二楼' factory rent_factory 厂房租金 per_sqm_month up=9.6800 a=4551.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7199 '二期13座二楼' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.0000 a=4551.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='原文「企业管理服务费」'
+   L7200 '二期13座二楼' factory infra 厂房基础设施维护费 per_sqm_month up=1.8000 a=4551.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7201 '二期13座二楼' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=600.00 rc=None src=manual tax=None note=None
+   L7202 '二期13座二楼' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=300.00 rc=None src=manual tax=None note=None
+   L7203 '二期13座天面' factory rent_factory 厂房租金 per_sqm_month up=10.0000 a=93.10 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7204 '宿舍楼四座229室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=31.05 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='宿舍费用：\r\n2024年2-3月'
+   L7205 '宿舍楼四座229室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=31.05 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7206 '宿舍楼四座229室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L7207 '宿舍楼四座229室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note='2024年02月01日至2024年09月30日'
+   L8234 '宿舍楼四座644室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='宿舍费用：\r\n2024年2-3月'
+   L8235 '宿舍楼四座641室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.96 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='宿舍费用：\r\n2024年2-3月'
+   L8236 '宿舍楼四座646室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='宿舍费用：\r\n2024年2-3月'
+   L8237 '宿舍楼四座647室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='宿舍费用：\r\n2024年2-3月'
+   L8238 '宿舍楼四座649室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=35.66 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='宿舍费用：\r\n2024年2-3月'
+   L8239 '宿舍楼四座650室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=35.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='宿舍费用：\r\n2024年2-3月'
+   L8241 '宿舍楼四座644室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8242 '宿舍楼四座641室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.96 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8243 '宿舍楼四座646室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8244 '宿舍楼四座647室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8245 '宿舍楼四座649室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=35.66 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8246 '宿舍楼四座650室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=35.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L8255 '宿舍楼四座644室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=58.35 rc=None src=manual tax=None note=None
+   L8256 '宿舍楼四座641室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=58.33 rc=None src=manual tax=None note=None
+   L8257 '宿舍楼四座646室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=58.33 rc=None src=manual tax=None note=None
+   L8258 '宿舍楼四座647室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=58.33 rc=None src=manual tax=None note=None
+   L8259 '宿舍楼四座649室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=58.33 rc=None src=manual tax=None note=None
+   L8260 '宿舍楼四座650室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=58.33 rc=None src=manual tax=None note=None
+   L8248 '宿舍楼四座644室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=9.73 rc=None src=manual tax=None note='2023年10月01日至2024年09月30日'
+   L8249 '宿舍楼四座641室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=9.72 rc=None src=manual tax=None note='2023年10月01日至2024年09月30日'
+   L8250 '宿舍楼四座646室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=9.72 rc=None src=manual tax=None note='2023年10月01日至2024年09月30日'
+   L8251 '宿舍楼四座647室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=9.72 rc=None src=manual tax=None note='2023年10月01日至2024年09月30日'
+   L8252 '宿舍楼四座649室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=9.72 rc=None src=manual tax=None note='2023年10月01日至2024年09月30日'
+   L8253 '宿舍楼四座650室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=9.72 rc=None src=manual tax=None note='2023年10月01日至2024年09月30日'
+   units= [(492, 29, '229'), (518, 29, '641'), (519, 29, '644'), (520, 29, '646'), (521, 29, '647'), (523, 29, '649'), (524, 29, '650'), (566, 35, '天面')]
+## T60 C204 S10-0204 bld=35:二期 六车间 unit=2F整层 area=4644.10 barea=3715.28 rent=94696.14 2029-03-01~2032-02-28 sign=None st=active kind=normal link=escalation parent=360 kva=362.50 tt=explicit
+   term_text='租赁期限：从2023年03月01日起至2032年02月28日止。甲方给予乙方45天装修期特别优惠，免收装修期（从2023年03月01日起至2023年04月14日期间）的租金。'
+   remark='2024年02月01日至2024年09月30日；2023年10月01日至2024年09月30日'
+   L6843 '二期13座二楼' factory rent_factory 厂房租金 per_sqm_month up=11.1320 a=4551.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6844 '二期13座二楼' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.7500 a=4551.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='原文「企业管理服务费」'
+   L6845 '二期13座二楼' factory infra 厂房基础设施维护费 per_sqm_month up=2.0700 a=4551.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6846 '二期13座二楼' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=600.00 rc=None src=import tax=None note=None
+   L6847 '二期13座二楼' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=300.00 rc=None src=import tax=None note=None
+   L6848 '二期13座天面' factory rent_factory 厂房租金 per_sqm_month up=11.5000 a=93.10 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6849 '宿舍楼四座229室' dorm rent_dorm 宿舍租金 per_sqm_month up=21.8500 a=31.05 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='宿舍费用：\r\n2024年2-3月'
+   L6850 '宿舍楼四座229室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.3000 a=31.05 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6851 '宿舍楼四座229室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=import tax=None note=None
+   L6852 '宿舍楼四座229室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=import tax=None note='2024年02月01日至2024年09月30日'
+   L8178 '宿舍楼四座644室' dorm rent_dorm 宿舍租金 per_sqm_month up=21.8500 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='宿舍费用：\r\n2024年2-3月'
+   L8179 '宿舍楼四座641室' dorm rent_dorm 宿舍租金 per_sqm_month up=21.8500 a=36.96 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='宿舍费用：\r\n2024年2-3月'
+   L8180 '宿舍楼四座646室' dorm rent_dorm 宿舍租金 per_sqm_month up=21.8500 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='宿舍费用：\r\n2024年2-3月'
+   L8181 '宿舍楼四座647室' dorm rent_dorm 宿舍租金 per_sqm_month up=21.8500 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='宿舍费用：\r\n2024年2-3月'
+   L8182 '宿舍楼四座649室' dorm rent_dorm 宿舍租金 per_sqm_month up=21.8500 a=35.66 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='宿舍费用：\r\n2024年2-3月'
+   L8183 '宿舍楼四座650室' dorm rent_dorm 宿舍租金 per_sqm_month up=21.8500 a=35.53 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='宿舍费用：\r\n2024年2-3月'
+   L8185 '宿舍楼四座644室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.3000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L8186 '宿舍楼四座641室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.3000 a=36.96 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L8187 '宿舍楼四座646室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.3000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L8188 '宿舍楼四座647室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.3000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L8189 '宿舍楼四座649室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.3000 a=35.66 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L8190 '宿舍楼四座650室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.3000 a=35.53 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L8199 '宿舍楼四座644室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=58.35 rc=None src=import tax=None note=None
+   L8200 '宿舍楼四座641室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=58.33 rc=None src=import tax=None note=None
+   L8201 '宿舍楼四座646室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=58.33 rc=None src=import tax=None note=None
+   L8202 '宿舍楼四座647室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=58.33 rc=None src=import tax=None note=None
+   L8203 '宿舍楼四座649室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=58.33 rc=None src=import tax=None note=None
+   L8204 '宿舍楼四座650室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=58.33 rc=None src=import tax=None note=None
+   L8192 '宿舍楼四座644室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=9.73 rc=None src=import tax=None note='2023年10月01日至2024年09月30日'
+   L8193 '宿舍楼四座641室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=9.72 rc=None src=import tax=None note='2023年10月01日至2024年09月30日'
+   L8194 '宿舍楼四座646室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=9.72 rc=None src=import tax=None note='2023年10月01日至2024年09月30日'
+   L8195 '宿舍楼四座647室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=9.72 rc=None src=import tax=None note='2023年10月01日至2024年09月30日'
+   L8196 '宿舍楼四座649室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=9.72 rc=None src=import tax=None note='2023年10月01日至2024年09月30日'
+   L8197 '宿舍楼四座650室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=9.72 rc=None src=import tax=None note='2023年10月01日至2024年09月30日'
+   units= [(492, 29, '229'), (518, 29, '641'), (519, 29, '644'), (520, 29, '646'), (521, 29, '647'), (523, 29, '649'), (524, 29, '650'), (566, 35, '天面')]
+## T61 C205 S10-0205 bld=34:二期 五车间 unit=401 area=1944.00 barea=1555.20 rent=17665.09 2023-08-22~2026-08-21 sign=None st=active kind=normal link=new parent=None kva=87.50 tt=multiple
+   term_text='2023年08月22日起至2026年08月21日止；2026年08月22日起至2029年08月21日止'
+   remark='2023年11月01日起至2024年10月31日'
+   L6873 '12栋(五车间)四楼401室' factory rent_factory 厂房租金 per_sqm_month up=8.5700 a=1944.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6874 '宿舍楼一座304室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=45.08 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6875 '宿舍楼一座304室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=45.08 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6876 '宿舍楼一座304室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=import tax=None note=None
+   L6877 '宿舍楼一座304室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=import tax=None note='2023年11月01日起至2024年10月31日'
+   units= [(467, 26, '304')]
+## T61 C308 C2024M-013 bld=34:二期 五车间 unit=401 area=1944.00 barea=1555.20 rent=18326.22 2026-08-22~2029-08-21 sign=None st=active kind=normal link=renew parent=205 kva=87.50 tt=multiple
+   term_text='2026年08月22日起至2029年08月21日止'
+   remark=None
+   L7045 '12栋(五车间)四楼401室' factory rent_factory 厂房租金 per_sqm_month up=8.8918 a=1944.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7046 '宿舍楼一座304室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.7133 a=45.08 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7047 '宿舍楼一座304室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0751 a=45.08 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7048 '宿舍楼一座304室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   L7049 '宿舍楼一座304室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note='2023年11月01日起至2024年10月31日'
+   units= [(467, 26, '304')]
+## T62 C361 S10-0206#1 bld=34:二期 五车间 unit=402 area=1000.00 barea=800.00 rent=11000.00 2023-08-23~2026-08-22 sign=None st=active kind=normal link=new parent=None kva=10.00 tt=explicit
+   term_text='2023年08月23日起至2026年08月22日止（厂房租金11000元/月）；2026年08月23日起至2029年08月22日止（厂房租金12100元/月）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7213 '12栋(五车间)四楼402室' factory rent_factory 厂房租金 per_sqm_month up=11.0000 a=1000.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   units= []
+## T62 C206 S10-0206 bld=34:二期 五车间 unit=402 area=1000.00 barea=800.00 rent=12100.00 2026-08-23~2029-08-22 sign=None st=active kind=normal link=escalation parent=361 kva=10.00 tt=explicit
+   term_text='2023年08月23日起至2026年08月22日止（厂房租金11000元/月）；2026年08月23日起至2029年08月22日止（厂房租金12100元/月）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6878 '12栋(五车间)四楼402室' factory rent_factory 厂房租金 per_sqm_month up=12.1000 a=1000.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   units= []
+## T63 C207 S10-0207 bld=34:二期 五车间 unit=None area=0.00 barea=None rent=18166.74 2023-01-01~2024-02-29 sign=None st=active kind=normal link=new parent=None kva=None tt=explicit
+   term_text='合同模拟 2023-01-01~2024-02-29(推定区间,非纸约)'
+   remark='由附表10归属派生(月租=最新非零月值) | 合同模拟(2026-08-09 补:2024-02 有单无在租合同,补 2023-01~2024-02 模拟区间,起止均非纸约)'
+   units= []
+## T64 C362 S10-0208#1 bld=34:二期 五车间 unit=602 area=517.00 barea=413.60 rent=5381.97 2023-07-10~2026-07-09 sign=None st=renewed kind=normal link=new parent=None kva=25.00 tt=explicit
+   term_text='2023年07月10日起至2026年07月09日止（厂房租金5381元/月）；2026年07月10日起至2029年07月09日止（厂房租金5919元/月）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7214 '二期12号楼六楼602室' factory rent_factory 厂房租金 per_sqm_month up=10.4100 a=517.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   units= []
+## T64 C208 S10-0208 bld=34:二期 五车间 unit=602 area=517.00 barea=413.60 rent=5920.06 2026-07-10~2029-07-09 sign=None st=active kind=normal link=escalation parent=362 kva=25.00 tt=explicit
+   term_text='2023年07月10日起至2026年07月09日止（厂房租金5381元/月）；2026年07月10日起至2029年07月09日止（厂房租金5919元/月）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6861 '二期12号楼六楼602室' factory rent_factory 厂房租金 per_sqm_month up=11.4508 a=517.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   units= []
+## T65 C209 S10-0209 bld=34:二期 五车间 unit=603 area=1665.00 barea=1332.00 rent=28650.88 2023-06-25~2029-06-24 sign=None st=active kind=normal link=new parent=None kva=25.00 tt=explicit
+   term_text='2023年06月25日至2026年06月24日（厂房租金15178/企业管理服务费8325/基础设施维护费2997/合计26500）；2026年06月25日至2029年06月24日（厂房租金16695.8/企业管理服务费9157.5/基础设施维护费3296.7/合计29150）'
+   remark='合同期2023年11月01日至2024年10月31日'
+   L6864 '二期12座六楼603室' factory rent_factory 厂房租金 per_sqm_month up=9.1200 a=1665.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6865 '二期12座六楼603室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.0000 a=1665.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='原文「企业管理服务费」'
+   L6866 '二期12座六楼603室' factory infra 厂房基础设施维护费 per_sqm_month up=1.8000 a=1665.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6867 '二期12座六楼603室' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=378.00 rc=None src=import tax=None note=None
+   L6868 '二期12座六楼603室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L6869 '宿舍楼四座425室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=73.75 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6870 '宿舍楼四座425室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=73.75 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6871 '宿舍楼四座425室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=import tax=None note='合同期2023年11月01日至2024年10月31日'
+   L6872 '宿舍楼四座425室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=import tax=None note=None
+   units= [(497, 29, '425')]
+## T66 C363 S10-0210#1 bld=34:二期 五车间 unit=604 area=743.00 barea=594.40 rent=8173.00 2023-07-04~2026-07-03 sign=None st=renewed kind=normal link=new parent=None kva=12.50 tt=explicit
+   term_text='2023年07月04日起至2026年07月03日；2026年07月04日起至2028年07月03日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7215 '二期12号楼六楼604室' factory rent_factory 厂房租金 per_sqm_month up=11.0000 a=743.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   units= []
+## T66 C210 S10-0210 bld=34:二期 五车间 unit=604 area=743.00 barea=594.40 rent=8990.30 2026-07-04~2028-07-03 sign=None st=active kind=normal link=escalation parent=363 kva=12.50 tt=explicit
+   term_text='2023年07月04日起至2026年07月03日；2026年07月04日起至2028年07月03日'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6862 '二期12号楼六楼604室' factory rent_factory 厂房租金 per_sqm_month up=12.1000 a=743.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   units= []
+## T67 C364 S10-0211#1 bld=35:二期 六车间 unit=101 area=3400.00 barea=2720.00 rent=61200.00 2023-10-30~2026-10-29 sign=None st=active kind=normal link=new parent=None kva=100.00 tt=explicit
+   term_text='2023年10月30日起至2026年10月29日止（厂房租金61200元/月，合计61200）；2026年10月30日起至2029年10月29日止（厂房租金67320元/月，合计67320）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7216 '二期13号楼（六车间）101室' factory rent_factory 厂房租金 per_sqm_month up=18.0000 a=3400.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   units= []
+## T67 C211 S10-0211 bld=35:二期 六车间 unit=101 area=3400.00 barea=2720.00 rent=67320.00 2026-10-30~2029-10-29 sign=None st=active kind=normal link=escalation parent=364 kva=100.00 tt=explicit
+   term_text='2023年10月30日起至2026年10月29日止（厂房租金61200元/月，合计61200）；2026年10月30日起至2029年10月29日止（厂房租金67320元/月，合计67320）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6863 '二期13号楼（六车间）101室' factory rent_factory 厂房租金 per_sqm_month up=19.8000 a=3400.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   units= []
+## T68 C365 S10-0212#1 bld=35:二期 六车间 unit=401 area=3170.35 barea=2536.28 rent=58335.61 2022-12-09~2025-12-08 sign=None st=renewed kind=normal link=new parent=None kva=32.00 tt=explicit
+   term_text='租赁期限：2022年12月09日至2025年12月08日；2025年12月09日至2028年12月08日；2028年12月09日至2031年12月08日；2031年12月09日至2034年12月08日'
+   remark='2024.02.01-2025.01.31'
+   L7217 '二期13栋（六车间）第四层401室' factory rent_factory 厂房租金 per_sqm_month up=11.3400 a=3170.35 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7218 '二期13栋（六车间）第四层401室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.0000 a=3170.35 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='原文「企业管理服务费」'
+   L7219 '二期13栋（六车间）第四层401室' factory infra 厂房基础设施维护费 per_sqm_month up=1.8000 a=3170.35 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7220 '宿舍楼一座212室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7221 '宿舍楼一座212室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7222 '宿舍楼一座212室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note='2024.02.01-2025.01.31'
+   L7223 '宿舍楼一座212室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   units= [(461, 26, '212')]
+## T68 C366 S10-0212#2 bld=35:二期 六车间 unit=401 area=3170.35 barea=2536.28 rent=64163.35 2025-12-09~2028-12-08 sign=None st=active kind=normal link=escalation parent=365 kva=32.00 tt=explicit
+   term_text='租赁期限：2022年12月09日至2025年12月08日；2025年12月09日至2028年12月08日；2028年12月09日至2031年12月08日；2031年12月09日至2034年12月08日'
+   remark='2024.02.01-2025.01.31'
+   L7224 '二期13栋（六车间）第四层401室' factory rent_factory 厂房租金 per_sqm_month up=12.4740 a=3170.35 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7225 '二期13栋（六车间）第四层401室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.5000 a=3170.35 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='原文「企业管理服务费」'
+   L7226 '二期13栋（六车间）第四层401室' factory infra 厂房基础设施维护费 per_sqm_month up=1.9800 a=3170.35 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7227 '宿舍楼一座212室' dorm rent_dorm 宿舍租金 per_sqm_month up=20.9000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7228 '宿舍楼一座212室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.2000 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7229 '宿舍楼一座212室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note='2024.02.01-2025.01.31'
+   L7230 '宿舍楼一座212室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   units= [(461, 26, '212')]
+## T68 C367 S10-0212#3 bld=35:二期 六车间 unit=401 area=3170.35 barea=2536.28 rent=73779.09 2028-12-09~2031-12-08 sign=None st=renewed kind=normal link=escalation parent=366 kva=32.00 tt=explicit
+   term_text='租赁期限：2022年12月09日至2025年12月08日；2025年12月09日至2028年12月08日；2028年12月09日至2031年12月08日；2031年12月09日至2034年12月08日'
+   remark='2024.02.01-2025.01.31'
+   L7231 '二期13栋（六车间）第四层401室' factory rent_factory 厂房租金 per_sqm_month up=14.3451 a=3170.35 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7232 '二期13栋（六车间）第四层401室' factory mgmt 厂房企业管理服务费 per_sqm_month up=6.3250 a=3170.35 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='原文「企业管理服务费」'
+   L7233 '二期13栋（六车间）第四层401室' factory infra 厂房基础设施维护费 per_sqm_month up=2.2770 a=3170.35 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7234 '宿舍楼一座212室' dorm rent_dorm 宿舍租金 per_sqm_month up=24.0350 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7235 '宿舍楼一座212室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.5300 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7236 '宿舍楼一座212室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=manual tax=None note='2024.02.01-2025.01.31'
+   L7237 '宿舍楼一座212室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   units= [(461, 26, '212')]
+## T68 C212 S10-0212 bld=35:二期 六车间 unit=401 area=3170.35 barea=2536.28 rent=81151.13 2031-12-09~2034-12-08 sign=None st=active kind=normal link=escalation parent=367 kva=32.00 tt=explicit
+   term_text='租赁期限：2022年12月09日至2025年12月08日；2025年12月09日至2028年12月08日；2028年12月09日至2031年12月08日；2031年12月09日至2034年12月08日'
+   remark='2024.02.01-2025.01.31'
+   L6806 '二期13栋（六车间）第四层401室' factory rent_factory 厂房租金 per_sqm_month up=15.7796 a=3170.35 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6807 '二期13栋（六车间）第四层401室' factory mgmt 厂房企业管理服务费 per_sqm_month up=6.9575 a=3170.35 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='原文「企业管理服务费」'
+   L6808 '二期13栋（六车间）第四层401室' factory infra 厂房基础设施维护费 per_sqm_month up=2.5047 a=3170.35 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6809 '宿舍楼一座212室' dorm rent_dorm 宿舍租金 per_sqm_month up=26.4385 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6810 '宿舍楼一座212室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.7830 a=36.53 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6811 '宿舍楼一座212室' dorm access 门禁设施维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=8.33 rc=None src=import tax=None note='2024.02.01-2025.01.31'
+   L6812 '宿舍楼一座212室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=import tax=None note=None
+   units= [(461, 26, '212')]
+## T69 C213 S10-0213 bld=38:二期 钢构车间 unit=101 area=610.50 barea=488.40 rent=12503.04 2023-05-17~2026-05-16 sign=None st=renewed kind=normal link=new parent=None kva=None tt=multiple
+   term_text='租赁期限：2023年5月17日至2026年5月16日（合计12500元/月）；2026年5月17日至2029年5月16日（合计13750元/月）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6858 '二期钢构车间101室' factory rent_factory 厂房租金 per_sqm_month up=13.6800 a=610.50 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L6859 '二期钢构车间101室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.0000 a=610.50 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note='原文「企业管理服务费」'
+   L6860 '二期钢构车间101室' factory infra 厂房基础设施维护费 per_sqm_month up=1.8000 a=610.50 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   units= []
+## T69 C307 C2024M-012 bld=38:二期 钢构车间 unit=101 area=610.50 barea=488.40 rent=13749.99 2026-05-17~2029-05-16 sign=None st=active kind=normal link=renew parent=213 kva=None tt=multiple
+   term_text='2026年5月17日至2029年5月16日（合计13750元/月）'
+   remark='续签金额待补:（合计13750元/月）'
+   L7050 '二期钢构车间101室' factory rent_factory 厂房租金 per_sqm_month up=15.0443 a=610.50 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7051 '二期钢构车间101室' factory mgmt 厂房企业管理服务费 per_sqm_month up=5.4987 a=610.50 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note='原文「企业管理服务费」'
+   L7052 '二期钢构车间101室' factory infra 厂房基础设施维护费 per_sqm_month up=1.9795 a=610.50 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   units= []
+## T159 C331 S10-0077#1 bld=27:一期 宿舍二栋 unit=103 area=75.00 barea=60.00 rent=1275.00 2023-10-07~2026-10-06 sign=None st=active kind=normal link=new parent=None kva=25.00 tt=explicit
+   term_text='2023年10月07日起至2026年10月06日止（厂房租金1275/合计1275）；2026年10月07日起至2029年10月06日止（1403）；2029年10月07日起至2032年10月06日止（1613）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7093 '宿舍区2号楼首层2103室' shop rent_shop 商铺租金 per_sqm_month up=17.0000 a=75.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   units= []
+## T159 C332 S10-0077#2 bld=27:一期 宿舍二栋 unit=103 area=75.00 barea=60.00 rent=1403.00 2026-10-07~2029-10-06 sign=None st=renewed kind=normal link=escalation parent=331 kva=None tt=explicit
+   term_text='2023年10月07日起至2026年10月06日止（厂房租金1275/合计1275）；2026年10月07日起至2029年10月06日止（1403）；2029年10月07日起至2032年10月06日止（1613）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L7094 '宿舍区2号楼首层2103室' shop rent_shop 商铺租金 per_sqm_month up=18.7067 a=75.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   units= []
+## T159 C77 S10-0077 bld=27:一期 宿舍二栋 unit=103 area=75.00 barea=60.00 rent=1613.00 2029-10-07~2032-10-06 sign=None st=active kind=normal link=escalation parent=332 kva=None tt=explicit
+   term_text='2023年10月07日起至2026年10月06日止（厂房租金1275/合计1275）；2026年10月07日起至2029年10月06日止（1403）；2029年10月07日起至2032年10月06日止（1613）'
+   remark='由附表10归属派生(月租=最新非零月值)'
+   L6727 '宿舍区2号楼首层2103室' shop rent_shop 商铺租金 per_sqm_month up=21.5067 a=75.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   units= []
+## T211 C182 S10-0182 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=21146.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T212 C183 S10-0183 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=12690.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T213 C184 S10-0184 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=14606.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T214 C185 S10-0185 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=27236.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T215 C186 S10-0186 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=0.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T216 C187 S10-0187 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=2640.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T217 C188 S10-0188 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=1320.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T218 C189 S10-0189 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=1320.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T251 C190 S10-0190 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=61200.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T252 C191 S10-0191 bld=15:二期 一至四车间 unit=None area=0.00 barea=None rent=30600.00 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text=None
+   remark='由附表10归属派生(月租=最新非零月值)'
+   units= []
+## T360 C411 C2024M-043 bld=29:一期 宿舍四栋 unit=648 area=44.20 barea=35.36 rent=986.53 None~None sign=None st=active kind=normal link=new parent=None kva=None tt=None
+   term_text='宿舍期限待人工(648室,门禁按年收8.33/间)'
+   remark=None
+   L7064 '宿舍楼 四座 648' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=44.20 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7065 '宿舍楼 四座 648' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=44.20 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7066 '宿舍楼 四座 648' dorm access 门禁设施维护费 per_room_year up=100.0000 a=None sh=None coeff=1.0000 ovr=None rc=1 src=manual tax=None note=None
+   L7067 '宿舍楼 四座 648' dorm network 网络通讯费 per_room_month up=50.0000 a=None sh=None coeff=1.0000 ovr=None rc=1 src=manual tax=None note=None
+   units= []
+## T360 C302 C2024M-007 bld=30:二期 一车间 unit=701 area=1200.00 barea=960.00 rent=2988.00 2023-12-01~2026-11-30 sign=None st=active kind=normal link=new parent=None kva=100.00 tt=multiple
+   term_text='2023年12月01日至2026年11月30日；2026年12月01日至2028年11月30日'
+   remark=None
+   L7059 '二期8号楼（1车间）701单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=1200.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L7060 '二期8号楼（1车间）701单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L7061 '二期8号楼（1车间）701单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=477.00 rc=None src=import tax=None note=None
+   units= []
+## T360 C315 C2024M-020 bld=30:二期 一车间 unit=701 area=1200.00 barea=960.00 rent=3223.20 2026-12-01~2028-11-30 sign=None st=active kind=normal link=escalation parent=302 kva=100.00 tt=multiple
+   term_text='2026年12月01日至2028年11月30日'
+   remark=None
+   L7538 '二期8号楼（1车间）701单元' factory infra 基础设施维护费 per_sqm_month up=2.1560 a=1200.00 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7539 '二期8号楼（1车间）701单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=manual tax=None note=None
+   L7540 '二期8号楼（1车间）701单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=477.00 rc=None src=manual tax=None note=None
+   units= []
+## T375 C398 C2024M-038 bld=32:二期 三车间 unit=101 area=2061.30 barea=1649.04 rent=4199.15 2022-12-01~2025-11-30 sign=None st=active kind=normal link=new parent=None kva=50.00 tt=explicit
+   term_text='2022年12月01日至2025年11月30日'
+   remark=None
+   L7412 '二期10栋1层101室' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=2061.30 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L7413 '二期10栋1层101室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   units= []
+## T375 C459 C2024M-038A#1 bld=29:一期 宿舍四栋 unit=230 area=74.52 barea=59.62 rent=1614.92 2024-02-01~2025-01-31 sign=None st=active kind=normal link=new parent=None kva=None tt=explicit
+   term_text='2024年02月01日至2025年01月31日'
+   remark='嘉荣宿舍:四栋230'
+   L7867 '宿舍四栋230室' dorm rent_dorm 宿舍租金 per_sqm_month up=19.0000 a=74.52 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7868 '宿舍四栋230室' dorm infra 宿舍基础设施维护费 per_sqm_month up=2.0000 a=74.52 sh=None coeff=1.0000 ovr=None rc=None src=manual tax=None note=None
+   L7869 '宿舍四栋230室' dorm network 网络通讯费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=50.00 rc=None src=manual tax=None note=None
+   units= []
+## T376 C399 C2024M-039 bld=32:二期 三车间 unit=102 area=300.00 barea=240.00 rent=588.00 2022-12-01~2025-11-30 sign=None st=active kind=normal link=new parent=None kva=None tt=explicit
+   term_text='2022年12月01日至2025年11月30日'
+   remark=None
+   L7414 '二期10栋1层102室' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=300.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   units= []
+## T377 C400 C2024M-040 bld=30:二期 一车间 unit=102 area=560.00 barea=448.00 rent=1256.60 2023-04-10~2024-04-09 sign=None st=active kind=normal link=new parent=None kva=30.00 tt=explicit
+   term_text='2023年04月10日至2024年04月09日'
+   remark=None
+   L7415 '二期8栋1层102室' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=560.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L7416 '二期8栋1层102室' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   units= []
+## T378 C401 C2024M-041 bld=30:二期 一车间 unit=302 area=1550.00 barea=1240.00 rent=3674.00 2023-09-20~2029-09-19 sign=None st=active kind=normal link=new parent=None kva=62.50 tt=explicit
+   term_text='2023年09月20日至2026年09月19日；2026年09月20日至2029年09月19日（租赁期限列，两段连续）'
+   remark=None
+   L7417 '二期8号楼(一车间)302单元' factory infra 厂房基础设施维护费 per_sqm_month up=1.9600 a=1550.00 sh=None coeff=1.0000 ovr=None rc=None src=import tax=None note=None
+   L7418 '二期8号楼(一车间)302单元' factory transformer 变压器维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=159.00 rc=None src=import tax=None note=None
+   L7419 '二期8号楼(一车间)302单元' factory elevator 电梯维护费 per_month up=0.0000 a=None sh=None coeff=1.0000 ovr=477.00 rc=None src=import tax=None note=None
+   units= []

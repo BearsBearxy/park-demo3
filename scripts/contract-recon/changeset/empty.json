@@ -1,0 +1,3920 @@
+[
+ {
+  "ref": "P2-07 罗立剑宿舍 A#1 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 29,
+   "saveAs": "$u29_636"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/29/units",
+   "json": {
+    "floor": 6,
+    "unitNo": "636",
+    "area": 36.53
+   }
+  },
+  "pre": {
+   "楼栋29 unitNo=636": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 6,
+   "unitNo": "636",
+   "area": 36.53
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "P2-07 罗立剑宿舍 A#1 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 29,
+   "saveAs": "$u29_638"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/29/units",
+   "json": {
+    "floor": 6,
+    "unitNo": "638",
+    "area": 36.53
+   }
+  },
+  "pre": {
+   "楼栋29 unitNo=638": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 6,
+   "unitNo": "638",
+   "area": 36.53
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "P2-07 罗立剑宿舍 A#1 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 29,
+   "saveAs": "$u29_640"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/29/units",
+   "json": {
+    "floor": 6,
+    "unitNo": "640",
+    "area": 36.53
+   }
+  },
+  "pre": {
+   "楼栋29 unitNo=640": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 6,
+   "unitNo": "640",
+   "area": 36.53
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "P2-07 罗立剑宿舍 A#1 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 29,
+   "saveAs": "$u29_642"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/29/units",
+   "json": {
+    "floor": 6,
+    "unitNo": "642",
+    "area": 36.53
+   }
+  },
+  "pre": {
+   "楼栋29 unitNo=642": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 6,
+   "unitNo": "642",
+   "area": 36.53
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "P2-07 罗立剑宿舍 B#1 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 29,
+   "saveAs": "$u29_327"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/29/units",
+   "json": {
+    "floor": 3,
+    "unitNo": "327",
+    "area": 45.08
+   }
+  },
+  "pre": {
+   "楼栋29 unitNo=327": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 3,
+   "unitNo": "327",
+   "area": 45.08
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "P2-07 罗立剑宿舍 C#1 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 29,
+   "saveAs": "$u29_441"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/29/units",
+   "json": {
+    "floor": 4,
+    "unitNo": "441",
+    "area": 36.96
+   }
+  },
+  "pre": {
+   "楼栋29 unitNo=441": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 4,
+   "unitNo": "441",
+   "area": 36.96
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "P2-07 罗立剑宿舍 C#1 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 29,
+   "saveAs": "$u29_443"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/29/units",
+   "json": {
+    "floor": 4,
+    "unitNo": "443",
+    "area": 36.09
+   }
+  },
+  "pre": {
+   "楼栋29 unitNo=443": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 4,
+   "unitNo": "443",
+   "area": 36.09
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "P2-07 罗立剑宿舍 D#1 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 29,
+   "saveAs": "$u29_225"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/29/units",
+   "json": {
+    "floor": 2,
+    "unitNo": "225",
+    "area": 73.75
+   }
+  },
+  "pre": {
+   "楼栋29 unitNo=225": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 2,
+   "unitNo": "225",
+   "area": 73.75
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "P1-41 黄路生(册面只给420/421合计330.28,均分=同层411/422的165.14) 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 13,
+   "saveAs": "$u13_420"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/13/units",
+   "json": {
+    "floor": 4,
+    "unitNo": "420",
+    "area": 165.14
+   }
+  },
+  "pre": {
+   "楼栋13 unitNo=420": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 4,
+   "unitNo": "420",
+   "area": 165.14
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "P1-41 黄路生(同上) 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 13,
+   "saveAs": "$u13_421"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/13/units",
+   "json": {
+    "floor": 4,
+    "unitNo": "421",
+    "area": 165.14
+   }
+  },
+  "pre": {
+   "楼栋13 unitNo=421": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 4,
+   "unitNo": "421",
+   "area": 165.14
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "P1-42 周应佳 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 13,
+   "saveAs": "$u13_428"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/13/units",
+   "json": {
+    "floor": 4,
+    "unitNo": "428",
+    "area": 95.43
+   }
+  },
+  "pre": {
+   "楼栋13 unitNo=428": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 4,
+   "unitNo": "428",
+   "area": 95.43
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "P1-42 周应佳 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 13,
+   "saveAs": "$u13_435"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/13/units",
+   "json": {
+    "floor": 4,
+    "unitNo": "435",
+    "area": 63.23
+   }
+  },
+  "pre": {
+   "楼栋13 unitNo=435": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 4,
+   "unitNo": "435",
+   "area": 63.23
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "P2-22 温小蓉 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 26,
+   "saveAs": "$u26_317"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/26/units",
+   "json": {
+    "floor": 3,
+    "unitNo": "317",
+    "area": 36.53
+   }
+  },
+  "pre": {
+   "楼栋26 unitNo=317": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 3,
+   "unitNo": "317",
+   "area": 36.53
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "P2-22 温小蓉 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 26,
+   "saveAs": "$u26_518"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/26/units",
+   "json": {
+    "floor": 5,
+    "unitNo": "518",
+    "area": 36.53
+   }
+  },
+  "pre": {
+   "楼栋26 unitNo=518": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 5,
+   "unitNo": "518",
+   "area": 36.53
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "P2-22 温小蓉 B 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 26,
+   "saveAs": "$u26_321"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/26/units",
+   "json": {
+    "floor": 3,
+    "unitNo": "321",
+    "area": 35.53
+   }
+  },
+  "pre": {
+   "楼栋26 unitNo=321": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 3,
+   "unitNo": "321",
+   "area": 35.53
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "P2-23 文广 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 29,
+   "saveAs": "$u29_534"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/29/units",
+   "json": {
+    "floor": 5,
+    "unitNo": "534",
+    "area": 32.01
+   }
+  },
+  "pre": {
+   "楼栋29 unitNo=534": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 5,
+   "unitNo": "534",
+   "area": 32.01
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "P2-23 文广 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 29,
+   "saveAs": "$u29_542"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/29/units",
+   "json": {
+    "floor": 5,
+    "unitNo": "542",
+    "area": 36.53
+   }
+  },
+  "pre": {
+   "楼栋29 unitNo=542": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 5,
+   "unitNo": "542",
+   "area": 36.53
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "私人短租 朱海勇 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 29,
+   "saveAs": "$u29_238"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/29/units",
+   "json": {
+    "floor": 2,
+    "unitNo": "238",
+    "area": 36.53
+   }
+  },
+  "pre": {
+   "楼栋29 unitNo=238": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 2,
+   "unitNo": "238",
+   "area": 36.53
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "私人短租 朱海勇 B 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 29,
+   "saveAs": "$u29_242"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/29/units",
+   "json": {
+    "floor": 2,
+    "unitNo": "242",
+    "area": 36.53
+   }
+  },
+  "pre": {
+   "楼栋29 unitNo=242": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 2,
+   "unitNo": "242",
+   "area": 36.53
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "私人短租 王伍平 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 29,
+   "saveAs": "$u29_240"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/29/units",
+   "json": {
+    "floor": 2,
+    "unitNo": "240",
+    "area": 36.53
+   }
+  },
+  "pre": {
+   "楼栋29 unitNo=240": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 2,
+   "unitNo": "240",
+   "area": 36.53
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "私人短租 张永根 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 29,
+   "saveAs": "$u29_552"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/29/units",
+   "json": {
+    "floor": 5,
+    "unitNo": "552",
+    "area": 36.41
+   }
+  },
+  "pre": {
+   "楼栋29 unitNo=552": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 5,
+   "unitNo": "552",
+   "area": 36.41
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "私人短租 陈玉林 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 29,
+   "saveAs": "$u29_329"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/29/units",
+   "json": {
+    "floor": 3,
+    "unitNo": "329",
+    "area": 31.05
+   }
+  },
+  "pre": {
+   "楼栋29 unitNo=329": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 3,
+   "unitNo": "329",
+   "area": 31.05
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "私人短租 苏海苗 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 26,
+   "saveAs": "$u26_606"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/26/units",
+   "json": {
+    "floor": 6,
+    "unitNo": "606",
+    "area": 31.05
+   }
+  },
+  "pre": {
+   "楼栋26 unitNo=606": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 6,
+   "unitNo": "606",
+   "area": 31.05
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "私人短租 侯炳成 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 29,
+   "saveAs": "$u29_248"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/29/units",
+   "json": {
+    "floor": 2,
+    "unitNo": "248",
+    "area": 44.2
+   }
+  },
+  "pre": {
+   "楼栋29 unitNo=248": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 2,
+   "unitNo": "248",
+   "area": 44.2
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "私人短租 侯炳成 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 29,
+   "saveAs": "$u29_247"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/29/units",
+   "json": {
+    "floor": 2,
+    "unitNo": "247",
+    "area": 36.53
+   }
+  },
+  "pre": {
+   "楼栋29 unitNo=247": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 2,
+   "unitNo": "247",
+   "area": 36.53
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "私人短租 侯炳成 单元",
+  "op": "other",
+  "target": {
+   "buildingId": 29,
+   "saveAs": "$u29_243"
+  },
+  "body": {
+   "method": "POST",
+   "path": "/api/buildings/29/units",
+   "json": {
+    "floor": 2,
+    "unitNo": "243",
+    "area": 36.09
+   }
+  },
+  "pre": {
+   "楼栋29 unitNo=243": "不存在(存在则 409,取已有 id,不重建)"
+  },
+  "expect": {
+   "floor": 2,
+   "unitNo": "243",
+   "area": 36.09
+  },
+  "evidence": "册面房间面积,见同 ref 的 contract.patch evidence",
+  "why": "decisions「unit 表里没有的房间用 POST /api/buildings/{id}/units 建,面积用册面房间面积」;R13/R14 行绑单元",
+  "reviewFix": [
+   "复查 empty[*] R13/R14:缺的房间用接口补建"
+  ]
+ },
+ {
+  "ref": "P1-60 / P2-25",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 135,
+   "contractNo": "S10-0135",
+   "tenantId": 1
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 补充租户核对:车间一~四整租95203.77㎡ | 合同模拟(2026-08-09 补止租日;⚠台账 2024-10~2025-10 显示仍在租,本值与证据冲突) | 真实合同补日期(2026-09-27):纸约火炬园_2 19元/㎡/月(含税)×95203.77=1808871.63/月,2023-05-01起;台账收到2025-10故止期延至2025-10-31;2025-11-01起×1.1递增段待递增接口;租金行per_month不填面积",
+   "endDate": "2025-10-31",
+   "termText": "2023年05月01日起,19元/㎡季付;首次递增2025-11-01,每三年+10%;租期年限待核 | 合同模拟:止租日 2024-02-29 为模拟值(原为空) | 真实合同补日期:止期延至2025-10-31(台账收到2025-10),2025-11-01首次递增段未建"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "车间一、车间二、车间三、车间四",
+     "propertyType": "factory",
+     "feeKey": "rent_factory",
+     "feeName": "厂房租金",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 1808871.63,
+     "roomCount": null,
+     "note": "纸约火炬园_2 19元/㎡/月(含税)×95203.77=1808871.63;per_month 不填面积,不进二期公摊",
+     "unitIds": null,
+     "seq": 0
+    }
+   ]
+  },
+  "pre": {
+   "contractNo": "S10-0135",
+   "tenantId": 1,
+   "buildingId": 15,
+   "lineCount": 0,
+   "status(存储态,PUT 原样回传)": "active",
+   "startDate": "2023-05-01",
+   "endDate": "2024-02-29",
+   "monthlyRent": "1808871.63",
+   "rentArea": "0.00",
+   "termText": "2023年05月01日起,19元/㎡季付;首次递增2025-11-01,每三年+10%;租期年限待核 | 合同模拟:止租日 2024-02-29 为模拟值(原为空)",
+   "remark": "由附表10归属派生(月租=最新非零月值) | 补充租户核对:车间一~四整租95203.77㎡ | 合同模拟(2026-08-09 补止租日;⚠台账 2024-10~2025-10 显示仍在租,本值与证据冲突)",
+   "kind": "master_lease"
+  },
+  "expect": {
+   "monthlyRent": "1808871.63",
+   "rentArea": "0.00",
+   "buildingArea": null,
+   "lineCount": 1
+  },
+  "evidence": "纸约 out/images/二期2024年01月租金/火炬园_1~_3.png(第一条车间一~四 95203.77㎡;第三条 19元/㎡/月含税,月租1808871.63;2023-05-01起);二期2023年7月~2024年3月租金!火炬园 R34;水2308!火炬园(按总表差推算) G25/G38 按 95203.77 摊路灯/水公摊",
+  "why": "0 行合同;源册与纸约都有整租租金一行。kind=master_lease,BillNoticeService/容量费都跳过它,加行后月租缓存不变(1808871.63),rent_area 0→95203.77 会进二期园区面积池(水电册本就按此面积摊,dev 现 0),重生成须人工过目",
+  "reviewFix": [
+   "复查 empty[0](wrong):改 per_month+amountOverride、area 为空、rent_area 保持 0(decisions「火炬园补上租金不填面积」);止期按 P2-25 延到 2025-10-31;递增段待接口"
+  ]
+ },
+ {
+  "ref": "P2-07",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 451,
+   "contractNo": "S10-0198A#1",
+   "tenantId": 54
+  },
+  "set": {
+   "remark": "易釆宿舍:四栋636、638、640、642 共4间 | 合同模拟(按册面建行,2026-09-27):一间一行照租2401!罗立剑#1 R58-R61(19/2/门禁100元/间/年/网络50元/间/月);四间单元已补建并绑定;首期2023-09-22~12-21(租2309#1 R55)无合同,待定",
+   "unitId": "$u29_636",
+   "extraUnitIds": [
+    "$u29_638",
+    "$u29_640",
+    "$u29_642"
+   ]
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍楼四座636室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 19,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2401!罗立剑#1 R58-R61 宿舍租金 36.53×19",
+     "unitIds": [
+      "$u29_636"
+     ],
+     "seq": 0
+    },
+    {
+     "location": "宿舍楼四座636室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2401!罗立剑#1 R58-R61 宿舍基础设施 36.53×2",
+     "unitIds": [
+      "$u29_636"
+     ],
+     "seq": 1
+    },
+    {
+     "location": "宿舍楼四座636室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2401!罗立剑#1 R58-R61 门禁 100元/间/年",
+     "unitIds": [
+      "$u29_636"
+     ],
+     "seq": 2
+    },
+    {
+     "location": "宿舍楼四座636室",
+     "propertyType": "dorm",
+     "feeKey": "network",
+     "feeName": "网络通讯费",
+     "billMode": "per_room_month",
+     "unitPrice": 50,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2401!罗立剑#1 R58-R61 网络 50元/间/月",
+     "unitIds": [
+      "$u29_636"
+     ],
+     "seq": 3
+    },
+    {
+     "location": "宿舍楼四座638室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 19,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2401!罗立剑#1 R58-R61 宿舍租金 36.53×19",
+     "unitIds": [
+      "$u29_638"
+     ],
+     "seq": 4
+    },
+    {
+     "location": "宿舍楼四座638室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2401!罗立剑#1 R58-R61 宿舍基础设施 36.53×2",
+     "unitIds": [
+      "$u29_638"
+     ],
+     "seq": 5
+    },
+    {
+     "location": "宿舍楼四座638室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2401!罗立剑#1 R58-R61 门禁 100元/间/年",
+     "unitIds": [
+      "$u29_638"
+     ],
+     "seq": 6
+    },
+    {
+     "location": "宿舍楼四座638室",
+     "propertyType": "dorm",
+     "feeKey": "network",
+     "feeName": "网络通讯费",
+     "billMode": "per_room_month",
+     "unitPrice": 50,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2401!罗立剑#1 R58-R61 网络 50元/间/月",
+     "unitIds": [
+      "$u29_638"
+     ],
+     "seq": 7
+    },
+    {
+     "location": "宿舍楼四座640室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 19,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2401!罗立剑#1 R58-R61 宿舍租金 36.53×19",
+     "unitIds": [
+      "$u29_640"
+     ],
+     "seq": 8
+    },
+    {
+     "location": "宿舍楼四座640室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2401!罗立剑#1 R58-R61 宿舍基础设施 36.53×2",
+     "unitIds": [
+      "$u29_640"
+     ],
+     "seq": 9
+    },
+    {
+     "location": "宿舍楼四座640室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2401!罗立剑#1 R58-R61 门禁 100元/间/年",
+     "unitIds": [
+      "$u29_640"
+     ],
+     "seq": 10
+    },
+    {
+     "location": "宿舍楼四座640室",
+     "propertyType": "dorm",
+     "feeKey": "network",
+     "feeName": "网络通讯费",
+     "billMode": "per_room_month",
+     "unitPrice": 50,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2401!罗立剑#1 R58-R61 网络 50元/间/月",
+     "unitIds": [
+      "$u29_640"
+     ],
+     "seq": 11
+    },
+    {
+     "location": "宿舍楼四座642室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 19,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2401!罗立剑#1 R58-R61 宿舍租金 36.53×19",
+     "unitIds": [
+      "$u29_642"
+     ],
+     "seq": 12
+    },
+    {
+     "location": "宿舍楼四座642室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2401!罗立剑#1 R58-R61 宿舍基础设施 36.53×2",
+     "unitIds": [
+      "$u29_642"
+     ],
+     "seq": 13
+    },
+    {
+     "location": "宿舍楼四座642室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2401!罗立剑#1 R58-R61 门禁 100元/间/年",
+     "unitIds": [
+      "$u29_642"
+     ],
+     "seq": 14
+    },
+    {
+     "location": "宿舍楼四座642室",
+     "propertyType": "dorm",
+     "feeKey": "network",
+     "feeName": "网络通讯费",
+     "billMode": "per_room_month",
+     "unitPrice": 50,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2401!罗立剑#1 R58-R61 网络 50元/间/月",
+     "unitIds": [
+      "$u29_642"
+     ],
+     "seq": 15
+    }
+   ]
+  },
+  "pre": {
+   "contractNo": "S10-0198A#1",
+   "tenantId": 54,
+   "buildingId": 29,
+   "lineCount": 0,
+   "status(存储态,PUT 原样回传)": "active",
+   "startDate": "2023-12-22",
+   "endDate": "2024-06-30",
+   "monthlyRent": "3301.85",
+   "rentArea": "146.12",
+   "termText": "2023年12月22日至2024年06月30日",
+   "remark": "易釆宿舍:四栋636、638、640、642 共4间",
+   "unitId": null,
+   "extraUnitIds": []
+  },
+  "expect": {
+   "monthlyRent": "3301.84",
+   "rentArea": "0.00",
+   "buildingArea": null,
+   "lineCount": 16
+  },
+  "evidence": "二期2024年01月租金!罗立剑#1 R58-R61(636/638/640/642 146.12㎡,2023.12.22-2024.06.30,19/2/门禁4间/网络4间);二期2023年9月租金!罗立剑#1 R55-R58 同房间首期;水2402 每间36.53",
+  "why": "0 行合同,缓存3301.85来自册面;按间建行(R07),纯宿舍合同 rent_area 按 S15 归0。门禁按间取整 8.33×4=33.32,比册面33.33少0.01(R05 不追)",
+  "reviewFix": [
+   "复查 empty[1]:补建单元并绑行/合同"
+  ]
+ },
+ {
+  "ref": "P2-07",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 452,
+   "contractNo": "S10-0198B#1",
+   "tenantId": 54
+  },
+  "set": {
+   "remark": "易釆宿舍:四栋327 | 合同模拟(按册面建行,2026-09-27):327室照租2401!罗立剑#2 R76-R79/租2402#2 R75-R78(合同期2024.01.06-2024.06.30,租金自01-09起收);单元已补建并绑定",
+   "unitId": "$u29_327",
+   "extraUnitIds": null
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍楼四座327室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 19,
+     "area": 45.08,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2401!罗立剑#2 R76-R79 宿舍租金 45.08×19",
+     "unitIds": [
+      "$u29_327"
+     ],
+     "seq": 0
+    },
+    {
+     "location": "宿舍楼四座327室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 45.08,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2401!罗立剑#2 R76-R79 宿舍基础设施 45.08×2",
+     "unitIds": [
+      "$u29_327"
+     ],
+     "seq": 1
+    },
+    {
+     "location": "宿舍楼四座327室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2401!罗立剑#2 R76-R79 门禁 100元/间/年",
+     "unitIds": [
+      "$u29_327"
+     ],
+     "seq": 2
+    },
+    {
+     "location": "宿舍楼四座327室",
+     "propertyType": "dorm",
+     "feeKey": "network",
+     "feeName": "网络通讯费",
+     "billMode": "per_room_month",
+     "unitPrice": 50,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2401!罗立剑#2 R76-R79 网络 50元/间/月",
+     "unitIds": [
+      "$u29_327"
+     ],
+     "seq": 3
+    }
+   ]
+  },
+  "pre": {
+   "contractNo": "S10-0198B#1",
+   "tenantId": 54,
+   "buildingId": 29,
+   "lineCount": 0,
+   "status(存储态,PUT 原样回传)": "active",
+   "startDate": "2024-01-06",
+   "endDate": "2024-06-30",
+   "monthlyRent": "1005.01",
+   "rentArea": "45.08",
+   "termText": "2024年01月06日至2024年06月30日",
+   "remark": "易釆宿舍:四栋327",
+   "unitId": null,
+   "extraUnitIds": []
+  },
+  "expect": {
+   "monthlyRent": "1005.01",
+   "rentArea": "0.00",
+   "buildingArea": null,
+   "lineCount": 4
+  },
+  "evidence": "二期2024年01月租金!罗立剑#2 R76-R79;二期2024年02月租金!罗立剑#2 R75-R78(R77 备注 合同期2024.01.06-2024.06.30)",
+  "why": "0 行合同,缓存1005.01=册面;起止沿用现值 2024-01-06~06-30",
+  "reviewFix": [
+   "复查 empty[2]:补建单元并绑行/合同"
+  ]
+ },
+ {
+  "ref": "P2-07",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 453,
+   "contractNo": "S10-0198C#1",
+   "tenantId": 54
+  },
+  "set": {
+   "remark": "易釆宿舍:四栋441、443 共2间 | 合同模拟(按册面建行,2026-09-27):441/443照租2403!罗立剑#1 R65-R68(2024-02-22起,合计73.05㎡);分间面积取水2402!罗立剑 441=36.96/443=36.09;单元已补建并绑定",
+   "unitId": "$u29_441",
+   "extraUnitIds": [
+    "$u29_443"
+   ]
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍楼四座441室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 19,
+     "area": 36.96,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2403!罗立剑#1 R65-R68 宿舍租金 36.96×19",
+     "unitIds": [
+      "$u29_441"
+     ],
+     "seq": 0
+    },
+    {
+     "location": "宿舍楼四座441室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 36.96,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2403!罗立剑#1 R65-R68 宿舍基础设施 36.96×2",
+     "unitIds": [
+      "$u29_441"
+     ],
+     "seq": 1
+    },
+    {
+     "location": "宿舍楼四座441室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2403!罗立剑#1 R65-R68 门禁 100元/间/年",
+     "unitIds": [
+      "$u29_441"
+     ],
+     "seq": 2
+    },
+    {
+     "location": "宿舍楼四座441室",
+     "propertyType": "dorm",
+     "feeKey": "network",
+     "feeName": "网络通讯费",
+     "billMode": "per_room_month",
+     "unitPrice": 50,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2403!罗立剑#1 R65-R68 网络 50元/间/月",
+     "unitIds": [
+      "$u29_441"
+     ],
+     "seq": 3
+    },
+    {
+     "location": "宿舍楼四座443室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 19,
+     "area": 36.09,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2403!罗立剑#1 R65-R68 宿舍租金 36.09×19",
+     "unitIds": [
+      "$u29_443"
+     ],
+     "seq": 4
+    },
+    {
+     "location": "宿舍楼四座443室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 36.09,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2403!罗立剑#1 R65-R68 宿舍基础设施 36.09×2",
+     "unitIds": [
+      "$u29_443"
+     ],
+     "seq": 5
+    },
+    {
+     "location": "宿舍楼四座443室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2403!罗立剑#1 R65-R68 门禁 100元/间/年",
+     "unitIds": [
+      "$u29_443"
+     ],
+     "seq": 6
+    },
+    {
+     "location": "宿舍楼四座443室",
+     "propertyType": "dorm",
+     "feeKey": "network",
+     "feeName": "网络通讯费",
+     "billMode": "per_room_month",
+     "unitPrice": 50,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2403!罗立剑#1 R65-R68 网络 50元/间/月",
+     "unitIds": [
+      "$u29_443"
+     ],
+     "seq": 7
+    }
+   ]
+  },
+  "pre": {
+   "contractNo": "S10-0198C#1",
+   "tenantId": 54,
+   "buildingId": 29,
+   "lineCount": 0,
+   "status(存储态,PUT 原样回传)": "active",
+   "startDate": "2024-02-22",
+   "endDate": "2024-08-31",
+   "monthlyRent": "1650.72",
+   "rentArea": "73.05",
+   "termText": "2024年02月22日至2024年08月31日",
+   "remark": "易釆宿舍:四栋441、443 共2间",
+   "unitId": null,
+   "extraUnitIds": []
+  },
+  "expect": {
+   "monthlyRent": "1650.71",
+   "rentArea": "0.00",
+   "buildingArea": null,
+   "lineCount": 8
+  },
+  "evidence": "二期2024年03月租金!罗立剑#1 R65-R68(441、443室 73.05㎡,2024年2月22日起);水2402!罗立剑 分间面积 441=36.96、443=36.09",
+  "why": "0 行合同,缓存1650.72=册面;按间拆行后 1650.71(门禁分间取整差0.01)",
+  "reviewFix": [
+   "复查 empty[3]:补建单元并绑行/合同"
+  ]
+ },
+ {
+  "ref": "P2-07",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 454,
+   "contractNo": "S10-0198D#1",
+   "tenantId": 54
+  },
+  "set": {
+   "remark": "易釆宿舍:四栋225 | 合同模拟(按册面建行,2026-09-27):225室照租2403!罗立剑#1 R69-R72(2024-03-01起,73.75㎡);单元已补建并绑定",
+   "unitId": "$u29_225",
+   "extraUnitIds": null
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍楼四座225室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 19,
+     "area": 73.75,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2403!罗立剑#1 R69-R72 宿舍租金 73.75×19",
+     "unitIds": [
+      "$u29_225"
+     ],
+     "seq": 0
+    },
+    {
+     "location": "宿舍楼四座225室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 73.75,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2403!罗立剑#1 R69-R72 宿舍基础设施 73.75×2",
+     "unitIds": [
+      "$u29_225"
+     ],
+     "seq": 1
+    },
+    {
+     "location": "宿舍楼四座225室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2403!罗立剑#1 R69-R72 门禁 100元/间/年",
+     "unitIds": [
+      "$u29_225"
+     ],
+     "seq": 2
+    },
+    {
+     "location": "宿舍楼四座225室",
+     "propertyType": "dorm",
+     "feeKey": "network",
+     "feeName": "网络通讯费",
+     "billMode": "per_room_month",
+     "unitPrice": 50,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2403!罗立剑#1 R69-R72 网络 50元/间/月",
+     "unitIds": [
+      "$u29_225"
+     ],
+     "seq": 3
+    }
+   ]
+  },
+  "pre": {
+   "contractNo": "S10-0198D#1",
+   "tenantId": 54,
+   "buildingId": 29,
+   "lineCount": 0,
+   "status(存储态,PUT 原样回传)": "active",
+   "startDate": "2024-03-01",
+   "endDate": "2024-08-31",
+   "monthlyRent": "1607.08",
+   "rentArea": "73.75",
+   "termText": "2024年03月01日至2024年08月31日",
+   "remark": "易釆宿舍:四栋225",
+   "unitId": null,
+   "extraUnitIds": []
+  },
+  "expect": {
+   "monthlyRent": "1607.08",
+   "rentArea": "0.00",
+   "buildingArea": null,
+   "lineCount": 4
+  },
+  "evidence": "二期2024年03月租金!罗立剑#1 R69-R72(225室 73.75㎡,2024-03-01起)",
+  "why": "0 行合同,缓存1607.08=册面",
+  "reviewFix": [
+   "复查 empty[4]:补建单元并绑行/合同"
+  ]
+ },
+ {
+  "ref": "P2-08",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 457,
+   "contractNo": "S10-0145#2",
+   "tenantId": 11
+  },
+  "set": {
+   "remark": "保奔路段2(基础3449.6) | 按纸约补录(2026-09-27):复制#1三行,基础1.96→2.156(纸约4.2每三年+10%)+变压器159+电梯477"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "主",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159,
+     "roomCount": null,
+     "note": "复制#1 L8583;纸约保奔路汽车_1 4.3.1B 159/月",
+     "unitIds": null,
+     "seq": 0
+    },
+    {
+     "location": "二期 8号楼\n（一车间）602单元",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.156,
+     "area": 1600,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "复制#1 L8588,1.96×1.1=2.156;纸约保奔路汽车_1 4.2 每三年递增10%,第二段2026-08-25~2029-08-24",
+     "unitIds": [
+      536
+     ],
+     "seq": 1
+    },
+    {
+     "location": "主",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 477,
+     "roomCount": null,
+     "note": "复制#1 L8584;纸约保奔路汽车_2 4.5 电梯477/月",
+     "unitIds": null,
+     "seq": 2
+    }
+   ]
+  },
+  "pre": {
+   "contractNo": "S10-0145#2",
+   "tenantId": 11,
+   "buildingId": 30,
+   "lineCount": 0,
+   "status(存储态,PUT 原样回传)": "active",
+   "startDate": "2026-08-25",
+   "endDate": "2029-08-24",
+   "monthlyRent": "4085.60",
+   "rentArea": "1600.00",
+   "termText": "2026年08月25日至2029年08月24日",
+   "remark": "保奔路段2(基础3449.6)",
+   "#1(145) 真行": "L8583 transformer 159 / L8588 infra 1600×1.96 绑536 / L8584 elevator 477"
+  },
+  "expect": {
+   "monthlyRent": "4085.60",
+   "rentArea": "1600.00",
+   "buildingArea": "1280.00",
+   "lineCount": 3
+  },
+  "evidence": "纸约 out/images/二期2023年10月租金/保奔路汽车_1.png(4.2 表 2026-08-25~2029-08-24 第二段、每三年递增10%;4.3.1B 变压器159)、_2.png(4.5 电梯477);租2310!保奔路汽车 R35-R37(1600×1.96+159+477=3772);remark 补充协议面积1473→1600",
+  "why": "#2(2026-08-25 起,当前段)0 行,线上 2026-08 起物业费出不了单;缓存4085.60=3449.60+159+477 与加行后一致。#1 的5条空壳行归别的变更集,本条不动#1"
+ },
+ {
+  "ref": "P2-09",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 458,
+   "contractNo": "S10-0159#2",
+   "tenantId": 25
+  },
+  "set": {
+   "remark": "管中旺段2(基础3721.26) | 按纸约补录(2026-09-27):复制#1三行,基础1.96→2.156(纸约4.2第二段3721.26)+变压器159+电梯636"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "二期10栋（三车间）403单元、404单元",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.156,
+     "area": 1726,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "复制#1 L6945,1.96×1.1;纸约管中旺_3 4.2 表第二段 2026-12-16~2029-12-15 3721.26",
+     "unitIds": [
+      541,
+      542
+     ],
+     "seq": 0
+    },
+    {
+     "location": "二期10栋（三车间）403单元、404单元",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159,
+     "roomCount": null,
+     "note": "复制#1 L6946;纸约管中旺_4 4.3.1B 159",
+     "unitIds": [
+      541,
+      542
+     ],
+     "seq": 1
+    },
+    {
+     "location": "二期10栋（三车间）403单元、404单元",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 636,
+     "roomCount": null,
+     "note": "复制#1 L6947;纸约管中旺_4 4.5 电梯636",
+     "unitIds": [
+      541,
+      542
+     ],
+     "seq": 2
+    }
+   ]
+  },
+  "pre": {
+   "contractNo": "S10-0159#2",
+   "tenantId": 25,
+   "buildingId": 32,
+   "lineCount": 0,
+   "status(存储态,PUT 原样回传)": "active",
+   "startDate": "2026-12-16",
+   "endDate": "2029-12-15",
+   "monthlyRent": "4516.26",
+   "rentArea": "1726.00",
+   "termText": "2026年12月16日至2029年12月15日",
+   "remark": "管中旺段2(基础3721.26)",
+   "#1(159) 真行": "L6945 infra 1726×1.96 / L6946 transformer 159 / L6947 elevator 636,均绑541、542"
+  },
+  "expect": {
+   "monthlyRent": "4516.26",
+   "rentArea": "1726.00",
+   "buildingArea": "1380.80",
+   "lineCount": 3
+  },
+  "evidence": "纸约 out/images/二期2024年01月租金/管中旺_3.png(4.2 表 2026-12-16~2029-12-15 1726㎡ 3721.26)、_4.png(4.3.1B 变压器159、4.5 电梯636);租2401!管中旺 R34-R36",
+  "why": "#2(2026-12-16 起)0 行;1726×2.156=3721.256→3721.26 与纸面月额相等,不用 per_month;缓存4516.26 与加行后一致"
+ },
+ {
+  "ref": "P1-41",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 460,
+   "contractNo": "HIST-HLS-01",
+   "tenantId": 392
+  },
+  "set": {
+   "startDate": "2022-12-14",
+   "endDate": "2024-01-09",
+   "termText": "推定 2023-01-01 至 2024-02-29(依 460.remark 占位区间 + 2024-03 暨南医美接手) | 真实合同补录:纸约2022-12-14~2023-12-13,册面续收至2024-01-09(一期2024年2月租金!黄路生 R38)",
+   "remark": "黄路生历史租约占位(2023-01~2024-02 A座420);财务待审核补要素 | 合同模拟 2026-08-09 补日期:据 一期2024年2月水电费.xlsx zh 表 R28。起租日推定待核;止租日 2024-02-29 有 2024-03 交接硬证。 | 真实合同补录(2026-09-27):纸约黄路生_1/_2 420/421室330.28㎡租金6605.6/服务费3302.8;装修期至2023-03-21租金50%未建;2024-01-10~02-29水电名册转HIST-HLS-02",
+   "unitId": "$u13_420",
+   "extraUnitIds": [
+    "$u13_421"
+   ]
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "A座孵化器四楼420、421室",
+     "propertyType": "office",
+     "feeKey": "rent_office",
+     "feeName": "办公室租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 20,
+     "area": 330.28,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "纸约黄路生_1 表内费用 厂房租金6605.6/月=330.28×20;2023-08起册面记办公室租金",
+     "unitIds": [
+      "$u13_420",
+      "$u13_421"
+     ],
+     "seq": 0
+    },
+    {
+     "location": "A座孵化器四楼420、421室",
+     "propertyType": "office",
+     "feeKey": "mgmt",
+     "feeName": "办公室企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 10,
+     "area": 330.28,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "纸约黄路生_1 物业管理/服务费3302.8/月=330.28×10",
+     "unitIds": [
+      "$u13_420",
+      "$u13_421"
+     ],
+     "seq": 1
+    }
+   ]
+  },
+  "pre": {
+   "contractNo": "HIST-HLS-01",
+   "tenantId": 392,
+   "buildingId": 13,
+   "lineCount": 0,
+   "status(存储态,PUT 原样回传)": "active",
+   "startDate": "2023-01-01",
+   "endDate": "2024-02-29",
+   "monthlyRent": "0.00",
+   "rentArea": "330.28",
+   "termText": "推定 2023-01-01 至 2024-02-29(依 460.remark 占位区间 + 2024-03 暨南医美接手)",
+   "remark": "黄路生历史租约占位(2023-01~2024-02 A座420);财务待审核补要素 | 合同模拟 2026-08-09 补日期:据 一期2024年2月水电费.xlsx zh 表 R28。起租日推定待核;止租日 2024-02-29 有 2024-03 交接硬证。",
+   "unitId": null,
+   "extraUnitIds": []
+  },
+  "expect": {
+   "monthlyRent": "9908.40",
+   "rentArea": "330.28",
+   "buildingArea": "264.22",
+   "lineCount": 2
+  },
+  "evidence": "纸约 out/images/一期2023年8月租金/黄路生_1.png(表内费用 2022-12-14~2023-12-13 6605.6/3302.8)、黄路生_2.png(第二条 420/421室 330.28㎡,装修期50%);一期2023年4月~2024年2月租金!黄路生 R38-R39;一期2024年2月租金!黄路生 R38「2024年1月1日至1月9日」",
+  "why": "升为真实合同补录;dev 2023-08/2023-10 两张单各 +9908.40(人工过目);止期 2024-01-09 后 2024-02 由下一条 0 行段接住,原 2024-02 水电单不丢",
+  "reviewFix": [
+   "复查 empty[7]:建 420/421 并绑(均分 330.28);收款映射见本文件末尾"
+  ]
+ },
+ {
+  "ref": "P1-41",
+  "op": "contract.create",
+  "target": {
+   "tenantId": 392,
+   "contractNo": "HIST-HLS-02"
+  },
+  "set": {
+   "contractNo": "HIST-HLS-02",
+   "tenantId": 392,
+   "buildingId": 13,
+   "unitId": null,
+   "extraUnitIds": null,
+   "startDate": "2024-01-10",
+   "endDate": "2024-02-29",
+   "signDate": null,
+   "status": "active",
+   "kva": null,
+   "termType": "explicit",
+   "termText": "合同模拟 2024-01-10~2024-02-29(推定区间,非纸约;租金止于2024-01-09,水电至2024-02)",
+   "rentFree": null,
+   "remark": "合同模拟(2026-09-27):承接HIST-HLS-01原2024-02名册;租金止于2024-01-09(一期2024年2月租金!黄路生 R38),水电至2024-02仍在其名下(一期2024年2月水电费 zh R28,2024-03表转暨南医美);不建计费行;rent_area沿用原值330.28(规则40显式成员)",
+   "rentArea": "330.28",
+   "monthlyRent": 0,
+   "billingLines": null
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": []
+  },
+  "pre": {
+   "contractNo 不存在": "HIST-HLS-02"
+  },
+  "expect": {
+   "monthlyRent": "0.00",
+   "rentArea": "330.28",
+   "lineCount": 0,
+   "注意": "billingLines 必须传 null 而不是 []:create 见非 null 就跑 syncScalarCache,空组会把 rentArea 清成 0"
+  },
+  "evidence": "一期2024年2月租金!黄路生 R38;HIST-HLS-01 原 remark「一期2024年2月水电费.xlsx zh 表 R28」「2024-03 交接硬证」;dev bill_notice 2024-02 tenant 392 = 42.60",
+  "why": "可选:不建则 2024-02 重生成时黄路生的水电/公摊单(dev 42.60)消失。R02 规定模拟段不填面积,这里 330.28 是原 HIST-HLS-01 的现值,只为让 2024-02 行为不变"
+ },
+ {
+  "ref": "P1-42",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 473,
+   "contractNo": "HIST-ZYJ-01",
+   "tenantId": 393
+  },
+  "set": {
+   "startDate": "2023-08-14",
+   "termText": "推定 2023-10-01 至 2024-02-29(起点=最早抄表月;止点=电表 2024-03 退场) | 真实合同补录:纸约2023-08-14~2026-08-13,2024-03册无此户止于2024-02-29",
+   "remark": "合同模拟 | 2026-08-09 补建。租金要素源册无载(不在电费/水费总表,也无纸质通知单),故不建计费行——只让他成为「2024-02 的在租户」,水电按表派生 | 更正:源册有载 | 真实合同补录(2026-09-27):纸约周应佳_1/_2 428/435室20/10+428电梯159变压器159;装修期8-14~9-12按50%(一期2023年9月租金 R38)未建,2023-08单人工过目",
+   "unitId": "$u13_428",
+   "extraUnitIds": [
+    "$u13_435"
+   ]
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "A座孵化器四楼428室",
+     "propertyType": "office",
+     "feeKey": "rent_office",
+     "feeName": "办公室租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 20,
+     "area": 95.43,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "纸约周应佳_1 5.1.1 20元/㎡,表内1908.6",
+     "unitIds": [
+      "$u13_428"
+     ],
+     "seq": 0
+    },
+    {
+     "location": "A座孵化器四楼428室",
+     "propertyType": "office",
+     "feeKey": "mgmt",
+     "feeName": "办公室企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 10,
+     "area": 95.43,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "纸约周应佳_1 5.1.2 10元/㎡,表内954.3",
+     "unitIds": [
+      "$u13_428"
+     ],
+     "seq": 1
+    },
+    {
+     "location": "A座孵化器四楼428室",
+     "propertyType": "office",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159,
+     "roomCount": null,
+     "note": "纸约周应佳_1 (3) 电梯159/月",
+     "unitIds": [
+      "$u13_428"
+     ],
+     "seq": 2
+    },
+    {
+     "location": "A座孵化器四楼428室",
+     "propertyType": "office",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159,
+     "roomCount": null,
+     "note": "纸约周应佳_1 B 变压器159/月",
+     "unitIds": [
+      "$u13_428"
+     ],
+     "seq": 3
+    },
+    {
+     "location": "A座孵化器四楼435室",
+     "propertyType": "office",
+     "feeKey": "rent_office",
+     "feeName": "办公室租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 20,
+     "area": 63.23,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "纸约周应佳_2 表内1264.6",
+     "unitIds": [
+      "$u13_435"
+     ],
+     "seq": 4
+    },
+    {
+     "location": "A座孵化器四楼435室",
+     "propertyType": "office",
+     "feeKey": "mgmt",
+     "feeName": "办公室企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 10,
+     "area": 63.23,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "纸约周应佳_2 表内632.3;电梯纸约「/」不建",
+     "unitIds": [
+      "$u13_435"
+     ],
+     "seq": 5
+    }
+   ]
+  },
+  "pre": {
+   "contractNo": "HIST-ZYJ-01",
+   "tenantId": 393,
+   "buildingId": 13,
+   "lineCount": 0,
+   "status(存储态,PUT 原样回传)": "active",
+   "startDate": "2023-10-01",
+   "endDate": "2024-02-29",
+   "monthlyRent": "0.00",
+   "rentArea": "158.66",
+   "termText": "推定 2023-10-01 至 2024-02-29(起点=最早抄表月;止点=电表 2024-03 退场)",
+   "remark": "合同模拟 | 2026-08-09 补建。租金要素源册无载(不在电费/水费总表,也无纸质通知单),故不建计费行——只让他成为「2024-02 的在租户」,水电按表派生",
+   "unitId": null,
+   "extraUnitIds": []
+  },
+  "expect": {
+   "monthlyRent": "5077.80",
+   "rentArea": "158.66",
+   "buildingArea": "126.93",
+   "lineCount": 6
+  },
+  "evidence": "纸约 out/images/一期2023年9月租金/周应佳_1.png(428 2023-08-14~2026-08-13 1908.6/954.3,电梯159,变压器159)、周应佳_2.png(435 1264.6/632.3,电梯「/」);一期2023年9月~2024年2月租金!周应佳 R38-R51(10月起每月5077.8)",
+  "why": "升为真实合同补录;起期 2023-10-01→2023-08-14 把 2023-08 纳入,dev 2023-08 单会加按天折的全价(纸面装修期50%没法建模),人工过目",
+  "reviewFix": [
+   "复查 empty[9]:建 428/435 并绑;收款映射见本文件末尾"
+  ]
+ },
+ {
+  "ref": "P1-44",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 472,
+   "contractNo": "SIM-2402-389",
+   "tenantId": 389
+  },
+  "set": {
+   "startDate": "2020-07-01",
+   "endDate": "2023-04-24",
+   "termText": "合同模拟 2023-01-01~2024-02-29(推定区间,非纸约) | 真实合同补录:纸约2020-07-01~2023-03-31,册面续收至2023-04-24(一期2023年5月租金!道磁 R6)",
+   "remark": "合同模拟:同上(一期C座401,仅一只水表) | 真实合同补录(2026-09-27):纸约道磁_1 C座401 22590/6275/2823.75,电梯150变压器100照册面;303另立SIM-2402-389B;2023-05~2024-02模拟名册随之取消(dev两张单均0元)"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "C座四楼401室",
+     "propertyType": "factory",
+     "feeKey": "rent_factory",
+     "feeName": "厂房租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 18,
+     "area": 1255,
+     "areaShared": 627.5,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "纸约道磁_1 厂房租金22590=1255×18;area_shared=分摊空地627.5(同 P1-04/P1-02 形状)",
+     "unitIds": null,
+     "seq": 0
+    },
+    {
+     "location": "C座四楼401室",
+     "propertyType": "land",
+     "feeKey": "rent_land",
+     "feeName": "空地租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 10,
+     "area": 627.5,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "纸约道磁_1 空地租金6275=627.5×10",
+     "unitIds": null,
+     "seq": 1
+    },
+    {
+     "location": "C座四楼401室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 1.5,
+     "area": 1882.5,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "纸约道磁_1 基础设施2823.75=(1255+627.5)×1.5",
+     "unitIds": null,
+     "seq": 2
+    },
+    {
+     "location": "C座四楼401室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 150,
+     "roomCount": null,
+     "note": "一期2023年4月租金!道磁 R8 电梯维保费150元/月(册面)",
+     "unitIds": null,
+     "seq": 3
+    },
+    {
+     "location": "C座四楼401室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 100,
+     "roomCount": null,
+     "note": "一期2023年4月租金!道磁 R9 变压器100元/月(册面)",
+     "unitIds": null,
+     "seq": 4
+    }
+   ]
+  },
+  "pre": {
+   "contractNo": "SIM-2402-389",
+   "tenantId": 389,
+   "buildingId": 21,
+   "lineCount": 0,
+   "status(存储态,PUT 原样回传)": "active",
+   "startDate": "2023-01-01",
+   "endDate": "2024-02-29",
+   "monthlyRent": "0.00",
+   "rentArea": "0.00",
+   "termText": "合同模拟 2023-01-01~2024-02-29(推定区间,非纸约)",
+   "remark": "合同模拟:同上(一期C座401,仅一只水表)"
+  },
+  "expect": {
+   "monthlyRent": "31938.75",
+   "rentArea": "1255.00",
+   "buildingArea": "1004.00",
+   "lineCount": 5
+  },
+  "evidence": "纸约 out/images/一期2023年4月租金/道磁_1.png(2020.7.01-2023.3.31 厂房22590/空地6275/基础2823.75);一期2023年4月租金!道磁 R6-R9(4月01日至4月15日);一期2023年5月租金!道磁 R6-R9(4月16日至4月24日)",
+  "why": "按册面有纸约→真实合同补录;区间全在 2023-04-24 前,不碰任何已出单月;原模拟区间覆盖的 2023-08/2024-02 两张 0 元单重生成后不再出"
+ },
+ {
+  "ref": "P1-44",
+  "op": "contract.create",
+  "target": {
+   "tenantId": 389,
+   "contractNo": "SIM-2402-389B"
+  },
+  "set": {
+   "contractNo": "SIM-2402-389B",
+   "tenantId": 389,
+   "buildingId": 21,
+   "unitId": null,
+   "extraUnitIds": null,
+   "startDate": "2023-03-16",
+   "endDate": "2023-04-24",
+   "signDate": null,
+   "status": "active",
+   "kva": null,
+   "termType": "explicit",
+   "termText": "合同模拟 2023-03-16~2023-04-24(册面起止,非纸约)",
+   "rentFree": null,
+   "remark": "合同模拟(按册面建行,2026-09-27):C座三楼303室照一期2023年4月租金!道磁 R10-R13(2023-03-16起,按力美原合同标准,截图道磁_2),一期2023年5月租金 R10 止2023-04-24;期界与401不同故另立(R10)"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "C座三楼303室",
+     "propertyType": "factory",
+     "feeKey": "rent_factory",
+     "feeName": "厂房租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 18,
+     "area": 45.6,
+     "areaShared": 22.8,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2023年4月租金!道磁 R10 45.6×18+22.8×10=1048.8",
+     "unitIds": null,
+     "seq": 0
+    },
+    {
+     "location": "C座三楼303室",
+     "propertyType": "land",
+     "feeKey": "rent_land",
+     "feeName": "空地租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 10,
+     "area": 22.8,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2023年4月租金!道磁 R10 分摊空地22.8×10",
+     "unitIds": null,
+     "seq": 1
+    },
+    {
+     "location": "C座三楼303室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 1.5,
+     "area": 68.4,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2023年4月租金!道磁 R11 68.4×1.5=102.6",
+     "unitIds": null,
+     "seq": 2
+    },
+    {
+     "location": "C座三楼303室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159,
+     "roomCount": null,
+     "note": "一期2023年4月租金!道磁 R12 159元/月",
+     "unitIds": null,
+     "seq": 3
+    },
+    {
+     "location": "C座三楼303室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 200,
+     "roomCount": null,
+     "note": "一期2023年4月租金!道磁 R13 200元/月",
+     "unitIds": null,
+     "seq": 4
+    }
+   ]
+  },
+  "pre": {
+   "contractNo 不存在": "SIM-2402-389B"
+  },
+  "expect": {
+   "monthlyRent": "1510.40",
+   "rentArea": "45.60",
+   "buildingArea": "36.48",
+   "lineCount": 5
+  },
+  "evidence": "一期2023年4月租金!道磁 R10-R13(303室 3月16日至4月15日);一期2023年5月租金!道磁 R10-R13(4月16日至4月24日);out/images/一期2023年4月租金/道磁_2.png(聊天截图:三楼按力美原合同开单)",
+  "why": "303 与 401 期界不同,按 R10 各自成段;全在 2023-04 前,不碰出单月"
+ },
+ {
+  "ref": "P2-22",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 462,
+   "contractNo": "SIM-2402-379",
+   "tenantId": 379
+  },
+  "set": {
+   "startDate": "2023-07-01",
+   "endDate": "2024-06-30",
+   "termText": "合同模拟 2023-01-01~2024-02-29(推定区间,非纸约) | 改按册面2023-07-01~2024-06-30(租2307押金起租;租2401门禁2024.01.01-2024.06.30;止期推定待核)",
+   "remark": "合同模拟:同上;⚠本户 parent_id=16(陈曼娜),建合同后家族在租合同 1→2,表→合同归属改走楼栋对位,重生成后核对绑定 | 合同模拟(按册面建行,2026-09-27):一座317/518各36.53×16.9(2024-03册仍16.9)+基础2+网络50/间+门禁100/间/年;321室另立SIM-2402-379B",
+   "unitId": "$u26_317",
+   "extraUnitIds": [
+    "$u26_518"
+   ]
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍楼一座317室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 16.9,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2307!陈曼娜#1 R56-R59 宿舍租金 36.53×16.9",
+     "unitIds": [
+      "$u26_317"
+     ],
+     "seq": 0
+    },
+    {
+     "location": "宿舍楼一座317室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2307!陈曼娜#1 R56-R59 宿舍基础设施 36.53×2",
+     "unitIds": [
+      "$u26_317"
+     ],
+     "seq": 1
+    },
+    {
+     "location": "宿舍楼一座317室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2307!陈曼娜#1 R56-R59 门禁 100元/间/年",
+     "unitIds": [
+      "$u26_317"
+     ],
+     "seq": 2
+    },
+    {
+     "location": "宿舍楼一座317室",
+     "propertyType": "dorm",
+     "feeKey": "network",
+     "feeName": "网络通讯费",
+     "billMode": "per_room_month",
+     "unitPrice": 50,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2307!陈曼娜#1 R56-R59 网络 50元/间/月",
+     "unitIds": [
+      "$u26_317"
+     ],
+     "seq": 3
+    },
+    {
+     "location": "宿舍楼一座518室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 16.9,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2307!陈曼娜#1 R56-R59 宿舍租金 36.53×16.9",
+     "unitIds": [
+      "$u26_518"
+     ],
+     "seq": 4
+    },
+    {
+     "location": "宿舍楼一座518室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2307!陈曼娜#1 R56-R59 宿舍基础设施 36.53×2",
+     "unitIds": [
+      "$u26_518"
+     ],
+     "seq": 5
+    },
+    {
+     "location": "宿舍楼一座518室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2307!陈曼娜#1 R56-R59 门禁 100元/间/年",
+     "unitIds": [
+      "$u26_518"
+     ],
+     "seq": 6
+    },
+    {
+     "location": "宿舍楼一座518室",
+     "propertyType": "dorm",
+     "feeKey": "network",
+     "feeName": "网络通讯费",
+     "billMode": "per_room_month",
+     "unitPrice": 50,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2307!陈曼娜#1 R56-R59 网络 50元/间/月",
+     "unitIds": [
+      "$u26_518"
+     ],
+     "seq": 7
+    }
+   ]
+  },
+  "pre": {
+   "contractNo": "SIM-2402-379",
+   "tenantId": 379,
+   "buildingId": 26,
+   "lineCount": 0,
+   "status(存储态,PUT 原样回传)": "active",
+   "startDate": "2023-01-01",
+   "endDate": "2024-02-29",
+   "monthlyRent": "0.00",
+   "rentArea": "0.00",
+   "termText": "合同模拟 2023-01-01~2024-02-29(推定区间,非纸约)",
+   "remark": "合同模拟:同上;⚠本户 parent_id=16(陈曼娜),建合同后家族在租合同 1→2,表→合同归属改走楼栋对位,重生成后核对绑定",
+   "unitId": null,
+   "extraUnitIds": []
+  },
+  "expect": {
+   "monthlyRent": "1497.50",
+   "rentArea": "0.00",
+   "buildingArea": null,
+   "lineCount": 8
+  },
+  "evidence": "二期2023年7月租金!陈曼娜#1 R56-R61(317、518 73.06㎡×16.9,押金1000/履约保证金4142,门禁2023-07-01~12-31);二期2024年01月租金!陈曼娜#1 R55-R58(门禁2024.01.01-2024.06.30);二期2024年03月租金!陈曼娜#1 仍16.9;水2308!陈曼娜 317/518 各36.53",
+  "why": "模拟合同按册面建行;起期 2023-01-01→2023-07-01(押金=新起租,2023-08 单仍覆盖),止期按门禁期延到 2024-06-30(=P2-22 修法)",
+  "reviewFix": [
+   "复查 empty[12]:建 317/518 并绑"
+  ]
+ },
+ {
+  "ref": "P2-22",
+  "op": "contract.create",
+  "target": {
+   "tenantId": 379,
+   "contractNo": "SIM-2402-379B"
+  },
+  "set": {
+   "contractNo": "SIM-2402-379B",
+   "tenantId": 379,
+   "buildingId": 26,
+   "unitId": "$u26_321",
+   "extraUnitIds": null,
+   "startDate": "2023-09-19",
+   "endDate": "2023-12-31",
+   "signDate": null,
+   "status": "active",
+   "kva": null,
+   "termType": "explicit",
+   "termText": "合同模拟 2023-09-19~2023-12-31(册面起止,非纸约)",
+   "rentFree": null,
+   "remark": "合同模拟(按册面建行,2026-09-27):一座321室35.53×16.9照租2309!陈曼娜#2 R74-R79(9月19日起,门禁至12-31,履约保证金2015);2024-01册起无321;期界与317/518不同故另立(R10)"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍楼一座321室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 16.9,
+     "area": 35.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2309!陈曼娜#2 R74-R77 宿舍租金 35.53×16.9",
+     "unitIds": [
+      "$u26_321"
+     ],
+     "seq": 0
+    },
+    {
+     "location": "宿舍楼一座321室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 35.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "租2309!陈曼娜#2 R74-R77 宿舍基础设施 35.53×2",
+     "unitIds": [
+      "$u26_321"
+     ],
+     "seq": 1
+    },
+    {
+     "location": "宿舍楼一座321室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2309!陈曼娜#2 R74-R77 门禁 100元/间/年",
+     "unitIds": [
+      "$u26_321"
+     ],
+     "seq": 2
+    },
+    {
+     "location": "宿舍楼一座321室",
+     "propertyType": "dorm",
+     "feeKey": "network",
+     "feeName": "网络通讯费",
+     "billMode": "per_room_month",
+     "unitPrice": 50,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "租2309!陈曼娜#2 R74-R77 网络 50元/间/月",
+     "unitIds": [
+      "$u26_321"
+     ],
+     "seq": 3
+    }
+   ]
+  },
+  "pre": {
+   "contractNo 不存在": "SIM-2402-379B"
+  },
+  "expect": {
+   "monthlyRent": "729.85",
+   "rentArea": "0.00",
+   "buildingArea": null,
+   "lineCount": 4
+  },
+  "evidence": "二期2023年9月租金!陈曼娜#2 R74-R79;二期2023年10~12月租金!陈曼娜#1 R59-R62(321 每月600.46);二期2024年01月租金!陈曼娜#1 无321",
+  "why": "321 与 317/518 期界不同,按 R10 另立;覆盖 2023-10(dev 已出单月)",
+  "reviewFix": [
+   "复查 empty[13]:建 321 并绑"
+  ]
+ },
+ {
+  "ref": "P2-23",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 463,
+   "contractNo": "SIM-2402-380",
+   "tenantId": 380
+  },
+  "set": {
+   "startDate": "2023-10-20",
+   "endDate": "2024-10-19",
+   "termText": "合同模拟 2023-01-01~2024-02-29(推定区间,非纸约) | 改按册面2023-10-20~2024-10-19(门禁期,一期2023年10月租金!文广宿舍 R41)",
+   "remark": "合同模拟:同上 | 合同模拟(按册面建行,2026-09-27):四座534(32.01)/542(36.53)×19+基础2+网络50/间+门禁100/间/年;2023-12起改在二期苏明东sheet开单",
+   "unitId": "$u29_534",
+   "extraUnitIds": [
+    "$u29_542"
+   ]
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍楼四座534室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 19,
+     "area": 32.01,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2023年10月租金!文广宿舍 R38-R41 宿舍租金 32.01×19",
+     "unitIds": [
+      "$u29_534"
+     ],
+     "seq": 0
+    },
+    {
+     "location": "宿舍楼四座534室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 32.01,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2023年10月租金!文广宿舍 R38-R41 宿舍基础设施 32.01×2",
+     "unitIds": [
+      "$u29_534"
+     ],
+     "seq": 1
+    },
+    {
+     "location": "宿舍楼四座534室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "一期2023年10月租金!文广宿舍 R38-R41 门禁 100元/间/年",
+     "unitIds": [
+      "$u29_534"
+     ],
+     "seq": 2
+    },
+    {
+     "location": "宿舍楼四座534室",
+     "propertyType": "dorm",
+     "feeKey": "network",
+     "feeName": "网络通讯费",
+     "billMode": "per_room_month",
+     "unitPrice": 50,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "一期2023年10月租金!文广宿舍 R38-R41 网络 50元/间/月",
+     "unitIds": [
+      "$u29_534"
+     ],
+     "seq": 3
+    },
+    {
+     "location": "宿舍楼四座542室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 19,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2023年10月租金!文广宿舍 R38-R41 宿舍租金 36.53×19",
+     "unitIds": [
+      "$u29_542"
+     ],
+     "seq": 4
+    },
+    {
+     "location": "宿舍楼四座542室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2023年10月租金!文广宿舍 R38-R41 宿舍基础设施 36.53×2",
+     "unitIds": [
+      "$u29_542"
+     ],
+     "seq": 5
+    },
+    {
+     "location": "宿舍楼四座542室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "一期2023年10月租金!文广宿舍 R38-R41 门禁 100元/间/年",
+     "unitIds": [
+      "$u29_542"
+     ],
+     "seq": 6
+    },
+    {
+     "location": "宿舍楼四座542室",
+     "propertyType": "dorm",
+     "feeKey": "network",
+     "feeName": "网络通讯费",
+     "billMode": "per_room_month",
+     "unitPrice": 50,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "一期2023年10月租金!文广宿舍 R38-R41 网络 50元/间/月",
+     "unitIds": [
+      "$u29_542"
+     ],
+     "seq": 7
+    }
+   ]
+  },
+  "pre": {
+   "contractNo": "SIM-2402-380",
+   "tenantId": 380,
+   "buildingId": 29,
+   "lineCount": 0,
+   "status(存储态,PUT 原样回传)": "active",
+   "startDate": "2023-01-01",
+   "endDate": "2024-02-29",
+   "monthlyRent": "0.00",
+   "rentArea": "0.00",
+   "termText": "合同模拟 2023-01-01~2024-02-29(推定区间,非纸约)",
+   "remark": "合同模拟:同上",
+   "unitId": null,
+   "extraUnitIds": []
+  },
+  "expect": {
+   "monthlyRent": "1556.00",
+   "rentArea": "0.00",
+   "buildingArea": null,
+   "lineCount": 8
+  },
+  "evidence": "一期2023年10月租金!文广宿舍 R38-R43(2023年10月20日起,门禁2023-10-20至2024-10-19,押金1000/履约保证金4318);二期2023年12月~2024年3月租金!苏明东#1 R58-R61;水电册 534=32.01、542=36.53",
+  "why": "模拟合同按册面建行;起期 2023-01-01→2023-10-20(押金=新起租;原「起点不动」是无行时的说法,有行后不挪会多收 2023-01~10 租金);止期=门禁期末(=P2-23)。dev 2023-08 那张 0 元单重生成后不再出",
+  "reviewFix": [
+   "复查 empty[14]:建 534/542 并绑"
+  ]
+ },
+ {
+  "ref": "P1-55 相邻 / 私人短租宿舍",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 464,
+   "contractNo": "SIM-2402-381",
+   "tenantId": 381
+  },
+  "set": {
+   "startDate": "2023-10-18",
+   "termText": "合同模拟 2023-01-01~2024-02-29(推定区间,非纸约) | 改按册面2023-10-18~2024-01-31(12月单2023.12.18-2024.01.31;2024-02水电册无通知单,宿舍电R213有用量55.8kWh)",
+   "remark": "合同模拟:同上 | 合同模拟(按册面建行,2026-09-27):四座238×19+基础2+门禁100/间/年;网络册面0元不建;242室另立SIM-2402-381B",
+   "unitId": "$u29_238",
+   "extraUnitIds": null,
+   "endDate": "2024-01-31"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍楼四座238室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 19,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2023年10月租金!私人短租宿舍#1 R57-R60 宿舍租金 36.53×19",
+     "unitIds": [
+      "$u29_238"
+     ],
+     "seq": 0
+    },
+    {
+     "location": "宿舍楼四座238室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2023年10月租金!私人短租宿舍#1 R57-R60 宿舍基础设施 36.53×2",
+     "unitIds": [
+      "$u29_238"
+     ],
+     "seq": 1
+    },
+    {
+     "location": "宿舍楼四座238室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "一期2023年10月租金!私人短租宿舍#1 R57-R60 门禁 100元/间/年",
+     "unitIds": [
+      "$u29_238"
+     ],
+     "seq": 2
+    }
+   ]
+  },
+  "pre": {
+   "contractNo": "SIM-2402-381",
+   "tenantId": 381,
+   "buildingId": 29,
+   "lineCount": 0,
+   "status(存储态,PUT 原样回传)": "active",
+   "startDate": "2023-01-01",
+   "endDate": "2024-02-29",
+   "monthlyRent": "0.00",
+   "rentArea": "0.00",
+   "termText": "合同模拟 2023-01-01~2024-02-29(推定区间,非纸约)",
+   "remark": "合同模拟:同上",
+   "unitId": null,
+   "extraUnitIds": []
+  },
+  "expect": {
+   "monthlyRent": "775.46",
+   "rentArea": "0.00",
+   "buildingArea": null,
+   "lineCount": 3
+  },
+  "evidence": "一期2023年10月租金!私人短租宿舍#1 R57-R61(238、242 2023.10.18-2023.12.17,押金1000);一期2023年12月租金!私人短租宿舍#1 R57-R60(只剩238,2023.12.18-2024.01.31);网络费两张单金额都是0;止期依据(2026-09-27 复核):一期2024年2月水电费.xlsx(106页)与二期2024年2月水电费.xlsx(68页,version 2 副本同)逐格搜过,没有给朱海勇(私人短租)出的通知单页,两本的一期租户水电费总表/二期租户水电费总表也没有该户行;名字只出现在抄表页 宿舍电!E213(4-238 上月6904 本月6959.8 用量55.8)、E217(4-242 用量1.9)、宿舍水!E177/E181(用量0)。238 室的 2 月电表读数另抄进隐藏页「工程队宿舍（陈道文）」C5:J5(抬头 B3「租户名称：工程方」、B2「计费期限：2023年08月」,是旧模板,不进总表),不是给朱海勇的单",
+  "why": "模拟合同按册面建行;起期 2023-01-01→2023-10-18,dev 2023-08 该户 4.22 元水电单重生成后不再出(人工过目);止期按 decisions「看 2024-02 水电费册有没有给这户出单,没有就截到 2024-01-31」截到 2024-01-31(2024-02 两本水电册都没给朱海勇出单,见 evidence),dev 2024-02 那张 45.92 水电单重生成后不再出",
+  "reviewFix": [
+   "复查 empty[15]:按 decisions 规则止期截到 2024-01-31(2024-02 水电册无通知单);建 238 并绑。有抄表用量,线上前请用户再确认",
+   "2026-09-27 复核止期:2024-02 一期/二期水电费册无朱海勇通知单(依据格见 evidence),保持 2024-01-31"
+  ]
+ },
+ {
+  "ref": "私人短租宿舍",
+  "op": "contract.create",
+  "target": {
+   "tenantId": 381,
+   "contractNo": "SIM-2402-381B"
+  },
+  "set": {
+   "contractNo": "SIM-2402-381B",
+   "tenantId": 381,
+   "buildingId": 29,
+   "unitId": "$u29_242",
+   "extraUnitIds": null,
+   "startDate": "2023-10-18",
+   "endDate": "2023-12-17",
+   "signDate": null,
+   "status": "active",
+   "kva": null,
+   "termType": "explicit",
+   "termText": "合同模拟 2023-10-18~2023-12-17(册面起止,非纸约)",
+   "rentFree": null,
+   "remark": "合同模拟(按册面建行,2026-09-27):四座242室×19+基础2+门禁照一期2023年10月租金!私人短租宿舍#1 R57-R60(238、242 2023.10.18-2023.12.17),12月单起只剩238;期界不同故另立(R10)"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍楼四座242室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 19,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2023年10月租金!私人短租宿舍#1 R57-R60 宿舍租金 36.53×19",
+     "unitIds": [
+      "$u29_242"
+     ],
+     "seq": 0
+    },
+    {
+     "location": "宿舍楼四座242室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2023年10月租金!私人短租宿舍#1 R57-R60 宿舍基础设施 36.53×2",
+     "unitIds": [
+      "$u29_242"
+     ],
+     "seq": 1
+    },
+    {
+     "location": "宿舍楼四座242室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "一期2023年10月租金!私人短租宿舍#1 R57-R60 门禁 100元/间/年",
+     "unitIds": [
+      "$u29_242"
+     ],
+     "seq": 2
+    }
+   ]
+  },
+  "pre": {
+   "contractNo 不存在": "SIM-2402-381B"
+  },
+  "expect": {
+   "monthlyRent": "775.46",
+   "rentArea": "0.00",
+   "buildingArea": null,
+   "lineCount": 3
+  },
+  "evidence": "一期2023年10月租金!私人短租宿舍#1 R57-R61;一期2023年12月租金!私人短租宿舍#1 R57(只剩238室)",
+  "why": "242 只到 2023-12-17,与 238 期界不同,按 R10 另立",
+  "reviewFix": [
+   "复查 empty[16]:建 242 并绑"
+  ]
+ },
+ {
+  "ref": "私人短租宿舍",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 465,
+   "contractNo": "SIM-2402-382",
+   "tenantId": 382
+  },
+  "set": {
+   "startDate": "2023-11-06",
+   "endDate": "2023-12-31",
+   "termText": "合同模拟 2023-01-01~2024-02-29(推定区间,非纸约) | 改按册面2023-11-06~2023-12-31(2024-01~03册仍抄12月单,水电册也只到2023年11-12月)待核",
+   "remark": "合同模拟:同上(账外户 offbook=1) | 合同模拟(按册面建行,2026-09-27):四座240×19+基础2+门禁100/间/年;网络册面0元不建",
+   "unitId": "$u29_240",
+   "extraUnitIds": null
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍楼四座240室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 19,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2023年11月租金!私人短租宿舍#3 R95-R98 宿舍租金 36.53×19",
+     "unitIds": [
+      "$u29_240"
+     ],
+     "seq": 0
+    },
+    {
+     "location": "宿舍楼四座240室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2023年11月租金!私人短租宿舍#3 R95-R98 宿舍基础设施 36.53×2",
+     "unitIds": [
+      "$u29_240"
+     ],
+     "seq": 1
+    },
+    {
+     "location": "宿舍楼四座240室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "一期2023年11月租金!私人短租宿舍#3 R95-R98 门禁 100元/间/年",
+     "unitIds": [
+      "$u29_240"
+     ],
+     "seq": 2
+    }
+   ]
+  },
+  "pre": {
+   "contractNo": "SIM-2402-382",
+   "tenantId": 382,
+   "buildingId": 29,
+   "lineCount": 0,
+   "status(存储态,PUT 原样回传)": "active",
+   "startDate": "2023-01-01",
+   "endDate": "2024-02-29",
+   "monthlyRent": "0.00",
+   "rentArea": "0.00",
+   "termText": "合同模拟 2023-01-01~2024-02-29(推定区间,非纸约)",
+   "remark": "合同模拟:同上(账外户 offbook=1)",
+   "unitId": null,
+   "extraUnitIds": []
+  },
+  "expect": {
+   "monthlyRent": "775.46",
+   "rentArea": "0.00",
+   "buildingArea": null,
+   "lineCount": 3
+  },
+  "evidence": "一期2023年11月租金!私人短租宿舍#3 R95-R99(2023.11.06-11.30,押金500);一期2023年12月租金!私人短租宿舍#3 R94-R97(2023.12.01-12.31);一期2024年1月/2月水电费!王伍平宿舍 计费期限「2023年11-12月」",
+  "why": "模拟合同按册面建行;offbook=1 账外户。dev 无该户任何单,改区间不丢单",
+  "reviewFix": [
+   "复查 empty[17]:建 240 并绑"
+  ]
+ },
+ {
+  "ref": "私人短租宿舍",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 466,
+   "contractNo": "SIM-2402-383",
+   "tenantId": 383
+  },
+  "set": {
+   "startDate": "2024-01-01",
+   "termText": "合同模拟 2023-01-01~2024-02-29(推定区间,非纸约) | 改按册面2024-01-01~2024-01-31(2024-02水电册无通知单,宿舍电R308有用量288kWh)",
+   "remark": "合同模拟:同上 | 合同模拟(按册面建行,2026-09-27):四座552(36.41)×19+基础2+门禁100/间/年;网络册面0元不建",
+   "unitId": "$u29_552",
+   "extraUnitIds": null,
+   "endDate": "2024-01-31"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍楼四座552室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 19,
+     "area": 36.41,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2023年12月租金!私人短租宿舍#4 R113-R116 宿舍租金 36.41×19",
+     "unitIds": [
+      "$u29_552"
+     ],
+     "seq": 0
+    },
+    {
+     "location": "宿舍楼四座552室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 36.41,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2023年12月租金!私人短租宿舍#4 R113-R116 宿舍基础设施 36.41×2",
+     "unitIds": [
+      "$u29_552"
+     ],
+     "seq": 1
+    },
+    {
+     "location": "宿舍楼四座552室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "一期2023年12月租金!私人短租宿舍#4 R113-R116 门禁 100元/间/年",
+     "unitIds": [
+      "$u29_552"
+     ],
+     "seq": 2
+    }
+   ]
+  },
+  "pre": {
+   "contractNo": "SIM-2402-383",
+   "tenantId": 383,
+   "buildingId": 29,
+   "lineCount": 0,
+   "status(存储态,PUT 原样回传)": "active",
+   "startDate": "2023-01-01",
+   "endDate": "2024-02-29",
+   "monthlyRent": "0.00",
+   "rentArea": "0.00",
+   "termText": "合同模拟 2023-01-01~2024-02-29(推定区间,非纸约)",
+   "remark": "合同模拟:同上",
+   "unitId": null,
+   "extraUnitIds": []
+  },
+  "expect": {
+   "monthlyRent": "772.94",
+   "rentArea": "0.00",
+   "buildingArea": null,
+   "lineCount": 3
+  },
+  "evidence": "一期2023年12月租金!私人短租宿舍#4 R113-R117(2024年01月01日至01月31日,押金500);2024-01~03 册为同一张单的副本(连押金行一起抄);止期依据(2026-09-27 复核):一期2024年2月水电费.xlsx(106页)与二期2024年2月水电费.xlsx(68页,version 2 副本同)逐格搜过,没有给张永根(私人短租)出的通知单页,两本的一期租户水电费总表/二期租户水电费总表也没有该户行;名字只出现在抄表页 宿舍电!E308(5-552 上月280 本月568 用量288)、宿舍水!E269(用量0);没有任何通知单页带 552 室",
+  "why": "模拟合同按册面建行;起期 2023-01-01→2024-01-01,dev 2023-08 该户 5.57 元水电单重生成后不再出(人工过目);止期按 decisions 截到 2024-01-31(2024-02 两本水电册都没给张永根出单,见 evidence),dev 2024-02 那张 229.21 水电单重生成后不再出",
+  "reviewFix": [
+   "复查 empty[18]:按 decisions 规则止期截到 2024-01-31;建 552 并绑。有抄表用量,线上前请用户再确认",
+   "2026-09-27 复核止期:2024-02 一期/二期水电费册无张永根通知单(依据格见 evidence),保持 2024-01-31"
+  ]
+ },
+ {
+  "ref": "私人短租宿舍",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 467,
+   "contractNo": "SIM-2402-384",
+   "tenantId": 384
+  },
+  "set": {
+   "startDate": "2024-01-17",
+   "endDate": "2024-02-16",
+   "termText": "合同模拟 2023-01-01~2024-02-29(推定区间,非纸约) | 改按册面2024-01-17~2024-02-16(一期2024年1月租金!私人短租宿舍 R155)",
+   "remark": "合同模拟:同上 | 合同模拟(按册面建行,2026-09-27):四座329(31.05)×19+基础2+门禁100/间/年;网络册面0元不建",
+   "unitId": "$u29_329",
+   "extraUnitIds": null
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍楼四座329室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 19,
+     "area": 31.05,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2024年1月租金!私人短租宿舍#6 R155-R158 宿舍租金 31.05×19",
+     "unitIds": [
+      "$u29_329"
+     ],
+     "seq": 0
+    },
+    {
+     "location": "宿舍楼四座329室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 31.05,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2024年1月租金!私人短租宿舍#6 R155-R158 宿舍基础设施 31.05×2",
+     "unitIds": [
+      "$u29_329"
+     ],
+     "seq": 1
+    },
+    {
+     "location": "宿舍楼四座329室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "一期2024年1月租金!私人短租宿舍#6 R155-R158 门禁 100元/间/年",
+     "unitIds": [
+      "$u29_329"
+     ],
+     "seq": 2
+    }
+   ]
+  },
+  "pre": {
+   "contractNo": "SIM-2402-384",
+   "tenantId": 384,
+   "buildingId": 29,
+   "lineCount": 0,
+   "status(存储态,PUT 原样回传)": "active",
+   "startDate": "2023-01-01",
+   "endDate": "2024-02-29",
+   "monthlyRent": "0.00",
+   "rentArea": "0.00",
+   "termText": "合同模拟 2023-01-01~2024-02-29(推定区间,非纸约)",
+   "remark": "合同模拟:同上",
+   "unitId": null,
+   "extraUnitIds": []
+  },
+  "expect": {
+   "monthlyRent": "660.38",
+   "rentArea": "0.00",
+   "buildingArea": null,
+   "lineCount": 3
+  },
+  "evidence": "一期2024年1月租金!私人短租宿舍#6 R155-R159(2024年01月17日至2024年02月16日,押金500);2024-02/03 册为副本",
+  "why": "模拟合同按册面建行;dev 无该户任何单",
+  "reviewFix": [
+   "复查 empty[19]:建 329 并绑"
+  ]
+ },
+ {
+  "ref": "私人短租宿舍",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 236,
+   "contractNo": "S10-0236",
+   "tenantId": 77
+  },
+  "set": {
+   "startDate": "2024-02-29",
+   "endDate": "2024-05-28",
+   "termText": "合同模拟 2023-01-01~2024-02-29(推定区间,非纸约) | 改按册面2024-02-29~2024-05-28(一期2024年3月租金!私人短租宿舍 R199)",
+   "remark": "由附表10归属派生(月租=最新非零月值) | 合同模拟(2026-08-09 补:2024-02 有单无在租合同,补 2023-01~2024-02 模拟区间,起止均非纸约) | 合同模拟(按册面建行,2026-09-27):一座606(31.05)×19+基础2+门禁100/间/年;网络册面0元不建;改挂宿舍一栋606",
+   "unitId": "$u26_606",
+   "extraUnitIds": null,
+   "buildingId": 26
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍楼一座606室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 19,
+     "area": 31.05,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2024年3月租金!私人短租宿舍#8 R199-R202 宿舍租金 31.05×19",
+     "unitIds": [
+      "$u26_606"
+     ],
+     "seq": 0
+    },
+    {
+     "location": "宿舍楼一座606室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 31.05,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2024年3月租金!私人短租宿舍#8 R199-R202 宿舍基础设施 31.05×2",
+     "unitIds": [
+      "$u26_606"
+     ],
+     "seq": 1
+    },
+    {
+     "location": "宿舍楼一座606室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "一期2024年3月租金!私人短租宿舍#8 R199-R202 门禁 100元/间/年",
+     "unitIds": [
+      "$u26_606"
+     ],
+     "seq": 2
+    }
+   ]
+  },
+  "pre": {
+   "contractNo": "S10-0236",
+   "tenantId": 77,
+   "buildingId": 18,
+   "lineCount": 0,
+   "status(存储态,PUT 原样回传)": "active",
+   "startDate": "2023-01-01",
+   "endDate": "2024-02-29",
+   "monthlyRent": "0.00",
+   "rentArea": "0.00",
+   "termText": "合同模拟 2023-01-01~2024-02-29(推定区间,非纸约)",
+   "remark": "由附表10归属派生(月租=最新非零月值) | 合同模拟(2026-08-09 补:2024-02 有单无在租合同,补 2023-01~2024-02 模拟区间,起止均非纸约)",
+   "unitId": null,
+   "extraUnitIds": []
+  },
+  "expect": {
+   "monthlyRent": "660.38",
+   "rentArea": "0.00",
+   "buildingArea": null,
+   "lineCount": 3
+  },
+  "evidence": "一期2024年3月租金!私人短租宿舍#8 R199-R203(2024年02月29日至2024年05月28日,押金500)",
+  "why": "0 行合同按册面建行;原模拟区间 2023-01-01~2024-02-29 与册面租期只重叠 1 天,改成册面租期;dev 无该户任何单",
+  "reviewFix": [
+   "复查 empty[20]:按 decisions 改挂楼栋 26,建 606 为主单元"
+  ]
+ },
+ {
+  "ref": "私人短租宿舍",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 240,
+   "contractNo": "S10-0240",
+   "tenantId": 81
+  },
+  "set": {
+   "startDate": "2024-03-16",
+   "endDate": "2024-05-15",
+   "termText": "合同模拟 2023-01-01~2024-02-29(推定区间,非纸约) | 改按册面2024-03-16~2024-05-15(一期2024年3月租金!私人短租宿舍 标题R236)",
+   "remark": "由附表10归属派生(月租=最新非零月值) | 合同模拟(2026-08-09 补:2024-02 有单无在租合同,补 2023-01~2024-02 模拟区间,起止均非纸约) | 合同模拟(按册面建行,2026-09-27):四座248(44.2)/247(36.53)/243(36.09)×19+基础2+门禁100/间/年;网络册面0元不建;改挂宿舍四栋248/247/243",
+   "unitId": "$u29_248",
+   "extraUnitIds": [
+    "$u29_247",
+    "$u29_243"
+   ],
+   "buildingId": 29
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍楼四座248室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 19,
+     "area": 44.2,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2024年3月租金!私人短租宿舍#10 R240-R251 宿舍租金 44.2×19",
+     "unitIds": [
+      "$u29_248"
+     ],
+     "seq": 0
+    },
+    {
+     "location": "宿舍楼四座248室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 44.2,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2024年3月租金!私人短租宿舍#10 R240-R251 宿舍基础设施 44.2×2",
+     "unitIds": [
+      "$u29_248"
+     ],
+     "seq": 1
+    },
+    {
+     "location": "宿舍楼四座248室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "一期2024年3月租金!私人短租宿舍#10 R240-R251 门禁 100元/间/年",
+     "unitIds": [
+      "$u29_248"
+     ],
+     "seq": 2
+    },
+    {
+     "location": "宿舍楼四座247室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 19,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2024年3月租金!私人短租宿舍#10 R240-R251 宿舍租金 36.53×19",
+     "unitIds": [
+      "$u29_247"
+     ],
+     "seq": 3
+    },
+    {
+     "location": "宿舍楼四座247室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 36.53,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2024年3月租金!私人短租宿舍#10 R240-R251 宿舍基础设施 36.53×2",
+     "unitIds": [
+      "$u29_247"
+     ],
+     "seq": 4
+    },
+    {
+     "location": "宿舍楼四座247室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "一期2024年3月租金!私人短租宿舍#10 R240-R251 门禁 100元/间/年",
+     "unitIds": [
+      "$u29_247"
+     ],
+     "seq": 5
+    },
+    {
+     "location": "宿舍楼四座243室",
+     "propertyType": "dorm",
+     "feeKey": "rent_dorm",
+     "feeName": "宿舍租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 19,
+     "area": 36.09,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2024年3月租金!私人短租宿舍#10 R240-R251 宿舍租金 36.09×19",
+     "unitIds": [
+      "$u29_243"
+     ],
+     "seq": 6
+    },
+    {
+     "location": "宿舍楼四座243室",
+     "propertyType": "dorm",
+     "feeKey": "infra",
+     "feeName": "宿舍基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2,
+     "area": 36.09,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": null,
+     "note": "一期2024年3月租金!私人短租宿舍#10 R240-R251 宿舍基础设施 36.09×2",
+     "unitIds": [
+      "$u29_243"
+     ],
+     "seq": 7
+    },
+    {
+     "location": "宿舍楼四座243室",
+     "propertyType": "dorm",
+     "feeKey": "access",
+     "feeName": "门禁设施维护费",
+     "billMode": "per_room_year",
+     "unitPrice": 100,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "roomCount": 1,
+     "note": "一期2024年3月租金!私人短租宿舍#10 R240-R251 门禁 100元/间/年",
+     "unitIds": [
+      "$u29_243"
+     ],
+     "seq": 8
+    }
+   ]
+  },
+  "pre": {
+   "contractNo": "S10-0240",
+   "tenantId": 81,
+   "buildingId": 18,
+   "lineCount": 0,
+   "status(存储态,PUT 原样回传)": "active",
+   "startDate": "2023-01-01",
+   "endDate": "2024-02-29",
+   "monthlyRent": "296.87",
+   "rentArea": "0.00",
+   "termText": "合同模拟 2023-01-01~2024-02-29(推定区间,非纸约)",
+   "remark": "由附表10归属派生(月租=最新非零月值) | 合同模拟(2026-08-09 补:2024-02 有单无在租合同,补 2023-01~2024-02 模拟区间,起止均非纸约)",
+   "unitId": null,
+   "extraUnitIds": []
+  },
+  "expect": {
+   "monthlyRent": "2478.21",
+   "rentArea": "0.00",
+   "buildingArea": null,
+   "lineCount": 9
+  },
+  "evidence": "一期2024年3月租金!私人短租宿舍#10 标题R236「2024年03月16日起至2024年05月15日」,R240-R252(三间,押金1500);两月合计4956.42=月2478.21×2",
+  "why": "0 行合同按册面建行;原模拟区间与册面租期不重叠,改成册面租期;dev 无该户任何单",
+  "reviewFix": [
+   "复查 empty[21]:按 decisions 改挂楼栋 29,建 248/247/243"
+  ]
+ },
+ {
+  "ref": "P1-41 复查 empty[7] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 392,
+   "feeKey": "officeRent"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 392,
+    "feeKey": "officeRent",
+    "companyId": 1
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(392,officeRent) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(392,officeRent)→1"
+  },
+  "evidence": "黄路生办公室单落款创显(signers.py 7 张)",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-41 复查 empty[7] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 392,
+   "feeKey": "officeMgmtFee"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 392,
+    "feeKey": "officeMgmtFee",
+    "companyId": 1
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(392,officeMgmtFee) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(392,officeMgmtFee)→1"
+  },
+  "evidence": "黄路生办公室单落款创显(signers.py 7 张)",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-42 复查 empty[9] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 393,
+   "feeKey": "officeRent"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 393,
+    "feeKey": "officeRent",
+    "companyId": 1
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(393,officeRent) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(393,officeRent)→1"
+  },
+  "evidence": "一期2023年9月租金!周应佳 R38 落款创显(signers.py 14 张)",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-42 复查 empty[9] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 393,
+   "feeKey": "officeMgmtFee"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 393,
+    "feeKey": "officeMgmtFee",
+    "companyId": 1
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(393,officeMgmtFee) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(393,officeMgmtFee)→1"
+  },
+  "evidence": "一期2023年9月租金!周应佳 R38 落款创显(signers.py 14 张)",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-42 复查 empty[9] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 393,
+   "feeKey": "elevatorMaint"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 393,
+    "feeKey": "elevatorMaint",
+    "companyId": 1
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(393,elevatorMaint) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(393,elevatorMaint)→1"
+  },
+  "evidence": "一期2023年9月租金!周应佳 R38 落款创显(signers.py 14 张)",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-42 复查 empty[9] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 393,
+   "feeKey": "transformerMaint"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 393,
+    "feeKey": "transformerMaint",
+    "companyId": 1
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(393,transformerMaint) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(393,transformerMaint)→1"
+  },
+  "evidence": "一期2023年9月租金!周应佳 R38 落款创显(signers.py 14 张)",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ }
+]

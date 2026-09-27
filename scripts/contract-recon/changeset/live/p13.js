@@ -1,0 +1,10 @@
+if(window.__cx.exe!=="b1cd5b72")throw new Error("执行器(chunk01)不是这一版:"+window.__cx.exe+" ≠ b1cd5b72,先贴这次打包的 chunk01");
+if(window.__cxd[2].length!==50218)throw new Error("段2长度不对:"+window.__cxd[2].length);
+if(window.__cxd[3].length!==51708)throw new Error("段3长度不对:"+window.__cxd[3].length);
+if(window.__cxd[4].length!==49893)throw new Error("段4长度不对:"+window.__cxd[4].length);
+if(window.__cxd[5].length!==31778)throw new Error("段5长度不对:"+window.__cxd[5].length);
+window.__cx.add(2,JSON.parse(window.__cxd[2]));
+window.__cx.add(3,JSON.parse(window.__cxd[3]));
+window.__cx.add(4,JSON.parse(window.__cxd[4]));
+window.__cx.add(5,JSON.parse(window.__cxd[5]));
+window.__cx.seal(5,183,"d9cb324f");

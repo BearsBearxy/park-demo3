@@ -1,0 +1,336 @@
+[
+  {
+    "ref": "P1-06",
+    "op": "tenant.patch",
+    "target": {
+      "tenantId": 114
+    },
+    "set": {
+      "aliases": "欧培仪"
+    },
+    "evidence": "表 275/449/450 档案户名「欧培仪/雷莱」挂 114；台账 27 行、附表10 7 行都在 114；报告 P1-06、§4.1",
+    "why": "欧培仪与雷莱是同一户，并到 114，把伪档名写进别名。PUT /api/tenants/114 是全量语义：先 GET 取回全部字段，只改 aliases（现为 null）",
+    "pre": {
+      "aliases": null,
+      "remark": "由真实数据迁移自动创建"
+    },
+    "append": {
+      "remark": "并户(2026-09-27):欧培仪(364)并入;原档备注「2024-03汇总补档·已退租历史租户」"
+    },
+    "reviewFix": [
+      "复查 merge[10]:364 原 remark 要点追加到 114;aliases 现值进硬门"
+    ]
+  },
+  {
+    "ref": "P1-06",
+    "op": "contract.patch",
+    "target": {
+      "contractId": 386
+    },
+    "set": {
+      "tenantId": 114,
+      "remark": "并户(2026-09-27):租户由欧培仪(364)改挂雷莱(114),表计/台账原在114;厂房租金按纸约欧培仪_1月额51200改per_month(2700×19=51300,单价面积留作出处);纸约第二段2025-01-01~2026-12-31(56320/7425/4455)未拆段,待建递增段"
+    },
+    "lines": {
+      "remove": [
+        7371
+      ],
+      "update": [],
+      "add": [
+        {
+          "location": "B座301室",
+          "propertyType": "factory",
+          "feeKey": "rent_factory",
+          "feeName": "厂房租金",
+          "billMode": "per_month",
+          "unitPrice": 19,
+          "area": 2700,
+          "areaShared": 675,
+          "coeff": 1,
+          "taxRate": null,
+          "amountOverride": 51200,
+          "seq": 0,
+          "note": "纸约欧培仪_1表内费用2022-01-01~2024-12-31厂房租金51200/月;2700×19=51300≠纸面,按R05改per_month,单价面积留作出处(替换L7371)"
+        }
+      ]
+    },
+    "evidence": "scripts/contract-recon/out/images/一期2023年11月租金/欧培仪_1.png（表内费用：2022-01-01~2024-12-31 为 51200/6750/4050，合计 62000）；一期2024年2月租金!欧培仪 R37=51200、R38=6750、R39=4050、R40~R42=300/150/350（合计 62800）；报告 P1-06",
+    "why": "前置：GET /api/contracts/386 的 tenantId=364，L7371 为 per_sqm_month 19×2700。合同挂到 114，并把 L7371 改成纸面月额 51200（R05）。remark 原为 null，直接写入。PUT 会整组替换计费行：7372~7376 带原 id 原值回传（保留 import），L7371 不回传，改为新增一行（source 记 manual，符合 R08）。新行的 location/feeKey/area 与旧行一致，按键回挂会接走旧绑定单元 626，所以 unitIds 传 null。extraUnitIds 也传 null。改后月租 62,900→62,800，rent_area 仍为 2700",
+    "pre": {
+      "tenantId": 364,
+      "remark": null,
+      "lineIds": [
+        7371,
+        7372,
+        7373,
+        7374,
+        7375,
+        7376
+      ],
+      "lines": {
+        "7371": {
+          "feeKey": "rent_factory",
+          "billMode": "per_sqm_month",
+          "unitPrice": "19",
+          "area": "2700",
+          "areaShared": "675"
+        }
+      }
+    },
+    "expect": {
+      "tenantId": 114,
+      "monthlyRent": "62800.00",
+      "rentArea": "2700.00",
+      "lineCount": 6,
+      "unitPrice": "10.0000"
+    },
+    "reviewFix": [
+      "复查 merge[1]:硬门 tenantId=364 且 L7371=19×2700;expect 记下 unit_price 缓存会变成 10(空地行),列 questions"
+    ]
+  },
+  {
+    "ref": "P1-06 复查 merge[1] 收款映射",
+    "op": "other",
+    "target": {
+      "tenantId": 114,
+      "feeKey": "landRent"
+    },
+    "body": {
+      "method": "PUT",
+      "path": "/api/bills/paymap",
+      "json": {
+        "tenantId": 114,
+        "feeKey": "landRent",
+        "companyId": 1
+      }
+    },
+    "pre": {
+      "GET /api/bills/paymap": "(114,landRent) 不存在;存在则跳过,不覆盖"
+    },
+    "expect": {
+      "paymap": "(114,landRent)→1"
+    },
+    "evidence": "一期2024年2月租金!欧培仪 空地租金行落款创显(signers.py 13 张)",
+    "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认);不补则并户后 6750 落「未设收款公司」"
+  },
+  {
+    "ref": "P1-06",
+    "op": "contract.delete",
+    "target": {
+      "contractId": 8,
+      "tenantId": 114
+    },
+    "evidence": "S10-0008：0 行模拟，2023-01-01~2024-02-29，月租缓存 39,082.40（附表10 派生）；报告 P1-06「删两份空壳」、R17",
+    "why": "前置：tenantId=114，计费行 0 条，contract_unit 0 条，meter_assign 没有钉它。C386 改挂 114 后，这份壳与它同期重叠，月租会双计。DELETE /api/contracts/8",
+    "pre": {
+      "tenantId": 114,
+      "lineCount": 0,
+      "extraUnitIds": [],
+      "meterAssignPinned": 0,
+      "billLinesNotDraftOrVoid": 0
+    },
+    "reviewFix": [
+      "复查 merge 删合同:硬门 tenantId=114、0 行、0 附加单元、无 meter_assign 钉住、引用它的单全是 draft/void"
+    ]
+  },
+  {
+    "ref": "P1-06",
+    "op": "contract.delete",
+    "target": {
+      "contractId": 134,
+      "tenantId": 114
+    },
+    "evidence": "S10-0134：0 行模拟，楼栋 14（一期空地），2023-01-01~2024-02-29，月租缓存 6,750；报告 P1-06「删两份空壳」、R17",
+    "why": "前置：tenantId=114，计费行 0 条，contract_unit 0 条，meter_assign 没有钉它。空地 6750 已在 C386 的 L7372 里，这份壳与它重叠。DELETE /api/contracts/134",
+    "pre": {
+      "tenantId": 114,
+      "lineCount": 0,
+      "extraUnitIds": [],
+      "meterAssignPinned": 0,
+      "billLinesNotDraftOrVoid": 0
+    },
+    "reviewFix": [
+      "复查 merge 删合同:硬门 tenantId=114、0 行、0 附加单元、无 meter_assign 钉住、引用它的单全是 draft/void"
+    ]
+  },
+  {
+    "ref": "P1-29",
+    "op": "tenant.patch",
+    "target": {
+      "tenantId": 160
+    },
+    "set": {
+      "aliases": "SEAN"
+    },
+    "evidence": "tenant 386 的 remark 为「宿舍二栋商铺4104(补充租户批,正名待核)」；4104 室的电表 555 已挂在 160；报告 P1-29、§4.1",
+    "why": "SEAN 是 SENAN 的伪档，写进别名。PUT /api/tenants/160 是全量语义：先 GET，只改 aliases（现为 null）",
+    "pre": {
+      "aliases": null,
+      "remark": "由真实数据迁移自动创建"
+    },
+    "append": {
+      "remark": "并户(2026-09-27):SEAN(386)并入;原档备注「宿舍二栋商铺4104(补充租户批,正名待核)」"
+    },
+    "reviewFix": [
+      "复查 merge[11]:386 原 remark 要点追加到 160"
+    ]
+  },
+  {
+    "ref": "P1-29",
+    "op": "meter.assign",
+    "target": {
+      "meterId": 865,
+      "assignRowId": 837
+    },
+    "body": {
+      "ym": "2024-02",
+      "mode": "correct",
+      "meterIds": [
+        865
+      ],
+      "patch": {
+        "tenantId": 160,
+        "tenantName": "SENAN"
+      },
+      "alsoMigrateCopies": false
+    },
+    "evidence": "meter_assign 837：表 865「4104室水」，自 2024-02 起挂 386 SEAN（src=migrate），这是这块表唯一的归属行；同房间的电表 555（行 527）自 2024-02 起挂 160 SENAN；报告 P1-29",
+    "why": "前置：GET /api/meters/865/timeline?ym=2024-02 显示 2024-02 那一段的 tenantId=386。PUT /api/meters/assign 更正这一段。区间里有冻结月时会整批返回 409/423，不写任何一行",
+    "pre": {
+      "meter_assign#837": {
+        "meterId": 865,
+        "fromYm": "2024-02",
+        "tenantId": 386
+      }
+    },
+    "reviewFix": [
+      "复查 method-sig:硬门 meter_assign 837 现挂 386(已是 160 视为已应用)"
+    ]
+  },
+  {
+    "ref": "P1-29",
+    "op": "contract.patch",
+    "target": {
+      "contractId": 333
+    },
+    "set": {},
+    "lines": {
+      "remove": [],
+      "update": [],
+      "add": []
+    },
+    "evidence": "scripts/contract-recon/out/images/一期2023年12月租金/SENAN_6.png（5.1 表：2023-10-01~2026-09-30，393㎡，1965/786；5.2 电梯 0；5.3B 变压器 0）；一期2024年2月租金!SENAN R55/R56=1965/786（积前物业单）；报告 P1-29",
+    "why": "物业拆行与 4104 绑 326 已在 mgmt.json P1-29 两条做完(复查:此处再加 393㎡合并行会双计)。本条只在运行时 GET 回来的 remark 后追加并户说明,billingLines 传 null 不动行",
+    "append": {
+      "remark": "并户(2026-09-27):SEAN(386)已并入"
+    },
+    "pre": {
+      "tenantId": 160
+    },
+    "reviewFix": [
+      "复查 merge[6](wrong):删 lines.add,绑定挪到 mgmt;remark 改运行时追加"
+    ]
+  },
+  {
+    "ref": "P1-29",
+    "op": "contract.patch",
+    "target": {
+      "contractId": 78
+    },
+    "set": {},
+    "lines": {
+      "remove": [],
+      "update": [],
+      "add": []
+    },
+    "evidence": "scripts/contract-recon/out/images/一期2023年12月租金/SENAN_6.png（5.1 表第二行：2026-10-01~2028-09-30，393㎡，2161.5/864.6）；报告 P1-29「#2 补 5.5/2.2」",
+    "why": "物业拆行与 4104 绑 326 已在 mgmt.json P1-29 两条做完(复查:此处再加 393㎡合并行会双计)。本条只在运行时 GET 回来的 remark 后追加并户说明,billingLines 传 null 不动行",
+    "append": {
+      "remark": "并户(2026-09-27):SEAN(386)已并入"
+    },
+    "pre": {
+      "tenantId": 160
+    },
+    "reviewFix": [
+      "复查 merge[7](wrong):删 lines.add,绑定挪到 mgmt;remark 改运行时追加"
+    ]
+  },
+  {
+    "ref": "P1-29",
+    "op": "contract.delete",
+    "target": {
+      "contractId": 469,
+      "tenantId": 386
+    },
+    "evidence": "SIM-2402-386：0 行模拟，tenant 386，2023-01-01~2024-02-29，月租 0；报告 P1-29「删 SIM 合同」",
+    "why": "前置：tenantId=386，计费行 0 条，contract_unit 0 条。386 名下只有这一份合同，删掉后 386 才能删。DELETE /api/contracts/469",
+    "pre": {
+      "tenantId": 386,
+      "lineCount": 0,
+      "extraUnitIds": [],
+      "meterAssignPinned": 0,
+      "billLinesNotDraftOrVoid": 0
+    },
+    "reviewFix": [
+      "复查 merge 删合同:硬门 tenantId=386、0 行、0 附加单元、无 meter_assign 钉住、引用它的单全是 draft/void"
+    ]
+  },
+  {
+    "ref": "P1-06/P1-29",
+    "op": "other",
+    "target": {
+      "ym": [
+        "2023-08",
+        "2023-10",
+        "2024-02"
+      ]
+    },
+    "body": {
+      "precheck": "GET /api/bill-notices/months，然后逐月 GET /api/bill-notices?ym=<月>，找出 tenantId 为 364 或 386 的单，并把这些月份并入 target.ym（开发库里只有 2023-08、2023-10、2024-02 三个月）。同时记下这三个月的通知单基线（R19）",
+      "calls": [
+        "POST /api/alloc/generate?ym=2023-08",
+        "POST /api/bill-notices/generate?ym=2023-08",
+        "POST /api/alloc/generate?ym=2023-10",
+        "POST /api/bill-notices/generate?ym=2023-10",
+        "POST /api/alloc/generate?ym=2024-02",
+        "POST /api/bill-notices/generate?ym=2024-02"
+      ]
+    },
+    "evidence": "开发库 bill_notice：364 有 17985（2023-08）、17462（2023-10）、18283（2024-02）三张，386 有 18267（2024-02，0.00），全是 draft；alloc_result 里 364 有 4 行（gen）；报告 R19",
+    "why": "催缴单和分摊结果没有挪户的接口，只能在上面几步做完后重生成：draft/void 的单先删后插，就会按新归属重出，364/386 的旧单也随之消失。bill_notice.tenant_id 是 NO ACTION 外键，这些旧单不清掉，后面删档会失败。重生成会重算这些月的全园区单，应与其他变更集的重生成合并成一次、放在最后做。开发库口径的期望：364+114 在 2023-08 合计少 100（51300→51200）；SENAN 2023-10 和 2024-02 各 +2,751；2024-02 的 114 合计约 64,166.63（62,800 + 池 165.38 + 原水电 1,201.25），会按收款映射拆成几张单 | 复查 merge[9]:月份只取 target.ym ∪ 待删租户有单的月(逐月只读 GET 查),不做全量重生成;任一月失败立即整体停止,后面不删租户。cfix 跑的是分支代码,金额不能当线上期望;线上这一步单独请用户确认",
+    "stopOnFail": true,
+    "reviewFix": [
+      "复查 merge[9]:月份收窄 + 失败即停"
+    ]
+  },
+  {
+    "ref": "P1-06",
+    "op": "tenant.delete",
+    "target": {
+      "tenantId": 364
+    },
+    "evidence": "开发库里 364 没有台账、附表10、子租户、备注覆盖、收款映射和表计；合同只有 C386（已改挂）；报告 P1-06",
+    "why": "前置：GET /api/tenants/364 显示 contractCount=0，且上一步之后各月都没有 364 的单。DELETE /api/tenants/364。还有已确认或已导出的单时，外键会让它返回 400，不会删掉任何东西",
+    "pre": {
+      "refs": "contract / bill_notice / monthly_ledger / s10_record / recon_mark / bill_pay_company / bill_note_override / meter_assign / alloc_result / alloc_rule_member / 子租户 全为 0,否则停"
+    },
+    "reviewFix": [
+      "复查 merge[10]/[11]:删前逐表计数,非 0 就停(R16 要挪不许丢)"
+    ]
+  },
+  {
+    "ref": "P1-29",
+    "op": "tenant.delete",
+    "target": {
+      "tenantId": 386
+    },
+    "evidence": "开发库里 386 没有台账、附表10、子租户、备注覆盖和收款映射；合同只有 469（已删），表只有 865（已改挂）；报告 P1-29「删 386（需拍板）」，用户 2026-09-27 已拍板并户",
+    "why": "前置：contractCount=0，表 865 已改挂，各月都没有 386 的单。DELETE /api/tenants/386",
+    "pre": {
+      "refs": "contract / bill_notice / monthly_ledger / s10_record / recon_mark / bill_pay_company / bill_note_override / meter_assign / alloc_result / alloc_rule_member / 子租户 全为 0,否则停"
+    },
+    "reviewFix": [
+      "复查 merge[10]/[11]:删前逐表计数,非 0 就停(R16 要挪不许丢)"
+    ]
+  }
+]

@@ -1,0 +1,36 @@
+{
+  "seq" : 108,
+  "file" : "empty",
+  "opIndex" : 8,
+  "ref" : "P1-41 黄路生(册面只给420/421合计330.28,均分=同层411/422的165.14) 单元",
+  "op" : "other",
+  "method" : "POST",
+  "path" : "/api/buildings/13/units",
+  "body" : {
+    "floor" : 4,
+    "unitNo" : "420",
+    "area" : 165.14
+  },
+  "beforeDetailSig" : null,
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : {
+    "id" : 743,
+    "floor" : 4,
+    "unitNo" : "420",
+    "area" : 165.14,
+    "derivedArea" : 0,
+    "status" : "vacant",
+    "tenantId" : null,
+    "tenantName" : null,
+    "companyName" : null,
+    "businessType" : null,
+    "contractNo" : null,
+    "monthlyRent" : null,
+    "crossBuilding" : null,
+    "homeBuildingName" : null
+  },
+  "afterDetail" : null
+}

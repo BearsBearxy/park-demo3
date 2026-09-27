@@ -1,0 +1,25 @@
+{
+  "seq" : 97,
+  "file" : "mgmt",
+  "opIndex" : 81,
+  "ref" : "P2-14 复查 mgmt[47] 收款映射",
+  "op" : "other",
+  "method" : "PUT",
+  "path" : "/api/bills/paymap",
+  "body" : {
+    "tenantId" : 67,
+    "feeKey" : "transformerMaint",
+    "companyId" : 5
+  },
+  "beforeDetailSig" : "paymap:(67,transformerMaint)=absent",
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : null,
+  "afterDetail" : {
+    "tenantId" : 67,
+    "feeKey" : "transformerMaint",
+    "companyId" : 5
+  }
+}

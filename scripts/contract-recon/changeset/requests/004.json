@@ -1,0 +1,25 @@
+{
+  "seq" : 4,
+  "file" : "four",
+  "opIndex" : 3,
+  "ref" : "§4B / FIX1",
+  "op" : "other",
+  "method" : "PUT",
+  "path" : "/api/bills/paymap",
+  "body" : {
+    "tenantId" : 24,
+    "feeKey" : "infraFactory",
+    "companyId" : 3
+  },
+  "beforeDetailSig" : "paymap:(24,infraFactory)=absent",
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : null,
+  "afterDetail" : {
+    "tenantId" : 24,
+    "feeKey" : "infraFactory",
+    "companyId" : 3
+  }
+}

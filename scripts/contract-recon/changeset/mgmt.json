@@ -1,0 +1,5157 @@
+[
+ {
+  "ref": "P1-07",
+  "op": "contract.create",
+  "target": {
+   "tenantId": 133,
+   "contractNo": "S10-0018B#1"
+  },
+  "set": {
+   "contractNo": "S10-0018B#1",
+   "tenantId": 133,
+   "buildingId": 21,
+   "unitId": 437,
+   "extraUnitIds": [
+    438,
+    439
+   ],
+   "startDate": "2023-12-15",
+   "endDate": "2029-07-16",
+   "signDate": null,
+   "status": "active",
+   "kva": null,
+   "termType": "explicit",
+   "termText": "2023年12月15日起至2026年12月14日止；2026年12月15日起至2029年07月16日止(纸约 陈相钊_5/_6)",
+   "rentFree": "[{\"start\": \"2023-12-15\", \"end\": \"2023-12-29\", \"note\": \"装修期(一期2024年1月租金!陈相钊 R39)\"}]",
+   "remark": "真实合同补录(2026-09-27):217-219室照纸约陈相钊_5/_6(一期2024年2月租金)自S10-0018拆出,原L6668自2023-07-17起计;#1纸约止2026-12-14,#2(14.3/5.5/2.2)接口建不了escalation段,暂延至2029-07-16待拆;无变压器无kVA;装修期2023-12-15~12-29 rent_free,装修期服务费免收,重生成人工扣"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "一期C座二楼217、218、219室",
+     "propertyType": "factory",
+     "feeKey": "rent_factory",
+     "feeName": "厂房租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 13.0,
+     "area": 462.87,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "自S10-0018 L6668移入;纸约陈相钊_5 租金13,6017.31/月",
+     "unitIds": [
+      437,
+      438,
+      439
+     ]
+    },
+    {
+     "location": "一期C座二楼217、218、219室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 462.87,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约陈相钊_6 企业服务费2314.35"
+    },
+    {
+     "location": "一期C座二楼217、218、219室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 462.87,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约陈相钊_6 基础设施维护费925.74"
+    },
+    {
+     "location": "一期C座二楼217、218、219室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约陈相钊_6 5.2 电梯维保费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "contractNo 不存在": "S10-0018B#1"
+  },
+  "expect": {
+   "monthlyRent": "9416.40",
+   "rentArea": "462.87",
+   "lineCount": 4
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/陈相钊_5.png/_6.png(=一期2023年12月租金 陈相钊_7/_8);一期2024年2月租金!陈相钊 R39、R60-R62;P1-07",
+  "why": "217-219 纸约起 2023-12-15、物业期与 302 不同(P1-07 修正:拆 B 链);B#1 为新链头,接口可建",
+  "reviewFix": [
+   "复查 mgmt[0]:补装修期 rentFree;remark 追加"
+  ]
+ },
+ {
+  "ref": "P1-07",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 18,
+   "contractNo": "S10-0018",
+   "tenantId": 133
+  },
+  "set": {
+   "extraUnitIds": [],
+   "rentFree": "[{\"start\": \"2023-07-21\", \"end\": \"2023-09-20\", \"note\": \"装修期(一期2023年8月租金!陈相钊 R38)\"}]",
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):302物业照纸约陈相钊_4(5/2/电梯159/变压器159);rent_free=装修期2023-07-21~09-20;装修期服务费免收只记此处(rent_free 只扣 rent_*,重生成该月服务费要人工扣)(册R55);217-219拆至S10-0018B#1;#2段2026-07-17起11.55/5.5/2.2接口建不了escalation段未拆"
+  },
+  "lines": {
+   "remove": [
+    6668
+   ],
+   "update": [],
+   "add": [
+    {
+     "location": "一期C座三楼302室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 2000.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约陈相钊_4 企业服务费10000"
+    },
+    {
+     "location": "一期C座三楼302室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 2000.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约陈相钊_4 基础设施维护费4000"
+    },
+    {
+     "location": "一期C座三楼302室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约陈相钊_4 5.2 电梯维保费159/月"
+    },
+    {
+     "location": "一期C座三楼302室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约陈相钊_4 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6667,
+    6668
+   ],
+   "monthlyRent": "27017.31",
+   "rentArea": "2462.87",
+   "startDate": "2023-07-17",
+   "endDate": "2029-07-16",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "50.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)",
+   "extraUnitIds": [
+    437,
+    438,
+    439
+   ]
+  },
+  "expect": {
+   "monthlyRent": "35318.00",
+   "rentArea": "2000.00",
+   "lineCount": 5
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/陈相钊_1.png/_4.png;一期2024年2月租金!陈相钊 R38、R56-R59;一期2023年8月租金!陈相钊 R38/R55 备注;P1-07",
+  "why": "A 链 302 补物业四项+装修期免租;L6668 与附加单元 437-439 移到 B 链",
+  "reviewFix": [
+   "复查 method-sig:pre 补 extraUnitIds 现值(set 改它)"
+  ]
+ },
+ {
+  "ref": "P1-08",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 26,
+   "contractNo": "S10-0026",
+   "tenantId": 155
+  },
+  "set": {
+   "rentFree": "[{\"start\": \"2023-09-25\", \"end\": \"2023-10-14\", \"note\": \"装修期(一期2023年10月租金!卢志华 R39 备注)\"}]",
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):物业照纸约卢志华_2(服务费4165/基础1666/变压器159,电梯0);rent_free=装修期2023-09-25~10-14;装修期服务费免收只记此处(rent_free 只扣 rent_*,重生成该月服务费要人工扣)"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "一期C座首层105室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 833.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约卢志华_2 企业服务费4165"
+    },
+    {
+     "location": "一期C座首层105室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 833.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约卢志华_2 基础设施维护费1666"
+    },
+    {
+     "location": "一期C座首层105室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约卢志华_2 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6723
+   ],
+   "monthlyRent": "13744.50",
+   "rentArea": "833.00",
+   "startDate": "2023-09-19",
+   "endDate": "2026-09-18",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "12.50",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "19734.50",
+   "rentArea": "833.00",
+   "lineCount": 4
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/卢志华_2.png;一期2024年2月租金!卢志华 R54-R56;一期2023年10月租金!卢志华 R39/R54 备注;P1-08",
+  "why": "只录了租金单,物业单三项没录;装修期按报告修正版加 rent_free"
+ },
+ {
+  "ref": "P1-09",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 25,
+   "contractNo": "S10-0025",
+   "tenantId": 154
+  },
+  "set": {
+   "rentFree": "[{\"start\": \"2023-09-22\", \"end\": \"2023-10-07\", \"note\": \"装修期(一期2023年10月租金!杨道扬 R39 备注)\"}]",
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):物业照纸约杨道扬_2(服务费4165/基础1666/变压器159,电梯0);rent_free=装修期2023-09-22~10-07;装修期服务费免收只记此处(rent_free 只扣 rent_*,重生成该月服务费要人工扣)"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "一期C座首层104室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 833.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约杨道扬_2 企业服务费4165"
+    },
+    {
+     "location": "一期C座首层104室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 833.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约杨道扬_2 基础设施维护费1666"
+    },
+    {
+     "location": "一期C座首层104室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约杨道扬_2 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6722
+   ],
+   "monthlyRent": "13744.50",
+   "rentArea": "833.00",
+   "startDate": "2023-09-15",
+   "endDate": "2026-09-14",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "12.50",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "19734.50",
+   "rentArea": "833.00",
+   "lineCount": 4
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/杨道扬_2.png;一期2024年2月租金!杨道扬 R54-R56;一期2023年10月租金!杨道扬 R39/R54 备注;P1-09",
+  "why": "只录了租金单,物业单三项没录;装修期按报告修正版加 rent_free"
+ },
+ {
+  "ref": "P1-10",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 28,
+   "contractNo": "S10-0028",
+   "tenantId": 158
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):物业照纸约诺铃_6(3280/1312/变压器159);2023-10册首月租金自10-20起、变压器0,重生成2023-10按此解释;rent_free 2023-10-10~10-30(交付10-20);交付前服务费人工扣,装修期物管费册面照收",
+   "rentFree": "[{\"start\": \"2023-10-10\", \"end\": \"2023-10-30\", \"note\": \"交付前+装修期(一期2023年11月租金!诺铃 R39)\"}]"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "一期C座首层106室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 656.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约诺铃_6 企业服务费3280"
+    },
+    {
+     "location": "一期C座首层106室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 656.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约诺铃_6 基础设施维护费1312"
+    },
+    {
+     "location": "一期C座首层106室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约诺铃_6 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6726
+   ],
+   "monthlyRent": "11808.00",
+   "rentArea": "656.00",
+   "startDate": "2023-10-10",
+   "endDate": "2026-10-09",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "25.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "16559.00",
+   "rentArea": "656.00",
+   "lineCount": 4
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/诺铃_5.png/_6.png;一期2024年2月租金!诺铃 R54-R56;P1-10",
+  "why": "只录了租金单,物业单三项没录;位置用库里 C座首层106室(报告确认)",
+  "reviewFix": [
+   "复查 mgmt[4]:补 rentFree。册面 R39「计收装修期内物管费用」→ 只交付前(10-10~10-19)服务费人工扣"
+  ]
+ },
+ {
+  "ref": "P1-11",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 322,
+   "contractNo": "S10-0024#1",
+   "tenantId": 153
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):物业照纸约芷泉_2:2023-08-18~2026-08-17服务费5/基础2,电梯159,变压器159;物业段界与租金段界差24天,未另起物业链(待拍板)",
+   "rentFree": "[{\"start\": \"2023-09-11\", \"end\": \"2023-09-25\", \"note\": \"装修期(一期2023年10月租金!芷泉 R39)\"}]"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "一期C座二楼208、209、210室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 274.5,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约芷泉_2 企业服务费1372.50"
+    },
+    {
+     "location": "一期C座二楼208、209、210室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 274.5,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约芷泉_2 基础设施维护费549"
+    },
+    {
+     "location": "一期C座二楼208、209、210室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约芷泉_2 5.2 电梯维保费159/月"
+    },
+    {
+     "location": "一期C座二楼208、209、210室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约芷泉_2 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    7082
+   ],
+   "monthlyRent": "4117.50",
+   "rentArea": "274.50",
+   "startDate": "2023-09-11",
+   "endDate": "2026-09-10",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": null,
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "6357.00",
+   "rentArea": "274.50",
+   "lineCount": 5
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/芷泉_2.png;一期2024年2月租金!芷泉 R54-R57;P1-11",
+  "why": "#1 补物业四项",
+  "reviewFix": [
+   "复查 mgmt[5]:补 rentFree(落在 9 月,非出单月)"
+  ]
+ },
+ {
+  "ref": "P1-11",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 24,
+   "contractNo": "S10-0024",
+   "tenantId": 153
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):物业照纸约芷泉_2:2026-08-18起1509.75/603.9(5.5/2.2),电梯159,变压器159;物业自2026-08-18换档,本段自2026-09-11起,差24天未另起链"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "一期C座二楼208、209、210室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.5,
+     "area": 274.5,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约芷泉_2 企业服务费1509.75"
+    },
+    {
+     "location": "一期C座二楼208、209、210室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.2,
+     "area": 274.5,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约芷泉_2 基础设施维护费603.9"
+    },
+    {
+     "location": "一期C座二楼208、209、210室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约芷泉_2 5.2 电梯维保费159/月"
+    },
+    {
+     "location": "一期C座二楼208、209、210室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约芷泉_2 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6721
+   ],
+   "monthlyRent": "4529.25",
+   "rentArea": "274.50",
+   "startDate": "2026-09-11",
+   "endDate": "2029-09-10",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": null,
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "6960.90",
+   "rentArea": "274.50",
+   "lineCount": 5
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/芷泉_2.png;P1-11(修正:#2 有纸面价)",
+  "why": "#2 补纸面第二档物业价"
+ },
+ {
+  "ref": "P1-12",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 323,
+   "contractNo": "S10-0027#1",
+   "tenantId": 157
+  },
+  "set": {
+   "rentFree": "[{\"start\": \"2023-10-15\", \"end\": \"2023-12-14\", \"note\": \"装修期(一期2023年11月租金!曾绍良 R39 备注)\"}]",
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):物业照纸约曾绍良_6(5/2/电梯159/变压器200,200kVA);rent_free=装修期2023-10-15~12-14;2023-11册计收装修期管理费10-15~11-30;2023-10/11册变压器按159收,纸约200"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "一期F座三楼302室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 1750.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约曾绍良_6 企业服务费8750"
+    },
+    {
+     "location": "一期F座三楼302室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 1750.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约曾绍良_6 基础设施维护费3500"
+    },
+    {
+     "location": "一期F座三楼302室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约曾绍良_6 5.2 电梯维保费159/月"
+    },
+    {
+     "location": "一期F座三楼302室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 200.0,
+     "note": "纸约曾绍良_6 5.3B 变压器维护费200/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    7083
+   ],
+   "monthlyRent": "15750.00",
+   "rentArea": "1750.00",
+   "startDate": "2023-10-15",
+   "endDate": "2026-10-14",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "200.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "28359.00",
+   "rentArea": "1750.00",
+   "lineCount": 5
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/曾绍良_6.png;一期2024年2月租金!曾绍良 R54-R57;一期2023年11月租金!曾绍良 R39/R54;P1-12",
+  "why": "#1 补物业四项+装修期免租;人工过目"
+ },
+ {
+  "ref": "P1-12",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 324,
+   "contractNo": "S10-0027#2",
+   "tenantId": 157
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):物业照纸约曾绍良_6第二档9625/3850(5.5/2.2),电梯159,变压器200"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "一期F座三楼302室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.5,
+     "area": 1750.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约曾绍良_6 企业服务费9625"
+    },
+    {
+     "location": "一期F座三楼302室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.2,
+     "area": 1750.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约曾绍良_6 基础设施维护费3850"
+    },
+    {
+     "location": "一期F座三楼302室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约曾绍良_6 5.2 电梯维保费159/月"
+    },
+    {
+     "location": "一期F座三楼302室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 200.0,
+     "note": "纸约曾绍良_6 5.3B 变压器维护费200/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    7084
+   ],
+   "monthlyRent": "17325.00",
+   "rentArea": "1750.00",
+   "startDate": "2026-10-15",
+   "endDate": "2029-10-14",
+   "status(存储态,PUT 原样回传)": "renewed",
+   "kva": "200.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "31159.00",
+   "rentArea": "1750.00",
+   "lineCount": 5
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/曾绍良_6.png;P1-12",
+  "why": "#2 补纸面第二档物业价"
+ },
+ {
+  "ref": "P1-12",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 27,
+   "contractNo": "S10-0027",
+   "tenantId": 157
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):物业照纸约曾绍良_6第三档11068.75/4427.5(6.325/2.53),电梯159,变压器200"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "一期F座三楼302室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 6.325,
+     "area": 1750.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约曾绍良_6 企业服务费11068.75"
+    },
+    {
+     "location": "一期F座三楼302室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.53,
+     "area": 1750.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约曾绍良_6 基础设施维护费4427.5"
+    },
+    {
+     "location": "一期F座三楼302室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约曾绍良_6 5.2 电梯维保费159/月"
+    },
+    {
+     "location": "一期F座三楼302室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 200.0,
+     "note": "纸约曾绍良_6 5.3B 变压器维护费200/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6725
+   ],
+   "monthlyRent": "19923.75",
+   "rentArea": "1750.00",
+   "startDate": "2029-10-15",
+   "endDate": "2032-10-14",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "200.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "35779.00",
+   "rentArea": "1750.00",
+   "lineCount": 5
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/曾绍良_6.png;P1-12",
+  "why": "#3 补纸面第三档物业价"
+ },
+ {
+  "ref": "P1-13",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 21,
+   "contractNo": "S10-0021",
+   "tenantId": 150
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):物业照纸约孙余_2(一期2024年2月租金,771.45/154.29/电梯50/变压器50);2024-07-20起续段未建(台账收到2025-10,另案)"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "一期C座二楼220室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 154.29,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约孙余_2 企业服务费771.45"
+    },
+    {
+     "location": "一期C座二楼220室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 1.0,
+     "area": 154.29,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约孙余_2 基础设施维护费154.29"
+    },
+    {
+     "location": "一期C座二楼220室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 50.0,
+     "note": "纸约孙余_2 5.2 电梯维保费50/月"
+    },
+    {
+     "location": "一期C座二楼220室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 50.0,
+     "note": "纸约孙余_2 5.3B 变压器维护费50/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6717
+   ],
+   "monthlyRent": "2160.06",
+   "rentArea": "154.29",
+   "startDate": "2023-07-20",
+   "endDate": "2024-07-19",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "10.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "3185.80",
+   "rentArea": "154.29",
+   "lineCount": 5
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/孙余_2.png;一期2024年2月租金!孙余 R54-R57;P1-13(修正:2023年8月册 孙余_1/_2 是李卓伦222的)",
+  "why": "只录了租金单,物业单四项没录"
+ },
+ {
+  "ref": "P1-14",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 19,
+   "contractNo": "S10-0019",
+   "tenantId": 135
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):203物业照纸约李卓伦_7(457.15/164.574/电梯50/变压器50);222旧约与租金13.393另案"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "一期C座二楼203室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 91.43,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约李卓伦_7 企业服务费457.15"
+    },
+    {
+     "location": "一期C座二楼203室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 1.8,
+     "area": 91.43,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约李卓伦_7 基础设施维护费164.574;纸面164.574,面积×单价=164.57,差0.004为纸面取整(R05不追)"
+    },
+    {
+     "location": "一期C座二楼203室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 50.0,
+     "note": "纸约李卓伦_7 5.2 电梯维保费50/月"
+    },
+    {
+     "location": "一期C座二楼203室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 50.0,
+     "note": "纸约李卓伦_7 5.3B 变压器维护费50/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6698
+   ],
+   "monthlyRent": "1224.25",
+   "rentArea": "91.43",
+   "startDate": "2023-11-24",
+   "endDate": "2025-11-23",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "15.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "1945.97",
+   "rentArea": "91.43",
+   "lineCount": 5
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/李卓伦_6.png/_7.png;一期2024年2月租金!李卓伦 R54-R57;P1-14",
+  "why": "S10-0019 只录了租金单,物业单四项没录(222 新建合同属缺合同类,不在本变更集)"
+ },
+ {
+  "ref": "P1-15",
+  "op": "contract.create",
+  "target": {
+   "tenantId": 149,
+   "contractNo": "S10-0020B#1"
+  },
+  "set": {
+   "contractNo": "S10-0020B#1",
+   "tenantId": 149,
+   "buildingId": 13,
+   "unitId": 425,
+   "extraUnitIds": [],
+   "startDate": "2023-09-01",
+   "endDate": "2026-08-31",
+   "signDate": null,
+   "status": "active",
+   "kva": null,
+   "termType": "explicit",
+   "termText": "办公室部分：2023年09月01日至2026年08月31日(取 S10-0020 期限原文)",
+   "rentFree": null,
+   "remark": "真实合同补录(2026-09-27):A座621办公室三行(租金20/办公室服务费10/电梯159)自S10-0020拆出,期限取S10-0020 term_text办公室部分;办公室装修期2023-09-01~10-30按50%计收(一期2023年9月租金 R38),rent_free表达不了50%,2023-10单人工扣"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "A座解化器六楼621室",
+     "propertyType": "office",
+     "feeKey": "rent_office",
+     "feeName": "办公室租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 20.0,
+     "area": 76.98,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "自S10-0020 L6710移入",
+     "unitIds": [
+      425
+     ]
+    },
+    {
+     "location": "A座解化器六楼621室",
+     "propertyType": "office",
+     "feeKey": "mgmt",
+     "feeName": "办公室企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 10.0,
+     "area": 76.98,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "自S10-0020 L6711移入"
+    },
+    {
+     "location": "A座解化器六楼621室",
+     "propertyType": "office",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "自S10-0020 L6712移入"
+    }
+   ]
+  },
+  "pre": {
+   "contractNo 不存在": "S10-0020B#1"
+  },
+  "expect": {
+   "monthlyRent": "2468.40",
+   "rentArea": "76.98",
+   "lineCount": 3
+  },
+  "evidence": "一期2024年2月租金!高建军 R38-R40;S10-0020 term_text;P1-15",
+  "why": "厂房与办公室起止不同,拆两条链(P1-15 确认);办公室为新链头,接口可建;三行原样搬",
+  "reviewFix": [
+   "复查 mgmt[12]:remark 追加 50% 装修期"
+  ]
+ },
+ {
+  "ref": "P1-15",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 20,
+   "contractNo": "S10-0020",
+   "tenantId": 149
+  },
+  "set": {
+   "startDate": "2023-09-10",
+   "endDate": "2026-09-09",
+   "extraUnitIds": [],
+   "remark": "本标的租期 2023-09-10→2026-09-09 | 真实合同补录(2026-09-27):C座103厂房物业照纸约高建军_6(4480/1792/变压器159);起止改纸面2023-09-10~2026-09-09;A座621办公室三行与附加单元425拆至S10-0020B#1",
+   "rentFree": "[{\"start\": \"2023-09-10\", \"end\": \"2023-09-30\", \"note\": \"交付前+装修期(一期2023年10月租金!高建军 R41)\"}]"
+  },
+  "lines": {
+   "remove": [
+    6710,
+    6711,
+    6712
+   ],
+   "update": [],
+   "add": [
+    {
+     "location": "C座首层103室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 896.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约高建军_6 企业服务费4480"
+    },
+    {
+     "location": "C座首层103室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 896.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约高建军_6 基础设施维护费1792"
+    },
+    {
+     "location": "C座首层103室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约高建军_6 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6710,
+    6711,
+    6712,
+    6713
+   ],
+   "monthlyRent": "19492.40",
+   "rentArea": "972.98",
+   "startDate": "2023-09-01",
+   "endDate": "2026-08-31",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": null,
+   "rentFree": null,
+   "remark": "本标的租期 2023-09-10→2026-09-09",
+   "extraUnitIds": [
+    425
+   ]
+  },
+  "expect": {
+   "monthlyRent": "23455.00",
+   "rentArea": "896.00",
+   "lineCount": 4
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/高建军_6.png;一期2024年2月租金!高建军 R59-R61;P1-15",
+  "why": "厂房段补物业三项,起止照纸约;办公室行移走",
+  "reviewFix": [
+   "复查 mgmt[13]:补 rentFree;pre 补 extraUnitIds"
+  ]
+ },
+ {
+  "ref": "P1-16",
+  "op": "contract.create",
+  "target": {
+   "tenantId": 152,
+   "contractNo": "S10-0023B#1"
+  },
+  "set": {
+   "contractNo": "S10-0023B#1",
+   "tenantId": 152,
+   "buildingId": 24,
+   "unitId": 453,
+   "extraUnitIds": [],
+   "startDate": "2023-08-21",
+   "endDate": "2024-08-20",
+   "signDate": null,
+   "status": "active",
+   "kva": null,
+   "termType": "explicit",
+   "termText": "2023年08月21日起至2024年08月20日止(纸约 桑尼号_4,301室1353㎡)",
+   "rentFree": "[{\"start\": \"2023-08-21\", \"end\": \"2023-10-10\", \"note\": \"装修期(一期2023年9月租金!桑尼号 R39/R40 备注)\"}]",
+   "remark": "真实合同补录(2026-09-27):301室自S10-0023拆出,期限照纸约桑尼号_4(1353㎡,服务费5/基础2/电梯159,变压器0,0kVA),不续段;装修期2023-08-21~10-10服务费免收只记此处;租金单价12.41含税未改(另案)"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "一期F座叁楼301室",
+     "propertyType": "factory",
+     "feeKey": "rent_factory",
+     "feeName": "厂房租金",
+     "billMode": "per_sqm_month",
+     "unitPrice": 12.41,
+     "area": 1353.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "自S10-0023 L6720原样移入(12.41为含税价,纸约11,另案)",
+     "unitIds": [
+      453
+     ]
+    },
+    {
+     "location": "一期F座叁楼301室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 1353.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约桑尼号_4 企业服务费6765"
+    },
+    {
+     "location": "一期F座叁楼301室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 1353.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约桑尼号_4 基础设施维护费2706"
+    },
+    {
+     "location": "一期F座叁楼301室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约桑尼号_4 5.2 电梯维保费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "contractNo 不存在": "S10-0023B#1"
+  },
+  "expect": {
+   "monthlyRent": "26420.73",
+   "rentArea": "1353.00",
+   "lineCount": 4
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/桑尼号_4.png;一期2024年2月租金!桑尼号 R40、R59-R61;一期2023年9月租金!桑尼号 R40/R59 备注;台账2024-10起只剩201;P1-16",
+  "why": "301 物业期止 2024-08-20,短于合同;拆 B 链(新链头,接口可建)",
+  "reviewFix": [
+   "复查 mgmt[14] 租金 12.41→11 未改:改租金要用户点头,列 questions"
+  ]
+ },
+ {
+  "ref": "P1-16",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 23,
+   "contractNo": "S10-0023",
+   "tenantId": 152
+  },
+  "set": {
+   "extraUnitIds": [],
+   "rentFree": "[{\"start\": \"2023-08-21\", \"end\": \"2023-10-10\", \"note\": \"装修期(一期2023年9月租金!桑尼号 R39/R40 备注)\"}]",
+   "remark": "本标的租期 2023-08-21→2024-08-20 | 真实合同补录(2026-09-27):201物业照纸约桑尼号_3(5/2/电梯318/变压器159,62.5kVA);rent_free=装修期2023-08-21~10-10,装修期服务费免收只记此处;301与单元453拆至S10-0023B#1(上句租期指301);租金12.41含税未改;2025-08-20后续段另案"
+  },
+  "lines": {
+   "remove": [
+    6720
+   ],
+   "update": [],
+   "add": [
+    {
+     "location": "一期F座贰楼201室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 3185.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约桑尼号_3 企业服务费15925"
+    },
+    {
+     "location": "一期F座贰楼201室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 3185.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约桑尼号_3 基础设施维护费6370"
+    },
+    {
+     "location": "一期F座贰楼201室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 318.0,
+     "note": "纸约桑尼号_3 5.2 电梯维保费318/月"
+    },
+    {
+     "location": "一期F座贰楼201室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约桑尼号_3 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6719,
+    6720
+   ],
+   "monthlyRent": "56316.58",
+   "rentArea": "4538.00",
+   "startDate": "2023-08-21",
+   "endDate": "2025-08-20",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "62.50",
+   "rentFree": null,
+   "remark": "本标的租期 2023-08-21→2024-08-20",
+   "extraUnitIds": [
+    453
+   ]
+  },
+  "expect": {
+   "monthlyRent": "62297.85",
+   "rentArea": "3185.00",
+   "lineCount": 5
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/桑尼号_2.png/_3.png;一期2024年2月租金!桑尼号 R55-R58;一期2023年9月租金!桑尼号 R39/R55 备注;P1-16",
+  "why": "A 链 201 补物业四项+装修期免租;L6720 与单元 453 移到 B 链",
+  "reviewFix": [
+   "复查 method-sig:pre 补 extraUnitIds。复查 mgmt[14]/[15] 租金 12.41→11 未改:改租金要用户点头,列 questions"
+  ]
+ },
+ {
+  "ref": "P1-17",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 326,
+   "contractNo": "S10-0031#1",
+   "tenantId": 165
+  },
+  "set": {
+   "rentFree": "[{\"start\": \"2024-01-01\", \"end\": \"2024-04-15\", \"note\": \"纸约林锐辉_5/_6:2024-04-16起收首月租金与服务费\"}]",
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):物业照纸约林锐辉_6(64000/25600/电梯333.34/变压器458.34);rent_free 2024-01-01~04-15;服务费自2024-04-16起收,#1a/#1b接口拆不了,重生成2024-01~04服务费要人工扣;租金per_month95400另案"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "一期G座首层、二层、三层、四层整层",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 12800.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约林锐辉_6 企业服务费64000"
+    },
+    {
+     "location": "一期G座首层、二层、三层、四层整层",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 12800.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约林锐辉_6 基础设施维护费25600"
+    },
+    {
+     "location": "一期G座首层、二层、三层、四层整层",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 333.34,
+     "note": "纸约林锐辉_6 5.2 电梯维保费333.34/月"
+    },
+    {
+     "location": "一期G座首层、二层、三层、四层整层",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 458.34,
+     "note": "纸约林锐辉_6 5.3B 变压器维护费458.34/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    7086
+   ],
+   "monthlyRent": "95360.00",
+   "rentArea": "12800.00",
+   "startDate": "2024-01-01",
+   "endDate": "2026-12-31",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "1000.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "185751.68",
+   "rentArea": "12800.00",
+   "lineCount": 5
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/林锐辉_5.png/_6.png;一期2024年2月租金!林锐辉 R39、R54-R57;一期2024年3月租金!林锐辉 R54-R57;P1-17",
+  "why": "#1 补物业四项+租金免租期;2024-02 册面租金、服务费为 0(P1-17 修正)"
+ },
+ {
+  "ref": "P1-17",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 325,
+   "contractNo": "S10-0031#2",
+   "tenantId": 165
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):物业照纸约林锐辉_6第二档70400/28160(5.5/2.2),电梯333.34,变压器458.34"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "一期G座首层、二层、三层、四层整层",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.5,
+     "area": 12800.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约林锐辉_6 企业服务费70400"
+    },
+    {
+     "location": "一期G座首层、二层、三层、四层整层",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.2,
+     "area": 12800.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约林锐辉_6 基础设施维护费28160"
+    },
+    {
+     "location": "一期G座首层、二层、三层、四层整层",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 333.34,
+     "note": "纸约林锐辉_6 5.2 电梯维保费333.34/月"
+    },
+    {
+     "location": "一期G座首层、二层、三层、四层整层",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 458.34,
+     "note": "纸约林锐辉_6 5.3B 变压器维护费458.34/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    7085
+   ],
+   "monthlyRent": "104896.00",
+   "rentArea": "12800.00",
+   "startDate": "2027-01-01",
+   "endDate": "2029-12-31",
+   "status(存储态,PUT 原样回传)": "renewed",
+   "kva": "1000.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "204247.68",
+   "rentArea": "12800.00",
+   "lineCount": 5
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/林锐辉_6.png;P1-17",
+  "why": "#2 补纸面第二档物业价"
+ },
+ {
+  "ref": "P1-17",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 31,
+   "contractNo": "S10-0031",
+   "tenantId": 165
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):物业照纸约林锐辉_6第三档80960/32384(6.325/2.53),电梯333.34,变压器458.34"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "一期G座首层、二层、三层、四层整层",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 6.325,
+     "area": 12800.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约林锐辉_6 企业服务费80960"
+    },
+    {
+     "location": "一期G座首层、二层、三层、四层整层",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.53,
+     "area": 12800.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约林锐辉_6 基础设施维护费32384"
+    },
+    {
+     "location": "一期G座首层、二层、三层、四层整层",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 333.34,
+     "note": "纸约林锐辉_6 5.2 电梯维保费333.34/月"
+    },
+    {
+     "location": "一期G座首层、二层、三层、四层整层",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 458.34,
+     "note": "纸约林锐辉_6 5.3B 变压器维护费458.34/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6747
+   ],
+   "monthlyRent": "120631.04",
+   "rentArea": "12800.00",
+   "startDate": "2030-01-01",
+   "endDate": "2032-12-31",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "1000.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "234766.72",
+   "rentArea": "12800.00",
+   "lineCount": 5
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/林锐辉_6.png;P1-17",
+  "why": "#3 补纸面第三档物业价"
+ },
+ {
+  "ref": "P1-18",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 68,
+   "contractNo": "S10-0068",
+   "tenantId": 139
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):物业照纸约彭周荣_2(812.5/325/变压器159,10kVA)"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍区三号楼首层3103室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 162.5,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约彭周荣_2 企业服务费812.50"
+    },
+    {
+     "location": "宿舍区三号楼首层3103室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 162.5,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约彭周荣_2 基础设施维护费325.00"
+    },
+    {
+     "location": "宿舍区三号楼首层3103室",
+     "propertyType": "shop",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约彭周荣_2 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6697
+   ],
+   "monthlyRent": "2762.50",
+   "rentArea": "162.50",
+   "startDate": "2023-06-28",
+   "endDate": "2026-06-27",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "10.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "4059.00",
+   "rentArea": "162.50",
+   "lineCount": 4
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/彭周荣_2.png;一期2024年2月租金!彭周荣 R54-R56;P1-18",
+  "why": "只录了租金单,物业单三项没录"
+ },
+ {
+  "ref": "P1-19",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 75,
+   "contractNo": "S10-0075",
+   "tenantId": 147
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):物业照纸约章肖艳_2(3450/1380);物业期2023-07-21~2026-07-20,租金期2023-08-15~2026-08-14(章肖艳_1),两期界不同;独立物业链接口建出来会双计分摊面积,先挂本合同"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍区二号楼首层2112室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 690.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约章肖艳_2 企业服务费3450"
+    },
+    {
+     "location": "宿舍区二号楼首层2112室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 690.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约章肖艳_2 基础设施维护费1380"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6706
+   ],
+   "monthlyRent": "8970.00",
+   "rentArea": "690.00",
+   "startDate": "2023-08-15",
+   "endDate": "2026-08-14",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": null,
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "13800.00",
+   "rentArea": "690.00",
+   "lineCount": 3
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/章肖艳_1.png/_2.png;一期2024年2月租金!章肖艳 R54-R55;P1-19(修正:物业期与租金期不同)",
+  "why": "报告修正版要独立物业链,至少 remark 写两个期界;接口建无租金行合同会把 infra 面积回填 rent_area(见 blocked),取「至少 remark」一档"
+ },
+ {
+  "ref": "P1-20",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 327,
+   "contractNo": "S10-0069#1",
+   "tenantId": 140
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):#1物业照纸约张丽莉_2(4637.5/1855);无变压器;租金14.3001另案"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍区三号楼首层3106室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 927.5,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约张丽莉_2 企业服务费4637.5"
+    },
+    {
+     "location": "宿舍区三号楼首层3106室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 927.5,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约张丽莉_2 基础设施维护费1855"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    7087
+   ],
+   "monthlyRent": "12057.50",
+   "rentArea": "927.50",
+   "startDate": "2023-07-01",
+   "endDate": "2026-06-30",
+   "status(存储态,PUT 原样回传)": "renewed",
+   "kva": null,
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "18550.00",
+   "rentArea": "927.50",
+   "lineCount": 3
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/张丽莉_2.png;一期2024年2月租金!张丽莉 R54-R55;P1-20",
+  "why": "#1 补物业两项"
+ },
+ {
+  "ref": "P1-20",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 69,
+   "contractNo": "S10-0069",
+   "tenantId": 140
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):#2物业照纸约张丽莉_2(5101.3/2040.5);无变压器;租金14.3001另案"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍区三号楼首层3106室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.5,
+     "area": 927.5,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约张丽莉_2 企业服务费5101.3;纸面5101.3,面积×单价=5101.25,差0.05为纸面取整(R05不追)"
+    },
+    {
+     "location": "宿舍区三号楼首层3106室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.2,
+     "area": 927.5,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约张丽莉_2 基础设施维护费2040.5"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6699
+   ],
+   "monthlyRent": "13263.34",
+   "rentArea": "927.50",
+   "startDate": "2026-07-01",
+   "endDate": "2028-06-30",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": null,
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "20405.09",
+   "rentArea": "927.50",
+   "lineCount": 3
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/张丽莉_2.png;一期2024年2月租金!张丽莉 R54-R55;P1-20",
+  "why": "#2 补物业两项"
+ },
+ {
+  "ref": "P1-22",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 330,
+   "contractNo": "S10-0074#1",
+   "tenantId": 146
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):物业两行照纸约周兴_2填面积390、单价5/2(1950/780,两段同价);rent_free 2023-08-10~08-16,装修期服务费人工扣",
+   "rentFree": "[{\"start\": \"2023-08-10\", \"end\": \"2023-08-16\", \"note\": \"装修期(一期2023年9月租金!周兴 R39)\"}]"
+  },
+  "lines": {
+   "remove": [],
+   "update": [
+    {
+     "id": 7092,
+     "area": 390,
+     "unitPrice": 5
+    },
+    {
+     "id": 7091,
+     "area": 390,
+     "unitPrice": 2
+    }
+   ],
+   "add": []
+  },
+  "pre": {
+   "lineIds": [
+    7090,
+    7091,
+    7092
+   ],
+   "monthlyRent": "4769.70",
+   "rentArea": "390.00",
+   "startDate": "2023-08-10",
+   "endDate": "2024-08-09",
+   "status(存储态,PUT 原样回传)": "renewed",
+   "kva": null,
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "7499.70",
+   "rentArea": "390.00",
+   "lineCount": 3
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/周兴_2.png;一期2024年2月租金!周兴 R54-R55;P1-22",
+  "why": "mgmt/infra 行已在但面积空、单价 0,月额 0",
+  "reviewFix": [
+   "复查 mgmt[23]:补 rentFree"
+  ]
+ },
+ {
+  "ref": "P1-22",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 74,
+   "contractNo": "S10-0074",
+   "tenantId": 146
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):物业两行照纸约周兴_2填面积390、单价5/2(1950/780,两段同价)"
+  },
+  "lines": {
+   "remove": [],
+   "update": [
+    {
+     "id": 7058,
+     "area": 390,
+     "unitPrice": 5
+    },
+    {
+     "id": 7057,
+     "area": 390,
+     "unitPrice": 2
+    }
+   ],
+   "add": []
+  },
+  "pre": {
+   "lineIds": [
+    7056,
+    7057,
+    7058
+   ],
+   "monthlyRent": "5569.67",
+   "rentArea": "390.00",
+   "startDate": "2024-08-10",
+   "endDate": "2026-08-09",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": null,
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "8299.67",
+   "rentArea": "390.00",
+   "lineCount": 3
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/周兴_2.png;一期2024年2月租金!周兴 R54-R55;P1-22",
+  "why": "mgmt/infra 行已在但面积空、单价 0,月额 0"
+ },
+ {
+  "ref": "P1-23",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 329,
+   "contractNo": "S10-0072#1",
+   "tenantId": 144
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):#1物业照纸约蔡高育_2(372/148.8/变压器159,10kVA);rent_free 2023-07-17~08-06,服务费人工扣",
+   "rentFree": "[{\"start\": \"2023-07-17\", \"end\": \"2023-08-06\", \"note\": \"交付前+装修期(一期2023年8月租金!蔡高育 R7)\"}]"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍区2号楼首层2107室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 74.4,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约蔡高育_2 企业服务费372"
+    },
+    {
+     "location": "宿舍区2号楼首层2107室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 74.4,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约蔡高育_2 基础设施维护费148.8"
+    },
+    {
+     "location": "宿舍区2号楼首层2107室",
+     "propertyType": "shop",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约蔡高育_2 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    7089
+   ],
+   "monthlyRent": "1264.80",
+   "rentArea": "74.40",
+   "startDate": "2023-07-17",
+   "endDate": "2026-07-16",
+   "status(存储态,PUT 原样回传)": "renewed",
+   "kva": "10.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "1944.60",
+   "rentArea": "74.40",
+   "lineCount": 4
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/蔡高育_2.png;一期2024年2月租金!蔡高育 R54-R56;P1-23",
+  "why": "#1 补物业三项",
+  "reviewFix": [
+   "复查 mgmt[25]:补 rentFree"
+  ]
+ },
+ {
+  "ref": "P1-23",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 72,
+   "contractNo": "S10-0072",
+   "tenantId": 144
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):#2物业照纸约蔡高育_2(409.2/163.7/变压器159,10kVA)"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍区2号楼首层2107室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.5,
+     "area": 74.4,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约蔡高育_2 企业服务费409.2"
+    },
+    {
+     "location": "宿舍区2号楼首层2107室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.2,
+     "area": 74.4,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约蔡高育_2 基础设施维护费163.7;纸面163.7,面积×单价=163.68,差0.02为纸面取整(R05不追)"
+    },
+    {
+     "location": "宿舍区2号楼首层2107室",
+     "propertyType": "shop",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约蔡高育_2 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6704
+   ],
+   "monthlyRent": "1391.28",
+   "rentArea": "74.40",
+   "startDate": "2026-07-17",
+   "endDate": "2028-07-16",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "10.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "2123.16",
+   "rentArea": "74.40",
+   "lineCount": 4
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/蔡高育_2.png;一期2024年2月租金!蔡高育 R54-R56;P1-23",
+  "why": "#2 补物业三项"
+ },
+ {
+  "ref": "P1-25",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 331,
+   "contractNo": "S10-0077#1",
+   "tenantId": 159
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):#1物业照纸约彭健宜_6(375/150/变压器159);rent_free 2023-10-07~10-31;装修期管理费册面照收",
+   "rentFree": "[{\"start\": \"2023-10-07\", \"end\": \"2023-10-31\", \"note\": \"装修期(一期2023年11月租金!彭健宜 R39)\"}]"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍区2号楼首层2103室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 75.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约彭健宜_6 企业服务费375"
+    },
+    {
+     "location": "宿舍区2号楼首层2103室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 75.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约彭健宜_6 基础设施维护费150"
+    },
+    {
+     "location": "宿舍区2号楼首层2103室",
+     "propertyType": "shop",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约彭健宜_6 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    7093
+   ],
+   "monthlyRent": "1275.00",
+   "rentArea": "75.00",
+   "startDate": "2023-10-07",
+   "endDate": "2026-10-06",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "25.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "1959.00",
+   "rentArea": "75.00",
+   "lineCount": 4
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/彭健宜_6.png;一期2024年2月租金!彭健宜 R53-R55;P1-25",
+  "why": "#1 补物业三项",
+  "reviewFix": [
+   "复查 mgmt[27]:补 rentFree。册面 R39「计收装修期管理费」→ 不写人工扣(与复查建议不同)"
+  ]
+ },
+ {
+  "ref": "P1-25",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 332,
+   "contractNo": "S10-0077#2",
+   "tenantId": 159
+  },
+  "set": {
+   "kva": 25,
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):#2物业照纸约彭健宜_6(412.5/165/变压器159);kva25挂到本段(纸约25kVA,R12)"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍区2号楼首层2103室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.5,
+     "area": 75.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约彭健宜_6 企业服务费412.5"
+    },
+    {
+     "location": "宿舍区2号楼首层2103室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.2,
+     "area": 75.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约彭健宜_6 基础设施维护费165"
+    },
+    {
+     "location": "宿舍区2号楼首层2103室",
+     "propertyType": "shop",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约彭健宜_6 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    7094
+   ],
+   "monthlyRent": "1403.00",
+   "rentArea": "75.00",
+   "startDate": "2026-10-07",
+   "endDate": "2029-10-06",
+   "status(存储态,PUT 原样回传)": "renewed",
+   "kva": null,
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "2139.50",
+   "rentArea": "75.00",
+   "lineCount": 4
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/彭健宜_6.png;一期2024年2月租金!彭健宜 R53-R55;P1-25",
+  "why": "#2 补物业三项,kva 各段都挂"
+ },
+ {
+  "ref": "P1-25",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 77,
+   "contractNo": "S10-0077",
+   "tenantId": 159
+  },
+  "set": {
+   "kva": 25,
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):#3物业照纸约彭健宜_6(474.38/189.75/变压器159);kva25挂到本段(纸约25kVA,R12)"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍区2号楼首层2103室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 6.325,
+     "area": 75.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约彭健宜_6 企业服务费474.38"
+    },
+    {
+     "location": "宿舍区2号楼首层2103室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.53,
+     "area": 75.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约彭健宜_6 基础设施维护费189.75"
+    },
+    {
+     "location": "宿舍区2号楼首层2103室",
+     "propertyType": "shop",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约彭健宜_6 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6727
+   ],
+   "monthlyRent": "1613.00",
+   "rentArea": "75.00",
+   "startDate": "2029-10-07",
+   "endDate": "2032-10-06",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": null,
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "2436.13",
+   "rentArea": "75.00",
+   "lineCount": 4
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/彭健宜_6.png;一期2024年2月租金!彭健宜 R53-R55;P1-25",
+  "why": "#3 补物业三项,kva 各段都挂"
+ },
+ {
+  "ref": "P1-26",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 336,
+   "contractNo": "S10-0082#1",
+   "tenantId": 164
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):#1物业照纸约彭小兰_8(435/174/变压器159)"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍3号楼3104室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 87.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约彭小兰_8 企业服务费435"
+    },
+    {
+     "location": "宿舍3号楼3104室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 87.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约彭小兰_8 基础设施维护费174"
+    },
+    {
+     "location": "宿舍3号楼3104室",
+     "propertyType": "shop",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约彭小兰_8 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    7099
+   ],
+   "monthlyRent": "1479.00",
+   "rentArea": "87.00",
+   "startDate": "2023-11-24",
+   "endDate": "2026-11-23",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "26.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "2247.00",
+   "rentArea": "87.00",
+   "lineCount": 4
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/彭小兰_8.png;一期2024年2月租金!彭小兰 R54-R56;P1-26",
+  "why": "#1 补物业三项"
+ },
+ {
+  "ref": "P1-26",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 82,
+   "contractNo": "S10-0082",
+   "tenantId": 164
+  },
+  "set": {
+   "kva": 26,
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):#2物业照纸约彭小兰_8(478.5/191.4/变压器159);kva26挂到本段(纸约26kVA,R12)"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍3号楼3104室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.5,
+     "area": 87.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约彭小兰_8 企业服务费478.5"
+    },
+    {
+     "location": "宿舍3号楼3104室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.2,
+     "area": 87.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约彭小兰_8 基础设施维护费191.4"
+    },
+    {
+     "location": "宿舍3号楼3104室",
+     "propertyType": "shop",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约彭小兰_8 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6745
+   ],
+   "monthlyRent": "1626.90",
+   "rentArea": "87.00",
+   "startDate": "2026-11-24",
+   "endDate": "2029-11-23",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": null,
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "2455.80",
+   "rentArea": "87.00",
+   "lineCount": 4
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/彭小兰_8.png;一期2024年2月租金!彭小兰 R54-R56;P1-26",
+  "why": "#2 补物业三项,kva 挂到 #2"
+ },
+ {
+  "ref": "P1-27",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 79,
+   "contractNo": "S10-0079",
+   "tenantId": 161
+  },
+  "set": {
+   "remark": "2023.11-17-2024.11.16 | 真实合同补录(2026-09-27):商铺物业照纸约沙力海_6第一档502.8/201.12;无电梯无变压器;#2(2026-11-08起5.5/2.2)#3(2029-11-08起6.325/2.53)接口建不了escalation段未拆;50kVA待核"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍3号楼3102室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 100.56,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约沙力海_6 企业服务费502.8"
+    },
+    {
+     "location": "宿舍3号楼3102室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 100.56,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约沙力海_6 基础设施维护费201.12"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6730,
+    6731,
+    6732,
+    6733,
+    6734
+   ],
+   "monthlyRent": "3316.60",
+   "rentArea": "100.56",
+   "startDate": "2023-11-08",
+   "endDate": "2032-11-07",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": null,
+   "rentFree": null,
+   "remark": "2023.11-17-2024.11.16"
+  },
+  "expect": {
+   "monthlyRent": "4020.52",
+   "rentArea": "100.56",
+   "lineCount": 7
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/沙力海_5.png/_6.png;一期2024年2月租金!沙力海 R58-R59;P1-27",
+  "why": "商铺只录了租金单,物业两项没录;拆段 blocked,先按第一档挂在单段上"
+ },
+ {
+  "ref": "P1-28",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 66,
+   "contractNo": "S10-0066",
+   "tenantId": 137
+  },
+  "set": {
+   "remark": "2024.02.01-2025.01.31;本标的租期 2023-07-01→2024-06-30 | 真实合同补录(2026-09-27):物业照纸约张勤军_3(3101:665/266,2023-07-01~2024-06-30)、_4(4101:5000/2000);3101未拆A链:台账2025-01/02服务费5922.14含3101的665,纸约期后仍在收,续期待核"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍区3号楼首层3101室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 133.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约张勤军_3 企业服务费665"
+    },
+    {
+     "location": "宿舍区3号楼首层3101室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 133.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约张勤军_3 基础设施维护费266"
+    },
+    {
+     "location": "宿舍区3号楼首层4101室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 1000.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约张勤军_4 企业服务费5000"
+    },
+    {
+     "location": "宿舍区3号楼首层4101室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 1000.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约张勤军_4 基础设施维护费2000"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6683,
+    6684,
+    8090,
+    8091,
+    8092,
+    8093,
+    8094,
+    8095,
+    8099,
+    8100,
+    8101,
+    8096,
+    8097,
+    8098
+   ],
+   "monthlyRent": "17603.97",
+   "rentArea": "1133.00",
+   "startDate": "2023-07-01",
+   "endDate": "2026-06-30",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": null,
+   "rentFree": null,
+   "remark": "2024.02.01-2025.01.31;本标的租期 2023-07-01→2024-06-30"
+  },
+  "expect": {
+   "monthlyRent": "25534.97",
+   "rentArea": "1133.00",
+   "lineCount": 18
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/张勤军_1.png~_4.png;一期2024年2月租金!张勤军 R59-R62;monthly_ledger tenant 137 2025-01/02;P1-28",
+  "why": "只录了租金单,物业四行没录;报告修正版拆 A 链止 2024-06-30,但台账证 3101 纸约期后仍收(R03 不许截掉在收月),不拆"
+ },
+ {
+  "ref": "P1-21",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 328,
+   "contractNo": "S10-0071#1",
+   "tenantId": 143
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):#1物业照纸约威奈斯_5(2455/982);无变压器;租金单价另案;rent_free 2023-08-01~08-15,装修期服务费人工扣;2023-08整月单已被9月单取代,重生成2023-08人工过目",
+   "rentFree": "[{\"start\": \"2023-08-01\", \"end\": \"2023-08-15\", \"note\": \"装修期(一期2023年9月租金!威奈斯 R39)\"}]"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍区2号楼首层2106室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 491.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约威奈斯_5 企业服务费2455"
+    },
+    {
+     "location": "宿舍区2号楼首层2106室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 491.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约威奈斯_5 基础设施维护费982"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    7088
+   ],
+   "monthlyRent": "6543.70",
+   "rentArea": "491.00",
+   "startDate": "2023-07-07",
+   "endDate": "2026-07-06",
+   "status(存储态,PUT 原样回传)": "renewed",
+   "kva": null,
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "9980.70",
+   "rentArea": "491.00",
+   "lineCount": 3
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/威奈斯_5.png;一期2024年2月租金!威奈斯 R54-R55(5.15/2.06含税);P1-21",
+  "why": "#1 补物业两项",
+  "reviewFix": [
+   "复查 mgmt[34]:补 rentFree"
+  ]
+ },
+ {
+  "ref": "P1-21",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 71,
+   "contractNo": "S10-0071",
+   "tenantId": 143
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):#2物业照纸约威奈斯_5(2700.5/1080.2);无变压器;租金单价另案"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍区2号楼首层2106室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.5,
+     "area": 491.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约威奈斯_5 企业服务费2700.5"
+    },
+    {
+     "location": "宿舍区2号楼首层2106室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.2,
+     "area": 491.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约威奈斯_5 基础设施维护费1080.2"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6703
+   ],
+   "monthlyRent": "7198.06",
+   "rentArea": "491.00",
+   "startDate": "2026-07-07",
+   "endDate": "2029-07-06",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": null,
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "10978.76",
+   "rentArea": "491.00",
+   "lineCount": 3
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/威奈斯_5.png;一期2024年2月租金!威奈斯 R54-R55(5.15/2.06含税);P1-21",
+  "why": "#2 补物业两项"
+ },
+ {
+  "ref": "P1-24",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 76,
+   "contractNo": "S10-0076",
+   "tenantId": 156
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):物业照纸约袁华圣_2补充协议(3700/1480);无变压器;租金14.66与10kVA另案;rent_free 2023-08-28~10-06(交付09-22);交付前服务费人工扣,装修期管理费册面照收",
+   "rentFree": "[{\"start\": \"2023-08-28\", \"end\": \"2023-10-06\", \"note\": \"迟延交付+装修期(一期2023年10月租金!袁华圣 R39)\"}]"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "宿舍区4栋4102室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 740.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约袁华圣_2 企业服务费3700"
+    },
+    {
+     "location": "宿舍区4栋4102室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 740.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约袁华圣_2 基础设施维护费1480"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6724
+   ],
+   "monthlyRent": "10848.40",
+   "rentArea": "740.00",
+   "startDate": "2023-08-28",
+   "endDate": "2026-08-27",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": null,
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "16028.40",
+   "rentArea": "740.00",
+   "lineCount": 3
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/袁华圣_2.png;一期2024年2月租金!袁华圣 R54-R55(5.15/2.06含税);P1-24",
+  "why": "补物业两项",
+  "reviewFix": [
+   "复查 mgmt[36]:补 rentFree。册面「计收装修期15天管理费」→ 只交付前服务费人工扣"
+  ]
+ },
+ {
+  "ref": "P1-29",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 333,
+   "contractNo": "S10-0078#1",
+   "tenantId": 160
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):#1物业照纸约SENAN_6(393㎡合计1965/786),按3105/4104两处拆行;无变压器;4104室租金行绑单元326;rent_free 2023-10-01~10-13,服务费人工扣",
+   "rentFree": "[{\"start\": \"2023-10-01\", \"end\": \"2023-10-13\", \"note\": \"交付前+装修期(一期2023年11月租金!SENAN R39)\"}]"
+  },
+  "lines": {
+   "remove": [],
+   "update": [
+    {
+     "id": 7096,
+     "unitIds": [
+      326
+     ]
+    }
+   ],
+   "add": [
+    {
+     "location": "宿舍区三号楼首层3105室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 49.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约SENAN_6 企业服务费"
+    },
+    {
+     "location": "宿舍区三号楼首层3105室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 49.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约SENAN_6 基础设施维护费"
+    },
+    {
+     "location": "宿舍区三号楼首层4104室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 344.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约SENAN_6 企业服务费"
+    },
+    {
+     "location": "宿舍区三号楼首层4104室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 344.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约SENAN_6 基础设施维护费"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    7095,
+    7096
+   ],
+   "monthlyRent": "5207.00",
+   "rentArea": "393.00",
+   "startDate": "2023-10-01",
+   "endDate": "2026-09-30",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": null,
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "7958.00",
+   "rentArea": "393.00",
+   "lineCount": 6
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/SENAN_6.png;一期2024年2月租金!SENAN R55-R56;P1-29",
+  "why": "#1 补物业两项(并户另见 merge.json)",
+  "reviewFix": [
+   "复查 mgmt[37]+merge[6]:拆行留在本条,4104 rent_shop(7096,按 pre.lineIds 硬门对位)绑 326;补 rentFree;merge[6] 去掉 add,只追加并户备注"
+  ]
+ },
+ {
+  "ref": "P1-29",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 78,
+   "contractNo": "S10-0078",
+   "tenantId": 160
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):#2物业照纸约SENAN_6(393㎡合计2161.5/864.6),按3105/4104两处拆行;无变压器;4104室租金行绑单元326"
+  },
+  "lines": {
+   "remove": [],
+   "update": [
+    {
+     "id": 6729,
+     "unitIds": [
+      326
+     ]
+    }
+   ],
+   "add": [
+    {
+     "location": "宿舍区三号楼首层3105室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.5,
+     "area": 49.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约SENAN_6 企业服务费"
+    },
+    {
+     "location": "宿舍区三号楼首层3105室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.2,
+     "area": 49.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约SENAN_6 基础设施维护费"
+    },
+    {
+     "location": "宿舍区三号楼首层4104室",
+     "propertyType": "shop",
+     "feeKey": "mgmt",
+     "feeName": "商铺企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.5,
+     "area": 344.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约SENAN_6 企业服务费"
+    },
+    {
+     "location": "宿舍区三号楼首层4104室",
+     "propertyType": "shop",
+     "feeKey": "infra",
+     "feeName": "商铺基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.2,
+     "area": 344.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约SENAN_6 基础设施维护费"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6728,
+    6729
+   ],
+   "monthlyRent": "5727.70",
+   "rentArea": "393.00",
+   "startDate": "2026-10-01",
+   "endDate": "2028-09-30",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": null,
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "8753.80",
+   "rentArea": "393.00",
+   "lineCount": 6
+  },
+  "evidence": "scripts/contract-recon/out/images/一期2024年2月租金/SENAN_6.png;一期2024年2月租金!SENAN R55-R56;P1-29",
+  "why": "#2 补物业两项(并户另见 merge.json)",
+  "reviewFix": [
+   "复查 mgmt[38]+merge[7]:4104 rent_shop(6729)绑 326;merge[7] 去掉 add"
+  ]
+ },
+ {
+  "ref": "P2-10",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 361,
+   "contractNo": "S10-0206#1",
+   "tenantId": 62
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):#1积前物业照纸约南一_2(5000/2000/电梯600/变压器159);rent_free 2023-08-23~09-16,服务费人工扣",
+   "rentFree": "[{\"start\": \"2023-08-23\", \"end\": \"2023-09-16\", \"note\": \"迟延交付+装修期(二期2023年10月租金!南一 R35)\"}]"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "12栋(五车间)四楼402室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 1000.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约南一_2 企业服务费5000"
+    },
+    {
+     "location": "12栋(五车间)四楼402室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 1000.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约南一_2 基础设施维护费2000"
+    },
+    {
+     "location": "12栋(五车间)四楼402室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 600.0,
+     "note": "纸约南一_2 5.2 电梯维保费600/月"
+    },
+    {
+     "location": "12栋(五车间)四楼402室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约南一_2 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    7213
+   ],
+   "monthlyRent": "11000.00",
+   "rentArea": "1000.00",
+   "startDate": "2023-08-23",
+   "endDate": "2026-08-22",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "10.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "18759.00",
+   "rentArea": "1000.00",
+   "lineCount": 5
+  },
+  "evidence": "scripts/contract-recon/out/images/二期2024年02月租金/南一_2.png;租2402!南一 5150/2060/618/163.77(×1.03);P2-10",
+  "why": "#1 补物业四项",
+  "reviewFix": [
+   "复查 mgmt[39]:补 rentFree"
+  ]
+ },
+ {
+  "ref": "P2-10",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 206,
+   "contractNo": "S10-0206",
+   "tenantId": 62
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):#2积前物业照纸约南一_2(5500/2200/电梯600/变压器159)"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "12栋(五车间)四楼402室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.5,
+     "area": 1000.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约南一_2 企业服务费5500"
+    },
+    {
+     "location": "12栋(五车间)四楼402室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.2,
+     "area": 1000.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约南一_2 基础设施维护费2200"
+    },
+    {
+     "location": "12栋(五车间)四楼402室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 600.0,
+     "note": "纸约南一_2 5.2 电梯维保费600/月"
+    },
+    {
+     "location": "12栋(五车间)四楼402室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约南一_2 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6878
+   ],
+   "monthlyRent": "12100.00",
+   "rentArea": "1000.00",
+   "startDate": "2026-08-23",
+   "endDate": "2029-08-22",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "10.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "20559.00",
+   "rentArea": "1000.00",
+   "lineCount": 5
+  },
+  "evidence": "scripts/contract-recon/out/images/二期2024年02月租金/南一_2.png;租2402!南一 5150/2060/618/163.77(×1.03);P2-10",
+  "why": "#2 补物业四项"
+ },
+ {
+  "ref": "P2-11",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 205,
+   "contractNo": "S10-0205",
+   "tenantId": 61
+  },
+  "set": {
+   "remark": "2023年11月01日起至2024年10月31日 | 真实合同补录(2026-09-27):#1积前物业照纸约朱漫钳_2(9720/3499.20/电梯239/变压器159);rent_free 2023-08-22~10-21(含304宿舍租金),装修期服务费人工扣(基础费8-27起收)",
+   "rentFree": "[{\"start\": \"2023-08-22\", \"end\": \"2023-10-21\", \"note\": \"装修期(二期2023年10月租金!朱漫钳 R35)\"}]"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "12栋(五车间)四楼401室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 1944.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约朱漫钳_2 企业服务费9720"
+    },
+    {
+     "location": "12栋(五车间)四楼401室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 1.8,
+     "area": 1944.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约朱漫钳_2 基础设施维护费3499.20"
+    },
+    {
+     "location": "12栋(五车间)四楼401室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 239.0,
+     "note": "纸约朱漫钳_2 5.2 电梯维保费239/月"
+    },
+    {
+     "location": "12栋(五车间)四楼401室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约朱漫钳_2 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6873,
+    6874,
+    6875,
+    6876,
+    6877
+   ],
+   "monthlyRent": "17665.09",
+   "rentArea": "1944.00",
+   "startDate": "2023-08-22",
+   "endDate": "2026-08-21",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "87.50",
+   "rentFree": null,
+   "remark": "2023年11月01日起至2024年10月31日"
+  },
+  "expect": {
+   "monthlyRent": "31282.29",
+   "rentArea": "1944.00",
+   "lineCount": 9
+  },
+  "evidence": "scripts/contract-recon/out/images/二期2024年02月租金/朱漫钳_2.png;P2-11",
+  "why": "#1 补物业四项(宿舍304 移段不在本变更集)",
+  "reviewFix": [
+   "复查 mgmt[41]:补 rentFree"
+  ]
+ },
+ {
+  "ref": "P2-11",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 308,
+   "contractNo": "C2024M-013",
+   "tenantId": 61
+  },
+  "set": {
+   "remark": "真实合同补录(2026-09-27):#2积前物业照纸约朱漫钳_2(10692/3849.12/电梯239/变压器159);纸约第二档止日误写2026-08-21"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "12栋(五车间)四楼401室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.5,
+     "area": 1944.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约朱漫钳_2 企业服务费10692"
+    },
+    {
+     "location": "12栋(五车间)四楼401室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 1.98,
+     "area": 1944.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约朱漫钳_2 基础设施维护费3849.12"
+    },
+    {
+     "location": "12栋(五车间)四楼401室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 239.0,
+     "note": "纸约朱漫钳_2 5.2 电梯维保费239/月"
+    },
+    {
+     "location": "12栋(五车间)四楼401室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约朱漫钳_2 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    7045,
+    7046,
+    7047,
+    7048,
+    7049
+   ],
+   "monthlyRent": "18326.22",
+   "rentArea": "1944.00",
+   "startDate": "2026-08-22",
+   "endDate": "2029-08-21",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "87.50",
+   "rentFree": null,
+   "remark": null
+  },
+  "expect": {
+   "monthlyRent": "33265.34",
+   "rentArea": "1944.00",
+   "lineCount": 9
+  },
+  "evidence": "scripts/contract-recon/out/images/二期2024年02月租金/朱漫钳_2.png;P2-11",
+  "why": "#2 补物业四项(宿舍304 移段不在本变更集)"
+ },
+ {
+  "ref": "P2-12",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 362,
+   "contractNo": "S10-0208#1",
+   "tenantId": 64
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):#1积前物业照纸约王红婷_2(2585/1034/电梯159/变压器159);租金per_month另案"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "二期12号楼六楼602室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 517.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约王红婷_2 企业服务费2585"
+    },
+    {
+     "location": "二期12号楼六楼602室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 517.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约王红婷_2 基础设施维护费1034"
+    },
+    {
+     "location": "二期12号楼六楼602室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约王红婷_2 5.2 电梯维保费159/月"
+    },
+    {
+     "location": "二期12号楼六楼602室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约王红婷_2 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    7214
+   ],
+   "monthlyRent": "5381.97",
+   "rentArea": "517.00",
+   "startDate": "2023-07-10",
+   "endDate": "2026-07-09",
+   "status(存储态,PUT 原样回传)": "renewed",
+   "kva": "25.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "9318.97",
+   "rentArea": "517.00",
+   "lineCount": 5
+  },
+  "evidence": "scripts/contract-recon/out/images/二期2024年02月租金/王红婷_2.png;P2-12",
+  "why": "#1 补物业四项"
+ },
+ {
+  "ref": "P2-12",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 208,
+   "contractNo": "S10-0208",
+   "tenantId": 64
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):#2积前物业照纸约王红婷_2(2843.5/1137.5/电梯159/变压器159);租金per_month另案"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "二期12号楼六楼602室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.5,
+     "area": 517.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约王红婷_2 企业服务费2843.5"
+    },
+    {
+     "location": "二期12号楼六楼602室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_month",
+     "unitPrice": 2.2,
+     "area": 517.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 1137.5,
+     "note": "纸约王红婷_2 基础设施维护费1137.5;R05:纸面1137.5≠面积×单价1137.40,per_month覆盖纸面额,单价面积留作出处"
+    },
+    {
+     "location": "二期12号楼六楼602室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约王红婷_2 5.2 电梯维保费159/月"
+    },
+    {
+     "location": "二期12号楼六楼602室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约王红婷_2 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6861
+   ],
+   "monthlyRent": "5920.06",
+   "rentArea": "517.00",
+   "startDate": "2026-07-10",
+   "endDate": "2029-07-09",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "25.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "10219.06",
+   "rentArea": "517.00",
+   "lineCount": 5
+  },
+  "evidence": "scripts/contract-recon/out/images/二期2024年02月租金/王红婷_2.png;P2-12",
+  "why": "#2 补物业四项"
+ },
+ {
+  "ref": "P2-13",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 363,
+   "contractNo": "S10-0210#1",
+   "tenantId": 66
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):#1积前物业照纸约陈土生_2(3715/1114.5/电梯100/变压器159)"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "二期12号楼六楼604室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 743.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约陈土生_2 企业服务费3715"
+    },
+    {
+     "location": "二期12号楼六楼604室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 1.5,
+     "area": 743.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约陈土生_2 基础设施维护费1114.5"
+    },
+    {
+     "location": "二期12号楼六楼604室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 100.0,
+     "note": "纸约陈土生_2 5.2 电梯维保费100/月"
+    },
+    {
+     "location": "二期12号楼六楼604室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约陈土生_2 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    7215
+   ],
+   "monthlyRent": "8173.00",
+   "rentArea": "743.00",
+   "startDate": "2023-07-04",
+   "endDate": "2026-07-03",
+   "status(存储态,PUT 原样回传)": "renewed",
+   "kva": "12.50",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "13261.50",
+   "rentArea": "743.00",
+   "lineCount": 5
+  },
+  "evidence": "scripts/contract-recon/out/images/二期2024年02月租金/陈土生_2.png;台账2024-01/02 3715/1114.5/100/159;P2-13(修正:C210 已存在)",
+  "why": "#1 补物业四项"
+ },
+ {
+  "ref": "P2-13",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 210,
+   "contractNo": "S10-0210",
+   "tenantId": 66
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):#2积前物业照纸约陈土生_2(4086.5/1225.95/电梯100/变压器159)"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "二期12号楼六楼604室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.5,
+     "area": 743.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约陈土生_2 企业服务费4086.5"
+    },
+    {
+     "location": "二期12号楼六楼604室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 1.65,
+     "area": 743.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约陈土生_2 基础设施维护费1225.95"
+    },
+    {
+     "location": "二期12号楼六楼604室",
+     "propertyType": "factory",
+     "feeKey": "elevator",
+     "feeName": "电梯维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 100.0,
+     "note": "纸约陈土生_2 5.2 电梯维保费100/月"
+    },
+    {
+     "location": "二期12号楼六楼604室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约陈土生_2 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6862
+   ],
+   "monthlyRent": "8990.30",
+   "rentArea": "743.00",
+   "startDate": "2026-07-04",
+   "endDate": "2028-07-03",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "12.50",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "14561.75",
+   "rentArea": "743.00",
+   "lineCount": 5
+  },
+  "evidence": "scripts/contract-recon/out/images/二期2024年02月租金/陈土生_2.png;台账2024-01/02 3715/1114.5/100/159;P2-13(修正:C210 已存在)",
+  "why": "#2 补物业四项"
+ },
+ {
+  "ref": "P2-14",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 364,
+   "contractNo": "S10-0211#1",
+   "tenantId": 67
+  },
+  "set": {
+   "rentFree": "[{\"start\": \"2023-10-30\", \"end\": \"2023-12-31\", \"note\": \"租2312!柯建伍 R35「2024年1月1日起计收」\"}]",
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):积前物业照纸约柯建伍_6(17000/6800/变压器159,电梯0);rent_free 2023-10-30~12-31;服务费2024-01-01起收(租2312 R50)只记此处,重生成2023-10~12要人工扣"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "二期13号楼（六车间）101室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.0,
+     "area": 3400.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约柯建伍_6 企业服务费17000"
+    },
+    {
+     "location": "二期13号楼（六车间）101室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.0,
+     "area": 3400.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约柯建伍_6 基础设施维护费6800"
+    },
+    {
+     "location": "二期13号楼（六车间）101室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约柯建伍_6 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    7216
+   ],
+   "monthlyRent": "61200.00",
+   "rentArea": "3400.00",
+   "startDate": "2023-10-30",
+   "endDate": "2026-10-29",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "100.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "85159.00",
+   "rentArea": "3400.00",
+   "lineCount": 4
+  },
+  "evidence": "scripts/contract-recon/out/images/二期2024年02月租金/柯建伍_5.png/_6.png;二期2023年12月租金!柯建伍 R35/R50-R52;P2-14",
+  "why": "补物业三项;租金与服务费 2024-01-01 起收(P2-14 修正:租金也免)"
+ },
+ {
+  "ref": "P2-14",
+  "op": "contract.patch",
+  "target": {
+   "contractId": 211,
+   "contractNo": "S10-0211",
+   "tenantId": 67
+  },
+  "set": {
+   "remark": "由附表10归属派生(月租=最新非零月值) | 真实合同补录(2026-09-27):积前物业照纸约柯建伍_6第二档18700/7480(5.5/2.2),变压器159"
+  },
+  "lines": {
+   "remove": [],
+   "update": [],
+   "add": [
+    {
+     "location": "二期13号楼（六车间）101室",
+     "propertyType": "factory",
+     "feeKey": "mgmt",
+     "feeName": "厂房企业管理服务费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 5.5,
+     "area": 3400.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约柯建伍_6 企业服务费18700"
+    },
+    {
+     "location": "二期13号楼（六车间）101室",
+     "propertyType": "factory",
+     "feeKey": "infra",
+     "feeName": "厂房基础设施维护费",
+     "billMode": "per_sqm_month",
+     "unitPrice": 2.2,
+     "area": 3400.0,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": null,
+     "note": "纸约柯建伍_6 基础设施维护费7480"
+    },
+    {
+     "location": "二期13号楼（六车间）101室",
+     "propertyType": "factory",
+     "feeKey": "transformer",
+     "feeName": "变压器维护费",
+     "billMode": "per_month",
+     "unitPrice": 0,
+     "area": null,
+     "areaShared": null,
+     "coeff": 1,
+     "taxRate": null,
+     "amountOverride": 159.0,
+     "note": "纸约柯建伍_6 5.3B 变压器维护费159/月"
+    }
+   ]
+  },
+  "pre": {
+   "lineIds": [
+    6863
+   ],
+   "monthlyRent": "67320.00",
+   "rentArea": "3400.00",
+   "startDate": "2026-10-30",
+   "endDate": "2029-10-29",
+   "status(存储态,PUT 原样回传)": "active",
+   "kva": "100.00",
+   "rentFree": null,
+   "remark": "由附表10归属派生(月租=最新非零月值)"
+  },
+  "expect": {
+   "monthlyRent": "93659.00",
+   "rentArea": "3400.00",
+   "lineCount": 4
+  },
+  "evidence": "scripts/contract-recon/out/images/二期2024年02月租金/柯建伍_6.png;P2-14",
+  "why": "#2 补纸面第二档物业价"
+ },
+ {
+  "ref": "P1-07 复查 mgmt[0]/[1] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 133,
+   "feeKey": "factoryRent"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 133,
+    "feeKey": "factoryRent",
+    "companyId": 1
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(133,factoryRent) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(133,factoryRent)→1"
+  },
+  "evidence": "一期2024年2月租金!陈相钊 R38-R39 落款创显,R55-R62 落款创燊高;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-07 复查 mgmt[0]/[1] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 133,
+   "feeKey": "factoryMgmtFee"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 133,
+    "feeKey": "factoryMgmtFee",
+    "companyId": 6
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(133,factoryMgmtFee) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(133,factoryMgmtFee)→6"
+  },
+  "evidence": "一期2024年2月租金!陈相钊 R38-R39 落款创显,R55-R62 落款创燊高;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-07 复查 mgmt[0]/[1] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 133,
+   "feeKey": "infraFactory"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 133,
+    "feeKey": "infraFactory",
+    "companyId": 6
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(133,infraFactory) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(133,infraFactory)→6"
+  },
+  "evidence": "一期2024年2月租金!陈相钊 R38-R39 落款创显,R55-R62 落款创燊高;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-07 复查 mgmt[0]/[1] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 133,
+   "feeKey": "elevatorMaint"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 133,
+    "feeKey": "elevatorMaint",
+    "companyId": 6
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(133,elevatorMaint) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(133,elevatorMaint)→6"
+  },
+  "evidence": "一期2024年2月租金!陈相钊 R38-R39 落款创显,R55-R62 落款创燊高;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-07 复查 mgmt[0]/[1] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 133,
+   "feeKey": "transformerMaint"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 133,
+    "feeKey": "transformerMaint",
+    "companyId": 6
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(133,transformerMaint) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(133,transformerMaint)→6"
+  },
+  "evidence": "一期2024年2月租金!陈相钊 R38-R39 落款创显,R55-R62 落款创燊高;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-11 复查 mgmt[5] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 153,
+   "feeKey": "transformerMaint"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 153,
+    "feeKey": "transformerMaint",
+    "companyId": 6
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(153,transformerMaint) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(153,transformerMaint)→6"
+  },
+  "evidence": "一期2023年10月租金!芷泉 R57 落款创燊高(芷泉其余物业项现映射 B2,本次不改);signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-12 复查 mgmt[7] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 157,
+   "feeKey": "factoryRent"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 157,
+    "feeKey": "factoryRent",
+    "companyId": 1
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(157,factoryRent) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(157,factoryRent)→1"
+  },
+  "evidence": "一期2024年2月租金!曾绍良 R54-R57 落款创燊高,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-12 复查 mgmt[7] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 157,
+   "feeKey": "factoryMgmtFee"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 157,
+    "feeKey": "factoryMgmtFee",
+    "companyId": 6
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(157,factoryMgmtFee) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(157,factoryMgmtFee)→6"
+  },
+  "evidence": "一期2024年2月租金!曾绍良 R54-R57 落款创燊高,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-12 复查 mgmt[7] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 157,
+   "feeKey": "infraFactory"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 157,
+    "feeKey": "infraFactory",
+    "companyId": 6
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(157,infraFactory) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(157,infraFactory)→6"
+  },
+  "evidence": "一期2024年2月租金!曾绍良 R54-R57 落款创燊高,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-12 复查 mgmt[7] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 157,
+   "feeKey": "elevatorMaint"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 157,
+    "feeKey": "elevatorMaint",
+    "companyId": 6
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(157,elevatorMaint) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(157,elevatorMaint)→6"
+  },
+  "evidence": "一期2024年2月租金!曾绍良 R54-R57 落款创燊高,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-12 复查 mgmt[7] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 157,
+   "feeKey": "transformerMaint"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 157,
+    "feeKey": "transformerMaint",
+    "companyId": 6
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(157,transformerMaint) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(157,transformerMaint)→6"
+  },
+  "evidence": "一期2024年2月租金!曾绍良 R54-R57 落款创燊高,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-15 复查 mgmt[12]/[13] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 149,
+   "feeKey": "officeRent"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 149,
+    "feeKey": "officeRent",
+    "companyId": 1
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(149,officeRent) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(149,officeRent)→1"
+  },
+  "evidence": "办公室单 R38-R40 落款创显;一期2024年2月租金!高建军 R59-R61 落款创燊高;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-15 复查 mgmt[12]/[13] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 149,
+   "feeKey": "officeMgmtFee"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 149,
+    "feeKey": "officeMgmtFee",
+    "companyId": 1
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(149,officeMgmtFee) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(149,officeMgmtFee)→1"
+  },
+  "evidence": "办公室单 R38-R40 落款创显;一期2024年2月租金!高建军 R59-R61 落款创燊高;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-15 复查 mgmt[12]/[13] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 149,
+   "feeKey": "elevatorMaint"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 149,
+    "feeKey": "elevatorMaint",
+    "companyId": 1
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(149,elevatorMaint) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(149,elevatorMaint)→1"
+  },
+  "evidence": "办公室单 R38-R40 落款创显;一期2024年2月租金!高建军 R59-R61 落款创燊高;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-15 复查 mgmt[12]/[13] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 149,
+   "feeKey": "factoryRent"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 149,
+    "feeKey": "factoryRent",
+    "companyId": 1
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(149,factoryRent) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(149,factoryRent)→1"
+  },
+  "evidence": "办公室单 R38-R40 落款创显;一期2024年2月租金!高建军 R59-R61 落款创燊高;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-15 复查 mgmt[12]/[13] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 149,
+   "feeKey": "factoryMgmtFee"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 149,
+    "feeKey": "factoryMgmtFee",
+    "companyId": 6
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(149,factoryMgmtFee) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(149,factoryMgmtFee)→6"
+  },
+  "evidence": "办公室单 R38-R40 落款创显;一期2024年2月租金!高建军 R59-R61 落款创燊高;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-15 复查 mgmt[12]/[13] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 149,
+   "feeKey": "infraFactory"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 149,
+    "feeKey": "infraFactory",
+    "companyId": 6
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(149,infraFactory) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(149,infraFactory)→6"
+  },
+  "evidence": "办公室单 R38-R40 落款创显;一期2024年2月租金!高建军 R59-R61 落款创燊高;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-15 复查 mgmt[12]/[13] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 149,
+   "feeKey": "transformerMaint"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 149,
+    "feeKey": "transformerMaint",
+    "companyId": 6
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(149,transformerMaint) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(149,transformerMaint)→6"
+  },
+  "evidence": "办公室单 R38-R40 落款创显;一期2024年2月租金!高建军 R59-R61 落款创燊高;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-20 复查 mgmt[21] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 140,
+   "feeKey": "shopRent"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 140,
+    "feeKey": "shopRent",
+    "companyId": 1
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(140,shopRent) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(140,shopRent)→1"
+  },
+  "evidence": "一期2024年2月租金!张丽莉 R54-R55 落款积前,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-20 复查 mgmt[21] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 140,
+   "feeKey": "shopMgmtFee"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 140,
+    "feeKey": "shopMgmtFee",
+    "companyId": 5
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(140,shopMgmtFee) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(140,shopMgmtFee)→5"
+  },
+  "evidence": "一期2024年2月租金!张丽莉 R54-R55 落款积前,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-20 复查 mgmt[21] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 140,
+   "feeKey": "infraShop"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 140,
+    "feeKey": "infraShop",
+    "companyId": 5
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(140,infraShop) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(140,infraShop)→5"
+  },
+  "evidence": "一期2024年2月租金!张丽莉 R54-R55 落款积前,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-24 复查 mgmt[36] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 156,
+   "feeKey": "shopRent"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 156,
+    "feeKey": "shopRent",
+    "companyId": 1
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(156,shopRent) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(156,shopRent)→1"
+  },
+  "evidence": "袁华圣物业单落款积前,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-24 复查 mgmt[36] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 156,
+   "feeKey": "shopMgmtFee"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 156,
+    "feeKey": "shopMgmtFee",
+    "companyId": 5
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(156,shopMgmtFee) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(156,shopMgmtFee)→5"
+  },
+  "evidence": "袁华圣物业单落款积前,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-24 复查 mgmt[36] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 156,
+   "feeKey": "infraShop"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 156,
+    "feeKey": "infraShop",
+    "companyId": 5
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(156,infraShop) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(156,infraShop)→5"
+  },
+  "evidence": "袁华圣物业单落款积前,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P2-13 复查 mgmt[45] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 66,
+   "feeKey": "factoryRent"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 66,
+    "feeKey": "factoryRent",
+    "companyId": 1
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(66,factoryRent) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(66,factoryRent)→1"
+  },
+  "evidence": "二期2024年02月租金!陈土生 R50-R53 落款积前,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P2-13 复查 mgmt[45] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 66,
+   "feeKey": "factoryMgmtFee"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 66,
+    "feeKey": "factoryMgmtFee",
+    "companyId": 5
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(66,factoryMgmtFee) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(66,factoryMgmtFee)→5"
+  },
+  "evidence": "二期2024年02月租金!陈土生 R50-R53 落款积前,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P2-13 复查 mgmt[45] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 66,
+   "feeKey": "infraFactory"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 66,
+    "feeKey": "infraFactory",
+    "companyId": 5
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(66,infraFactory) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(66,infraFactory)→5"
+  },
+  "evidence": "二期2024年02月租金!陈土生 R50-R53 落款积前,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P2-13 复查 mgmt[45] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 66,
+   "feeKey": "elevatorMaint"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 66,
+    "feeKey": "elevatorMaint",
+    "companyId": 5
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(66,elevatorMaint) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(66,elevatorMaint)→5"
+  },
+  "evidence": "二期2024年02月租金!陈土生 R50-R53 落款积前,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P2-13 复查 mgmt[45] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 66,
+   "feeKey": "transformerMaint"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 66,
+    "feeKey": "transformerMaint",
+    "companyId": 5
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(66,transformerMaint) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(66,transformerMaint)→5"
+  },
+  "evidence": "二期2024年02月租金!陈土生 R50-R53 落款积前,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P2-14 复查 mgmt[47] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 67,
+   "feeKey": "factoryRent"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 67,
+    "feeKey": "factoryRent",
+    "companyId": 1
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(67,factoryRent) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(67,factoryRent)→1"
+  },
+  "evidence": "二期2024年02月租金!柯建伍 R50-R52 落款积前,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P2-14 复查 mgmt[47] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 67,
+   "feeKey": "factoryMgmtFee"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 67,
+    "feeKey": "factoryMgmtFee",
+    "companyId": 5
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(67,factoryMgmtFee) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(67,factoryMgmtFee)→5"
+  },
+  "evidence": "二期2024年02月租金!柯建伍 R50-R52 落款积前,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P2-14 复查 mgmt[47] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 67,
+   "feeKey": "infraFactory"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 67,
+    "feeKey": "infraFactory",
+    "companyId": 5
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(67,infraFactory) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(67,infraFactory)→5"
+  },
+  "evidence": "二期2024年02月租金!柯建伍 R50-R52 落款积前,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P2-14 复查 mgmt[47] 收款映射",
+  "op": "other",
+  "target": {
+   "tenantId": 67,
+   "feeKey": "transformerMaint"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 67,
+    "feeKey": "transformerMaint",
+    "companyId": 5
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(67,transformerMaint) 不存在;存在则跳过,不覆盖"
+  },
+  "expect": {
+   "paymap": "(67,transformerMaint)→5"
+  },
+  "evidence": "二期2024年02月租金!柯建伍 R50-R52 落款积前,租金单落款创显;signers.py 逐单核过落款",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认)"
+ },
+ {
+  "ref": "P1-29 复查 mgmt[37] 收款映射改",
+  "op": "other",
+  "target": {
+   "tenantId": 160,
+   "feeKey": "shopMgmtFee"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 160,
+    "feeKey": "shopMgmtFee",
+    "companyId": 5
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(160,shopMgmtFee) 现为 2;不是 2 就停(已是 5 视为已应用)"
+  },
+  "expect": {
+   "paymap": "(160,shopMgmtFee)→5"
+  },
+  "evidence": "一期2024年2月租金!SENAN R55-R56 物业单落款积前;signers.py:6 张物业单全是积前",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认);此键现有值 2(B2),是「改」",
+  "overwrite": {
+   "expectCompanyId": 2
+  }
+ },
+ {
+  "ref": "P1-29 复查 mgmt[37] 收款映射改",
+  "op": "other",
+  "target": {
+   "tenantId": 160,
+   "feeKey": "infraShop"
+  },
+  "body": {
+   "method": "PUT",
+   "path": "/api/bills/paymap",
+   "json": {
+    "tenantId": 160,
+    "feeKey": "infraShop",
+    "companyId": 5
+   }
+  },
+  "pre": {
+   "GET /api/bills/paymap": "(160,infraShop) 现为 2;不是 2 就停(已是 5 视为已应用)"
+  },
+  "expect": {
+   "paymap": "(160,infraShop)→5"
+  },
+  "evidence": "一期2024年2月租金!SENAN R55-R56 物业单落款积前;signers.py:6 张物业单全是积前",
+  "why": "收款公司按册面落款补(decisions.md「收款公司按册面落款补和改」;用户原话未涉及,线上执行前需确认);此键现有值 2(B2),是「改」",
+  "overwrite": {
+   "expectCompanyId": 2
+  }
+ }
+]

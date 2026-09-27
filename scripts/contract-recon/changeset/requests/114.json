@@ -1,0 +1,36 @@
+{
+  "seq" : 114,
+  "file" : "empty",
+  "opIndex" : 14,
+  "ref" : "P2-22 温小蓉 B 单元",
+  "op" : "other",
+  "method" : "POST",
+  "path" : "/api/buildings/26/units",
+  "body" : {
+    "floor" : 3,
+    "unitNo" : "321",
+    "area" : 35.53
+  },
+  "beforeDetailSig" : null,
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : {
+    "id" : 749,
+    "floor" : 3,
+    "unitNo" : "321",
+    "area" : 35.53,
+    "derivedArea" : 0,
+    "status" : "vacant",
+    "tenantId" : null,
+    "tenantName" : null,
+    "companyName" : null,
+    "businessType" : null,
+    "contractNo" : null,
+    "monthlyRent" : null,
+    "crossBuilding" : null,
+    "homeBuildingName" : null
+  },
+  "afterDetail" : null
+}

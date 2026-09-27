@@ -1,0 +1,36 @@
+{
+  "seq" : 122,
+  "file" : "empty",
+  "opIndex" : 22,
+  "ref" : "私人短租 苏海苗 单元",
+  "op" : "other",
+  "method" : "POST",
+  "path" : "/api/buildings/26/units",
+  "body" : {
+    "floor" : 6,
+    "unitNo" : "606",
+    "area" : 31.05
+  },
+  "beforeDetailSig" : null,
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : {
+    "id" : 757,
+    "floor" : 6,
+    "unitNo" : "606",
+    "area" : 31.05,
+    "derivedArea" : 0,
+    "status" : "vacant",
+    "tenantId" : null,
+    "tenantName" : null,
+    "companyName" : null,
+    "businessType" : null,
+    "contractNo" : null,
+    "monthlyRent" : null,
+    "crossBuilding" : null,
+    "homeBuildingName" : null
+  },
+  "afterDetail" : null
+}

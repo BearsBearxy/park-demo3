@@ -1,0 +1,25 @@
+{
+  "seq" : 87,
+  "file" : "mgmt",
+  "opIndex" : 71,
+  "ref" : "P1-24 复查 mgmt[36] 收款映射",
+  "op" : "other",
+  "method" : "PUT",
+  "path" : "/api/bills/paymap",
+  "body" : {
+    "tenantId" : 156,
+    "feeKey" : "shopMgmtFee",
+    "companyId" : 5
+  },
+  "beforeDetailSig" : "paymap:(156,shopMgmtFee)=absent",
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : null,
+  "afterDetail" : {
+    "tenantId" : 156,
+    "feeKey" : "shopMgmtFee",
+    "companyId" : 5
+  }
+}

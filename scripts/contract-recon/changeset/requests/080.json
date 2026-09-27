@@ -1,0 +1,25 @@
+{
+  "seq" : 80,
+  "file" : "mgmt",
+  "opIndex" : 64,
+  "ref" : "P1-15 复查 mgmt[12]/[13] 收款映射",
+  "op" : "other",
+  "method" : "PUT",
+  "path" : "/api/bills/paymap",
+  "body" : {
+    "tenantId" : 149,
+    "feeKey" : "factoryMgmtFee",
+    "companyId" : 6
+  },
+  "beforeDetailSig" : "paymap:(149,factoryMgmtFee)=absent",
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : null,
+  "afterDetail" : {
+    "tenantId" : 149,
+    "feeKey" : "factoryMgmtFee",
+    "companyId" : 6
+  }
+}

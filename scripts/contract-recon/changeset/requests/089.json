@@ -1,0 +1,25 @@
+{
+  "seq" : 89,
+  "file" : "mgmt",
+  "opIndex" : 73,
+  "ref" : "P2-13 复查 mgmt[45] 收款映射",
+  "op" : "other",
+  "method" : "PUT",
+  "path" : "/api/bills/paymap",
+  "body" : {
+    "tenantId" : 66,
+    "feeKey" : "factoryRent",
+    "companyId" : 1
+  },
+  "beforeDetailSig" : "paymap:(66,factoryRent)=absent",
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : null,
+  "afterDetail" : {
+    "tenantId" : 66,
+    "feeKey" : "factoryRent",
+    "companyId" : 1
+  }
+}

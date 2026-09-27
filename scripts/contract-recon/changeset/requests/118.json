@@ -1,0 +1,36 @@
+{
+  "seq" : 118,
+  "file" : "empty",
+  "opIndex" : 18,
+  "ref" : "私人短租 朱海勇 B 单元",
+  "op" : "other",
+  "method" : "POST",
+  "path" : "/api/buildings/29/units",
+  "body" : {
+    "floor" : 2,
+    "unitNo" : "242",
+    "area" : 36.53
+  },
+  "beforeDetailSig" : null,
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : {
+    "id" : 753,
+    "floor" : 2,
+    "unitNo" : "242",
+    "area" : 36.53,
+    "derivedArea" : 0,
+    "status" : "vacant",
+    "tenantId" : null,
+    "tenantName" : null,
+    "companyName" : null,
+    "businessType" : null,
+    "contractNo" : null,
+    "monthlyRent" : null,
+    "crossBuilding" : null,
+    "homeBuildingName" : null
+  },
+  "afterDetail" : null
+}

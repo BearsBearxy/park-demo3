@@ -1,0 +1,23 @@
+{
+  "seq" : 170,
+  "file" : "merge",
+  "opIndex" : 10,
+  "ref" : "P1-06/P1-29",
+  "op" : "other",
+  "method" : "POST",
+  "path" : "/api/bill-notices/generate?ym=2023-10",
+  "body" : null,
+  "beforeDetailSig" : null,
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : {
+    "generated" : 231,
+    "lines" : 1406,
+    "warned" : 54,
+    "skippedConfirmed" : 0,
+    "batch" : "BN20260927081306"
+  },
+  "afterDetail" : null
+}

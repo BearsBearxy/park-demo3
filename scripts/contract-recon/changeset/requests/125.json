@@ -1,0 +1,36 @@
+{
+  "seq" : 125,
+  "file" : "empty",
+  "opIndex" : 25,
+  "ref" : "私人短租 侯炳成 单元",
+  "op" : "other",
+  "method" : "POST",
+  "path" : "/api/buildings/29/units",
+  "body" : {
+    "floor" : 2,
+    "unitNo" : "243",
+    "area" : 36.09
+  },
+  "beforeDetailSig" : null,
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : {
+    "id" : 760,
+    "floor" : 2,
+    "unitNo" : "243",
+    "area" : 36.09,
+    "derivedArea" : 0,
+    "status" : "vacant",
+    "tenantId" : null,
+    "tenantName" : null,
+    "companyName" : null,
+    "businessType" : null,
+    "contractNo" : null,
+    "monthlyRent" : null,
+    "crossBuilding" : null,
+    "homeBuildingName" : null
+  },
+  "afterDetail" : null
+}

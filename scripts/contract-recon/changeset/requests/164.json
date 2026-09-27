@@ -1,0 +1,6330 @@
+{
+  "seq" : 164,
+  "file" : "merge",
+  "opIndex" : 10,
+  "ref" : "P1-06/P1-29",
+  "op" : "other",
+  "kind" : "baseline",
+  "method" : "GET",
+  "path" : "/api/bill-notices?ym=2023-08",
+  "body" : null,
+  "beforeDetailSig" : null,
+  "http" : 200,
+  "code" : 0,
+  "message" : "ok",
+  "ok" : true,
+  "response" : [ {
+    "id" : 17753,
+    "ym" : "2023-08",
+    "tenantId" : 2,
+    "tenantName" : "锂朋",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "二期8栋1层101室",
+    "totalAmount" : 6564.34,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 14,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17754,
+    "ym" : "2023-08",
+    "tenantId" : 2,
+    "tenantName" : "锂朋",
+    "payCompanyId" : 3,
+    "payCompanyName" : "帮管好",
+    "noticeKind" : "combined",
+    "premiseText" : "二期8栋1层101室",
+    "totalAmount" : 1559.03,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17756,
+    "ym" : "2023-08",
+    "tenantId" : 3,
+    "tenantName" : "恩科",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "二期8栋1层103室",
+    "totalAmount" : 2137.44,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 14,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17757,
+    "ym" : "2023-08",
+    "tenantId" : 3,
+    "tenantName" : "恩科",
+    "payCompanyId" : 3,
+    "payCompanyName" : "帮管好",
+    "noticeKind" : "combined",
+    "premiseText" : "二期8栋1层103室",
+    "totalAmount" : 2944.16,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17758,
+    "ym" : "2023-08",
+    "tenantId" : 4,
+    "tenantName" : "飞浪",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 375.18,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "100",
+      "hint" : "飞浪水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "9",
+      "hint" : "飞浪电"
+    } ],
+    "lineCount" : 7,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17813,
+    "ym" : "2023-08",
+    "tenantId" : 5,
+    "tenantName" : "魏杰瑜",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 162.32,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "102",
+      "hint" : "魏杰瑜水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1122",
+      "hint" : "六楼 4-643 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "824",
+      "hint" : "六楼 4-643 电表①"
+    } ],
+    "lineCount" : 5,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17814,
+    "ym" : "2023-08",
+    "tenantId" : 5,
+    "tenantName" : "魏杰瑜",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 1.59,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "102",
+      "hint" : "魏杰瑜水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1122",
+      "hint" : "六楼 4-643 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "824",
+      "hint" : "六楼 4-643 电表①"
+    } ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17759,
+    "ym" : "2023-08",
+    "tenantId" : 7,
+    "tenantName" : "谢福兵",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 311.71,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "12",
+      "hint" : "谢福兵电"
+    } ],
+    "lineCount" : 8,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17987,
+    "ym" : "2023-08",
+    "tenantId" : 8,
+    "tenantName" : "铂超贸易",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 134.07,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17760,
+    "ym" : "2023-08",
+    "tenantId" : 9,
+    "tenantName" : "张炳南",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "二期8号楼(一车间)501单元",
+    "totalAmount" : 4479.20,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 15,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17761,
+    "ym" : "2023-08",
+    "tenantId" : 10,
+    "tenantName" : "驰鸿印业",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 3249.84,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "107",
+      "hint" : "驰鸿水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1118",
+      "hint" : "六楼 4-639 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "15",
+      "hint" : "驰鸿电"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "820",
+      "hint" : "六楼 4-639 电表①"
+    } ],
+    "lineCount" : 8,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17762,
+    "ym" : "2023-08",
+    "tenantId" : 10,
+    "tenantName" : "驰鸿印业",
+    "payCompanyId" : 3,
+    "payCompanyName" : "帮管好",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 497.35,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "107",
+      "hint" : "驰鸿水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1118",
+      "hint" : "六楼 4-639 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "15",
+      "hint" : "驰鸿电"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "820",
+      "hint" : "六楼 4-639 电表①"
+    } ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17763,
+    "ym" : "2023-08",
+    "tenantId" : 10,
+    "tenantName" : "驰鸿印业",
+    "payCompanyId" : 5,
+    "payCompanyName" : "积前",
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 2.39,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "107",
+      "hint" : "驰鸿水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1118",
+      "hint" : "六楼 4-639 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "15",
+      "hint" : "驰鸿电"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "820",
+      "hint" : "六楼 4-639 电表①"
+    } ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17765,
+    "ym" : "2023-08",
+    "tenantId" : 11,
+    "tenantName" : "保奔路",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "二期 8号楼\n（一车间）602单元,主、二期 8号楼\n（一车间）602单元",
+    "totalAmount" : 746.43,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "8589",
+      "hint" : "S10-0145#1 · 厂房租金"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "8585",
+      "hint" : "S10-0145#1 · 厂房租金"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "8590",
+      "hint" : "S10-0145#1 · 厂房企业管理服务费"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "8586",
+      "hint" : "S10-0145#1 · 厂房企业管理服务费"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "8587",
+      "hint" : "S10-0145#1 · 厂房基础设施维护费"
+    } ],
+    "lineCount" : 12,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17766,
+    "ym" : "2023-08",
+    "tenantId" : 11,
+    "tenantName" : "保奔路",
+    "payCompanyId" : 3,
+    "payCompanyName" : "帮管好",
+    "noticeKind" : "combined",
+    "premiseText" : "主,二期 8号楼\n（一车间）602单元",
+    "totalAmount" : 851.74,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "8589",
+      "hint" : "S10-0145#1 · 厂房租金"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "8585",
+      "hint" : "S10-0145#1 · 厂房租金"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "8590",
+      "hint" : "S10-0145#1 · 厂房企业管理服务费"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "8586",
+      "hint" : "S10-0145#1 · 厂房企业管理服务费"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "8587",
+      "hint" : "S10-0145#1 · 厂房基础设施维护费"
+    } ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17764,
+    "ym" : "2023-08",
+    "tenantId" : 12,
+    "tenantName" : "达博普",
+    "payCompanyId" : 3,
+    "payCompanyName" : "帮管好",
+    "noticeKind" : "combined",
+    "premiseText" : "二期8号楼(1车间）6楼601单元",
+    "totalAmount" : 2907.81,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 18,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17767,
+    "ym" : "2023-08",
+    "tenantId" : 13,
+    "tenantName" : "何育平",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "二期8号楼603室",
+    "totalAmount" : 2848.83,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 15,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17768,
+    "ym" : "2023-08",
+    "tenantId" : 13,
+    "tenantName" : "何育平",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "二期8号楼603室",
+    "totalAmount" : 5.02,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17976,
+    "ym" : "2023-08",
+    "tenantId" : 14,
+    "tenantName" : "中科华贸",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "二期8号楼（1车间）702单元",
+    "totalAmount" : 694.73,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7879",
+      "hint" : "S10-0219 · 厂房企业管理服务费"
+    } ],
+    "lineCount" : 8,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17977,
+    "ym" : "2023-08",
+    "tenantId" : 14,
+    "tenantName" : "中科华贸",
+    "payCompanyId" : 6,
+    "payCompanyName" : "创燊高",
+    "noticeKind" : "combined",
+    "premiseText" : "二期8号楼（1车间）702单元",
+    "totalAmount" : 1024.70,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7879",
+      "hint" : "S10-0219 · 厂房企业管理服务费"
+    } ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17978,
+    "ym" : "2023-08",
+    "tenantId" : 14,
+    "tenantName" : "中科华贸",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "二期8号楼（1车间）702单元",
+    "totalAmount" : 0.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7879",
+      "hint" : "S10-0219 · 厂房企业管理服务费"
+    } ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17769,
+    "ym" : "2023-08",
+    "tenantId" : 15,
+    "tenantName" : "佛山协作链供应链管理有限公司",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "二期9号楼（2车间）103单元,二期9号楼（2车间）201单元,二期9号楼（2车间）103、201单元",
+    "totalAmount" : 21765.48,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "2110",
+      "hint" : "李李商铺水"
+    } ],
+    "lineCount" : 23,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17770,
+    "ym" : "2023-08",
+    "tenantId" : 16,
+    "tenantName" : "陈曼娜",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "二期9栋301室",
+    "totalAmount" : 14828.29,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 18,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17771,
+    "ym" : "2023-08",
+    "tenantId" : 17,
+    "tenantName" : "联洛贸易",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 162.74,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "119",
+      "hint" : "联洛贸易水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "27",
+      "hint" : "联洛贸易电"
+    } ],
+    "lineCount" : 10,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17817,
+    "ym" : "2023-08",
+    "tenantId" : 18,
+    "tenantName" : "欧伟杰",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 42.67,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "121",
+      "hint" : "欧伟杰水2"
+    } ],
+    "lineCount" : 5,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17815,
+    "ym" : "2023-08",
+    "tenantId" : 19,
+    "tenantName" : "健明包装",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 3.95,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "115",
+      "hint" : "健明水"
+    } ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17816,
+    "ym" : "2023-08",
+    "tenantId" : 19,
+    "tenantName" : "健明包装",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 355.83,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "115",
+      "hint" : "健明水"
+    } ],
+    "lineCount" : 4,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17772,
+    "ym" : "2023-08",
+    "tenantId" : 20,
+    "tenantName" : "艾派斯",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "二期10号楼（3车间）1楼103单元",
+    "totalAmount" : 1093.59,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 14,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17773,
+    "ym" : "2023-08",
+    "tenantId" : 20,
+    "tenantName" : "艾派斯",
+    "payCompanyId" : 3,
+    "payCompanyName" : "帮管好",
+    "noticeKind" : "combined",
+    "premiseText" : "二期10号楼（3车间）1楼103单元",
+    "totalAmount" : 2609.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17774,
+    "ym" : "2023-08",
+    "tenantId" : 21,
+    "tenantName" : "易立",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "二期10号楼（3车间）104单元",
+    "totalAmount" : 1328.04,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 14,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17775,
+    "ym" : "2023-08",
+    "tenantId" : 21,
+    "tenantName" : "易立",
+    "payCompanyId" : 3,
+    "payCompanyName" : "帮管好",
+    "noticeKind" : "combined",
+    "premiseText" : "二期10号楼（3车间）104单元",
+    "totalAmount" : 1532.96,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17953,
+    "ym" : "2023-08",
+    "tenantId" : 22,
+    "tenantName" : "星州",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 87.91,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "887",
+      "hint" : "二楼 1-221 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "889",
+      "hint" : "二楼 1-223 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "891",
+      "hint" : "二楼 1-226 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "892",
+      "hint" : "二楼 1-228 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "579",
+      "hint" : "二楼 1-221 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "581",
+      "hint" : "二楼 1-223 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "583",
+      "hint" : "二楼 1-226 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "584",
+      "hint" : "二楼 1-228 电表①"
+    } ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17952,
+    "ym" : "2023-08",
+    "tenantId" : 22,
+    "tenantName" : "星州",
+    "payCompanyId" : 5,
+    "payCompanyName" : "积前",
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 274.58,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "887",
+      "hint" : "二楼 1-221 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "889",
+      "hint" : "二楼 1-223 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "891",
+      "hint" : "二楼 1-226 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "892",
+      "hint" : "二楼 1-228 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "579",
+      "hint" : "二楼 1-221 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "581",
+      "hint" : "二楼 1-223 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "583",
+      "hint" : "二楼 1-226 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "584",
+      "hint" : "二楼 1-228 电表①"
+    } ],
+    "lineCount" : 9,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17966,
+    "ym" : "2023-08",
+    "tenantId" : 23,
+    "tenantName" : "永龙",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 88.04,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1075",
+      "hint" : "四楼 4-448 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1076",
+      "hint" : "四楼 4-449 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1077",
+      "hint" : "四楼 4-450 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "775",
+      "hint" : "四楼 4-448 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "776",
+      "hint" : "四楼 4-449 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "777",
+      "hint" : "四楼 4-450 电表①"
+    } ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17965,
+    "ym" : "2023-08",
+    "tenantId" : 23,
+    "tenantName" : "永龙",
+    "payCompanyId" : 5,
+    "payCompanyName" : "积前",
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 34.42,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1075",
+      "hint" : "四楼 4-448 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1076",
+      "hint" : "四楼 4-449 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1077",
+      "hint" : "四楼 4-450 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "775",
+      "hint" : "四楼 4-448 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "776",
+      "hint" : "四楼 4-449 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "777",
+      "hint" : "四楼 4-450 电表①"
+    } ],
+    "lineCount" : 7,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17989,
+    "ym" : "2023-08",
+    "tenantId" : 25,
+    "tenantName" : "管中旺",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 83.65,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17990,
+    "ym" : "2023-08",
+    "tenantId" : 26,
+    "tenantName" : "吉罗德",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 416.70,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17991,
+    "ym" : "2023-08",
+    "tenantId" : 27,
+    "tenantName" : "毅盛离合",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 101.35,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17955,
+    "ym" : "2023-08",
+    "tenantId" : 28,
+    "tenantName" : "广联",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 271.67,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "901",
+      "hint" : "三楼 1-309 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "902",
+      "hint" : "三楼 1-310 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "905",
+      "hint" : "三楼 1-313 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "907",
+      "hint" : "三楼 1-315 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "908",
+      "hint" : "三楼 1-316 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "910",
+      "hint" : "三楼 1-318 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "912",
+      "hint" : "三楼 1-320 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "917",
+      "hint" : "三楼 1-326 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "918",
+      "hint" : "三楼 1-328 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "925",
+      "hint" : "四楼 1-407 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "931",
+      "hint" : "四楼 1-413 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "933",
+      "hint" : "四楼 1-415 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "935",
+      "hint" : "四楼 1-417 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "939",
+      "hint" : "四楼 1-421 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "941",
+      "hint" : "四楼 1-423 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "950",
+      "hint" : "五楼 1-506 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "955",
+      "hint" : "五楼 1-511 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "957",
+      "hint" : "五楼 1-513 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "959",
+      "hint" : "五楼 1-515 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "961",
+      "hint" : "五楼 1-517 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "964",
+      "hint" : "五楼 1-520 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "965",
+      "hint" : "五楼 1-521 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "966",
+      "hint" : "五楼 1-522 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "967",
+      "hint" : "五楼 1-523 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "968",
+      "hint" : "五楼 1-524 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "969",
+      "hint" : "五楼 1-526 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "970",
+      "hint" : "五楼 1-528 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "594",
+      "hint" : "三楼 1-309 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "595",
+      "hint" : "三楼 1-310 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "596",
+      "hint" : "三楼 1-311 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "598",
+      "hint" : "三楼 1-313 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "600",
+      "hint" : "三楼 1-315 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "601",
+      "hint" : "三楼 1-316 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "603",
+      "hint" : "三楼 1-318 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "605",
+      "hint" : "三楼 1-320 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "610",
+      "hint" : "三楼 1-326 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "611",
+      "hint" : "三楼 1-328 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "619",
+      "hint" : "四楼 1-407 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "623",
+      "hint" : "四楼 1-411 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "625",
+      "hint" : "四楼 1-413 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "627",
+      "hint" : "四楼 1-415 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "629",
+      "hint" : "四楼 1-417 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "633",
+      "hint" : "四楼 1-421 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "635",
+      "hint" : "四楼 1-423 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "645",
+      "hint" : "五楼 1-506 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "650",
+      "hint" : "五楼 1-511 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "652",
+      "hint" : "五楼 1-513 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "654",
+      "hint" : "五楼 1-515 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "655",
+      "hint" : "五楼 1-516 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "656",
+      "hint" : "五楼 1-517 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "659",
+      "hint" : "五楼 1-520 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "660",
+      "hint" : "五楼 1-521 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "661",
+      "hint" : "五楼 1-522 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "662",
+      "hint" : "五楼 1-523 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "663",
+      "hint" : "五楼 1-524 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "664",
+      "hint" : "五楼 1-526 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "665",
+      "hint" : "五楼 1-528 电表①"
+    } ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17954,
+    "ym" : "2023-08",
+    "tenantId" : 28,
+    "tenantName" : "广联",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "dorm",
+    "premiseText" : "宿舍一栋313室,宿舍一栋315室,宿舍一栋309室,宿舍一栋310室,宿舍一栋311室,等30处",
+    "totalAmount" : -3867.28,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "901",
+      "hint" : "三楼 1-309 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "902",
+      "hint" : "三楼 1-310 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "905",
+      "hint" : "三楼 1-313 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "907",
+      "hint" : "三楼 1-315 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "908",
+      "hint" : "三楼 1-316 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "910",
+      "hint" : "三楼 1-318 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "912",
+      "hint" : "三楼 1-320 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "917",
+      "hint" : "三楼 1-326 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "918",
+      "hint" : "三楼 1-328 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "925",
+      "hint" : "四楼 1-407 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "931",
+      "hint" : "四楼 1-413 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "933",
+      "hint" : "四楼 1-415 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "935",
+      "hint" : "四楼 1-417 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "939",
+      "hint" : "四楼 1-421 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "941",
+      "hint" : "四楼 1-423 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "950",
+      "hint" : "五楼 1-506 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "955",
+      "hint" : "五楼 1-511 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "957",
+      "hint" : "五楼 1-513 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "959",
+      "hint" : "五楼 1-515 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "961",
+      "hint" : "五楼 1-517 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "964",
+      "hint" : "五楼 1-520 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "965",
+      "hint" : "五楼 1-521 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "966",
+      "hint" : "五楼 1-522 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "967",
+      "hint" : "五楼 1-523 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "968",
+      "hint" : "五楼 1-524 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "969",
+      "hint" : "五楼 1-526 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "970",
+      "hint" : "五楼 1-528 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "594",
+      "hint" : "三楼 1-309 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "595",
+      "hint" : "三楼 1-310 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "596",
+      "hint" : "三楼 1-311 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "598",
+      "hint" : "三楼 1-313 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "600",
+      "hint" : "三楼 1-315 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "601",
+      "hint" : "三楼 1-316 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "603",
+      "hint" : "三楼 1-318 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "605",
+      "hint" : "三楼 1-320 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "610",
+      "hint" : "三楼 1-326 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "611",
+      "hint" : "三楼 1-328 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "619",
+      "hint" : "四楼 1-407 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "623",
+      "hint" : "四楼 1-411 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "625",
+      "hint" : "四楼 1-413 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "627",
+      "hint" : "四楼 1-415 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "629",
+      "hint" : "四楼 1-417 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "633",
+      "hint" : "四楼 1-421 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "635",
+      "hint" : "四楼 1-423 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "645",
+      "hint" : "五楼 1-506 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "650",
+      "hint" : "五楼 1-511 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "652",
+      "hint" : "五楼 1-513 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "654",
+      "hint" : "五楼 1-515 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "655",
+      "hint" : "五楼 1-516 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "656",
+      "hint" : "五楼 1-517 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "659",
+      "hint" : "五楼 1-520 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "660",
+      "hint" : "五楼 1-521 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "661",
+      "hint" : "五楼 1-522 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "662",
+      "hint" : "五楼 1-523 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "663",
+      "hint" : "五楼 1-524 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "664",
+      "hint" : "五楼 1-526 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "665",
+      "hint" : "五楼 1-528 电表①"
+    }, {
+      "code" : "W_TOTAL_NEGATIVE",
+      "payload" : "",
+      "hint" : ""
+    } ],
+    "lineCount" : 62,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17992,
+    "ym" : "2023-08",
+    "tenantId" : 29,
+    "tenantName" : "氙明",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 72.46,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17993,
+    "ym" : "2023-08",
+    "tenantId" : 30,
+    "tenantName" : "威玛斯",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 54.34,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17994,
+    "ym" : "2023-08",
+    "tenantId" : 31,
+    "tenantName" : "许旭锐",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 0.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17995,
+    "ym" : "2023-08",
+    "tenantId" : 32,
+    "tenantName" : "张木兰",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 45.29,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17996,
+    "ym" : "2023-08",
+    "tenantId" : 33,
+    "tenantName" : "两岸食品",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 18.12,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17776,
+    "ym" : "2023-08",
+    "tenantId" : 48,
+    "tenantName" : "力灏",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "二期五号楼首层101室、二楼201室、三楼301室",
+    "totalAmount" : 103516.40,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 12,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17777,
+    "ym" : "2023-08",
+    "tenantId" : 48,
+    "tenantName" : "力灏",
+    "payCompanyId" : 5,
+    "payCompanyName" : "积前",
+    "noticeKind" : "combined",
+    "premiseText" : "二期五号楼首层101室、二楼201室、三楼301室",
+    "totalAmount" : 125619.73,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 5,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17778,
+    "ym" : "2023-08",
+    "tenantId" : 48,
+    "tenantName" : "力灏",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "二期五号楼首层101室、二楼201室、三楼301室",
+    "totalAmount" : 249951.76,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17782,
+    "ym" : "2023-08",
+    "tenantId" : 49,
+    "tenantName" : "彭云霞",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "二期12号楼（五车间）五楼整层",
+    "totalAmount" : 59388.84,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 17,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17783,
+    "ym" : "2023-08",
+    "tenantId" : 49,
+    "tenantName" : "彭云霞",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "二期12号楼（五车间）五楼整层",
+    "totalAmount" : 24827.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17805,
+    "ym" : "2023-08",
+    "tenantId" : 50,
+    "tenantName" : "丁天伦",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "二期13号楼（六车间）501室",
+    "totalAmount" : 1372.85,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 15,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17806,
+    "ym" : "2023-08",
+    "tenantId" : 50,
+    "tenantName" : "丁天伦",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "二期13号楼（六车间）501室",
+    "totalAmount" : 31458.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 5,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17807,
+    "ym" : "2023-08",
+    "tenantId" : 51,
+    "tenantName" : "石荣杰",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "二期13号楼（六车间）502室",
+    "totalAmount" : 23043.66,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 20,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17808,
+    "ym" : "2023-08",
+    "tenantId" : 52,
+    "tenantName" : "徐翾",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "二期13号楼（六车间）第五层503室",
+    "totalAmount" : 24210.10,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 20,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17784,
+    "ym" : "2023-08",
+    "tenantId" : 53,
+    "tenantName" : "方凯鑫",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "二期12号楼（五车间）六楼601室,二期13号楼（六车间）首层102室,二期13号楼（六车间）首层102室、二期12号楼（五车间）六楼601室",
+    "totalAmount" : 78186.44,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 34,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17809,
+    "ym" : "2023-08",
+    "tenantId" : 54,
+    "tenantName" : "罗立剑",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "二期六号楼六层601室,二期六号楼六层701室,二期六号楼六层601室、七层701室、二期六号楼天面空地,二期六号楼六层601室、七层701室,二期六号楼天面空地",
+    "totalAmount" : 200098.70,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 24,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17810,
+    "ym" : "2023-08",
+    "tenantId" : 54,
+    "tenantName" : "罗立剑",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "dorm",
+    "premiseText" : "二期六号楼六层601室、七层701室",
+    "totalAmount" : 27.86,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 8,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17797,
+    "ym" : "2023-08",
+    "tenantId" : 55,
+    "tenantName" : "刘彪",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "二期13号楼,二期13栋（六车间）第三层301室",
+    "totalAmount" : 25498.87,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 19,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17789,
+    "ym" : "2023-08",
+    "tenantId" : 56,
+    "tenantName" : "三龙",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "二期五号楼七层701室",
+    "totalAmount" : 54654.72,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 17,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17804,
+    "ym" : "2023-08",
+    "tenantId" : 57,
+    "tenantName" : "庞俊妨",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "二期13栋（六车间）第四层402室",
+    "totalAmount" : 20411.97,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 20,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17800,
+    "ym" : "2023-08",
+    "tenantId" : 58,
+    "tenantName" : "应塘",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "二期13座三楼303室,二期13座三楼303室、宿舍楼四座527室",
+    "totalAmount" : 37735.44,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 20,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17801,
+    "ym" : "2023-08",
+    "tenantId" : 58,
+    "tenantName" : "应塘",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "dorm",
+    "premiseText" : "宿舍楼四座527室",
+    "totalAmount" : 1097.60,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 8,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17798,
+    "ym" : "2023-08",
+    "tenantId" : 59,
+    "tenantName" : "欧培敬",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "二期13座三楼302室,二期13座三楼302室、宿舍楼四座232室、宿舍楼四座530室",
+    "totalAmount" : 24874.33,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 20,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17799,
+    "ym" : "2023-08",
+    "tenantId" : 59,
+    "tenantName" : "欧培敬",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "dorm",
+    "premiseText" : "宿舍楼四座530室,宿舍楼四座232室",
+    "totalAmount" : 2931.46,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 15,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17791,
+    "ym" : "2023-08",
+    "tenantId" : 60,
+    "tenantName" : "邓宇峰",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "二期13座二楼,二期13座二楼、二期13座天面、宿舍楼四座229室、宿舍楼四座644室、宿舍楼四座641室、宿舍楼四座646室、宿舍楼四座647",
+    "totalAmount" : 40061.58,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "544",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "633",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "637",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "645",
+      "hint" : ""
+    } ],
+    "lineCount" : 19,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17793,
+    "ym" : "2023-08",
+    "tenantId" : 60,
+    "tenantName" : "邓宇峰",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "二期13座二楼、二期13座天面、宿舍楼四座229室、宿舍楼四座644室、宿舍楼四座641室、宿舍楼四座646室、宿舍楼四座647,二期13座二楼,二期13座天面",
+    "totalAmount" : 49087.66,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "544",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "633",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "637",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "645",
+      "hint" : ""
+    } ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17794,
+    "ym" : "2023-08",
+    "tenantId" : 60,
+    "tenantName" : "邓宇峰",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "二期13座二楼",
+    "totalAmount" : 20686.57,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "544",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "633",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "637",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "645",
+      "hint" : ""
+    } ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17795,
+    "ym" : "2023-08",
+    "tenantId" : 60,
+    "tenantName" : "邓宇峰",
+    "payCompanyId" : 6,
+    "payCompanyName" : "创燊高",
+    "noticeKind" : "combined",
+    "premiseText" : "二期13座二楼",
+    "totalAmount" : 7447.26,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "544",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "633",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "637",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "645",
+      "hint" : ""
+    } ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17796,
+    "ym" : "2023-08",
+    "tenantId" : 60,
+    "tenantName" : "邓宇峰",
+    "payCompanyId" : 3,
+    "payCompanyName" : "帮管好",
+    "noticeKind" : "combined",
+    "premiseText" : "二期13座二楼",
+    "totalAmount" : 900.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "544",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "633",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "637",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "645",
+      "hint" : ""
+    } ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17792,
+    "ym" : "2023-08",
+    "tenantId" : 60,
+    "tenantName" : "邓宇峰",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "dorm",
+    "premiseText" : "宿舍楼四座229室,二期13座二楼,二期13座二楼、二期13座天面、宿舍楼四座229室、宿舍楼四座644室、宿舍楼四座641室、宿舍楼四座646室、宿舍楼四座647,宿舍楼四座641室,宿舍楼四座644室,等9处",
+    "totalAmount" : 5835.52,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "544",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "633",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "637",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "645",
+      "hint" : ""
+    } ],
+    "lineCount" : 62,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17780,
+    "ym" : "2023-08",
+    "tenantId" : 61,
+    "tenantName" : "朱漫钳",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "12栋(五车间)四楼401室,12栋(五车间)四楼401室、宿舍楼一座304室",
+    "totalAmount" : 6305.24,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 11,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17779,
+    "ym" : "2023-08",
+    "tenantId" : 61,
+    "tenantName" : "朱漫钳",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "dorm",
+    "premiseText" : "宿舍楼一座304室",
+    "totalAmount" : 8.95,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 4,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17781,
+    "ym" : "2023-08",
+    "tenantId" : 61,
+    "tenantName" : "朱漫钳",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "dorm",
+    "premiseText" : "宿舍楼一座304室",
+    "totalAmount" : 324.20,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 4,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17979,
+    "ym" : "2023-08",
+    "tenantId" : 62,
+    "tenantName" : "南一",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "12栋(五车间)四楼402室",
+    "totalAmount" : 215.74,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 8,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17980,
+    "ym" : "2023-08",
+    "tenantId" : 62,
+    "tenantName" : "南一",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "12栋(五车间)四楼402室",
+    "totalAmount" : 3193.55,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17997,
+    "ym" : "2023-08",
+    "tenantId" : 63,
+    "tenantName" : "蚁润发",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 0.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17785,
+    "ym" : "2023-08",
+    "tenantId" : 64,
+    "tenantName" : "王红婷",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "二期12号楼六楼602室",
+    "totalAmount" : 6800.25,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 16,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17786,
+    "ym" : "2023-08",
+    "tenantId" : 65,
+    "tenantName" : "张文峰",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "二期12座六楼603室,二期12座六楼603室、宿舍楼四座425室",
+    "totalAmount" : 28270.90,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 20,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17787,
+    "ym" : "2023-08",
+    "tenantId" : 65,
+    "tenantName" : "张文峰",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "dorm",
+    "premiseText" : "宿舍楼四座425室,二期12座六楼603室",
+    "totalAmount" : 1672.93,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 9,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17788,
+    "ym" : "2023-08",
+    "tenantId" : 66,
+    "tenantName" : "陈土生",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "二期12号楼六楼604室",
+    "totalAmount" : 8924.75,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 16,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17790,
+    "ym" : "2023-08",
+    "tenantId" : 67,
+    "tenantName" : "柯建伍",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 1719.64,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "162",
+      "hint" : "柯建伍水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "78",
+      "hint" : "柯建伍电"
+    } ],
+    "lineCount" : 9,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17802,
+    "ym" : "2023-08",
+    "tenantId" : 68,
+    "tenantName" : "曹小芳",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "二期13栋（六车间）第四层401室,二期13栋（六车间）第四层401室、宿舍楼一座212室",
+    "totalAmount" : 60699.95,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 18,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17803,
+    "ym" : "2023-08",
+    "tenantId" : 68,
+    "tenantName" : "曹小芳",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "dorm",
+    "premiseText" : "宿舍楼一座212室",
+    "totalAmount" : 1047.79,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 8,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17811,
+    "ym" : "2023-08",
+    "tenantId" : 69,
+    "tenantName" : "陈书谨",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "二期钢构车间101室",
+    "totalAmount" : 1217.99,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 5,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17812,
+    "ym" : "2023-08",
+    "tenantId" : 69,
+    "tenantName" : "陈书谨",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "二期钢构车间101室",
+    "totalAmount" : 12503.04,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17951,
+    "ym" : "2023-08",
+    "tenantId" : 95,
+    "tenantName" : "广东曼克维通信科技有限公司佛山分公司",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 32.32,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "872",
+      "hint" : "二楼 1-206 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "876",
+      "hint" : "二楼 1-210 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "880",
+      "hint" : "二楼 1-214 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "924",
+      "hint" : "四楼 1-406 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "926",
+      "hint" : "四楼 1-408 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1019",
+      "hint" : "二楼 4-244 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "564",
+      "hint" : "二楼 1-206 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "568",
+      "hint" : "二楼 1-210 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "572",
+      "hint" : "二楼 1-214 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "618",
+      "hint" : "四楼 1-406 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "620",
+      "hint" : "四楼 1-408 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "717",
+      "hint" : "二楼 4-244 电表①"
+    } ],
+    "lineCount" : 12,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17893,
+    "ym" : "2023-08",
+    "tenantId" : 99,
+    "tenantName" : "金纳",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "一期D座三楼整层",
+    "totalAmount" : 31070.80,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17894,
+    "ym" : "2023-08",
+    "tenantId" : 99,
+    "tenantName" : "金纳",
+    "payCompanyId" : 6,
+    "payCompanyName" : "创燊高",
+    "noticeKind" : "combined",
+    "premiseText" : "一期D座三楼整层",
+    "totalAmount" : 3188.68,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 6,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17895,
+    "ym" : "2023-08",
+    "tenantId" : 99,
+    "tenantName" : "金纳",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "一期D座三楼整层",
+    "totalAmount" : 21280.02,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 12,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17906,
+    "ym" : "2023-08",
+    "tenantId" : 100,
+    "tenantName" : "银纳",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "一期E座首层103室,一期E座首层103室、保障房303室、保障房404室、保障房410室、保障房412室、保障房414室、保障房416室、保障房41",
+    "totalAmount" : 8559.60,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 10,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17908,
+    "ym" : "2023-08",
+    "tenantId" : 100,
+    "tenantName" : "银纳",
+    "payCompanyId" : 6,
+    "payCompanyName" : "创燊高",
+    "noticeKind" : "combined",
+    "premiseText" : "一期E座首层103室",
+    "totalAmount" : 2059.81,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17907,
+    "ym" : "2023-08",
+    "tenantId" : 100,
+    "tenantName" : "银纳",
+    "payCompanyId" : 5,
+    "payCompanyName" : "积前",
+    "noticeKind" : "dorm",
+    "premiseText" : "保障房303室,保障房404室,保障房410室,保障房412室,保障房414室,等13处",
+    "totalAmount" : 13426.56,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 91,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17822,
+    "ym" : "2023-08",
+    "tenantId" : 101,
+    "tenantName" : "成吉",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "A座208室",
+    "totalAmount" : 2748.88,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 8,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17823,
+    "ym" : "2023-08",
+    "tenantId" : 101,
+    "tenantName" : "成吉",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座208室",
+    "totalAmount" : 15177.60,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17914,
+    "ym" : "2023-08",
+    "tenantId" : 102,
+    "tenantName" : "思汗",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "F座首层101室",
+    "totalAmount" : 64725.07,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "216",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "218",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "220",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "222",
+      "hint" : ""
+    } ],
+    "lineCount" : 13,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17915,
+    "ym" : "2023-08",
+    "tenantId" : 102,
+    "tenantName" : "思汗",
+    "payCompanyId" : 6,
+    "payCompanyName" : "创燊高",
+    "noticeKind" : "combined",
+    "premiseText" : "F座首层101室",
+    "totalAmount" : 16408.26,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "216",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "218",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "220",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "222",
+      "hint" : ""
+    } ],
+    "lineCount" : 7,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17917,
+    "ym" : "2023-08",
+    "tenantId" : 102,
+    "tenantName" : "思汗",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "F座首层101室",
+    "totalAmount" : 60264.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "216",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "218",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "220",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "222",
+      "hint" : ""
+    } ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17918,
+    "ym" : "2023-08",
+    "tenantId" : 102,
+    "tenantName" : "思汗",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "F座首层101室",
+    "totalAmount" : 8829.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "216",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "218",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "220",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "222",
+      "hint" : ""
+    } ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17916,
+    "ym" : "2023-08",
+    "tenantId" : 102,
+    "tenantName" : "思汗",
+    "payCompanyId" : 5,
+    "payCompanyName" : "积前",
+    "noticeKind" : "dorm",
+    "premiseText" : "F座首层101室",
+    "totalAmount" : 532.10,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "216",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "218",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "220",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "222",
+      "hint" : ""
+    } ],
+    "lineCount" : 12,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17881,
+    "ym" : "2023-08",
+    "tenantId" : 103,
+    "tenantName" : "碧沃丰",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 482.93,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "451",
+      "hint" : "碧沃丰B401东侧水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "452",
+      "hint" : "碧沃丰B401西侧水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "278",
+      "hint" : "碧沃丰B401电"
+    } ],
+    "lineCount" : 13,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17824,
+    "ym" : "2023-08",
+    "tenantId" : 104,
+    "tenantName" : "合源创盈",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "A座206楼,主,A座206楼、主",
+    "totalAmount" : 2769.70,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7886",
+      "hint" : "S10-0054 · 门禁设施维护费"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7887",
+      "hint" : "S10-0054 · 网络通讯费"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7892",
+      "hint" : "S10-0094 · 厂房基础设施维护费"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7895",
+      "hint" : "S10-0094 · 厂房基础设施维护费"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7896",
+      "hint" : "S10-0094 · 厂房租金"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7897",
+      "hint" : "S10-0094 · 厂房企业管理服务费"
+    } ],
+    "lineCount" : 10,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17826,
+    "ym" : "2023-08",
+    "tenantId" : 104,
+    "tenantName" : "合源创盈",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座206楼",
+    "totalAmount" : 15976.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7886",
+      "hint" : "S10-0054 · 门禁设施维护费"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7887",
+      "hint" : "S10-0054 · 网络通讯费"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7892",
+      "hint" : "S10-0094 · 厂房基础设施维护费"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7895",
+      "hint" : "S10-0094 · 厂房基础设施维护费"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7896",
+      "hint" : "S10-0094 · 厂房租金"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7897",
+      "hint" : "S10-0094 · 厂房企业管理服务费"
+    } ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17825,
+    "ym" : "2023-08",
+    "tenantId" : 104,
+    "tenantName" : "合源创盈",
+    "payCompanyId" : 5,
+    "payCompanyName" : "积前",
+    "noticeKind" : "dorm",
+    "premiseText" : "新俊楼101室",
+    "totalAmount" : 651.78,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7886",
+      "hint" : "S10-0054 · 门禁设施维护费"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7887",
+      "hint" : "S10-0054 · 网络通讯费"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7892",
+      "hint" : "S10-0094 · 厂房基础设施维护费"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7895",
+      "hint" : "S10-0094 · 厂房基础设施维护费"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7896",
+      "hint" : "S10-0094 · 厂房租金"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7897",
+      "hint" : "S10-0094 · 厂房企业管理服务费"
+    } ],
+    "lineCount" : 5,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17964,
+    "ym" : "2023-08",
+    "tenantId" : 105,
+    "tenantName" : "力美",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 0.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "451",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "452",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "546",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "549",
+      "hint" : ""
+    } ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17963,
+    "ym" : "2023-08",
+    "tenantId" : 105,
+    "tenantName" : "力美",
+    "payCompanyId" : 5,
+    "payCompanyName" : "积前",
+    "noticeKind" : "dorm",
+    "premiseText" : "宿舍四栋444室,宿舍四栋446室,宿舍四栋444室、宿舍四栋446室",
+    "totalAmount" : 2550.15,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "451",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "452",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "546",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "549",
+      "hint" : ""
+    } ],
+    "lineCount" : 24,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17924,
+    "ym" : "2023-08",
+    "tenantId" : 106,
+    "tenantName" : "可盈",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "饭堂",
+    "totalAmount" : 9162.16,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 4,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17925,
+    "ym" : "2023-08",
+    "tenantId" : 106,
+    "tenantName" : "可盈",
+    "payCompanyId" : 5,
+    "payCompanyName" : "积前",
+    "noticeKind" : "combined",
+    "premiseText" : "饭堂",
+    "totalAmount" : 3297.86,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17926,
+    "ym" : "2023-08",
+    "tenantId" : 106,
+    "tenantName" : "可盈",
+    "payCompanyId" : 5,
+    "payCompanyName" : "积前",
+    "noticeKind" : "dorm",
+    "premiseText" : "饭堂",
+    "totalAmount" : 22686.05,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 4,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17875,
+    "ym" : "2023-08",
+    "tenantId" : 107,
+    "tenantName" : "可莱恩",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "B座201室,A座602室",
+    "totalAmount" : 110539.72,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "441",
+      "hint" : "可莱恩A602水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "464",
+      "hint" : "可莱恩C402水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "314",
+      "hint" : "可莱恩C402电1"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "315",
+      "hint" : "可莱恩C402电2"
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "538",
+      "hint" : ""
+    } ],
+    "lineCount" : 47,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17877,
+    "ym" : "2023-08",
+    "tenantId" : 107,
+    "tenantName" : "可莱恩",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座602室,B座201室",
+    "totalAmount" : 49826.96,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "441",
+      "hint" : "可莱恩A602水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "464",
+      "hint" : "可莱恩C402水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "314",
+      "hint" : "可莱恩C402电1"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "315",
+      "hint" : "可莱恩C402电2"
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "538",
+      "hint" : ""
+    } ],
+    "lineCount" : 7,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17876,
+    "ym" : "2023-08",
+    "tenantId" : 107,
+    "tenantName" : "可莱恩",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "dorm",
+    "premiseText" : "宿舍楼四座430室,宿舍楼四座431室,宿舍楼四座432室,宿舍楼四座434室,宿舍楼四座436室,等7处",
+    "totalAmount" : 8366.99,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "441",
+      "hint" : "可莱恩A602水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "464",
+      "hint" : "可莱恩C402水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "314",
+      "hint" : "可莱恩C402电1"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "315",
+      "hint" : "可莱恩C402电2"
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "538",
+      "hint" : ""
+    } ],
+    "lineCount" : 50,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17865,
+    "ym" : "2023-08",
+    "tenantId" : 109,
+    "tenantName" : "新材料协会",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 1362.40,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "437",
+      "hint" : "新材料协会水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "254",
+      "hint" : "新材料协会电"
+    } ],
+    "lineCount" : 5,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17867,
+    "ym" : "2023-08",
+    "tenantId" : 110,
+    "tenantName" : "次生代",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "A座616室,A座616、618室",
+    "totalAmount" : 6810.12,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "307",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "314",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "324",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "401",
+      "hint" : ""
+    } ],
+    "lineCount" : 11,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17868,
+    "ym" : "2023-08",
+    "tenantId" : 110,
+    "tenantName" : "次生代",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "A座616室",
+    "totalAmount" : 1531.66,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "307",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "314",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "324",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "401",
+      "hint" : ""
+    } ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17870,
+    "ym" : "2023-08",
+    "tenantId" : 110,
+    "tenantName" : "次生代",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座616、618室",
+    "totalAmount" : 12373.25,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "307",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "314",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "324",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "401",
+      "hint" : ""
+    } ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17866,
+    "ym" : "2023-08",
+    "tenantId" : 110,
+    "tenantName" : "次生代",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "dorm",
+    "premiseText" : "A座616、618室",
+    "totalAmount" : 221.34,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "307",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "314",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "324",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "401",
+      "hint" : ""
+    } ],
+    "lineCount" : 8,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17869,
+    "ym" : "2023-08",
+    "tenantId" : 110,
+    "tenantName" : "次生代",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "dorm",
+    "premiseText" : "A座616、618室",
+    "totalAmount" : 497.12,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "307",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "314",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "324",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "401",
+      "hint" : ""
+    } ],
+    "lineCount" : 4,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17958,
+    "ym" : "2023-08",
+    "tenantId" : 111,
+    "tenantName" : "开利暖通",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "dorm",
+    "premiseText" : "保障房2号楼、保障房3号楼,保障房2号楼,保障房3号楼",
+    "totalAmount" : 225812.44,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 18,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17897,
+    "ym" : "2023-08",
+    "tenantId" : 112,
+    "tenantName" : "一元兰欣",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "D座403室、宿舍四座442室",
+    "totalAmount" : 26115.56,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "402",
+      "hint" : "一元兰欣水"
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "502",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "440",
+      "hint" : ""
+    } ],
+    "lineCount" : 13,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17899,
+    "ym" : "2023-08",
+    "tenantId" : 112,
+    "tenantName" : "一元兰欣",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "D座403室",
+    "totalAmount" : 35085.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "402",
+      "hint" : "一元兰欣水"
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "502",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "440",
+      "hint" : ""
+    } ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17900,
+    "ym" : "2023-08",
+    "tenantId" : 112,
+    "tenantName" : "一元兰欣",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "D座403室",
+    "totalAmount" : 7875.25,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "402",
+      "hint" : "一元兰欣水"
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "502",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "440",
+      "hint" : ""
+    } ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17901,
+    "ym" : "2023-08",
+    "tenantId" : 112,
+    "tenantName" : "一元兰欣",
+    "payCompanyId" : 6,
+    "payCompanyName" : "创燊高",
+    "noticeKind" : "combined",
+    "premiseText" : "D座403室",
+    "totalAmount" : 2679.50,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "402",
+      "hint" : "一元兰欣水"
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "502",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "440",
+      "hint" : ""
+    } ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17898,
+    "ym" : "2023-08",
+    "tenantId" : 112,
+    "tenantName" : "一元兰欣",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "dorm",
+    "premiseText" : "D座403室、宿舍四座442室,宿舍四座442室",
+    "totalAmount" : 633.93,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "402",
+      "hint" : "一元兰欣水"
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "502",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "440",
+      "hint" : ""
+    } ],
+    "lineCount" : 10,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17902,
+    "ym" : "2023-08",
+    "tenantId" : 112,
+    "tenantName" : "一元兰欣",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "dorm",
+    "premiseText" : "宿舍四座442室",
+    "totalAmount" : 825.46,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "402",
+      "hint" : "一元兰欣水"
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "502",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "440",
+      "hint" : ""
+    } ],
+    "lineCount" : 4,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17862,
+    "ym" : "2023-08",
+    "tenantId" : 113,
+    "tenantName" : "鑫皇",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "A座502室",
+    "totalAmount" : 19606.98,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "306",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "308",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "312",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "419",
+      "hint" : ""
+    } ],
+    "lineCount" : 14,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17864,
+    "ym" : "2023-08",
+    "tenantId" : 113,
+    "tenantName" : "鑫皇",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座502室",
+    "totalAmount" : 41492.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "306",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "308",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "312",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "419",
+      "hint" : ""
+    } ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17863,
+    "ym" : "2023-08",
+    "tenantId" : 113,
+    "tenantName" : "鑫皇",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "dorm",
+    "premiseText" : "A座502室",
+    "totalAmount" : 2498.01,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "306",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "308",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "312",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "419",
+      "hint" : ""
+    } ],
+    "lineCount" : 46,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17880,
+    "ym" : "2023-08",
+    "tenantId" : 114,
+    "tenantName" : "雷莱",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 7610.70,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 14,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17840,
+    "ym" : "2023-08",
+    "tenantId" : 115,
+    "tenantName" : "双成",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器K306室,A座孵化器K306室、宿舍305室",
+    "totalAmount" : 4169.38,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_CONTRACT_NO_DATES",
+      "payload" : "S10-0061",
+      "hint" : ""
+    } ],
+    "lineCount" : 10,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17842,
+    "ym" : "2023-08",
+    "tenantId" : 115,
+    "tenantName" : "双成",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器K306室",
+    "totalAmount" : 15392.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_CONTRACT_NO_DATES",
+      "payload" : "S10-0061",
+      "hint" : ""
+    } ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17841,
+    "ym" : "2023-08",
+    "tenantId" : 115,
+    "tenantName" : "双成",
+    "payCompanyId" : 5,
+    "payCompanyName" : "积前",
+    "noticeKind" : "dorm",
+    "premiseText" : "宿舍305室",
+    "totalAmount" : 820.20,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_CONTRACT_NO_DATES",
+      "payload" : "S10-0061",
+      "hint" : ""
+    } ],
+    "lineCount" : 7,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17849,
+    "ym" : "2023-08",
+    "tenantId" : 116,
+    "tenantName" : "粤海华创",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器四楼411室",
+    "totalAmount" : 997.40,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_PACKAGE_NO_POOL",
+      "payload" : "share_green_water",
+      "hint" : ""
+    } ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17850,
+    "ym" : "2023-08",
+    "tenantId" : 116,
+    "tenantName" : "粤海华创",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器四楼411室",
+    "totalAmount" : 5646.26,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_PACKAGE_NO_POOL",
+      "payload" : "share_green_water",
+      "hint" : ""
+    } ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17827,
+    "ym" : "2023-08",
+    "tenantId" : 117,
+    "tenantName" : "宏玥",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器二楼203号室,A座孵化器六楼619号室,A座孵化器二楼216号室",
+    "totalAmount" : 2411.85,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 30,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17828,
+    "ym" : "2023-08",
+    "tenantId" : 117,
+    "tenantName" : "宏玥",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器二楼203号室,A座孵化器六楼619号室,A座孵化器二楼216号室",
+    "totalAmount" : 14250.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 6,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17843,
+    "ym" : "2023-08",
+    "tenantId" : 118,
+    "tenantName" : "禹晨",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器四楼429室,A座孵化器四楼429室、430室、431室",
+    "totalAmount" : 553.47,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_PACKAGE_NO_POOL",
+      "payload" : "share_green_water",
+      "hint" : ""
+    } ],
+    "lineCount" : 5,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17844,
+    "ym" : "2023-08",
+    "tenantId" : 118,
+    "tenantName" : "禹晨",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器四楼429室、430室、431室",
+    "totalAmount" : 6380.40,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_PACKAGE_NO_POOL",
+      "payload" : "share_green_water",
+      "hint" : ""
+    } ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17830,
+    "ym" : "2023-08",
+    "tenantId" : 119,
+    "tenantName" : "仁恒",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器三楼315室,A座孵化器三楼311、312、313室",
+    "totalAmount" : 6682.35,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "414",
+      "hint" : "仁恒智研水新"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "911",
+      "hint" : "三楼 1-319 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "927",
+      "hint" : "四楼 1-409 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "947",
+      "hint" : "五楼 1-503 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "604",
+      "hint" : "三楼 1-319 电表①"
+    }, {
+      "code" : "W_CONTRACT_NO_DATES",
+      "payload" : "S10-0062",
+      "hint" : ""
+    } ],
+    "lineCount" : 17,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17832,
+    "ym" : "2023-08",
+    "tenantId" : 119,
+    "tenantName" : "仁恒",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器三楼311、312、313室,A座孵化器三楼315室",
+    "totalAmount" : 17073.30,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "414",
+      "hint" : "仁恒智研水新"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "911",
+      "hint" : "三楼 1-319 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "927",
+      "hint" : "四楼 1-409 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "947",
+      "hint" : "五楼 1-503 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "604",
+      "hint" : "三楼 1-319 电表①"
+    }, {
+      "code" : "W_CONTRACT_NO_DATES",
+      "payload" : "S10-0062",
+      "hint" : ""
+    } ],
+    "lineCount" : 4,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17831,
+    "ym" : "2023-08",
+    "tenantId" : 119,
+    "tenantName" : "仁恒",
+    "payCompanyId" : 5,
+    "payCompanyName" : "积前",
+    "noticeKind" : "dorm",
+    "premiseText" : "宿舍新俊楼一座409室,宿舍新俊楼一座503室",
+    "totalAmount" : 423.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "414",
+      "hint" : "仁恒智研水新"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "911",
+      "hint" : "三楼 1-319 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "927",
+      "hint" : "四楼 1-409 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "947",
+      "hint" : "五楼 1-503 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "604",
+      "hint" : "三楼 1-319 电表①"
+    }, {
+      "code" : "W_CONTRACT_NO_DATES",
+      "payload" : "S10-0062",
+      "hint" : ""
+    } ],
+    "lineCount" : 9,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17833,
+    "ym" : "2023-08",
+    "tenantId" : 120,
+    "tenantName" : "采妍",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器三楼316、317号室、A座孵化器三楼318号室,A座孵化器三楼316、317号室",
+    "totalAmount" : 4645.82,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "310",
+      "hint" : "采妍水"
+    } ],
+    "lineCount" : 11,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17834,
+    "ym" : "2023-08",
+    "tenantId" : 120,
+    "tenantName" : "采妍",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器三楼316、317号室,A座孵化器三楼318号室",
+    "totalAmount" : 19772.37,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "310",
+      "hint" : "采妍水"
+    } ],
+    "lineCount" : 4,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17851,
+    "ym" : "2023-08",
+    "tenantId" : 122,
+    "tenantName" : "优唯特",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座四楼418室,A座四楼423室,A座四楼418室、A座四楼423室",
+    "totalAmount" : 9511.30,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_PACKAGE_NO_POOL",
+      "payload" : "share_green_water",
+      "hint" : ""
+    } ],
+    "lineCount" : 6,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17852,
+    "ym" : "2023-08",
+    "tenantId" : 122,
+    "tenantName" : "优唯特",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "A座四楼418室,A座四楼418室、A座四楼423室",
+    "totalAmount" : 1813.98,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_PACKAGE_NO_POOL",
+      "payload" : "share_green_water",
+      "hint" : ""
+    } ],
+    "lineCount" : 7,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17904,
+    "ym" : "2023-08",
+    "tenantId" : 123,
+    "tenantName" : "信成洋",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "一期E座首层101室",
+    "totalAmount" : 29666.80,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "540",
+      "hint" : ""
+    } ],
+    "lineCount" : 15,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17905,
+    "ym" : "2023-08",
+    "tenantId" : 123,
+    "tenantName" : "信成洋",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "dorm",
+    "premiseText" : "一期E座首层101室",
+    "totalAmount" : 623.98,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "540",
+      "hint" : ""
+    } ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17890,
+    "ym" : "2023-08",
+    "tenantId" : 124,
+    "tenantName" : "叶子涛",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "一期D座首层103室",
+    "totalAmount" : 40118.44,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 15,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17879,
+    "ym" : "2023-08",
+    "tenantId" : 125,
+    "tenantName" : "杨文正",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "一期B座首层102室",
+    "totalAmount" : 39984.83,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 15,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17872,
+    "ym" : "2023-08",
+    "tenantId" : 127,
+    "tenantName" : "碳紫",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "一期E座104室,A座孵化器六楼A614、A615、A622室,A座孵化器六楼A614、A615、A622室、一期E座104室",
+    "totalAmount" : 57541.57,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "322",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "323",
+      "hint" : ""
+    } ],
+    "lineCount" : 28,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17874,
+    "ym" : "2023-08",
+    "tenantId" : 127,
+    "tenantName" : "碳紫",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器六楼A614、A615、A622室",
+    "totalAmount" : 6380.40,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "322",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "323",
+      "hint" : ""
+    } ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17873,
+    "ym" : "2023-08",
+    "tenantId" : 127,
+    "tenantName" : "碳紫",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "dorm",
+    "premiseText" : "A座孵化器六楼A614、A615、A622室、一期E座104室",
+    "totalAmount" : 405.65,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "322",
+      "hint" : ""
+    }, {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "323",
+      "hint" : ""
+    } ],
+    "lineCount" : 6,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17910,
+    "ym" : "2023-08",
+    "tenantId" : 128,
+    "tenantName" : "天玛",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "一期E座二楼201室",
+    "totalAmount" : 4719.28,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 13,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17911,
+    "ym" : "2023-08",
+    "tenantId" : 128,
+    "tenantName" : "天玛",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "一期E座二楼201室",
+    "totalAmount" : 14074.40,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17912,
+    "ym" : "2023-08",
+    "tenantId" : 128,
+    "tenantName" : "天玛",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "一期E座二楼201室",
+    "totalAmount" : 7618.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17913,
+    "ym" : "2023-08",
+    "tenantId" : 128,
+    "tenantName" : "天玛",
+    "payCompanyId" : 6,
+    "payCompanyName" : "创燊高",
+    "noticeKind" : "combined",
+    "premiseText" : "一期E座二楼201室",
+    "totalAmount" : 2628.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17878,
+    "ym" : "2023-08",
+    "tenantId" : 129,
+    "tenantName" : "张彦",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "一期B座首层103室",
+    "totalAmount" : 34320.99,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 16,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17835,
+    "ym" : "2023-08",
+    "tenantId" : 130,
+    "tenantName" : "林春艳",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器三楼321室,A座孵化器三楼321、322室",
+    "totalAmount" : 1692.13,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 9,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17836,
+    "ym" : "2023-08",
+    "tenantId" : 130,
+    "tenantName" : "林春艳",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器三楼321、322室",
+    "totalAmount" : 9222.60,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17891,
+    "ym" : "2023-08",
+    "tenantId" : 131,
+    "tenantName" : "汤周杰",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "一期D座二楼,一期D座二楼、宿舍楼四座630室",
+    "totalAmount" : 67655.47,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 29,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17892,
+    "ym" : "2023-08",
+    "tenantId" : 131,
+    "tenantName" : "汤周杰",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "dorm",
+    "premiseText" : "宿舍楼四座630室",
+    "totalAmount" : 1792.53,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 9,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17887,
+    "ym" : "2023-08",
+    "tenantId" : 132,
+    "tenantName" : "邹同稳",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "一期C座三楼西侧301室",
+    "totalAmount" : 24262.90,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 15,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17886,
+    "ym" : "2023-08",
+    "tenantId" : 133,
+    "tenantName" : "陈相钊",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "一期C座三楼302室、一期C座二楼217、218、219室,一期C座三楼302室,一期C座二楼217、218、219室",
+    "totalAmount" : 28938.62,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 12,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17838,
+    "ym" : "2023-08",
+    "tenantId" : 134,
+    "tenantName" : "林观平",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器三楼A303室,A座孵化器三楼A303室、A座孵化器四楼A445室,A座孵化器四楼A445室",
+    "totalAmount" : 1045.97,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "620",
+      "hint" : "次生代620电"
+    } ],
+    "lineCount" : 11,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17839,
+    "ym" : "2023-08",
+    "tenantId" : 134,
+    "tenantName" : "林观平",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器三楼A303室,A座孵化器四楼A445室",
+    "totalAmount" : 4105.80,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "620",
+      "hint" : "次生代620电"
+    } ],
+    "lineCount" : 4,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17885,
+    "ym" : "2023-08",
+    "tenantId" : 135,
+    "tenantName" : "李卓伦",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 232.63,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "306",
+      "hint" : "优嘉蓓C222电"
+    } ],
+    "lineCount" : 6,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17927,
+    "ym" : "2023-08",
+    "tenantId" : 136,
+    "tenantName" : "陈昌辉",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "宿舍区二号楼首层2101、2102室,宿舍区二号楼首层2101、2102室、宿舍楼四座550室",
+    "totalAmount" : 6859.96,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 8,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17928,
+    "ym" : "2023-08",
+    "tenantId" : 136,
+    "tenantName" : "陈昌辉",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "dorm",
+    "premiseText" : "宿舍楼四座550室",
+    "totalAmount" : 1216.60,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 8,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17943,
+    "ym" : "2023-08",
+    "tenantId" : 137,
+    "tenantName" : "张勤军",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "宿舍区3号楼首层3101室,宿舍区3号楼首层4101室",
+    "totalAmount" : 16547.62,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 6,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17944,
+    "ym" : "2023-08",
+    "tenantId" : 137,
+    "tenantName" : "张勤军",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "dorm",
+    "premiseText" : "宿舍楼四座532室,宿舍楼四座536室,宿舍楼四座632室",
+    "totalAmount" : 1571.58,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 10,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17945,
+    "ym" : "2023-08",
+    "tenantId" : 137,
+    "tenantName" : "张勤军",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "dorm",
+    "premiseText" : "宿舍楼四座532室,宿舍楼四座536室,宿舍楼四座632室",
+    "totalAmount" : 2724.97,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 9,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17935,
+    "ym" : "2023-08",
+    "tenantId" : 138,
+    "tenantName" : "雷少康",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "宿舍区二号楼首层2108、2109室,宿舍区二号楼首层2108、2109室、宿舍楼四座239室",
+    "totalAmount" : 7095.06,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 8,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17936,
+    "ym" : "2023-08",
+    "tenantId" : 138,
+    "tenantName" : "雷少康",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "dorm",
+    "premiseText" : "宿舍楼四座239室",
+    "totalAmount" : 1024.71,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 8,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17946,
+    "ym" : "2023-08",
+    "tenantId" : 139,
+    "tenantName" : "彭周荣",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "宿舍区三号楼首层3103室",
+    "totalAmount" : 4848.78,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 5,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17947,
+    "ym" : "2023-08",
+    "tenantId" : 139,
+    "tenantName" : "彭周荣",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 8.13,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17948,
+    "ym" : "2023-08",
+    "tenantId" : 140,
+    "tenantName" : "张丽莉",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "宿舍区三号楼首层3106室",
+    "totalAmount" : 12694.56,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17949,
+    "ym" : "2023-08",
+    "tenantId" : 140,
+    "tenantName" : "张丽莉",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 46.38,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17941,
+    "ym" : "2023-08",
+    "tenantId" : 141,
+    "tenantName" : "张誉腾",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "3/4栋宿舍首层103室",
+    "totalAmount" : 17842.29,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 5,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17942,
+    "ym" : "2023-08",
+    "tenantId" : 141,
+    "tenantName" : "张誉腾",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 43.13,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17983,
+    "ym" : "2023-08",
+    "tenantId" : 142,
+    "tenantName" : "炳记",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器\n三楼433室,A座孵化器\n四楼432室,A座孵化器\n四楼434室,A座孵化器\n三楼433室、A座孵化器\n四楼432室、A座孵化器\n四楼434室",
+    "totalAmount" : 7906.16,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 12,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17929,
+    "ym" : "2023-08",
+    "tenantId" : 143,
+    "tenantName" : "威奈斯",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "宿舍区2号楼首层2106室",
+    "totalAmount" : 30.80,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17930,
+    "ym" : "2023-08",
+    "tenantId" : 143,
+    "tenantName" : "威奈斯",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "宿舍区2号楼首层2106室",
+    "totalAmount" : 607.22,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17931,
+    "ym" : "2023-08",
+    "tenantId" : 143,
+    "tenantName" : "威奈斯",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "宿舍区2号楼首层2106室",
+    "totalAmount" : 6543.70,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17932,
+    "ym" : "2023-08",
+    "tenantId" : 143,
+    "tenantName" : "威奈斯",
+    "payCompanyId" : 5,
+    "payCompanyName" : "积前",
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 24.55,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17933,
+    "ym" : "2023-08",
+    "tenantId" : 144,
+    "tenantName" : "蔡高育",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "宿舍区2号楼首层2107室",
+    "totalAmount" : 1675.92,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 5,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17934,
+    "ym" : "2023-08",
+    "tenantId" : 144,
+    "tenantName" : "蔡高育",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 3.72,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17937,
+    "ym" : "2023-08",
+    "tenantId" : 146,
+    "tenantName" : "周兴",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "宿舍区2号楼首层2111室",
+    "totalAmount" : 3462.24,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7091",
+      "hint" : "S10-0074#1 · 商铺基础设施维护费"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7092",
+      "hint" : "S10-0074#1 · 商铺企业管理服务费"
+    } ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17938,
+    "ym" : "2023-08",
+    "tenantId" : 146,
+    "tenantName" : "周兴",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 19.50,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7091",
+      "hint" : "S10-0074#1 · 商铺基础设施维护费"
+    }, {
+      "code" : "W_TERM_NO_PARAMS",
+      "payload" : "7092",
+      "hint" : "S10-0074#1 · 商铺企业管理服务费"
+    } ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17939,
+    "ym" : "2023-08",
+    "tenantId" : 147,
+    "tenantName" : "章肖艳",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "宿舍区二号楼首层2112室",
+    "totalAmount" : 5155.23,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17940,
+    "ym" : "2023-08",
+    "tenantId" : 147,
+    "tenantName" : "章肖艳",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 34.50,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17858,
+    "ym" : "2023-08",
+    "tenantId" : 148,
+    "tenantName" : "布司曼",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器四楼427室",
+    "totalAmount" : 39.14,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 7,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17859,
+    "ym" : "2023-08",
+    "tenantId" : 148,
+    "tenantName" : "布司曼",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器四楼427室",
+    "totalAmount" : 1657.17,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17871,
+    "ym" : "2023-08",
+    "tenantId" : 149,
+    "tenantName" : "高建军",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 0.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "258",
+      "hint" : "高建军A电"
+    } ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17883,
+    "ym" : "2023-08",
+    "tenantId" : 150,
+    "tenantName" : "孙余",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "combined",
+    "premiseText" : "一期C座二楼220室",
+    "totalAmount" : 2409.77,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 10,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17919,
+    "ym" : "2023-08",
+    "tenantId" : 152,
+    "tenantName" : "桑尼号",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "一期F座贰楼201室,一期F座叁楼301室,一期F座贰楼201室、一期F座叁楼301室",
+    "totalAmount" : 1245.39,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 19,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17920,
+    "ym" : "2023-08",
+    "tenantId" : 152,
+    "tenantName" : "桑尼号",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "一期F座贰楼201室,一期F座叁楼301室",
+    "totalAmount" : 19983.30,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17981,
+    "ym" : "2023-08",
+    "tenantId" : 156,
+    "tenantName" : "袁华圣",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "宿舍区4栋4102室",
+    "totalAmount" : 1399.79,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17982,
+    "ym" : "2023-08",
+    "tenantId" : 156,
+    "tenantName" : "袁华圣",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 37.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17921,
+    "ym" : "2023-08",
+    "tenantId" : 157,
+    "tenantName" : "曾绍良",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 0.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "374",
+      "hint" : "曾绍良电"
+    } ],
+    "lineCount" : 6,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17970,
+    "ym" : "2023-08",
+    "tenantId" : 161,
+    "tenantName" : "沙力海",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 24.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1106",
+      "hint" : "六楼 4-625 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "808",
+      "hint" : "六楼 4-625 电表①"
+    } ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17923,
+    "ym" : "2023-08",
+    "tenantId" : 162,
+    "tenantName" : "博浩",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 0.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "499",
+      "hint" : "F401西侧水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1456",
+      "hint" : "F座-四楼401室-电表②"
+    } ],
+    "lineCount" : 5,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17968,
+    "ym" : "2023-08",
+    "tenantId" : 164,
+    "tenantName" : "彭小兰",
+    "payCompanyId" : 2,
+    "payCompanyName" : "B2",
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 0.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "802",
+      "hint" : "五楼 5-548 电表①"
+    } ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17856,
+    "ym" : "2023-08",
+    "tenantId" : 193,
+    "tenantName" : "金准智能",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "一期A座孵化器四楼426室",
+    "totalAmount" : 292.64,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 7,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17857,
+    "ym" : "2023-08",
+    "tenantId" : 193,
+    "tenantName" : "金准智能",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "一期A座孵化器四楼426室",
+    "totalAmount" : 3021.90,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17962,
+    "ym" : "2023-08",
+    "tenantId" : 246,
+    "tenantName" : "万众",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 0.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17957,
+    "ym" : "2023-08",
+    "tenantId" : 260,
+    "tenantName" : "龙为",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 390.18,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 5,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17860,
+    "ym" : "2023-08",
+    "tenantId" : 262,
+    "tenantName" : "戎合",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座501室展厅,A座天面空地,A座501室展厅、A座天面空地",
+    "totalAmount" : 2145.84,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 12,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17861,
+    "ym" : "2023-08",
+    "tenantId" : 262,
+    "tenantName" : "戎合",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "A座501室展厅",
+    "totalAmount" : 9687.20,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17888,
+    "ym" : "2023-08",
+    "tenantId" : 265,
+    "tenantName" : "翔海",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "offbook",
+    "premiseText" : "E座3-4层、G座1层、G座2层、G座3-4层、G座1-4层、空地一、空地二,E座3-4层,G座1层,G座2层,G座3-4层,等8处",
+    "totalAmount" : 540125.04,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "484",
+      "hint" : "王培培东侧水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "486",
+      "hint" : "翔海E401东侧水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "871",
+      "hint" : "二楼 1-205 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "873",
+      "hint" : "二楼 1-207 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "875",
+      "hint" : "二楼 1-209 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "877",
+      "hint" : "二楼 1-211 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "879",
+      "hint" : "二楼 1-213 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "881",
+      "hint" : "二楼 1-215 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "883",
+      "hint" : "二楼 1-217 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "885",
+      "hint" : "二楼 1-219 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "921",
+      "hint" : "四楼 1-403 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "942",
+      "hint" : "四楼 1-424 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "943",
+      "hint" : "四楼 1-426 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "944",
+      "hint" : "四楼 1-428 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "973",
+      "hint" : "六楼 1-603 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "974",
+      "hint" : "六楼 1-604 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "975",
+      "hint" : "六楼 1-605 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "976",
+      "hint" : "六楼 1-606 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "977",
+      "hint" : "六楼 1-607 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "978",
+      "hint" : "六楼 1-608 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "979",
+      "hint" : "六楼 1-609 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "980",
+      "hint" : "六楼 1-610 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "981",
+      "hint" : "六楼 1-611 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "982",
+      "hint" : "六楼 1-612 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "983",
+      "hint" : "六楼 1-613 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "984",
+      "hint" : "六楼 1-614 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "985",
+      "hint" : "六楼 1-615 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "986",
+      "hint" : "六楼 1-616 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "987",
+      "hint" : "六楼 1-617 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "988",
+      "hint" : "六楼 1-618 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "989",
+      "hint" : "六楼 1-619 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "990",
+      "hint" : "六楼 1-620 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "991",
+      "hint" : "六楼 1-621 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "992",
+      "hint" : "六楼 1-622 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "993",
+      "hint" : "六楼 1-623 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "994",
+      "hint" : "六楼 1-624 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "995",
+      "hint" : "六楼 1-626 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "996",
+      "hint" : "六楼 1-628 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1002",
+      "hint" : "二楼 4-225 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1003",
+      "hint" : "二楼 4-227 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1008",
+      "hint" : "二楼 4-233 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1009",
+      "hint" : "二楼 4-234 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1016",
+      "hint" : "二楼 4-241 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1018",
+      "hint" : "二楼 4-243 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1020",
+      "hint" : "二楼 4-245 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1022",
+      "hint" : "二楼 4-247 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1023",
+      "hint" : "二楼 4-248 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1024",
+      "hint" : "二楼 4-249 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1025",
+      "hint" : "二楼 4-250 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1028",
+      "hint" : "三楼 4-325 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1029",
+      "hint" : "三楼 4-327 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1030",
+      "hint" : "三楼 4-329 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1031",
+      "hint" : "三楼 4-330 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1032",
+      "hint" : "三楼 4-331 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1033",
+      "hint" : "三楼 4-332 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1034",
+      "hint" : "三楼 4-333 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1035",
+      "hint" : "三楼 4-334 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1036",
+      "hint" : "三楼 4-335 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1037",
+      "hint" : "三楼 4-336 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1038",
+      "hint" : "三楼 4-337 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1039",
+      "hint" : "三楼 4-338 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1040",
+      "hint" : "三楼 4-339 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1041",
+      "hint" : "三楼 4-340 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1042",
+      "hint" : "三楼 4-341 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1043",
+      "hint" : "三楼 4-342 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1044",
+      "hint" : "三楼 4-343 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1045",
+      "hint" : "三楼 4-344 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1046",
+      "hint" : "三楼 4-345 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1047",
+      "hint" : "三楼 4-346 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1048",
+      "hint" : "三楼 4-347 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1049",
+      "hint" : "三楼 4-348 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1050",
+      "hint" : "三楼 4-349 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1051",
+      "hint" : "三楼 4-350 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1060",
+      "hint" : "四楼 4-433 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1062",
+      "hint" : "四楼 4-435 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1064",
+      "hint" : "四楼 4-437 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1066",
+      "hint" : "四楼 4-439 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1068",
+      "hint" : "四楼 4-441 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1070",
+      "hint" : "四楼 4-443 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1072",
+      "hint" : "四楼 4-445 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1074",
+      "hint" : "四楼 4-447 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1108",
+      "hint" : "六楼 4-629 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1110",
+      "hint" : "六楼 4-631 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1113",
+      "hint" : "六楼 4-634 水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1114",
+      "hint" : "六楼 4-635 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "485",
+      "hint" : "王培培西侧水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "487",
+      "hint" : "翔海E401西侧水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "324",
+      "hint" : "翔海借电D"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "343",
+      "hint" : "翔海借电E"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "354",
+      "hint" : "翔海E301电"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "359",
+      "hint" : "翔海E401电"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "367",
+      "hint" : "翔海借电F"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "563",
+      "hint" : "二楼 1-205 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "565",
+      "hint" : "二楼 1-207 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "567",
+      "hint" : "二楼 1-209 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "569",
+      "hint" : "二楼 1-211 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "571",
+      "hint" : "二楼 1-213 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "573",
+      "hint" : "二楼 1-215 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "575",
+      "hint" : "二楼 1-217 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "577",
+      "hint" : "二楼 1-219 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "615",
+      "hint" : "四楼 1-403 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "636",
+      "hint" : "四楼 1-424 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "637",
+      "hint" : "四楼 1-426 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "638",
+      "hint" : "四楼 1-428 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "669",
+      "hint" : "六楼 1-603 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "670",
+      "hint" : "六楼 1-604 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "671",
+      "hint" : "六楼 1-605 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "672",
+      "hint" : "六楼 1-606 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "673",
+      "hint" : "六楼 1-607 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "674",
+      "hint" : "六楼 1-608 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "675",
+      "hint" : "六楼 1-609 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "676",
+      "hint" : "六楼 1-610 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "677",
+      "hint" : "六楼 1-611 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "678",
+      "hint" : "六楼 1-612 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "679",
+      "hint" : "六楼 1-613 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "680",
+      "hint" : "六楼 1-614 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "681",
+      "hint" : "六楼 1-615 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "682",
+      "hint" : "六楼 1-616 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "683",
+      "hint" : "六楼 1-617 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "684",
+      "hint" : "六楼 1-618 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "685",
+      "hint" : "六楼 1-619 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "686",
+      "hint" : "六楼 1-620 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "687",
+      "hint" : "六楼 1-621 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "688",
+      "hint" : "六楼 1-622 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "689",
+      "hint" : "六楼 1-623 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "690",
+      "hint" : "六楼 1-624 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "691",
+      "hint" : "六楼 1-626 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "692",
+      "hint" : "六楼 1-628 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "700",
+      "hint" : "二楼 4-225 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "701",
+      "hint" : "二楼 4-227 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "706",
+      "hint" : "二楼 4-233 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "707",
+      "hint" : "二楼 4-234 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "714",
+      "hint" : "二楼 4-241 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "716",
+      "hint" : "二楼 4-243 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "718",
+      "hint" : "二楼 4-245 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "720",
+      "hint" : "二楼 4-247 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "721",
+      "hint" : "二楼 4-248 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "722",
+      "hint" : "二楼 4-249 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "723",
+      "hint" : "二楼 4-250 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "724",
+      "hint" : "二楼 4-251 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "725",
+      "hint" : "二楼 4-252 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "727",
+      "hint" : "三楼 4-325 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "728",
+      "hint" : "三楼 4-327 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "729",
+      "hint" : "三楼 4-329 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "730",
+      "hint" : "三楼 4-330 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "731",
+      "hint" : "三楼 4-331 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "732",
+      "hint" : "三楼 4-332 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "733",
+      "hint" : "三楼 4-333 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "734",
+      "hint" : "三楼 4-334 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "735",
+      "hint" : "三楼 4-335 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "736",
+      "hint" : "三楼 4-336 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "737",
+      "hint" : "三楼 4-337 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "738",
+      "hint" : "三楼 4-338 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "739",
+      "hint" : "三楼 4-339 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "740",
+      "hint" : "三楼 4-340 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "741",
+      "hint" : "三楼 4-341 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "742",
+      "hint" : "三楼 4-342 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "743",
+      "hint" : "三楼 4-343 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "744",
+      "hint" : "三楼 4-344 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "745",
+      "hint" : "三楼 4-345 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "746",
+      "hint" : "三楼 4-346 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "747",
+      "hint" : "三楼 4-347 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "748",
+      "hint" : "三楼 4-348 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "749",
+      "hint" : "三楼 4-349 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "750",
+      "hint" : "三楼 4-350 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "751",
+      "hint" : "三楼 4-351 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "752",
+      "hint" : "三楼 4-352 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "760",
+      "hint" : "四楼 4-433 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "762",
+      "hint" : "四楼 4-435 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "764",
+      "hint" : "四楼 4-437 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "766",
+      "hint" : "四楼 4-439 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "768",
+      "hint" : "四楼 4-441 电表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "770",
+      "hint" : "四楼 4-443 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "772",
+      "hint" : "四楼 4-445 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "774",
+      "hint" : "四楼 4-447 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "810",
+      "hint" : "六楼 4-629 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "812",
+      "hint" : "六楼 4-631 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "815",
+      "hint" : "六楼 4-634 电表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "816",
+      "hint" : "六楼 4-635 电表①"
+    } ],
+    "lineCount" : 320,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17820,
+    "ym" : "2023-08",
+    "tenantId" : 266,
+    "tenantName" : "联塑精铟",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器A102室,A座孵化器A102室、宿舍545室",
+    "totalAmount" : 43825.29,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "547",
+      "hint" : ""
+    }, {
+      "code" : "W_PACKAGE_NO_POOL",
+      "payload" : "share_green_water",
+      "hint" : ""
+    } ],
+    "lineCount" : 9,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17821,
+    "ym" : "2023-08",
+    "tenantId" : 266,
+    "tenantName" : "联塑精铟",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "dorm",
+    "premiseText" : "宿舍545室,A座孵化器A102室、宿舍545室",
+    "totalAmount" : 831.46,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "547",
+      "hint" : ""
+    }, {
+      "code" : "W_PACKAGE_NO_POOL",
+      "payload" : "share_green_water",
+      "hint" : ""
+    } ],
+    "lineCount" : 8,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17884,
+    "ym" : "2023-08",
+    "tenantId" : 335,
+    "tenantName" : "吴跃平",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 110.69,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "305",
+      "hint" : "吴跃平C221电"
+    } ],
+    "lineCount" : 6,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17896,
+    "ym" : "2023-08",
+    "tenantId" : 357,
+    "tenantName" : "飞度",
+    "payCompanyId" : 1,
+    "payCompanyName" : "创显",
+    "noticeKind" : "combined",
+    "premiseText" : "D座401室",
+    "totalAmount" : 38526.73,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 17,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17837,
+    "ym" : "2023-08",
+    "tenantId" : 358,
+    "tenantName" : "刘亚辉",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器 三楼301室",
+    "totalAmount" : 6297.27,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 10,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17848,
+    "ym" : "2023-08",
+    "tenantId" : 359,
+    "tenantName" : "重瞳",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器四楼439室,A座孵化器四楼439室、440室",
+    "totalAmount" : 8957.55,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "230",
+      "hint" : ""
+    }, {
+      "code" : "W_PACKAGE_NO_POOL",
+      "payload" : "share_green_water",
+      "hint" : ""
+    } ],
+    "lineCount" : 7,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17847,
+    "ym" : "2023-08",
+    "tenantId" : 359,
+    "tenantName" : "重瞳",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "dorm",
+    "premiseText" : "A座孵化器四楼439室、440室",
+    "totalAmount" : 761.56,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_ROOM_MISMATCH",
+      "payload" : "230",
+      "hint" : ""
+    }, {
+      "code" : "W_PACKAGE_NO_POOL",
+      "payload" : "share_green_water",
+      "hint" : ""
+    } ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17972,
+    "ym" : "2023-08",
+    "tenantId" : 360,
+    "tenantName" : "黎镇源",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 122.46,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1127",
+      "hint" : "六楼 4-648 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "829",
+      "hint" : "六楼 4-648 电表①"
+    }, {
+      "code" : "W_CONTRACT_NO_DATES",
+      "payload" : "C2024M-043",
+      "hint" : ""
+    } ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17971,
+    "ym" : "2023-08",
+    "tenantId" : 360,
+    "tenantName" : "黎镇源",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 3.98,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1127",
+      "hint" : "六楼 4-648 水表①"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "829",
+      "hint" : "六楼 4-648 电表①"
+    }, {
+      "code" : "W_CONTRACT_NO_DATES",
+      "payload" : "C2024M-043",
+      "hint" : ""
+    } ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17819,
+    "ym" : "2023-08",
+    "tenantId" : 361,
+    "tenantName" : "旭化成",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座二层201、202室、消防通道、A座101、201、202室、人才港使用费、车位变更手续费,A座首层101室,A座二层201、202室,消防通道,A座101、201、202室,等7处",
+    "totalAmount" : 70299.04,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "405",
+      "hint" : "A101旭化成水"
+    } ],
+    "lineCount" : 34,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17984,
+    "ym" : "2023-08",
+    "tenantId" : 363,
+    "tenantName" : "南宗",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座6楼623室",
+    "totalAmount" : 4605.71,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 6,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17985,
+    "ym" : "2023-08",
+    "tenantId" : 364,
+    "tenantName" : "欧培仪",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "B座301室",
+    "totalAmount" : 63136.25,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 7,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17829,
+    "ym" : "2023-08",
+    "tenantId" : 365,
+    "tenantName" : "暨南中院",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器二楼219号室",
+    "totalAmount" : 5088.97,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 14,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17854,
+    "ym" : "2023-08",
+    "tenantId" : 366,
+    "tenantName" : "沈振",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器四楼422室",
+    "totalAmount" : 5633.23,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 10,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17846,
+    "ym" : "2023-08",
+    "tenantId" : 367,
+    "tenantName" : "幸悦",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "offbook",
+    "premiseText" : "A座孵化器四楼437、438室,A座孵化器四楼437室",
+    "totalAmount" : 8882.08,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 10,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17855,
+    "ym" : "2023-08",
+    "tenantId" : 368,
+    "tenantName" : "MWILLAMA",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "A座孵化器四楼425室",
+    "totalAmount" : 2263.01,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 10,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17909,
+    "ym" : "2023-08",
+    "tenantId" : 369,
+    "tenantName" : "张文意",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "一期E座二楼203室",
+    "totalAmount" : 11382.96,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 17,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17882,
+    "ym" : "2023-08",
+    "tenantId" : 370,
+    "tenantName" : "顺心鸿",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "offbook",
+    "premiseText" : "一期C座二楼211室",
+    "totalAmount" : 2256.33,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 14,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17998,
+    "ym" : "2023-08",
+    "tenantId" : 373,
+    "tenantName" : "胡广清",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 24.07,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17818,
+    "ym" : "2023-08",
+    "tenantId" : 375,
+    "tenantName" : "嘉荣",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "二期10栋1层101室",
+    "totalAmount" : 5566.19,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 11,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17986,
+    "ym" : "2023-08",
+    "tenantId" : 376,
+    "tenantName" : "科文",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "二期10栋1层102室",
+    "totalAmount" : 600.90,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 6,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17755,
+    "ym" : "2023-08",
+    "tenantId" : 377,
+    "tenantName" : "新疆三林",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "二期8栋1层102室",
+    "totalAmount" : 2675.06,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 16,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17988,
+    "ym" : "2023-08",
+    "tenantId" : 378,
+    "tenantName" : "苏明东",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 148.97,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17956,
+    "ym" : "2023-08",
+    "tenantId" : 379,
+    "tenantName" : "温小蓉",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 165.64,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 6,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17967,
+    "ym" : "2023-08",
+    "tenantId" : 380,
+    "tenantName" : "文广",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 0.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 4,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17961,
+    "ym" : "2023-08",
+    "tenantId" : 381,
+    "tenantName" : "朱海勇",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 4.22,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 4,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17969,
+    "ym" : "2023-08",
+    "tenantId" : 383,
+    "tenantName" : "张永根",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 5.57,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17960,
+    "ym" : "2023-08",
+    "tenantId" : 385,
+    "tenantName" : "曾回文（工程队）",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "offbook",
+    "premiseText" : "",
+    "totalAmount" : 85.40,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 4,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17950,
+    "ym" : "2023-08",
+    "tenantId" : 387,
+    "tenantName" : "园区保安宿舍",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "dorm",
+    "premiseText" : "",
+    "totalAmount" : 1055.56,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 8,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17959,
+    "ym" : "2023-08",
+    "tenantId" : 388,
+    "tenantName" : "工程队宿舍（朱锐）",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "offbook",
+    "premiseText" : "",
+    "totalAmount" : 421.01,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17922,
+    "ym" : "2023-08",
+    "tenantId" : 389,
+    "tenantName" : "道磁",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 0.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17903,
+    "ym" : "2023-08",
+    "tenantId" : 391,
+    "tenantName" : "詹凯乔",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "offbook",
+    "premiseText" : "",
+    "totalAmount" : 10187.92,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "498",
+      "hint" : "F401东侧水"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "344",
+      "hint" : "F401借电E"
+    }, {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "377",
+      "hint" : "F401电1"
+    } ],
+    "lineCount" : 13,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17853,
+    "ym" : "2023-08",
+    "tenantId" : 392,
+    "tenantName" : "黄路生",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 1827.93,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ ],
+    "lineCount" : 5,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17973,
+    "ym" : "2023-08",
+    "tenantId" : 393,
+    "tenantName" : "周应佳",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 0.00,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1463",
+      "hint" : "A座-四楼428、435室-水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1424",
+      "hint" : "A座-四楼428室-电表①"
+    } ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17974,
+    "ym" : "2023-08",
+    "tenantId" : 393,
+    "tenantName" : "周应佳",
+    "payCompanyId" : 4,
+    "payCompanyName" : "一泽",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 54.41,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1463",
+      "hint" : "A座-四楼428、435室-水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1424",
+      "hint" : "A座-四楼428室-电表①"
+    } ],
+    "lineCount" : 2,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17975,
+    "ym" : "2023-08",
+    "tenantId" : 393,
+    "tenantName" : "周应佳",
+    "payCompanyId" : 6,
+    "payCompanyName" : "创燊高",
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 19.97,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "1463",
+      "hint" : "A座-四楼428、435室-水表①"
+    }, {
+      "code" : "W_METER_BIND_STALE",
+      "payload" : "1424",
+      "hint" : "A座-四楼428室-电表①"
+    } ],
+    "lineCount" : 1,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17889,
+    "ym" : "2023-08",
+    "tenantId" : 395,
+    "tenantName" : "宇劲",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 13126.19,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "325",
+      "hint" : "邱彩云电"
+    } ],
+    "lineCount" : 6,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  }, {
+    "id" : 17845,
+    "ym" : "2023-08",
+    "tenantId" : 396,
+    "tenantName" : "帷幄",
+    "payCompanyId" : null,
+    "payCompanyName" : null,
+    "noticeKind" : "combined",
+    "premiseText" : "",
+    "totalAmount" : 31.47,
+    "prevDue" : 0.00,
+    "status" : "draft",
+    "warns" : [ {
+      "code" : "W_METER_NO_CONTRACT",
+      "payload" : "230",
+      "hint" : "帷幄电"
+    } ],
+    "lineCount" : 3,
+    "confirmedAt" : null,
+    "exportedAt" : null
+  } ],
+  "afterDetail" : null
+}
