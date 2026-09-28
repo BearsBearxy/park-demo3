@@ -106,7 +106,7 @@ describe('出账链组级账期', () => {
         meters: ['2025-01', '2025-02', '2025-03'],
         pool: ['2025-01', '2025-02'],
         loss: ['2025-01'],
-        notices: ['2025-01'],
+        notices: ['2025-02'],   // 2 月的单 = 1 月水电:点亮的是 1 月那一格(billingChain「催缴单的月份」)
       })
       const s = useBillingPeriodStore()
       await s.loadChain()

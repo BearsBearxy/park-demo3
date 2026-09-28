@@ -1,6 +1,7 @@
 // 出账链的**组级账期**(2026-08-28 设计稿 §3.1 / §⑤,2026-08-29 拍板「只记会话内」)。
 //
-// 计费参数 → 园区抄表 → 公共电核算 → 楼栋损耗 → 催缴单 是同一个月的五道工序,
+// 计费参数 → 园区抄表 → 公共电核算 → 楼栋损耗 → 催缴单 是同一批的五道工序,
+// 期存的是**抄表月** M;催缴单屏拿 M+1 当自己的月(M 月水电出在 M+1 月的单上,billingChain「催缴单的月份」)。
 // `lockScopes.ts` 早把这件事钉死了:前四屏共占一把 `billing-chain:{年}-{月}` 月锁。
 // 但改造前五屏各存各的 year/month —— 用户在抄表停在 3 月、切到催缴单看到 9 月,两屏都不提示,
 // 而它们抢的是同一把锁。期存在这里,那种不一致在结构上不再可能。
@@ -20,13 +21,14 @@ import { allocApi } from '@/api/alloc'
 import { billNoticesApi } from '@/api/billNotices'
 import { paramsApi } from '@/api/params'
 import { reviewApi } from '@/api/review'
+import { chainYmOf } from '@/nav/billingChain'
 
 /** 一个出账月的进度。四道工序 + 一个月级的「上游改过」。 */
 export interface ChainCell {
   meters: boolean    // 有读数
   pool: boolean      // 有池快照
   loss: boolean      // 有损耗快照
-  notices: boolean   // 有催缴单
+  notices: boolean   // 这个月的读数已出进催缴单 = **下个月**有催缴单(billingChain.noticeYmOf)
   /** 参数或抄表改动晚于快照(METER-TIMELINE-SPEC §5)—— 屏上数字是旧的。**月的属性,不是某一道工序的**。 */
   stale: boolean
   /** 整月已审核锁定(D20:该月全部计入锁账的键都 approved)。年份条月格的 ✓ 靠它。 */
@@ -99,7 +101,9 @@ export const useBillingPeriodStore = defineStore('billingPeriod', () => {
           map.set(m, c)
         }
       }
-      mark(meters, 'meters'); mark(pool, 'pool'); mark(loss, 'loss'); mark(notices, 'notices')
+      // 催缴单月是收费月,吃的是上个月的读数:点亮在它的上一个月那一格(billingChain「催缴单的月份」)
+      mark(meters, 'meters'); mark(pool, 'pool'); mark(loss, 'loss')
+      mark(notices.filter(m => YM.test(m)).map(chainYmOf), 'notices')
 
       // 整月已审核(R2 T10,D20)。
       // ⚠ 已审核的月**可能不在 map 里**(只有附表数据、没有出账链数据的月):

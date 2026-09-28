@@ -4,8 +4,18 @@
 import { fpBuildRoutes } from '@/nav/fpNav'
 import type { Step } from '@/components/fp/FPStepStrip.vue'
 import type { ChainCell } from '@/stores/billingPeriod'
+import { shiftYm } from '@/views/meters/meterTimeline'
 
 const ROUTES = fpBuildRoutes()
+
+/**
+ * 催缴单的月份(2026-09-28 用户定,同源册:《2023年9月租金》里是「2023年8月水电费」和 9 月的租金通知单):
+ * N 月的催缴单 = N−1 月水电 + N 月租金。链(期、矩阵格子、月锁)按**抄表月**排,催缴单比链晚一个月 ——
+ * 催缴单屏拿链月 +1 当自己的月,别处链到催缴单(深链、审核键、矩阵上催缴那颗点)同样 +1。
+ * 后端同一口径:BillNoticeService.utilityYm / noticeYmOf。
+ */
+export const noticeYmOf = (chainYm: string): string => shiftYm(chainYm, 1)
+export const chainYmOf = (noticeYm: string): string => shiftYm(noticeYm, -1)
 
 export const chainLabel = (v: string): string => ROUTES[v]?.page ?? v
 

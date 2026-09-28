@@ -55,6 +55,28 @@ public class ReviewService {
         ReviewKind.ALLOC,      List.of(ReviewKind.BILL_NOTICES),
         ReviewKind.ALLOC_LOSS, List.of(ReviewKind.BILL_NOTICES));
 
+    /*
+     * 月份口径(BillNoticeService 类头,2026-09-28):催缴单键按**收费月**记 —— bill-notices:2023-09 是
+     * 8 月水电 + 9 月租金那批单。其余四把出账链键按抄表月记。所以「一批」= 抄表月 M 的四把键 + bill-notices:M+1,
+     * 上下游、整月锁账、做没做都按批对位,不按键面上的月份字面相等。
+     */
+    /** 这把键属于哪一批(抄表月)。 */
+    private static String batchOf(ReviewKey key) {
+        return key.kind() == ReviewKind.BILL_NOTICES ? BillNoticeService.utilityYm(key.period()) : key.period();
+    }
+
+    /** 抄表月 batch 那一批里,kind 这把键记在哪个月。 */
+    private static String keyPeriod(ReviewKind kind, String batch) {
+        return kind == ReviewKind.BILL_NOTICES ? BillNoticeService.noticeYmOf(batch) : batch;
+    }
+
+    private Map<String, ReviewState> rowsOf(String... periods) {
+        Map<String, ReviewState> out = new java.util.HashMap<>();
+        for (String p : new java.util.LinkedHashSet<>(List.of(periods)))
+            for (ReviewState s : states.byPeriod(p)) out.putIfAbsent(s.getReviewKey(), s);
+        return out;
+    }
+
     private final ReviewStateMapper states;
     private final ReviewLogMapper logs;
     private final DataHomeService dataHome;
@@ -80,8 +102,7 @@ public class ReviewService {
      */
     public List<ReviewRowDTO> list(String period) {
         DataHomeOverviewDTO ov = dataHome.overview(period);
-        Map<String, ReviewState> rows = states.byPeriod(period).stream()
-            .collect(java.util.stream.Collectors.toMap(ReviewState::getReviewKey, s -> s, (a, b) -> a));
+        Map<String, ReviewState> rows = rowsOf(period, BillNoticeService.noticeYmOf(period));
 
         List<ReviewRowDTO> out = new ArrayList<>();
         for (ReviewKey key : keysOf(period, ov)) out.add(rowOf(key, rows));
@@ -93,7 +114,7 @@ public class ReviewService {
         List<ReviewKey> keys = new ArrayList<>();
         for (ReviewKind k : List.of(ReviewKind.PARAMS, ReviewKind.METERS, ReviewKind.ALLOC,
                                     ReviewKind.ALLOC_LOSS, ReviewKind.BILL_NOTICES))
-            keys.add(ReviewKey.of(k, null, period));
+            keys.add(ReviewKey.of(k, null, keyPeriod(k, period)));
 
         for (DataHomeOverviewDTO.Company c : companiesOf(ov))
             keys.add(ReviewKey.of(ReviewKind.LEDGER, String.valueOf(c.id()), period));
@@ -129,7 +150,7 @@ public class ReviewService {
     private List<String> missingUpstream(ReviewKey key, Map<String, ReviewState> rows) {
         List<String> out = new ArrayList<>();
         for (ReviewKind up : UPSTREAM.getOrDefault(key.kind(), List.of())) {
-            ReviewState s = rows.get(ReviewKey.of(up, null, key.period()).raw());
+            ReviewState s = rows.get(ReviewKey.of(up, null, batchOf(key)).raw());
             if (s == null || !"approved".equals(s.getStatus())) out.add(up.label());
         }
         return out;
@@ -168,14 +189,14 @@ public class ReviewService {
     public List<String> closedMonths() {
         Map<String, Integer> approvedPerPeriod = new java.util.HashMap<>();
         for (ReviewState s : states.selectList(new QueryWrapper<ReviewState>().eq("status", "approved")))
-            approvedPerPeriod.merge(s.getPeriod(), 1, Integer::sum);
+            approvedPerPeriod.merge(ReviewKind.BILL_NOTICES.code().equals(s.getKind())
+                ? BillNoticeService.utilityYm(s.getPeriod()) : s.getPeriod(), 1, Integer::sum);
 
         List<String> out = new ArrayList<>();
         for (Map.Entry<String, Integer> e : approvedPerPeriod.entrySet()) {
             if (e.getValue() < MIN_MONTH_CLOSE_KEYS) continue;   // 连下限都不够,不必去跑聚合
             String period = e.getKey();
-            Map<String, ReviewState> rows = states.byPeriod(period).stream()
-                .collect(java.util.stream.Collectors.toMap(ReviewState::getReviewKey, x -> x, (a, b) -> a));
+            Map<String, ReviewState> rows = rowsOf(period, BillNoticeService.noticeYmOf(period));
             boolean all = true;
             for (ReviewKey k : keysOf(period, dataHome.overview(period))) {
                 if (!k.kind().countsTowardMonthClose()) continue;
@@ -285,8 +306,7 @@ public class ReviewService {
         ReviewKey key = ReviewKey.parse(rawKey);
         requireStatus(key, "submitted", "通过");
 
-        Map<String, ReviewState> rows = states.byPeriod(key.period()).stream()
-            .collect(java.util.stream.Collectors.toMap(ReviewState::getReviewKey, x -> x, (a, b) -> a));
+        Map<String, ReviewState> rows = rowsOf(key.period(), batchOf(key));
         List<String> missing = missingUpstream(key, rows);
         if (!missing.isEmpty())
             throw new BizException(ResultCode.CONFLICT,
@@ -319,11 +339,11 @@ public class ReviewService {
         ReviewKey key = ReviewKey.parse(rawKey);
         requireStatus(key, "approved", "撤销");
 
-        Map<String, ReviewState> rows = states.byPeriod(key.period()).stream()
-            .collect(java.util.stream.Collectors.toMap(ReviewState::getReviewKey, x -> x, (a, b) -> a));
+        String batch = batchOf(key);
+        Map<String, ReviewState> rows = rowsOf(batch, BillNoticeService.noticeYmOf(batch));
         List<String> blockers = new ArrayList<>();
         for (ReviewKind down : DOWNSTREAM.getOrDefault(key.kind(), List.of())) {
-            ReviewState d = rows.get(ReviewKey.of(down, null, key.period()).raw());
+            ReviewState d = rows.get(ReviewKey.of(down, null, keyPeriod(down, batch)).raw());
             if (d != null && "approved".equals(d.getStatus())) blockers.add(down.label());
         }
         if (!blockers.isEmpty())
@@ -384,7 +404,7 @@ public class ReviewService {
         if (key.kind() == ReviewKind.ELEC_MODEL)
             return !elecCostEntries.selectByMonth(key.period()).isEmpty();
 
-        DataHomeOverviewDTO ov = dataHome.overview(key.period());
+        DataHomeOverviewDTO ov = dataHome.overview(batchOf(key));   // 催缴单键的「做没做」在它抄表月那一格的链上
         return switch (key.kind()) {
             // 出账链五步的 step.key 逐字就是这五个 kind code(DataHomeService.buildChain 里写死的)
             case PARAMS, METERS, ALLOC, ALLOC_LOSS, BILL_NOTICES -> ov.chain().steps().stream()

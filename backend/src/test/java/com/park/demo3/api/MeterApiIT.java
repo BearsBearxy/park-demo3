@@ -1089,13 +1089,15 @@ class MeterApiIT extends AbstractMysqlIT {
         return timeline.rows(id).status().stream().map(s -> s.getFromYm() + ":" + s.getStatus()).toList();
     }
 
-    /** 明细含这块表、已导出的催缴单 = 这块表该月冻结(SPEC §4 来源 2)。 */
+    /** 明细含这块表、已导出的催缴单 = 这块表 ym 月冻结(SPEC §4 来源 2)。单落在 ym 的下个月:
+     *  N 月的单上是 N−1 月的表(BillNoticeService「月份口径」)。 */
     private void exportedNotice(int meterId, String ym) {
         var t = new com.park.demo3.entity.Tenant();
         t.setCompanyName("IT冻结户" + System.nanoTime()); t.setBusinessType("factory");
         tenantMapper.insert(t);
         var n = new com.park.demo3.entity.BillNotice();
-        n.setYm(ym); n.setTenantId(t.getId()); n.setNoticeKind("combined"); n.setStatus("exported");
+        n.setYm(com.park.demo3.service.BillNoticeService.noticeYmOf(ym)); n.setTenantId(t.getId());
+        n.setNoticeKind("combined"); n.setStatus("exported");
         n.setTotalAmount(java.math.BigDecimal.ZERO); n.setGeneratedAt(java.time.LocalDateTime.now());
         noticeMapper.insert(n);
         var l = new com.park.demo3.entity.BillNoticeLine();
@@ -1807,11 +1809,13 @@ class MeterApiIT extends AbstractMysqlIT {
     @Test
     void batchDelete_lockedNotice409NamesTenant_draftsNeedTick_tickDropsNoticesWithReadings() throws Exception {
         String ym = "2081-03";
+        String nym = com.park.demo3.service.BillNoticeService.noticeYmOf(ym);   // 3 月的读数出在 4 月的单上
         int a = createMeter("IT批删单表", "1");
         addReading(a, ym);
-        int draft = noticeOn(a, ym, "draft", "IT批删草稿户", 2);
-        int voided = noticeOn(a, ym, "void", "IT批删作废户", 1);
-        int locked = noticeOn(a, ym, "confirmed", "IT批删确认户", 1);
+        int draft = noticeOn(a, nym, "draft", "IT批删草稿户", 2);
+        int voided = noticeOn(a, nym, "void", "IT批删作废户", 1);
+        int locked = noticeOn(a, nym, "confirmed", "IT批删确认户", 1);
+        noticeOn(a, ym, "confirmed", "IT批删同月户", 1);   // 3 月的单是 2 月的读数:不挡、不删、不计数
 
         // ① 预览分两类报数,锁定单点户名
         String pv = utf8(mvc.perform(get("/api/meters/readings/delete-preview").param("ym", ym)
@@ -1824,39 +1828,41 @@ class MeterApiIT extends AbstractMysqlIT {
 
         // ② 有已确认的单:勾了也 409,点户名、指到作废;单与读数一样都不动
         String m1 = JsonPath.read(utf8(batchDel(ym, true).andExpect(jsonPath("$.code").value(409)).andReturn()), "$.message");
-        assertThat(m1).contains("1 张已确认/已导出的催缴单(IT批删确认户)").contains("先在催缴单屏作废这些单");
-        assertThat(noticesOf(ym)).isEqualTo(3);
+        assertThat(m1).contains("这个月的读数出在 2081-04 的催缴单上,其中 1 张已确认/已导出(IT批删确认户)")
+                .contains("先在催缴单屏作废这些单");
+        assertThat(noticesOf(nym)).isEqualTo(3);
         readingsLeft(ym, 1);
 
         // ③ 照屏上说的作废那张已确认的单 → 只剩草稿/作废单;不勾 409,告诉人勾哪一项
         mvc.perform(post("/api/bill-notices/" + locked + "/void").header("Authorization", auth())
                 .contentType("application/json").content("{\"reason\":\"IT重出\"}")).andExpect(jsonPath("$.code").value(0));
         String m2 = JsonPath.read(utf8(batchDel(ym, false).andExpect(jsonPath("$.code").value(409)).andReturn()), "$.message");
-        assertThat(m2).contains("3 张草稿催缴单(含已作废 2 张)").contains("勾选「同时删除该月的草稿催缴单」");
-        assertThat(noticesOf(ym)).isEqualTo(3);
+        assertThat(m2).contains("3 张草稿催缴单(含已作废 2 张)").contains("勾选「同时删除对应的草稿催缴单」");
+        assertThat(noticesOf(nym)).isEqualTo(3);
         readingsLeft(ym, 1);
 
         // ④ 勾了:单(连明细行)、读数、删完零读数的表一起删 —— 表在本月单的明细里,先删单才删得掉表
         String done = utf8(batchDel(ym, true).andExpect(jsonPath("$.code").value(0)).andReturn());
         assertThat((Integer) JsonPath.read(done, "$.data.draftNotices")).isEqualTo(1);
         assertThat((Integer) JsonPath.read(done, "$.data.voidNotices")).isEqualTo(2);
-        assertThat(noticesOf(ym)).isZero();
+        assertThat(noticesOf(nym)).isZero();
         assertThat(noticeLineMapper.selectCount(new QueryWrapper<com.park.demo3.entity.BillNoticeLine>()
                 .in("notice_id", draft, voided, locked))).isZero();
         readingsLeft(ym, 0);
-        assertThat(meterMapper.selectById(a)).isNull();
+        assertThat(noticesOf(ym)).as("3 月的单(2 月读数)不随 3 月读数删").isEqualTo(1);
+        assertThat(meterMapper.selectById(a)).as("表还在 3 月的单里 → 删完零读数也留着").isNotNull();
     }
 
     // 批删连带删草稿单与 generate 同一道闸:催缴单该月已审核 → 423,单与读数都不动
     @Test
     void batchDelete_dropDrafts_billNoticeReviewLock423() throws Exception {
-        String ym = "2081-04";
+        String ym = "2081-04", nym = com.park.demo3.service.BillNoticeService.noticeYmOf(ym);
         int a = createMeter("IT批删审核表", "1");
         addReading(a, ym);
-        noticeOn(a, ym, "draft", "IT批删审核户", 1);
-        lockReview(com.park.demo3.security.ReviewKind.BILL_NOTICES, ym);
+        noticeOn(a, nym, "draft", "IT批删审核户", 1);
+        lockReview(com.park.demo3.security.ReviewKind.BILL_NOTICES, nym);   // 4 月读数所在的 5 月单已审核
         batchDel(ym, true).andExpect(jsonPath("$.code").value(423));
-        assertThat(noticesOf(ym)).isEqualTo(1);
+        assertThat(noticesOf(nym)).isEqualTo(1);
         readingsLeft(ym, 1);
     }
 
@@ -1934,8 +1940,9 @@ class MeterApiIT extends AbstractMysqlIT {
         assertThat(meterMapper.selectById(m)).isNotNull();
 
         // 建表那一刻起写的档案改动先清掉:下面数到的只能是这次删表记的
-        changeLogMapper.delete(new QueryWrapper<DataChangeLog>().in("ym", "2081-05", "2081-06"));
-        assertThat(staleSources("2081-05")).doesNotContain("meter");
+        // 单上是上个月的表:2081-05/06 的单 → 改动记在抄表月 2081-04/05(BillNoticeService「月份口径」)
+        changeLogMapper.delete(new QueryWrapper<DataChangeLog>().in("ym", "2081-04", "2081-05"));
+        assertThat(staleSources("2081-04")).doesNotContain("meter");
 
         delMeter(m, true).andExpect(jsonPath("$.code").value(0));
         assertThat(meterMapper.selectById(m)).isNull();
@@ -1943,14 +1950,14 @@ class MeterApiIT extends AbstractMysqlIT {
         assertThat(noticeLineMapper.selectCount(new QueryWrapper<com.park.demo3.entity.BillNoticeLine>()
                 .in("notice_id", d1, d2, v))).isZero();
         assertThat(noticesIn(sameMonth, otherMonth)).as("同月别户、别月的单不动").isEqualTo(2);
-        for (String ym : java.util.List.of("2081-05", "2081-06"))
+        for (String ym : java.util.List.of("2081-04", "2081-05"))
             assertThat(changeLogMapper.selectList(new QueryWrapper<DataChangeLog>().eq("ym", ym)))
                     .as(ym + " 记一笔档案改动").extracting(DataChangeLog::getSource).containsExactly("meter-archive");
-        assertThat(staleSources("2081-05")).as("同月别户的单是删表前出的 → 需重算,来源抄表").contains("meter");
-        // 2081-05 只有催缴单、没有池快照:站在别的月看,矩阵的「需重算」全集里也得有它
+        assertThat(staleSources("2081-04")).as("同月别户的单是删表前出的 → 它的抄表月需重算,来源抄表").contains("meter");
+        // 抄表月 2081-04 只有催缴单(2081-05 那张)、没有池快照:站在别的月看,矩阵的「需重算」全集里也得有它
         assertThat(JsonPath.<java.util.List<String>>read(utf8(mvc.perform(get("/api/params/status").param("ym", "2081-10")
                 .header("Authorization", auth())).andExpect(jsonPath("$.code").value(0)).andReturn()), "$.data.otherMonthsAffected"))
-                .as("只有催缴单的月也进 others").contains("2081-05");
+                .as("只有催缴单的月也进 others").contains("2081-04");
         // 不可逆:操作日志里记下谁删了哪块表、连带删了哪几张单
         assertThat(auditMapper.selectList(new QueryWrapper<com.park.demo3.entity.AuthAuditLog>()
                 .eq("action", "meter.delete").eq("target", "IT删表单据表(id " + m + ")")))
@@ -1967,12 +1974,12 @@ class MeterApiIT extends AbstractMysqlIT {
         var w = new com.park.demo3.entity.BillNoticeWarn();
         w.setNoticeId(n); w.setCode("W_METER_NO_CONTRACT"); w.setPayload(String.valueOf(m)); w.setHint("IT删表告警表");
         warnMapper.insert(w);
-        changeLogMapper.delete(new QueryWrapper<DataChangeLog>().eq("ym", "2081-12"));
+        changeLogMapper.delete(new QueryWrapper<DataChangeLog>().eq("ym", "2081-11"));   // 12 月的单 = 11 月的表
 
         delMeter(m, false).andExpect(jsonPath("$.code").value(0));
         assertThat(meterMapper.selectById(m)).isNull();
         assertThat(noticesIn(n)).as("单上只有告警,不删").isEqualTo(1);
-        assertThat(changeLogMapper.selectList(new QueryWrapper<DataChangeLog>().eq("ym", "2081-12")))
+        assertThat(changeLogMapper.selectList(new QueryWrapper<DataChangeLog>().eq("ym", "2081-11")))
                 .extracting(DataChangeLog::getSource).containsExactly("meter-archive");
         assertThat(auditMapper.selectList(new QueryWrapper<com.park.demo3.entity.AuthAuditLog>()
                 .eq("action", "meter.delete").eq("target", "IT删表告警表(id " + m + ")")))

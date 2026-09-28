@@ -296,7 +296,7 @@ class DataHomeServiceTest {
 
     // ══ 出账链 5 步(SIDEBAR-UX-REDESIGN §5.1) ══════════════════════════════════════
     @Test void 出账链_当前步是第一个非done() {
-        var chain = DataHomeService.buildChain(6, 6, 1088, true, true, 0, java.math.BigDecimal.ZERO, 0);
+        var chain = DataHomeService.buildChain(6, 6, 1088, true, true, 0, java.math.BigDecimal.ZERO, 0, null);
         assertThat(chain.currentIndex()).isEqualTo(4);
         assertThat(chain.steps()).extracting(DataHomeOverviewDTO.Step::status)
             .containsExactly("done", "done", "done", "done", "current");
@@ -308,19 +308,19 @@ class DataHomeServiceTest {
         // bill_notice 一租户可有多行(按收款公司/单据类型拆单);而催缴单屏的「户数」是
         // aggregateByTenant 聚合后、且只算当前期别 tab(默认一期)的数。两者根本不是一个口径,
         // 首页报「张」= 唯一且不会与屏上户数打架(METRIC-SOURCE-SPEC §2)。
-        var chain = DataHomeService.buildChain(6, 6, 1, true, true, 295, new java.math.BigDecimal("4107986.54"), 183);
+        var chain = DataHomeService.buildChain(6, 6, 1, true, true, 295, new java.math.BigDecimal("4107986.54"), 183, null);
         assertThat(chain.steps().get(4).detail())
             .isEqualTo("295 张 · ¥4107986.54 · 183 张有警告").doesNotContain("户");
     }
 
     @Test void 出账链_全部完成时currentIndex为负1() {
-        var chain = DataHomeService.buildChain(6, 6, 1088, true, true, 102, new java.math.BigDecimal("2474138.88"), 66);
+        var chain = DataHomeService.buildChain(6, 6, 1088, true, true, 102, new java.math.BigDecimal("2474138.88"), 66, null);
         assertThat(chain.currentIndex()).isEqualTo(-1);
         assertThat(chain.steps()).allMatch(s -> "done".equals(s.status()));
     }
 
     @Test void 出账链_空月第一步为current其余todo() {
-        var chain = DataHomeService.buildChain(0, 6, 0, false, false, 0, java.math.BigDecimal.ZERO, 0);
+        var chain = DataHomeService.buildChain(0, 6, 0, false, false, 0, java.math.BigDecimal.ZERO, 0, null);
         assertThat(chain.currentIndex()).isZero();
         assertThat(chain.steps()).extracting(DataHomeOverviewDTO.Step::status)
             .containsExactly("current", "todo", "todo", "todo", "todo");
@@ -330,20 +330,20 @@ class DataHomeServiceTest {
         // 92/94 那个比例是 MeterView 前端 cardCounts() 在电水+分区筛选链上算的,
         // 后端另算一份分母必然与之漂移 —— METRIC-SOURCE-SPEC §1 禁止同一判定两份实现。
         // 首页只回答「这步做没做、做了多少」,比例留在抄表屏(它才有完整筛选口径)。
-        var chain = DataHomeService.buildChain(6, 6, 1088, false, false, 0, java.math.BigDecimal.ZERO, 0);
+        var chain = DataHomeService.buildChain(6, 6, 1088, false, false, 0, java.math.BigDecimal.ZERO, 0, null);
         assertThat(chain.steps().get(1).detail()).isEqualTo("已抄 1088 块").doesNotContain("/");
     }
 
     // ── 第 1 步「计费参数」(SIDEBAR-UX-REDESIGN §5.1):判据是电价录齐,不是 stale ──
     @Test void 参数步_电价录齐才done() {
-        var chain = DataHomeService.buildChain(6, 6, 0, false, false, 0, java.math.BigDecimal.ZERO, 0);
+        var chain = DataHomeService.buildChain(6, 6, 0, false, false, 0, java.math.BigDecimal.ZERO, 0, null);
         assertThat(chain.steps().get(0).status()).isEqualTo("done");
         assertThat(chain.steps().get(0).detail()).isEqualTo("本月电价 6/6 已录");
         assertThat(chain.currentIndex()).isEqualTo(1);
     }
 
     @Test void 参数步_少一键就是current且detail报进度() {
-        var chain = DataHomeService.buildChain(5, 6, 1088, true, true, 102, java.math.BigDecimal.ZERO, 0);
+        var chain = DataHomeService.buildChain(5, 6, 1088, true, true, 102, java.math.BigDecimal.ZERO, 0, null);
         assertThat(chain.steps().get(0).status()).isEqualTo("current");
         assertThat(chain.steps().get(0).detail()).isEqualTo("本月电价 5/6 已录");
         assertThat(chain.currentIndex()).isZero();
@@ -351,7 +351,7 @@ class DataHomeServiceTest {
 
     @Test void 参数步_没有电价键的月不算done且detail未配置() {
         // 全新库分支传 (0, 0):priceTotal 为 0 时 0 == 0 不能算 done —— 那是「没配」不是「配齐」
-        var chain = DataHomeService.buildChain(0, 0, 0, false, false, 0, java.math.BigDecimal.ZERO, 0);
+        var chain = DataHomeService.buildChain(0, 0, 0, false, false, 0, java.math.BigDecimal.ZERO, 0, null);
         assertThat(chain.steps().get(0).status()).isEqualTo("current");
         assertThat(chain.steps().get(0).detail()).isEqualTo("未配置");
     }

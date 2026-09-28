@@ -333,8 +333,20 @@ class ParamApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data.priceOk").value(5))
                 .andExpect(jsonPath("$.data.stale").value(false))          // 未生成过 → 无快照可过期
                 .andExpect(jsonPath("$.data.pendingChanges").value(6));
+        // 一户一块表一条 2099-10 读数:重算 2099-10 要把它出进 **2099-11** 的催缴单(N 月的单 = N−1 月水电,
+        // BillNoticeService「月份口径」)。破坏验证:ParamService.recalc 改回 generate(ym) → 下面两行红
+        jdbc.update("INSERT INTO tenant(company_name, business_type) VALUES('IT重算出单户', 'factory')");
+        int tid = jdbc.queryForObject("SELECT MAX(id) FROM tenant", Integer.class);
+        int mid = JsonPath.read(body(mvc.perform(post("/api/meters").header("Authorization", auth()).contentType("application/json")
+                .content("{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT重算出单电\",\"ownership\":\"tenant\",\"tenantId\":" + tid + "}"))
+                .andExpect(jsonPath("$.code").value(0))), "$.data.id");
+        mvc.perform(post("/api/meters/readings").header("Authorization", auth()).contentType("application/json")
+                .content("{\"meterId\":" + mid + ",\"ym\":\"" + ym + "\",\"prevTotal\":0,\"currTotal\":100}"))
+                .andExpect(jsonPath("$.code").value(0));
         String rc = body(mvc.perform(post("/api/params/recalc").param("ym", ym).header("Authorization", auth()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0)));
+        assertEquals(1, (int) jdbc.queryForObject("select count(*) from bill_notice where ym='2099-11' and tenant_id=?", Integer.class, tid));
+        assertEquals(0, (int) jdbc.queryForObject("select count(*) from bill_notice where ym=? and tenant_id=?", Integer.class, ym, tid));
         int pools = jdbc.queryForObject("select count(*) from alloc_pool_result where ym=?", Integer.class, ym);
         int units = jdbc.queryForObject("select count(*) from alloc_loss_result where ym=?", Integer.class, ym);
         assertTrue(pools > 0);

@@ -70,6 +70,8 @@ import java.util.stream.Collectors;
 // 已确认/已导出(含历史 issued)的租户整户跳过并计入 warned/skippedConfirmed 摘要(S20 §1.3 重新生成保护)。
 // 取价一律 PriceCfgService.resolveHit(scope/acctMonth 落审计链);公摊行取 AllocService.poolContributions
 // (池快照口径);表→合同走 MeterBindingService.resolveBinding 行级快照。
+// 月份口径(2026-09-28 用户定,同源册):ym = 收费月。ym 月的单 = 上月水电(读数/公摊/损耗/容量费/水电价)
+// + 本月租金 ——《2023年9月租金》册里放的就是「2023年8月水电费」和 9 月的租金通知单。见 utilityYm()。
 @Service
 public class BillNoticeService {
     private static final Pattern YM = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
@@ -88,7 +90,7 @@ public class BillNoticeService {
     private final BillNoticeLineMapper noticeLines;
     private final BillNoticeWarnMapper noticeWarns;
     private final BillNoteOverrideMapper noteOverrides;
-    private final MeterTimelineService timeline;   // 表档案站在 ym 取(METER-TIMELINE-SPEC §2)
+    private final MeterTimelineService timeline;   // 表档案站在水电月 uym 取(METER-TIMELINE-SPEC §2;类头「月份口径」)
     private final MeterReadingMapper readings;
     private final ContractMapper contracts;
     private final ContractBillingTermMapper billingTerms;
@@ -151,9 +153,14 @@ public class BillNoticeService {
     @Transactional
     public BillNoticeGenResultDTO generate(String ym) {
         requireYm(ym);
-        // 先锁定读本月读数,再做任何普通读:RR 的读视图建在第一条普通读上。并发的批删(删单 + 删读数)没提交时
+        // 水电月 = 收费月的上一个月(见类头「月份口径」):读数、表档案、表→合同、公摊、损耗、容量费、水电价都站在 uym 取;
+        // first/last 只给租金用。
+        String uym = utilityYm(ym);
+        LocalDate uFirst = LocalDate.parse(uym + "-01");
+        LocalDate uLast = uFirst.withDayOfMonth(uFirst.lengthOfMonth());
+        // 先锁定读水电月读数,再做任何普通读:RR 的读视图建在第一条普通读上。并发的批删(删单 + 删读数)没提交时
         // 这里就等它,读视图推迟到它提交之后 —— 否则按已删的读数把整月草稿又出回来。两边互等 = 死锁回滚一方。
-        readings.selectList(new QueryWrapper<MeterReading>().select("id").eq("ym", ym).last("FOR SHARE"));
+        readings.selectList(new QueryWrapper<MeterReading>().select("id").eq("ym", uym).last("FOR SHARE"));
         reviewGuard.assertEditable(ReviewKind.BILL_NOTICES, ym, null);
         LocalDate first = LocalDate.parse(ym + "-01");
         LocalDate last = first.withDayOfMonth(first.lengthOfMonth());
@@ -194,13 +201,13 @@ public class BillNoticeService {
         // 现状影响:building.zone 与首块表 zone 冲突,或楼栋已标 zone 但还没挂表时,催缴单的
         // splitShare 可能按错的/缺的期区分账(合计金额不受影响,只影响场地拆分呈现)。
         Map<Integer, String> zoneOfBuilding = new HashMap<>();
-        for (MeterAt m : timeline.metersAt(ym)) {
+        for (MeterAt m : timeline.metersAt(uym)) {
             meterById.put(m.getId(), m);
             if (m.getBuildingId() != null && m.getZone() != null)
                 zoneOfBuilding.putIfAbsent(m.getBuildingId(), m.getZone());
         }
         Map<Integer, MeterReading> readingByMeter = readings.selectList(
-                new QueryWrapper<MeterReading>().eq("ym", ym))
+                new QueryWrapper<MeterReading>().eq("ym", uym))
             .stream().collect(Collectors.toMap(MeterReading::getMeterId, r -> r));
         Map<Integer, Tenant> tenantById = tenants.selectList(null).stream()
             .collect(Collectors.toMap(Tenant::getId, t -> t));
@@ -244,11 +251,11 @@ public class BillNoticeService {
                 .add(new UnitCand(u.getFloor(), tok(u.getUnitNo()), t.getLocation().trim()));
         }
 
-        // 当月在租合同(share 行按合同拆场地用;与容量费同一 covers 口径)
+        // 水电月在租合同(share 行按合同拆场地用;与容量费同一 covers 口径)
         List<Contract> allContracts = contracts.selectList(null);
         Map<Integer, List<Contract>> coveringByTenant = new HashMap<>();
         for (Contract c : allContracts)
-            if (c.getTenantId() != null && MeterBindingService.covers(c, first, last))
+            if (c.getTenantId() != null && MeterBindingService.covers(c, uFirst, uLast))
                 coveringByTenant.computeIfAbsent(c.getTenantId(), k -> new ArrayList<>()).add(c);
         Map<Integer, Map<String, Integer>> payByTenant = new HashMap<>();
         for (BillPayCompany p : payMap.selectList(null))
@@ -268,7 +275,7 @@ public class BillNoticeService {
 
         // ── 逐租户表:判定树 B(表→合同归属=resolveBinding 行级快照) ──
         Map<Integer, List<Object[]>> metersByTenant = new LinkedHashMap<>();   // [MeterAt, Row]
-        for (MeterBindingDTO.Row row : binding.resolveBinding(ym).rows()) {
+        for (MeterBindingDTO.Row row : binding.resolveBinding(uym, ym).rows()) {
             MeterAt m = meterById.get(row.meterId());
             if (m == null || m.getTenantId() == null) continue;   // pending/placeholder:无计费对象,不出行
             metersByTenant.computeIfAbsent(m.getTenantId(), k -> new ArrayList<>()).add(new Object[]{m, row});
@@ -323,29 +330,30 @@ public class BillNoticeService {
                         .putIfAbsent(room, bareDigitName(m) ? "" : nz(m.getName()).trim());
                 }
                 if ("elec".equals(m.getKind()))
-                    elecLines(byTenant, warnByTenant, seq, ym, tid, m, row, r, label, locsByContract, unitCandsByContract);
+                    elecLines(byTenant, warnByTenant, seq, uym, tid, m, row, r, label, locsByContract, unitCandsByContract);
                 else
-                    waterLines(byTenant, warnByTenant, seq, ym, tid, m, row, r, label, locsByContract, unitCandsByContract);
+                    waterLines(byTenant, warnByTenant, seq, uym, tid, m, row, r, label, locsByContract, unitCandsByContract);
             }
         }
         // 按房号去重之后才折进 warnByTenant:同一房间的水电两块表在这里塌成一条(payload=房号,天然唯一)
         undecidedRooms.forEach((t, rooms) -> rooms.forEach((room, nm) ->
             warn(warnByTenant, t, WarnCode.W_ROOM_MISMATCH, room, nm)));
 
-        // ── 容量费:合同 kVA × capacity_fee;当月任一天在租(月区间重叠);起/止月落在 ym 内按天折;排除整租 ──
+        // ── 容量费(水电侧,BILL-DERIVE §1 电费树):合同 kVA × capacity_fee;水电月任一天在租(月区间重叠);
+        //    起/止月落在水电月内按天折;排除整租 ──
         for (Contract c : allContracts) {
             if ("master_lease".equals(c.getKind())) continue;   // 火炬园整租,防与散户双算(定案#4)
             if (c.getKva() == null || c.getKva().signum() <= 0) continue;
-            if (!MeterBindingService.covers(c, first, last)) continue;   // 在租=非草稿+起止齐全+月区间重叠
+            if (!MeterBindingService.covers(c, uFirst, uLast)) continue;   // 在租=非草稿+起止齐全+月区间重叠
             Integer tid = c.getTenantId();
             if (tid == null) continue;
             String zone = zoneOfBuilding.get(c.getBuildingId());
-            PriceCfgService.PriceHit hit = price.resolveHit("capacity_fee", ym, tid, zone);
+            PriceCfgService.PriceHit hit = price.resolveHit("capacity_fee", uym, tid, zone);
             if (hit == null) continue;
             // 按天折:闭区间在租天数/当月天数(起租月用起租日,退租月用止租日)
-            LocalDate from = c.getStartDate().isAfter(first) ? c.getStartDate() : first;
-            LocalDate to = c.getEndDate().isBefore(last) ? c.getEndDate() : last;
-            long days = ChronoUnit.DAYS.between(from, to) + 1, total = last.getDayOfMonth();
+            LocalDate from = c.getStartDate().isAfter(uFirst) ? c.getStartDate() : uFirst;
+            LocalDate to = c.getEndDate().isBefore(uLast) ? c.getEndDate() : uLast;
+            long days = ChronoUnit.DAYS.between(from, to) + 1, total = uLast.getDayOfMonth();
             BigDecimal frac = days >= total ? BigDecimal.ONE
                 : BigDecimal.valueOf(days).divide(BigDecimal.valueOf(total), 10, RoundingMode.HALF_UP);
             L l = base(byTenant, seq, tid, "capacity", hit, tenantOverride(hit, "fixed"));
@@ -360,7 +368,7 @@ public class BillNoticeService {
         rentLines(byTenant, warnByTenant, seq, allContracts, termsByContract, first, last);
 
         // ── 公摊行:poolContributions 逐行落(池快照口径);损耗链行 ruleId=null → share_elec_loss ──
-        for (AllocService.Contribution c : alloc.poolContributions(ym)) {
+        for (AllocService.Contribution c : alloc.poolContributions(uym)) {
             if (c.tenantId() == null || c.amount() == null) continue;
             L l = new L();
             l.tenantId = c.tenantId(); l.seq = seq[0]++;
@@ -380,7 +388,7 @@ public class BillNoticeService {
                 else if (c.rate() != null && c.rate().signum() != 0)
                     l.baseSnap = c.amount().divide(c.rate(), 2, RoundingMode.HALF_UP);
                 l.dorm = rule != null && "dorm".equals(rule.getZone());
-                collectPrice(l, c, rule, ym);   // D① 月推类公摊池(路灯/绿化水)改收取价落行
+                collectPrice(l, c, rule, uym);   // D① 月推类公摊池(路灯/绿化水)改收取价落行
                 // S4-3 场地拆行:share 行按该户在租合同(宿舍逐房间)等比拆,Σ各场地行与租户级全等
                 if (l.feeKey != null && l.feeKey.startsWith("share_")) {
                     for (L s : splitShare(l, rule, coveringByTenant, zoneOfBuilding,
@@ -393,7 +401,7 @@ public class BillNoticeService {
         }
 
         // ── 孵化协议固定收取(包干):须在损耗收尾之前,包干额才进得了 E2 损耗基数 ──
-        applyPackages(byTenant, warnByTenant, seq, ym, coveringByTenant, locsByContract, ruleById);
+        applyPackages(byTenant, warnByTenant, seq, uym, coveringByTenant, locsByContract, ruleById);
 
         // S13 §6:合同→楼栋(二期园区级公摊行/容量费行的损耗链归属按行合同楼栋判)
         Map<Integer, Integer> buildingOfContract = new HashMap<>();
@@ -415,7 +423,7 @@ public class BillNoticeService {
                 List<Integer> chain = l.lossBuildings == null ? List.of() : l.lossBuildings;
                 // S13 §6 损耗base形态:户级flag(键带链作用域),无flag/未知值=B(现状)。A=另并链内 mgmt_fee 行;
                 // C=仅户电费+容量费(星州);F=B去电梯再并 mgmt(邓宇峰×三车间链);G=B附加指定park表电费(永龙)。
-                int form = lossBaseForm(ym, l.tenantId, chain);
+                int form = lossBaseForm(uym, l.tenantId, chain);
                 String formNote = formTag(form);   // null=形态B/未知值(容错按B),note 不加尾巴
                 // 分桶键=wide(合同级粗粒度),不用细化后的 l.premise:两侧同桶才保住行数与逐行金额;
                 // 损耗行自身 premise=桶键,故仍是 S6 前的值。
@@ -455,17 +463,17 @@ public class BillNoticeService {
                 // (源册永龙 4 行反向按各段正价,单总读数推不出分段,逐月照抄册面金额),
                 // 无覆盖回退 度数×p2平段价;其 0.16 管理费仍不收(用户搁置)。
                 if (form == FORM_G) {
-                    PriceCfgService.PriceHit amtHit = price.resolveHit("loss_base_park_amount", ym, l.tenantId, null);
+                    PriceCfgService.PriceHit amtHit = price.resolveHit("loss_base_park_amount", uym, l.tenantId, null);
                     BigDecimal add = amtHit != null && amtHit.scope().startsWith("tenant:") ? r2(amtHit.value()) : null;
                     if (add == null) {
-                        PriceCfgService.PriceHit pmHit = price.resolveHit("loss_base_park_meter", ym, l.tenantId, null);
+                        PriceCfgService.PriceHit pmHit = price.resolveHit("loss_base_park_meter", uym, l.tenantId, null);
                         MeterAt pkm = pmHit == null || !pmHit.scope().startsWith("tenant:") ? null
                             : meterById.get(pmHit.value().intValue());
                         MeterReading pr = pkm == null ? null : readingByMeter.get(pkm.getId());
                         BigDecimal u = pr == null ? null
                             : MeterService.usage(pr.getPrevTotal(), pr.getCurrTotal(), pr.getFactorSnap());
                         BigDecimal fp = u == null || pkm.getBuildingId() == null || !chain.contains(pkm.getBuildingId())
-                            ? null : price.resolve("elec_flat", ym, null, pkm.getZone());
+                            ? null : price.resolve("elec_flat", uym, null, pkm.getZone());
                         if (u != null && fp != null) add = r2(u.multiply(fp));
                     }
                     if (add != null) {
@@ -615,11 +623,12 @@ public class BillNoticeService {
             noticeWarns.insertBatch(pendingWarns.subList(i, Math.min(i + 500, warnCount)));
 
         // ── 回填:按 poolRuleId 聚合公摊行(含既有 issued 单的行,void 已清)→ alloc_pool_result 两列(§5.9) ──
+        // 本月单上的公摊行来自水电月的池,回填的也是水电月那一批池快照。
         Map<Integer, BigDecimal> byRule = new HashMap<>();
         for (BillNoticeLine l : noticeLines.selectByYm(ym))
             if (l.getPoolRuleId() != null)
                 byRule.merge(l.getPoolRuleId(), l.getAmount(), BigDecimal::add);
-        for (AllocPoolResult s : poolResults.selectByYm(ym)) {
+        for (AllocPoolResult s : poolResults.selectByYm(uym)) {
             BigDecimal allocated = r2(byRule.getOrDefault(s.getRuleId(), BigDecimal.ZERO));
             s.setAllocatedAmount(allocated);
             s.setGapAmount(s.getCostAmount() == null ? null : allocated.subtract(s.getCostAmount()));
@@ -1047,7 +1056,7 @@ public class BillNoticeService {
         return hit.scope().startsWith("tenant:") ? "tenant_override" : base;
     }
 
-    // payload 不带 ym:三个调用点传的 ym 全是 generate(ym) 的形参,与单头 bill_notice.ym 恒等,是冗余。
+    // payload 不带 ym:三个调用点传的都是水电月 = utilityYm(单头 bill_notice.ym),由单头推得出,是冗余。
     // 价目键的中文名由前端 paramRegistry 出(闭集 7 个键,受门禁 G6 盯着),后端不抄第二份。
     private static void missPrice(Map<Integer, Map<String, Warn>> warnByTenant, Integer tid, String key, String ym) {
         warn(warnByTenant, tid, WarnCode.W_PRICE_MISSING, nz(key), "");
@@ -1250,12 +1259,12 @@ public class BillNoticeService {
             .filter(Objects::nonNull).collect(Collectors.toSet());
         Map<Integer, String> poolNames = rids.isEmpty() ? Map.of()
             : rules.selectBatchIds(rids).stream().collect(Collectors.toMap(AllocRule::getId, AllocRule::getName));
-        // METER-TIMELINE-SPEC §5「已导出单」:表行与当月档案实时比,这块表本月现挂的不是本单这一户 → 带出现归谁。
-        // 值:非 null = 不一致;archiveTenantId 为空时 name 取档案行的企业名称原文,空串 = 档案上本月没挂任何户(空置)。
+        // METER-TIMELINE-SPEC §5「已导出单」:表行与水电月档案实时比,这块表那个月现挂的不是本单这一户 → 带出现归谁。
+        // 值:非 null = 不一致;archiveTenantId 为空时 name 取档案行的企业名称原文,空串 = 档案上那个月没挂任何户(空置)。
         Map<Integer, Integer> archTid = new HashMap<>();
         Map<Integer, String> archName = new HashMap<>();
         if (raw.stream().anyMatch(l -> l.getMeterId() != null)) {
-            MeterTimelineService.View v = timeline.viewAt(n.getYm());
+            MeterTimelineService.View v = timeline.viewAt(utilityYm(n.getYm()));
             for (BillNoticeLine l : raw) {
                 com.park.demo3.entity.MeterAssign a = l.getMeterId() == null ? null : v.assign(l.getMeterId());
                 if (a == null || Objects.equals(a.getTenantId(), n.getTenantId())) continue;
@@ -1512,4 +1521,13 @@ public class BillNoticeService {
         if (ym == null || !YM.matcher(ym).matches())
             throw new BizException(ResultCode.BAD_REQUEST, "月份格式须为 YYYY-MM");
     }
+
+    /** 库里读出来的 ym 能不能拿去换算(bill_notice.ym 是 CHAR(7),脏值不许把整屏炸成 500)。 */
+    public static boolean validYm(String ym) { return ym != null && YM.matcher(ym).matches(); }
+
+    /** 收费月 ym 的单上放哪个月的水电:上一个月(类头「月份口径」)。 */
+    public static String utilityYm(String ym) { return java.time.YearMonth.parse(ym).minusMonths(1).toString(); }
+
+    /** 水电月 uym 的读数/公摊/损耗出在哪个月的单上:下一个月。 */
+    public static String noticeYmOf(String uym) { return java.time.YearMonth.parse(uym).plusMonths(1).toString(); }
 }

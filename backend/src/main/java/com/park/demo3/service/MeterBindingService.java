@@ -81,11 +81,24 @@ public class MeterBindingService {
     }
 
     // ── 归属报表(§2 五级规则+分桶;§3 报表形状) ──
+    /** 抄表屏的归属报表:ym 月的读数出在 ym+1 月的单上,判据与出单同一套(见下)。 */
     public MeterBindingDTO resolveBinding(String ym) {
+        // 格式不对的 ym 交给下面那道 400,不在这里先炸成 500
+        return resolveBinding(ym, ym != null && ym.matches("\\d{4}-(0[1-9]|1[0-2])") ? BillNoticeService.noticeYmOf(ym) : null);
+    }
+
+    /**
+     * rentYm = 收费月,ym 是它的水电月(BillNoticeService 类头「月份口径」):
+     * 水电月这户一份在租合同都没有时(9-1 起租、8 月装修用电),改认收费月的合同 —— 这张单的租金正是那一份的。
+     * 抄表屏与出单同一套判据,不然屏上报「待绑定」、单上却已挂好合同,两边对不上。
+     */
+    public MeterBindingDTO resolveBinding(String ym, String rentYm) {
         LocalDate first;
         try { first = LocalDate.parse(ym + "-01"); }
         catch (DateTimeParseException e) { throw new BizException(ResultCode.BAD_REQUEST, "月份格式非法(应为 YYYY-MM)"); }
         LocalDate last = first.withDayOfMonth(first.lengthOfMonth());
+        LocalDate rFirst = rentYm == null ? null : LocalDate.parse(rentYm + "-01");
+        LocalDate rLast = rFirst == null ? null : rFirst.withDayOfMonth(rFirst.lengthOfMonth());
 
         Map<Integer, Integer> root = familyRoots();
         Map<Integer, Contract> byId = new HashMap<>();
@@ -174,6 +187,9 @@ public class MeterBindingService {
                         if (!bldNoDates.isEmpty()) { bucket = "date_missing"; cands = bldNoDates; }
                         else { bucket = "bld_mismatch"; cands = covering; }
                     } else { status = "manual"; bucket = "ambiguous"; cands = covering; }
+                } else if ((chosen = rentMonthPick(pinned, ownPin, fam, m.getBuildingId(),
+                        chainMembers, chainRoot, rFirst, rLast)) != null) {
+                    status = "auto";                                                              // 收费月合同(见 rentYm)
                 } else {                                                                          // 规则5:分桶
                     List<Contract> noDates = fam.stream()
                         .filter(c -> c.getStartDate() == null || c.getEndDate() == null).toList();
@@ -362,6 +378,20 @@ public class MeterBindingService {
         List<Contract> hit = chainMembers.getOrDefault(chainRoot.get(pinned.getId()), List.of())
             .stream().filter(c -> covers(c, first, last)).toList();
         return hit.size() == 1 ? hit.get(0) : null;
+    }
+
+    // 水电月零覆盖时按收费月再挑一次(rentYm):
+    //  · 钉过合同的只认钉的那份 —— 它在收费月落得到段就用它,落不到(或钉的是别户的)就回 null,
+    //    交给下面的 override_stale:有人指认过,不拿家族里别的合同悄悄顶替(对抗复查 P2);
+    //  · 没钉的:家族在收费月唯一在租的那份,多份按楼栋对位收窄;还不唯一就不猜,回规则 5 分桶。
+    private static Contract rentMonthPick(Contract pinned, boolean ownPin, List<Contract> fam, Integer buildingId,
+                                          Map<Integer, List<Contract>> chainMembers, Map<Integer, Integer> chainRoot,
+                                          LocalDate rFirst, LocalDate rLast) {
+        if (rFirst == null) return null;
+        if (pinned != null) return ownPin ? segmentCovering(pinned, chainMembers, chainRoot, rFirst, rLast) : null;
+        List<Contract> cov = fam.stream().filter(c -> covers(c, rFirst, rLast)).toList();
+        if (cov.size() > 1) cov = cov.stream().filter(c -> Objects.equals(c.getBuildingId(), buildingId)).toList();
+        return cov.size() == 1 ? cov.get(0) : null;
     }
 
     // SPEC §3.6 改归属建议:本月在租、场地(计费行位置原文)房号含这块表房号的**他户**合同;

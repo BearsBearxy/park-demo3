@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { reviewApi } from '@/api/review'
+import { chainYmOf } from '@/nav/billingChain'
 import { usePresenceStore } from '@/stores/presence'
 import { LOCKING, periodOfKey, reviewNoteOf, type ReviewRow, type ReviewStatus } from '@/types/review'
 
@@ -221,11 +222,14 @@ export const useReviewStore = defineStore('review', () => {
   async function batch(keys: string[], fn: (k: string) => Promise<unknown>) {
     if (!keys.length) return
     const p = periodOfKey(keys[0])
+    // 催缴单键记在收费月(bill-notices:M+1),首页 M 月那一屏的清单是 list(M) 取的 —— 两个月都刷,
+    // 否则交完审首页那行还停在动作前,再点一次吃 409(billingChain「催缴单的月份」)
+    const ps = p && keys[0].startsWith('bill-notices:') ? [p, chainYmOf(p)] : [p]
     try {
       for (const k of keys) await fn(k)
     } finally {
-      invalidate(p)
-      await Promise.all([ensure(p), ensureYear(yearOf(p))])
+      for (const x of ps) invalidate(x)
+      await Promise.all([...ps.map(x => ensure(x)), ...[...new Set(ps.map(yearOf))].map(y => ensureYear(y))])
     }
   }
 

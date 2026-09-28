@@ -136,7 +136,8 @@ public class MeterTimelineService {
     /**
      * §4 冻结:这块表在 months 里哪些月冻结、为什么。两个来源:
      *   1. 该月抄表审核锁定(review_state meters:YYYY-MM 为 submitted / approved);
-     *   2. 该月有已确认 / 已导出(含历史 issued)的催缴单,且明细含这块表。
+     *   2. 这个月的读数出在的那张催缴单(次月的单,见 BillNoticeService「月份口径」)已确认 / 已导出(含历史 issued),
+     *      且明细含这块表 —— lockedNotices 回的已是表档案月。
      * 按 ym 升序;一个都没有回空列表。
      */
     public List<Frozen> frozenMonths(int meterId, Collection<String> months) {
@@ -148,7 +149,9 @@ public class MeterTimelineService {
                    .add(ReviewKind.METERS.label() + ("approved".equals(s.getStatus()) ? "已审核" : "待审核"));
         for (BillNotice n : assigns.lockedNotices(meterId))
             if (want.contains(n.getYm()))
-                why.computeIfAbsent(n.getYm(), k -> new LinkedHashSet<>()).add("含这块表的催缴单" + switch (n.getStatus()) {
+                // 写出单是哪个月的:冻结月是抄表月,单在下一个月,不写的话去催缴单屏按这个月找不到它
+                why.computeIfAbsent(n.getYm(), k -> new LinkedHashSet<>()).add("含这块表的 "
+                        + BillNoticeService.noticeYmOf(n.getYm()) + " 催缴单" + switch (n.getStatus()) {
                     case "confirmed" -> "已确认";
                     case "exported" -> "已导出";
                     default -> "已出单";   // issued:V94 之前的历史态

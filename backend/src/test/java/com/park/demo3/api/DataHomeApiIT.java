@@ -23,6 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class DataHomeApiIT extends AbstractMysqlIT {
 
     @Autowired MockMvc mvc;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     private String token;
 
     @BeforeEach
@@ -82,6 +83,31 @@ class DataHomeApiIT extends AbstractMysqlIT {
         assertThat((int) JsonPath.read(body, "$.data.schedules.done")).isZero();
         List<String> statuses = JsonPath.read(body, "$.data.chain.steps[*].status");
         assertThat(statuses).containsExactly("current", "todo", "todo", "todo", "todo");
+    }
+
+    /**
+     * 出账链按抄表月排:M 月那一格的「催缴单」一步看的是 M+1 月的单(N 月的单 = N−1 月水电,
+     * BillNoticeService「月份口径」),12 月那批的单在次年,detail 要写出年份。独占 2096-12 / 2097-01,真提交、finally 清。
+     * 破坏验证:DataHomeService.overview 的 nym 改回 ym → 两条断言都红。
+     */
+    @Test
+    void overview_催缴单一步看下个月的单_跨年写年份() throws Exception {
+        jdbc.update("INSERT INTO tenant(company_name, business_type) VALUES('IT首页跨年户', 'factory')");
+        int tid = jdbc.queryForObject("SELECT MAX(id) FROM tenant", Integer.class);
+        try {
+            jdbc.update("INSERT INTO bill_notice(ym, tenant_id, notice_kind, total_amount, prev_due, status, generated_at) "
+                    + "VALUES('2097-01', ?, 'combined', 12.5, 0, 'draft', NOW())", tid);
+            String dec = getOk("/api/data-home/overview?ym=2096-12");
+            assertThat((List<String>) JsonPath.read(dec, "$.data.chain.steps[?(@.key=='bill-notices')].status")).containsExactly("done");
+            assertThat((List<String>) JsonPath.read(dec, "$.data.chain.steps[?(@.key=='bill-notices')].detail"))
+                .singleElement().asString().startsWith("2097年1月的单 · 1 张");
+            String jan = getOk("/api/data-home/overview?ym=2097-01");
+            assertThat((List<String>) JsonPath.read(jan, "$.data.chain.steps[?(@.key=='bill-notices')].status"))
+                .as("2097-01 的单吃的是 2096-12 的水电,不算 2097-01 这一格的").doesNotContain("done");
+        } finally {
+            jdbc.update("DELETE FROM bill_notice WHERE tenant_id = ?", tid);
+            jdbc.update("DELETE FROM tenant WHERE id = ?", tid);
+        }
     }
 
     @Test

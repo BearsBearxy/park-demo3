@@ -23,10 +23,14 @@ import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { useReviewStore } from '@/stores/review'
 import { worstReview } from '@/components/fp/monthReview'
 import type { ReviewStatus } from '@/types/review'
-import { CHAIN, pipsOf } from '@/nav/billingChain'
+import { CHAIN, chainYmOf, noticeYmOf, pipsOf } from '@/nav/billingChain'
 import { loadExtraYears, saveExtraYears, buildYearRows } from '@/utils/matrixYears'
 
-const props = defineProps<{ title: string; icon: string }>()
+// notice = 催缴单屏:格子按**催缴单月**标(9 月格 = 8 月水电 + 9 月租金那批单),点下去落的期是它的上一个月(抄表月)。
+// 格里四颗点照旧是那一批的抄表 / 公摊 / 损耗 / 催缴(billingChain「催缴单的月份」)。
+const props = defineProps<{ title: string; icon: string; notice?: boolean }>()
+/** 格子上标的月 → 这一格的数据取哪个链月(抄表月) */
+const chainOf = (label: string) => (props.notice ? chainYmOf(label) : label)
 
 const period = useBillingPeriodStore()
 const { loaded, loadErr, dataYears } = storeToRefs(period)
@@ -60,17 +64,18 @@ const review = useReviewStore()
  *
  * 「还不知道 → null」与「库里没这行 = 派生 entered」两条判据都在 stores/review.ts 的 statusOf。
  */
+// 催缴单键按催缴单月记(bill-notices:M+1),其余四把按抄表月 M —— 一格是一批,不是字面同月
 const reviewOf = (ym: string): ReviewStatus | null =>
-  worstReview(CHAIN.map(s => review.statusOf(`${s.value}:${ym}`)))
+  worstReview(CHAIN.map(s => review.statusOf(`${s.value}:${s.value === 'bill-notices' ? noticeYmOf(ym) : ym}`)))
 
 interface Cell { month: number; hasData: boolean; pips: boolean[]; stale: boolean; cur?: boolean
                  review?: ReviewStatus | null }
 const rows = computed(() => {
   if (!loaded.value) return []
   const cur = new Date().getFullYear()
-  const out = buildYearRows(dataYears.value, cur, extraYears.value).map(r => {
+  const out = buildYearRows(labelYears.value, cur, extraYears.value).map(r => {
     const months: Cell[] = Array.from({ length: 12 }, (_, i) => {
-      const ym = `${r.year}-${String(i + 1).padStart(2, '0')}`
+      const ym = chainOf(`${r.year}-${String(i + 1).padStart(2, '0')}`)
       const c = period.cellOf(ym)
       const pips = pipsOf(c)
       return {
@@ -98,15 +103,33 @@ const rows = computed(() => {
   return out
 })
 
+// 格子标的年:催缴单屏按催缴单月标,12 月的链月落到次年 1 月那一格,年份跟着挪
+const labelYears = computed(() => props.notice
+  ? [...new Set([...period.cells.keys()].map(m => +noticeYmOf(m).slice(0, 4)))].sort((a, b) => a - b)
+  : dataYears.value)
+
 // 矩阵态本来只打 billingPeriod 那几趟,审核闸道要按年再补一趟(statusOf 靠它:年没到手恒 null＝不画,
 // 所以少了这条 watch 角标一个都不出来)。挂在**年份列表**上:纵排几年就几趟,
 // ensureYear 命中已有的年直接 return —— 而这几年正是进屏后五个宿主屏的编辑闸要用的同一份缓存。
+// 一格的五把键可能跨年,各多取一年:链月 12 月那批的催缴单键在次年(bill-notices:次年-01);
+// 催缴单屏的 1 月格是上一年 12 月那一批,四把链键都在上一年。
 watch(() => rows.value.map(r => r.year).join(','), () => {
-  for (const r of rows.value) void review.ensureYear(r.year)
+  const ys = rows.value.map(r => r.year)
+  if (!ys.length) return
+  const extra = props.notice ? ys[0] - 1 : ys[ys.length - 1] + 1
+  for (const y of [...ys, extra].sort((a, b) => a - b)) void review.ensureYear(y)
 }, { immediate: true })
 
 /** 格子上的在场标记走出账链那把月锁 —— 四屏共占的正是它。 */
-const cellScope = (y: number, m: number) => S.poolLedger(y, m)
+const cellScope = (y: number, m: number) => {
+  const [cy, cm] = chainOf(`${y}-${String(m).padStart(2, '0')}`).split('-').map(Number)
+  return S.poolLedger(cy, cm)
+}
+/** 点格子:落的期永远是链月(抄表月) */
+function pickCell(y: number, m: number) {
+  const [cy, cm] = chainOf(`${y}-${String(m).padStart(2, '0')}`).split('-').map(Number)
+  period.pick(cy, cm)
+}
 
 function setExtra(years: number[]) {
   saveExtraYears(...EXTRA_KEY, years)
@@ -129,7 +152,8 @@ const edge = (first: boolean) => {
         <h2 class="cmg-title">
           <span class="ic"><component :is="iconFor(icon)" :size="18" /></span>{{ title }}
         </h2>
-        <p class="cmg-sub">选择出账月进入 · 格内四点＝本月抄表 / 公摊 / 损耗 / 催缴的进度</p>
+        <p v-if="notice" class="cmg-sub">选择催缴单月份进入 · 9 月的单 = 8 月水电 + 9 月租金，格内四点＝上月抄表 / 公摊 / 损耗 + 本月催缴单</p>
+        <p v-else class="cmg-sub">选择出账月进入 · 格内四点＝本月抄表 / 公摊 / 损耗 / 催缴的进度（本月水电出在下个月的催缴单上）</p>
       </div>
     </div>
 
@@ -156,7 +180,7 @@ const edge = (first: boolean) => {
         :scope-of="cellScope"
         :book="book"
         :years="rows"
-        @pick="(y, m) => period.pick(y, m)"
+        @pick="pickCell"
         @add-earlier="setExtra([...extraYears, edge(true)])"
         @add-later="setExtra([...extraYears, edge(false)])"
         @remove-year="(y) => setExtra(extraYears.filter(x => x !== y))"

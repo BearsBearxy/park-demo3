@@ -185,6 +185,27 @@ describe('催缴单 · 已导出户作废', () => {
   })
 })
 
+describe('催缴单 · 月份口径下的归楼栋(2026-09-28)', () => {
+  // 9 月的单 = 8 月水电 + 9 月租金。8 月底退租的户 9 月的单上只剩 8 月水电,9 月 15 日已不在租 ——
+  // 归期 / 归楼栋要退回 8 月的合同,不然整户掉进「未归楼栋」(本地库 2024-03 实测 19 户是这种)。
+  // 破坏验证:BillNoticesView 的 placeContracts 改回只用 contracts(收费月)→ 本条红
+  it('❗收费月没有在租合同的户,按水电月的合同归楼栋', async () => {
+    const c = {
+      id: 77, contractNo: 'IT-77', tenantId: 5, tenantName: '力灏', buildingId: 7, buildingName: 'A座',
+      unitId: null, floorInfo: '', rentArea: 100, monthlyRent: 1000, deposit: 0,
+      startDate: '2025-09-01', endDate: '2026-08-31', signDate: null, status: 'expired',
+      termMonths: 12, daysToEnd: null, remark: null,
+    }
+    vi.mocked(contractApi.list).mockImplementation(async (d?: string) => (d === '2026-08-15' ? [c] : []) as never)
+    vi.mocked(buildingApi.list).mockResolvedValue([{ id: 7, name: 'A座', phase: 1 }] as never)
+    const w = await open()
+    expect(vi.mocked(contractApi.list).mock.calls.map(x => x[0]).sort()).toEqual(['2026-08-15', '2026-09-15'])
+    const heads = w.findAll('.bn-table tbody tr').map(r => r.text()).filter(t => /户/.test(t) && !/力灏/.test(t))
+    expect(heads.join('|')).toContain('A座')
+    expect(heads.join('|')).not.toContain('未归楼栋')
+  })
+})
+
 describe('催缴单 · 需重算的来源', () => {
   // 破坏验证:BillNoticesView 的 title 换回写死的 '改过参数还没重算' → 红
   it('❗只因抄表过期 → 组名「改过抄表还没重算」,主语是抄表数据', async () => {
@@ -196,7 +217,7 @@ describe('催缴单 · 需重算的来源', () => {
     await flushPromises()
     const t = w.text()
     expect(t).toContain('改过抄表还没重算')
-    expect(t).toContain('抄表数据（读数或表档案）在本月催缴单生成之后又改过')
+    expect(t).toContain('抄表数据（读数或表档案）在 9 月催缴单生成之后又改过(单上是 8 月的水电)')
     expect(t).toContain('最近一次改动 08-21 09:00')
     expect(t).not.toContain('改过参数还没重算')
   })

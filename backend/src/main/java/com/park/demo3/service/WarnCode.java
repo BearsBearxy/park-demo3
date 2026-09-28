@@ -102,11 +102,11 @@ public enum WarnCode {
     W_PACKAGE_NO_POOL,
 
     /**
-     * 这个月缺价。
-     * 判据:{@code price.resolveHit(key, ym, tid, zone) == null}。
+     * 水电月缺价。
+     * 判据:{@code price.resolveHit(key, uym, tid, zone) == null},uym = 单头月的上一个月(水电月)。
      * 影响:跳该行,该项费用整项不出。
      * payload = 价目键(闭集 7 个:elec_sharp/peak/flat/valley/resident/commercial + water);hint = 空串。
-     * <p>payload 不带 ym:三个调用点传的 ym 全是 generate(ym) 的形参,与单头 bill_notice.ym 恒等。
+     * <p>payload 不带 ym:三个调用点传的都是 {@code BillNoticeService.utilityYm(bill_notice.ym)},由单头推得出。
      */
     W_PRICE_MISSING,
 

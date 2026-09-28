@@ -33,7 +33,7 @@ import { LOSS_BASE_FORM_B_TEMPLATE, PARAM_DEFS, paramDef, writePlan, type ParamM
 import { useAuthStore } from '@/stores/auth'
 import { useZonesStore } from '@/stores/zones'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
-import { chainStepsOf } from '@/nav/billingChain'
+import { chainStepsOf, noticeYmOf } from '@/nav/billingChain'
 import ChainMonthGate from '@/components/fp/ChainMonthGate.vue'
 import FPStepStrip from '@/components/fp/FPStepStrip.vue'
 import { iconFor } from '@/components/ds/icon'
@@ -431,7 +431,8 @@ async function submitEx() {
 // 缺了这半边,催缴单屏若已在页签里缓存着,点过去只是切页签,系数簿窗口不会开。
 function gotoCoefBook() {
   tabs.openFresh('bill-notices', { pin: true })
-  router.push({ path: '/bill-notices', query: { ym: ym.value, coef: '1' } })
+  // 催缴单屏的 p 是催缴单月(收费月)= 本月 +1;它落期时折回本月,系数簿照旧开本月(billingChain「催缴单的月份」)
+  router.push({ path: '/bill-notices', query: { p: noticeYmOf(ym.value), coef: '1' } })
 }
 
 // ── 闭环:重算本月(池 → 损耗 → 催缴单)/ 复制上月电价 ──
@@ -439,9 +440,11 @@ const busy = ref(false)
 async function onRecalc() {
   if (!canRecalc.value) return
   // 从未生成过催缴单的月(spec §10.6):「重算」其实是首次生成,用户须知道会新添一批催缴单
+  // 本月水电出在下个月的催缴单上(billingChain「催缴单的月份」):重算本月 = 重出下个月的单
+  const nym = noticeYmOf(ym.value)
   const first = status.value && !status.value.billBatchAt
-    ? `。注意：${ym.value} 尚无催缴单，本次将首次生成该月催缴单批次。` : '（已确认、已导出的户照旧跳过）。'
-  if (!confirm(`确认重算 ${ym.value}？将按当前参数重新生成 池核算 / 楼栋损耗 / 催缴单${first}`)) return
+    ? `。注意：${nym} 尚无催缴单，本次将首次生成 ${nym} 的催缴单批次。` : '（已确认、已导出的户照旧跳过）。'
+  if (!confirm(`确认重算 ${ym.value}？将按当前参数重新生成 池核算 / 楼栋损耗 / ${nym} 的催缴单（${ym.value} 水电 + ${nym} 租金）${first}`)) return
   busy.value = true
   flash.value = ''
   try {

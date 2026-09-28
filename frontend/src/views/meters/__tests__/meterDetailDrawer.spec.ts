@@ -570,7 +570,7 @@ describe('删除表确认框', () => {
     const { dlg } = await openDelete(IMPACT({ notices: NS, draftCount: 2 }))
     expect(dlg.findAll('.dd-list li').map(l => l.text())).toEqual(['2023-08 · 南盛物流 · 草稿 5 行', '2024-02 · 南盛物流 · 草稿 2 行'])
     const ck = dlg.find('input[type="checkbox"]')
-    expect(dlg.find('.dd-ck').text()).toBe('同时删掉这 2 张草稿催缴单(这几个月会显示需重算,重算后按现在的读数重出)')
+    expect(dlg.find('.dd-ck').text()).toBe('同时删掉这 2 张草稿催缴单(这几张单上的是上个月的水电,那几个抄表月会显示需重算,重算后按现在的读数重出)')
     expect((ck.element as HTMLInputElement).checked).toBe(false)
     expect(btn(dlg, '删除')!.attributes('disabled')).toBeDefined()
     await ck.setValue(true)

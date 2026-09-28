@@ -91,7 +91,7 @@ async function confirm() {
         </p>
         <label v-else-if="canDrop" class="dd-ck">
           <input v-model="tick" type="checkbox" >
-          <span>同时删掉这 {{ imp.draftCount }} 张{{ kinds }}催缴单(这几个月会显示需重算,重算后按现在的读数重出)</span>
+          <span>同时删掉这 {{ imp.draftCount }} 张{{ kinds }}催缴单(这几张单上的是上个月的水电,那几个抄表月会显示需重算,重算后按现在的读数重出)</span>
         </label>
         <p v-else class="dd-lk">删这些草稿单要有「出账运行」权限。请有这项权限的同事来删这块表。</p>
       </template>

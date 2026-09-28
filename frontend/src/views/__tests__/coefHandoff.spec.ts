@@ -108,9 +108,10 @@ describe('计费参数 →〈系数簿〉', () => {
 
   it('系数簿拿到的是组级期 —— 深链的 ym 先落进 store(§4.2 / D2:显式链接覆盖会话已选的期),窗口再从 store 读', async () => {
     query.coef = '1'
-    query.ym = '2024-12'          // 老协议照认;open() 预置的 2025-03 被它覆盖
+    // 催缴单屏链接里的月是催缴单月:2025-01 的单 = 2024-12 水电,落进 store 的是 2024-12(参数页 gotoCoefBook 就这么带)
+    query.p = '2025-01'           // open() 预置的 2025-03 被它覆盖
     const w = await open()
-    expect(useBillingPeriodStore().ym, '深链的期落进 store').toBe('2024-12')
+    expect(useBillingPeriodStore().ym, '深链的期折回抄表月落进 store').toBe('2024-12')
     expect(w.findComponent({ name: 'CoefBookWindow' }).props('ym')).toBe('2024-12')
   })
 })

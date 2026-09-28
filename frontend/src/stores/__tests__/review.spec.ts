@@ -133,6 +133,21 @@ describe('审核 store', () => {
     expect(s.rowsOf('2024-02')[0].status, '清单道').toBe('submitted')
   })
 
+  // 催缴单键记在收费月(bill-notices:2024-03 = 2 月水电那批),首页 2 月那一屏的清单是 list('2024-02') 取的。
+  // 破坏验证:batch() 只刷 periodOfKey(keys[0]) → 首页那行停在交审前,红。
+  it('❗交审催缴单键之后,它那一批的抄表月清单也重取', async () => {
+    const entered = [row({ key: 'bill-notices:2024-03', status: 'entered' })]
+    const submitted = [row({ key: 'bill-notices:2024-03', status: 'submitted' })]
+    let phase = 0
+    vi.mocked(api.get).mockImplementation(() => Promise.resolve(phase === 0 ? entered : submitted) as never)
+    const s = useReviewStore()
+    await s.ensure('2024-02')
+    expect(s.rowsOf('2024-02')[0].status).toBe('entered')
+    phase = 1
+    await s.submit('bill-notices:2024-03')
+    expect(s.rowsOf('2024-02')[0].status, '首页 2 月那一行').toBe('submitted')
+  })
+
   // 年表屏(附6/7/8/11、附13/14)按月份行上锁(D18)。
   // 破坏验证:把 lockedMonths 里的 kinds 过滤删掉 → 红(附表7 的锁会串到附表8 的行上)。
   it('❗lockedMonths 只认本屏管的 kind 与 scope', async () => {

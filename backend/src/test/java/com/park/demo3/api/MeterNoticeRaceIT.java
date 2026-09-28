@@ -51,8 +51,11 @@ class MeterNoticeRaceIT extends AbstractMysqlIT {
 
     private String auth() { return "Bearer " + token; }
 
-    /** 夹具:一户 + 挂在它名下的一块水表 + 本月读数 + 生成一次(出一张草稿单,明细里有这块表)。全部真提交。 */
-    private record Fx(String ym, int tenant, int meter, long dcl, long arch, long imp) {}
+    /** 夹具:一户 + 挂在它名下的一块水表 + ym 月读数 + 生成一次下个月的单(出一张草稿单,明细里有这块表)。全部真提交。
+     *  ym 月的读数出在 nym = ym+1 月的单上(BillNoticeService「月份口径」)。 */
+    private record Fx(String ym, int tenant, int meter, long dcl, long arch, long imp) {
+        String nym() { return com.park.demo3.service.BillNoticeService.noticeYmOf(ym); }
+    }
 
     private Fx fixture(String ym) throws Exception {
         long dcl = maxId("data_change_log"), arch = maxId("meter_archive_log"), imp = maxId("import_log");
@@ -66,8 +69,8 @@ class MeterNoticeRaceIT extends AbstractMysqlIT {
         try {
             assertThat(code(call(post("/api/meters/readings").header("Authorization", auth()).contentType("application/json")
                     .content("{\"meterId\":" + m + ",\"ym\":\"" + ym + "\",\"prevTotal\":0,\"currTotal\":20}")))).isZero();
-            assertThat(code(call(post("/api/bill-notices/generate").param("ym", ym).header("Authorization", auth())))).isZero();
-            assertThat(linesOf(m, ym)).as("夹具退化:生成没把这块表出进单里,下面两条就测不到东西").isPositive();
+            assertThat(code(call(post("/api/bill-notices/generate").param("ym", f.nym()).header("Authorization", auth())))).isZero();
+            assertThat(linesOf(m, f.nym())).as("夹具退化:生成没把这块表出进单里,下面两条就测不到东西").isPositive();
         } catch (Throwable e) {
             cleanup(f);
             throw e;
@@ -76,7 +79,7 @@ class MeterNoticeRaceIT extends AbstractMysqlIT {
     }
 
     private void cleanup(Fx f) {
-        jdbc.update("DELETE FROM bill_notice WHERE ym = ?", f.ym());   // 明细 / 告警 FK CASCADE
+        jdbc.update("DELETE FROM bill_notice WHERE ym = ?", f.nym());   // 明细 / 告警 FK CASCADE
         jdbc.update("DELETE FROM meter_reading WHERE meter_id = ?", f.meter());
         jdbc.update("DELETE FROM meter WHERE id = ?", f.meter());       // 归属 / 状态 / 册子行 FK CASCADE
         jdbc.update("DELETE FROM tenant WHERE id = ?", f.tenant());
@@ -122,18 +125,18 @@ class MeterNoticeRaceIT extends AbstractMysqlIT {
         ExecutorService pool = Executors.newSingleThreadExecutor();
         try (Connection c = ds.getConnection()) {
             c.setAutoCommit(false);
-            exec(c, "UPDATE bill_notice SET status = 'confirmed' WHERE ym = ? AND tenant_id = ?", f.ym(), f.tenant());
+            exec(c, "UPDATE bill_notice SET status = 'confirmed' WHERE ym = ? AND tenant_id = ?", f.nym(), f.tenant());
             Future<String> res = pool.submit(() -> call(delete("/api/meters/readings").param("ym", f.ym())
                     .param("dropDraftNotices", "true").header("Authorization", auth())));
             awaitBlocked(res);
             c.commit();
             String body = res.get(60, TimeUnit.SECONDS);
             assertThat(code(body)).as(body).isEqualTo(409);
-            assertThat((String) JsonPath.read(body, "$.message")).contains("已确认/已导出的催缴单");
+            assertThat((String) JsonPath.read(body, "$.message")).contains("的催缴单上,其中 1 张已确认/已导出");
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM meter_reading WHERE meter_id = ? AND ym = ?",
                     Integer.class, f.meter(), f.ym())).as("读数被删了").isEqualTo(1);
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM bill_notice WHERE ym = ? AND status = 'confirmed'",
-                    Integer.class, f.ym())).as("已确认的单被删了").isEqualTo(1);
+                    Integer.class, f.nym())).as("已确认的单被删了").isEqualTo(1);
         } finally {
             pool.shutdownNow();
             cleanup(f);
@@ -148,15 +151,15 @@ class MeterNoticeRaceIT extends AbstractMysqlIT {
         try (Connection c = ds.getConnection()) {
             c.setAutoCommit(false);
             // 同 MeterService.batchDelete 勾了连带删草稿的次序:先删该月草稿/作废单,再删读数
-            exec(c, "DELETE FROM bill_notice WHERE ym = ? AND status IN ('draft', 'void')", f.ym());
+            exec(c, "DELETE FROM bill_notice WHERE ym = ? AND status IN ('draft', 'void')", f.nym());
             exec(c, "DELETE FROM meter_reading WHERE ym = ? AND meter_id = ?", f.ym(), f.meter());
-            Future<String> res = pool.submit(() -> call(post("/api/bill-notices/generate").param("ym", f.ym())
+            Future<String> res = pool.submit(() -> call(post("/api/bill-notices/generate").param("ym", f.nym())
                     .header("Authorization", auth())));
             awaitBlocked(res);
             c.commit();
             String body = res.get(60, TimeUnit.SECONDS);
             assertThat(code(body)).as(body).isZero();
-            assertThat(linesOf(f.meter(), f.ym())).as("读数已删,生成又把这块表出进了单里").isZero();
+            assertThat(linesOf(f.meter(), f.nym())).as("读数已删,生成又把这块表出进了单里").isZero();
         } finally {
             pool.shutdownNow();
             cleanup(f);
