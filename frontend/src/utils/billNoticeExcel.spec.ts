@@ -275,13 +275,14 @@ describe('exceljs 出流', { timeout: 30_000 }, () => {
     ws.getSheetValues().flatMap(r => (Array.isArray(r) ? r : [])).map(v => String(v ?? ''))
 
   it('通知单 workbook 写得出且回读锚点格对得上', async () => {
-    const { bytes, sheets } = await tenantWorkbookBytes(item, '2024-02', () => yizeAcct, () => yize)
+    // 夹具取自「二期2024年2月水电费」:2 月的水电出在 3 月的单上(N 月的单 = N−1 月水电)
+    const { bytes, sheets } = await tenantWorkbookBytes(item, '2024-03', () => yizeAcct, () => yize)
     expect(bytes.byteLength).toBeGreaterThan(2000)
     expect(sheets).toBe(1)
     const ws = (await load(bytes)).worksheets[0]
     expect(ws.name).toBe('王红婷')            // 单联=户名
     expect(ws.getCell('B1').value).toBe('费用缴费通知单')
-    expect(ws.getCell('B2').value).toBe('计费期限：2024年2月')
+    expect(ws.getCell('B2').value).toBe('计费期限：2024年3月（水电为 2024年2月）')   // 3 月的单 = 2 月水电 + 3 月租金
     expect(ws.getCell('B3').value).toBe('租户名称：王红婷')
     expect(ws.getCell('B4').value).toBe('项目')   // 无租金行 → 水电表直接接在户头下
     expect(ws.getCell('L4').value).toBe('备注')
@@ -301,7 +302,7 @@ describe('exceljs 出流', { timeout: 30_000 }, () => {
         ...wangElec,
       ])],
     }
-    const { bytes } = await tenantWorkbookBytes(withRent, '2024-02', () => null, () => yize)
+    const { bytes } = await tenantWorkbookBytes(withRent, '2024-03', () => null, () => yize)
     const ws = (await load(bytes)).worksheets[0]
     expect(ws.getCell('B4').value).toBe('租金、物业维护费')   // 上表标题在户头之后
     expect(ws.getCell('B5').value).toBe('物业名称')
@@ -310,7 +311,7 @@ describe('exceljs 出流', { timeout: 30_000 }, () => {
     expect(ws.getCell('D6').value).toBe('厂房租金')
     const all = texts(ws)
     expect(all).toContain('租金、物业维护费合计')
-    expect(all).toContain('水电费')                            // 下表标题
+    expect(all).toContain('水电费（2024年2月）')               // 下表标题:3 月的单上是 2 月的水电
     expect(all).toContain('水电费合计')
     // 本期合计 = 1000 租金 + 835.56 水电(819.76 电 + 15.8 水)
     expect(all).toContain('本期合计')

@@ -4,6 +4,7 @@ import { setActivePinia, createPinia } from 'pinia'
 
 import ChainMonthGate from '@/components/fp/ChainMonthGate.vue'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
+import { noticeYmOf } from '@/nav/billingChain'
 import { metersApi } from '@/api/meters'
 import { allocApi } from '@/api/alloc'
 import { billNoticesApi } from '@/api/billNotices'
@@ -86,6 +87,19 @@ describe('出账月矩阵', () => {
     expect(w.findAll('.bmm-card')[2].classes()).toContain('stale')
   })
 
+  it('❗催缴单屏按催缴单月标格:9 月格 = 8 月水电那一批,点下去落的期是 8 月', async () => {
+    // 2026-09-28 月份口径:N 月的单 = N−1 月水电 + N 月租金(billingChain「催缴单的月份」)。
+    // 破坏验证:ChainMonthGate 的 chainOf 恒返回 label → 2 月格没数据、点下去落 2025-02 → 红
+    wire({ meters: ['2025-01'], pool: ['2025-01'], notices: ['2025-02'] })
+    const w = mount(ChainMonthGate, { props: { title: '催缴单', icon: 'file-check-2', notice: true } })
+    await flushPromises()
+    const cards = w.findAll('.bmm-card')
+    expect(cards[0].text(), '1 月格 = 2024-12 那一批:什么都没做').toContain('空')
+    expect(cards[1].findAll('.bmm-pip.on'), '2 月格 = 1 月抄表 / 公摊 + 2 月的单').toHaveLength(3)
+    await cards[1].trigger('click')
+    expect(useBillingPeriodStore().ym, '落的期是抄表月').toBe('2025-01')
+  })
+
   it('点月格 = 选定期，五屏一起换 —— 这是整个改造的目的', async () => {
     wire({ meters: ['2025-03'] })
     const w = await mk()
@@ -142,8 +156,9 @@ const row = (key: string, status: ReviewStatus): ReviewRow => ({
   submittedBy: 'zhangsan', submittedAt: null, reviewedBy: '李审',
   reviewedAt: '2025-03-05T10:00:00', reason: null, blockedBy: [],
 })
-/** 某月五把键同一档。 */
-const all5 = (ym: string, status: ReviewStatus) => KINDS.map(k => row(`${k}:${ym}`, status))
+/** 某月(链月)五把键同一档。催缴单键按催缴单月记 = 链月 +1(billingChain「催缴单的月份」)。 */
+const all5 = (ym: string, status: ReviewStatus) =>
+  KINDS.map(k => row(`${k}:${k === 'bill-notices' ? noticeYmOf(ym) : ym}`, status))
 
 /** 闸道是第二趟异步（矩阵先落地 → watch 才发请求），要再刷一次微任务才拿得到角标。 */
 async function mkRv() {
@@ -164,7 +179,7 @@ describe('出账月矩阵 · 月卡审核角标', () => {
     // 破坏验证:reviewOf 改成 `period.cellOf(ym).closed ? 'approved' : null`(只画整月锁账那一档)→ 红
     wire({
       meters: ['2025-01'],
-      review: [...all5('2025-01', 'approved').slice(0, 4), row('bill-notices:2025-01', 'returned')],
+      review: [...all5('2025-01', 'approved').slice(0, 4), row('bill-notices:2025-02', 'returned')],
     })
     const rv = (await mkRv()).findAll('.bmm-card')[0].find('.bmm-rv')
     expect(rv.exists()).toBe(true)
@@ -207,7 +222,8 @@ describe('出账月矩阵 · 月卡审核角标', () => {
     //  immediate 挡的是下面那条「第二次进门」—— 注释别谎报破坏点。)
     wire({ meters: ['2024-11', '2025-01'] })
     await mkRv()
-    expect(vi.mocked(reviewApi.states).mock.calls.map(c => c[0]), '纵排两年 ⇒ 两趟').toEqual([2024, 2025])
+    // 纵排两年 + 末年 12 月那批的催缴单键在次年(bill-notices:2026-01)⇒ 三趟
+    expect(vi.mocked(reviewApi.states).mock.calls.map(c => c[0]), '纵排两年 + 次年 ⇒ 三趟').toEqual([2024, 2025, 2026])
   })
 
   it('❗第二次进门也要取 —— 五屏共读一份 chain，回到矩阵时它早就加载好了', async () => {
@@ -218,7 +234,7 @@ describe('出账月矩阵 · 月卡审核角标', () => {
     await useBillingPeriodStore().loadChain()      // 模拟:抄表屏已经进过一次,cells 早已在手
     vi.mocked(reviewApi.states).mockClear()
     const w = await mkRv()
-    expect(vi.mocked(reviewApi.states).mock.calls.map(c => c[0])).toEqual([2025])
+    expect(vi.mocked(reviewApi.states).mock.calls.map(c => c[0])).toEqual([2025, 2026])   // 次年:12 月那批的催缴单键
     expect(w.findAll('.bmm-card')[0].find('.bmm-rv').classes()).toContain('rv-approved')
   })
 

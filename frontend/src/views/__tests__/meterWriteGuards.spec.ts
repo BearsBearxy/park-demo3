@@ -612,8 +612,9 @@ describe('园区抄表 · 导入结果与批删预览报档案改动(SPEC §3.2 
     await flushPromises()
     const cks = w.findAll('.mt5-del-ck')
     expect(cks).toHaveLength(3)
-    expect(cks[2].text()).toContain('同时删除该月的草稿催缴单(248 张,含已作废 3 张)')
-    expect(cks[2].text()).toContain('删的是这个月全部的草稿,删后可在催缴单屏重新生成')
+    // 3 月的读数出在 4 月的单上(billingChain「催缴单的月份」):连带删的是 4 月那批草稿
+    expect(cks[2].text()).toContain('同时删除对应的草稿催缴单(2025-04 的单,248 张,含已作废 3 张)')
+    expect(cks[2].text()).toContain('删的是那个月全部的草稿,删后可在催缴单屏重新生成')
     expect((cks[2].find('input').element as HTMLInputElement).checked, '默认不勾').toBe(false)
     expect(confirmBtn(w).attributes('disabled'), '只有草稿单不禁确认键').toBeUndefined()
     await cks[2].find('input').setValue(true)
@@ -636,7 +637,7 @@ describe('园区抄表 · 导入结果与批删预览报档案改动(SPEC §3.2 
     vm.delTyped = YM
     await flushPromises()
     const t = w.find('.mt5-del-list').text()
-    expect(t).toContain('该月有 7 张已确认/已导出的催缴单(力灏电子、锂朋科技、南盛物流、次生代、翔海 等 6 户)')
+    expect(t).toContain('这个月的读数出在 2025-04 的催缴单上,其中 7 张已确认/已导出(力灏电子、锂朋科技、南盛物流、次生代、翔海 等 6 户)')
     expect(t).toContain('先在催缴单屏作废这些单')
     expect(confirmBtn(w).attributes('disabled'), '有锁定单还能点确认').toBeDefined()
     // 同一份数字只去掉锁定单 → 放行:上面那一下是锁定单禁的,不是别的条件
@@ -655,7 +656,7 @@ describe('园区抄表 · 导入结果与批删预览报档案改动(SPEC §3.2 
     vm.delTyped = YM
     await flushPromises()
     expect(w.findAll('.mt5-del-ck'), '没有出账权限还出了勾选项').toHaveLength(2)
-    expect(w.find('.mt5-del-nobill').text()).toBe('该月有 4 张草稿催缴单,连带删除要出账权限;请有出账权限的人来删,或先到催缴单屏处理')
+    expect(w.find('.mt5-del-nobill').text()).toBe('2025-04 有 4 张草稿催缴单(这个月的读数出在那批单上),连带删除要出账权限;请有出账权限的人来删,或先到催缴单屏处理')
     expect(confirmBtn(w).attributes('disabled'), '勾不了还能点确认,点了只会 409').toBeDefined()
     // 同一份预览只补上出账权限 → 勾选项回来、确认键放行:上面那几下是权限禁的
     useAuthStore().permissions = ['meter-reading:edit', 'meter-master:edit', 'billing-run:edit']
@@ -684,7 +685,7 @@ describe('园区抄表 · 导入结果与批删预览报档案改动(SPEC §3.2 
     expect(metersApi.deletePreview).toHaveBeenCalledWith(YM, { cascade: true, dropEmptyMeters: true, dropDraftNotices: false })
     const cks = w.findAll('.mt5-del-ck')
     expect(cks, '409 之后弹窗还是旧预览,没有框可勾').toHaveLength(3)
-    expect(cks[2].text()).toContain('同时删除该月的草稿催缴单(245 张)')
+    expect(cks[2].text()).toContain('同时删除对应的草稿催缴单(2025-04 的单,245 张)')
   })
 
   // 对抗复查:不勾「删派生快照」时后端回 derived=0,旧句「该月已生成的派生快照 0 条」把「不删」说成「没有」

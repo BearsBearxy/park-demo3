@@ -20,6 +20,7 @@ import {
   type MaintRow,
 } from './billNoticeLogic'
 import { downloadBlob } from './billExcel'
+import { chainYmOf } from '@/nav/billingChain'
 
 const r2 = (v: number) => Math.round(v * 100) / 100
 
@@ -450,14 +451,17 @@ function writeNoticeSheet(
   account: CompanyAccount | null, company: Company | null,
 ): void {
   COL_WIDTHS.forEach((w, i) => { ws.getColumn(i + 1).width = w })
+  // ym = 催缴单月(收费月):租金是这个月的,水电是上个月的(billingChain「催缴单的月份」,同源册)
   const [y, mo] = ym.split('-')
+  const [uy, umo] = chainYmOf(ym).split('-')
+  const utilMonth = `${+uy}年${+umo}月`
   const rent = buildRentBlocks(g.rent, item.notes)
   const sections = buildNoticeSections(g.lines, item.notes)
   const tenant = item.tenantName ?? `#${item.tenantId}`
   let r = 1
 
   writeRow(ws, r++, [{ from: 2, to: 12, v: TITLE, bold: true, size: 12 }], { h: 21, naked: true })
-  writeRow(ws, r++, [{ from: 2, to: 12, v: `计费期限：${y}年${+mo}月` }], { h: 21, naked: true })
+  writeRow(ws, r++, [{ from: 2, to: 12, v: `计费期限：${y}年${+mo}月（水电为 ${utilMonth}）` }], { h: 21, naked: true })
   writeRow(ws, r++, [
     { from: 2, to: 7, v: `租户名称：${tenant}` },
     { from: 9, v: '位置：', align: 'right' },
@@ -472,7 +476,7 @@ function writeNoticeSheet(
 
   // ── 下表:水电费 ──
   if (rent.blocks.length && sections.length)
-    writeRow(ws, r++, [{ from: 2, to: 12, v: CAP_UTIL, bold: true, align: 'left' }], { h: 21, naked: true })
+    writeRow(ws, r++, [{ from: 2, to: 12, v: `${CAP_UTIL}（${utilMonth}）`, bold: true, align: 'left' }], { h: 21, naked: true })
   let side: 'e' | 'w' | null = null
   for (const s of sections) {
     const mySide = s.water ? 'w' : 'e'

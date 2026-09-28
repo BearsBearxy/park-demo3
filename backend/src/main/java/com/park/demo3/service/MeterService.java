@@ -81,7 +81,7 @@ public class MeterService {
     private final AllocResultMapper allocResults;
     private final AllocRuleMeterMapper ruleMeters;
     private final AllocRuleMapper rules;
-    private final BillNoticeMapper billNotices;   // S4-2 守卫:该月已出催缴单 → 批量删读数 409
+    private final BillNoticeMapper billNotices;   // S4-2 守卫:这个月读数所在的催缴单(次月)已出 → 批量删读数 409
     private final BuildingMapper buildings;       // 只为档案列表带上「所在楼栋的期区」一格
     private final ImportLogService importLogs;
     private final ReviewGuard reviewGuard;
@@ -663,13 +663,15 @@ public class MeterService {
         guardOpenNotices(billed.stream().map(MeterDeleteDTO.Notice::status).toList(), months, dropDraftNotices,
             "这块表在已确认/已导出/已签发的催缴单里:" + noticeList(locked) + "。先到催缴单屏作废这些单,再回来删这块表",
             "这块表还在 " + billed.size() + " 张" + kinds + "催缴单里:" + noticeList(billed)
-                + "。在删除确认框里勾选「同时删掉这 " + billed.size() + " 张" + kinds + "催缴单」再删,那几个月会显示需重算");
+                + "。在删除确认框里勾选「同时删掉这 " + billed.size() + " 张" + kinds + "催缴单」再删,"
+                + "那几张单对应的抄表月(单月的上一个月)会显示需重算");
         if (!billed.isEmpty()) dropNotices(billed.stream().map(MeterDeleteDTO.Notice::noticeId).toList());
         // 零读数、挂了户没挂合同 / 绑定过期的表:generate 只给那户的单出一条指着它的告警,不出明细行。
         // 这种单不删(告警留到重算),但那几个月的单也是删表前出的
         months.addAll(warnedMonths(id));
-        // 单删了 / 告警指着的表没了、那几个月的快照没变 = 需重算;记成档案改动(屏上说「改过抄表」)
-        timeline.recordChange(months, MeterTimelineService.SOURCE_ARCHIVE);
+        // 单删了 / 告警指着的表没了、那几个月的快照没变 = 需重算;记成档案改动(屏上说「改过抄表」)。
+        // 改动记在表档案月 = 单头月减一(单上是上月的表)
+        timeline.recordChange(months.stream().map(BillNoticeService::utilityYm).toList(), MeterTimelineService.SOURCE_ARCHIVE);
         // meter_assign / meter_status 随表 CASCADE,不经 timeline,meter_archive_log 不落 —— 操作日志只有这一条
         audit.log("meter.delete", label(meter), billed.isEmpty() ? "删表" : "删表;连带删催缴单:" + noticeList(billed));
         meters.deleteById(id);
@@ -842,6 +844,8 @@ public class MeterService {
     public MeterDeleteDTO batchDelete(String ym, String kind, String zone, boolean cascade,
                                       boolean dropEmptyMeters, boolean dropDraftNotices, boolean apply) {
         requireYm(ym);
+        // 这个月的读数出在下个月的催缴单上(BillNoticeService 类头「月份口径」):下面凡是「本月的单」都指 nym 月的单
+        String nym = BillNoticeService.noticeYmOf(ym);
         // 作用域:该 ym 的读数 ∩ kind/zone 过滤后的表档案
         Map<Integer, Meter> scope = meters.selectFiltered(kind, zone).stream()
             .collect(Collectors.toMap(Meter::getId, m -> m));
@@ -861,10 +865,11 @@ public class MeterService {
             : ruleMeters.selectList(new QueryWrapper<AllocRuleMeter>().in("meter_id", emptied)).stream()
                 .map(AllocRuleMeter::getMeterId).collect(Collectors.toSet());
         // 别的月的催缴单明细里还有它(fk_line_meter RESTRICT)→ 同样跳过点名,不然整批撞 FK 回一句「违反完整性约束」。
-        // 本月的单不算:要么随本次一起删(勾了连带删草稿),要么整批 409。ym 已由 requireYm 校验,inSql 拼接安全。
+        // 本月读数所在的那批单(nym 月)不算:要么随本次一起删(勾了连带删草稿),要么整批 409。
+        // ym 已由 requireYm 校验、nym 由它推出,inSql 拼接安全。
         java.util.Set<Integer> billed = emptied.isEmpty() || !dropEmptyMeters ? java.util.Set.of()
             : noticeLines.selectObjs(new QueryWrapper<BillNoticeLine>().select("DISTINCT meter_id").in("meter_id", emptied)
-                    .notInSql("notice_id", "SELECT id FROM bill_notice WHERE ym = '" + ym + "'"))
+                    .notInSql("notice_id", "SELECT id FROM bill_notice WHERE ym = '" + nym + "'"))
                 .stream().map(o -> ((Number) o).intValue()).collect(Collectors.toSet());
         List<Integer> dropIds = dropEmptyMeters
             ? emptied.stream().filter(id -> !bound.contains(id) && !billed.contains(id)).toList() : List.of();
@@ -884,10 +889,10 @@ public class MeterService {
         // S4-2 守卫(防「读数删了单还在」),用户 2026-09-24 反馈批删是死胡同(作废只能逐张,也没有删整月单的入口)后分两类:
         //   已确认/已导出(含历史签发)锁着 → 整批 409 点户名,先去催缴单屏作废;
         //   草稿/已作废随时能重新生成 → 勾了 dropDraftNotices 连带删掉,没勾 409 让人勾。
-        //   单是按户整月出的,删就删该月全部这两类单,不随 kind/zone 收窄。预览把两类数字都报出来,执行才 409。
+        //   单是按户整月出的,删就删这个月读数所在那个月(nym)的全部这两类单,不随 kind/zone 收窄。预览把两类数字都报出来,执行才 409。
         // 实删走锁定读(RR 下普通读是快照):并发提交的确认读得到、下面 409 判得到;idx_notice_ym 的 next-key 锁
         // 同时挡住并发 generate 往这个月插新单。下面只删这次读到的 draft/void 的 id。
-        QueryWrapper<BillNotice> nq = new QueryWrapper<BillNotice>().select("id", "ym", "tenant_id", "status").eq("ym", ym);
+        QueryWrapper<BillNotice> nq = new QueryWrapper<BillNotice>().select("id", "ym", "tenant_id", "status").eq("ym", nym);
         if (apply) nq.last("FOR UPDATE");
         List<BillNotice> monthNotices = billNotices.selectList(nq);
         int notices = monthNotices.size();
@@ -918,11 +923,12 @@ public class MeterService {
         reviewGuard.assertEditable(ReviewKind.METERS, ym, null);
         String names = String.join("、", lockedTenants.subList(0, Math.min(5, lockedTenants.size())))
             + (lockedTenants.size() > 5 ? " 等 " + lockedTenants.size() + " 户" : "");
-        guardOpenNotices(monthNotices.stream().map(BillNotice::getStatus).toList(), List.of(ym), dropDraftNotices,
-            "该月有 " + (notices - open) + " 张已确认/已导出的催缴单(" + names
+        guardOpenNotices(monthNotices.stream().map(BillNotice::getStatus).toList(), List.of(nym), dropDraftNotices,
+            "这个月的读数出在 " + nym + " 的催缴单上,其中 " + (notices - open) + " 张已确认/已导出(" + names
                 + "),读数删了单上的数就对不上了。先在催缴单屏作废这些单,再回来删",
-            "该月有 " + open + " 张草稿催缴单" + (voids > 0 ? "(含已作废 " + voids + " 张)" : "") + ",读数删了单还在。"
-                + "勾选「同时删除该月的草稿催缴单」再删,删后可在催缴单屏重新生成");
+            "这个月的读数出在 " + nym + " 的催缴单上,那个月有 " + open + " 张草稿催缴单"
+                + (voids > 0 ? "(含已作废 " + voids + " 张)" : "") + ",读数删了单还在。"
+                + "勾选「同时删除对应的草稿催缴单」再删,删后可在催缴单屏重新生成");
         // 删掉本期那一行,它那一段的月份回落到上一行:其中有冻结月(SPEC §4)就整批不删,点名
         String maxGen = timeline.maxGeneratedYm();
         Map<Integer, java.util.Set<String>> spans = new TreeMap<>();

@@ -680,7 +680,8 @@ class ContractWriteApiIT extends AbstractMysqlIT {
 
         // 走 mapper 不走 jdbc:同一事务里 MyBatis 一级缓存会把上一次 lockedNotices 的空结果缓住,绕过 mapper 写库它看不见
         var n = new com.park.demo3.entity.BillNotice();
-        n.setYm("2085-06"); n.setTenantId(t); n.setNoticeKind("combined"); n.setStatus("exported");
+        // 2085-07 的单上是 2085-06 的表(催缴单月 = 抄表月 +1,BillNoticeService「月份口径」)→ 冻结的是 2085-06
+        n.setYm("2085-07"); n.setTenantId(t); n.setNoticeKind("combined"); n.setStatus("exported");
         n.setTotalAmount(java.math.BigDecimal.ZERO); n.setGeneratedAt(java.time.LocalDateTime.now());
         noticeMapper.insert(n);
         var l = new com.park.demo3.entity.BillNoticeLine();

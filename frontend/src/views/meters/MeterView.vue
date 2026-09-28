@@ -41,7 +41,7 @@ import FPToast from '@/components/fp/FPToast.vue'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
-import { chainStepsOf } from '@/nav/billingChain'
+import { chainStepsOf, noticeYmOf } from '@/nav/billingChain'
 import ChainMonthGate from '@/components/fp/ChainMonthGate.vue'
 import FPStepStrip from '@/components/fp/FPStepStrip.vue'
 import FPMoreMenu from '@/components/fp/FPMoreMenu.vue'
@@ -495,7 +495,9 @@ async function autoLink() {
 const delPreview = ref<MeterDeleteDTO | null>(null)
 const delCascade = ref(true)
 const delDropMeters = ref(true)
-const delDropNotices = ref(false)   // 连带删该月草稿催缴单:默认不勾,要人自己点(预览数字不随它变,不重拉)
+const delDropNotices = ref(false)   // 连带删对应的草稿催缴单:默认不勾,要人自己点(预览数字不随它变,不重拉)
+// 这个月的读数出在下个月的催缴单上(billingChain「催缴单的月份」),批删连带的是那一批单
+const delNoticeYm = computed(() => (period.ym ? noticeYmOf(period.ym) : ''))
 const delTyped = ref('')
 const delBusy = ref(false)
 const delOpt = computed(() => ({
@@ -1090,7 +1092,7 @@ const emptyText = computed(() => {
             <li>其中 <b>{{ delPreview.metersEmptied }}</b> 块表删完后零读数</li>
             <li>将删除该月派生快照 <b>{{ delPreview.derived }}</b> 条(池核算/逐表明细/损耗/分摊结果)</li>
             <li v-if="delLockedN > 0" class="warn">
-              该月有 <b>{{ delLockedN }}</b> 张已确认/已导出的催缴单({{ delLockedNames }}),读数删了单上的数就对不上了。先在催缴单屏作废这些单,再回来删
+              这个月的读数出在 {{ delNoticeYm }} 的催缴单上,其中 <b>{{ delLockedN }}</b> 张已确认/已导出({{ delLockedNames }}),读数删了单上的数就对不上了。先在催缴单屏作废这些单,再回来删
             </li>
             <!-- METER-TIMELINE-SPEC §3.5:本期导入写下的归属 / 状态记录一并删掉,预览里报数 -->
             <li v-if="(delPreview.assignRows ?? 0) + (delPreview.statusRows ?? 0) > 0">
@@ -1120,11 +1122,11 @@ const emptyText = computed(() => {
             <span>同时删除「删完零读数」的表档案(池成员表、别的月催缴单里还有的表自动跳过)</span>
           </label>
           <p v-if="delOpenN > 0 && !canBillRun" class="mt5-del-nobill">
-            该月有 {{ delOpenN }} 张草稿催缴单,连带删除要出账权限;请有出账权限的人来删,或先到催缴单屏处理
+            {{ delNoticeYm }} 有 {{ delOpenN }} 张草稿催缴单(这个月的读数出在那批单上),连带删除要出账权限;请有出账权限的人来删,或先到催缴单屏处理
           </p>
           <label v-if="delOpenN > 0 && canBillRun" class="mt5-del-ck">
             <input v-model="delDropNotices" type="checkbox" >
-            <span>同时删除该月的草稿催缴单({{ delOpenN }} 张{{ delPreview.voidNotices ? `,含已作废 ${delPreview.voidNotices} 张` : '' }})。催缴单按户整月出,删的是这个月全部的草稿,删后可在催缴单屏重新生成</span>
+            <span>同时删除对应的草稿催缴单({{ delNoticeYm }} 的单,{{ delOpenN }} 张{{ delPreview.voidNotices ? `,含已作废 ${delPreview.voidNotices} 张` : '' }})。这个月的读数出在下个月的单上;催缴单按户整月出,删的是那个月全部的草稿,删后可在催缴单屏重新生成</span>
           </label>
           <Input v-model="delTyped" :label="`确认请输入账期 ${delPreview.ym}`" :placeholder="delPreview.ym" size="sm" />
         </div>

@@ -19,6 +19,27 @@
 import type { ReleaseNote } from '@/types/changelog'
 
 export const CHANGELOG: ReleaseNote[] = [
+  // 功能更新(RELEASE-NOTES-SPEC §2.1 第 2、3 问是):催缴单的月份改成收费月(用户 2026-09-28 拍板「做乙」)。
+  // 出处:源册《2023年9月租金》第一个 sheet 是「2023年8月水电费」,通知单标题「2023年9月租金、物业维护费通知单」。
+  // 「N 月的单 = N−1 月水电 + N 月租金」:BillNoticeService.utilityYm / 前端 billingChain.noticeYmOf。
+  // 「已出的单往后挪一个月」:V132 迁移;「草稿重新生成后租金改为当月的,已确认、已导出的不变」:generate 跳过锁定户(S20 §1.3)。
+  // 「园区抄表批删连带下个月的草稿」:MeterService.batchDelete 的 nym。
+  // 修复一行:master 上 9-1 起租、8 月有读数的户(本地库飞浪、谢福兵等 6 户)8 月单报 W_METER_NO_CONTRACT;
+  // 现在表在水电月零覆盖时认收费月的合同(MeterBindingService.rentMonthPick),BillNoticeApiIT.t41 钉住。
+  {
+    version: '0.24.0',
+    date: '2026-09-28',
+    headline: '催缴单改按收费月，9 月的单含 8 月水电',
+    added: [],
+    improved: [
+      { icon: 'file-check-2', title: '催缴单', desc: '原来 8 月的单是 8 月水电加 8 月租金，现在 9 月的单是 8 月水电加 9 月租金。', to: 'bill-notices' },
+      { icon: 'history', title: '已出的催缴单', desc: '所有已出的单往后挪一个月，草稿重新生成即可；已确认、已导出的单租金是上个月的，要作废重出。', to: 'bill-notices' },
+      { icon: 'gauge', title: '园区抄表', desc: '批量删读数时，原来连带删同月的草稿催缴单，现在删下个月的那批。', to: 'meters' },
+    ],
+    fixed: [
+      '催缴单：9 月 1 日起租、8 月就有用电的户，原来显示无合同',
+    ],
+  },
   // 功能更新(RELEASE-NOTES-SPEC §2.1 第 1 问是):续签对话框加「递增」,新段 link_type=escalation(用户 2026-09-27 拍板)。
   // 原本并在 0.22.0 那段里,PR #58 合并时这个提交还没推上去,0.22.0 已照原样上线,所以另起一版。
   // 「不计入续签率」的出处:expiry.logic.ts 有 escalation 后继的前段是 midTier、不进分母,续签命中只认 linkType=renew 的后继

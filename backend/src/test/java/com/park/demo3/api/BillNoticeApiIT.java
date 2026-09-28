@@ -141,6 +141,9 @@ class BillNoticeApiIT extends AbstractMysqlIT {
 
     // ── helpers:引擎端点(API 契约) ──
 
+    // 月份口径(BillNoticeService 类头):ym 月的单 = 上月水电 + 本月租金。水电用例按水电月造数,单在下一个月。
+    private static String nx(String ym) { return com.park.demo3.service.BillNoticeService.noticeYmOf(ym); }
+
     private String generate(String ym) throws Exception {
         return postOk("/api/bill-notices/generate?ym=" + ym, "{}");
     }
@@ -203,6 +206,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t1_touMeter_fourSegLines_mgmt_auditChain() throws Exception {
         String ym = "2090-01";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int t = createTenant("IT出账分时户");
         int c = contract(t, "2089-01-01", "2099-12-31", null);
@@ -212,10 +216,10 @@ class BillNoticeApiIT extends AbstractMysqlIT {
                 + "\"prevSharp\":0,\"currSharp\":100,\"prevPeak\":0,\"currPeak\":200,"
                 + "\"prevFlat\":0,\"currFlat\":300,\"prevValley\":0,\"currValley\":400");
 
-        String gen = generate(ym);
+        String gen = generate(nym);
         assertThat((int) JsonPath.read(gen, "$.data.generated")).isEqualTo(1);
 
-        String body = detail(soleNoticeId(ym, t));
+        String body = detail(soleNoticeId(nym, t));
         assertThat(feeLines(body, "elec")).hasSize(4);
         Map<String, Object> sharp = one(segLines(body, "sharp"));
         assertThat(d(sharp.get("priceSnap"))).isEqualTo(1.2);   // ratio=0 ⇒ 实收峰价快照
@@ -241,7 +245,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         List<String> months = JsonPath.read(new String(mvc.perform(get("/api/bill-notices/months")
                 .header("Authorization", auth())).andExpect(jsonPath("$.code").value(0))
                 .andReturn().getResponse().getContentAsByteArray(), StandardCharsets.UTF_8), "$.data");
-        assertThat(months).contains(ym).isSorted().doesNotHaveDuplicates()
+        assertThat(months).contains(nym).isSorted().doesNotHaveDuplicates()
                 .allMatch(s -> s.matches("\\d{4}-\\d{2}"));
     }
 
@@ -249,6 +253,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t2_dormRoom_residentPrice_water385_pipeZero() throws Exception {
         String ym = "2090-02";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int t = createTenant("IT出账宿舍户");
         int c = contract(t, "2089-01-01", "2099-12-31", null);
@@ -259,8 +264,8 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         reading(e, ym, "\"prevTotal\":0,\"currTotal\":100");
         reading(w, ym, "\"prevTotal\":0,\"currTotal\":20");
 
-        generate(ym);
-        String body = detail(soleNoticeId(ym, t));
+        generate(nym);
+        String body = detail(soleNoticeId(nym, t));
         Map<String, Object> elec = one(feeLines(body, "elec"));
         assertThat(elec.get("ruleBranch")).isEqualTo("resident");
         assertThat(d(elec.get("priceSnap"))).isEqualTo(0.6);
@@ -282,6 +287,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t3_commercialMeter_032Mgmt() throws Exception {
         String ym = "2090-03";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int t = createTenant("IT出账商业户");
         int c = contract(t, "2089-01-01", "2099-12-31", null);
@@ -291,8 +297,8 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         reading(e, ym, "\"prevTotal\":0,\"currTotal\":100");
         reading(w, ym, "\"prevTotal\":0,\"currTotal\":10");
 
-        generate(ym);
-        String body = detail(soleNoticeId(ym, t));
+        generate(nym);
+        String body = detail(soleNoticeId(nym, t));
         Map<String, Object> elec = one(feeLines(body, "elec"));
         assertThat(elec.get("ruleBranch")).isEqualTo("commercial");
         assertThat(d(elec.get("priceSnap"))).isEqualTo(0.8);
@@ -308,6 +314,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t4_elecPackage_singleLine_noMgmt() throws Exception {
         String ym = "2090-04";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int t = createTenant("IT出账包干户");
         int c = contract(t, "2089-01-01", "2099-12-31", null);
@@ -320,8 +327,8 @@ class BillNoticeApiIT extends AbstractMysqlIT {
                 .content("{\"scope\":\"tenant:" + t + "\",\"cfgKey\":\"elec_package\",\"value\":1.0}"))
                 .andExpect(jsonPath("$.code").value(0));
 
-        generate(ym);
-        List<Map<String, Object>> rows = notices(ym, t);
+        generate(nym);
+        List<Map<String, Object>> rows = notices(nym, t);
         assertThat(rows).hasSize(1);
         assertThat(((Number) rows.get(0).get("lineCount")).intValue()).isEqualTo(1);
         String body = detail(((Number) rows.get(0).get("id")).intValue());
@@ -337,19 +344,20 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t5_capacityFee_kva_midMonthProrate() throws Exception {
         String ym = "2090-05";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int full = createTenant("IT出账容量整月户");
         contract(full, "2089-01-01", "2099-12-31", "10");
         int mid = createTenant("IT出账容量月中户");
         contract(mid, "2090-05-16", "2099-12-31", "10");
 
-        String gen = generate(ym);
+        String gen = generate(nym);
         assertThat((int) JsonPath.read(gen, "$.data.generated")).isEqualTo(2);
         // 整月:10×22.6=226.00
-        String bodyFull = detail(soleNoticeId(ym, full));
+        String bodyFull = detail(soleNoticeId(nym, full));
         assertThat(d(one(feeLines(bodyFull, "capacity")).get("amount"))).isEqualTo(226.0);
         // 月中起租:5 月 31 天,16..31 共 16 天在租 → 226×16/31=116.65
-        String bodyMid = detail(soleNoticeId(ym, mid));
+        String bodyMid = detail(soleNoticeId(nym, mid));
         assertThat(d(one(feeLines(bodyMid, "capacity")).get("amount"))).isCloseTo(116.65, within(0.01));
     }
 
@@ -357,6 +365,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t6_paymapSplit_dormSegmentOwnNotice() throws Exception {
         String ym = "2090-06";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int t = createTenant("IT出账拆单户");
         int c = contract(t, "2089-01-01", "2099-12-31", null);
@@ -372,18 +381,18 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         paymap(t, "waterStd", 3);
         paymap(t, "dormRent", 2);
 
-        generate(ym);
-        List<Map<String, Object>> rows = notices(ym, t);
+        generate(nym);
+        List<Map<String, Object>> rows = notices(nym, t);
         assertThat(rows).hasSize(3);
-        List<Map<String, Object>> dorm = JsonPath.read(list(ym),
+        List<Map<String, Object>> dorm = JsonPath.read(list(nym),
                 "$.data[?(@.tenantId==" + t + " && @.noticeKind=='dorm')]");
         assertThat(dorm).hasSize(1);
         assertThat(((Number) dorm.get(0).get("payCompanyId")).intValue()).isEqualTo(2);
         assertThat(d(dorm.get(0).get("totalAmount"))).isEqualTo(38.0);
-        List<Map<String, Object>> co1 = JsonPath.read(list(ym),
+        List<Map<String, Object>> co1 = JsonPath.read(list(nym),
                 "$.data[?(@.tenantId==" + t + " && @.payCompanyId==1)]");
         assertThat(d(one(co1).get("totalAmount"))).isEqualTo(112.0);   // 80+32(mgmt elecMaint 查无→兜底 elecStd)
-        List<Map<String, Object>> co3 = JsonPath.read(list(ym),
+        List<Map<String, Object>> co3 = JsonPath.read(list(nym),
                 "$.data[?(@.tenantId==" + t + " && @.payCompanyId==3)]");
         assertThat(d(one(co3).get("totalAmount"))).isEqualTo(44.5);    // 39.5+5(water_pipe 兜底 waterStd)
     }
@@ -392,6 +401,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t7_idempotent_issuedSkipped_thenVoid() throws Exception {
         String ym = "2090-07";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int t = createTenant("IT出账幂等户");
         int c = contract(t, "2089-01-01", "2099-12-31", null);
@@ -399,33 +409,34 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         bind(m, c);
         reading(m, ym, "\"prevTotal\":0,\"currTotal\":100");
 
-        String g1 = generate(ym);
+        String g1 = generate(nym);
         int generated = JsonPath.read(g1, "$.data.generated");
         int lines = JsonPath.read(g1, "$.data.lines");
         assertThat(generated).isEqualTo(1);
-        int id1 = soleNoticeId(ym, t);
+        int id1 = soleNoticeId(nym, t);
         // 二跑:先删 draft 再插,单数行数不变(id 允许变,单仍唯一)
-        String g2 = generate(ym);
+        String g2 = generate(nym);
         assertThat((int) JsonPath.read(g2, "$.data.generated")).isEqualTo(generated);
         assertThat((int) JsonPath.read(g2, "$.data.lines")).isEqualTo(lines);
-        int id2 = soleNoticeId(ym, t);
+        int id2 = soleNoticeId(nym, t);
 
         postOk("/api/bill-notices/" + id2 + "/issue", "{}");
-        String g3 = generate(ym);
+        String g3 = generate(nym);
         assertThat((int) JsonPath.read(g3, "$.data.warned")).isGreaterThanOrEqualTo(1);
-        List<Map<String, Object>> rows = notices(ym, t);   // issued 不被覆盖,户内仍唯一
+        List<Map<String, Object>> rows = notices(nym, t);   // issued 不被覆盖,户内仍唯一
         assertThat(rows).hasSize(1);
         assertThat(((Number) rows.get(0).get("id")).intValue()).isEqualTo(id2);
         assertThat(rows.get(0).get("status")).isEqualTo("issued");
 
         postOk("/api/bill-notices/" + id2 + "/void", "{\"reason\":\"IT 撤签发\"}");
-        assertThat(one(notices(ym, t)).get("status")).isEqualTo("void");
+        assertThat(one(notices(nym, t)).get("status")).isEqualTo("void");
     }
 
     // ── t8 offbook 户→全部单 noticeKind='offbook';负用量→行 amount<0 且单头 warn 含「负」 ──
     @Test
     void t8_offbook_negativeUsage_warn() throws Exception {
         String ym = "2090-08";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int t = createTenant("IT出账账外户");
         int c = contract(t, "2089-01-01", "2099-12-31", null);
@@ -434,8 +445,8 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         bind(m, c);
         reading(m, ym, "\"prevTotal\":100,\"currTotal\":50");   // 读数回退 → 用量 -50
 
-        generate(ym);
-        List<Map<String, Object>> rows = notices(ym, t);
+        generate(nym);
+        List<Map<String, Object>> rows = notices(nym, t);
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get("noticeKind")).isEqualTo("offbook");
         assertThat(d(rows.get(0).get("totalAmount"))).isLessThan(0.0);
@@ -448,6 +459,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t9_unboundMeter_degradedNotice_warn() throws Exception {
         String ym = "2090-09";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int t = createTenant("IT出账无合同户");
         int m = createMeter("elec", "p1", "IT出账无合同电", t);
@@ -462,9 +474,9 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         int mBare = createMeter("elec", "p1", "636.00", t);
         reading(mBare, ym, "\"prevTotal\":0,\"currTotal\":100");
 
-        String gen = generate(ym);
+        String gen = generate(nym);
         assertThat((int) JsonPath.read(gen, "$.data.warned")).isGreaterThanOrEqualTo(1);
-        List<Map<String, Object>> rows = notices(ym, t);
+        List<Map<String, Object>> rows = notices(nym, t);
         assertThat(rows).hasSize(1);
         assertThat(codes(rows.get(0))).contains("W_METER_NO_CONTRACT");
         // ⚠ 条目必须**两两不同**:hint 取 sub_name 的话这里全是「电表①」,屏上认不出是哪块表。
@@ -487,13 +499,14 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t10_batchDeleteReadings_withNotices_409() throws Exception {
         String ym = "2090-10";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int t = createTenant("IT出账删守户");
         int c = contract(t, "2089-01-01", "2099-12-31", null);
         int m = createMeter("elec", "p1", "IT出账删守电", t);
         bind(m, c);
         reading(m, ym, "\"prevTotal\":0,\"currTotal\":100");
-        generate(ym);
+        generate(nym);
 
         mvc.perform(delete("/api/meters/readings").param("ym", ym)
                 .header("Authorization", auth()))
@@ -585,13 +598,14 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t14_rentDateMissing_warnNoRentLines() throws Exception {
         String ym = "2091-04";
-        monthlyPrices(ym);
+        String u = com.park.demo3.service.BillNoticeService.utilityYm(ym);   // 租金在 ym,读数/价在上月
+        monthlyPrices(u);
         int t = createTenant("IT租金缺日期户");
         int c = contractLines(t, null, null, null,
                 "[{\"propertyType\":\"factory\",\"location\":\"主\",\"feeKey\":\"rent_factory\",\"area\":100,\"unitPrice\":10}]");
         int m = createMeter("elec", "p1", "IT租金缺日期电", t);
         bind(m, c);
-        reading(m, ym, "\"prevTotal\":0,\"currTotal\":100");
+        reading(m, u, "\"prevTotal\":0,\"currTotal\":100");
 
         generate(ym);
         List<Map<String, Object>> rows = notices(ym, t);
@@ -615,6 +629,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t16_premiseByMeter_pinRoom_synthesize_fallbackWarn_textCap() throws Exception {
         String ym = "2091-05";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         // A:逐间 location(B 类拼接的正解形态)
         int ta = createTenant("IT场地逐间户");
@@ -647,14 +662,14 @@ class BillNoticeApiIT extends AbstractMysqlIT {
                .append(i).append("\",\"feeKey\":\"rent_factory\",\"area\":10,\"unitPrice\":1}");
         contractLines(tc, "2089-01-01", "2099-12-31", null, six.append("]").toString());
 
-        generate(ym);
+        generate(nym);
 
         // ① 唯一命中 → 该间原文(与公摊行同源,前端 byPremise 才配得上)
-        String bodyA = detail(soleNoticeId(ym, ta));
+        String bodyA = detail(soleNoticeId(nym, ta));
         assertThat(elecOfMeter(bodyA, hit).get("premise")).isEqualTo("A座309室");
         // ② 零命中 → 回退今天的长串(不猜)+ 按表短 warn
         assertThat(elecOfMeter(bodyA, miss).get("premise")).isEqualTo("A座309室、A座310室、A座311室");
-        Map<String, Object> nA = one(notices(ym, ta));
+        Map<String, Object> nA = one(notices(nym, ta));
         // 文案取房号 + 带字的表名(表名是「这块表挂错人了」的唯一线索);不取 m.getName() 原串。
         // 破坏验证:把 BillNoticeService 那处换回 "场地未定:" + m.getName() → 本行红。
         // ⚠ 这是「场地未定:544.00」那起事故的**指定判据**:房号与表名必须**分两列存**,不拼串。
@@ -681,12 +696,12 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         // 八个类别里本来就没有它,加回来就红。
         assertThat(codes(nA)).doesNotContain("W_PAY_COMPANY_MISSING");
         assertThat(codes(nA)).allSatisfy(c -> assertThat(c).doesNotContain("PAY_COMPANY"));
-        assertThat(one(notices(ym, ta)).get("payCompanyId")).isNull();
+        assertThat(one(notices(nym, ta)).get("payCompanyId")).isNull();
         // ③ A 类合并串 → 合成单间
-        assertThat(elecOfMeter(detail(soleNoticeId(ym, tb)), mb).get("premise"))
+        assertThat(elecOfMeter(detail(soleNoticeId(nym, tb)), mb).get("premise"))
                 .isEqualTo("二期10号楼（三车间）603单元");
         // ④ premise_text 超 5 项 → 前 5 项 + 等N处
-        assertThat(one(notices(ym, tc)).get("premiseText"))
+        assertThat(one(notices(nym, tc)).get("premiseText"))
                 .isEqualTo("A座101,A座102,A座103,A座104,A座105,等6处");
     }
 
@@ -699,6 +714,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t17_lossZeroBaseBucket_dropped_amountUnchanged() throws Exception {
         String ym = "2091-06";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int bid = postId("/api/buildings", "{\"name\":\"IT损耗零基数栋" + System.nanoTime()
                 + "\",\"phase\":2,\"floorCount\":1,\"perFloor\":1,\"totalArea\":100,\"rentableArea\":100}");
@@ -720,8 +736,8 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         jdbc.update("INSERT INTO alloc_pool_result(ym,rule_id,qty_total,cost_amount,generated_at) "
                 + "VALUES(?,?,0,0,NOW())", ym, rid);
 
-        generate(ym);
-        String body = detail(soleNoticeId(ym, t));
+        generate(nym);
+        String body = detail(soleNoticeId(nym, t));
         // 输入形态:电费 720.00(损耗基数来源,防两侧同错)+ premise 空的零额公摊行
         assertThat(d(elecOfMeter(body, mA).get("amount"))).isEqualTo(720.0);
         Map<String, Object> share = one(feeLines(body, "share_elec_elevator"));
@@ -744,6 +760,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t18_incubatorPackage_swallowsShareLines_lossBaseIncludesPackage() throws Exception {
         String ym = "2091-09";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int bid = postId("/api/buildings", "{\"name\":\"IT包干栋" + System.nanoTime()
                 + "\",\"phase\":2,\"floorCount\":1,\"perFloor\":1,\"totalArea\":100,\"rentableArea\":100}");
@@ -770,8 +787,8 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         priceScoped("tenant:" + t, "share_elec_fixed", "232");
         priceScoped("tenant:" + t, "share_water_fixed", "155");
 
-        generate(ym);
-        String body = detail(soleNoticeId(ym, t));
+        generate(nym);
+        String body = detail(soleNoticeId(nym, t));
         // ① 户内电费 43.80(包干电价 1.0)——损耗基数的另一半,防两侧同错
         assertThat(d(elecOfMeter(body, mT).get("amount"))).isEqualTo(43.8);
         // ② 电包干:原 50.00 池行不落,改落一条 232.00,沿用 share_elec_floor 键并回挂该池
@@ -831,8 +848,8 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         return new int[]{t, c, bid, m};
     }
 
-    private Map<String, Object> lossLine(String ym, int tenantId) throws Exception {
-        return one(feeLines(detail(soleNoticeId(ym, tenantId)), "share_elec_loss"));
+    private Map<String, Object> lossLine(String noticeYm, int tenantId) throws Exception {
+        return one(feeLines(detail(soleNoticeId(noticeYm, tenantId)), "share_elec_loss"));
     }
 
     // ── t30 形态A(两单标准形 33 户):base=B+链内电力管理费行。槽 2092-02。
@@ -840,14 +857,15 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t30_lossFormA_mgmtInBase() throws Exception {
         String ym = "2092-02";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int[] ch = lossChain(ym, "A", "1000", null);
         pool("IT形态A电梯池", "share_elec_elevator", ch[2], ch[0], ym, "50");
         priceScoped("tenant:" + ch[0], "mgmt_fee_commercial", "0.32");
         flag(ch[0], "loss_base_form", "1");
 
-        generate(ym);
-        Map<String, Object> loss = lossLine(ym, ch[0]);
+        generate(nym);
+        Map<String, Object> loss = lossLine(nym, ch[0]);
         assertThat(d(loss.get("baseSnap"))).isEqualTo(1058.0);
         assertThat(d(loss.get("amount"))).isEqualTo(105.8);
         assertThat((String) loss.get("note")).contains("base形态A");
@@ -858,14 +876,15 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t31_lossFormC_capacityNotShare() throws Exception {
         String ym = "2092-03";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int[] ch = lossChain(ym, "C", "1000", "10");
         pool("IT形态C电梯池", "share_elec_elevator", ch[2], ch[0], ym, "50");
         priceScoped("tenant:" + ch[0], "capacity_fee", "18");
         flag(ch[0], "loss_base_form", "3");
 
-        generate(ym);
-        String body = detail(soleNoticeId(ym, ch[0]));
+        generate(nym);
+        String body = detail(soleNoticeId(nym, ch[0]));
         assertThat(d(one(feeLines(body, "capacity")).get("amount"))).isEqualTo(180.0);
         assertThat(d(one(feeLines(body, "share_elec_elevator")).get("amount"))).isEqualTo(50.0);
         Map<String, Object> loss = one(feeLines(body, "share_elec_loss"));
@@ -878,6 +897,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t32_lossFormF_noElevator_chainScopedKey() throws Exception {
         String ym = "2092-04";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int[] ch = lossChain(ym, "F", "1000", null);
         pool("IT形态F电梯池", "share_elec_elevator", ch[2], ch[0], ym, "50");
@@ -885,8 +905,8 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         priceScoped("tenant:" + ch[0], "mgmt_fee_commercial", "0.32");
         flag(ch[0], "loss_base_form_b" + ch[2], "6");
 
-        generate(ym);
-        Map<String, Object> loss = lossLine(ym, ch[0]);
+        generate(nym);
+        Map<String, Object> loss = lossLine(nym, ch[0]);
         assertThat(d(loss.get("baseSnap"))).isEqualTo(1038.0);
         assertThat(d(loss.get("amount"))).isEqualTo(103.8);
     }
@@ -896,6 +916,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t33_lossFormG_parkMeterAmountAdded() throws Exception {
         String ym = "2092-05";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int[] ch = lossChain(ym, "G", "1250", null);
         int park = postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p2\",\"name\":\"IT形态G反向有功\","
@@ -905,8 +926,8 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         flag(ch[0], "loss_base_form", "7");
         flag(ch[0], "loss_base_park_meter", String.valueOf(park));
 
-        generate(ym);
-        Map<String, Object> loss = lossLine(ym, ch[0]);
+        generate(nym);
+        Map<String, Object> loss = lossLine(nym, ch[0]);
         // S13-b:G 形与源册对齐后 base 含管理费(永龙 K 列铁证)=720+park70+mgmt288=1078
         assertThat(d(loss.get("baseSnap"))).isEqualTo(1078.0);
         assertThat(d(loss.get("amount"))).isEqualTo(215.6);
@@ -919,6 +940,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t34_lossFormB_parkLevelFirePoolInBase() throws Exception {
         String ym = "2092-06";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int[] ch = lossChain(ym, "B", "1000", null);
         jdbc.update("INSERT INTO alloc_rule(zone,name,method,fee_key) "
@@ -928,8 +950,8 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         jdbc.update("INSERT INTO alloc_pool_result(ym,rule_id,qty_total,cost_amount,generated_at) "
                 + "VALUES(?,?,0,30,NOW())", ym, rid);
 
-        generate(ym);
-        String body = detail(soleNoticeId(ym, ch[0]));
+        generate(nym);
+        String body = detail(soleNoticeId(nym, ch[0]));
         // 园区级池行经 splitShare 落到本合同场地(链归属判定的前提)
         Map<String, Object> fire = one(feeLines(body, "share_elec_fire"));
         assertThat(fire.get("premise")).isEqualTo("IT形态B区");
@@ -944,6 +966,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t35_fireAmountFixed_replacesFireRowsBeforeE2() throws Exception {
         String ym = "2092-07";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int[] ch = lossChain(ym, "B", "1000", null);
         jdbc.update("INSERT INTO alloc_rule(zone,name,method,fee_key) "
@@ -954,8 +977,8 @@ class BillNoticeApiIT extends AbstractMysqlIT {
                 + "VALUES(?,?,0,30,NOW())", ym, rid);
         flag(ch[0], "fire_amount_fixed", "88.88");
 
-        generate(ym);
-        String body = detail(soleNoticeId(ym, ch[0]));
+        generate(nym);
+        String body = detail(soleNoticeId(nym, ch[0]));
         Map<String, Object> fire = one(feeLines(body, "share_elec_fire"));   // one=断言仅一条(30 元原行已被吞)
         assertThat(d(fire.get("amount"))).isEqualTo(88.88);
         assertThat((String) fire.get("note")).contains("照抄源册实收");
@@ -973,8 +996,8 @@ class BillNoticeApiIT extends AbstractMysqlIT {
                 .contentType("application/json")
                 .content("{\"scope\":\"\",\"cfgKey\":\"water\",\"acctMonth\":\"" + ym + "\",\"value\":4.2}"))
                 .andExpect(jsonPath("$.code").value(0));
-        generate(ym);
-        String body2 = detail(soleNoticeId(ym, ch[0]));
+        generate(nym);
+        String body2 = detail(soleNoticeId(nym, ch[0]));
         assertThat(feeLines(body2, "share_elec_fire")).isEmpty();
         assertThat(d(one(feeLines(body2, "share_elec_loss")).get("baseSnap"))).isEqualTo(720.0);
     }
@@ -984,6 +1007,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t36_refPoolWithWeights_billsStdTimesWeight() throws Exception {
         String ym = "2092-08";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int[] ch = lossChain(ym, "B", "0", null);
         jdbc.update("INSERT INTO alloc_rule(zone,name,method,fee_key) "
@@ -993,8 +1017,8 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         jdbc.update("INSERT INTO alloc_pool_result(ym,rule_id,qty_total,std_value,generated_at) "
                 + "VALUES(?,?,0,482.12,NOW())", ym, rid);
 
-        generate(ym);
-        String body = detail(soleNoticeId(ym, ch[0]));
+        generate(nym);
+        String body = detail(soleNoticeId(nym, ch[0]));
         Map<String, Object> lift = one(feeLines(body, "share_elec_elevator"));
         assertThat(d(lift.get("amount"))).isEqualTo(241.06);
     }
@@ -1006,6 +1030,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t37_splitShare_dormRowsExcludedFromRatio() throws Exception {
         String ym = "2093-02";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         int t = createTenant("IT宿舍拆比户");
         int cA = contractLines(t, "2093-01-01", "2095-12-31", null,
                 "[{\"propertyType\":\"factory\",\"location\":\"IT厂A\",\"feeKey\":\"rent_factory\",\"area\":100,\"unitPrice\":10}]");
@@ -1014,9 +1039,9 @@ class BillNoticeApiIT extends AbstractMysqlIT {
                 + "{\"propertyType\":\"dorm\",\"location\":\"IT宿舍201\",\"feeKey\":\"rent_dorm\",\"area\":100,\"unitPrice\":5}]");
         pool("IT宿舍拆比池", "share_elec_light", building(), t, ym, "300");
 
-        generate(ym);
+        generate(nym);
         // 宿舍租金行拆 dorm 单 → 该户 combined 单里看 share 行
-        List<Map<String, Object>> combined = JsonPath.read(list(ym),
+        List<Map<String, Object>> combined = JsonPath.read(list(nym),
                 "$.data[?(@.tenantId==" + t + " && @.noticeKind=='combined')]");
         String body = detail(((Number) one(combined).get("id")).intValue());
         List<Map<String, Object>> rows = feeLines(body, "share_elec_light");
@@ -1072,43 +1097,44 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t19_noteOverride_upsertFetch_survivesRegenerate_delete() throws Exception {
         String ym = "2091-10";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int t = createTenant("IT备注覆盖户");
         int c = contract(t, "2089-01-01", "2099-12-31", null);
         int m = createMeter("elec", "p1", "IT备注覆盖电", t);
         bind(m, c);
         reading(m, ym, "\"prevTotal\":0,\"currTotal\":100");
-        generate(ym);
+        generate(nym);
 
         // upsert + fetch:普通行键=feeKey+premise(本例空)+meterId+seg(非分时空)
-        putNote(ym, t, m, "手写备注一");
-        List<Map<String, Object>> rows = JsonPath.read(notes(ym, t), "$.data");
+        putNote(nym, t, m, "手写备注一");
+        List<Map<String, Object>> rows = JsonPath.read(notes(nym, t), "$.data");
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get("note")).isEqualTo("手写备注一");
         assertThat(rows.get(0).get("meterKey")).isEqualTo(String.valueOf(m));
         // 二次 upsert 同键:仍一行,note 更新(uk_note_override 命中即改)
-        putNote(ym, t, m, "手写备注二");
-        rows = JsonPath.read(notes(ym, t), "$.data");
+        putNote(nym, t, m, "手写备注二");
+        rows = JsonPath.read(notes(nym, t), "$.data");
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get("note")).isEqualTo("手写备注二");
 
         // 重生成(先删后插):override 存活,且新行同键(meter_id 稳定)——前端叠加仍能挂回
-        generate(ym);
-        rows = JsonPath.read(notes(ym, t), "$.data");
+        generate(nym);
+        rows = JsonPath.read(notes(nym, t), "$.data");
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get("note")).isEqualTo("手写备注二");
-        Map<String, Object> line = elecOfMeter(detail(soleNoticeId(ym, t)), m);
+        Map<String, Object> line = elecOfMeter(detail(soleNoticeId(nym, t)), m);
         assertThat(line.get("seg")).isNull();
         assertThat(line.get("premise")).isNull();   // 键三列与 override 空串键一致
 
         // delete=恢复引擎默认;幂等(再删不报错)
         mvc.perform(delete("/api/bill-notices/notes").header("Authorization", auth())
-                .param("ym", ym).param("tenantId", String.valueOf(t))
+                .param("ym", nym).param("tenantId", String.valueOf(t))
                 .param("feeKey", "elec").param("meterKey", String.valueOf(m)))
                 .andExpect(jsonPath("$.code").value(0));
-        assertThat(JsonPath.<List<?>>read(notes(ym, t), "$.data")).isEmpty();
+        assertThat(JsonPath.<List<?>>read(notes(nym, t), "$.data")).isEmpty();
         mvc.perform(delete("/api/bill-notices/notes").header("Authorization", auth())
-                .param("ym", ym).param("tenantId", String.valueOf(t))
+                .param("ym", nym).param("tenantId", String.valueOf(t))
                 .param("feeKey", "elec").param("meterKey", String.valueOf(m)))
                 .andExpect(jsonPath("$.code").value(0));
     }
@@ -1138,6 +1164,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t21_confirm_regenerateSkips_markExported() throws Exception {
         String ym = "2093-05";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int t = createTenant("IT交付状态户");
         int c = contract(t, "2089-01-01", "2099-12-31", null);
@@ -1145,52 +1172,52 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         bind(m, c);
         reading(m, ym, "\"prevTotal\":0,\"currTotal\":100");
 
-        assertThat((int) JsonPath.read(generate(ym), "$.data.generated")).isEqualTo(1);
-        int id = soleNoticeId(ym, t);
-        assertThat(one(notices(ym, t)).get("status")).isEqualTo("draft");
-        assertThat(one(notices(ym, t)).get("confirmedAt")).isNull();
+        assertThat((int) JsonPath.read(generate(nym), "$.data.generated")).isEqualTo(1);
+        int id = soleNoticeId(nym, t);
+        assertThat(one(notices(nym, t)).get("status")).isEqualTo("draft");
+        assertThat(one(notices(nym, t)).get("confirmedAt")).isNull();
 
         // 确认:draft→confirmed,落 confirmed_at
         String r1 = postOk("/api/bill-notices/confirm",
-                "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "]}");
+                "{\"ym\":\"" + nym + "\",\"tenantIds\":[" + t + "]}");
         assertThat((int) JsonPath.read(r1, "$.data.confirmed")).isEqualTo(1);
         assertThat((int) JsonPath.read(r1, "$.data.skipped")).isZero();
-        Map<String, Object> row = one(notices(ym, t));
+        Map<String, Object> row = one(notices(nym, t));
         assertThat(row.get("status")).isEqualTo("confirmed");
         assertThat(row.get("confirmedAt")).isNotNull();
         assertThat(row.get("exportedAt")).isNull();
 
         // 二次确认:非 draft 单只计 skipped
         String r2 = postOk("/api/bill-notices/confirm",
-                "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "]}");
+                "{\"ym\":\"" + nym + "\",\"tenantIds\":[" + t + "]}");
         assertThat((int) JsonPath.read(r2, "$.data.confirmed")).isZero();
         assertThat((int) JsonPath.read(r2, "$.data.skipped")).isEqualTo(1);
 
         // 重新生成:已确认户整户跳过,单 id 与状态不动(这是防静默覆盖的闸门)
-        String g = generate(ym);
+        String g = generate(nym);
         assertThat((int) JsonPath.read(g, "$.data.skippedConfirmed")).isEqualTo(1);
         assertThat((int) JsonPath.read(g, "$.data.generated")).isZero();
-        assertThat(((Number) one(notices(ym, t)).get("id")).intValue()).isEqualTo(id);
-        assertThat(one(notices(ym, t)).get("status")).isEqualTo("confirmed");
+        assertThat(((Number) one(notices(nym, t)).get("id")).intValue()).isEqualTo(id);
+        assertThat(one(notices(nym, t)).get("status")).isEqualTo("confirmed");
 
         // 标记导出:confirmed→exported,落 exported_at;重生成仍跳过
         String e1 = postOk("/api/bill-notices/mark-exported",
-                "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "]}");
+                "{\"ym\":\"" + nym + "\",\"tenantIds\":[" + t + "]}");
         assertThat((int) JsonPath.read(e1, "$.data.marked")).isEqualTo(1);
-        row = one(notices(ym, t));
+        row = one(notices(nym, t));
         assertThat(row.get("status")).isEqualTo("exported");
         assertThat(row.get("exportedAt")).isNotNull();
-        assertThat((int) JsonPath.read(generate(ym), "$.data.skippedConfirmed")).isEqualTo(1);
+        assertThat((int) JsonPath.read(generate(nym), "$.data.skippedConfirmed")).isEqualTo(1);
 
         // 作废后不再参与流转:确认只计 skipped,标记导出不改状态
         postOk("/api/bill-notices/" + id + "/void", "{\"reason\":\"IT 作废\"}");
         String r3 = postOk("/api/bill-notices/confirm",
-                "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "]}");
+                "{\"ym\":\"" + nym + "\",\"tenantIds\":[" + t + "]}");
         assertThat((int) JsonPath.read(r3, "$.data.confirmed")).isZero();
         assertThat((int) JsonPath.read(r3, "$.data.skipped")).isEqualTo(1);
         assertThat((int) JsonPath.read(postOk("/api/bill-notices/mark-exported",
-                "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "]}"), "$.data.marked")).isZero();
-        assertThat(one(notices(ym, t)).get("status")).isEqualTo("void");
+                "{\"ym\":\"" + nym + "\",\"tenantIds\":[" + t + "]}"), "$.data.marked")).isZero();
+        assertThat(one(notices(nym, t)).get("status")).isEqualTo("void");
     }
 
     // ── t22 取消确认(2026-09-23):confirmed→draft,理由必填;只收 confirmed 这一档。
@@ -1199,51 +1226,52 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t22_unconfirm_backToDraft_reasonRequired_exportedNotRevertable() throws Exception {
         String ym = "2093-06";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int t = createTenant("IT取消确认户");
         int c = contract(t, "2089-01-01", "2099-12-31", null);
         int m = createMeter("elec", "p1", "IT取消确认电", t);
         bind(m, c);
         reading(m, ym, "\"prevTotal\":0,\"currTotal\":100");
-        assertThat((int) JsonPath.read(generate(ym), "$.data.generated")).isEqualTo(1);
+        assertThat((int) JsonPath.read(generate(nym), "$.data.generated")).isEqualTo(1);
 
         // 草稿态取消确认:没有可退的,只计 skipped(不报错 —— 与 confirm 的形状对称)
         assertThat((int) JsonPath.read(postOk("/api/bill-notices/unconfirm",
-                "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "],\"reason\":\"点错了\"}"),
+                "{\"ym\":\"" + nym + "\",\"tenantIds\":[" + t + "],\"reason\":\"点错了\"}"),
                 "$.data.reverted")).isZero();
 
-        postOk("/api/bill-notices/confirm", "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "]}");
-        assertThat(one(notices(ym, t)).get("confirmedAt")).isNotNull();
+        postOk("/api/bill-notices/confirm", "{\"ym\":\"" + nym + "\",\"tenantIds\":[" + t + "]}");
+        assertThat(one(notices(nym, t)).get("confirmedAt")).isNotNull();
 
         // 理由必填:空串 400(@NotBlank),状态一个字不动
         mvc.perform(post("/api/bill-notices/unconfirm").header("Authorization", auth())
                         .contentType("application/json")
-                        .content("{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "],\"reason\":\"\"}"))
+                        .content("{\"ym\":\"" + nym + "\",\"tenantIds\":[" + t + "],\"reason\":\"\"}"))
                 .andExpect(status().isBadRequest());
-        assertThat(one(notices(ym, t)).get("status")).isEqualTo("confirmed");
+        assertThat(one(notices(nym, t)).get("status")).isEqualTo("confirmed");
 
         // 取消确认:confirmed→draft,**confirmed_at / confirmed_by 一起清空**。
         // ⚠ 这一条钉的是 UpdateWrapper 那个写法:MyBatis-Plus 的 updateById 跳 null 字段,
         //   照 setConfirmedBy(null)+updateById 写的话状态回了草稿、确认人还留在屏上。
         String u = postOk("/api/bill-notices/unconfirm",
-                "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "],\"reason\":\"金额算错了要重算\"}");
+                "{\"ym\":\"" + nym + "\",\"tenantIds\":[" + t + "],\"reason\":\"金额算错了要重算\"}");
         assertThat((int) JsonPath.read(u, "$.data.reverted")).isEqualTo(1);
-        Map<String, Object> row = one(notices(ym, t));
+        Map<String, Object> row = one(notices(nym, t));
         assertThat(row.get("status")).isEqualTo("draft");
         assertThat(row.get("confirmedAt")).isNull();
 
         // 退回之后重新生成不再跳过这户 —— 这正是取消确认要的效果
-        assertThat((int) JsonPath.read(generate(ym), "$.data.skippedConfirmed")).isZero();
-        assertThat((int) JsonPath.read(generate(ym), "$.data.generated")).isEqualTo(1);
+        assertThat((int) JsonPath.read(generate(nym), "$.data.skippedConfirmed")).isZero();
+        assertThat((int) JsonPath.read(generate(nym), "$.data.generated")).isEqualTo(1);
 
         // 已导出的退不回来:Excel 已经发出去了(billing-issue:edit 说明原话「对外不可逆动作」)
-        postOk("/api/bill-notices/confirm", "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "]}");
-        postOk("/api/bill-notices/mark-exported", "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "]}");
+        postOk("/api/bill-notices/confirm", "{\"ym\":\"" + nym + "\",\"tenantIds\":[" + t + "]}");
+        postOk("/api/bill-notices/mark-exported", "{\"ym\":\"" + nym + "\",\"tenantIds\":[" + t + "]}");
         String u2 = postOk("/api/bill-notices/unconfirm",
-                "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "],\"reason\":\"还想退\"}");
+                "{\"ym\":\"" + nym + "\",\"tenantIds\":[" + t + "],\"reason\":\"还想退\"}");
         assertThat((int) JsonPath.read(u2, "$.data.reverted")).isZero();
         assertThat((int) JsonPath.read(u2, "$.data.skipped")).isEqualTo(1);
-        assertThat(one(notices(ym, t)).get("status")).isEqualTo("exported");
+        assertThat(one(notices(nym, t)).get("status")).isEqualTo("exported");
     }
 
     // ══ METER-TIMELINE-SPEC §5 下游(B3):锁定单收过的表不进别户草稿 + 新告警 / 明细比当月档案 / 作废带理由落审计。
@@ -1257,6 +1285,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
     @Test
     void t40_lockedMeterSkipsOtherDraft_detailFlagsArchive_voidAuditedThenReissue() throws Exception {
         String ym = "2085-02";
+        String nym = nx(ym);   // 读数/池/价在 ym(水电月),单在下一个月
         monthlyPrices(ym);
         int tA = createTenant("IT锁单甲户" + System.nanoTime()), tB = createTenant("IT锁单乙户" + System.nanoTime());
         int cA = contract(tA, "2084-01-01", "2099-12-31", null), cB = contract(tB, "2084-01-01", "2099-12-31", null);
@@ -1264,10 +1293,10 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         bind(m, cA); bind(mB, cB);
         reading(m, ym, "\"prevTotal\":0,\"currTotal\":100");
         reading(mB, ym, "\"prevTotal\":0,\"currTotal\":50");
-        generate(ym);
-        int idA = soleNoticeId(ym, tA);
-        postOk("/api/bill-notices/confirm", "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + tA + "]}");
-        postOk("/api/bill-notices/mark-exported", "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + tA + "]}");
+        generate(nym);
+        int idA = soleNoticeId(nym, tA);
+        postOk("/api/bill-notices/confirm", "{\"ym\":\"" + nym + "\",\"tenantIds\":[" + tA + "]}");
+        postOk("/api/bill-notices/mark-exported", "{\"ym\":\"" + nym + "\",\"tenantIds\":[" + tA + "]}");
 
         // 档案在本月改挂乙户。界面上这一写会被冻结闸拦下(含这块表的单已导出);这里直接走 timeline,
         // 模拟上线前就改过的历史数据 —— 生成侧这道挡是兜底,不能指望前面的闸
@@ -1275,8 +1304,8 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         a.setMeterId(m); a.setFromYm(ym); a.setTenantId(tB); a.setTenantName("IT锁单乙户"); a.setOwnership("tenant");
         timeline.writeAssign(a, com.park.demo3.service.MeterTimelineService.Ctx.of("manual"));
 
-        generate(ym);
-        Map<String, Object> nB = one(notices(ym, tB));
+        generate(nym);
+        Map<String, Object> nB = one(notices(nym, tB));
         int idB = ((Number) nB.get("id")).intValue();
         List<Integer> billed = JsonPath.read(detail(idB), "$.data.lines[?(@.meterId==" + m + ")].lineNo");
         assertThat(billed).as("甲户已导出的单收过这块表,乙户草稿不许再出它的任何一行").isEmpty();
@@ -1294,16 +1323,68 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         mvc.perform(post("/api/bill-notices/" + idA + "/void").header("Authorization", auth())
                         .contentType("application/json").content("{\"reason\":\" \"}"))
                 .andExpect(status().isBadRequest());
-        assertThat(one(notices(ym, tA)).get("status")).isEqualTo("exported");
+        assertThat(one(notices(nym, tA)).get("status")).isEqualTo("exported");
         postOk("/api/bill-notices/" + idA + "/void", "{\"reason\":\"" + "错".repeat(255) + "\"}");
         assertThat(jdbc.queryForList("SELECT detail FROM auth_audit_log WHERE action='bill-notice.void' AND target LIKE ?",
                 String.class, "%单 #" + idA))
             .as("理由 255 字 + 前缀超过 detail 列宽:要截断落库,不能整条写失败被吞掉")
             .singleElement().asString().hasSize(255).startsWith("作废;理由:错错");
 
-        generate(ym);
-        Map<String, Object> nB2 = one(notices(ym, tB));
+        generate(nym);
+        Map<String, Object> nB2 = one(notices(nym, tB));
         assertThat(warnsOf(nB2, "W_METER_BILLED_ELSEWHERE")).isEmpty();
         assertThat(d(elecOfMeter(detail(((Number) nB2.get("id")).intValue()), m).get("amount"))).isEqualTo(80.0);
+    }
+
+    // ── t41 月份口径(2026-09-28,同源册《2023年9月租金》= 8 月水电 + 9 月租金):ym 月的单 = 上月水电 + 本月租金。
+    //    9-1 起租、8 月就有读数(装修用电)的户:8 月读数出在 9 月的单上,表挂 9 月起的那份合同、不报「无合同」,
+    //    电价取 8 月的,租金是 9 月整月;8 月的单(7 月水电 + 8 月租金)里没有这户。槽 2094-08 / 2094-09。
+    //    破坏验证:MeterBindingService 的 rentMonthPick 恒返回 null → contractId/告警两行红;
+    //    generate 里读数改回按收费月取 → elec 行为空、one() 红。 ──
+    @Test
+    void t41_noticeMonth_prevMonthUtility_thisMonthRent_newLeaseMeterFindsRentContract() throws Exception {
+        String u = "2094-08", ym = "2094-09";
+        monthlyPrices(u);
+        int t = createTenant("IT九月起租户");
+        int c = contractLines(t, "2094-09-01", "2099-12-31", null, FACTORY_LINES);
+        int m = createMeter("elec", "p1", "IT九月起租电", t);
+        reading(m, u, "\"prevTotal\":0,\"currTotal\":100");
+
+        generate(ym);
+        Map<String, Object> n = one(notices(ym, t));
+        assertThat(codes(n)).doesNotContain("W_METER_NO_CONTRACT");
+        String body = detail(((Number) n.get("id")).intValue());
+        Map<String, Object> elec = elecOfMeter(body, m);
+        assertThat(elec.get("contractId")).isEqualTo(c);     // 水电月这户没有合同 → 认收费月那份
+        assertThat(elec.get("priceMonth")).isEqualTo(u);     // 电价取水电月
+        assertThat(d(elec.get("amount"))).isEqualTo(80.0);
+        Map<String, Object> rent = one(feeLines(body, "rent_factory"));
+        assertThat(d(rent.get("amount"))).isEqualTo(1000.0); // 收费月整月,不按天折
+        assertThat(rent.get("note")).isNull();
+
+        generate(u);
+        assertThat(notices(u, t)).as("8 月的单是 7 月水电 + 8 月租金,这户两样都没有").isEmpty();
+    }
+
+    // ── t42 钉过合同的表不被「认收费月的合同」悄悄换掉(对抗复查 2026-09-28):钉的是 A(2094-06 就到期),
+    //    同户另有一份 B 从收费月 2094-11 起租。水电月 2094-10 A 落不到段,收费月也落不到 —— 仍是「绑定过期」,
+    //    行上留着钉的 A,不拿 B 顶替。槽 2094-10 / 2094-11。
+    //    破坏验证:MeterBindingService.rentMonthPick 去掉「钉过就只认钉的」那行 → 行挂 B、告警消失,两行红。 ──
+    @Test
+    void t42_pinnedMeter_notSilentlyRebound_toRentMonthContract() throws Exception {
+        String u = "2094-10", ym = "2094-11";
+        monthlyPrices(u);
+        int t = createTenant("IT钉约不顶替户");
+        int a = contract(t, "2090-01-01", "2094-06-30", null);
+        int b = contract(t, "2094-11-01", "2099-12-31", null);
+        int m = createMeter("elec", "p1", "IT钉约不顶替电", t);
+        bind(m, a);
+        reading(m, u, "\"prevTotal\":0,\"currTotal\":100");
+
+        generate(ym);
+        Map<String, Object> n = one(notices(ym, t));
+        assertThat(codes(n)).contains("W_METER_BIND_STALE");
+        assertThat(elecOfMeter(detail(((Number) n.get("id")).intValue()), m).get("contractId"))
+            .as("钉的是 A,不许换成收费月的 B(%d)", b).isEqualTo(a);
     }
 }

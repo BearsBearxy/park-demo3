@@ -11,6 +11,7 @@ import { ref, watch, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { parsePeriod, periodOf, type DeepPeriod } from '@/nav/deepLink'
+import { chainYmOf, noticeYmOf } from '@/nav/billingChain'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { useTabsStore } from '@/stores/tabs'
 
@@ -72,14 +73,16 @@ export function useDeepPeriod(o: DeepPeriodOpts): { note: Ref<string> } {
 }
 
 /** 出账链五屏的接法:apply = billingPeriod.pick + 补 loadChain(ChainMonthGate 是它的唯一调用方,门被深链跳过就没人加载,P1 复查 F1);
- *  链屏没有公司维度,co 不看;只有年的链接不动(链屏只认整月)。 */
-export function useChainDeepPeriod(dirty?: () => number): { note: Ref<string> } {
+ *  链屏没有公司维度,co 不看;只有年的链接不动(链屏只认整月)。
+ *  notice = 催缴单屏:链接里的 p 是催缴单月(收费月),落期要折回抄表月,页签上写的也是催缴单月(billingChain.noticeYmOf)。 */
+export function useChainDeepPeriod(dirty?: () => number, notice = false): { note: Ref<string> } {
   const period = useBillingPeriodStore()
   return useDeepPeriod({
-    current: () => ({ p: period.ym }),
+    current: () => ({ p: notice && period.ym ? noticeYmOf(period.ym) : period.ym }),
     apply: (t) => {
       if (t.month == null) return
-      period.pick(t.year, t.month)
+      const [y, m] = (notice ? chainYmOf(periodOf(t.year, t.month)) : periodOf(t.year, t.month)).split('-').map(Number)
+      period.pick(y, m)
       void period.loadChain().catch(() => {})
     },
     dirty,

@@ -34,7 +34,7 @@ import { useReviewStore } from '@/stores/review'
 import type { ReviewRow } from '@/types/review'
 import { NAV_SCOPE_PREFIX, scopeTarget } from '@/utils/lockScopes'
 import { periodLink, periodOf } from '@/nav/deepLink'
-import { CHAIN, pipsOf, chainLabel } from '@/nav/billingChain'
+import { CHAIN, pipsOf, chainLabel, noticeYmOf } from '@/nav/billingChain'
 import { buildYearRows, inYearWindow } from '@/utils/matrixYears'
 import { rowsOf, closeChecks } from './monthClose.logic'
 import type { CloseRow, CloseChip } from './monthClose.logic'
@@ -179,7 +179,9 @@ function go(v: string, tag = '', co?: number | 'all') {
   // 链屏与收入核对带 ?p(SIDEBAR-UX-REDESIGN §4.1「显式选月 + periodLink」):目标屏 useDeepPeriod 认得,
   // 链屏还会与上面预 pick 的期比对(相同 → 不动);附表行按 scheduleLink 的形状带参(P0b)。
   if (p && (CHAIN_VALUES.has(v) || v === 'reconciliation')) {
-    router.push(periodLink(v, { p: periodOf(p.year, p.month) }))
+    // 催缴单屏的 p 是催缴单月:这个月的水电出在下个月的单上(billingChain「催缴单的月份」)
+    const pp = periodOf(p.year, p.month)
+    router.push(periodLink(v, { p: v === 'bill-notices' ? noticeYmOf(pp) : pp }))
     return
   }
   const link = p ? scheduleLink(v, tag, p, co) : null

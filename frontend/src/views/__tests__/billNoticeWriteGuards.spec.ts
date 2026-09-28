@@ -186,8 +186,9 @@ describe('催缴单 · 写操作的编辑态守卫', () => {
     await flushPromises()
 
     // 夹具确实走到了写入口:键=行业务键,月=开抽屉那一刻的快照月
+    // 备注按催缴单月记:期是 2026-08(抄表月),单是 2026-09 的(billingChain「催缴单的月份」)
     expect(billNoticesApi.saveNote).toHaveBeenCalledWith({
-      ym: '2026-08', tenantId: 5, ...KEY, note: '人工改写的备注',
+      ym: '2026-09', tenantId: 5, ...KEY, note: '人工改写的备注',
     })
   })
 

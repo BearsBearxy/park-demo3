@@ -220,24 +220,27 @@ class MeterTimelineIT extends AbstractMysqlIT {
         assertThat(months).doesNotContain("1900-01");
     }
 
-    // §4 冻结两个来源:抄表审核锁(submitted / approved;returned 不锁)∪ 明细含这块表的已确认 / 已导出催缴单
+    // §4 冻结两个来源:抄表审核锁(submitted / approved;returned 不锁)∪ 明细含这块表的已确认 / 已导出催缴单。
+    // 催缴单冻结的是**它上一个月**的表档案(N 月的单 = N−1 月水电,BillNoticeService「月份口径」):
+    // 2086-07 的已导出单冻 2086-06,2086-08 的已确认单冻 2086-07。
+    // 破坏验证:MeterAssignMapper.lockedNotices 回单头月不减一 → 冻结月整体晚一个月,本条红。
     @Test
     void frozenMonths_reviewLockAndLockedNotices() {
         review("2086-03", "approved");
         review("2086-04", "submitted");
         review("2086-05", "returned");
         int tenantId = newTenant();
-        notice(tenantId, "2086-06", "exported", meterId);
-        notice(tenantId, "2086-07", "confirmed", meterId);
-        notice(tenantId, "2086-08", "draft", meterId);
-        notice(tenantId, "2086-09", "exported", newMeter());   // 单里是别的表
+        notice(tenantId, "2086-07", "exported", meterId);
+        notice(tenantId, "2086-08", "confirmed", meterId);
+        notice(tenantId, "2086-09", "draft", meterId);
+        notice(tenantId, "2086-10", "exported", newMeter());   // 单里是别的表
 
         List<String> year = MeterTimeline.affectedMonths("2086-01", null, "2086-12");
         assertThat(svc.frozenMonths(meterId, year)).containsExactly(
             new Frozen("2086-03", "园区抄表已审核"),
             new Frozen("2086-04", "园区抄表待审核"),
-            new Frozen("2086-06", "含这块表的催缴单已导出"),
-            new Frozen("2086-07", "含这块表的催缴单已确认"));
+            new Frozen("2086-06", "含这块表的 2086-07 催缴单已导出"),
+            new Frozen("2086-07", "含这块表的 2086-08 催缴单已确认"));
         assertThat(svc.frozenMonths(meterId, List.of("2086-05", "2086-06"))).extracting(Frozen::ym)
             .containsExactly("2086-06");
     }

@@ -82,7 +82,7 @@ public class DataHomeService {
 
         if (ym == null) {   // 全新库:一条数据都没有,前端出「还没开始出账」引导
             return new DataHomeOverviewDTO(null, months, List.of(),
-                buildChain(0, 0, 0, false, false, 0, BigDecimal.ZERO, 0),
+                buildChain(0, 0, 0, false, false, 0, BigDecimal.ZERO, 0, null),
                 new DataHomeOverviewDTO.Schedules(0, 9, List.of()));
         }
 
@@ -92,7 +92,9 @@ public class DataHomeService {
         long readings = meterReadings.selectCount(new QueryWrapper<MeterReading>().eq("ym", ym));
         boolean pool = poolResults.selectCount(new QueryWrapper<AllocPoolResult>().eq("ym", ym)) > 0;
         boolean loss = lossResults.selectCount(new QueryWrapper<AllocLossResult>().eq("ym", ym)) > 0;
-        List<BillNotice> notices = billNotices.selectList(new QueryWrapper<BillNotice>().eq("ym", ym));
+        // 链是按抄表月排的;吃这个月读数的是下个月的催缴单(BillNoticeService 类头「月份口径」)
+        String nym = BillNoticeService.noticeYmOf(ym);
+        List<BillNotice> notices = billNotices.selectList(new QueryWrapper<BillNotice>().eq("ym", nym));
         BigDecimal noticeTotal = notices.stream().map(BillNotice::getTotalAmount)
             .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
         int noticeWarn = (int) notices.stream()
@@ -120,15 +122,20 @@ public class DataHomeService {
             new DataHomeOverviewDTO.Period(year, month, year + "年" + month + "月"),
             months,
             buildBlockers(contractNoLine, paramStale, ps.staleSources()),
-            buildChain(ps.priceOk(), ps.priceTotal(), readings, pool, loss, notices.size(), noticeTotal, noticeWarn),
+            buildChain(ps.priceOk(), ps.priceTotal(), readings, pool, loss, notices.size(), noticeTotal, noticeWarn,
+                (nym.startsWith(ym.substring(0, 4)) ? "" : nym.substring(0, 4) + "年")   // 12 月那批的单在次年
+                    + Integer.parseInt(nym.substring(5, 7)) + "月的单"),
             new DataHomeOverviewDTO.Schedules(done, 13, items));
     }
 
     /** 出账链四源的 distinct 账期并集(升序去重)。四个 selectDistinctYms 是上一轮为干掉
      *  前端逐月探测加的,这里复用 —— 同一份「哪些月有数据」不该有第二种算法。 */
     private List<String> chainYms() {
+        // 催缴单月折回抄表月(单头月减一),与链的月份同一口径
         return Stream.of(meterReadings.selectDistinctYms(), poolResults.selectDistinctYms(),
-                         lossResults.selectDistinctYms(), billNotices.selectDistinctYms())
+                         lossResults.selectDistinctYms(),
+                         billNotices.selectDistinctYms().stream().filter(BillNoticeService::validYm)
+                             .map(BillNoticeService::utilityYm).toList())
             .flatMap(List::stream).distinct().sorted().toList();
     }
 
@@ -318,7 +325,8 @@ public class DataHomeService {
      *    在电水+分区筛选链上算的,后端另算一份分母必然与之漂移(METRIC-SOURCE-SPEC §1)。 */
     static DataHomeOverviewDTO.Chain buildChain(int priceOk, int priceTotal,
                                                 long readingCount, boolean poolGenerated, boolean lossGenerated,
-                                                int noticeCount, BigDecimal noticeTotal, int noticeWarn) {
+                                                int noticeCount, BigDecimal noticeTotal, int noticeWarn,
+                                                String noticeLabel) {
         boolean paramsDone = priceTotal > 0 && priceOk == priceTotal;
         boolean[] done   = { paramsDone, readingCount > 0, poolGenerated, lossGenerated, noticeCount > 0 };
         String[]  keys   = { "params", "meters", "alloc", "alloc-loss", "bill-notices" };
@@ -328,10 +336,11 @@ public class DataHomeService {
             readingCount > 0 ? "已抄 " + readingCount + " 块" : "未抄表",
             poolGenerated ? "" : "未生成",
             lossGenerated ? "" : "未生成",
-            noticeCount > 0
+            // noticeLabel =「9月的单」:本月读数出在下个月的单上,不写出来会被读成本月的单
+            (noticeLabel == null ? "" : noticeLabel + " · ") + (noticeCount > 0
                 ? noticeCount + " 张 · ¥" + noticeTotal.setScale(2, RoundingMode.HALF_UP).toPlainString()
                   + (noticeWarn > 0 ? " · " + noticeWarn + " 张有警告" : "")
-                : "未生成",
+                : "未生成"),
         };
         int current = -1;
         for (int i = 0; i < done.length; i++) if (!done[i]) { current = i; break; }

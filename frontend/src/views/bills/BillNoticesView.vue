@@ -40,7 +40,7 @@ import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 import { useChainDeepPeriod } from '@/composables/useDeepPeriod'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
-import { chainStepsOf } from '@/nav/billingChain'
+import { chainStepsOf, noticeYmOf } from '@/nav/billingChain'
 import ChainMonthGate from '@/components/fp/ChainMonthGate.vue'
 import FPStepStrip from '@/components/fp/FPStepStrip.vue'
 import { iconFor } from '@/components/ds/icon'
@@ -87,13 +87,14 @@ const mayIssue = computed(() => auth.can('billing-issue:edit'))
 // 本屏的上游前置是 alloc + alloc-loss(后端 UPSTREAM),所以「通过」最容易吃 409;
 // 前端不预判(铁律 7),按钮照画,准话由组件里那份 409/403 分流弹出来。
 /** 弹卡标题的人话名。前端没有 kind→人话名映射表,各屏自己拼(新开一份 = 后端 ReviewKind 的第二份)。 */
-const reviewLabel = computed(() => `催缴单 · ${ym.value}`)
+const reviewLabel = computed(() => `催缴单 · ${noticeYm.value}`)
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
         lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip, reviewKeys } =
   useEditMode(['billing-run:edit', 'billing-issue:edit'], {
     scope: () => S.billNotices(year.value, month.value),
     // 审核键(§7.1)。与现有 draft→confirmed→exported(主管业务确认,V94)是两条轴,都保留。
-    reviewKey: () => (ym.value ? `bill-notices:${ym.value}` : null),
+    // 催缴单键按催缴单月(收费月)记;月锁仍是链月(抄表月)那一把,与另外四屏同占
+    reviewKey: () => (noticeYm.value ? `bill-notices:${noticeYm.value}` : null),
   })
 const canRun = computed(() => mayRun.value && editMode.value)
 const canIssue = computed(() => mayIssue.value && editMode.value)
@@ -117,18 +118,27 @@ const period = useBillingPeriodStore()
 const year = computed(() => period.year ?? 0)
 const month = computed(() => period.month ?? 0)
 const ym = computed(() => period.ym ?? '')
+// 本屏的月 = 催缴单月(收费月)= 链月 +1(billingChain「催缴单的月份」):9 月的单 = 8 月水电 + 9 月租金。
+// 单、审核键、确认 / 导出 / 备注、在租合同都按 noticeYm;ym 仍是链月 = 单上水电的月份,
+// 月锁、参数状态、系数簿、去重算都按它。
+const noticeYm = computed(() => (period.ym ? noticeYmOf(period.ym) : ''))
+const noticeYear = computed(() => +noticeYm.value.slice(0, 4))
+const noticeMonth = computed(() => +noticeYm.value.slice(5, 7))
 // 链路条:本月各道工序走到哪(与矩阵格子同一份数据)
 const chainSteps = computed(() => chainStepsOf(period.cellOf(ym.value)))
 // 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM(或旧 ?ym=)直落该月,pick + loadChain。
 // 本屏唯一的草稿是行内备注编辑(noteEditKey 非空 = 有一处没提交);切回时有草稿 → 不切期,只在 deepNote 里说。
 // dirty 是惰性求值:首跑不查(全新实例没有草稿),所以引用下面才声明的 noteEditKey 没有 TDZ 问题。
 // 必须在下面的 onReactivated / onMounted / watch(ym) 之前调用:切回时先改期,状态刷新才读到新月。
-const { note: deepNote } = useChainDeepPeriod(() => (noteEditKey.value != null ? 1 : 0))
+const { note: deepNote } = useChainDeepPeriod(() => (noteEditKey.value != null ? 1 : 0), true)
 
 // ── 数据:催缴单 + 当月在租合同(期归属/月租金参考用,取月中 15 日)同拉;竞态守卫 ──
 const rows = ref<BillNoticeDTO[] | null>(null)
 const contracts = ref<ContractDTO[]>([])
 const buildings = ref<BuildingDTO[]>([])
+// 水电月(ym)15 日在租的合同。收费月(noticeYm)已不在租的户 —— 8 月底退租,9 月的单上只剩 8 月水电 ——
+// 靠它归期、归楼栋,否则整户掉进「未归楼栋」;系数簿按水电月取参数,名册也用它(与改口径前同一份)。
+const utilContracts = ref<ContractDTO[]>([])
 const status = ref<ParamStatusDTO | null>(null)   // S21:计费参数状态(参数晚于本月批次 → stale 条)
 let seq = 0
 /**
@@ -144,14 +154,16 @@ async function loadMonth() {
   const my = ++seq
   busy.value = true
   try {
-    const [ns, cs, st] = await Promise.all([
-      billNoticesApi.list(ym.value).catch(() => [] as BillNoticeDTO[]),
+    const [ns, cs, us, st] = await Promise.all([
+      billNoticesApi.list(noticeYm.value).catch(() => [] as BillNoticeDTO[]),
+      contractApi.list(`${noticeYm.value}-15`).catch(() => [] as ContractDTO[]),
       contractApi.list(`${ym.value}-15`).catch(() => [] as ContractDTO[]),
       paramsApi.status(ym.value).catch(() => null),
     ])
     if (my !== seq) return
     rows.value = ns
     contracts.value = cs
+    utilContracts.value = us
     status.value = st
   } finally {
     // ⚠ 只有最新那一趟才有资格熄灯:被顶掉的旧请求先返回时若把 busy 清了,
@@ -179,7 +191,7 @@ const lastChangeText = computed(() => (status.value?.lastChangeAt ?? '').slice(5
 const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
   key: 'stale',
   title: staleTitle(status.value),
-  desc: `${staleWho(status.value)}在本月催缴单生成之后又改过 —— 单上的金额还是改之前算的。`
+  desc: `${staleWho(status.value)}在 ${noticeMonth.value} 月催缴单生成之后又改过(单上是 ${month.value} 月的水电)—— 单上的金额还是改之前算的。`
     + '去计费参数页「重算本月」重出一遍(池核算 → 楼栋损耗 → 催缴单一起走),已确认 / 已导出的户会自动跳过、金额照旧。',
   items: lastChangeText.value ? [{ text: `最近一次改动 ${lastChangeText.value}` }] : [],
   action: {
@@ -225,14 +237,21 @@ watch(ym, () => { if (period.picked) loadMonth() })
 
 // ── 一户一条聚合 + 期归属 + 月租金(参考) ──
 const bById = computed(() => new Map(buildings.value.map(b => [b.id, b])))
-const contractsByTenant = computed(() => {
+const byTenant = (cs: ContractDTO[]) => {
   const m = new Map<number, ContractDTO[]>()
-  for (const c of contracts.value) {
+  for (const c of cs) {
     const a = m.get(c.tenantId)
     if (a) a.push(c); else m.set(c.tenantId, [c])
   }
   return m
+}
+const contractsByTenant = computed(() => byTenant(contracts.value))
+// 归期 / 归楼栋用的合同:收费月在租的优先;收费月一份都没有的户退回水电月的(见 utilContracts)
+const placeContracts = computed(() => {
+  const has = new Set(contracts.value.map(c => c.tenantId))
+  return [...contracts.value, ...utilContracts.value.filter(c => !has.has(c.tenantId))]
 })
+const placeByTenant = computed(() => byTenant(placeContracts.value))
 const rentMap = computed(() => rentByTenant(contracts.value))
 interface DisplayRow extends TenantNoticeRow {
   rent: number | null; phase: 1 | 2 | 3
@@ -240,7 +259,7 @@ interface DisplayRow extends TenantNoticeRow {
   mark: CrossMark | null        // 跨楼栋轻标记(单栋户 null)
 }
 const tenantRows = computed<DisplayRow[]>(() => aggregateByTenant(rows.value ?? []).map(t => {
-  const cs = contractsByTenant.value.get(t.tenantId) ?? []
+  const cs = placeByTenant.value.get(t.tenantId) ?? []
   const bld = tenantBuildings(cs)
   return {
     ...t,
@@ -410,7 +429,7 @@ async function confirmTenants(tids: number[]) {
   if (ask.length && !confirm(ask.join('\n\n') + '\n仍然确认?')) return
   confirming.value = true
   try {
-    const res = await billDeliveryApi.confirm(ym.value, tids)
+    const res = await billDeliveryApi.confirm(noticeYm.value, tids)
     flashOk(`已确认 ${res.confirmed} 单${res.skipped ? `,跳过 ${res.skipped} 单(已确认/已作废)` : ''}`)
     exitBulk()
     await loadMonth()
@@ -428,7 +447,7 @@ async function unconfirmTenant(tid: number) {
   if (!reason.trim()) { alert('理由必填'); return }
   confirming.value = true
   try {
-    const res = await billDeliveryApi.unconfirm(ym.value, [tid], reason.trim())
+    const res = await billDeliveryApi.unconfirm(noticeYm.value, [tid], reason.trim())
     flashOk(`已退回 ${res.reverted} 单${res.skipped ? `,跳过 ${res.skipped} 单(已导出/已作废)` : ''}`)
     await loadMonth()
   } catch (e) { alert(errMsg(e, '取消确认失败')) } finally { confirming.value = false }
@@ -442,7 +461,7 @@ async function voidTenant(tid: number) {
   const live = (noticesByTenant.value.get(tid) ?? []).filter(n => n.status !== 'void')
   if (!live.length) return
   const name = filtered.value.find(r => r.tenantId === tid)?.tenantName ?? '#' + tid
-  const reason = prompt(`作废「${name}」${ym.value} 的 ${live.length} 张催缴单?
+  const reason = prompt(`作废「${name}」${noticeYm.value} 的 ${live.length} 张催缴单?
 作废后重新生成本月,这户按当前的档案与读数重出;已导出的文件不会跟着变。
 写一句理由(会留痕):`)
   if (reason == null) return
@@ -581,10 +600,10 @@ const okMsg = ref('')
 function flashOk(msg: string) { okMsg.value = msg }
 async function onGenerate() {
   if (!canRun.value || generating.value) return
-  if (!confirm(`重新生成 ${ym.value} 催缴单:先删后插覆盖本月草稿/作废单,按当前读数与价目重派;已签发单跳过不覆盖(须先作废)。确认?`)) return
+  if (!confirm(`重新生成 ${noticeYm.value} 催缴单(${month.value} 月水电 + ${noticeMonth.value} 月租金):先删后插覆盖本月草稿/作废单,按当前读数与价目重派;已签发单跳过不覆盖(须先作废)。确认?`)) return
   generating.value = true
   try {
-    const res = await billNoticesApi.generate(ym.value)
+    const res = await billNoticesApi.generate(noticeYm.value)
     flashOk(`已生成 ${res.generated} 单 / ${res.lines} 行,${res.warned} 单带警告(含已签发跳过户)`)
     await loadMonth()
     // 生成改的正是矩阵格子上的点(池/损耗亮起、stale 清掉)—— 换出账月时要立刻看得见
@@ -601,7 +620,7 @@ const dlgTab = ref<string>('rent')
 // ⚠ 这一句给**八类**无差别追加,所以它只许说时效,不许指路、不许承诺能清掉
 //   (对抗复查 2026-09-23 查出的两处):
 //   · 原文写「在合同或表档案里改完后」—— 而「包干行没挂上池」的落点是公共电核算、
-//     「这个月缺价」的落点是计费参数,两类在真屏上都出现过,那句话是在把人指去错的屏。
+//     「上个月缺价」的落点是计费参数,两类在真屏上都出现过,那句话是在把人指去错的屏。
 //     该去哪屏由每一类自己的 WARN_COPY.actionLabel 说,这里不替它们说。
 //   · 原文写「改完后……才更新」—— 而「本期合计为负」自己的 why 明写「清除路径不存在」,
 //     同一屏上两句话互相否定。现在只陈述「这是快照,重新生成才会变」,不承诺改得掉。
@@ -634,7 +653,7 @@ async function openDetail(r: DisplayRow) {
   dlgTab.value = 'rent'
   openWarn.value = ''     // 换户收起告警面板:上一户展开着会让这一户的头凭空高一截
   dlgRow.value = r
-  dlgYm.value = ym.value   // 快照:抽屉开着换月不改备注归属月
+  dlgYm.value = noticeYm.value   // 快照:抽屉开着换月不改备注归属月(备注按催缴单月记)
   dlgLoading.value = true
   details.value = []
   noteMap.value = new Map()
@@ -644,7 +663,7 @@ async function openDetail(r: DisplayRow) {
     const [ds, ns] = await Promise.all([
       Promise.all(r.noticeIds.map(id => billNoticesApi.detail(id))),
       // 备注覆盖失败不阻断明细(如后端未升级到 V92):按无覆盖显示引擎备注
-      billNoticesApi.notes(ym.value, r.tenantId).catch(() => [] as BillNoteOverrideDTO[]),
+      billNoticesApi.notes(noticeYm.value, r.tenantId).catch(() => [] as BillNoteOverrideDTO[]),
     ])
     if (my !== dlgSeq) return
     details.value = ds
@@ -756,7 +775,7 @@ const dormWaterExtras = computed(() => dorm.value.water.extras.map(l => ({ l, q:
 function archText(l: BillNoticeLineDTO | null | undefined): string | null {
   const n = l?.archiveTenantName
   if (n == null) return null
-  return n === '' ? '档案本月为空置' : `档案现归 ${n}`
+  return n === '' ? `档案 ${month.value} 月为空置` : `档案现归 ${n}`   // 比的是水电那个月的档案
 }
 // 路灯/绿化水公摊格悬浮:面积×分摊单价=金额(与主表同一套判定,该格只有金额没法心算)
 function shareTitle(l: BillNoticeLineDTO | null): string | undefined {
@@ -775,7 +794,7 @@ const drawerSub = computed(() => {
   const r = dlgRow.value
   if (!r) return ''
   const cn = (contractsByTenant.value.get(r.tenantId) ?? []).length
-  return [ym.value, `在租合同 ${cn} 份`, `明细 ${r.lineCount} 行`].join(' · ')
+  return [`${noticeYm.value}(${month.value} 月水电)`, `在租合同 ${cn} 份`, `明细 ${r.lineCount} 行`].join(' · ')
 })
 
 // ── §5.10 动作:S 档「顶栏 1 个主动作 +「⋯」」,M 档「屏内 2 个主动作 +「⋯」」 ──────
@@ -834,7 +853,7 @@ function onMore(key: string) {
 
 <template>
   <!-- ⓪ 没有期 → 出账月矩阵(五屏共用一张)。选过一次之后本会话不再出现,直落表格 -->
-  <ChainMonthGate v-if="!period.picked" title="催缴单" icon="file-check-2" />
+  <ChainMonthGate v-if="!period.picked" title="催缴单" icon="file-check-2" notice />
 
   <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.4 迁移(KPI 降列/主表 .bn-wrap 内横滚+首列锚),
        摘掉 base.css 的 800px 屏级地板。v-if 各分支谁渲染谁就是 .fp-content 的首子,都要挂——
@@ -844,7 +863,7 @@ function onMore(key: string) {
   <div v-else class="bn-page fp-fluid">
     <FPLoadBar :on="veil" />
     <!-- 链路条:期写在这里,五道工序横跳不换期 -->
-    <FPStepStrip :steps="chainSteps" current="bill-notices" :period="ym" @back="period.clear()" />
+    <FPStepStrip :steps="chainSteps" current="bill-notices" :period="`${noticeYm}(${month} 月水电)`" @back="period.clear()" />
 
     <!-- 标题行:h2+账期+期页签;右=重新生成(admin) -->
     <div class="bn-head">
@@ -917,8 +936,8 @@ function onMore(key: string) {
     <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
     <div v-if="rows.length === 0" class="bn-bar">
       <component :is="iconFor('info')" :size="14" />
-      <span>{{ year }}年{{ month }}月暂无催缴单。
-        <template v-if="mayRun">点右上「编辑模式」→「生成本月」,按当月读数、价目与公摊快照派生。</template>
+      <span>{{ noticeYear }}年{{ noticeMonth }}月暂无催缴单。
+        <template v-if="mayRun">点右上「编辑模式」→「生成本月」,按 {{ month }} 月的读数、价目、公摊快照和 {{ noticeMonth }} 月的租金派生。</template>
         <template v-else>请管理员生成。</template>
       </span>
     </div>
@@ -1008,7 +1027,7 @@ function onMore(key: string) {
             <th class="l" :title="`待核对→已确认→已导出(单向);橙点=${GAP_TIP};已确认/已导出户重新生成自动跳过`">状态</th>
             <!-- 类名逐字抄 WARN_COPY 的 title:写成别的说法,用户按列头的词去屏上找就对不上号
              (对抗复查 2026-09-23)。「看原文」也已不成立 —— 悬浮里是按文案表合成的字,不是库里的原串。 -->
-            <th title="生成本月催缴单时查出的:表没挂上合同/房号两边对不上/这个月缺价/本期合计为负…各单去重合并,悬停「!」看是哪几类">警告</th>
+            <th title="生成本月催缴单时查出的:表没挂上合同/房号两边对不上/上个月缺价/本期合计为负…各单去重合并,悬停「!」看是哪几类">警告</th>
           </tr>
         </thead>
         <tbody>
@@ -1537,24 +1556,24 @@ function onMore(key: string) {
     </FPDrawer>
 
     <!-- 系数簿窗口(S14):合同/楼栋/年清单与本页同源,生效月默认=当前账期 -->
-    <CoefBookWindow :open="coefOpen" :ym="ym" :phase="phase" :contracts="contracts"
+    <CoefBookWindow :open="coefOpen" :ym="ym" :phase="phase" :contracts="utilContracts"
                     :buildings="buildings" :years="period.dataYears" @close="coefOpen = false" />
 
     <!-- S20 交付链四窗口:收款公司 / 收款簿 / 导出通知单 / 导出对账表 -->
     <CompanyBookWindow :open="companyOpen" @close="companyOpen = false" @saved="loadCompanies" />
-    <PayBookWindow :open="payBookOpen" :ym="ym" :phase="phase" :notices="rows"
-                   :contracts="contracts" :buildings="buildings"
+    <PayBookWindow :open="payBookOpen" :ym="noticeYm" :phase="phase" :notices="rows"
+                   :contracts="placeContracts" :buildings="buildings"
                    @close="payBookOpen = false" @saved="loadPayMap(); loadMonth()" />
-    <ExportNoticeWindow :open="expNoticeOpen" :ym="ym" :phase="phase" :notices="rows"
-                        :contracts="contracts" :buildings="buildings"
+    <ExportNoticeWindow :open="expNoticeOpen" :ym="noticeYm" :phase="phase" :notices="rows"
+                        :contracts="placeContracts" :buildings="buildings"
                         :busy="exportBusy"
                         @close="expNoticeOpen = false" @export="onExportNotice" />
-    <ExportReconWindow :open="expReconOpen" :ym="ym" :notices="rows" :busy="exportBusy"
+    <ExportReconWindow :open="expReconOpen" :ym="noticeYm" :notices="rows" :busy="exportBusy"
                        @close="expReconOpen = false" @export="onExportRecon" />
     <FPElevateDialog
-      :page="`催缴单 · ${ym}`" :action="'生成本月催缴单 / 确认签发'" :perms="asking" what="签发催缴单" @close="cancelAsk" @elevated="onElevated" />
+      :page="`催缴单 · ${noticeYm}`" :action="'生成本月催缴单 / 确认签发'" :perms="asking" what="签发催缴单" @close="cancelAsk" @elevated="onElevated" />
     <FPLockDialogs :locked-by="lockedBy" :evicted-by="evictedBy" :scope="lockScope()"
-                   :what="`催缴单 ${ym}`"
+                   :what="`催缴单 ${noticeYm}`"
                    @taken="onTaken" @close-takeover="lockedBy = null" @close-evicted="evictedBy = null" />
 
     <!-- 屏级告警抽屉(§6):原「本屏为旧快照」流内条搬到这里,带人话说明与「去重算」动作 -->

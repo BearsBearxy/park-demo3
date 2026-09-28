@@ -504,7 +504,9 @@ public class ParamService {
     private String usedBy(String key, String scope, String month, String mode, LocalDateTime createdAt) {
         TreeSet<String> gen = new TreeSet<>();
         for (Object o : poolResults.selectObjs(new QueryWrapper<AllocPoolResult>().select("DISTINCT ym"))) gen.add(String.valueOf(o));
-        for (Object o : notices.selectObjs(new QueryWrapper<BillNotice>().select("DISTINCT ym"))) gen.add(String.valueOf(o));
+        // 催缴单按它取参数的月算 = 水电月 = 单头月减一(BillNoticeService 类头「月份口径」)
+        for (Object o : notices.selectObjs(new QueryWrapper<BillNotice>().select("DISTINCT ym")))
+            if (BillNoticeService.validYm(String.valueOf(o))) gen.add(BillNoticeService.utilityYm(String.valueOf(o)));
         String next = "month".equals(mode) ? null
             : VersionResolver.nextFrom(index().rows.getOrDefault(key, Map.of()).getOrDefault(scope, List.of()), month);
         for (String g : gen) {
@@ -653,13 +655,14 @@ public class ParamService {
     }
 
     // ══════════ 重算(spec §5.5):池+损耗 → 催缴单(已确认/已导出户跳过) → 日志 recalc ══════════
+    // ym 是参数/水电月;吃这个月水电的是下个月的催缴单(BillNoticeService 类头「月份口径」)。
     @Transactional
     @NoReviewGuard(reason = "转调 AllocService.generate 与 BillNoticeService.generate,两处各自守;"
                           + "这里再守一次会把错误文案说成计费参数")
     public RecalcResultDTO recalc(String ym) {
         requireYm(ym);
         AllocGenerateResultDTO a = alloc.generate(ym);
-        BillNoticeGenResultDTO b = billNotice.generate(ym);
+        BillNoticeGenResultDTO b = billNotice.generate(BillNoticeService.noticeYmOf(ym));
         int pools = Math.toIntExact(poolResults.selectCount(new QueryWrapper<AllocPoolResult>().eq("ym", ym)));
         int units = Math.toIntExact(lossResults.selectCount(new QueryWrapper<AllocLossResult>().eq("ym", ym)));
         log("recalc", false, "", "", "", "from", null, null, "池 " + pools + " / 损耗 " + units + " / 催缴单 " + b.generated(), ym);
@@ -670,10 +673,10 @@ public class ParamService {
 
     // 有状态可看的账期升序,空表=[]。判据必须与 status() 的 poolSnapshotAt‖billBatchAt 非空同源:
     // 两个时间分别取自 alloc_pool_result / bill_notice 该月最后一行的 generated_at(两列 NOT NULL),
-    // 故「至少一个非空」⟺「该 ym 在两表之一有行」= 下面这个并集。
+    // 故「至少一个非空」⟺「该 ym 在两表之一有行」= 下面这个并集。催缴单那一侧按水电月(单头月减一)并,同 snap()。
     public List<String> months() {
         Set<String> ms = new TreeSet<>(poolResults.selectDistinctYms());
-        ms.addAll(notices.selectDistinctYms());
+        for (String n : notices.selectDistinctYms()) if (BillNoticeService.validYm(n)) ms.add(BillNoticeService.utilityYm(n));
         return new ArrayList<>(ms);
     }
 
@@ -703,7 +706,8 @@ public class ParamService {
     private Snap snap(String ym) {
         List<AllocPoolResult> p = poolResults.selectList(new QueryWrapper<AllocPoolResult>().eq("ym", ym)
             .orderByDesc("generated_at").last("LIMIT 1"));
-        List<BillNotice> b = notices.selectList(new QueryWrapper<BillNotice>().eq("ym", ym)
+        // 吃 ym 这个月参数/读数的是下个月的单(类头注见 BillNoticeService「月份口径」)
+        List<BillNotice> b = notices.selectList(new QueryWrapper<BillNotice>().eq("ym", BillNoticeService.noticeYmOf(ym))
             .orderByDesc("generated_at").last("LIMIT 1"));
         List<ParamChangeLog> c = logs.selectList(monthCond(new QueryWrapper<ParamChangeLog>().in("action", "set", "delete"), ym)
             .orderByDesc("ts").orderByDesc("id").last("LIMIT 1"));

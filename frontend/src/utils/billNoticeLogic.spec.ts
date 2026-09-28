@@ -1031,7 +1031,7 @@ describe('warnSummaryLines 一户的告警摘要(一类一行 = 块头 + 条目)
     expect(warnSummaryLines([
       A('W_PRICE_MISSING', 'elec_sharp'),
       A('W_METER_NO_CONTRACT', '405', 'A101旭化成水'),
-    ]).split('\n')).toEqual(['表没挂上合同:A101旭化成水', '这个月缺价:尖段电价'])
+    ]).split('\n')).toEqual(['表没挂上合同:A101旭化成水', '上个月缺价:尖段电价'])
   })
 
   // ⚠ 这两个落点要把这户的告警**全部**说完:drawer:false 的类(§6-3 不进屏级抽屉)在这里照出,

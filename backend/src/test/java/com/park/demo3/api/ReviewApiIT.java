@@ -248,6 +248,36 @@ class ReviewApiIT extends AbstractMysqlIT {
         ok(doPostJson("/api/review/meters:" + YM + "/withdraw", a, "{\"reason\":\"读数抄错\"}"));
     }
 
+    /**
+     * 催缴单键按催缴单月记(2026-09-28 月份口径:N 月的单 = N−1 月水电 + N 月租金)。
+     * bill-notices:N 的上游是 **N−1 月**的核算 / 损耗;同月字面的 alloc:N 不算数。
+     * 反向同理:撤 alloc:N−1 要先撤 bill-notices:N。
+     * 破坏验证:ReviewService.batchOf 改回恒返回 key.period() → 第一段 409 变放行、第三段撤销变放行。
+     */
+    @Test
+    void billNotices_upstreamIsPreviousMonth_downstreamIsNextMonth() throws Exception {
+        String a = admin();
+        String nym = com.park.demo3.service.BillNoticeService.noticeYmOf(YM);
+        jdbc.update("INSERT INTO review_state (review_key, kind, period, scope, status) VALUES (?,?,?,?,?)",
+            "bill-notices:" + nym, "bill-notices", nym, null, "submitted");
+        for (String k : List.of("alloc", "alloc-loss"))   // 与单同月字面的核算 / 损耗:不是这批单的上游
+            jdbc.update("INSERT INTO review_state (review_key, kind, period, scope, status) VALUES (?,?,?,?,?)",
+                k + ":" + nym, k, nym, null, "approved");
+        String r = body(doPost("/api/review/bill-notices:" + nym + "/approve", a));
+        assertThat((int) JsonPath.read(r, "$.code")).isEqualTo(409);
+        assertThat((String) JsonPath.read(r, "$.message")).contains("公共电核算").contains("楼栋损耗");
+
+        seedState("alloc:" + YM, "alloc", null, "approved");
+        seedState("alloc-loss:" + YM, "alloc-loss", null, "approved");
+        ok(doPost("/api/review/bill-notices:" + nym + "/approve", a));
+
+        r = body(doPostJson("/api/review/alloc:" + YM + "/withdraw", a, "{\"reason\":\"重算\"}"));
+        assertThat((int) JsonPath.read(r, "$.code")).isEqualTo(409);
+        assertThat((String) JsonPath.read(r, "$.message")).contains("催缴单");
+        ok(doPostJson("/api/review/bill-notices:" + nym + "/withdraw", a, "{\"reason\":\"重出\"}"));
+        ok(doPostJson("/api/review/alloc:" + YM + "/withdraw", a, "{\"reason\":\"重算\"}"));
+    }
+
     // ══ 权限 ════════════════════════════════════════════════════════════════
 
     @Test
@@ -343,12 +373,14 @@ class ReviewApiIT extends AbstractMysqlIT {
 
         // 出账 5 + 附10 四期区 + salary + utilities×2 + pv + 充电桩×2 + elec-cost + elec-model
         // + 台账每公司一把(公司数由库定,不写死)
+        // 催缴单键按催缴单月记:YM 这一批的单是下个月的(BillNoticeService「月份口径」)
+        String nym = com.park.demo3.service.BillNoticeService.noticeYmOf(YM);
         assertThat(keys).contains("params:" + YM, "meters:" + YM, "alloc:" + YM,
-            "alloc-loss:" + YM, "bill-notices:" + YM, "salary:" + YM,
+            "alloc-loss:" + YM, "bill-notices:" + nym, "salary:" + YM,
             "utilities:office:" + YM, "utilities:phase3:" + YM,
             "s10:1:" + YM, "s10:4:" + YM, "elec-cost:" + YM, "elec-model:" + YM);
         assertThat(kinds).contains("ledger");
-        assertThat(keys).allMatch(k -> k.endsWith(YM));
+        assertThat(keys).allMatch(k -> k.endsWith(k.startsWith("bill-notices:") ? nym : YM));
 
         // 库里一行都没有 → 全部派生成 entered
         assertThat((List<String>) JsonPath.read(b, "$.data[*].status")).containsOnly("entered");
@@ -444,8 +476,10 @@ class ReviewApiIT extends AbstractMysqlIT {
         String head = key.substring(0, i);
         int j = head.lastIndexOf(':');
         String scope = j < 0 ? null : head.substring(j + 1);
+        // period 取键尾,不写死 YM:催缴单键是 bill-notices:YM+1(收费月),写成 YM 的话 closedMonths 退回
+        // 「只按 period 字面同月找」也照样绿(对抗复查 P2)
         jdbc.update("INSERT INTO review_state (review_key, kind, period, scope, status) VALUES (?,?,?,?,'approved')",
-            key, kind, YM, scope);
+            key, kind, key.substring(i + 1), scope);
     }
 
     // ══════════ helpers ══════════
