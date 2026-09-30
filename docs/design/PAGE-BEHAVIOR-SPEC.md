@@ -172,7 +172,7 @@
 | 宽度 | `width:min(<W>px, 92~96vw)`（FPDrawer 由 `width` prop 定，默认 640） |
 | 高度 | `max-height:85~88vh`；**头/脚 `flex:0`、体 `flex:1; overflow-y:auto`**（内容超高时体内滚动，不撑破视口） |
 | 进入动画 | 淡入 + 轻微 `translateY(8px) scale(.985)→none`（不再是 `translateX` 右滑） |
-| 关闭 | 背板 `@mousedown="close"` + 卡片 `@mousedown.stop`（拖选不误关）；`Esc` 关闭 |
+| 关闭 | 背板 `@mousedown="close"` + 卡片 `@mousedown.stop`（拖选不误关）；`Esc` 关闭。例外：必须处理的居中弹窗（编辑权被接管、别的标签页退出或换了账号）背板和 `Esc` 都不关，只能点按钮（2026-10-01 补） |
 | 挂载 | `<Teleport to="body">`（避免被祖先 transform/overflow 裁剪的层叠上下文问题） |
 
 参照实现：`CommandPalette.vue`（基准）、`FPDrawer.vue`、`FpImportModal.vue`。已知：Vite dev 对「组件根结构改动（新增 Teleport）」的热更新会 `Failed to reload` 并回退整页重载，**非语法错**（`npm run build` 通过即证）。
@@ -272,7 +272,7 @@ demo3 侧是 `frontend/src/components/ds/SidebarNav.vue:165` 的 `isDir ? Chevro
 > **所以这一条不是偏离，两边同向。** 留在 §4 里只为记住剩下那两处真的对不上的地方。
 
 共同目标：长度不定的文本（KPI/统计数值、表格金额、轴刻度、环图中心、徽标计数）必须单行，
-不换行、不裁切半个字、不把邻居挤出对齐。手段：固定字阶 + 定宽 + 省略号，不缩字号。
+不换行、不裁切半个字、不把邻居挤出对齐。手段：固定字阶；文字放不下用省略号，数字不省略。KPI 数值放不下先降一档（`KPI-CARD-SPEC` §3），还放不下换成以「万」为单位、悬停看全数（2026-10-01 改：原写「固定字阶 + 定宽 + 省略号，不缩字号」。定稿·待实现）。
 `FitText` 已于 2026-08 整个移除，全仓命中 0。
 
 **真正对不上的两处：**
@@ -284,6 +284,7 @@ demo3 侧是 `frontend/src/components/ds/SidebarNav.vue:165` 的 `isDir ? Chevro
 
 第 1 条要改的是 skill，不是代码。第 2 条是真缺口：给 `KpiCard` 数值补 `white-space:nowrap` +
 `text-overflow:ellipsis`（或按等宽金额列的对齐要求另定），**本轮未改**，动它要看真实超长值长什么样。
+> 2026-10-01 用户拍板：不补省略号。数值 `nowrap`，放不下先降一档，还放不下换成以「万」为单位、悬停看全数（定稿·待实现）。`AnaKpiTile` 数值现有的省略号（`AnaKpiTile.vue:54`）也要撤；上面引 skill 的「省略号 + 定宽列」是 09-13 的原话，skill 已于 09-30 / 10-01 改成本段的写法。
 
 ### 4.5 KPI 网格断点：204 已废，现状未收敛 —— C 类
 
@@ -337,6 +338,7 @@ demo3 侧是 `frontend/src/components/ds/SidebarNav.vue:165` 的 `isDir ? Chevro
 | 断网或服务出错 | 底部，走结果回执（⑧）：失败类不自己收，带「刷新」。2026-09-30 改：原写「底部深色条（不变）」；06-B ⑧ 已把断网收进回执（定稿·待实现，画布 06-B ⑧） |
 | 这一页属于新版本 | 点导航时底部深色条（不变，`VERSION-UPDATE-SPEC` §6 第 2 种） |
 | 被踢回登录页一类 | 在登录页说：账号已停用、登录已过期等（画布 06-E「登录页」一组） |
+| 别的标签页退出或换了账号 | 居中弹窗，不能点外面关，只有一个「刷新」按钮。2026-10-01 用户拍板：原来是页面顶部红色满宽横幅；这时本页所有请求都已发不出去（定稿·待实现，画布 06-E） |
 
 「本次更新」弹卡照旧：功能更新后自动居中弹一次，保持原设计（`VERSION-UPDATE-SPEC` §2–§3、`RELEASE-NOTES-SPEC` §7），不进铃铛。
 
