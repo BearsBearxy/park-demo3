@@ -102,6 +102,11 @@ CREATE TABLE tenant_price_cfg (
 
 通用：首载 `<template v-if="loaded">` + `.page-loading` 加载门，v-else 紧邻铁律；`loadMonth` 带 `++seq` 竞态防线；`watch([year,month])` 重载；`onDeactivated` 复位 editMode+drawer；空态三分支（编辑态引导录入/浏览态提示进编辑模式/viewer 纯说明）；写失败 `alert(e.message ?? '保存失败')`。图标 'tags'（ds/icon.ts 未注册则注册 lucide Tags）。
 
+> **2026-09-30 改（定稿·待实现，画布 02-B / 02-C，`UI-OVERLAY-SPEC` §7）**：本节三处浏览器自带弹框换掉 ——
+> 「复制上月电价」的 confirm 和删户级例外的 confirm 换成软件内确认弹窗（标题是问句或后果，正文给数，主按钮写动作本身，删除类默认焦点在「取消」）；
+> 写失败的 alert 换成底部结果回执（失败不自己收，带「重试」）。原来是 `confirm()` / `alert()`，上面「通用不变」里的「alert 错误」同此改。
+> 本页 2026-08-16 已由计费参数页取代（见文首），这几处弹框现在在 `views/params/ParamCenterView.vue`，照此改的是那一页。
+
 ## 7. 测试与验收
 
 后端 `api/PriceCfgApiIT`（extends AbstractMysqlIT，@Transactional 回滚，写路径月份用 **2099-XX 槽**，探针模式禁顺序依赖）：种子回读（jsonPath 过滤断言 elec_peak 2024-02=1.20606875、dorm water=3.85）／PUT upsert+更新／value=null 删行回退／copy 幂等（二跑 copied=0）／白名单外 key→body.code 400／scope 非法→400／ym 格式→400。前端：`priceCfgLogic.spec.ts`（六步级联+词表）；fpNav.spec 45→46+`r['price-cfg'].layer==='data'` 锚点；`npm run typecheck`+`npm test` 全绿。人工验收：浏览器目视两 tab/编辑模式/复制上月/例外增删。
