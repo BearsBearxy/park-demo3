@@ -2,12 +2,13 @@
 // 附表12 逐月工资宽表 — 1:1 from screen-schedule12.jsx 表体段(385-505)。
 // 两级分组表头(月工资大类8 / 补贴2 / 招商提成 / 考勤4 / 应发 / 代缴代扣3 / 实发 / 签收 / 备注),
 // 序号+姓名 sticky 左列,组色带,全部派生列(后端下发,不重算),签收态,tfoot 合计,种子/手动/导入角标(均可删)。
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedNoteCell from '@/components/sched/SchedNoteCell.vue'
 import FPWideCards, { type WideCard } from '@/components/fp/FPWideCards.vue'
 import { useViewport } from '@/composables/useViewport'
+import { minTableH, numW, textW, useWideTable, type HeightDims, type WideCol } from '@/composables/useWideTable'
 import { finMoney } from '@/utils/finFmt'
 import type { SalaryRecordDTO, SalaryTotal } from '@/types/salary'
 
@@ -64,10 +65,40 @@ function card(r: SalaryRecordDTO): WideCard {
     sub: `实发 ${finMoney(r.net)} · 扣款 ${finMoney(r.deduct)}`,
   }
 }
+
+// ── 固定列与表格高度(LIST-PAGE-SPEC §9;07-C 附表12 行):姓名(名称列,rank 0)→ 序号(rank 1) ──
+// 列宽按内容估,不量 DOM。序号 = 表头「序号」/ 最大行号,编辑态格里多一个勾选框(14 + 间距 6);
+// 勾选列跟名称列绑在一起、永远不退(实现规范 §1.8),所以编辑态序号也是 rank 0。
+// 姓名 = 最长的名字(手动签 35)与合计行那句,封顶可见宽 1/5,超了省略、悬停看全称。
+// 姓名的 left 取序号列实际宽(编辑态 66,不再写死 48);序号退了姓名贴 0。
+const S12_H: HeightDims = { grpH: 28, leafH: 38, rowH: 37, footH: 44 }
+const nameNat = (r: SalaryRecordDTO) => textW([r.name], 12.5, 22) + (r.source === 'manual' ? 35 : 0)
+const wideCols = computed<WideCol[]>(() => {
+  const e = props.edit
+  const n = props.rows.length
+  return [
+    { key: 'idx', side: 'L', rank: e ? 0 : 1,
+      w: Math.max(textW(['序号'], 11, 22), numW([String(n)], 12.5, 22)) + (e ? 20 : 0) },
+    { key: 'name', side: 'L', rank: 0, name: true,
+      w: Math.max(textW(['姓名'], 11, 22), textW([`合计 · ${n} 人`], 13, 22), ...props.rows.map(nameNat)) },
+  ]
+})
+const wrapEl = ref<HTMLElement | null>(null)
+// 换数据(rows 换了)或进出编辑态(序号格里的勾选框只在编辑态占宽)按新数据重算;同一份数据原地编辑只增不减
+const dataKey = computed(() => [props.rows, props.edit])
+const { fix, nameW, hStage } = useWideTable(wrapEl, wideCols, S12_H, dataKey)
+const px = (n: number) => n + 'px'
+const colSt = (k: string) => {
+  const w = px(fix.value.w[k])
+  return { width: w, minWidth: w, maxWidth: w, ...fix.value.style[k] }
+}
+const idxSt = computed(() => colSt('idx'))
+const nameSt = computed(() => colSt('name'))
+const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: px(minTableH(S12_H)) } : undefined))
 </script>
 
 <template>
-  <div class="s12-tablewrap">
+  <div class="s12-tablewrap" ref="wrapEl" :style="wrapSt">
     <!-- 空月引导态(jsx 386-397) -->
     <div v-if="rows.length === 0" class="s12-empty">
       <div class="s12-empty-ic"><component :is="iconFor('wallet')" :size="24" /></div>
@@ -93,11 +124,11 @@ function card(r: SalaryRecordDTO): WideCard {
       @row-click="emit('row', $event)"
     />
 
-    <table v-else class="s12-table">
+    <table v-else class="s12-table" :class="{ 'hs-grp': hStage >= 1, 'hs-foot': hStage >= 2 }">
       <thead>
         <!-- 第一级:分组带(jsx 401-415) -->
         <tr class="g">
-          <th class="s12-sticky1" rowspan="2">
+          <th class="s12-sticky1" rowspan="2" :style="idxSt">
             <span class="s12-idx-head">
               <input
                 v-if="edit"
@@ -111,7 +142,7 @@ function card(r: SalaryRecordDTO): WideCard {
               <span style="font-size:11px">序号</span>
             </span>
           </th>
-          <th class="s12-sticky2 l" rowspan="2"><span style="font-size:11px">姓名</span></th>
+          <th class="s12-sticky2 l" rowspan="2" :style="nameSt"><span style="font-size:11px">姓名</span></th>
           <th class="l" rowspan="2"><span style="font-size:11px">职种/职务</span></th>
           <th class="s12-grp-wage" colspan="8">月工资大类</th>
           <th class="s12-grp-sub" colspan="2">补贴</th>
@@ -147,7 +178,7 @@ function card(r: SalaryRecordDTO): WideCard {
       </thead>
       <tbody>
         <tr v-for="(r, i) in rows" :key="r.id" class="s12-row">
-          <td class="s12-sticky1 c s12-c-idx">
+          <td class="s12-sticky1 c s12-c-idx" :style="idxSt">
             <span class="s12-idx-cell">
               <input
                 v-if="edit"
@@ -160,8 +191,8 @@ function card(r: SalaryRecordDTO): WideCard {
               <span>{{ i + 1 }}</span>
             </span>
           </td>
-          <td class="s12-sticky2 l s12-c-name">
-            {{ r.name }}<span v-if="r.source === 'manual'" class="s12-userbadge">手动</span>
+          <td class="s12-sticky2 l s12-c-name" :style="nameSt">
+            <span class="s12-nm"><span class="s12-nm-t" v-tip="nameNat(r) > nameW ? r.name : undefined">{{ r.name }}</span><span v-if="r.source === 'manual'" class="s12-userbadge">手动</span></span>
           </td>
           <td class="l s12-c-role">{{ r.role || '—' }}</td>
           <!-- 月工资大类 -->
@@ -218,8 +249,8 @@ function card(r: SalaryRecordDTO): WideCard {
       </tbody>
       <tfoot>
         <tr>
-          <th class="s12-sticky1"></th>
-          <th class="s12-sticky2 l s12-foot-lbl">合计 · {{ rows.length }} 人</th>
+          <th class="s12-sticky1" :style="idxSt"></th>
+          <th class="s12-sticky2 l s12-foot-lbl" :style="nameSt">合计 · {{ rows.length }} 人</th>
           <th></th>
           <th class="s12-c-num s12-cap">{{ num(total.base) }}</th>
           <th class="s12-c-num">{{ num(total.post) }}</th>
@@ -269,9 +300,9 @@ function card(r: SalaryRecordDTO): WideCard {
 .s12-grp-ded { background:var(--danger-soft) !important; color:var(--hue-red) !important; }
 .s12-cap { box-shadow:none; }   /* 对齐事实源 w12-cap(组首列抑制 box-shadow,本表无 shadow 源,等价 no-op) */
 
-/* 粘性左列:序号 + 姓名 */
-.s12-sticky1 { position:sticky; left:0; z-index:4; min-width:48px; }
-.s12-sticky2 { position:sticky; left:48px; z-index:4; min-width:96px; box-shadow:1px 0 0 var(--border-subtle); }
+/* 粘性左列:序号 + 姓名 —— 横向 sticky(left、内沿阴影)与列宽是 planFixed 给的内联样式,类上只管层级 */
+.s12-sticky1 { z-index:4; }
+.s12-sticky2 { z-index:4; }
 .s12-table thead tr.g th.s12-sticky1, .s12-table thead tr.g th.s12-sticky2 { z-index:8; background:var(--surface-white); }
 
 .s12-table tbody td { border-bottom:1px solid var(--divider); }
@@ -281,6 +312,9 @@ function card(r: SalaryRecordDTO): WideCard {
 .s12-cb { width:14px; height:14px; flex:0 0 auto; cursor:pointer; accent-color:var(--ink-900); }
 .s12-cb:disabled { cursor:not-allowed; opacity:.4; }
 .s12-c-name { font-weight:var(--fw-medium); color:var(--text-primary); }
+/* 姓名超 1/5 省略(数字不省略);手动签不缩 */
+.s12-nm { display:inline-flex; align-items:center; max-width:100%; vertical-align:middle; }
+.s12-nm-t { overflow:hidden; text-overflow:ellipsis; min-width:0; }
 .s12-c-role { color:var(--text-muted); font-size:12px; }
 .s12-c-muted { color:var(--text-muted); }
 .s12-c-strong { font-weight:var(--fw-semibold); color:var(--text-primary); }
@@ -320,12 +354,11 @@ function card(r: SalaryRecordDTO): WideCard {
   .s12-acts { opacity:.55; }
 }
 
-/* ── S 档(≤600,§5.3 查看优先):左 sticky 收敛只留姓名一根+表头——序号列**原位退成普通列**
-   (列序/列宽不动,只摘横向钉扎),姓名 offset 从 48 归 0,序号随横滚滚入其下;
-   双级表头 top:0/28 与表脚纵向 sticky 不动。本表 sticky 全写在 CSS 类上(非内联 style),
-   媒体块直接盖得住,不必像 FPLedgerTable(offset 内联)那样进 JS 走 useViewport。 */
-@media (max-width: 600px) {
-  .s12-sticky1 { left:auto; }
-  .s12-sticky2 { left:0; }
-}
+/* 表格高度(LIST-PAGE-SPEC §9.2):不够 8 行时按顺序让 —— hs-grp 分组带滚走、只贴列名那一行
+   (跨两行的表头格贴在 -28px,字挪到下半格);hs-foot 合计行不贴底、跟在最后一行后面;
+   3 级的 min-height 是 .s12-tablewrap 上的内联样式。 */
+.s12-table.hs-grp thead tr.g th { top:-28px; }
+.s12-table.hs-grp thead tr.s th { top:0; }
+.s12-table.hs-grp thead th[rowspan] { vertical-align:bottom; padding-bottom:11px; }
+.s12-table.hs-foot tfoot th { bottom:auto; }
 </style>

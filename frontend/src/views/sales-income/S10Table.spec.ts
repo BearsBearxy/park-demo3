@@ -1,6 +1,8 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { reactive } from 'vue'
 import S10Table from './S10Table.vue'
+import { stubWideTable } from '@/composables/__tests__/wideTableStub'
 import { LAYOUTS, leavesOf, type Group } from './layout'
 import { _resetViewportForTest } from '@/composables/useViewport'
 import type { S10RecordDTO, S10ColId } from '@/types/s10'
@@ -202,5 +204,161 @@ describe('S10Table · S 档卡列(FPWideCards 标准 88)', () => {
     expect(w.findAll('.fpwc-c')).toHaveLength(0)
     expect(w.find('table.s10-table').exists()).toBe(true)
     expect(w.findAll('tbody tr.s10-row')).toHaveLength(3)
+  })
+})
+
+// ── 固定列与表格高度(LIST-PAGE-SPEC §9;计划 W3):RO 桩 + .s10-wrap 的 clientWidth / clientHeight 桩 ──
+// 断言钉渲染出来的 width / left / right 像素,不钉配置对象。
+describe('S10Table · 固定列按表格可见宽度退,租户封顶 1/5,高度分级', () => {
+  let ro: ReturnType<typeof stubWideTable>
+  const fire = (w: number, h: number) => ro.fire(w, h)
+  const css = () => ro.injectCss('views/sales-income/S10Table.vue')
+  beforeEach(() => { ro = stubWideTable('s10-wrap') })
+  afterEach(() => {
+    mounted.forEach(w => w.unmount())
+    mounted = []
+    ro.restore()
+  })
+
+  // 18 个字的长租户名估宽 255,远超 1/5;合计列最长的数是总计 13,225.60(9 字 → 98)
+  const LONG = '佛山市南海区联塑精锢科技有限公司二厂'
+  const ROWS: S10RecordDTO[] = [
+    makeRow('factory', { factoryRent: 100 }, { id: 1, tenantName: LONG, total: 12345.6 }),
+    makeRow('factory', { factoryRent: 200 }, { id: 2, tenantName: '瑞通物流', source: 'manual', total: 880 }),
+  ]
+  const props = {
+    groups: LAYOUTS.factory, phaseName: '二期厂房', year: 2026, month: 6, rows: ROWS, edit: false,
+    columnTotals: { factoryRent: 300 }, grandTotal: 13225.6,
+  }
+  const st = (w: ReturnType<typeof mount>, sel: string) => (w.get(sel).element as HTMLElement).style
+  const TOTAL3 = ['th.s10-h-total', 'td.s10-c-total', 'th.s10-foot-total']
+  // 挂到 document 上:getComputedStyle 只认文档里的元素(不挂的话注入的样式一条都读不到)
+  let mounted: Array<ReturnType<typeof mount>> = []
+  const mnt = (p: typeof props) => {
+    const w = mount(S10Table, { props: p, attachTo: document.body })
+    mounted.push(w)
+    return w
+  }
+
+  // 1/5 = 80 比「3 个字 + 手动签」68 + 40 = 108 还窄:按 108 给(瑞通物流那行签不缩,不然名字只剩 12px)
+  it('可见 400:租户列按下限 108px,合计 108+98 > 160 退成普通列(表头、表体、合计行三格都退、都摘 .s10-fix)', async () => {
+    css()
+    const w = mnt(props)
+    await fire(400, 800)
+    expect(st(w, 'th.s10-h-name').width).toBe('108px')
+    expect(st(w, 'td.s10-c-name').width).toBe('108px')
+    expect(st(w, 'td.s10-c-name').left).toBe('0px')
+    expect(st(w, 'td.s10-c-total').position).toBe('')
+    expect(st(w, 'th.s10-h-total').right).toBe('')
+    // 撑高行两格跟着各自的列:名字格贴左,合计格一起退
+    expect([st(w, 'tr.s10-fill td.s10-c-name').left, st(w, 'tr.s10-fill td.s10-c-total').position]).toEqual(['0px', ''])
+    // 类上不许残留横向 sticky:computed 也不是 sticky(表头、合计行本来就纵向 sticky,只看表体)
+    expect(getComputedStyle(w.get('td.s10-c-total').element).position).not.toBe('sticky')
+    expect(TOTAL3.filter(s => w.get(s).classes().includes('s10-fix'))).toEqual([])
+  })
+
+  it('可见 1200:租户封顶 1/5 = 240 + 合计 98 ≤ 480,两根都 sticky;表头、表体、合计行三格对齐', async () => {
+    const w = mnt(props)
+    await fire(1200, 800)
+    expect(st(w, 'td.s10-c-name').left).toBe('0px')
+    expect(st(w, 'td.s10-c-total').position).toBe('sticky')
+    expect(st(w, 'td.s10-c-total').right).toBe('0px')
+    expect(st(w, 'th.s10-h-total').right).toBe('0px')
+    expect(st(w, 'th.s10-foot-total').right).toBe('0px')
+    // 撑高行两格也钉住:不然横滚时固定列在撑高那一段断开、露出后面滚过去的格
+    const fill = (s: string) => st(w, 'tr.s10-fill ' + s)
+    expect([fill('td.s10-c-name').left, fill('td.s10-c-total').position, fill('td.s10-c-total').right])
+      .toEqual(['0px', 'sticky', '0px'])
+    expect(['th.s10-h-name', 'td.s10-c-name', 'th.s10-foot-name'].map(s => [st(w, s).width, st(w, s).left]))
+      .toEqual([['240px', '0px'], ['240px', '0px'], ['240px', '0px']])
+    expect(TOTAL3.filter(s => !w.get(s).classes().includes('s10-fix'))).toEqual([])
+  })
+
+  // 手机档编辑态(S10View「编辑模式 · 小屏可录入」):手动行 勾选 23 + 手动签 40 + 删除钮 32 = 95 不缩,
+  // 1/5 只有 71 → 按下限 3 个字 68 + 95 = 163,名字分到 163 − 28 − 95 = 40 ≥ 3 个字 37.5
+  it('可见 358 编辑态 + 手动行:租户列不低于「3 个字 + 勾选 + 手动签 + 删除钮」= 163px', async () => {
+    const w = mnt({ ...props, edit: true })
+    await fire(358, 800)
+    const manual = w.findAll('tbody tr.s10-row')[1]
+    expect(manual.find('.s10-userbadge').exists()).toBe(true)
+    expect((manual.get('td.s10-c-name').element as HTMLElement).style.width).toBe('163px')
+    expect((manual.get('td.s10-c-name').element as HTMLElement).style.maxWidth).toBe('163px')
+  })
+
+  it('名字超了省略:.s10-tname 是 overflow hidden + ellipsis + min-width 0', async () => {
+    css()
+    const w = mnt(props)
+    await fire(400, 800)
+    const cs = getComputedStyle(w.get('td.s10-c-name .s10-tname').element)
+    expect([cs.overflow, cs.textOverflow, parseFloat(cs.minWidth)]).toEqual(['hidden', 'ellipsis', 0])
+  })
+
+  // 估宽里名字以外的件都得算进去,不然名字在放得下的时候被提前截掉
+  it('可见 3000 编辑态:短名手动行最长 —— 瑞通物流 80 + 勾选 23 + 手动签 40 + 删除钮 32 = 175', async () => {
+    const rows = [
+      makeRow('factory', {}, { id: 1, tenantName: '甲乙', tenantId: 3, source: 'seed', total: 1 }),
+      makeRow('factory', {}, { id: 2, tenantName: '瑞通物流', tenantId: 9, source: 'manual', total: 2 }),
+    ]
+    const w = mnt({ ...props, rows, edit: true })
+    await fire(3000, 800)
+    expect(st(w, 'th.s10-h-name').width).toBe('175px')
+  })
+
+  it('可见 3000:未绑定的种子行最长 —— 6 个字 105 + 圆点 16 = 121(比「合计 · 1 户」105 长)', async () => {
+    const rows = [makeRow('factory', {}, { id: 1, tenantName: '嘉华新材料厂', tenantId: null, source: 'seed', total: 1 })]
+    const w = mnt({ ...props, rows })
+    await fire(3000, 800)
+    expect(st(w, 'th.s10-h-name').width).toBe('121px')
+  })
+
+  it('进编辑态再退出(不重新拉数据):租户列缩回浏览态的宽', async () => {
+    const w = mnt({ ...props, edit: true })
+    await fire(3000, 800)
+    expect(st(w, 'td.s10-c-name').width).toBe('278px')   // 长名 255 + 勾选 23
+    await w.setProps({ edit: false })
+    expect(st(w, 'td.s10-c-name').width).toBe('255px')
+  })
+
+  it('同一份数据原地改短:列宽不缩;换一份 rows:按新数据变窄', async () => {
+    const rows = reactive(ROWS.map(r => ({ ...r })))
+    const w = mnt({ ...props, rows })
+    await fire(3000, 800)
+    expect(st(w, 'td.s10-c-name').width).toBe('255px')
+    rows[0].tenantName = '甲'
+    await w.vm.$nextTick()
+    expect(w.get('td.s10-c-name .s10-tname').text()).toBe('甲')
+    expect(st(w, 'td.s10-c-name').width).toBe('255px')
+    await w.setProps({ rows: [ROWS[1]] })
+    expect(st(w, 'td.s10-c-name').width).toBe('120px')   // 瑞通物流 80 + 手动签 40
+  })
+
+  it('名字悬停看全称走 v-tip,不走 title', async () => {
+    const w = mnt(props)
+    await fire(400, 800)
+    const nm = w.get('td.s10-c-name .s10-tname').element as HTMLElement & { _tip?: { text: string } }
+    expect(nm._tip?.text).toBe(LONG)
+    expect(nm.hasAttribute('title')).toBe(false)
+  })
+
+  // 34/34/38/42:0 级 ≥ 34+34+42+8×38 = 414;1 级 ≥ 380;2 级 ≥ 338;再矮 3 级给表格区 338 的底
+  it.each([
+    [414, false, false, ''],
+    [380, true, false, ''],
+    [379, true, true, ''],
+    [337, true, true, '338px'],
+  ] as const)('表格区 %i:分组表头滚走 %s、合计不贴底 %s、min-height「%s」', async (h, grp, foot, minH) => {
+    css()
+    const w = mnt(props)
+    await fire(1200, h)
+    const cls = w.get('table.s10-table').classes()
+    expect([cls.includes('hs-grp'), cls.includes('hs-foot')]).toEqual([grp, foot])
+    const cs = (sel: string) => getComputedStyle(w.get(sel).element)
+    // 让了第 2 步:分组行贴在 -34 滚出去、列名行贴 0;跨两行的租户格字挪到下半格
+    expect(cs('thead tr:first-child th.s10-h-grp').top).toBe(grp ? '-34px' : '0px')
+    expect(cs('thead tr:nth-child(2) th').top).toBe(grp ? '0px' : '34px')
+    expect(cs('thead th.s10-h-name').verticalAlign).toBe(grp ? 'bottom' : 'middle')
+    // 让了第 3 步:合计行跟在最后一行后面
+    expect(cs('tfoot th.s10-c-num').bottom).toBe(foot ? 'auto' : '0px')
+    expect(st(w, '.s10-wrap').minHeight).toBe(minH)
   })
 })

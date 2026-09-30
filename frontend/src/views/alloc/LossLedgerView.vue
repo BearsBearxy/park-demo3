@@ -21,7 +21,7 @@ import { S } from '@/utils/lockScopes'
 import { onReactivated } from '@/composables/onReactivated'
 import { useChainDeepPeriod } from '@/composables/useDeepPeriod'
 import { useEditMode } from '@/composables/useEditMode'
-import { useViewport } from '@/composables/useViewport'
+import { minTableH, textW, useWideTable, type HeightDims, type WideCol } from '@/composables/useWideTable'
 import { useTabsStore } from '@/stores/tabs'
 import { useZonesStore } from '@/stores/zones'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
@@ -158,26 +158,25 @@ function commitNote(u: AllocLossUnitDTO, raw: string) {
 // 不适用的期区显'–'(与 .ll-nv 已有的 null 处理一致)——不再按 isP2 / zone==='p1' 摘列。
 // 基础 9 列(位置/总表/分表/损耗量/原率/调整度/调整损/收租率/备注)+ 铝缆(常驻)+ 公摊度数(常驻)
 const colCount = 11
-// 「位置」列定宽:二期共用总表的归组标签「二期 二车间/二期 三车间/二期 四车间(二期 三车间供电)」
-// 实测 331px,给 360 不截(用户可见文字一律不截断)。一期单栋名用不到这么宽,但列宽两期不许变
-// (同一铁律),故两期都用 360,不再按 isP2 分 230/360。
-// ponytail: 归组再并进一栋(4 栋一组 ≈ 430px)会再截 —— 到时按 units 里最长 label 估宽
-const LBL_W = 360
 const w = (px: number) => ({ width: px + 'px', minWidth: px + 'px', maxWidth: px + 'px' })
-// RESPONSIVE-LAYOUT-SPEC §5.3 S 档:sticky 首列 360px 在 390px 视口占 92%,锁着它等于只剩这一列
-// —— 与 PoolLedgerView「左三右二合计 540px 比屏还宽」同一个条件,照它同一个解法:
-// **原位退成普通列**(列宽/列序一根不动,只去 sticky),表在 .ll-wrap 内正常横滚。
-// ⚠ 本屏 §5.3 原注写的是「sticky 本就只有首列一根,S 档无需收敛」——那句按一期旧宽 230(59%)成立,
-//   但二期当时已是 360,故该判断本就不覆盖二期;2026-08-29 列宽两期统一到 360 后三期全落到 92%。
-// 档位判定走 useViewport(offset 是内联 style,CSS 媒体块盖不住;jsdom 无 matchMedia 恒 xl → 桌面档与既有测试零变化)
-const { tier } = useViewport()
-const sTier = computed(() => tier.value === 's')
-// 退级时 class 一起摘:.ll-fix 带不透明背景 + z-index,留着会在无 sticky 时糊住相邻格
-const fixCls = computed(() => (sTier.value ? undefined : 'll-fix'))
-const fixThCls = computed(() => (sTier.value ? undefined : 'll-fix-th ll-fix'))
-const fixLbl = computed(() => (sTier.value
-  ? w(LBL_W)
-  : { ...w(LBL_W), left: '0px', borderRight: '1px solid var(--border-subtle)' }))
+// 固定列与表格高度(LIST-PAGE-SPEC §9;07-C 楼栋损耗行):只有「位置」一根(名称列,rank 0),不再锁 360。
+// 按最长的名字估宽,不量 DOM:单元行名 + 核算方式签(「仅按公摊分摊度数」108 /「不核算」53)、对账行名、合计;
+// 封顶表格可见宽的 1/5,超了省略、悬停看全称。换期区 / 换月(units 换了)按新数据重算。
+// 封顶的下限 = 3 个字 + 核算方式签:签不缩,手机档 1/5 只有 71,不设下限名字会被签挤成 0 宽、悬停也碰不到。
+// 本表没有分组表头(grpH 0):不够 8 行先让合计不贴底,再不够给表格区 min-height、整页往下滚。
+const LOSS_H: HeightDims = { grpH: 0, leafH: 38, rowH: 34, footH: 40 }
+const VAR_W: Partial<Record<AllocLossUnitDTO['variant'], number>> = { share_only: 108, none: 53 }
+const lblW = (s: string) => textW([s], 12.5, 20)
+const lblCols = computed<WideCol[]>(() => [{
+  key: 'lbl', side: 'L', rank: 0, name: true,
+  w: Math.max(lblW('合　计'), ...reconRows.value.map(r => lblW(r.label)),
+    ...units.value.map(u => lblW(u.label) + (VAR_W[u.variant] ?? 0))),
+  minW: Math.max(0, ...units.value.map(u => lblW('三个字') + (VAR_W[u.variant] ?? 0))),
+}])
+const wrapEl = ref<HTMLElement | null>(null)
+const { fix, nameW, hStage } = useWideTable(wrapEl, lblCols, LOSS_H, units)
+const fixLbl = computed(() => ({ ...w(nameW.value), ...fix.value.style.lbl }))
+const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: minTableH(LOSS_H) + 'px' } : undefined))
 
 // ── 只读镜像:格里的数是快照(生成时用的值),徽标是**当前生效**参数的生效方式(仅本月 / 长期);两者不一致时 stale 条会亮 ──
 // LIST-PAGE-SPEC §8:模板里每格 4 次调用,徽标对象按 (栋,键) 在 computed 里建一次 Map,模板只 get(不在渲染里线性 find + new 对象)
@@ -288,11 +287,11 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
     </div>
 
     <!-- 台账式宽表:单元行 + 对账区两行(供电局总表 vs 各栋总表合计 / 各栋分表合计) + tfoot 合计 -->
-    <div class="ll-wrap">
-      <table class="ll-table">
+    <div class="ll-wrap" ref="wrapEl" :style="wrapSt">
+      <table class="ll-table" :class="{ 'hs-foot': hStage >= 2 }">
         <thead>
           <tr>
-            <th class="ll-th" :class="fixThCls" :style="fixLbl">位置</th>
+            <th class="ll-th ll-fix-th ll-fix" :style="fixLbl">位置</th>
             <th class="ll-th" :style="w(108)">总表用电量</th>
             <th class="ll-th" :style="w(104)" title="仅列示,不计入总表 / 分表合计(仅二期有铝缆表,一期显'–')">铝缆用电量</th>
             <th class="ll-th" :style="w(108)">分表用电量</th>
@@ -309,9 +308,9 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
         </thead>
         <tbody>
           <tr v-for="u in units" :key="u.headBuildingId">
-            <td :class="fixCls" :style="fixLbl">
-              <span class="ll-lbl" :title="u.label">
-                {{ u.label }}
+            <td class="ll-fix" :style="fixLbl">
+              <span class="ll-lbl">
+                <span class="ll-lbl-t" v-tip="u.label">{{ u.label }}</span>
                 <span v-if="u.variant === 'share_only'" class="ll-var" title="仅按公摊分摊度数核算：率 = 公摊分摊度数 ÷ 分摊基数 + 加点">仅按公摊分摊度数</span>
                 <span v-else-if="u.variant === 'none'" class="ll-var dim" title="不核算（组内无分表或设为只列示用量）">不核算</span>
               </span>
@@ -368,7 +367,7 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
           <!-- 对账区(读时派生,见 buildLossReconRows):供电侧读数落「总表用电量」列,被比的合计落「分表用电量」列。
                前两行只管那块供电局表带的几栋;后两行(有栋被单独剔掉时才出)是把它们加回来的全部楼栋 -->
           <tr v-for="(r, i) in reconRows" :key="'rc' + i" class="ll-recon" :class="{ 'll-recon-all': r.newGroup }">
-            <td :class="fixCls" :style="fixLbl"><span class="ll-lbl" :title="r.label">{{ r.label }}</span></td>
+            <td class="ll-fix" :style="fixLbl"><span class="ll-lbl"><span class="ll-lbl-t" v-tip="r.label">{{ r.label }}</span></span></td>
             <td><span class="ll-nv" :class="{ empty: r.supplyQty == null }" :title="r.supplyTitle">{{ fmt(r.supplyQty) }}</span></td>
             <td></td>
             <td><span class="ll-nv" :class="{ empty: r.sumQty == null }" :title="r.sumTitle">{{ fmt(r.sumQty) }}</span></td>
@@ -382,7 +381,7 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
         <!-- tfoot 合计:总表/铝缆/分表/损耗量 合计(率不合计) -->
         <tfoot>
           <tr>
-            <th :class="fixCls" :style="fixLbl"><span class="ll-foot-lbl">合　计</span></th>
+            <th class="ll-fix" :style="fixLbl"><span class="ll-foot-lbl">合　计</span></th>
             <th><span class="ll-foot-v">{{ fmt(foot.cQty) }}</span></th>
             <th><span class="ll-foot-v">{{ fmt(foot.cableQty) }}</span></th>
             <th><span class="ll-foot-v">{{ fmt(foot.dQty) }}</span></th>
@@ -426,6 +425,8 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
 .ll-table tbody tr:hover .ll-fix { background: var(--surface-card); }
 
 .ll-lbl { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+/* 名字超 1/5 省略(字进它自己的 span,flex 容器上的 text-overflow 管不到匿名文字);签不缩 */
+.ll-lbl-t { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .ll-var { flex: 0 0 auto; font-size: var(--fs-micro); font-weight: var(--fw-regular); color: var(--hue-blue); background: var(--info-soft); border-radius: var(--radius-full); padding: 1px 7px; cursor: help; }
 .ll-var.dim { color: var(--text-muted); background: var(--bg-sunken); }
 
@@ -462,6 +463,8 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
 
 .ll-table tfoot th { position: sticky; bottom: 0; z-index: 5; height: 40px; font-weight: var(--fw-semibold); background: var(--surface-white); border-top: 2px solid var(--border-strong); font-family: var(--font-mono); color: var(--text-primary); }
 .ll-table tfoot th.ll-fix { z-index: 7; }
+/* 表格高度(LIST-PAGE-SPEC §9.2):不够 8 行时合计不贴底、跟在最后一行后面;再不够的 min-height 是 .ll-wrap 上的内联样式 */
+.ll-table.hs-foot tfoot th { bottom: auto; }
 .ll-foot-lbl { display: block; padding: 0 10px; text-align: left; font-family: var(--font-sans); font-size: 12.5px; color: var(--text-primary); }
 .ll-foot-v { display: block; text-align: right; padding: 0 8px; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--brand-deep); }
 </style>

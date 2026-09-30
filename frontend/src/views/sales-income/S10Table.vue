@@ -10,6 +10,7 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import FPWideCards, { type WideCard } from '@/components/fp/FPWideCards.vue'
 import { useViewport } from '@/composables/useViewport'
+import { minTableH, numW, textW, useWideTable, type HeightDims, type WideCol } from '@/composables/useWideTable'
 import { finMoney } from '@/utils/finFmt'
 import type { Group } from './layout'
 import type { S10RecordDTO, S10ColId } from '@/types/s10'
@@ -129,6 +130,38 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
   emit('cell', r, colId, s10Num(raw))
 }
 
+// ── 固定列与表格高度(LIST-PAGE-SPEC §9;07-C 附表10 行):租户(名称列,rank 0)→ 合计(rank 1) ──
+// 列宽按内容估,不量 DOM:租户 = 最长那一行(名字 + 未绑定点 16 + 手动签 40;编辑态再加勾选 23、删除钮 32),
+// 封顶可见宽 1/5,超了名字省略、悬停看全称;合计 = 整列最长的数(含总计),不省略。
+// 左右各只有一根,offset 恒 0;宽度只决定合计退不退(两根加起来 > 40% 可见宽就退)。
+const S10_H: HeightDims = { grpH: 34, leafH: 34, rowH: 38, footH: 42 }
+const cellW = (text: string, extra = 0) => textW([text], 12.5, 28) + extra
+// 格里除名字外不缩的件(各含间距 8):编辑态勾选 23、未绑定点 16、手动签 40、编辑态删除钮 32
+const extraW = (r: S10RecordDTO, e: boolean) =>
+  (e ? 23 : 0) + (r.tenantId == null ? 16 : 0) + (r.source !== 'seed' ? 40 + (e ? 32 : 0) : 0)
+const wideCols = computed<WideCol[]>(() => {
+  const e = props.edit
+  const t = totals.value
+  return [
+    { key: 'name', side: 'L', rank: 0, name: true, w: Math.max(
+      cellW('租户', e ? 23 : 0),
+      cellW(`合计 · ${props.rows.length} 户`),
+      ...props.rows.map(r => cellW(r.tenantName, extraW(r, e))),
+    ),
+      // 封顶的下限 = 3 个字 + 这一行不缩的件:手机档编辑态 1/5 只有 71,手动行光勾选 + 签 + 删除钮就 95,
+      // 不设下限名字被挤成 0 宽 —— 编辑态点名字开绑定抽屉的唯一入口就没了
+      minW: Math.max(0, ...props.rows.map(r => cellW('三个字', extraW(r, e)))) },
+    { key: 'total', side: 'R', rank: 1, w: numW([...props.rows.map(r => fmt(t.byRow.get(r.id) ?? 0)), fmt(t.grand)], 12.5, 28) },
+  ]
+})
+// 换数据(rows 换了)或进出编辑态(勾选框、删除钮只在编辑态占宽)按新数据重算;同一份数据原地编辑只增不减
+const dataKey = computed(() => [props.rows, props.edit])
+const { fix, nameW, hStage } = useWideTable(wrapEl, wideCols, S10_H, dataKey)
+const px = (n: number) => n + 'px'
+const nameSt = computed(() => ({ width: px(nameW.value), minWidth: px(nameW.value), maxWidth: px(nameW.value), ...fix.value.style.name }))
+const totalSt = computed(() => ({ minWidth: px(fix.value.w.total), ...fix.value.style.total }))
+const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: px(minTableH(S10_H)) } : undefined))
+
 // ── S 档(≤600)卡列:浏览态用 FPWideCards 换掉这张 25/20 列宽表(稿 WideCardVariants §3「标准 88」)。
 // jsdom 无 matchMedia → tier 恒 'xl',桌面/既有测试照旧走 <table>,宽档 DOM 一个字节不变。
 //
@@ -167,7 +200,7 @@ function s10Card(r: S10RecordDTO): WideCard {
 </script>
 
 <template>
-  <div class="s10-wrap" ref="wrapEl">
+  <div class="s10-wrap" ref="wrapEl" :style="wrapSt">
     <!-- 空态（jsx 364-375） -->
     <div v-if="props.rows.length === 0" class="s10-empty">
       <div class="s10-empty-ic"><component :is="iconFor('receipt')" :size="24" /></div>
@@ -191,11 +224,11 @@ function s10Card(r: S10RecordDTO): WideCard {
       @row-click="emit('bindRow', $event)"
     />
 
-    <table v-else class="s10-table">
+    <table v-else class="s10-table" :class="{ 'hs-grp': hStage >= 1, 'hs-foot': hStage >= 2 }">
       <thead>
         <!-- 第一行:租户 + 组（leaf 组跨两行）+ 备注 + 合计 -->
         <tr>
-          <th class="s10-h-name" rowspan="2">
+          <th class="s10-h-name" rowspan="2" :style="nameSt">
             <span class="s10-name-inner">
               <input
                 v-if="edit"
@@ -222,7 +255,7 @@ function s10Card(r: S10RecordDTO): WideCard {
             >{{ grpLabel(g.label) }}</th>
           </template>
           <th class="s10-h-note" rowspan="2">备注</th>
-          <th class="s10-h-total" rowspan="2">合计</th>
+          <th class="s10-h-total" :class="{ 's10-fix': fix.style.total }" rowspan="2" :style="totalSt">合计</th>
         </tr>
         <!-- 第二行:多叶子组的子列 -->
         <tr>
@@ -236,7 +269,7 @@ function s10Card(r: S10RecordDTO): WideCard {
 
       <tbody>
         <tr v-for="r in props.rows" :key="r.id" class="s10-row">
-          <td class="s10-c-name">
+          <td class="s10-c-name" :style="nameSt">
             <span class="s10-name-inner">
               <input
                 v-if="edit"
@@ -249,7 +282,7 @@ function s10Card(r: S10RecordDTO): WideCard {
               />
               <!-- 名字两态统一为可点击文本:账面名/绑定都在行抽屉里改(与园区抄表同一动线,
                    用户 2026-08-23 拍板「不在表格上直接修改」) -->
-              <span class="s10-tname act" :title="r.tenantName + ' · 点击查看/绑定租户'"
+              <span class="s10-tname act" v-tip="{ text: r.tenantName, sub: '点击查看/绑定租户' }"
                     @click="emit('bindRow', r)">{{ r.tenantName }}</span>
               <!-- 未绑定:紧凑圆点(文字胶囊会挤长租户名,与台账 .lg-unbound-dot 对齐,2026-08-24 拍板);
                    语义进 title,点击仍触发 bindRow -->
@@ -296,23 +329,23 @@ function s10Card(r: S10RecordDTO): WideCard {
             </template>
           </td>
 
-          <td class="s10-c-total">{{ fmt(totals.byRow.get(r.id) ?? 0) }}</td>
+          <td class="s10-c-total" :class="{ 's10-fix': fix.style.total }" :style="totalSt">{{ fmt(totals.byRow.get(r.id) ?? 0) }}</td>
         </tr>
 
         <!-- 撑高行:把合计顶到卡底 -->
         <tr class="s10-fill" aria-hidden="true">
-          <td class="s10-c-name"></td>
+          <td class="s10-c-name" :style="nameSt"></td>
           <td :colspan="leaves.length + 1"></td>
-          <td class="s10-c-total"></td>
+          <td class="s10-c-total" :class="{ 's10-fix': fix.style.total }" :style="totalSt"></td>
         </tr>
       </tbody>
 
       <tfoot>
         <tr>
-          <th class="s10-foot-name">合计 · {{ props.rows.length }} 户</th>
+          <th class="s10-foot-name" :style="nameSt">合计 · {{ props.rows.length }} 户</th>
           <th v-for="l in leaves" :key="l.colId" class="s10-c-num">{{ fmt(totals.byCol[l.colId]) }}</th>
           <th class="s10-foot-note"></th>
-          <th class="s10-foot-total">{{ fmt(totals.grand) }}</th>
+          <th class="s10-foot-total" :class="{ 's10-fix': fix.style.total }" :style="totalSt">{{ fmt(totals.grand) }}</th>
         </tr>
       </tfoot>
     </table>
@@ -321,7 +354,7 @@ function s10Card(r: S10RecordDTO): WideCard {
 
 <style scoped>
 /* 1:1 from screen-schedule10.jsx S10Styles(.s10-wrap / .s10-table 段) —— 全部本组件自有,不复用别处 scoped */
-.s10-wrap { flex:1 1 auto; min-height:300px; overflow:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--surface-white); }
+.s10-wrap { flex:1 1 auto; overflow:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--surface-white); }
 .s10-table { border-collapse:separate; border-spacing:0; width:max-content; min-width:100%; height:100%; font-family:var(--font-sans); font-size:12.5px; color:var(--text-primary); }
 .s10-table th, .s10-table td { box-sizing:border-box; white-space:nowrap; }
 
@@ -336,17 +369,19 @@ function s10Card(r: S10RecordDTO): WideCard {
 .s10-table thead th.s10-h-leaf, .s10-table thead th.s10-h-sub, .s10-table thead th.s10-h-note, .s10-table thead th.s10-h-total { text-align:center; }
 .s10-h-sub { font-size:11px; color:var(--text-muted); padding:0 12px; border-bottom:1px solid var(--border-subtle); min-width:104px; }
 .s10-h-leaf { padding:0 12px; border-bottom:1px solid var(--border-subtle); font-size:11.5px; color:var(--text-primary); min-width:104px; text-align:center; }
-.s10-h-name { left:0; z-index:6 !important; top:0 !important; text-align:left; padding:0 14px; min-width:188px; border-bottom:1px solid var(--border-subtle); box-shadow:1px 0 0 var(--border-subtle); }
+/* 固定列的横向 sticky(left/right、内沿阴影)与列宽是 planFixed 给的内联样式;类上只管层级 —— 退掉的合计列不带 .s10-fix */
+.s10-h-name { z-index:6 !important; text-align:left; padding:0 14px; border-bottom:1px solid var(--border-subtle); }
 .s10-h-note { padding:0 12px; text-align:left; font-size:11.5px; min-width:140px; border-bottom:1px solid var(--border-subtle); }
-.s10-h-total { right:0; z-index:6 !important; top:0 !important; text-align:right; padding:0 14px; min-width:128px; border-bottom:1px solid var(--border-subtle); box-shadow:-1px 0 0 var(--border-subtle); color:var(--text-primary); }
+.s10-h-total { text-align:right; padding:0 14px; border-bottom:1px solid var(--border-subtle); color:var(--text-primary); }
+.s10-h-total.s10-fix { z-index:6 !important; }
 
 /* 单元格 */
 .s10-table tbody td { height:38px; padding:0 12px; border-bottom:1px solid var(--divider); text-align:right; }
 .s10-c-num { font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
 .s10-c-num.zero { color:var(--text-disabled); }
-.s10-c-name { position:sticky; left:0; z-index:2; text-align:left; padding:0 14px; background:var(--surface-white); box-shadow:1px 0 0 var(--border-subtle); }
+.s10-c-name { z-index:2; text-align:left; padding:0 14px; background:var(--surface-white); }
 .s10-c-note { text-align:left; color:var(--text-muted); }
-.s10-c-total { position:sticky; right:0; z-index:2; background:var(--surface-white); font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-weight:var(--fw-semibold); color:var(--text-primary); box-shadow:-1px 0 0 var(--border-subtle); }
+.s10-c-total { z-index:2; background:var(--surface-white); font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-weight:var(--fw-semibold); color:var(--text-primary); }
 
 .s10-row td { background:var(--surface-white); }
 .s10-row:hover td { background:var(--surface-card); }
@@ -355,7 +390,7 @@ function s10Card(r: S10RecordDTO): WideCard {
 .s10-name-inner { display:flex; align-items:center; gap:8px; }
 .s10-cb { width:15px; height:15px; flex:0 0 auto; cursor:pointer; accent-color:var(--ink-900); }
 .s10-cb:disabled { cursor:not-allowed; opacity:.4; }
-.s10-tname { font-weight:var(--fw-medium); color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; }
+.s10-tname { font-weight:var(--fw-medium); color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; min-width:0; }
 .s10-userbadge { display:inline-flex; align-items:center; height:17px; padding:0 6px; border-radius:var(--radius-full); background:var(--accent-sky); color:var(--hue-blue); font-size:10px; font-weight:var(--fw-semibold); flex:0 0 auto; }
 /* 未绑定:紧凑圆点(琥珀描边,warning 语义);完整提示走 title(对齐台账 .lg-unbound-dot) */
 .s10-unbound-dot {
@@ -381,8 +416,9 @@ function s10Card(r: S10RecordDTO): WideCard {
 
 /* 合计行 */
 .s10-table tfoot th { position:sticky; bottom:0; z-index:3; height:42px; padding:0 12px; background:var(--surface-white); border-top:2px solid var(--border-strong); font-weight:var(--fw-semibold); text-align:right; font-family:var(--font-mono); font-variant-numeric:tabular-nums; color:var(--brand-deep); }
-.s10-table tfoot .s10-foot-name { left:0; z-index:5; text-align:left; font-family:var(--font-sans); padding:0 14px; box-shadow:1px 0 0 var(--border-strong); color:var(--text-primary); }
-.s10-table tfoot .s10-foot-total { right:0; z-index:5; box-shadow:-1px 0 0 var(--border-strong); }
+/* 合计行内沿照旧用 strong 阴影,盖过 planFixed 内联的 subtle */
+.s10-table tfoot .s10-foot-name { z-index:5; text-align:left; font-family:var(--font-sans); padding:0 14px; box-shadow:1px 0 0 var(--border-strong) !important; color:var(--text-primary); }
+.s10-table tfoot .s10-foot-total.s10-fix { z-index:5; box-shadow:-1px 0 0 var(--border-strong) !important; }
 .s10-table tfoot .s10-foot-note { background:var(--surface-white); }
 
 /* 空态 */
@@ -402,16 +438,16 @@ tr.row-flash td { animation: s10-row-flash var(--dur-highlight) var(--ease-stand
   .s10-del { opacity:.55; }
 }
 
-/* ── S 档(≤600)**编辑态**的表格(浏览态已换成 FPWideCards 卡列,见 <script> s10Card):
-   sticky 收敛只留首列(租户名)+表头——桌面左右双 sticky
-   共 316px(188+128)在 390px 视口会占满可视区(实测教训)。合计列**原位退成普通列**:
-   列序/列宽不动,只摘横向钉扎;表头/表脚的纵向 sticky(top/bottom)照旧。
-   本表 sticky 全写在 CSS 类上(非内联 style),媒体块直接盖得住,
-   不必像 FPLedgerTable(offset 内联)那样进 JS 走 useViewport——jsdom/桌面档零变化同样成立。
-   z-index 一并退回本表非固定同级的阶梯(thead/tfoot 3),否则横滚时会盖住仅存的 sticky 首列。 */
+/* 表格高度(LIST-PAGE-SPEC §9.2):不够 8 行时按顺序让 —— hs-grp 分组表头滚走、只贴列名那一行
+   (跨两行的表头格贴在 -34px,字挪到下半格);hs-foot 合计行不贴底、跟在最后一行后面;
+   3 级的 min-height 是 .s10-wrap 上的内联样式。 */
+.s10-table.hs-grp thead tr:first-child th { top:-34px; }
+.s10-table.hs-grp thead tr:nth-child(2) th { top:0; }
+.s10-table.hs-grp thead th[rowspan] { vertical-align:bottom; padding-bottom:9px; }
+.s10-table.hs-foot tfoot th { bottom:auto; }
+
+/* S 档(≤600)卡列 / 编辑态表格恒 0 级,照旧给表格区留 300 的底 */
 @media (max-width: 600px) {
-  .s10-h-total { right:auto; z-index:3 !important; box-shadow:none; }
-  .s10-c-total { position:static; box-shadow:none; }
-  .s10-table tfoot .s10-foot-total { right:auto; z-index:3; box-shadow:none; }
+  .s10-wrap { min-height:300px; }
 }
 </style>

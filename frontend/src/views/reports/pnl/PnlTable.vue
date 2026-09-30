@@ -1,17 +1,19 @@
 <script setup lang="ts">
 // 损益附表年度矩阵表 — 版式 1:1 参照原型 screen-schedule2.jsx 表体 + SalaryTable sticky 双左列范式。
-// 列:编辑态行首复选(sticky,批量删除 P2-G3 J7,映射行不渲) | 分组(sticky,同值向下省略显示) | 科目细分(sticky) | 1月..12月 | 本年合计(sticky 尾,rowYearTotal 客端派生) | 编辑态:备注。
+// 列:编辑态行首复选(批量删除 P2-G3 J7,映射行不渲) | 分组(同值向下省略显示) | 科目细分 | 1月..12月 | 本年合计(rowYearTotal 客端派生) | 编辑态:备注 | 填入。
+// 哪几根固定由 useWideTable 按表格可见宽度算(LIST-PAGE §9.1,画布 07-C):科目细分(勾选列随它)→ 本年合计 → 分组 → 填入,备注不固定。
 // kind 分带(spec D2,仅渲染):subtotal 底 accent-slate、pnl 底 accent-blue 加粗、total 加粗上边框。
 // 月值 null=未录(显 –,区分真 0);编辑态单元格 input(空↔null),值由父 draft 合并后下发,本组件无状态。
 // 派生对照(P2-G G2/G3):行首徽标 已证√蓝/差异N月橙(hover 逐月差额)/编辑态灰「可填入」,无映射不显;
 // diff 月单元格橙底;编辑态行尾「填入」emit fill(rowKey),读态只显对照不显填入。
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, type CSSProperties } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedNoteCell from '@/components/sched/SchedNoteCell.vue'
 import FPWideCards, { type WideCard } from '@/components/fp/FPWideCards.vue'
 import PnlRowDrawer from './PnlRowDrawer.vue'
 import { useViewport } from '@/composables/useViewport'
+import { useWideTable, numW, textW, minTableH, type HeightDims, type WideCol } from '@/composables/useWideTable'
 import { rowYearTotal } from '@/reports/pnlSchedules'
 import { finSigned } from '@/utils/finFmt'
 import type { PnlRowDTO, PnlKind } from '@/types/pnl'
@@ -69,6 +71,44 @@ const fillable = (r: PnlRowDTO) => {
 }
 const showFill = computed(() => props.edit && Object.keys(props.derive ?? {}).length > 0)
 
+// ── 固定列与表格高度(LIST-PAGE §9,画布 07-C 损益附表行)──────────────
+// 左右固定列合计 ≤ 表格可见宽 40%,超了按 填入 → 分组 → 本年合计 的顺序退;科目细分与编辑态勾选列 rank 0 永不退。
+// 列宽不量 DOM:科目细分按最长的「名字 + 徽标」估(封顶 1/5,超了名字省略、悬停看全称);本年合计按整列最长的数。
+const DIMS: HeightDims = { grpH: 0, leafH: 38, rowH: 38, footH: 0 }   // 单行表头、无贴底合计:只有 0 / 3 两级
+const wrap = ref<HTMLElement | null>(null)
+const badgeW = (rowKey: string) => {
+  const b = badges.value[rowKey]
+  return b ? textW([b.text], 11, 14) + 8 : 0   // 徽标 11px、内边距 7×2、左距 8
+}
+const subW = computed(() => {
+  const out: Record<string, number> = {}
+  for (const r of props.rows) out[r.rowKey] = textW([r.label], 13, 26) + badgeW(r.rowKey)
+  return out
+})
+const subMax = computed(() => Math.max(textW(['科目细分'], 13, 26), ...Object.values(subW.value)))
+// 封顶的下限 = 3 个字 + 这一行的徽标:徽标不缩,手机档编辑态 1/5 只有 71,一个「差异12月」就 71,
+// 不设下限科目名被挤成 0 宽、徽标还压到 1 月那一格上
+const subMin = computed(() => Math.max(0, ...props.rows.map(r => textW(['三个字'], 13, 26) + badgeW(r.rowKey))))
+const cols = computed(() => {
+  const totals = props.rows.map(r => { const t = rowYearTotal(r.m); return t === null ? '–' : finSigned(t) })
+  const c: WideCol[] = []
+  if (props.edit) c.push({ key: 'sel', side: 'L', w: 36, rank: 0 })
+  c.push(
+    { key: 'grp', side: 'L', w: 118, rank: 2 },
+    { key: 'sub', side: 'L', w: subMax.value, rank: 0, name: true, minW: subMin.value },
+    { key: 'ann', side: 'R', w: Math.max(textW(['本年合计'], 12, 26), numW(totals, 12.5, 26)), rank: 1 },
+  )
+  if (showFill.value) c.push({ key: 'fill', side: 'R', w: 56, rank: 3 })
+  return c
+})
+const { fix, nameW, hStage } = useWideTable(wrap, cols, DIMS, () => props.year)
+const fc = (k: string) => ({ 'pt-fix': k in fix.value.style })
+// ponytail: StickyStyle 是 interface,模板 :style 要的 CSSProperties 带 `--*` 索引签名,这里转一次;W1 改成 type 别名后可删
+const st = computed(() => fix.value.style as Record<string, CSSProperties>)
+// 封顶了才给名字框定宽(省略号靠它);没封顶按内容自然撑开,估宽偏小也不会误截
+const subBox = computed(() => nameW.value < subMax.value ? { width: nameW.value - 26 + 'px' } : undefined)
+const wrapStyle = computed(() => hStage.value === 3 ? { minHeight: minTableH(DIMS) + 2 + 'px' } : undefined)   // +2 上下边框
+
 // ── S 档(≤600)卡片化(响应式稿 WideCardVariants 板 §3,紧凑 64 档)────────────
 // 稿的诊断:本表的病是**标签太宽**,两根标签列吃掉三分之一屏,剩下放不下一个月;
 // 收敛 sticky 救不了(sticky 那根本身最宽),所以 S 档换成一行科目一张卡,12 个月进抽屉。
@@ -105,7 +145,7 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
 </script>
 
 <template>
-  <div class="pt-wrap">
+  <div ref="wrap" class="pt-wrap" :style="wrapStyle">
     <!-- 空年引导态 -->
     <div v-if="rows.length === 0" class="pt-empty">
       <div class="pt-empty-ic"><component :is="iconFor('trending-up')" :size="24" /></div>
@@ -127,21 +167,21 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
       @row-click="openRow = $event"
     />
 
-    <table v-else class="pt-table" :class="{ 'pt-editmode': edit, 'pt-hasfill': showFill }">
+    <table v-else class="pt-table">
       <thead>
         <tr>
-          <th v-if="edit" class="pt-c-sel"></th>
-          <th class="pt-c-grp l">{{ groupCol }}</th>
-          <th class="pt-c-sub l">科目细分</th>
+          <th v-if="edit" class="pt-c-sel" :class="fc('sel')" :style="st.sel"></th>
+          <th class="pt-c-grp l" :class="fc('grp')" :style="st.grp">{{ groupCol }}</th>
+          <th class="pt-c-sub l" :class="fc('sub')" :style="st.sub">科目细分</th>
           <th v-for="m in 12" :key="m" class="pt-h-num">{{ m }}月</th>
-          <th class="pt-c-ann pt-h-ann">本年合计</th>
+          <th class="pt-c-ann pt-h-ann" :class="fc('ann')" :style="[st.ann, { minWidth: fix.w.ann + 'px' }]">本年合计</th>
           <th v-if="edit" class="pt-c-note l">备注</th>
-          <th v-if="showFill" class="pt-c-fill">填入</th>
+          <th v-if="showFill" class="pt-c-fill" :class="fc('fill')" :style="st.fill">填入</th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="(r, i) in rows" :key="r.rowKey" :class="KIND_CLASS[r.kind]">
-          <td v-if="edit" class="pt-c-sel">
+          <td v-if="edit" class="pt-c-sel" :class="fc('sel')" :style="st.sel">
             <input
               v-if="!mappedKeys?.has(r.rowKey)"
               class="pt-ck"
@@ -151,15 +191,17 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
               @change="emit('toggleSelect', r.rowKey)"
             />
           </td>
-          <td class="pt-c-grp l" :title="r.groupLabel">{{ showGroup(i) ? r.groupLabel : '' }}</td>
-          <td class="pt-c-sub l">
-            {{ r.label }}
-            <span
-              v-if="badges[r.rowKey]"
-              class="pt-badge"
-              :class="badges[r.rowKey].cls"
-              :title="badges[r.rowKey].title"
-            >{{ badges[r.rowKey].text }}</span>
+          <td class="pt-c-grp l" :class="fc('grp')" :style="st.grp" :title="r.groupLabel">{{ showGroup(i) ? r.groupLabel : '' }}</td>
+          <td class="pt-c-sub l" :class="fc('sub')" :style="st.sub">
+            <div class="pt-sub" :style="subBox">
+              <span class="pt-sub-t" v-tip="subW[r.rowKey] > nameW ? r.label : null">{{ r.label }}</span>
+              <span
+                v-if="badges[r.rowKey]"
+                class="pt-badge"
+                :class="badges[r.rowKey].cls"
+                :title="badges[r.rowKey].title"
+              >{{ badges[r.rowKey].text }}</span>
+            </div>
           </td>
           <td v-for="(v, mi) in r.m" :key="mi" class="pt-c-num" :class="{ 'pt-cell-diff': isDiffCell(r.rowKey, mi) }">
             <input
@@ -173,14 +215,14 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
             <span v-else-if="v === null" class="pt-null">–</span>
             <span v-else :class="{ 'pt-neg': v < 0 }">{{ finSigned(v) }}</span>
           </td>
-          <td class="pt-c-num pt-c-ann">
+          <td class="pt-c-num pt-c-ann" :class="fc('ann')" :style="st.ann">
             <span v-if="rowYearTotal(r.m) === null" class="pt-null">–</span>
             <span v-else :class="{ 'pt-neg': rowYearTotal(r.m)! < 0 }">{{ finSigned(rowYearTotal(r.m)) }}</span>
           </td>
           <td v-if="edit" class="pt-c-note l">
             <SchedNoteCell :note="r.note" :edit="true" @save="emit('note', r.rowKey, $event)" />
           </td>
-          <td v-if="showFill" class="pt-c-fill">
+          <td v-if="showFill" class="pt-c-fill" :class="fc('fill')" :style="st.fill">
             <button
               v-if="fillable(r)"
               class="pt-fillbtn"
@@ -214,24 +256,19 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
 .pt-table thead th { position:sticky; top:0; z-index:3; background:var(--surface-white); border-bottom:1px solid var(--border-subtle); font-size:12px; font-weight:var(--fw-semibold); color:var(--text-muted); }
 .pt-h-num { min-width:104px; }
 .pt-h-ann { background:var(--surface-card); color:var(--text-secondary); }
-.pt-table thead th.pt-c-sel, .pt-table thead th.pt-c-grp, .pt-table thead th.pt-c-sub,
-.pt-table thead th.pt-c-ann, .pt-table thead th.pt-c-note,
-.pt-table thead th.pt-c-fill { z-index:5; }
+.pt-table thead th.pt-fix { z-index:5; }
 
-/* sticky 左列:编辑态行首复选(36) + 分组(定宽,同值省略) + 科目细分(编辑态左移 36 让位复选列) */
-.pt-c-sel { position:sticky; left:0; z-index:2; width:36px; min-width:36px; max-width:36px; padding:0 6px; text-align:center; }
-.pt-c-grp { position:sticky; left:0; z-index:2; width:118px; min-width:118px; max-width:118px; overflow:hidden; text-overflow:ellipsis; font-weight:var(--fw-medium); }
-.pt-c-sub { position:sticky; left:118px; z-index:2; min-width:216px; box-shadow:1px 0 0 var(--border-subtle); }
-.pt-editmode .pt-c-grp { left:36px; }
-.pt-editmode .pt-c-sub { left:154px; }
-
-/* sticky 尾列:本年合计(编辑态让位备注;有填入列再让 56) */
-.pt-c-ann { position:sticky; right:0; z-index:2; font-weight:var(--fw-semibold); box-shadow:-1px 0 0 var(--border-subtle); min-width:120px; }
-.pt-editmode .pt-c-ann { right:150px; }   /* 编辑态让位 备注(150) */
-.pt-editmode.pt-hasfill .pt-c-ann { right:206px; }
-.pt-c-note { position:sticky; right:0; z-index:2; width:150px; min-width:150px; max-width:150px; box-shadow:-1px 0 0 var(--border-subtle); }
-.pt-hasfill .pt-c-note { right:56px; }
-.pt-c-fill { position:sticky; right:0; z-index:2; width:56px; min-width:56px; padding:0 6px; text-align:center; }
+/* 固定列:sticky、left/right、内沿阴影都由 useWideTable 内联给(.pt-fix 标记仍固定的那几根),这里只管列宽。
+   勾选 36 / 分组 118 / 填入 56 是定宽,offset 按它们累加;备注任何宽度都不固定 */
+.pt-table td.pt-fix { z-index:2; }
+.pt-c-sel { width:36px; min-width:36px; max-width:36px; padding:0 6px; text-align:center; }
+.pt-c-grp { width:118px; min-width:118px; max-width:118px; overflow:hidden; text-overflow:ellipsis; font-weight:var(--fw-medium); }
+.pt-sub { display:flex; align-items:center; }
+.pt-sub-t { min-width:0; overflow:hidden; text-overflow:ellipsis; }   /* 名字可以省略,徽标不让 */
+.pt-sub .pt-badge { flex:none; }
+.pt-c-ann { font-weight:var(--fw-semibold); }
+.pt-c-note { width:150px; min-width:150px; max-width:150px; }
+.pt-c-fill { width:56px; min-width:56px; padding:0 6px; text-align:center; }
 
 /* 数值 */
 .pt-c-num { font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:12.5px; }
@@ -262,26 +299,6 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
 .pt-table tbody td.pt-cell-diff { background:var(--warn-bg); }   /* 同 fin-tag.edit 先例,置于分带规则后覆盖 */
 .pt-fillbtn { height:24px; padding:0 9px; border:1px solid var(--border-control); background:var(--surface-white); border-radius:var(--radius-full); font-family:var(--font-sans); font-size:11.5px; font-weight:var(--fw-medium); color:var(--hue-blue); cursor:pointer; transition:background var(--dur-fast) var(--ease-standard); }
 .pt-fillbtn:hover { background:var(--accent-blue); }
-
-/* ── S 档(≤600):sticky 收敛为「科目细分」单列(RESPONSIVE-LAYOUT-SPEC §5.3)──
-   (S 档读态已换成 FPWideCards 卡列,这一段现在只在 S 档**编辑态**的横滚表上生效)
-   桌面左三根 36+118+216=370px 在 390px 视口会占满屏(spec 点名的实测教训);S 档分组列与
-   右侧 合计/备注/填入 全部**原位退成普通列**——列序/列宽零变动,只去 sticky,随表横滚。
-   科目细分收到最左(编辑态 36px 复选列照旧 sticky,细分列贴其右);边缘描边本就长在
-   .pt-c-sub 上,不用挪。FPLedgerTable 同题走 useViewport+JS 是因它的 sticky offset 是
-   内联 style、媒体块盖不住;本表 sticky 全在类上,CSS 媒体块就够,不引 JS
-   (jsdom 不评估媒体查询,桌面/测试口径天然零变化)。 */
-@media (max-width: 600px) { /* S */
-  /* 表头格的 position 由更高特异性的 .pt-table thead th 钉着(顶部 sticky 要保留),
-     故退级列必须连 left/right 一起归 auto,表头才跟表体一起横滚;
-     选择器并上编辑态复合写法,盖过基准段里同特异性的 offset 规则 */
-  .pt-c-grp, .pt-editmode .pt-c-grp { position:static; left:auto; }
-  .pt-c-sub { left:0; }
-  .pt-editmode .pt-c-sub { left:36px; }
-  .pt-c-ann, .pt-c-note, .pt-c-fill,
-  .pt-editmode .pt-c-ann, .pt-hasfill .pt-c-note,
-  .pt-editmode.pt-hasfill .pt-c-ann { position:static; right:auto; box-shadow:none; }
-}
 
 /* 空态 */
 .pt-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; height:100%; min-height:240px; padding:40px; text-align:center; }
