@@ -43,7 +43,6 @@ import Card from '@/components/ds/Card.vue'
 import Select from '@/components/ds/Select.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 import Badge from '@/components/ds/Badge.vue'
-import FPAlertChip from '@/components/fp/FPAlertChip.vue'
 import FPAlertPanel, { type AlertGroup } from '@/components/fp/FPAlertPanel.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
@@ -583,7 +582,7 @@ const FIXED_RULES = [
         <h2 class="pm-title"><span class="ic"><component :is="iconFor('sliders-horizontal')" :size="18" /></span>计费参数</h2>
         <Segmented :options="ZONE_OPTS" :model-value="zone" size="sm" @update:model-value="zone = $event as ParamZone" />
         <!-- 屏级告警入口(§6):位置固定在主控区尾,有无告警都渲染(无 → quiet 态),不挪版 -->
-        <FPAlertChip :count="alertCount" @open="alertOpen = true" />
+        <FPAlertPanel v-model:open="alertOpen" :count="alertCount" :groups="alertGroups" />
       </div>
       <div class="pm-actions">
         <Button variant="outline" size="sm" @click="changesOpen = true">
@@ -861,7 +860,6 @@ const FIXED_RULES = [
     <FPToast v-model="flash" placement="page" :duration="6000" />
     <FPToast v-model="batchErr" tone="error" placement="page" :duration="0" />
 
-    <FPAlertPanel :open="alertOpen" :groups="alertGroups" @close="alertOpen = false" />
     <ParamEditPopover :open="!!editRow" :row="editRow" :ym="ym" :ref-options="refOptions" @close="editRow = null" @save="onSave" />
     <ParamHistoryDrawer :open="!!histRow" :row="histRow" @close="histRow = null" />
     <ParamChangesDrawer :open="changesOpen" :ym="ym" @close="changesOpen = false" />

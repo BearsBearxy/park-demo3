@@ -74,7 +74,9 @@ function goRecent(value: string) {
 
 // 账号段照抄 IconRail 头像菜单:S 档不渲染 IconRail,这是全站唯一退出入口
 
-function onLogout() {
+// 同 IconRail:有没保存改动的逐页先走离开确认(画布 02-A),点「继续编辑」就不退;0 处改动直接退
+async function onLogout() {
+  if (!(await tabs.leaveOk(tabs.tabs.map(t => t.value)))) return
   auth.logout()
   router.push('/login')
 }
@@ -171,7 +173,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <Avatar :name="auth.displayName ?? '—'" :size="36" />
             <div class="mnav-user-txt">
               <div class="nm">{{ auth.displayName ?? '未登录' }}</div>
-              <div class="role" :title="auth.roleLabel" :class="{ ro: auth.isReadonly }">{{ auth.roleLabel }}</div>
+              <div v-tip="auth.roleLabel" class="role" :class="{ ro: auth.isReadonly }">{{ auth.roleLabel }}</div>
             </div>
             <button class="mnav-logout" @click="onLogout">
               <LogOut :size="16" />退出登录

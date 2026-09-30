@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
@@ -395,6 +395,35 @@ describe('握着锁 = 这一屏在编辑(auth.editors)', () => {
     lock().release()
     expect(auth.editingOn(screen)).toBe(false)
     expect(auth.editing).toBe(false)
+  })
+
+  // EDIT-MODE-SPEC §6.1:锁这一层带着宿主的改动数登记;0 处 = 这一屏不用问。
+  it('❗acquire 登记时带上第三参 dirty', async () => {
+    const screen = `lock-screen-${++n}`
+    let lock!: ReturnType<typeof useEditLock>
+    const Host = defineComponent({ setup() { lock = useEditLock(undefined, undefined, () => 0); return () => null } })
+    mount(defineComponent({ render: () => h(shellOf(`${screen}:0`, Host)) }))
+    const auth = useAuthStore()
+    vi.mocked(api.post).mockResolvedValueOnce(GRANTED as never)
+    await lock.acquire(SCOPE)
+    expect(auth.editingOn(screen)).toBe(true)
+    expect(auth.dirtyOn(screen), '没透传 = 缺省按 1').toBe(0)
+    lock.release()
+  })
+
+  // useEditMode 把 dirty 同时交给自己那条登记和底下的锁:任一处漏传,缺省的 1 会加进来 → 3。
+  it('❗useEditMode 的 dirty 透传到两条登记,合计不翻倍', async () => {
+    const screen = `lock-screen-${++n}`
+    useAuthStore().permissions = PERMS
+    let mode!: ReturnType<typeof useEditMode>
+    const Host = defineComponent({ setup() { mode = useEditMode(PERMS, { scope: () => SCOPE, dirty: () => 2 }); return () => null } })
+    mount(defineComponent({ render: () => h(shellOf(`${screen}:0`, Host)) }))
+    vi.mocked(api.post).mockResolvedValueOnce(GRANTED as never)
+    await mode.toggle()
+    await nextTick()   // useEditMode 的登记挂在 watch(editMode) 上,pre flush
+    expect(mode.editMode.value).toBe(true)
+    expect(useAuthStore().dirtyOn(screen)).toBe(2)
+    mode.exit()
   })
 
   it('没拿到锁不登记', async () => {

@@ -13,6 +13,7 @@ import { ref, watch } from 'vue'
 import { fpBuildRoutes } from '@/nav/fpNav'
 import { useAuthStore } from '@/stores/auth'
 import { useViewport } from '@/composables/useViewport'
+import { askLeave } from '@/utils/ask'
 
 export interface Tab { value: string; pinned?: boolean }
 
@@ -115,6 +116,29 @@ export const useTabsStore = defineStore('tabs', () => {
   /** 这一屏我是不是正在编辑(auth 的编辑态登记表里有登记在这一屏的)。 */
   function editingHere(v: string): boolean {
     return useAuthStore().editingOn(v)
+  }
+
+  /** 这一屏有几处没保存的改动(auth 按屏合计;不在编辑 = 0)。页签上的橙点、离开确认都看它。 */
+  function dirtyOf(v: string): number {
+    return useAuthStore().dirtyOn(v)
+  }
+
+  /** 页签上的一整句:`屏名 · 期 · 公司`,有几段写几段。离开确认的标题也用它(画布 02-A「关闭「园区抄表 · 2023-08」？」)。 */
+  function titleOf(v: string): string {
+    const c = ctx.value[v]
+    return [tabMeta(v)?.page ?? v, c?.p, c?.coName].filter(Boolean).join(' · ')
+  }
+
+  /**
+   * 要卸掉这几屏之前(关页签 / 重新加载 / 关闭其他 / 关闭右侧 / 退出登录):有没保存改动的逐页问
+   * (EDIT-MODE-SPEC §6.1,画布 02-A)。0 处改动的不弹,直接放行;任一页点「继续编辑」返回 false,调用方什么都不动。
+   */
+  async function leaveOk(vs: string[], verb?: string): Promise<boolean> {
+    for (const v of vs) {
+      const n = dirtyOf(v)
+      if (n > 0 && !(await askLeave({ page: titleOf(v), count: n, verb }))) return false
+    }
+    return true
   }
 
   // ── 这一跳想开在哪(导航落定前登记,commit 时兑现)──
@@ -342,7 +366,7 @@ export const useTabsStore = defineStore('tabs', () => {
   return {
     tabs, recent, closed, active, epoch, ctx,
     open, openFresh, openDeep, openBackground, newTab, beforeNav, clearIntent, commit, markInPage,
-    isEditing: editingHere,
+    dirtyOf, titleOf, leaveOk,
     close, closeOthers, closeRight, reopenClosed, pin, unpin, move,
     setActive, epochOf, dropState, setCtx, clearCtx, has,
   }

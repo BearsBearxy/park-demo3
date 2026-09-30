@@ -1,5 +1,11 @@
 // vitest 全局前置。
-//
+import { config } from '@vue/test-utils'
+import { vTip } from '@/directives/tip'
+
+// 2026-10-01:v-tip 是 main.ts 里全局注册的指令,各 spec 挂载组件时没有 main.ts,
+// 不在这里注册就是「未知指令」—— 悬停说明整个不生效,判据落空。
+config.global.directives = { ...config.global.directives, tip: vTip }
+
 // 2026-09-12:三张图改成自绘 SVG 之后,组件用 ResizeObserver 量容器宽度(1 个 SVG 单位 = 1 个
 // CSS 像素,否则卡片一宽整幅就等比放大 —— 那个 bug 用户当场看出来了)。jsdom 没有这个 API,
 // 于是所有挂载了这些图的屏级 spec 全线崩在 `ResizeObserver is not defined`。

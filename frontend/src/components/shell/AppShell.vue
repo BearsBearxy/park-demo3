@@ -12,6 +12,9 @@ import { BRAND } from '@/brand'
 import { useViewport } from '@/composables/useViewport'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
+import FPReceiptHost from '@/components/fp/FPReceiptHost.vue'
+import FPConfirmHost from '@/components/fp/FPConfirmHost.vue'
+import { receipt, receipts } from '@/utils/receipt'
 import IconRail from '@/components/shell/IconRail.vue'
 import SidebarPanel from '@/components/shell/SidebarPanel.vue'
 import TabStrip from '@/components/shell/TabStrip.vue'
@@ -125,8 +128,12 @@ onMounted(() => {
 })
 onUnmounted(() => upd.stopPolling())
 
-// 提示条不止一条时往上让位:更新这条排在网络出错那条上面。
-const toastLift = computed(() => (ui.netError ? 1 : 0))
+// 断网 / 服务出错(PAGE-BEHAVIOR §5.2):走结果回执,不再自写一条。失败回执不自收,带「刷新」;
+// 每个失败请求都会报一遍,同一句只留一条 —— 去重在 utils/receipt 里。
+watch(() => ui.netError, (e) => { if (e) receipt.fail(e.msg, { label: '刷新', run: reloadPage }) })
+
+// 提示条不止一条时往上让位:更新这条排在回执上面,下面有几条回执就抬几格。
+const toastLift = computed(() => receipts.length)
 
 // 浮层里点条目导航成功后收起(与 MobileNavDrawer「点条目后关抽屉」同义——
 // 「看一眼」到点中目标即结束;SidebarPanel 不在本组件手里,以路由变化为信号)
@@ -193,15 +200,13 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
   <WhatsNewDialog v-if="upd.popupOpen" />
   <ChangelogDialog v-if="upd.historyOpen" @close="upd.historyOpen = false" />
 
-  <!-- 全局网络错误 toast(读路径加载失败的兜底提示,8s 自动消失) -->
+  <!-- 结果回执(十件 ⑧)与确认弹窗(十件 ⑨)的宿主:utils/receipt、utils/ask 往里推,全站只此一处 -->
+  <FPReceiptHost />
+  <FPConfirmHost />
+
   <Teleport to="body">
-    <div v-if="ui.netError" class="fp-net-toast" role="alert">
-      <span class="msg">{{ ui.netError }}</span>
-      <button class="act" @click="reloadPage">刷新</button>
-      <button class="act ghost" @click="ui.dismissNetError()">×</button>
-    </div>
-    <!-- 发新版了请刷新(VERSION-UPDATE-SPEC §6)。复用上面那套深色语言与位置;
-         不自动消失 —— 网络出错那条 8 秒自消,这条要等他处理。 -->
+    <!-- 发新版了请刷新(VERSION-UPDATE-SPEC §6)。深色提示条(.fp-net-toast 那套语言与位置);
+         不自动消失,这条要等他处理。 -->
     <!-- 「本次更新」开着时先不出:提示档(400)盖在模态档(300)之上,会压住弹窗底部的按钮。
          关掉弹窗它立刻出现 —— 两件事一先一后说,不同时说。 -->
     <div v-if="upd.barKind && !upd.popupOpen" class="fp-net-toast fp-upd-toast" :style="{ '--lift': toastLift }" role="alert">
@@ -228,7 +233,7 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
   position: relative;
 }
 
-/* ── 全局网络错误 toast ── */
+/* ── 底部深色提示条(现在只剩版本更新那条用;断网已改走结果回执) ── */
 .fp-net-toast { position:fixed; left:50%; bottom:28px; transform:translateX(-50%); z-index:400;
   display:flex; align-items:center; gap:10px; max-width:min(560px,90vw); padding:10px 14px;
   background:var(--toast-bg); color:var(--text-on-solid); border-radius:var(--radius-md); box-shadow:var(--shadow-toast); font-size:13px;

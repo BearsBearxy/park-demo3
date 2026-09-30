@@ -206,7 +206,7 @@ describe('电费成本总览 · ② 取数失败时不许猜', () => {
     ;(w.vm as unknown as { editMode: boolean }).editMode = true
     await flushPromises()
 
-    expect(w.find('.fp-lderr').exists(), '失败条得在').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '失败条得在').toBe(true)
     expect(w.text()).toContain('后端挂了')
     expect(w.findAll('.ec-in'), '金额/备注行内输入框').toHaveLength(0)
     expect(w.findAll('.ec-nameedit'), '电表名行内输入框').toHaveLength(0)
@@ -260,10 +260,10 @@ describe('电费成本总览 · ④ readErr 只在成功清', () => {
     await flushPromises()
 
     vi.mocked(elecCostApi.entries).mockImplementation(hang as never)
-    await w.find('.fp-lderr button').trigger('click')   // 重试 —— 这一趟永不结算
+    await w.find('.fp-empty.error button').trigger('click')   // 重试 —— 这一趟永不结算
     await nextTick()
 
-    expect(w.find('.fp-lderr').exists(), '失败条不该在重试一开始就消失').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '失败条不该在重试一开始就消失').toBe(true)
     expect(w.findAll('.ec-in'), '在途时不该冒出写入口').toHaveLength(0)
     expect(w.find('.ec-empty').exists(), '在途时不该宣布「本月暂无」').toBe(false)
   })
@@ -275,13 +275,13 @@ describe('电费成本总览 · ④ readErr 只在成功清', () => {
     const w = await toFailedTable()
     ;(w.vm as unknown as { editMode: boolean }).editMode = true
     await flushPromises()
-    expect(w.find('.fp-lderr').exists(), '前提:先失败一次').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '前提:先失败一次').toBe(true)
 
     vi.mocked(elecCostApi.entries).mockResolvedValue(ENTRIES as never)
-    await w.find('.fp-lderr button').trigger('click')       // 重试,这次成功
+    await w.find('.fp-empty.error button').trigger('click')       // 重试,这次成功
     await flushPromises()
 
-    expect(w.find('.fp-lderr').exists(), '成功了失败条还挂着').toBe(false)
+    expect(w.find('.fp-empty.error').exists(), '成功了失败条还挂着').toBe(false)
     expect(w.findAll('.ec-in').length, '成功了写入口没回来').toBeGreaterThan(0)
   })
 })
@@ -305,7 +305,7 @@ describe('电费成本总览 · ⑤ 失败态禁"进"不禁"出"', () => {
     ;(w.vm as unknown as { editMode: boolean }).editMode = true   // 只测按钮本身
     await flushPromises()
 
-    expect(w.find('.fp-lderr').exists(), '前提:确实是失败态').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '前提:确实是失败态').toBe(true)
     expect(done()?.attributes('disabled'), '编辑态里的「完成」被禁掉了 —— 退不出去').toBeUndefined()
   })
 
@@ -474,7 +474,7 @@ describe('电费成本总览 · 首败不转圈', () => {
     await flushPromises()
 
     expect(w.find('.page-spin').exists(), '不许永久转圈').toBe(false)
-    expect(w.find('.fp-lderr').exists(), '失败条要在').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '失败条要在').toBe(true)
     expect(w.text()).toContain('后端挂了')
   })
 })

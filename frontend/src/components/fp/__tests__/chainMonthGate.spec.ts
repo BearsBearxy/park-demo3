@@ -126,7 +126,7 @@ describe('出账月矩阵', () => {
     wire({ meters: ['2025-01'] })
     vi.mocked(allocApi.poolMonths).mockRejectedValue(new Error('后端挂了'))
     const w = await mk()
-    expect(w.find('.fp-lderr').exists()).toBe(true)
+    expect(w.find('.fp-empty.error').exists()).toBe(true)
     expect(w.text()).toContain('后端挂了')
     expect(w.findAll('.bmm-card'), '缺一列的矩阵会被读成「这些月没做过」').toHaveLength(0)
   })

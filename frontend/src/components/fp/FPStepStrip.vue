@@ -18,6 +18,7 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
+import { useScreen } from '@/composables/useTabShells'
 import { iconFor } from '@/components/ds/icon'
 import { useViewport } from '@/composables/useViewport'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
@@ -58,6 +59,13 @@ const props = defineProps<{
 const emit = defineEmits<{ back: [] }>()
 
 const router = useRouter()
+
+// 「换出账月 / 换期」= 切账期:这一屏有没保存的改动先走离开确认(画布 02-A,EDIT-MODE-SPEC §6.1),
+// 点「继续编辑」期不变;0 处改动直接换。拦在按钮上,不在 useEditMode 换期那个 watch 里 —— 那边期已经换了,只能事后 exit。
+const screen = useScreen()
+async function back() {
+  if (await useTabsStore().leaveOk([screen], '离开')) emit('back')
+}
 
 function go(s: Step) {
   // 点当前屏什么都不做：再 push 一次自己只会把浏览状态（筛选、滚动位置）冲掉
@@ -109,7 +117,7 @@ function pick(s: Step) {
 
 <template>
   <div class="fss" :class="{ 'fss--m': tier === 'm', 'fss--s': tier === 's' }">
-    <button v-if="!hideBack" class="fss-back" @click="emit('back')">
+    <button v-if="!hideBack" class="fss-back" @click="back">
       <component :is="iconFor('arrow-left')" :size="13" />{{ backLabel ?? '换出账月' }}
     </button>
     <!-- S 档不写期：标题行里已经写着同一个期，条上再写一遍是拿走 334px 里的一块 -->

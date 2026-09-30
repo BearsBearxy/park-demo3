@@ -1,0 +1,39 @@
+/* v-tip 的气泡(directives/tip.ts)。外观照抄 components/shell/ShellTip.vue 的 .fp-tip:深底白字 12px,
+   只说一句话、不接管点击。挂 body、fixed,位置由指令算好写进 left / top;--ax = 箭头对准触发物中线的横坐标。
+   层级 --z-toast:弹窗、抽屉里的格子也要盖得住(贴附浮层那档 60 会被 300 的弹窗压住)。
+   原来的 title 有写 \n 折行的,pre-line 照样折;长句到 320 宽自己折。 */
+.fp-vtip {
+  --ax: 50%;   /* 指令按触发物中线改写 */
+  position: fixed;
+  z-index: var(--z-toast);
+  pointer-events: none;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 320px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--tip-bg);
+  color: var(--text-on-solid);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: var(--fw-regular);
+  text-align: left;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  box-shadow: var(--shadow-tip);
+  animation: fp-pop-in var(--dur-fast) var(--ease-out);
+}
+.fp-vtip b { font-weight: var(--fw-semibold); }
+.fp-vtip .sub { display: block; color: color-mix(in srgb, var(--text-on-solid) 66%, transparent); }
+.fp-vtip::after {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: var(--ax);
+  margin-left: -6px;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 6px solid var(--tip-bg);
+}
+.fp-vtip.up::after { top: auto; bottom: -6px; border-bottom: none; border-top: 6px solid var(--tip-bg); }

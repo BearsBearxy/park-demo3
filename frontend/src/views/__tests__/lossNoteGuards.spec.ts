@@ -196,7 +196,7 @@ describe('楼栋损耗 · 备注是唯一的写入口', () => {
   it('⑤ 本月没读到(失败态):进不了编辑态,但已经在里面的退得出来', async () => {
     vi.mocked(allocApi.loss).mockRejectedValue(new Error('后端挂了'))
     const w = await open()
-    expect(w.find('.fp-lderr').exists(), '前置:失败条在').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '前置:失败条在').toBe(true)
     const editBtn = () => w.findAll('button').find(b => b.text().includes('编辑模式'))
     // 没读到本月现状时表里是一张逐格 '–' 的假底 —— 对着它写备注，
     // 那一行的 headBuildingId 压根没落进这个月。

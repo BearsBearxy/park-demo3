@@ -12,7 +12,7 @@ const FILES = [
   'views/bills/BillNoticesView.vue', 'views/meters/MeterView.vue', 'views/meters/MeterLedgerGrid.vue', 'views/meters/meter-shared.css',
   'views/params/ParamCenterView.vue', 'App.vue', 'components/ana/AnaPeriodBanner.vue', 'components/fp/FPToast.vue',
   'components/fp/FPSideDrawer.vue', 'components/shell/CommandPalette.vue', 'components/shell/WhatsNewDialog.vue',
-  'views/buildings/BuildingCard.vue', 'views/bills/CompanyBookWindow.vue',
+  'views/buildings/BuildingCard.vue', 'views/bills/CompanyBookWindow.vue', 'components/fp/FPAlertChip.vue',
 ]
 const styles: HTMLStyleElement[] = []
 beforeAll(() => {
@@ -70,6 +70,12 @@ describe('一处一个的浅色值:浅色照旧,暗色换令牌', () => {
   it('❗期间回退提示条:字 = --warn-text(同值),底浅色照旧、暗色 --warn-bg', () => {
     expect(look('<div class="ana-pbanner"></div>', 'div', 'background')).toEqual(['rgb(250,238,218)', 'var(--warn-bg)'])   // #faeeda
     expect(look('<div class="ana-pbanner"></div>', 'div', 'color')).toEqual(['var(--warn-text)', 'var(--warn-text)'])
+  })
+})
+
+describe('--hue-* 实底上的字引 --control-solid-text(DARK-MODE-SPEC)', () => {
+  it('❗入口胶囊筛选生效态:橙实底上的字两种外观都引 --control-solid-text(写白字的话暗色下浅橙底只剩约 2:1)', () => {
+    expect(look('<span class="fac on"></span>', 'span', 'color')).toEqual(['var(--control-solid-text)', 'var(--control-solid-text)'])
   })
 })
 

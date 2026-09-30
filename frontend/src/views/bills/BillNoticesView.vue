@@ -52,7 +52,6 @@ import FPStat from '@/components/fp/FPStat.vue'
 import FPMoreMenu from '@/components/fp/FPMoreMenu.vue'
 import { useViewport } from '@/composables/useViewport'
 import { useTopBarAction } from '@/composables/useTopBarAction'
-import FPAlertChip from '@/components/fp/FPAlertChip.vue'
 import FPAlertPanel, { type AlertGroup } from '@/components/fp/FPAlertPanel.vue'
 import CoefBookWindow from './CoefBookWindow.vue'
 // ── S20 交付链:收款公司/收款簿/两个导出窗口 + 抽屉方格 + 状态流 ──
@@ -873,7 +872,7 @@ function onMore(key: string) {
         <!-- §5.10 筛选:期段控是「反正都要点开的选择器」,M↓ 收进筛选面板 -->
         <Segmented v-if="!narrow" :options="PHASE_OPTS" v-model="phase" size="sm" />
         <!-- 屏级告警入口(§6):位置固定在主控区尾,不随有无告警/批量态变化 -->
-        <FPAlertChip :count="alertCount" @open="alertOpen = true" />
+        <FPAlertPanel v-model:open="alertOpen" :count="alertCount" :groups="allAlertGroups" />
       </div>
       <div class="bn-actions">
         <!-- §5.10 动作:五个只读入口在 M 与 S 同判(narrow)进「⋯」(见 moreItems)。
@@ -1575,9 +1574,6 @@ function onMore(key: string) {
     <FPLockDialogs :locked-by="lockedBy" :evicted-by="evictedBy" :scope="lockScope()"
                    :what="`催缴单 ${noticeYm}`"
                    @taken="onTaken" @close-takeover="lockedBy = null" @close-evicted="evictedBy = null" />
-
-    <!-- 屏级告警抽屉(§6):原「本屏为旧快照」流内条搬到这里,带人话说明与「去重算」动作 -->
-    <FPAlertPanel :open="alertOpen" :groups="allAlertGroups" @close="alertOpen = false" />
   </div>
 </template>
 

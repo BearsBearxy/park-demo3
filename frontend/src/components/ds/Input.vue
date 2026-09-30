@@ -108,7 +108,7 @@ const wrapStyle = computed(() => ({
     <span
       v-if="reserveMsg"
       class="ds-in-msg"
-      :style="{ color: error ? 'var(--hue-red)' : 'var(--text-muted)' }"
+      :style="{ color: error ? 'var(--delta-down-text)' : 'var(--text-muted)' }"
     >{{ error || hint }}</span>
   </div>
 </template>
@@ -122,15 +122,17 @@ const wrapStyle = computed(() => ({
 @media (max-width: 600px) {
   .ds-in-field { --ds-in-fs: var(--fs-input-m); }
 }
-.ds-in-field[data-error] { --ds-in-border: var(--hue-red); }
+/* 报错的红和 base.css .fp-field-err 同一个(--delta-down-text),字和框一种红 */
+.ds-in-field[data-error] { --ds-in-border: var(--delta-down-text); }
 .ds-in-field:has(:focus-visible) { --ds-in-border: var(--status-info); }
 /* 错误态优先:红框在时聚焦不把它盖成蓝的,否则用户一点进去就看不见自己错在哪。 */
-.ds-in-field[data-error]:has(:focus-visible) { --ds-in-border: var(--hue-red); }
+.ds-in-field[data-error]:has(:focus-visible) { --ds-in-border: var(--delta-down-text); }
 
-/* 常驻提示位:高度恰好一行,空着时不可见但占位。**不多留一分** —— 见 reserveMsg 注释 */
+/* 常驻提示位:高度恰好一行,空着时不可见但占位。**不多留一分** —— 见 reserveMsg 注释。
+   12px 字、18 高(画布 06-B ⑤、LAYOUT-STABILITY §4.2),和 base.css .fp-field-err 一个尺寸,站内只一种字段报错 */
 .ds-in-msg {
   display: block;
-  min-height: 14px;
-  font: var(--fw-regular) var(--fs-micro)/14px var(--font-sans);
+  min-height: 18px;
+  font: var(--fw-regular) var(--fs-label)/18px var(--font-sans);
 }
 </style>

@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import IconRail from '@/components/shell/IconRail.vue'
 import { useTabsStore } from '@/stores/tabs'
@@ -90,6 +91,30 @@ describe('IconRail · 角色行(P5)', () => {
     expect(panel.style.left).toBe('17px')
     expect(panel.style.bottom).toBe(`${window.innerHeight - 900 + 8}px`)
     w.unmount()
+  })
+
+  describe('头像的说明气泡', () => {
+    afterEach(() => { vi.useRealTimers(); document.body.innerHTML = '' })
+
+    // v-tip 触屏按下就出、翻到头像上方,正好盖住向上弹的账号菜单最下面「版本更新 / 退出登录」;
+    // tip.ts 文件头也写着图标轨继续用 ShellTip(它没有触屏分支)
+    it('❗触屏点头像不出气泡;鼠标停 500ms 照样出名字', async () => {
+      vi.useFakeTimers()
+      useAuthStore().displayName = '周明'
+      const w = mount(IconRail, { attachTo: document.body, global: { stubs: { PopoverItem: true, Avatar: true } } })
+      const btn = w.find('.fp-rail-user').element
+      const e = new MouseEvent('pointerdown', { bubbles: true })
+      Object.defineProperty(e, 'pointerType', { value: 'touch' })
+      btn.dispatchEvent(e)
+      await nextTick()
+      expect(document.querySelector('.fp-tip')).toBeNull()
+
+      btn.closest('.fp-tipw')!.dispatchEvent(new MouseEvent('mouseenter'))
+      vi.advanceTimersByTime(500)
+      await nextTick()
+      expect(document.querySelector('.fp-tip b')?.textContent).toBe('周明')
+      w.unmount()
+    })
   })
 
 })

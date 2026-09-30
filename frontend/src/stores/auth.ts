@@ -12,6 +12,9 @@ export interface Grant {
   expiresAt: number
 }
 
+/** 还没接改动数的编辑器按 1 处算。全站共用这一个引用,去重时它们只算一次(见 sumDirty)。 */
+const ONE = () => 1
+
 export const useAuthStore = defineStore('auth', () => {
   // 「记住登录状态」双轨:勾选走 localStorage(跨会话),不勾走 sessionStorage(关标签页即失效)。
   // 初始化两边都看;api/index.ts 请求拦截器取 token 同此口径。
@@ -194,17 +197,35 @@ export const useAuthStore = defineStore('auth', () => {
   // 登记时带上「在哪一屏」(页签 value,useScreen() 取):页签条判「这一屏我是不是正在编辑」查的就是这里
   // (TAB-BAR-SPEC §2)。改前页签条看的是编辑锁,锁和屏不一一对应 —— 收款簿不握锁漏判,
   // 出账链三屏共用一把锁互相误判(2026-09-18 对抗复查)。
-  const editors = ref(new Map<symbol, string>())
-  function openEditor(id: symbol, screen = '') { editors.value.set(id, screen) }
+  //
+  // 第三参 dirty = 这个编辑器此刻有几处没保存的改动(EDIT-MODE-SPEC §6.1:0 处不弹、不拦)。
+  // 缺省按 1 —— 还没接改动数的编辑器宁可多问一句。
+  const editors = ref(new Map<symbol, { screen: string; dirty: () => number }>())
+  function openEditor(id: symbol, screen = '', dirty: () => number = ONE) { editors.value.set(id, { screen, dirty }) }
   function closeEditor(id: symbol) { editors.value.delete(id) }
   /** 此刻有没有屏在编辑模式。editors 是全站唯一的编辑态登记表,别处要判断「能不能打断他」都读这个
    *  (版本更新弹窗:编辑态不弹,VERSION-UPDATE-SPEC §3)。 */
   const editing = computed(() => editors.value.size > 0)
   /** 这一屏(页签 value)有没有东西在编辑态。 */
   function editingOn(screen: string): boolean {
-    for (const s of editors.value.values()) if (s === screen) return true
+    for (const e of editors.value.values()) if (e.screen === screen) return true
     return false
   }
+  /**
+   * 改动数合计。**同一个 dirty 函数只算一次**:useEditMode 与它底下的锁各登记一条、
+   * 带的是同一个 dirty,不去重就成了 2 倍;缺省的都是同一个 ONE,没接改动数的屏也只算 1。
+   */
+  function sumDirty(match: (screen: string) => boolean): number {
+    const fns = new Set<() => number>()
+    for (const e of editors.value.values()) if (match(e.screen)) fns.add(e.dirty)
+    let n = 0
+    for (const f of fns) n += f()
+    return n
+  }
+  /** 这一屏(页签 value)有几处没保存的改动。关页签 / 退出登录的离开确认按它问(0 不弹)。 */
+  function dirtyOn(screen: string): number { return sumDirty((s) => s === screen) }
+  /** 全站没保存的改动合计。关浏览器 / 刷新只在 > 0 时拦。 */
+  const dirtyTotal = computed(() => sumDirty(() => true))
 
   /**
    * 关页面前的二次确认(用户拍板 2026-08-26:「和所有别的网页一样,开着编辑模式没保存
@@ -218,14 +239,13 @@ export const useAuthStore = defineStore('auth', () => {
    *   「系统可能不会保存您所做的更改」。自定义文案在 2016 年后被各家统一移除了
    *   (钓鱼页面拿它冒充系统弹窗)。returnValue 是给老 Chrome 的,新标准只看 preventDefault。
    *
-   * ⚠ 判据是「在不在编辑态」,不是「改没改过」。全站没有统一的脏标记
-   *   (附表页头有 dirty、台账有 draft、系数簿有 stash,各是各的),
-   *   而在编辑态里本来就攥着一把锁 —— 直接关掉不只丢草稿,还让那把锁走 3 分钟超时。
-   *   宁可多问一句。
+   * ⚠ 判据是「有没有没保存的改动」(2026-09-30 改,EDIT-MODE-SPEC §6.1 / 画布 02-D):
+   *   编辑中 0 处改动不拦,直接关 —— 锁由 useEditLock 挂在 pagehide 上还,不靠这道框。
+   *   还没接改动数的编辑器按 1 算(openEditor 缺省),宁可多问一句。
    */
   if (typeof window !== 'undefined') {
     window.addEventListener('beforeunload', (e: BeforeUnloadEvent) => {
-      if (editors.value.size === 0) return
+      if (dirtyTotal.value === 0) return
       e.preventDefault()
       e.returnValue = ''
     })
@@ -309,6 +329,6 @@ export const useAuthStore = defineStore('auth', () => {
   return { token, me, drifted, displayName, role, permissions, navLayers, roleNames, mustChangePassword,
            isAuthed, isReadonly, roleLabel, landing, roleHome,
            can, hasOwn, authorizerOf, grants: liveGrants, elevationLeftMs, requestElevation, endElevation, refreshElevation,
-           openEditor, closeEditor, editing, editingOn, loginSeq,
+           openEditor, closeEditor, editing, editingOn, dirtyOn, dirtyTotal, loginSeq,
            login, logout, clearMustChangePassword, setToken }
 })

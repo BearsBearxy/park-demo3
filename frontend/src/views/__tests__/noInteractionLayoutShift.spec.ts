@@ -188,11 +188,11 @@ const ERR_SLOT_WHITELIST: Record<string, string> = {
   //   .lg-bar.err / .sr-bar.err / .su-bar.err）。它们的样式逐字节相同，已统一收编成
   //   `components/fp/FPLoadError.vue`（抄表屏的 .mt-empty.bad 同批，它本就不在表里）。
   //
-  //   收编之后**不需要新条目**：本扫描找的是「带 v-if 且 class 像错误条」的元素，
-  //   而 FPLoadError 的根节点自己没有 v-if —— v-if 在宿主那侧、且挂在组件标签上，
-  //   标签本身没有错误类名，所以扫描根本不会命中。
-  //   （护栏没有变弱：这条扫描管的是 §4.2「表单校验位要常驻」，
-  //    而加载失败是 §6 明确允许的流内条，本来就是靠豁免过关的。）
+  //   2026-10-01：FPLoadError 改成 `FPEmpty tone="error"` 的封装 —— **换掉内容区本身**
+  //   （图标 + 一句 + 重试，LAYOUT-STABILITY §3），不再是表格上方的流内条；调用处让它和表格互斥。
+  //   不需要新条目：本扫描找的是「带 v-if 且 class 像错误条」的原生元素，
+  //   而 FPLoadError 的 v-if 挂在宿主那侧的组件标签上，标签本身没有错误类名，扫描根本不会命中。
+  //   （护栏没有变弱：这条扫描管的是 §4.2「表单校验位要常驻」，加载失败本就不归它管。）
   'views/params/ParamChangesDrawer.vue .pc-err':
     'A 加载失败态：抽屉打开即拉数据，err / 加载中 / 空态 / 表格是一条 v-if→v-else 链，任何时刻恰好渲染一个',
   'views/params/ParamHistoryDrawer.vue .ph-err':

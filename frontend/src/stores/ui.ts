@@ -32,15 +32,12 @@ export const useUiStore = defineStore('ui', () => {
     mql.addEventListener('change', (e) => { sbOpen.value = !e.matches })
   }
 
-  // 全局网络错误 toast(api/index.ts 拦截器上报;读路径加载失败不再只剩静默转圈)
-  const netError = ref<string | null>(null)
-  let netErrTimer: number | undefined
-  function reportNetError(msg: string) {
-    netError.value = msg
-    clearTimeout(netErrTimer)
-    netErrTimer = window.setTimeout(() => { netError.value = null }, 8000)
-  }
-  function dismissNetError() { clearTimeout(netErrTimer); netError.value = null }
+  // 全局网络错误(api/index.ts 拦截器上报;读路径加载失败不再只剩静默转圈)。AppShell 看它出失败回执。
+  // 每报一次换一个新对象:同一句连报 watch 也要响 —— 用户点 × 关掉回执后接着再失败,不能一点反馈都没有
+  // (旧写法存字符串,同一句值不变 watch 不响)。同一句只留一条,去重在 utils/receipt。
+  // 不在这里直接推回执:登录页上报的(外壳没挂)不该攒到登录之后才冒出来。
+  const netError = ref<{ msg: string } | null>(null)
+  function reportNetError(msg: string) { netError.value = { msg } }
 
   // 路由导航中(P2-3):45 屏全是 () => import(),chunk 下载完才 confirm 导航,
   // 这段空窗里页签高亮/面包屑/内容区全停在上一页 —— 本 flag 是那期间唯一的可见反馈来源。
@@ -60,5 +57,5 @@ export const useUiStore = defineStore('ui', () => {
   // ⚠ 别裸写这个字段,走 composables/useTopBarAction.ts —— 它管换屏/KeepAlive 停用时的清场。
   const topBarAction = ref<TopBarAction | null>(null)
 
-  return { sbOpen, toggleSidebar, closeTransient, netError, reportNetError, dismissNetError, navigating, startNav, endNav, paletteReq, requestPalette, topBarAction }
+  return { sbOpen, toggleSidebar, closeTransient, netError, reportNetError, navigating, startNav, endNav, paletteReq, requestPalette, topBarAction }
 })

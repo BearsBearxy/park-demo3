@@ -22,6 +22,11 @@ export interface EditModeOpts {
    * (光伏/充电桩分栋抄表、母册两屏)与不在审核范围内的十几屏一个字不改。
    */
   reviewKey?: () => string | string[] | null
+  /**
+   * 本屏此刻有几处没保存的改动(EDIT-MODE-SPEC §6.1)。关浏览器 / 关页签 / 退出登录按它问,0 处不拦。
+   * 不传 = 按 1 算(宁可多问)。同一个函数也递给底下的锁,auth 按函数去重,不会算成两倍。
+   */
+  dirty?: () => number
 }
 
 /**
@@ -77,7 +82,7 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
    * ⚠ 权限齐 ≠ 进得去。这是 P1 加的第二道闸 —— 在它之前，两个都有 entry:edit 的人
    *   同一秒进同一期，两边都成功，后保存的整片覆盖前一个，且两边都提示「保存成功」。
    */
-  const lock = useEditLock(() => exit())
+  const lock = useEditLock(() => exit(), undefined, opts.dirty)
   const { lockedBy, evictedBy } = lock
   /** 这一期此刻被谁占着（不用点按钮就知道）。自己不算。 */
   const heldByOther = lock.watchScope(() => opts.scope?.() ?? null)
@@ -86,7 +91,7 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
   // 用 watch 而不是在 toggle() 里加减：深链(?edit=1 / gotoDiff)会直接写 editMode.value = true，
   // 只在 toggle 里记的话那些路径进了编辑态却没登记，最后一个关掉时算不准。
   watch(editMode, (on) => {
-    if (on) auth.openEditor(meId, screen)
+    if (on) auth.openEditor(meId, screen, opts.dirty)
     else auth.closeEditor(meId)
   })
   /** 提权弹窗要补的权限点。非空即打开弹窗。 */

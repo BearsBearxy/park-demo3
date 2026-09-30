@@ -8,6 +8,7 @@ import { useUiStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
 import { usePresenceStore } from '@/stores/presence'
 import { BRAND } from '@/brand'
+import { receipts } from '@/utils/receipt'
 
 const route = reactive({ meta: { value: 'data-home' } as Record<string, string>, path: '/data-home' })
 vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => ({ push: vi.fn() }) }))
@@ -45,6 +46,7 @@ describe('AppShell · 刷新提示条', () => {
     setActivePinia(createPinia())
     localStorage.clear()
     document.body.innerHTML = ''
+    receipts.splice(0)
   })
   afterEach(() => {
     usePresenceStore().stop()
@@ -124,6 +126,30 @@ describe('AppShell · 刷新提示条', () => {
     upd.popupOpen = false
     await nextTick()
     expect(document.querySelector('.fp-upd-toast')).toBeTruthy()
+    w.unmount()
+  })
+
+  it('❗断网 ⇒ 底部一条带「刷新」的失败回执,不再自写 .fp-net-toast;同一句再报不叠第二条', async () => {
+    const w = mountShell()
+    const ui = useUiStore()
+    const shown = () => [...document.querySelectorAll('.frh .fpt')]
+    ui.reportNetError('网络异常或服务不可用，请稍后重试')
+    await nextTick()
+    expect(shown().map((e) => e.querySelector('.fpt-m')!.textContent)).toEqual(['网络异常或服务不可用，请稍后重试'])
+    expect([...shown()[0].querySelectorAll('button')].map((b) => b.textContent?.trim())).toEqual(['刷新', ''])   // 刷新 + ×
+    expect(document.querySelector('.fp-net-toast')).toBeNull()
+
+    ui.reportNetError('网络异常或服务不可用，请稍后重试')   // 连报同一句:不叠第二条
+    await nextTick()
+    expect(shown().length).toBe(1)
+
+    // 用户点 × 关掉,接着同一句再失败:要再出(对抗复查:旧写法 netError 存字符串,同一句值不变 watch 不响,屏上什么都没有)
+    shown()[0].querySelector<HTMLButtonElement>('.fpt-x')!.click()
+    await nextTick()
+    expect(shown().length, '前置:点 × 收了').toBe(0)
+    ui.reportNetError('网络异常或服务不可用，请稍后重试')
+    await nextTick()
+    expect(shown().length).toBe(1)
     w.unmount()
   })
 

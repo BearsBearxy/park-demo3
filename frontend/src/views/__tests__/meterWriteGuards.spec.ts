@@ -303,7 +303,7 @@ describe('园区抄表 · 编辑态被接管走之后写口自守', () => {
     vi.mocked(metersApi.readings).mockRejectedValue(new Error('后端挂了'))
     await vm.loadReadings()
     await flushPromises()
-    expect(w.find('.fp-lderr').exists(), '前提:失败条已经上屏').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '前提:失败条已经上屏').toBe(true)
 
     const done = w.find('button.fp-emb')
     expect(done.text(), '前提:按钮此刻是编辑态的那颗「完成」').toContain('完成')

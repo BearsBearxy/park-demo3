@@ -65,7 +65,6 @@ import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import Input from '@/components/ds/Input.vue'
 import Segmented from '@/components/ds/Segmented.vue'
-import FPAlertChip from '@/components/fp/FPAlertChip.vue'
 import FPAlertPanel, { type AlertGroup } from '@/components/fp/FPAlertPanel.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
@@ -961,7 +960,7 @@ async function delPool() {
       </div>
       <div class="pl-actions">
         <!-- §6 屏级告警入口:位置固定,有没有告警都渲染(quiet 态) —— 工具条不因告警增减挪一像素 -->
-        <FPAlertChip :count="alertCount" @open="alertOpen = true" />
+        <FPAlertPanel v-model:open="alertOpen" :count="alertCount" :groups="alertGroups" align="end" />
         <Button variant="outline" size="sm" :disabled="bands.length === 0" @click="onExport">
           <template #leading><component :is="iconFor('download')" :size="14" /></template>
           导出当月
@@ -1467,9 +1466,6 @@ async function delPool() {
         </Button>
       </template>
     </FPDrawer>
-
-    <!-- §6 屏级告警抽屉:快照过期 / 本次生成告警 / 池成员变动 -->
-    <FPAlertPanel :open="alertOpen" :groups="alertGroups" @close="alertOpen = false" />
   </div>
 </template>
 

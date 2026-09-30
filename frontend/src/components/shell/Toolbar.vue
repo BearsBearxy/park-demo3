@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Toolbar — ported from shell.jsx .fp-toolbar / AppToolbar.
-import { computed, ref, defineAsyncComponent, onBeforeUnmount, watch } from 'vue'
+import { computed, ref, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePresenceStore } from '@/stores/presence'
 import { useAuthStore } from '@/stores/auth'
@@ -21,6 +21,7 @@ import { useFavoritesStore, MAX_FAVS } from '@/stores/favorites'
 import { fpBuildRoutes, fpFindLayer } from '@/nav/fpNav'
 import ShellTip from '@/components/shell/ShellTip.vue'
 import { useViewport } from '@/composables/useViewport'
+import { receipt } from '@/utils/receipt'
 
 const emit = defineEmits<{ 'open-command': [] }>()
 
@@ -88,25 +89,16 @@ function goLayerHome() {
 // ── ☆ 收藏(TAB-BAR-SPEC §6.3)。2026-09-18 前它是「把预览页签钉成常驻」,预览槽取消后改成收藏 ──
 const favs = useFavoritesStore()
 const starred = computed(() => favs.has(activeValue.value))
-/** ☆ 下方的深色提示条:'added' = 已收藏(带撤销);'full' = 满了。4 秒后、或换了屏就收起。 */
-const starNote = ref<'added' | 'full' | null>(null)
-/** 刚收藏的是哪一屏 —— 撤销撤它,不撤「现在停在哪」。 */
-let starredV = ''
-let starTimer: ReturnType<typeof setTimeout> | undefined
+/**
+ * 收藏走全站结果回执(TAB-BAR-SPEC §6.3,画布 06-B ⑧):成功 4 秒自收、带「撤销」;满了是警告,不自收。
+ * 撤销撤的是**刚收藏的那一屏**(v 在闭包里)—— 回执是全站的,换了屏还在,不能撤「现在停在哪」。
+ */
 function toggleStar() {
-  const r = favs.toggle(activeValue.value)
-  clearTimeout(starTimer)
-  starredV = activeValue.value
-  starNote.value = r === 'added' || r === 'full' ? r : null
-  if (starNote.value) starTimer = setTimeout(() => { starNote.value = null }, 4000)
+  const v = activeValue.value
+  const r = favs.toggle(v)
+  if (r === 'added') receipt.ok('已收藏，在「首页」上能找到', { label: '撤销', run: () => favs.remove(v) })
+  else if (r === 'full') receipt.warn(`最多收藏 ${MAX_FAVS} 个，先在首页去掉几个`)
 }
-function undoStar() {
-  clearTimeout(starTimer)
-  favs.remove(starredV)
-  starNote.value = null
-}
-watch(activeValue, () => { clearTimeout(starTimer); starNote.value = null })
-onBeforeUnmount(() => clearTimeout(starTimer))
 
 // 上下文 chip:面包屑后面的常驻预留位(§6)。无期显「—」而不是 v-if ——
 // 一进一出会把它右边的东西推着走,LAYOUT-STABILITY §1 铁律禁止。
@@ -149,17 +141,13 @@ const ctxText = computed(() => {
       <ShellTip title="这一页现在看的是哪一期、哪家公司" align="start">
         <span class="fp-ctx-chip">{{ ctxText }}</span>
       </ShellTip>
-      <!-- ☆ 收藏:和浏览器地址栏右边的星一个位置(§6.1) -->
+      <!-- ☆ 收藏:和浏览器地址栏右边的星一个位置(§6.1);收藏成没成走底部结果回执 -->
       <span class="fp-star">
         <ShellTip :title="starred ? '取消收藏' : '收藏此页'" :sub="starred ? '' : '收藏后在「首页」上一点就到'">
           <IconButton :aria-label="starred ? '取消收藏' : '收藏此页'" :aria-pressed="String(starred)" @click="toggleStar">
             <Star :size="16" :class="{ 'fp-star-on': starred }" />
           </IconButton>
         </ShellTip>
-        <span v-if="starNote" class="fp-star-note" role="status">
-          <template v-if="starNote === 'added'">已收藏，在「首页」上能找到<button type="button" class="act" @click="undoStar">撤销</button></template>
-          <template v-else>最多收藏 {{ MAX_FAVS }} 个，先在首页去掉几个</template>
-        </span>
       </span>
     </template>
 
@@ -302,22 +290,6 @@ button.fp-crumb-page.lk:hover {
 
 .fp-star { position: relative; display: inline-flex; margin-left: -4px; }
 .fp-star-on { fill: var(--hue-blue); color: var(--hue-blue); }
-/* 收藏提示条:☆ 正下方,深底;和底部网络提示同一套颜色(§6.3)。贴附浮层,120ms 长出 */
-.fp-star-note {
-  position: absolute; top: calc(100% + 8px); left: -12px; z-index: var(--z-popover);
-  display: inline-flex; align-items: center; gap: 10px;
-  padding: 8px 12px; border-radius: var(--radius-md);
-  background: var(--toast-bg); color: var(--text-on-solid);
-  font-size: var(--fs-label); line-height: 18px; white-space: nowrap;
-  box-shadow: var(--shadow-toast);   /* 待加的 --shadow-toast:暗色下多一圈 1px 亮边 */
-  animation: fp-pop-in var(--dur-fast) var(--ease-out);
-}
-.fp-star-note .act {
-  height: 24px; padding: 0 9px;
-  border: 1px solid color-mix(in srgb, var(--text-on-solid) 45%, transparent); border-radius: var(--radius-sm);
-  background: transparent; color: var(--text-on-solid); font-size: var(--fs-label); cursor: pointer;
-}
-.fp-star-note .act:hover { background: color-mix(in srgb, var(--text-on-solid) 14%, transparent); }
 
 .fp-toolbar-right {
   margin-left: auto;

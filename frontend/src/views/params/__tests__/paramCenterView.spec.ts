@@ -335,7 +335,7 @@ describe('ParamCenterView 告警 chip + 抽屉', () => {
     ...STATUS, stale: true, pendingChanges: 2, lastChangeAt: '2026-08-18T09:20:00',
     otherMonthsAffected: ['2023-08', '2023-10'],
   }
-  const drawer = () => document.querySelector('.fp-sdw')
+  const drawer = () => document.querySelector('.fap')   // 问题面板(T07:原右侧抽屉 .fp-sdw)
   const openChip = async (w: Awaited<ReturnType<typeof mountPage>>) => {
     await w.find('button.fac').trigger('click')
     await flushPromises()

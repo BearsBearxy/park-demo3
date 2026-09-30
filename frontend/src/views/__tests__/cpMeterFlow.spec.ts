@@ -178,7 +178,7 @@ describe('分桩充电明细 · 选期动线', () => {
 
   it('❗换月取数失败 → 说出来 + 清空,不许「新期标题 + 上一期数字」', async () => {
     // 红线:CpMeterView.vue:136-142 失败分支删掉(裸 await)或不清 readings ——
-    // .fp-lderr 不出现 / 屏上是 3 月的数顶着 7 月的期标。
+    // .fp-empty.error 不出现 / 屏上是 3 月的数顶着 7 月的期标。
     vi.mocked(cpMeterApi.readings).mockResolvedValue(MAR as never)
     const w = await open()
     await w.findAll('.bmm-card')[2].trigger('click')   // 2025-03,有数据
@@ -192,7 +192,7 @@ describe('分桩充电明细 · 选期动线', () => {
     await flushPromises()
 
     expect(w.find('.cm-per').text(), '期标已经是新期').toBe('2025-07')
-    expect(w.find('.fp-lderr').exists(), '失败必须说出来').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '失败必须说出来').toBe(true)
     expect(w.text()).toContain('后端挂了')
   })
 
@@ -201,7 +201,7 @@ describe('分桩充电明细 · 选期动线', () => {
     // 或 :405 的 :error 不接 —— 失败静默,矩阵永远转圈。
     vi.mocked(cpMeterApi.months).mockRejectedValue(new Error('后端挂了'))
     const w = await open()
-    expect(w.find('.fp-lderr').exists()).toBe(true)
+    expect(w.find('.fp-empty.error').exists()).toBe(true)
     expect(w.text()).toContain('后端挂了')
     expect(w.findAll('.bmm-card')).toHaveLength(0)
   })
@@ -230,7 +230,7 @@ describe('分桩充电明细 · 取数失败时不许猜', () => {
     ;(w.vm as unknown as { editMode: boolean }).editMode = true
     await flushPromises()
 
-    expect(w.find('.fp-lderr').exists(), '失败条得在').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '失败条得在').toBe(true)
     expect(w.findAll('.cm-edit'), '桩名/运营商/电表的行内输入框').toHaveLength(0)
     expect(btn(w, '导入'), '导入整月 Excel 的入口').toBeUndefined()
   })
@@ -248,7 +248,7 @@ describe('分桩充电明细 · 取数失败时不许猜', () => {
     // `!loadErr &&` 删掉 —— 失败时 readings 被清成 [],「暂无」把失败说成「真的没有」。
     vi.mocked(cpMeterApi.readings).mockRejectedValue(new Error('后端挂了'))
     const w = await toTable()
-    expect(w.find('.fp-lderr').exists()).toBe(true)
+    expect(w.find('.fp-empty.error').exists()).toBe(true)
     expect(w.find('.cm-empty').exists(), '「暂无记录」把失败说成了「真的没有」').toBe(false)
   })
 
@@ -288,7 +288,7 @@ describe('分桩充电明细 · 取数失败时不许猜', () => {
     vi.mocked(cpMeterApi.stations).mockClear()
     vi.mocked(cpMeterApi.readings).mockClear()
 
-    await w.find('.fp-lderr button').trigger('click')
+    await w.find('.fp-empty.error button').trigger('click')
     await flushPromises()
     expect(cpMeterApi.readings, '挂的那份要重来').toHaveBeenCalled()
     expect(cpMeterApi.stations, '好好的那份不必再拉一遍').not.toHaveBeenCalled()
@@ -330,10 +330,10 @@ describe('分桩充电明细 · 门不许在错误的时机敞开', () => {
     await flushPromises()
 
     vi.mocked(cpMeterApi.readings).mockImplementation(hang as never)
-    await w.find('.fp-lderr button').trigger('click')   // 重试 —— 这一趟永不结算
+    await w.find('.fp-empty.error button').trigger('click')   // 重试 —— 这一趟永不结算
     await nextTick()
 
-    expect(w.find('.fp-lderr').exists(), '失败条不该在重试一开始就消失').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '失败条不该在重试一开始就消失').toBe(true)
     expect(btn(w, '导出')!.attributes('disabled'), '在途时导出必须仍禁用').toBeDefined()
     expect(w.findAll('.cm-edit'), '在途时不该冒出写入口').toHaveLength(0)
     expect(w.find('.cm-empty').exists(), '在途时不该宣布「本月暂无」').toBe(false)
@@ -347,13 +347,13 @@ describe('分桩充电明细 · 门不许在错误的时机敞开', () => {
     const w = await toTable()
     ;(w.vm as unknown as { editMode: boolean }).editMode = true
     await flushPromises()
-    expect(w.find('.fp-lderr').exists(), '前提:先失败一次').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '前提:先失败一次').toBe(true)
 
     vi.mocked(cpMeterApi.readings).mockResolvedValue(MAR as never)
-    await w.find('.fp-lderr button').trigger('click')       // 重试,这次成功
+    await w.find('.fp-empty.error button').trigger('click')       // 重试,这次成功
     await flushPromises()
 
-    expect(w.find('.fp-lderr').exists(), '成功了失败条还挂着').toBe(false)
+    expect(w.find('.fp-empty.error').exists(), '成功了失败条还挂着').toBe(false)
     expect(btn(w, '导出')!.attributes('disabled'), '成功了导出还禁着').toBeUndefined()
     expect(w.findAll('.cm-edit').length, '成功了写入口没回来').toBeGreaterThan(0)
   })
@@ -495,7 +495,7 @@ describe('分桩充电明细 · 门不许在错误的时机敞开', () => {
     ;(w.vm as unknown as { editMode: boolean }).editMode = true   // 换期守卫会退出,这里只测按钮
     await flushPromises()
 
-    expect(w.find('.fp-lderr').exists(), '前提:确实是失败态').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '前提:确实是失败态').toBe(true)
     expect(done()?.attributes('disabled'), '编辑态里的「完成」被禁掉了 —— 退不出去').toBeUndefined()
   })
 

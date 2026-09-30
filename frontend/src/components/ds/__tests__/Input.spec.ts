@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import Input from '../Input.vue'
 
 /**
@@ -71,6 +73,21 @@ describe('ds/Input —— 提示位必须常驻（LAYOUT-STABILITY-SPEC §4.2）
     const filled = mount(Input, { props: { modelValue: '', error: '账号或密码错误' } })
     expect(filled.findAll('*').length).toBe(empty.findAll('*').length)
     expect(filled.get('.ds-in-msg').text()).toBe('账号或密码错误')
+  })
+
+  it('❗报错行 12px 字、18 高常驻;红字和红框同一个 --delta-down-text(和 base.css .fp-field-err 一套,画布 06-B ⑤)', () => {
+    // 组件自己的 <style> 塞进 document 读 getComputedStyle(同 darkOverrides.spec);令牌 jsdom 不求值,判据是令牌名
+    const st = document.createElement('style')
+    st.textContent = [...readFileSync(join(__dirname, '../Input.vue'), 'utf8').matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]).join('\n')
+    document.head.appendChild(st)
+    const w = mount(Input, { props: { modelValue: '', error: '账号或密码错误' }, attachTo: document.body })
+    const msg = w.get('.ds-in-msg').element as HTMLElement
+    expect(getComputedStyle(msg).minHeight).toBe('18px')
+    expect(getComputedStyle(msg).getPropertyValue('font')).toBe('var(--fw-regular) var(--fs-label)/18px var(--font-sans)')
+    expect(msg.style.color).toBe('var(--delta-down-text)')
+    expect(getComputedStyle(w.get('.ds-in-field').element).getPropertyValue('--ds-in-border').trim()).toBe('var(--delta-down-text)')
+    w.unmount()
+    st.remove()
   })
 
   it('error 优先于 hint', () => {

@@ -39,7 +39,9 @@ watch(userMenuOpen, (open) => {
   userMenuStyle.value = { position: 'fixed', top: 'auto', left: `${r.left}px`, bottom: `${window.innerHeight - r.top + 8}px` }
 })
 
-function onLogout() {
+// 退出登录会卸掉所有页签:有没保存改动的逐页先走离开确认(画布 02-A),点「继续编辑」就不退;0 处改动直接退
+async function onLogout() {
+  if (!(await tabsStore.leaveOk(tabsStore.tabs.map(t => t.value)))) return
   auth.logout()
   router.push('/login')
 }
@@ -94,13 +96,16 @@ function goLayer(layer: NavLayer) {
       <!-- 账号菜单:向上弹(头像在屏幕左下角,默认向下会出屏) -->
       <Popover v-model="userMenuOpen" :width="200" :style="userMenuStyle">
         <template #trigger>
-          <button ref="userBtn" class="fp-rail-user" :title="auth.displayName ?? '未登录'" aria-label="当前账号">
-            <Avatar :name="auth.displayName ?? '—'" :text="personNick(auth.displayName)" :size="32" />
-          </button>
+          <!-- ShellTip 不用 v-tip:v-tip 触屏按下就出,气泡翻到头像上方,正好盖住向上弹的菜单最下面「版本更新 / 退出登录」 -->
+          <ShellTip :title="auth.displayName ?? '未登录'" align="start" up>
+            <button ref="userBtn" class="fp-rail-user" aria-label="当前账号">
+              <Avatar :name="auth.displayName ?? '—'" :text="personNick(auth.displayName)" :size="32" />
+            </button>
+          </ShellTip>
         </template>
         <div class="fp-user-menu">
           <div class="fp-user-name">{{ auth.displayName ?? '未登录' }}</div>
-          <div class="fp-user-role" :title="auth.roleLabel" :class="{ ro: auth.isReadonly }">{{ auth.roleLabel }}</div>
+          <div v-tip="auth.roleLabel" class="fp-user-role" :class="{ ro: auth.isReadonly }">{{ auth.roleLabel }}</div>
           <div class="fp-user-sep" />
           <div class="fp-user-appr">
             <div class="h"><SunMoon :size="14" />外观</div>

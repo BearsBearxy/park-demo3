@@ -191,7 +191,7 @@ describe('光伏分栋抄表 · 选期动线', () => {
     await flushPromises()
 
     expect(w.find('.pm-per').text(), '期标已经是新期').toBe('2025-07')
-    expect(w.find('.fp-lderr').exists(), '失败必须说出来').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '失败必须说出来').toBe(true)
     expect(w.text()).toContain('后端挂了')
   })
 
@@ -219,7 +219,7 @@ describe('光伏分栋抄表 · 选期动线', () => {
   it('账期清单拉不到 → 说出来 + 给重试，不给半张矩阵', async () => {
     vi.mocked(pvMeterApi.months).mockRejectedValue(new Error('后端挂了'))
     const w = await open()
-    expect(w.find('.fp-lderr').exists()).toBe(true)
+    expect(w.find('.fp-empty.error').exists()).toBe(true)
     expect(w.text()).toContain('后端挂了')
     expect(w.findAll('.bmm-card')).toHaveLength(0)
   })
@@ -252,7 +252,7 @@ describe('光伏分栋抄表 · 取数失败时不许猜', () => {
     ;(w.vm as unknown as { editMode: boolean }).editMode = true
     await flushPromises()
 
-    expect(w.find('.fp-lderr').exists(), '失败条得在').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '失败条得在').toBe(true)
     expect(w.findAll('.pm-edit'), '电站档案的行内输入框').toHaveLength(0)
     expect(btn(w, '导入'), '导入整月 Excel 的入口').toBeUndefined()
   })
@@ -268,7 +268,7 @@ describe('光伏分栋抄表 · 取数失败时不许猜', () => {
   it('❗失败条与「本月暂无记录」不许同屏 —— 后者会被读成结论', async () => {
     vi.mocked(pvMeterApi.readings).mockRejectedValue(new Error('后端挂了'))
     const w = await toTable()
-    expect(w.find('.fp-lderr').exists()).toBe(true)
+    expect(w.find('.fp-empty.error').exists()).toBe(true)
     expect(w.find('.pm-empty').exists(), '「暂无记录」把失败说成了「真的没有」').toBe(false)
   })
 
@@ -307,7 +307,7 @@ describe('光伏分栋抄表 · 取数失败时不许猜', () => {
     vi.mocked(pvMeterApi.stations).mockClear()
     vi.mocked(pvMeterApi.readings).mockClear()
 
-    await w.find('.fp-lderr button').trigger('click')
+    await w.find('.fp-empty.error button').trigger('click')
     await flushPromises()
     expect(pvMeterApi.readings, '挂的那份要重来').toHaveBeenCalled()
     expect(pvMeterApi.stations, '好好的那份不必再拉一遍').not.toHaveBeenCalled()
@@ -351,10 +351,10 @@ describe('光伏分栋抄表 · 门不许在错误的时机敞开', () => {
     await flushPromises()
 
     vi.mocked(pvMeterApi.readings).mockImplementation(hang as never)
-    await w.find('.fp-lderr button').trigger('click')   // 重试 —— 这一趟永不结算
+    await w.find('.fp-empty.error button').trigger('click')   // 重试 —— 这一趟永不结算
     await nextTick()
 
-    expect(w.find('.fp-lderr').exists(), '失败条不该在重试一开始就消失').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '失败条不该在重试一开始就消失').toBe(true)
     expect(btn(w, '导出')!.attributes('disabled'), '在途时导出必须仍禁用').toBeDefined()
     expect(w.findAll('.pm-edit'), '在途时不该冒出写入口').toHaveLength(0)
     expect(w.find('.pm-empty').exists(), '在途时不该宣布「本月暂无」').toBe(false)
@@ -369,13 +369,13 @@ describe('光伏分栋抄表 · 门不许在错误的时机敞开', () => {
     const w = await toTable()
     ;(w.vm as unknown as { editMode: boolean }).editMode = true
     await flushPromises()
-    expect(w.find('.fp-lderr').exists(), '前提:先失败一次').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '前提:先失败一次').toBe(true)
 
     vi.mocked(pvMeterApi.readings).mockResolvedValue(MAR as never)
-    await w.find('.fp-lderr button').trigger('click')       // 重试,这次成功
+    await w.find('.fp-empty.error button').trigger('click')       // 重试,这次成功
     await flushPromises()
 
-    expect(w.find('.fp-lderr').exists(), '成功了失败条还挂着').toBe(false)
+    expect(w.find('.fp-empty.error').exists(), '成功了失败条还挂着').toBe(false)
     expect(btn(w, '导出')!.attributes('disabled'), '成功了导出还禁着').toBeUndefined()
     expect(w.findAll('.pm-edit').length, '成功了写入口没回来').toBeGreaterThan(0)
   })
@@ -519,7 +519,7 @@ describe('光伏分栋抄表 · 门不许在错误的时机敞开', () => {
     ;(w.vm as unknown as { editMode: boolean }).editMode = true   // 换期守卫会退出,这里只测按钮
     await flushPromises()
 
-    expect(w.find('.fp-lderr').exists(), '前提:确实是失败态').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '前提:确实是失败态').toBe(true)
     expect(done()?.attributes('disabled'), '编辑态里的「完成」被禁掉了 —— 退不出去').toBeUndefined()
   })
 

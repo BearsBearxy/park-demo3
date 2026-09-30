@@ -1,7 +1,7 @@
 // 公共电核算(PoolLedgerView)写口守卫 —— 钉住 2026-08-29 落地的 5 处 + F2(载入竞态)一处:
 //   ① watch(editMode) 转假 → 池配置抽屉(FPDrawer)跟着关(:86)
-//   ② onDeactivated 收 alertOpen —— FPAlertPanel 是 FPSideDrawer(Teleport to body),
-//     子树随 KeepAlive 停用消失时它会留在 body 上飘着(:83)
+//   ② KeepAlive 停用 → 问题面板收起:FPAlertPanel 自己 onDeactivated 收 + 本屏 onDeactivated 里的
+//     alertOpen=false 双保险(任一处在都绿,两处都删才红;组件那处单独钉在 alertPanel.spec「屏被 KeepAlive 停用」)
 //   ③ onGenerate 开头 `if (!editMode.value) return` —— 生成是整月先删后插(:287)
 //   ④ submitPool(:686) / delPool(:726) 开头同款守卫
 //   ⑤ 期由 useChainDeepPeriod 在 setup 期落定,applyHandoff 只剩 generate=1,顺序仍是先有期再进编辑,
@@ -132,7 +132,7 @@ describe('PoolLedgerView 写口守卫', () => {
     w.unmount()
   })
 
-  it('② KeepAlive 停用收 alertOpen —— FPAlertPanel 是 Teleport 抽屉,子树没了它不会没', async () => {
+  it('② KeepAlive 停用(切页签)→ 问题面板收起,切回来不还开着', async () => {
     const Host = defineComponent({
       components: { PoolLedgerView },
       props: { on: { type: Boolean, default: true } },
@@ -141,17 +141,17 @@ describe('PoolLedgerView 写口守卫', () => {
     useBillingPeriodStore().pick(2025, 3)
     const w = mount(Host, { global: { stubs: { Teleport: true } } })
     await flushPromises()
-    await w.find('button.fac').trigger('click')   // 常驻告警 chip → 开右侧抽屉
+    await w.find('button.fac').trigger('click')   // 入口胶囊 → 开问题面板
     await flushPromises()
-    expect(w.find('.fp-sdw').exists(), '前置:告警抽屉开着').toBe(true)
+    expect(w.find('.fap').exists(), '前置:问题面板开着').toBe(true)
 
     await w.setProps({ on: false })   // KeepAlive 停用 = 切到别的页签
     await flushPromises()
     await w.setProps({ on: true })
     await flushPromises()
-    // production 删掉 :83 onDeactivated 里的 `alertOpen.value = false` → 切回来抽屉还开着 → 红
-    // (真实站点里它 Teleport to body,停用时就飘在下一个屏上;单测 stub Teleport 后表现为切回仍渲染)
-    expect(w.find('.fp-sdw').exists()).toBe(false)
+    // 同时删掉 FPAlertPanel.vue 的 `onDeactivated(() => { if (props.open) emit('update:open', false) })`
+    // 和本屏 onDeactivated 里的 `alertOpen.value = false` → 切回来面板还开着 → 红;只删一处照样绿(双保险)
+    expect(w.find('.fap').exists()).toBe(false)
     w.unmount()
   })
 

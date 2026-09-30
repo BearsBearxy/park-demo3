@@ -27,7 +27,6 @@ import { useZonesStore } from '@/stores/zones'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { chainStepsOf } from '@/nav/billingChain'
 import { iconFor } from '@/components/ds/icon'
-import FPAlertChip from '@/components/fp/FPAlertChip.vue'
 import FPAlertPanel, { type AlertGroup } from '@/components/fp/FPAlertPanel.vue'
 import ChainMonthGate from '@/components/fp/ChainMonthGate.vue'
 import FPStepStrip from '@/components/fp/FPStepStrip.vue'
@@ -254,7 +253,7 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
       </div>
       <div class="ll-actions">
         <!-- §6:屏级告警入口,位置固定;无告警时 quiet 态仍占位 -->
-        <FPAlertChip :count="alertGroups.length" @open="alertOpen = true" />
+        <FPAlertPanel v-model:open="alertOpen" :count="alertGroups.length" :groups="alertGroups" align="end" />
         <!-- 本屏除备注外零写入口:损耗怎么算(算法/归组/总表取数/不计入的表)、损耗调整度数/损耗率加点/
              手工指定率全在计费参数页 ③ 计算方式。
              ⚠ 按钮上的「计算方式」四个字**不能单独改** —— 它是参数页第 ③ 张卡的名字(ParamCenterView:701),
@@ -400,8 +399,6 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
     <FPLockDialogs :locked-by="lockedBy" :evicted-by="evictedBy" :scope="lockScope()"
                    :what="`楼栋损耗 ${ym}`"
                    @taken="onTaken" @close-takeover="lockedBy = null" @close-evicted="evictedBy = null" />
-
-    <FPAlertPanel :open="alertOpen" :groups="alertGroups" @close="alertOpen = false" />
   </div>
 </template>
 

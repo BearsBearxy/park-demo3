@@ -236,6 +236,40 @@ describe('关页面前的二次确认', () => {
 
     expect(e.defaultPrevented).toBe(false)
   })
+
+  // 画布 02-D:编辑中 0 处改动不拦,有改动才用浏览器的框(EDIT-MODE-SPEC §6.1)。
+  it('❗编辑中 0 处改动不拦;换成 3 处就拦,dirtyOn 报 3', () => {
+    const auth = useAuthStore()
+    const id = Symbol('screen')
+    auth.openEditor(id, 'meters', () => 0)
+    const e0 = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(e0)
+    expect(e0.defaultPrevented, '0 处改动还拦 = 判据仍是「在不在编辑态」').toBe(false)
+
+    auth.openEditor(id, 'meters', () => 3)
+    const e3 = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(e3)
+    expect(e3.defaultPrevented).toBe(true)
+    expect(auth.dirtyOn('meters')).toBe(3)
+    expect(auth.dirtyTotal).toBe(3)
+    auth.closeEditor(id)
+  })
+
+  // useEditMode 与它底下的锁各登记一条、带同一个 dirty:按函数去重,不许算成两倍。
+  // 没接改动数的(缺省)按 1 算,两条缺省也只算 1。
+  it('❗同一个 dirty 登记两次只算一次;缺省按 1', () => {
+    const auth = useAuthStore()
+    const a = Symbol('mode'), b = Symbol('lock'), c = Symbol('x'), d = Symbol('y')
+    const three = () => 3
+    auth.openEditor(a, 'pool', three)
+    auth.openEditor(b, 'pool', three)
+    expect(auth.dirtyOn('pool')).toBe(3)
+    auth.openEditor(c, 'ledger')
+    auth.openEditor(d, 'ledger')
+    expect(auth.dirtyOn('ledger')).toBe(1)
+    expect(auth.dirtyOn('params')).toBe(0)
+    for (const id of [a, b, c, d]) auth.closeEditor(id)
+  })
 })
 
 describe('编辑态按屏登记 / 登录清页签(TAB-BAR-SPEC §1 §2)', () => {

@@ -1,9 +1,9 @@
 // 页签条(TAB-BAR-SPEC §3 §4)。「❗」开头的做过破坏验证。
 // jsdom 没有布局:条宽、页签位置用原型上的 getter 桩出来(每个页签按它在条里的次序占 100px)。
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mount, enableAutoUnmount, type VueWrapper } from '@vue/test-utils'
+import { mount, enableAutoUnmount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { nextTick, reactive } from 'vue'
+import { nextTick, reactive, ref } from 'vue'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { useTabsStore, HOME, NEWTAB } from '@/stores/tabs'
@@ -25,6 +25,9 @@ vi.mock('@/api', () => ({
 }))
 
 import TabStrip from '@/components/shell/TabStrip.vue'
+import FPConfirmHost from '@/components/fp/FPConfirmHost.vue'
+import IconRail from '@/components/shell/IconRail.vue'
+import MobileNavDrawer from '@/components/shell/mobile/MobileNavDrawer.vue'
 import { landNav } from '@/test-utils/landNav'
 
 enableAutoUnmount(afterEach)
@@ -92,6 +95,20 @@ function pick(label: string) {
   const b = menuRows().find(r => r.textContent?.startsWith(label))
   if (!b) throw new Error('菜单里没有:' + label)
   b.click()
+}
+// ── 离开确认(画布 02-A):FPConfirmHost 挂在 body 上,答题点它的按钮 ──
+const card = () => document.body.querySelector<HTMLElement>('.fch-card')
+async function answerLeave(label: '继续编辑' | '放弃改动并关闭' | '放弃改动并重新加载') {
+  const b = [...(card()?.querySelectorAll('button') ?? [])].find(x => x.textContent?.trim() === label)
+  if (!b) throw new Error('确认卡上没有:' + label)
+  b.click()
+  await flushPromises()
+}
+/** 这一屏在编辑,改动数由 n 给(auth 编辑登记表的真实入参:symbol / 页签 value / () => number)。 */
+function editing(screen: string, n0: number) {
+  const n = ref(n0)
+  useAuthStore().openEditor(Symbol(screen), screen, () => n.value)
+  return n
 }
 
 describe('TabStrip · 标题', () => {
@@ -235,11 +252,11 @@ describe('TabStrip · 右键菜单(§3.4)', () => {
     const w = mount(TabStrip, { attachTo: document.body })
     await openMenu(w, 'tenants')
     pick('关闭右侧页签')
-    await nextTick()
+    await flushPromises()
     expect(vals()).toEqual([HOME, 'meters', 'ledger', 'tenants'])
     await openMenu(w, 'tenants')
     pick('关闭其他页签')
-    await nextTick(); await nextTick()
+    await flushPromises()
     expect(vals()).toEqual([HOME, 'meters', 'tenants'])
     expect(push, '当前页签(台账)被关了,跳到菜单那一格').toHaveBeenCalledWith('/tenants')
     await openMenu(w, 'tenants')
@@ -263,6 +280,7 @@ describe('TabStrip · 右键菜单(§3.4)', () => {
     expect(useFavoritesStore().has('tenants')).toBe(true)
     await openMenu(w, 'ledger')
     pick('重新加载')
+    await flushPromises()
     expect(tabs.epochOf('ledger')).toBe(1)
   })
 
@@ -280,37 +298,88 @@ describe('TabStrip · 右键菜单(§3.4)', () => {
   })
 })
 
-describe('TabStrip · 正在编辑的页签', () => {
-  it('❗关掉 / 重新加载 / 关闭其他 我正在编辑的页签:先问;说「不」就什么都不动', async () => {
-    const tabs = setup(['ledger', 'tenants'], 'tenants')
-    vi.spyOn(tabs, 'isEditing').mockImplementation((v: string) => v === 'ledger')
-    const ask = vi.spyOn(window, 'confirm').mockReturnValue(false)
+describe('TabStrip · 正在编辑的页签(离开确认,画布 02-A)', () => {
+  it('❗关页签:0 处改动不弹直接关;3 处改动出离开确认,点「继续编辑」页签还在,点「放弃改动并关闭」才关', async () => {
+    const tabs = setup(['ledger', 'meters'], 'ledger')
+    tabs.setCtx('meters', { p: '2023-08' })
+    const n = editing('meters', 0)
+    mount(FPConfirmHost, { attachTo: document.body })
     const w = mount(TabStrip, { attachTo: document.body })
-    await tabEl(w, 'ledger').trigger('auxclick', { button: 1 })
-    expect(ask).toHaveBeenCalledWith('「月度台账」正在编辑。关掉会丢失未保存的改动，继续？')
-    expect(vals()).toContain('ledger')
-    await openMenu(w, 'ledger')
-    pick('重新加载')
-    expect(tabs.epochOf('ledger')).toBe(0)
-    await openMenu(w, 'tenants')
-    pick('关闭其他页签')
+    await nextTick()                                  // 条宽在 onMounted 里量,下一拍每个页签才有 ×
+
+    await tabEl(w, 'meters').find('.fp-tab-x').trigger('click')
+    await flushPromises()
+    expect(card(), '编辑中但 0 处改动:不弹').toBeNull()
+    expect(vals()).not.toContain('meters')
+
+    tabs.openBackground('meters')
+    tabs.setCtx('meters', { p: '2023-08' })
+    n.value = 3
     await nextTick()
-    expect(vals()).toContain('ledger')
-    ask.mockReturnValue(true)
-    await tabEl(w, 'ledger').trigger('auxclick', { button: 1 })
-    await nextTick()
-    expect(vals()).not.toContain('ledger')
-    ask.mockRestore()
+    const e0 = tabs.epochOf('meters')
+    await tabEl(w, 'meters').find('.fp-tab-x').trigger('click')
+    await flushPromises()
+    expect(card()?.querySelector('.fch-t')?.textContent).toBe('关闭「园区抄表 · 2023-08」？')
+    expect(card()?.querySelector('.fch-b')?.textContent).toBe('这页有 3 处改动还没保存。')
+    await answerLeave('继续编辑')
+    expect(card()).toBeNull()
+    expect(vals(), '点继续编辑:什么都不动').toContain('meters')
+    expect(tabs.epochOf('meters'), '点继续编辑:缓存也不弃').toBe(e0)
+
+    await tabEl(w, 'meters').find('.fp-tab-x').trigger('click')
+    await flushPromises()
+    await answerLeave('放弃改动并关闭')
+    expect(vals()).not.toContain('meters')
+    expect(tabs.epochOf('meters'), '关掉即弃掉缓存').toBe(e0 + 1)
   })
 
-  it('不在编辑的页签照常关,不问', async () => {
-    setup(['ledger', 'tenants'], 'tenants')
-    const ask = vi.spyOn(window, 'confirm')
+  it('❗重新加载 / 关闭其他 / 关闭右侧:有改动的逐页问;任一页点「继续编辑」就一格都不动', async () => {
+    const tabs = setup(['ledger', 'tenants', 'meters'], 'tenants')
+    editing('ledger', 2)
+    editing('meters', 5)
+    mount(FPConfirmHost, { attachTo: document.body })
+    const w = mount(TabStrip, { attachTo: document.body })
+
+    await openMenu(w, 'ledger')
+    pick('重新加载')
+    await flushPromises()
+    expect(card()?.querySelector('.fch-t')?.textContent).toBe('重新加载「月度台账」？')
+    await answerLeave('继续编辑')
+    expect(tabs.epochOf('ledger'), '说不:不换实例').toBe(0)
+
+    await openMenu(w, 'tenants')
+    pick('关闭其他页签')
+    await flushPromises()
+    expect(card()?.querySelector('.fch-t')?.textContent).toBe('关闭「月度台账」？')
+    await answerLeave('放弃改动并关闭')
+    expect(card()?.querySelector('.fch-t')?.textContent, '第二页接着问').toBe('关闭「园区抄表」？')
+    expect(card()?.querySelector('.fch-b')?.textContent).toBe('这页有 5 处改动还没保存。')
+    await answerLeave('继续编辑')
+    expect(vals(), '第二页说不:第一页也不关').toEqual([HOME, 'ledger', 'tenants', 'meters'])
+
+    await openMenu(w, 'tenants')
+    pick('关闭右侧页签')
+    await flushPromises()
+    expect(card()?.querySelector('.fch-t')?.textContent).toBe('关闭「园区抄表」？')
+    await answerLeave('继续编辑')
+    expect(vals()).toEqual([HOME, 'ledger', 'tenants', 'meters'])
+  })
+
+  it('❗页签有没保存的改动:× 前挂橙点;0 处不挂;改动数归零点就收', async () => {
+    setup(['ledger', 'meters'], 'meters')
+    const n = editing('meters', 3)
     const w = mount(TabStrip)
-    await tabEl(w, 'ledger').trigger('auxclick', { button: 1 })
-    expect(ask).not.toHaveBeenCalled()
-    expect(vals()).not.toContain('ledger')
-    ask.mockRestore()
+    await nextTick()
+    const kids = () => [...tabEl(w, 'meters').element.children].map(e => e.getAttribute('class'))
+    expect(kids().indexOf('fp-tab-dot'), '橙点紧挨在 × 前').toBe(kids().indexOf('fp-tab-x') - 1)
+    expect(tabEl(w, 'ledger').find('.fp-tab-dot').exists(), '不在编辑:没有点').toBe(false)
+    n.value = 0
+    await nextTick()
+    expect(tabEl(w, 'meters').find('.fp-tab-dot').exists(), '编辑中但 0 处改动:没有点').toBe(false)
+  })
+
+  it('❗改动点 6px、橙色走令牌', () => {
+    expect(src('components/shell/TabStrip.vue')).toMatch(/\.fp-tab-dot \{[^}]*width: 6px; height: 6px;[^}]*background: var\(--hue-orange\)/)
   })
 
   it('收藏满 12 个:右键「收藏此页」灰掉并写「已满 12 个」', async () => {
@@ -324,6 +393,36 @@ describe('TabStrip · 正在编辑的页签', () => {
     const row = menuRows().find(r => r.textContent?.startsWith('收藏此页'))!
     expect(row.disabled).toBe(true)
     expect(row.textContent).toBe('收藏此页已满 12 个')
+  })
+})
+
+describe('退出登录走离开确认(画布 02-A)', () => {
+  // 图标轨账号菜单(桌面)与手机导航抽屉(S 档唯一退出入口)同一套
+  const rail = () => mount(IconRail, { global: { stubs: { Popover: { template: '<div><slot name="trigger" /><slot /></div>' }, Avatar: true } } })
+  const drawer = () => mount(MobileNavDrawer, { props: { open: true }, global: { stubs: { teleport: true } } })
+  it.each([
+    ['图标轨', rail, '.fp-user-logout'],
+    ['手机抽屉', drawer, '.mnav-logout'],
+  ] as const)('❗%s:有改动的页先问,点「继续编辑」不退;0 处改动直接退', async (_, mk, sel) => {
+    const tabs = setup(['meters'], 'meters')
+    tabs.setCtx('meters', { p: '2023-08' })
+    const n = editing('meters', 3)
+    const out = vi.spyOn(useAuthStore(), 'logout')
+    mount(FPConfirmHost, { attachTo: document.body })
+    const w = mk()
+    await w.find(sel).trigger('click')
+    await flushPromises()
+    expect(card()?.querySelector('.fch-t')?.textContent).toBe('关闭「园区抄表 · 2023-08」？')
+    await answerLeave('继续编辑')
+    expect(out, '继续编辑:不退').not.toHaveBeenCalled()
+    expect(push).not.toHaveBeenCalledWith('/login')
+
+    n.value = 0
+    await w.find(sel).trigger('click')
+    await flushPromises()
+    expect(card(), '0 处改动:不弹').toBeNull()
+    expect(out).toHaveBeenCalledTimes(1)
+    expect(push).toHaveBeenCalledWith('/login')
   })
 })
 

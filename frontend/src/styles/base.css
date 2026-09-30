@@ -171,3 +171,16 @@ img, svg {
    ⚠ type="text" + -webkit-text-security 遮罩的那几个框(FPElevateDialog / FPTakeoverDrawer /
    FPApprovalDrawer,为躲开浏览器密码管理器)选不中,它们在各自的遮罩规则里单独写了同一行。 */
 input[type="password"] { font-family: var(--font-ui) !important; }
+
+/* ── 字段报错(十件 ⑤,画布 06-B ⑤;LAYOUT-STABILITY §4.2)──
+   12px 红字,18px 常驻占位:元素本身不带 v-if,字才是条件的 ——
+     <p class="fp-field-err"><template v-if="err">{{ err }}</template></p>
+   收掉各处自写的 14 / 16 / 18 三种高度。框变红由输入框自己管。 */
+.fp-field-err {
+  display: block;
+  margin: 0;
+  min-height: 18px;
+  line-height: 18px;
+  font-size: var(--fs-label);
+  color: var(--delta-down-text);
+}

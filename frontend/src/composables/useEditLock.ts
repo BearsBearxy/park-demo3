@@ -15,7 +15,7 @@ import { useScreen } from '@/composables/useTabShells'
  * 谁进得来的判定全在服务端（PresenceStore，有单测钉死）。这里只负责：
  * 把答案接住、按 20 秒续、被接管时当场喊停。
  */
-export function useEditLock(onExit?: () => void, canEdit?: () => boolean) {
+export function useEditLock(onExit?: () => void, canEdit?: () => boolean, dirty?: () => number) {
   /** 这一期被谁占着。非空 = 刚才想进但被挡下了，页面据此开接管抽屉。 */
   const lockedBy = ref<LockHolder | null>(null)
   /** 被谁接管了。非空 = 当场弹提示。 */
@@ -109,7 +109,7 @@ export function useEditLock(onExit?: () => void, canEdit?: () => boolean) {
     held.value = scope
     heldToken = r.acquiredAt ?? null
     start()
-    auth.openEditor(editorId, screen)
+    auth.openEditor(editorId, screen, dirty)
     editorOpen = true
     return true
   }
