@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useScreen } from '@/composables/useTabShells'
 import { iconFor } from '@/components/ds/icon'
 import FPToast from '@/components/fp/FPToast.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
 import Button from '@/components/ds/Button.vue'
 import Badge from '@/components/ds/Badge.vue'
 
