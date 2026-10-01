@@ -409,7 +409,8 @@ const conclusion = computed(() => buildConclusion(
     </template>
 
     <!-- §五策略2 期间回退(画布 06-D):所选月无损益 → KPI/构成环锚定最近覆盖月。贴在期间选择旁,不另起一行,
-         数据到了也不推正文。构成环、收缴率两张图各自的回退贴在各自卡头(06-D 中格:单图回退贴卡头)。 -->
+         数据到了也不推正文。构成环与 KPI 同锚,这一枚已说清,卡头不再重复(2026-10-02 拍板删卡头那枚);
+         收缴率不跟损益锚,它的回退贴自己卡头(06-D 中格:单图回退贴卡头)。 -->
     <template #period-note>
       <FPStateTag v-if="pnlUsedYm" tone="muted">{{ periodNote(ymOf(drawnSel.year, drawnSel.month), pnlUsedYm) }}</FPStateTag>
       <!-- 收缴率 KPI 瓦取 ≤所选月的最后一期(colPick)。所选月落在中间断月(06 有、05 无,选 05)或所选年还没有柱时,
@@ -561,8 +562,8 @@ const conclusion = computed(() => buildConclusion(
       <!-- s4:收入构成环 -->
       <div class="av2-card av2-s4">
         <div class="av2-card-h">
-          <!-- 构成环与 KPI 同锚(usedMi):所选月无损益时画的是 pnlUsedYm 那个月,卡头写明 -->
-          <span class="t">收入构成 · {{ isMonth ? '本月' : '本年' }}<FPStateTag v-if="pnlUsedYm" tone="muted" style="margin-left: 8px">显示 {{ pnlUsedYm }}</FPStateTag></span>
+          <!-- 构成环与 KPI 同锚(usedMi):所选月无损益时画的是 pnlUsedYm 那个月,期间旁那枚已写明,卡头不重复 -->
+          <span class="t">收入构成 · {{ isMonth ? '本月' : '本年' }}</span>
           <span class="hint">合计 {{ money(compoTotal || null) }}<span class="hint-desk"> · 点击扇区看趋势</span><span class="hint-touch"> · 点扇区看趋势</span></span>
         </div>
         <AnaEChart v-if="compo.length" :option="donutOption" :height="300" @chart-click="onDonutClick" />

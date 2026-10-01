@@ -496,18 +496,18 @@ describe('期间回退:期间选择旁的标签 / 图卡里一行,不用满宽�
     return w
   }
 
-  it('❗驾驶舱:选 2026-08 而损益只录到 7 月 → 期间旁「显示 2026-07 · 8 月无数据」;构成环同锚,卡头「显示 2026-07」', async () => {
+  it('❗驾驶舱:选 2026-08 而损益只录到 7 月 → 只在期间旁挂一枚「显示 2026-07 · 8 月无数据」;构成环同锚,卡头不重复', async () => {
     vi.mocked(data.fetchPnlSummary).mockImplementation(async (y: number) => {
       const s = pnlSum(y)
       return y === 2026 ? { ...s, months: s.months.filter((m) => m !== 8) } : s
     })
     const w = await bootAug(CockpitView)
     expect(tags(w)).toEqual(['显示 2026-07 · 8 月无数据'])
-    expect(headTag(w, '收入构成').text()).toBe('显示 2026-07')
-    expect(w.findAll('.anx-body .fp-state').length, '正文里只该有构成环卡头那一枚').toBe(1)
+    expect(headTag(w, '收入构成').exists(), '整页回退只贴期间旁,构成环卡头不重复').toBe(false)
+    expect(w.findAll('.anx-body .fp-state').length, '正文里不该有回退标签').toBe(0)
     usePeriod().setMonth(7)
     await flushPromises()
-    expect(headTag(w, '收入构成').exists(), '7 月有损益,卡头标签该撤').toBe(false)
+    expect(tags(w), '7 月有损益,期间旁标签该撤').toEqual([])
   })
 
   it('❗驾驶舱:台账只到 7 月 → 收缴率卡头「显示 2026-07」,期间旁不挂;选 6 月(在柱子范围里)不挂', async () => {
