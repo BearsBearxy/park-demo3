@@ -15,6 +15,36 @@ const trigger = (w: ReturnType<typeof mk>) => w.find('button.ds-sel-trigger')
 const opts = (w: ReturnType<typeof mk>) => w.findAll('button.ds-sel-opt')
 const activeLabel = (w: ReturnType<typeof mk>) => w.find('button.ds-sel-opt[data-active]').text()
 
+describe('ds/Select · Esc 只在开着时归它', () => {
+  // 破坏验证:onKey 去掉 && open.value → 第一条红
+  it('❗收着的下拉不吞 Esc:页面上挂着它,Esc 照样传到 window(宿主弹窗、抽屉靠它关)', async () => {
+    const w = mk({ modelValue: '上海' })
+    let got = 0
+    const onWin = (e: KeyboardEvent) => { if (e.key === 'Escape') got++ }
+    window.addEventListener('keydown', onWin)
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    window.removeEventListener('keydown', onWin)
+    expect(got).toBe(1)
+    w.unmount()
+  })
+
+  // 破坏验证:onKey 去掉 e.stopPropagation() → 红
+  it('❗开着时 Esc 只收下拉:面板关上,事件不再传到 window(不连带关宿主)', async () => {
+    const w = mk({ modelValue: '上海' })
+    await trigger(w).trigger('click')
+    expect(opts(w).length).toBeGreaterThan(0)
+    let got = 0
+    const onWin = (e: KeyboardEvent) => { if (e.key === 'Escape') got++ }
+    window.addEventListener('keydown', onWin)
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    window.removeEventListener('keydown', onWin)
+    await w.vm.$nextTick()
+    expect(got).toBe(0)
+    expect(opts(w).length).toBe(0)
+    w.unmount()
+  })
+})
+
 describe('ds/Select · 选同值不发事件', () => {
   it('❗点中的还是当前这项:不发 change、不发 update:modelValue(原生的 select 就是这个语义)', async () => {
     const w = mk({ modelValue: '上海' })
