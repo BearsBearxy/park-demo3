@@ -59,5 +59,14 @@ public final class PresenceDtos {
                             * 只发一个数不发内容:发内容等于每 3 秒推一遍全月审核态(§7.4 的原判)。
                             * 数变了让前端自己去取那一趟,一天也没几次。
                             */
-                           long reviewRev) {}
+                           long reviewRev,
+                           /** 铃铛「有结果了」里我还没看过几条(V133)。蓝点靠它,多台电脑一致。 */
+                           int unseenResults,
+                           /**
+                            * 我现在手上还有没有临时授权(V133)。被系统提前收回(停用某人、改角色时 reload 清掉所有人的)
+                            * 授权条照常倒数、什么都不说 —— 前端见它从 true 变 false 就说「授权已到期」。
+                            */
+                           boolean elevated,
+                           /** 系统类看过(V133):别的标签页 / 电脑开过铃铛、看过更新记录,这里 3 秒内跟上。 */
+                           NoticeDtos.SystemSeenDTO systemSeen) {}
 }

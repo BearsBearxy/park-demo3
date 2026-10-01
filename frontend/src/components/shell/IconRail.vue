@@ -120,7 +120,7 @@ function goLayer(layer: NavLayer) {
           <div class="fp-user-sep" />
           <button class="fp-user-row" @click="upd.openHistory()">
             <Sparkles :size="14" />版本更新
-            <span class="ver">v{{ upd.version }}<span v-if="upd.unread" class="dot" /></span>
+            <span class="ver">v{{ upd.version }}</span>
           </button>
           <button class="fp-user-logout" @click="onLogout">
             <LogOut :size="14" />退出登录
@@ -256,11 +256,10 @@ function goLayer(layer: NavLayer) {
                       transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
 .fp-appr-seg button:hover:not(.on) { color: var(--text-secondary); }
 .fp-appr-seg button.on { background: var(--surface-raised); color: var(--text-primary); box-shadow: var(--shadow-pill); }
-/* 版本更新一行:和退出登录同一排版,右侧写当前版本号(等宽,未读时带蓝点) */
+/* 版本更新一行:和退出登录同一排版,右侧写当前版本号(等宽)。没看过的更新只在铃铛上提示(06-G),这里不挂点 */
 .fp-user-row { display: flex; align-items: center; gap: 7px; width: 100%; border: none; background: transparent; color: var(--text-secondary); font-family: var(--font-sans); font-size: 12.5px; padding: 7px 6px; border-radius: 8px; cursor: pointer; }
 .fp-user-row:hover { background: var(--bg-hover); color: var(--text-primary); }
 .fp-user-row .ver { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-muted); }
-.fp-user-row .dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--hue-blue); }
 .fp-user-logout { display: flex; align-items: center; gap: 7px; width: 100%; border: none; background: transparent; color: var(--text-secondary); font-family: var(--font-sans); font-size: 12.5px; padding: 7px 6px; border-radius: 8px; cursor: pointer; }
 .fp-user-logout:hover { background: var(--bg-hover); color: var(--hue-red); }
 </style>

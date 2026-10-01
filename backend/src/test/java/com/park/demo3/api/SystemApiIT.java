@@ -246,6 +246,94 @@ class SystemApiIT extends AbstractMysqlIT {
         }
     }
 
+    // ══════════ 铃铛:角色被改 / 账号停用(V133,画布 06-E) ══════════
+
+    @Test
+    @Transactional
+    void roleChangeNotifiesHoldersNotTheActor() throws Exception {
+        String t = admin();
+        String code = "it_bell_" + (System.nanoTime() % 1_000_000_000L);
+        String role = utf8(mvc.perform(post("/api/system/roles").header("Authorization", hdr(t))
+                .contentType("application/json")
+                .content("{\"code\":\"" + code + "\",\"name\":\"铃铛测试\",\"navLayers\":[\"data\"],\"perms\":[]}")).andReturn());
+        int rid = JsonPath.read(role, "$.data.id");
+        // admin 自己也挂上 R:这样「发给操作人自己的跳过」才真被走到(他不持 R 的话本来就不在名单里)
+        jdbc.update("INSERT INTO auth_user_role (user_id, role_id) SELECT id, ? FROM auth_user WHERE username = 'admin'", rid);
+        String uname = "it-bell-" + System.nanoTime();
+        int uid = JsonPath.read(utf8(mvc.perform(post("/api/system/users").header("Authorization", hdr(t))
+                .contentType("application/json")
+                .content("{\"username\":\"" + uname + "\",\"displayName\":\"铃铛测试人\","
+                       + "\"password\":\"init-pass-123\",\"roleIds\":[" + rid + "]}")).andReturn()), "$.data.id");
+        String u = login(uname, "init-pass-123");
+        int adminBefore = noticeCount("admin");
+
+        // admin 给角色加一项权限 → 持该角色的 U 收到 1 条,admin 自己没有
+        String roleBody = "{\"name\":\"铃铛测试\",\"navLayers\":[\"data\"],\"perms\":[\"entry:edit\"]}";
+        mvc.perform(put("/api/system/roles/" + rid).header("Authorization", hdr(t))
+                .contentType("application/json").content(roleBody)).andExpect(status().isOk());
+        List<String> kinds = JsonPath.read(utf8(mvc.perform(get("/api/notices").header("Authorization", hdr(u))).andReturn()),
+                "$.data[*].kind");
+        assertThat(kinds).containsExactly("perms_changed");
+        assertThat(noticeCount("admin")).as("发给操作人自己的跳过").isEqualTo(adminBefore);
+
+        // U 手上是改之前登录的令牌,/auth/me 要给出改后的权限 —— 「刷新后生效」靠它说实话
+        List<String> perms = JsonPath.read(utf8(mvc.perform(get("/api/auth/me").header("Authorization", hdr(u)))
+                .andExpect(status().isOk()).andReturn()), "$.data.permissions");
+        assertThat(perms).contains("entry:edit");
+
+        // 原样再存一次:什么都没改,不许写「你的权限被改了」
+        mvc.perform(put("/api/system/roles/" + rid).header("Authorization", hdr(t))
+                .contentType("application/json").content(roleBody)).andExpect(status().isOk());
+        assertThat(noticeCount(uname)).as("没改的保存不发通知").isEqualTo(1);
+
+        // 只改导航层:持有人看到的侧栏会变 → 也算改了;只改角色名 → 也算(标题里写的就是它)
+        mvc.perform(put("/api/system/roles/" + rid).header("Authorization", hdr(t)).contentType("application/json")
+                .content("{\"name\":\"铃铛测试\",\"navLayers\":[\"data\",\"analysis\"],\"perms\":[\"entry:edit\"]}"))
+            .andExpect(status().isOk());
+        assertThat(noticeCount(uname)).as("只改导航层也发").isEqualTo(2);
+        mvc.perform(put("/api/system/roles/" + rid).header("Authorization", hdr(t)).contentType("application/json")
+                .content("{\"name\":\"铃铛测试改名\",\"navLayers\":[\"data\",\"analysis\"],\"perms\":[\"entry:edit\"]}"))
+            .andExpect(status().isOk());
+        assertThat(noticeCount(uname)).as("只改角色名也发").isEqualTo(3);
+
+        // 改 U 本人的角色 → 再 1 条;只改显示名、角色不变 → 不发
+        mvc.perform(put("/api/system/users/" + uid).header("Authorization", hdr(t)).contentType("application/json")
+                .content("{\"displayName\":\"铃铛测试人\",\"roleIds\":[]}")).andExpect(status().isOk());
+        assertThat(noticeCount(uname)).isEqualTo(4);
+        mvc.perform(put("/api/system/users/" + uid).header("Authorization", hdr(t)).contentType("application/json")
+                .content("{\"displayName\":\"改个名\",\"roleIds\":[]}")).andExpect(status().isOk());
+        assertThat(noticeCount(uname)).as("角色没变不发").isEqualTo(4);
+    }
+
+    @Test
+    @Transactional
+    void disabledAccountIsToldWhyButOnlyWithTheRightPassword() throws Exception {
+        String t = admin();
+        String uname = "it-off-" + System.nanoTime();
+        int id = JsonPath.read(utf8(mvc.perform(post("/api/system/users").header("Authorization", hdr(t))
+                .contentType("application/json")
+                .content("{\"username\":\"" + uname + "\",\"displayName\":\"待停用\","
+                       + "\"password\":\"init-pass-123\",\"roleIds\":[]}")).andReturn()), "$.data.id");
+        String victim = login(uname, "init-pass-123");
+        mvc.perform(post("/api/system/users/" + id + "/status").header("Authorization", hdr(t))
+                .contentType("application/json").content("{\"status\":0}")).andExpect(status().isOk());
+
+        // 旧令牌下一个请求 401,并说清楚是停用 —— 不然被踢回登录页的人不知道为什么
+        mvc.perform(get("/api/tenants").header("Authorization", hdr(victim)))
+           .andExpect(status().isUnauthorized())
+           .andExpect(header().string("X-Auth-Reason", "disabled"));
+
+        // 登录口:密码对了才说停用;密码错照旧一句,分不出停用还是不存在
+        String ok = utf8(mvc.perform(post("/api/auth/login").contentType("application/json")
+                .content("{\"username\":\"" + uname + "\",\"password\":\"init-pass-123\"}")).andReturn());
+        assertThat((int) JsonPath.read(ok, "$.code")).isEqualTo(403);
+        assertThat((String) JsonPath.read(ok, "$.message")).isEqualTo("账号已停用，请联系管理员");
+        String bad = utf8(mvc.perform(post("/api/auth/login").contentType("application/json")
+                .content("{\"username\":\"" + uname + "\",\"password\":\"wrong-pass-9\"}")).andReturn());
+        assertThat((int) JsonPath.read(bad, "$.code")).isEqualTo(401);
+        assertThat((String) JsonPath.read(bad, "$.message")).isEqualTo("用户名或密码错误");
+    }
+
     // ══════════ 本人改密 ══════════
 
     @Test
@@ -291,6 +379,21 @@ class SystemApiIT extends AbstractMysqlIT {
     }
 
     // ══════════ helpers ══════════
+
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Autowired com.park.demo3.security.UserPermissionCache cache;
+
+    /**
+     * @Transactional 用例回滚的是库,不是内存快照:不重载的话,回滚掉的角色挂载(admin 挂 R)
+     * 会留在快照里,影响同一 JVM 里后面读 admin 角色名的用例。
+     */
+    @org.springframework.test.context.transaction.AfterTransaction
+    void reloadCacheAfterRollback() { cache.reload(); }
+
+    private int noticeCount(String username) {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM user_notice WHERE username = ? AND kind = 'perms_changed'",
+            Integer.class, username);
+    }
 
     private int adminId(String token) throws Exception {
         String body = utf8(mvc.perform(get("/api/system/users").param("q", "admin")

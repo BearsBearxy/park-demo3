@@ -1274,6 +1274,71 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         assertThat(one(notices(nym, t)).get("status")).isEqualTo("exported");
     }
 
+    // ── t43 铃铛(V133;06-F「陈会计取消确认了联塑精铟 9 月的催缴单」):取消确认 / 作废写给**原确认人**,
+    //    detail=理由、ref=bill-notices:收费月;自己确认自己退的不写。原确认人得在清 confirmed_by 之前读住。
+    //    槽 2089-05(全仓 2089 年只有合同起始日)。 ──
+    @Test
+    void t43_unconfirmAndVoid_noticeTheOriginalConfirmer_notMyself() throws Exception {
+        String ym = "2089-05";
+        String nym = nx(ym);
+        monthlyPrices(ym);
+        int t = createTenant("IT铃铛退单户");
+        int c = contract(t, "2089-01-01", "2099-12-31", null);
+        int m = createMeter("elec", "p1", "IT铃铛退单电", t);
+        bind(m, c);
+        reading(m, ym, "\"prevTotal\":0,\"currTotal\":100");
+        // 末段「一次退两户」用的两户,同一个原确认人
+        int[] two = new int[2];
+        for (int i = 0; i < 2; i++) {
+            two[i] = createTenant("IT铃铛批退" + i + "户");
+            int ci = contract(two[i], "2089-01-01", "2099-12-31", null);
+            int mi = createMeter("elec", "p1", "IT铃铛批退" + i + "电", two[i]);
+            bind(mi, ci);
+            reading(mi, ym, "\"prevTotal\":0,\"currTotal\":10");
+        }
+        generate(nym);
+        String who = "{\"ym\":\"" + nym + "\",\"tenantIds\":[" + t + "]}";
+        String unconf = "{\"ym\":\"" + nym + "\",\"tenantIds\":[" + t + "],\"reason\":\"租金按新合同重算\"}";
+        String bellOfA = "SELECT kind, title, detail, ref FROM user_notice WHERE username='it-bn-a' ORDER BY id";
+
+        // 自己确认、自己取消:不进自己的铃铛
+        int mine = jdbc.queryForObject("SELECT COUNT(*) FROM user_notice WHERE username='admin'", Integer.class);
+        postOk("/api/bill-notices/confirm", who);
+        postOk("/api/bill-notices/unconfirm", unconf);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM user_notice WHERE username='admin'", Integer.class))
+            .isEqualTo(mine);
+
+        // A 确认的单(confirmed_by 落 A),admin 取消确认 → A 一条
+        postOk("/api/bill-notices/confirm", who);
+        jdbc.update("UPDATE bill_notice SET confirmed_by='it-bn-a' WHERE ym=? AND tenant_id=?", nym, t);
+        postOk("/api/bill-notices/unconfirm", unconf);
+        assertThat(jdbc.queryForList(bellOfA)).singleElement().satisfies(r -> {
+            assertThat(r.get("kind")).isEqualTo("bill_unconfirmed");
+            assertThat((String) r.get("title")).contains("取消确认了IT铃铛退单户 6 月的催缴单");   // nym=2089-06
+            assertThat(r.get("detail")).isEqualTo("租金按新合同重算");
+            assertThat(r.get("ref")).isEqualTo("bill-notices:" + nym);
+        });
+
+        // A 确认的单被 admin 作废 → A 再一条 bill_voided
+        postOk("/api/bill-notices/confirm", who);
+        jdbc.update("UPDATE bill_notice SET confirmed_by='it-bn-a' WHERE ym=? AND tenant_id=?", nym, t);
+        postOk("/api/bill-notices/" + soleNoticeId(nym, t) + "/void", "{\"reason\":\"重出\"}");
+        List<Map<String, Object>> rows = jdbc.queryForList(bellOfA);
+        assertThat(rows).hasSize(2);
+        assertThat(rows.get(1)).containsEntry("kind", "bill_voided").containsEntry("detail", "重出")
+            .containsEntry("ref", "bill-notices:" + nym);
+
+        // A 确认过的两户被 admin 一次退回 → A 只多一条,标题写「<首户>等 2 户」(批量退 30 户不刷 30 条)
+        String both = "{\"ym\":\"" + nym + "\",\"tenantIds\":[" + two[0] + "," + two[1] + "]";
+        postOk("/api/bill-notices/confirm", both + "}");
+        jdbc.update("UPDATE bill_notice SET confirmed_by='it-bn-a' WHERE ym=? AND tenant_id IN (?, ?)", nym, two[0], two[1]);
+        postOk("/api/bill-notices/unconfirm", both + ",\"reason\":\"两户一起重算\"}");
+        rows = jdbc.queryForList(bellOfA);
+        assertThat(rows).as("按原确认人汇总,不是逐户一条").hasSize(3);
+        assertThat(rows.get(2)).containsEntry("kind", "bill_unconfirmed").containsEntry("detail", "两户一起重算");
+        assertThat((String) rows.get(2).get("title")).contains("取消确认了IT铃铛批退").contains("等 2 户 6 月的催缴单");
+    }
+
     // ══ METER-TIMELINE-SPEC §5 下游(B3):锁定单收过的表不进别户草稿 + 新告警 / 明细比当月档案 / 作废带理由落审计。
     //    槽 2085-02(2085 年全仓只有 B3 用)。 ══
 

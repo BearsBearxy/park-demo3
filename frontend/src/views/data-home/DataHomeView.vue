@@ -9,7 +9,7 @@
 // 现在三级主次:① 顶部一行总览 → ② 出账链流水线 → ③ 当前步大卡 + 全页唯一主 CTA。
 // 出账链有先后依赖(抄表没抄完算不了公摊,公摊没生成出不了催缴单)所以画成流水线;
 // 附表互相独立、能并行做,所以画成紧凑清单。结构与真实工作的形状同构。
-import { ref, computed, onMounted, watch, defineAsyncComponent } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
@@ -28,10 +28,10 @@ import Button from '@/components/ds/Button.vue'
 import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
 // 直接引入不走 defineAsyncComponent:这颗弹卡只有百来行,懒加载省不下什么,
 // 却换来一层「点了之后还要再等一拍才渲染」的时序(单测里表现为 querySelector 拿到 null)。
-// 铃铛抽屉那颗才值得懒 —— 它拖着一整套授权表单。
 import FPReviewDialog from '@/components/fp/FPReviewDialog.vue'
 import { useBillingPeriodStore, YM } from '@/stores/billingPeriod'
 import { usePresenceStore } from '@/stores/presence'
+import { useBellStore } from '@/stores/bell'
 import { useReviewStore } from '@/stores/review'
 import type { ReviewRow } from '@/types/review'
 import { NAV_SCOPE_PREFIX, scopeTarget } from '@/utils/lockScopes'
@@ -41,9 +41,6 @@ import { buildYearRows, inYearWindow } from '@/utils/matrixYears'
 import { rowsOf, closeChecks } from './monthClose.logic'
 import type { CloseRow, CloseChip } from './monthClose.logic'
 
-
-// 铃铛抽屉懒加载,口径照抄 Toolbar.vue / MobileTopBar.vue(第三个引用方,defineAsyncComponent + v-if 才真懒)。
-const FPApprovalDrawer = defineAsyncComponent(() => import('@/components/fp/FPApprovalDrawer.vue'))
 
 const router = useRouter()
 const tabsStore = useTabsStore()
@@ -63,7 +60,9 @@ function myChainLockPeriods(): string[] {
 
 // 主管条(P2 T6,任务书六条裁定):数据源是 presence + auth,跟 ov 有没有到无关 ——
 // 渲染位置见模板,在两个 v-if="!ov"/v-else 分支之外。
-const inbox = ref(false)
+// 「待批授权 N」点开的是顶栏铃铛面板(PAGE-BEHAVIOR-SPEC §5.1),不再自己挂一个抽屉 ——
+// 授权请求只在一处处理,批完那条在铃铛和这里同时消失。
+const bell = useBellStore()
 const isSupervisor = computed(() => auth.can('lock:takeover') || auth.can('system:view'))
 
 // 「谁在编辑」—— 一人一枚 chip,取 editScopes[0](裁定 4:32px 定高装不下 N 人 × M 把锁,
@@ -474,7 +473,7 @@ const bookingRows = computed(() => shown('booking'))
          外层唯一允许的 v-if 是权限判(有没有这个角色),数据 v-if 一律禁 —— 32px 定高常驻,
          零待批显「暂无待批」、零在编辑 chips 容器仍在,不许 v-if 掉整条或子容器(裁定 1/2)。 -->
     <div v-if="isSupervisor" class="dh-sup">
-      <button class="dh-sup-inbox" @click="inbox = true">
+      <button class="dh-sup-inbox" @click="bell.openPanel()">
         {{ presence.approvals.length ? `待批授权 ${presence.approvals.length}` : '暂无待批' }}
       </button>
       <div class="dh-sup-who">
@@ -490,7 +489,6 @@ const bookingRows = computed(() => shown('booking'))
       <span v-if="onlyPending" class="dh-rvfilter">只看待审 · 点上面那颗取消</span>
       <span class="dh-rvcount">本月已审 {{ reviewCounts.approved }}/{{ reviewCounts.total }}</span>
     </div>
-    <FPApprovalDrawer v-if="inbox" :open="inbox" @close="inbox = false" />
     <FPReviewDialog v-if="dialog" :target="dialog.label" :action="dialog.action"
                     :busy="!!acting"
                     @close="dialog = null" @confirm="onDialogConfirm" />

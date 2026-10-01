@@ -1,27 +1,16 @@
 <script setup lang="ts">
 // 手机顶栏(S 档,RESPONSIVE-LAYOUT-SPEC §4.1)。桌面 Toolbar 的收纳版:
 // 面包屑只留屏名 —— 层名由底栏高亮承担,不在这里重复。
-import { computed, ref, defineAsyncComponent } from 'vue'
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { usePresenceStore } from '@/stores/presence'
 import { useUiStore } from '@/stores/ui'
-import { Menu, Search, Bell } from 'lucide-vue-next'
-// 铃铛抽屉懒加载,口径照抄 Toolbar.vue:顶栏在外壳里是**急切**的,静态 import 会把
-// 抽屉连同它的 CSS 一起压进首屏块。⚠ 必须配下面的 v-if 才真省 ——
-// defineAsyncComponent 是渲染时才拉块的,常挂在树上(只靠 :open=false)等于没懒。
-const FPApprovalDrawer = defineAsyncComponent(() => import('@/components/fp/FPApprovalDrawer.vue'))
+import { Menu, Search } from 'lucide-vue-next'
+import NotifyBell from '@/components/shell/NotifyBell.vue'
 
 const emit = defineEmits<{ 'open-drawer': []; 'open-command': [] }>()
 
 const route = useRoute()
 const pageName = computed(() => (route.meta as Record<string, string>).page ?? '')
-
-// 待批授权铃铛:红点机制与桌面 Toolbar 完全一致(红点随迁,规范 §4.1)
-const presence = usePresenceStore()
-const inbox = ref(false)
-// 与 Toolbar.vue 同一口径(三件事的总和)—— 两处各写一份的话,手机上和桌面上的红点会不一样。
-const pendingCount = computed(() =>
-  presence.approvals.length + presence.pendingReviews + presence.myReturned)
 
 // 屏级主动作(§5.10)。没屏登记时整个按钮不渲染 —— 顶栏逐字回到原来那四件。
 const ui = useUiStore()
@@ -43,16 +32,9 @@ const ui = useUiStore()
     <button class="mtb-btn" aria-label="搜索" @click="emit('open-command')">
       <Search :size="20" />
     </button>
-    <!-- 红点 absolute 贴在定宽按钮上:出现与消失都不影响布局(Toolbar 同口径,
-         全站唯一允许「凭空出现」的标记) -->
-    <span class="mtb-bell">
-      <button class="mtb-btn" aria-label="待批授权" @click="inbox = true">
-        <Bell :size="20" />
-      </button>
-      <span v-if="pendingCount" class="mtb-bell-dot">{{ pendingCount }}</span>
-    </span>
+    <!-- 铃铛与桌面顶栏是同一个(记号、面板都在 NotifyBell 里);面板在手机上贴顶栏下方占满宽(06-F 底注) -->
+    <NotifyBell mobile />
   </header>
-  <FPApprovalDrawer v-if="inbox" :open="inbox" @close="inbox = false" />
 </template>
 
 <style scoped>
@@ -114,17 +96,5 @@ const ui = useUiStore()
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.mtb-bell { position: relative; display: inline-flex; flex: 0 0 auto; }
-.mtb-bell-dot {
-  position: absolute; top: 5px; right: 5px;
-  min-width: 14px; height: 14px; padding: 0 3px;
-  border-radius: var(--radius-full);
-  background: var(--hue-red); color: var(--control-solid-text);   /* 实底上的字,暗色下反深 */
-  font-family: var(--font-mono); font-size: 9.5px; font-weight: var(--fw-semibold);
-  display: grid; place-items: center;
-  box-shadow: 0 0 0 1.5px var(--surface-white);
-  pointer-events: none;
 }
 </style>

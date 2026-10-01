@@ -8,9 +8,22 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 
+import com.park.demo3.dto.ApprovalDtos.DecideReq;
+import com.park.demo3.entity.AuthUser;
+import com.park.demo3.mapper.AuthUserMapper;
+import com.park.demo3.service.ApprovalService;
+import com.park.demo3.service.AuditLogService;
+import com.park.demo3.service.ElevationService;
+import com.park.demo3.service.NoticeService;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 /**
  * 远程授权的待批队列（设计稿 §07）。
@@ -148,5 +161,71 @@ class ApprovalStoreTest {
 
         assertThat(store.pollOutcome("zhangsan")).isNotNull();
         assertThat(store.pollOutcome("zhangsan")).isNull();
+    }
+
+    // ── 铃铛(V133;06-E「你请的远程授权超时」,问题列「点了取消请求照样报超时」)──
+
+    @Test
+    void anExpiredRequestIsReportedExactlyOnce() {
+        List<ApprovalStore.Pending> expired = new ArrayList<>();
+        store.onExpire(expired::add);
+        store.request("zhangsan", "张三", "finance_clerk", PERMS, "boss-a", CTX);
+
+        clock.advance(Duration.ofMinutes(2).plusSeconds(1));
+        store.inboxOf("boss-a");
+        store.inboxOf("boss-a");   // 再扫一遍也不重报
+
+        assertThat(expired).singleElement().satisfies(p -> assertThat(p.requester()).isEqualTo("zhangsan"));
+    }
+
+    @Test
+    void aCancelledRequestIsGone_andNeverReportedAsTimeout() {
+        List<ApprovalStore.Pending> expired = new ArrayList<>();
+        store.onExpire(expired::add);
+        ApprovalStore.Pending p = store.request("zhangsan", "张三", "finance_clerk", PERMS, "boss-a", CTX);
+
+        assertThat(store.cancel(p.id(), "boss-a")).as("只有请求者本人撤得动").isFalse();
+        assertThat(store.inboxOf("boss-a")).hasSize(1);
+
+        assertThat(store.cancel(p.id(), "zhangsan")).isTrue();
+        assertThat(store.inboxOf("boss-a")).as("撤回后审批人那边立刻没了").isEmpty();
+
+        clock.advance(Duration.ofMinutes(2).plusSeconds(1));
+        store.inboxOf("boss-a");
+        assertThat(expired).as("撤回的不算超时").isEmpty();
+    }
+
+    /** ApprovalService 把三种结果接进请求者的铃铛:批准 / 拒绝谁点的谁署名,超时是系统的(addAsSystem)。 */
+    @Test
+    void decideAndExpiry_landInTheRequestersBell() {
+        NoticeService bell = mock(NoticeService.class);
+        AuthUserMapper users = mock(AuthUserMapper.class);
+        AuthUser boss = new AuthUser();
+        boss.setUsername("boss-a");
+        boss.setDisplayName("王主管");
+        when(users.selectOne(any())).thenReturn(boss);
+        ApprovalService svc = new ApprovalService(store, mock(PresenceStore.class), mock(UserPermissionCache.class),
+            mock(ElevationStore.class), mock(ElevationService.class), mock(AuditLogService.class), users, bell);
+        SecurityContextHolder.getContext().setAuthentication(
+            new UsernamePasswordAuthenticationToken("boss-a", null, List.of()));
+        try {
+            ApprovalStore.Pending ok = store.request("zhangsan", "张三", "finance_clerk", PERMS, "boss-a", CTX);
+            svc.decide(ok.id(), new DecideReq(true, "pw"));
+            verify(bell).add("zhangsan", NoticeService.Kind.approval_approved, "王主管批准了你的授权",
+                "30 分钟内可以修改 loss_rate · A 座", null);
+
+            ApprovalStore.Pending no = store.request("zhangsan", "张三", "finance_clerk", PERMS, "boss-a", CTX);
+            svc.decide(no.id(), new DecideReq(false, null));
+            verify(bell).add(eq("zhangsan"), eq(NoticeService.Kind.approval_rejected), eq("王主管拒绝了你的授权"),
+                anyString(), isNull());
+
+            store.request("lisi", "李四", "finance_clerk", PERMS, "boss-a", CTX);
+            clock.advance(Duration.ofMinutes(2).plusSeconds(1));
+            store.inboxOf("boss-a");
+            verify(bell).addAsSystem(eq("lisi"), eq(NoticeService.Kind.approval_timeout), anyString(), anyString(), isNull());
+            verify(bell, never()).addAsSystem(eq("zhangsan"), any(), any(), any(), any());
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
     }
 }

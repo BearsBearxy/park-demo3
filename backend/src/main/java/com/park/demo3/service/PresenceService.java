@@ -6,6 +6,7 @@ import com.park.demo3.dto.LockDtos.EvictionDTO;
 import com.park.demo3.dto.PresenceDtos.*;
 import com.park.demo3.entity.AuthUser;
 import com.park.demo3.mapper.AuthUserMapper;
+import com.park.demo3.security.ElevationStore;
 import com.park.demo3.security.Perm;
 import com.park.demo3.security.PresenceStore;
 import com.park.demo3.security.UserPermissionCache;
@@ -35,11 +36,15 @@ public class PresenceService {
     private final ApprovalService approvals;
     private final UserPermissionCache permCache;
     private final ReviewService reviews;
+    private final NoticeService notices;
+    private final ElevationStore elevations;
 
     public PresenceService(PresenceStore store, AuthUserMapper users, ApprovalService approvals,
-                           UserPermissionCache permCache, ReviewService reviews) {
+                           UserPermissionCache permCache, ReviewService reviews,
+                           NoticeService notices, ElevationStore elevations) {
         this.store = store; this.users = users; this.approvals = approvals;
         this.permCache = permCache; this.reviews = reviews;
+        this.notices = notices; this.elevations = elevations;
     }
 
         @NoReviewGuard(reason = "在场心跳,写内存不落库。全站唯一的轮询,3 秒一拍 —— 进审核就是每 3 秒撞一次闸")
@@ -95,7 +100,10 @@ public PingResp ping(PingReq req) {
 
         return new PingResp(seats(me), evictions,
             evictions.isEmpty() ? null : evictions.get(0),
-            approvals.inbox(), out, pendingReviews, myReturned, reviews.rev());
+            approvals.inbox(), out, pendingReviews, myReturned, reviews.rev(),
+            // ponytail: 每拍多一次 count + 一次主键查。count 按 (username,id) 索引、每人至多 30 行;
+            //   真扛不住时同 pendingReviews 的升级路径:写后失效的内存计数,别去调慢 ping。
+            notices.unseenCount(me), !elevations.active(me).isEmpty(), notices.systemSeen(me));
     }
 
     /** 登出 / 关页面。不清的话他会在别人的头像组里多挂 60 秒。 */

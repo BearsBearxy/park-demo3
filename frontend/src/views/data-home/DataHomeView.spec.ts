@@ -69,6 +69,11 @@ vi.mock('@/api/review', () => ({
   },
 }))
 
+// 铃铛 store 换成桩:这屏只用它的 openPanel(「待批授权 N」点开的是铃铛面板,PAGE-BEHAVIOR-SPEC §5.1)。
+// 真 store 一开面板就去取三份明细、标已看 —— 那是 bell.spec 的事,这里只钉「点了开的是它」。
+const bell = vi.hoisted(() => ({ open: false, openPanel: vi.fn() }))
+vi.mock('@/stores/bell', () => ({ useBellStore: () => bell }))
+
 import DataHomeView from './DataHomeView.vue'
 
 const step = (key: string, label: string, status: DataHomeStepDTO['status'], detail = ''): DataHomeStepDTO =>
@@ -860,19 +865,20 @@ describe('数据中心首页 · 主管条(P2 T6)', () => {
     expect(w.findAll('.dh-sup-chip')).toHaveLength(0)
   })
 
-  it('主管条:待批 N 条显数字,点开抽屉', async () => {
-    // 预热懒加载的模块 —— defineAsyncComponent 首次 import() 在 vitest 里要走一次真实的
-    // 模块转换,单靠 flushPromises(它只是 setTimeout(0))在冷启动时赶不上;预热之后
-    // 命中转换缓存,一拍 flushPromises 就够(与 Toolbar.vue/MobileTopBar.vue 的生产用法无关,
-    // 纯粹是测试环境的时序问题)。
-    await import('@/components/fp/FPApprovalDrawer.vue')
+  // 破坏验证:按钮改回 @click="inbox = true"(自挂抽屉)→ 红
+  it('❗主管条:待批 N 条显数字,点开的是铃铛面板,不再自挂抽屉', async () => {
+    bell.openPanel.mockImplementation(() => { bell.open = true })
+    bell.open = false
     const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
     usePresenceStore().approvals = [pending('a'), pending('b')]
     await w.vm.$nextTick()
-    expect(w.find('.dh-sup').text()).toContain('2')
+    expect(w.find('.dh-sup-inbox').text()).toBe('待批授权 2')
     await w.find('.dh-sup-inbox').trigger('click')
     await flushPromises()
-    expect(w.findComponent({ name: 'FPApprovalDrawer' }).exists()).toBe(true)
+    expect(bell.openPanel).toHaveBeenCalledTimes(1)
+    expect(bell.open).toBe(true)
+    expect(w.findComponent({ name: 'FPApprovalDrawer' }).exists()).toBe(false)
+    bell.openPanel.mockReset()
   })
 
   it('主管条:「谁在编辑」chip 点跳带上锁串的第二维(公司/期区/tab),不止带期(fix-brief FA)', async () => {

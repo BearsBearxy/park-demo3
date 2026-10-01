@@ -206,6 +206,8 @@ export const useAuthStore = defineStore('auth', () => {
   /** 此刻有没有屏在编辑模式。editors 是全站唯一的编辑态登记表,别处要判断「能不能打断他」都读这个
    *  (版本更新弹窗:编辑态不弹,VERSION-UPDATE-SPEC §3)。 */
   const editing = computed(() => editors.value.size > 0)
+  /** 此刻登记了几个编辑器。授权到期那句「已退出编辑」比的是到期前后的个数(App.vue)。 */
+  const editorCount = computed(() => editors.value.size)
   /** 这一屏(页签 value)有没有东西在编辑态。 */
   function editingOn(screen: string): boolean {
     for (const e of editors.value.values()) if (e.screen === screen) return true
@@ -273,6 +275,25 @@ export const useAuthStore = defineStore('auth', () => {
     } catch { grants.value = []; retick() }
   }
 
+  /**
+   * 重取我现在的权限(GET /auth/me)。App 挂载时调 —— 管理员改了我的角色,铃铛说「刷新后生效」,
+   * 刷新了就得真的生效(06-E);改前权限只在登录时取一次,刷新也还是旧的。
+   * 只覆盖后端给了的字段,写回登录时用的那一份存储(记住登录 → localStorage,否则 sessionStorage)。
+   * 取不到就留着登录时那份:401 由 api 层统一踢回登录页。
+   */
+  async function refreshMe() {
+    const t = token.value
+    if (!t || !isAuthed.value) return
+    try {
+      const r = await api.get<{ permissions?: string[]; navLayers?: string[]; roleNames?: string[] }>('/auth/me')
+      if (token.value !== t) return   // 等的时候退出 / 换了人:这份是上一张令牌的
+      const store = localStorage.getItem('token') ? localStorage : sessionStorage
+      if (r?.permissions) { permissions.value = r.permissions; store.setItem('permissions', JSON.stringify(r.permissions)) }
+      if (r?.navLayers) { navLayers.value = r.navLayers; store.setItem('navLayers', JSON.stringify(r.navLayers)) }
+      if (r?.roleNames) { roleNames.value = r.roleNames; store.setItem('roleNames', JSON.stringify(r.roleNames)) }
+    } catch { /* 留着登录时那份 */ }
+  }
+
   /** 改密成功后清标志(两轨都清:不知道当初勾没勾「记住登录」) */
   function clearMustChangePassword() {
     mustChangePassword.value = false
@@ -328,7 +349,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   return { token, me, drifted, displayName, role, permissions, navLayers, roleNames, mustChangePassword,
            isAuthed, isReadonly, roleLabel, landing, roleHome,
-           can, hasOwn, authorizerOf, grants: liveGrants, elevationLeftMs, requestElevation, endElevation, refreshElevation,
-           openEditor, closeEditor, editing, editingOn, dirtyOn, dirtyTotal, loginSeq,
+           can, hasOwn, authorizerOf, grants: liveGrants, elevationLeftMs, requestElevation, endElevation, refreshElevation, refreshMe,
+           openEditor, closeEditor, editing, editorCount, editingOn, dirtyOn, dirtyTotal, loginSeq,
            login, logout, clearMustChangePassword, setToken }
 })

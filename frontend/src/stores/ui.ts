@@ -1,10 +1,15 @@
 // src/stores/ui.ts — sidebar open/close state + persistence; 全局网络错误提示。
 import { defineStore } from 'pinia'
 import { ref, type Component } from 'vue'
+import type { ReviewRow } from '@/types/review'
+import { usePresenceStore } from '@/stores/presence'
 
 /** 手机顶栏的屏级主动作(RESPONSIVE-LAYOUT-SPEC §5.10:一屏只留一个)。
  *  label 始终上屏,也是它的无障碍名;icon 可选(顶栏另外三件都是图标,不带图标的位等于半个位)。 */
 export type TopBarAction = { label: string; icon?: Component; onClick: () => void }
+
+/** 正在编辑的表被别人交审 / 审核通过(06-E 当场出现组)。by 是显示名(在场表查得到时)或账号;what 是人话的「哪张表」。 */
+export type EditStop = { key: string; status: 'submitted' | 'approved'; by: string; what: string }
 
 export const useUiStore = defineStore('ui', () => {
   // default true; "0" means closed (mirrors app.jsx toggleSb)
@@ -57,5 +62,20 @@ export const useUiStore = defineStore('ui', () => {
   // ⚠ 别裸写这个字段,走 composables/useTopBarAction.ts —— 它管换屏/KeepAlive 停用时的清场。
   const topBarAction = ref<TopBarAction | null>(null)
 
-  return { sbOpen, toggleSidebar, closeTransient, netError, reportNetError, navigating, startNav, endNav, paletteReq, requestPalette, topBarAction }
+  // 编辑态里这张表被别人交审 / 审核通过 → 四条编辑入口(useEditMode / SchedHeader / LedgerWideTable /
+  // useFinStatementScreen)退出编辑**前**报到这里;App 挂的那一个 FPEvictedDialog 读它(:review),
+  // 「知道了」置回 null。改前是静默退出编辑,人不知道为什么被踢出来(06-E「缺」那一列)。
+  // 自己交的、自己审的不报 —— 那是他自己点的。
+  const editStop = ref<EditStop | null>(null)
+  function reportEditStop(row: ReviewRow | null, me: string | null, what: string) {
+    const status = row?.status
+    if (!row || (status !== 'submitted' && status !== 'approved')) return
+    const by = status === 'approved' ? row.reviewedBy : row.submittedBy
+    if (!by || by === me) return
+    // 行里记的是账号;动手的人此刻多半在线,在场表里有显示名就写显示名
+    const name = usePresenceStore().users.find((u) => u.user === by)?.displayName ?? by
+    editStop.value = { key: row.key, status, by: name, what }
+  }
+
+  return { sbOpen, toggleSidebar, closeTransient, netError, reportNetError, navigating, startNav, endNav, paletteReq, requestPalette, topBarAction, editStop, reportEditStop }
 })

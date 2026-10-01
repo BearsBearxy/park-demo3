@@ -44,7 +44,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     // 告诉前端这张为什么不认 —— 没有它,用户只会被默默踢回登录页,
                     // 不知道是自己账号在别处登了、还是改了密码、还是被停用。
                     // 只在「认得出是谁」时才给理由:账号不存在就什么都不说,不给枚举用户名的档口。
-                    String reason = ua == null ? null : ua.revokeReason();
+                    // 停用的不在快照里(ua == null),另查停用名单 —— 走到这里令牌签名已验过,
+                    // 是我们自己签给这个人的,告诉他「停用了」不泄露任何东西(V133)。
+                    String reason = ua != null ? ua.revokeReason()
+                        : cache.isDisabled(claims.getSubject()) ? "disabled" : null;
                     if (reason != null) res.setHeader("X-Auth-Reason", reason);
                 }
             } catch (Exception ignored) { /* 无效令牌 → 保持匿名,后续被 401 拦截 */ }

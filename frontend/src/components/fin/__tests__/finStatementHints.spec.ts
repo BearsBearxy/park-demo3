@@ -6,12 +6,17 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { defineComponent, h } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
+import { useUiStore } from '@/stores/ui'
+import { useReviewStore } from '@/stores/review'
+import { reviewApi } from '@/api/review'
+import type { ReviewRow } from '@/types/review'
 import { askQueue, answer } from '@/utils/ask'
 import { receipts } from '@/utils/receipt'
 import { companyApi } from '@/api/ledger'
 import { reportApi } from '@/api/report'
 import { runImport } from '@/utils/importRegistry'
 import { useFinStatementScreen } from '@/components/fin/useFinStatementScreen'
+import { shellOf } from '@/composables/useTabShells'
 import FinDialogs from '@/components/fin/FinDialogs.vue'
 import FPNote from '@/components/fp/FPNote.vue'
 import type { CompanyDTO, YearMonthsDTO } from '@/types/ledger'
@@ -60,20 +65,22 @@ const PERIOD: ReportPeriodDTO = { amounts: { '1': { cur: 12000, ytd: 34000 } }, 
 const BODY: ReportSaveRequest = { cells: [{ rowKey: '1', field: 'cur', amount: 13000 }] }
 
 type Screen = ReturnType<typeof useFinStatementScreen>
-async function setup(): Promise<Screen> {
+/** screen 给了就挂在那一屏的页签壳里(provide 屏名,同线上) */
+async function setup(screen?: string): Promise<Screen> {
   let s!: Screen
-  mount(defineComponent({
+  const C = defineComponent({
     setup() {
       s = useFinStatementScreen({ stmt: 'is', reviewKind: 'report-is', resetLocal: () => {} })
       return () => h('div')
     },
-  }))
+  })
+  mount(screen ? shellOf(`${screen}:0`, C) : C)
   await flushPromises()
   return s
 }
 /** 物业公司 2025-02 正文,拿到锁进编辑态,草稿改了 n 处 */
-async function editing(n: number): Promise<Screen> {
-  const s = await setup()
+async function editing(n: number, screen?: string): Promise<Screen> {
+  const s = await setup(screen)
   await s.pickCell(2025, 2)
   await s.enterEdit()
   expect(s.edit.value, '没进去编辑态,下面的断言都落空').toBe(true)
@@ -227,6 +234,25 @@ describe('三大报表 · 提示件(useFinStatementScreen)', () => {
     await s.onImport([{ label: '物业公司', records: [] }], '利润表.xlsx')
     expect(last()).toMatchObject({ tone: 'fail', text: '第 3 行公司名为空' })
     expect(last().action).toBeUndefined()
+  })
+
+  // 06-E 当场出现组「正在编辑的表被交审或审核通过」:改前静默退出编辑。
+  // 破坏验证:删掉 useFinStatementScreen 里 ui.reportEditStop(...) 那一句 → 红
+  // 破坏验证:what 里去掉屏名那一段(tabMeta(screen)?.page)→ 红
+  it('❗编辑态里这一期被别人审核通过 → 退出编辑,并写明谁审的、哪一屏哪一期', async () => {
+    const s = await editing(0, 'income-statement')
+    const row: ReviewRow = {
+      key: 'report-is:1:2025-02', kind: 'report-is', scope: '1', status: 'approved',
+      submittedBy: '张三', submittedAt: '2025-03-01T09:00:00', reviewedBy: '李审', reviewedAt: '2025-03-02T10:00:00',
+      reason: null, blockedBy: [],
+    }
+    vi.mocked(reviewApi.states).mockResolvedValue([row])
+    const rs = useReviewStore()
+    rs.invalidate('2025-02')
+    await rs.ensureYear(2025)
+    await flushPromises()
+    expect(s.edit.value).toBe(false)
+    expect(useUiStore().editStop).toMatchObject({ status: 'approved', by: '李审', what: '利润表 · 物业公司 · 2025-02' })
   })
 })
 

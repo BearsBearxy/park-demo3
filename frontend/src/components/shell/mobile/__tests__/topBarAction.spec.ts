@@ -20,6 +20,7 @@ vi.mock('vue-router', () => ({
 
 import MobileTopBar from '../MobileTopBar.vue'
 import { useUiStore } from '@/stores/ui'
+import { usePresenceStore } from '@/stores/presence'
 import { useTopBarAction } from '@/composables/useTopBarAction'
 
 const SRC = readFileSync(join(__dirname, '..', 'MobileTopBar.vue'), 'utf8')
@@ -34,8 +35,9 @@ const parts = (w: VueWrapper) =>
 const labels = (w: VueWrapper) =>
   Array.from(w.find('.mtb').element.querySelectorAll('button')).map((b) => b.getAttribute('aria-label'))
 
-const BASE_PARTS = ['button.mtb-btn', 'span.mtb-title', 'button.mtb-btn', 'span.mtb-bell']
-const BASE_LABELS = ['打开导航', '搜索', '待批授权']
+// 第四件是铃铛 NotifyBell(S5 FE-MTB):和桌面顶栏同一个组件,mobile 只换 44×44 的按钮
+const BASE_PARTS = ['button.mtb-btn', 'span.mtb-title', 'button.mtb-btn', 'span.nb.nb-m']
+const BASE_LABELS = ['打开导航', '搜索', '通知']
 
 /** `<style scoped>` 里某条规则的整块(jsdom 不做布局,触达只能断 CSS 字面量) */
 const cssBlock = (sel: string) => {
@@ -70,10 +72,10 @@ describe('MobileTopBar 屏级动作位', () => {
       'span.mtb-title',            // 屏名
       'button.mtb-btn.mtb-act',    // 屏级动作 ← 钉死在这一格
       'button.mtb-btn',            // 🔍
-      'span.mtb-bell',             // 🔔
+      'span.nb.nb-m',              // 🔔
     ])
     // 无障碍名一路:动作钮的名字是它自己的文字(没有 aria-label),位置同样钉在 🔍 之前
-    expect(labels(w)).toEqual(['打开导航', null, '搜索', '待批授权'])
+    expect(labels(w)).toEqual(['打开导航', null, '搜索', '通知'])
     expect(w.find('.mtb-act').text()).toBe('编辑模式')
 
     await w.find('.mtb-act').trigger('click')
@@ -100,6 +102,18 @@ describe('MobileTopBar 屏级动作位', () => {
     await nextTick()
     expect(parts(w)).toEqual(BASE_PARTS)
     expect(labels(w)).toEqual(BASE_LABELS)
+  })
+
+  // 破坏验证:把 <NotifyBell mobile /> 换回本地 pendingCount + aria-label="待批授权" 的旧按钮 → 红
+  it('❗铃铛是全站那一个:名字以「通知」开头,等你处理的件数进名字、记号写数', async () => {
+    const w = mount(MobileTopBar)
+    const bell = () => w.find('.mtb > span.nb button')
+    expect(bell().attributes('aria-label')).toBe('通知')
+    expect(w.find('.nb-num').exists()).toBe(false)
+    usePresenceStore().pendingReviews = 2
+    await nextTick()
+    expect(bell().attributes('aria-label')).toBe('通知，2 件等你处理')
+    expect(w.find('.nb-num').text()).toBe('2')
   })
 
   it('顶栏高度仍是 52(+safe-area),动作钮触达 ≥44×44(§6.2)', () => {

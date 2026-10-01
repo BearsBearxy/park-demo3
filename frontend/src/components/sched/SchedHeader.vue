@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useScreen } from '@/composables/useTabShells'
 import { useEditLock } from '@/composables/useEditLock'
 import { useReviewStore } from '@/stores/review'
+import { useUiStore } from '@/stores/ui'
 import { periodOfKey } from '@/types/review'
 import { ask } from '@/utils/ask'
 
@@ -228,7 +229,13 @@ watch(() => props.scope, (now, before) => {
  * ② 屏内换月(附表12 月胶囊 / 附13-14 Segmented)换到了一个已审核的月 —— 这一条最常见,
  *    而 scope 那条守卫看不到它(锁的 scope 是按年的 `sched:salary:2025`,换月不变)。
  */
-watch(reviewBlock, (rb) => { if (rb && props.edit) exitEdit(true) })
+const ui = useUiStore()
+watch([reviewBlock, () => props.reviewKey], ([rb, k], [wasRb, wasK]) => {
+  if (!rb || !props.edit) return
+  // ① 才当面说一声(06-E 当场出现组,App 的居中弹窗写谁交审 / 谁审过);② 键变了,是他自己换的月,不弹
+  if (!wasRb && k === wasK) ui.reportEditStop(review.rowOf(k), auth.me, reviewLabel.value)
+  exitEdit(true)
+})
 
 /** 接管成功 → 锁已经是我们的了,直接进编辑态。 */
 async function onTaken() {

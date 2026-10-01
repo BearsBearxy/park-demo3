@@ -162,10 +162,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
                 >{{ o.label }}</button>
               </div>
             </div>
-            <button class="mnav-row" :class="{ unread: upd.unread }" @click="openUpdates">
+            <button class="mnav-row" @click="openUpdates">
               <span class="ic"><Sparkles :size="16" /></span>
               <span class="nm">版本更新</span>
-              <span class="ver">v{{ upd.version }}<span v-if="upd.unread" class="dot" /></span>
+              <span class="ver">v{{ upd.version }}</span>
             </button>
           </div>
           <!-- ⑤ 账号段(IconRail 头像菜单内容) -->
@@ -297,13 +297,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   color: var(--text-muted);
 }
 
-/* 版本更新一行:夹在目录与账号之间,自带上分隔线;未读时浅蓝底 + 蓝点 */
+/* 版本更新一行:夹在目录与账号之间,自带上分隔线。没看过的更新只在铃铛上提示(06-G),这里不挂点、不换底色 */
 .mnav-ver {
   flex: 0 0 auto;
   padding: 4px 12px;
   border-top: 1px solid var(--divider);
 }
-.mnav-row.unread { background: var(--accent-slate); color: var(--text-primary); }
 .mnav-appr {
   display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 10px;
   color: var(--text-secondary); font-size: var(--fs-body); font-weight: var(--fw-medium);
@@ -319,7 +318,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
   font-family: var(--font-mono); font-size: var(--fs-label); font-weight: var(--fw-regular); color: var(--text-muted);
 }
-.mnav-row .ver .dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--hue-blue); }
 
 .mnav-user {
   flex: 0 0 auto;

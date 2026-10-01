@@ -8,6 +8,7 @@ import { nextTick, reactive } from 'vue'
 import { useTabsStore } from '@/stores/tabs'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
+import { useUpdateStore } from '@/stores/update'
 import { tipState } from '../ShellTip.vue'
 import FPReceiptHost from '@/components/fp/FPReceiptHost.vue'
 import { receipts } from '@/utils/receipt'
@@ -189,6 +190,28 @@ describe('Toolbar · 首页 / 新标签页(§5.6)', () => {
   })
 })
 
+// 06-G 规则表「只挂在铃铛上」;06-E 系统组「有没看过的更新记录」→ 进铃铛(S5 FE-TOOLBAR)
+describe('Toolbar · 铃铛', () => {
+  // 破坏验证:✦ 后面加回 `<span v-if="upd.unread" class="fp-upd-dot" />` → 红
+  it('❗有没看过的更新:✦ 那一格不挂点', () => {
+    const upd = useUpdateStore()
+    upd.loadSeen()
+    expect(upd.unread, '前置:真有没看过的更新').toBe(true)
+    const w = mountBar()
+    expect(w.find('.fp-upd button[aria-label="版本更新"]').exists(), '选到的是 ✦ 那一格').toBe(true)
+    expect(w.find('.fp-upd-dot').exists()).toBe(false)
+    expect(w.find('.fp-upd [class*="dot"]').exists()).toBe(false)
+  })
+
+  // 破坏验证:把 <NotifyBell /> 换回原来 aria-label="待批授权" 的按钮 / 删掉 → 红
+  it('❗顶栏只有一个铃铛,按钮名以「通知」开头,旧的「待批授权」按钮没了', () => {
+    const w = mountBar()
+    const bells = w.findAll('button').filter((b) => (b.attributes('aria-label') ?? '').startsWith('通知'))
+    expect(bells).toHaveLength(1)
+    expect(w.find('[aria-label="待批授权"]').exists()).toBe(false)
+  })
+})
+
 describe('Toolbar · 其余', () => {
   it('上下文 chip:无期显「—」,有期显 期 · 公司', async () => {
     const w = mountBar()
@@ -218,7 +241,7 @@ describe('Toolbar · 其余', () => {
     mountBar()
     const wraps = [...document.body.querySelectorAll<HTMLElement>('.fp-toolbar .fp-tipw')]
     const search = wraps.find(el => el.querySelector('.fp-search-btn'))!
-    const bell = wraps.find(el => el.querySelector('[aria-label="待批授权"]'))!
+    const bell = wraps.find(el => el.querySelector('[aria-label^="通知"]'))!
     search.dispatchEvent(new MouseEvent('mouseenter'))
     vi.advanceTimersByTime(500)
     await nextTick()
@@ -226,7 +249,7 @@ describe('Toolbar · 其余', () => {
     search.dispatchEvent(new MouseEvent('mouseleave'))
     bell.dispatchEvent(new MouseEvent('mouseenter'))
     await nextTick()
-    expect(document.body.querySelector('.fp-tip')!.textContent).toBe('待我处理等我批的授权、等我审的表、被退回的表')
+    expect(document.body.querySelector('.fp-tip')!.textContent).toBe('通知')
     bell.dispatchEvent(new MouseEvent('mousedown'))
     await nextTick()
     expect(document.body.querySelector('.fp-tip')).toBeNull()

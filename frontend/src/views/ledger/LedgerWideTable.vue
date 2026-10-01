@@ -21,6 +21,7 @@ import { ledgerRowKey } from '@/types/ledger'
 import { useAuthStore } from '@/stores/auth'
 import { useEditLock } from '@/composables/useEditLock'
 import { useReviewStore } from '@/stores/review'
+import { useUiStore } from '@/stores/ui'
 import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
 import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
@@ -95,8 +96,14 @@ watch(() => props.reviewKey, (k) => { void review.ensureFor(k) }, { immediate: t
 const reviewBlock = computed(() => review.blockOf(props.reviewKey))
 const reviewNote = computed(() => reviewBlock.value?.note ?? null)
 
-/** 编辑态里这一册这一月被审了 → 请父层退出(它那边 5 条路都汇到 cancel)。 */
-watch(reviewBlock, (rb) => { if (rb && props.edit) emit('cancel') })
+/** 编辑态里这一册这一月被审了 → 请父层退出(它那边 5 条路都汇到 cancel)。
+ *  同一把键在手上被别人交审 / 审了才当面说一声(06-E 当场出现组);键变了是换了册或月,不弹。 */
+const ui = useUiStore()
+watch([reviewBlock, () => props.reviewKey], ([rb, k], [wasRb, wasK]) => {
+  if (!rb || !props.edit) return
+  if (!wasRb && k === wasK) ui.reportEditStop(review.rowOf(k ?? null), auth.me, reviewLabel.value)
+  emit('cancel')
+})
 
 // ── 交审动作簇(per-screen-review §03-B2) ────────────────────────
 // 这一屏一次只看得见**当前这一册这一个月**那一把键 —— 「一次交全部公司」是本月出账清单的活,

@@ -9,6 +9,7 @@ vi.mock('@/api', () => ({
     // 返 undefined 会让三条 logout 用例报「Cannot read properties of undefined」。
     post: vi.fn(() => Promise.resolve(undefined)),
     delete: vi.fn(() => Promise.resolve(undefined)),
+    get: vi.fn(() => Promise.resolve(undefined)),
   },
   // 跨标签页身份漂移守卫的两个具名导出:store 在 login/logout 收尾会调它们。
   // 漏 mock 会让本文件所有用例报「No "bindSession" export is defined」——
@@ -373,5 +374,48 @@ describe('角色行 roleLabel(P5)', () => {
     auth.permissions = ['ledger:edit']
     expect(auth.roleHome).toBe('/data-home')
     expect(auth.landing).toBe('/home')
+  })
+})
+
+// ══════════ 刷新后生效(06-E「你的角色或权限被改了」,S5 FE-API) ══════════
+describe('refreshMe', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    localStorage.clear()
+    sessionStorage.clear()
+    vi.clearAllMocks()
+  })
+
+  // 破坏验证:refreshMe 里不写 permissions(删那一行)→ 红
+  it('❗/auth/me 给了新权限 ⇒ can() 立刻变,并写回登录时那份存储', async () => {
+    localStorage.setItem('token', 'existing-token')
+    localStorage.setItem('permissions', JSON.stringify(['meter:view']))
+    const auth = useAuthStore()
+    expect(auth.can('meter:edit'), '前置:改前没有').toBe(false)
+
+    vi.mocked(api.get).mockResolvedValueOnce({ permissions: ['meter:view', 'meter:edit'], navLayers: ['data'], roleNames: ['财务专员'] })
+    await auth.refreshMe()
+
+    expect(api.get).toHaveBeenCalledWith('/auth/me')
+    expect(auth.can('meter:edit')).toBe(true)
+    expect(auth.roleNames).toEqual(['财务专员'])
+    expect(JSON.parse(localStorage.getItem('permissions')!), '刷新一次就丢的话下次打开又是旧权限').toEqual(['meter:view', 'meter:edit'])
+    expect(sessionStorage.getItem('permissions'), '不记住登录的人才写 sessionStorage').toBeNull()
+  })
+
+  // 破坏验证:删掉 `if (token.value !== t) return` → 红
+  it('❗等 /auth/me 的时候换了人登录:旧令牌那份不许盖到新人身上', async () => {
+    localStorage.setItem('token', 'token-a')
+    const auth = useAuthStore()
+    let reply!: (v: unknown) => void
+    vi.mocked(api.get).mockReturnValueOnce(new Promise((r) => { reply = r }) as never)
+    const p = auth.refreshMe()
+
+    vi.mocked(api.post).mockResolvedValueOnce({ token: 'token-b', displayName: 'B', permissions: ['ledger:view'] })
+    await auth.login({ username: 'b', password: 'x' })
+    reply({ permissions: ['system:edit'] })
+    await p
+
+    expect(auth.permissions).toEqual(['ledger:view'])
   })
 })

@@ -129,6 +129,17 @@ function startTick() {
 }
 function stopTick() { if (tick) { clearInterval(tick); tick = null } }
 
+/**
+ * 撤回还在等的请求(画布 06-E「点了取消请求照样报超时」):等待中关掉弹窗、点「取消请求」都走这里。
+ * 撤回的不算超时,不进铃铛。已经倒数到 0 的不撤 —— 那次确实超时了,该进铃铛「有结果了」。
+ * 撤不掉(断网 / 已被批)静默:最坏是按超时算,不值得为它打断人。
+ */
+function cancelRequest() {
+  if (myId.value && leftMs.value > 0) void approvalsApi.cancel(myId.value).catch(() => {})
+  myId.value = null
+  stopTick(); waiting.value = false
+}
+
 const pickedName = computed(() =>
   candidates.value?.find((c) => c.username === picked.value)?.displayName ?? '')
 const mmss = computed(() => {
@@ -163,7 +174,7 @@ watch(() => presence.outcome, async (o) => {
 })
 
 watch(open, (o) => {
-  if (!o) { stopTick(); waiting.value = false; myId.value = null; return }
+  if (!o) { cancelRequest(); return }
   account.value = ''; password.value = ''; err.value = ''
   acctRO.value = true; pwdRO.value = true
   tab.value = 'onsite'; candidates.value = null; picked.value = null
@@ -276,7 +287,7 @@ async function submit() {
       <!-- ⚠ 等待态的逃生口必须一直挂着：主管不在电脑前时请求者会干等，
            这是当初否掉远程批准的第二条理由，今天依然成立。 -->
       <template v-if="canRemote && tab === 'remote' && waiting">
-        <Button variant="gray" size="sm" @click="waiting = false">取消请求</Button>
+        <Button variant="gray" size="sm" @click="cancelRequest">取消请求</Button>
         <Button variant="outline" size="sm" @click="tab = 'onsite'; waiting = false">改为请人走过来</Button>
       </template>
       <template v-else-if="canRemote && tab === 'remote'">

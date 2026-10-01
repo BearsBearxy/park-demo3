@@ -4,11 +4,9 @@ import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useUiStore } from '@/stores/ui'
 import { usePresenceStore } from '@/stores/presence'
-import { useAuthStore } from '@/stores/auth'
 import { useTabsStore } from '@/stores/tabs'
 import { useUpdateStore } from '@/stores/update'
 import { useAppearanceStore } from '@/stores/appearance'
-import { BRAND } from '@/brand'
 import { useViewport } from '@/composables/useViewport'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
@@ -115,8 +113,7 @@ onUnmounted(() => presence.stop())
 
 // ── 版本更新(VERSION-UPDATE-SPEC §3/§6) ──
 // 外壳是全站唯一常驻的组件,轮询与「首次打开弹一次」都挂这里:
-// 挂在屏上就要挂 48 遍,而且换屏会重来一次。
-const auth = useAuthStore()
+// 挂在屏上就要挂 48 遍,而且换屏会重来一次。有新版进铃铛「系统」(upd.hasNewVersion),不在这里出条。
 const upd = useUpdateStore()
 // 外观按账号记(DARK-MODE-SPEC §3):外壳挂载 = 刚登录进来,按这个人的选择再设一次
 const appearance = useAppearanceStore()
@@ -205,14 +202,12 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
   <FPConfirmHost />
 
   <Teleport to="body">
-    <!-- 发新版了请刷新(VERSION-UPDATE-SPEC §6)。深色提示条(.fp-net-toast 那套语言与位置);
-         不自动消失,这条要等他处理。 -->
+    <!-- 这一页属于新版本(VERSION-UPDATE-SPEC §6 第 2 种)。深色提示条(.fp-net-toast 那套语言与位置);
+         不自动消失,这条要等他处理。「已更新到 v…」2026-09-30 起进铃铛「系统」,不再走这里。 -->
     <!-- 「本次更新」开着时先不出:提示档(400)盖在模态档(300)之上,会压住弹窗底部的按钮。
          关掉弹窗它立刻出现 —— 两件事一先一后说,不同时说。 -->
     <div v-if="upd.barKind && !upd.popupOpen" class="fp-net-toast fp-upd-toast" :style="{ '--lift': toastLift }" role="alert">
-      <span v-if="upd.barKind === 'blocked'" class="msg">这一页属于新版本，刷新后才能打开</span>
-      <span v-else-if="auth.editing" class="msg">{{ BRAND.name }}已更新到 v{{ upd.serverVersion }}。<span class="sub">你正在编辑，保存后再刷新</span></span>
-      <span v-else class="msg">{{ BRAND.name }}已更新到 v{{ upd.serverVersion }}，刷新后生效</span>
+      <span class="msg">这一页属于新版本，刷新后才能打开</span>
       <button class="act" @click="reloadPage">刷新</button>
       <button class="act ghost" @click="upd.dismissBar()">×</button>
     </div>
@@ -233,7 +228,7 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
   position: relative;
 }
 
-/* ── 底部深色提示条(现在只剩版本更新那条用;断网已改走结果回执) ── */
+/* ── 底部深色提示条(现在只剩「这一页属于新版本」那条用;断网已改走结果回执,有新版进铃铛) ── */
 .fp-net-toast { position:fixed; left:50%; bottom:28px; transform:translateX(-50%); z-index:400;
   display:flex; align-items:center; gap:10px; max-width:min(560px,90vw); padding:10px 14px;
   background:var(--toast-bg); color:var(--text-on-solid); border-radius:var(--radius-md); box-shadow:var(--shadow-toast); font-size:13px;
@@ -249,7 +244,6 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
 
 /* 版本更新提示条:永远在最上面一格。--lift 是它下面还有几条(0/1/2),一条 56px。 */
 .fp-upd-toast { bottom: calc(28px + var(--lift, 0) * 56px); }
-.fp-upd-toast .sub { color: color-mix(in srgb, var(--text-on-solid) 62%, transparent); }
 
 /* ── nav card ── */
 .fp-nav-card {

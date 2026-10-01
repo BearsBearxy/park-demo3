@@ -107,6 +107,8 @@ public class BillNoticeService {
     private final MeterBindingService binding;
     private final ReviewGuard reviewGuard;
     private final AuditLogService audit;   // 取消确认要留痕(RBAC-SPEC §7)
+    private final NoticeService bell;      // 取消确认 / 作废 → 原确认人的铃铛(V133)
+    private final com.park.demo3.mapper.AuthUserMapper users;   // 铃铛那句「陈会计取消确认了…」的显示名
 
     public BillNoticeService(BillNoticeMapper notices, BillNoticeLineMapper noticeLines,
                              BillNoticeWarnMapper noticeWarns,
@@ -120,8 +122,9 @@ public class BillNoticeService {
                              UnitMapper units, BillingTermUnitMapper termUnits,
                              PriceCfgService price,
                              AllocService alloc, MeterBindingService binding,
-                             ReviewGuard reviewGuard, AuditLogService audit) {
-        this.reviewGuard = reviewGuard; this.audit = audit;
+                             ReviewGuard reviewGuard, AuditLogService audit,
+                             NoticeService bell, com.park.demo3.mapper.AuthUserMapper users) {
+        this.reviewGuard = reviewGuard; this.audit = audit; this.bell = bell; this.users = users;
         this.notices = notices; this.noticeLines = noticeLines; this.noticeWarns = noticeWarns;
         this.noteOverrides = noteOverrides;
         this.timeline = timeline; this.readings = readings;
@@ -1363,9 +1366,14 @@ public class BillNoticeService {
     @Transactional
     public BillDeliveryDTO.Unconfirm unconfirm(String ym, List<Integer> tenantIds, String reason) {
         reviewGuard.assertEditable(ReviewKind.BILL_NOTICES, ym, null);
+        String who = currentUser();
+        Map<String, Set<Integer>> lostBy = new LinkedHashMap<>();   // 原确认人 → 他确认过、这次被退回的户
         int reverted = 0, skipped = 0;
         for (BillNotice n : byTenants(ym, tenantIds)) {
             if (!"confirmed".equals(n.getStatus())) { skipped++; continue; }
+            // 原确认人要在下面清空 confirmed_by **之前**读住,清完就没处查是谁确认的了
+            if (n.getConfirmedBy() != null && !n.getConfirmedBy().equals(who))
+                lostBy.computeIfAbsent(n.getConfirmedBy(), k -> new LinkedHashSet<>()).add(n.getTenantId());
             // confirmed_at / confirmed_by 要真的清空:MyBatis-Plus 的 updateById 跳 null 字段,
             // setConfirmedBy(null) 落不下去 —— 屏上会留着「张三 09-23 确认」而状态是待核对。
             notices.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<BillNotice>()
@@ -1376,7 +1384,32 @@ public class BillNoticeService {
         if (reverted > 0)
             audit.log("bill-notice.unconfirm", ym + " · " + tenantIds.size() + " 户",
                 reverted + " 张单退回草稿;理由:" + reason);
+        // 每个原确认人一条(批量退 30 户不刷 30 条):06-F「陈会计取消确认了联塑精铟 9 月的催缴单」
+        if (!lostBy.isEmpty()) {
+            String me = myName();
+            for (Map.Entry<String, Set<Integer>> e : lostBy.entrySet())
+                bell.add(e.getKey(), NoticeService.Kind.bill_unconfirmed,
+                    me + "取消确认了" + tenantsText(e.getValue()) + " " + monthText(ym) + "的催缴单",
+                    reason, "bill-notices:" + ym);
+        }
         return new BillDeliveryDTO.Unconfirm(reverted, skipped);
+    }
+
+    /** 「联塑精铟」/「联塑精铟等 3 户」。 */
+    private String tenantsText(Set<Integer> tenantIds) {
+        Tenant first = tenants.selectById(tenantIds.iterator().next());
+        String name = first == null ? "" : nz(first.getCompanyName());
+        return tenantIds.size() == 1 ? name : name + "等 " + tenantIds.size() + " 户";
+    }
+
+    /** 收费月 2026-09 →「9 月」(06-F 原样;点整行跳的 ref 带全年月)。 */
+    private static String monthText(String ym) { return Integer.parseInt(ym.substring(5)) + " 月"; }
+
+    private String myName() {
+        String me = currentUser();
+        com.park.demo3.entity.AuthUser u = me == null ? null : users.selectOne(
+            new QueryWrapper<com.park.demo3.entity.AuthUser>().eq("username", me));
+        return u == null || u.getDisplayName() == null ? me : u.getDisplayName();
     }
 
     // 导出后回标;重复导出刷新 exported_at(「最近一次导出时间」)。已作废单不动。
@@ -1413,9 +1446,15 @@ public class BillNoticeService {
     // 作废理由必填、落审计:作废的可能是一张已经发出去的单,事后得查得到谁、为什么(同 unconfirm 的规矩)。
     @NoReviewGuard(reason = "转调 transition(id,action),守卫在那里按实体的 ym 判")
     public BillNoticeDTO voidNotice(Integer id, String reason) {
+        // 原确认人在 transition 之前读:不依赖「作废不清 confirmed_by」这个现状
+        BillNotice before = notices.selectById(id);
+        String confirmer = before == null ? null : before.getConfirmedBy();
         BillNoticeDTO d = transition(id, "void");
         audit.log("bill-notice.void", d.ym() + " · " + (d.tenantName() == null ? "" : d.tenantName() + " · ") + "单 #" + id,
             "作废;理由:" + reason);
+        if (confirmer != null && !confirmer.equals(currentUser()))
+            bell.add(confirmer, NoticeService.Kind.bill_voided,
+                myName() + "作废了" + nz(d.tenantName()) + " " + monthText(d.ym()) + "的催缴单", reason, "bill-notices:" + d.ym());
         return d;
     }
     @NoReviewGuard(reason = "转调 transition(id,action),守卫在那里按实体的 ym 判")

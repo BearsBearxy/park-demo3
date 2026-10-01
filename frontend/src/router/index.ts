@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useTabsStore } from '@/stores/tabs'
 import { useUiStore } from '@/stores/ui'
 import { useUpdateStore } from '@/stores/update'
+import { AUTH_REASON_KEY } from '@/api'
 
 const PlaceholderView = () => import('@/views/PlaceholderView.vue')
 const Gallery = () => import('@/views/Gallery.vue')
@@ -131,6 +132,8 @@ router.beforeEach((to) => {
   if (typeof tv === 'string') useTabsStore().beforeNav(tv, popNav)
   popNav = false
   if (!auth.isAuthed && to.path !== '/login') {
+    // 令牌还在、只是到点了:登录页说一句「登录已过期」,不再静默跳回(06-E 登录页组)
+    if (auth.token) sessionStorage.setItem(AUTH_REASON_KEY, 'expired')
     return { path: '/login', query: { redirect: to.path } }
   }
   // 首次登录强制改密:除改密页与登录页外一律拦回改密页。

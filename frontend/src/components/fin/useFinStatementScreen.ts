@@ -27,6 +27,9 @@ import { maxSelectableYear } from '@/utils/yearGate'
 import { S } from '@/utils/lockScopes'
 import { useEditLock } from '@/composables/useEditLock'
 import { useReviewStore } from '@/stores/review'
+import { useUiStore } from '@/stores/ui'
+import { tabMeta } from '@/stores/tabs'
+import { useScreen } from '@/composables/useTabShells'
 import type { ReviewStatus } from '@/types/review'
 import { runImport } from '@/utils/importRegistry'
 import { finMoney } from '@/utils/finFmt'
@@ -378,7 +381,15 @@ export function useFinStatementScreen(opts: {
   const reviewNote = computed(() => reviewBlock.value?.note ?? null)
   const reviewTip = computed(() => reviewBlock.value?.tip ?? null)
   // 编辑态里被别人审了就退出来 —— 跨账号同步之后这条真会触发(改前它是死的)。
-  watch(reviewBlock, (b) => { if (b && edit.value) cancelEdit() })
+  // 退出前当面说一声谁交审 / 谁审过(06-E 当场出现组,App 的居中弹窗读 ui.editStop)。
+  // 换公司 / 换月 / 回矩阵都先把 edit 置假(pickCompany / pickCell / backToMatrix),所以走到这里的只有「别人动了这一把」。
+  const ui = useUiStore()
+  const screen = useScreen()
+  watch(reviewBlock, (b, was) => {
+    if (!b || !edit.value) return
+    if (!was) ui.reportEditStop(review.rowOf(reviewKey.value), auth.me, [tabMeta(screen)?.page, pageLabel()].filter(Boolean).join(' · '))
+    cancelEdit()
+  })
 
   // ── 编辑流 ───────────────────────────────────────────────
   async function enterEdit() {
