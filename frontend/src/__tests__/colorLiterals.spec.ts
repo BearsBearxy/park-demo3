@@ -16,7 +16,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /** 当前允许的上限(2026-09-20 对抗复查修完后的实测数;剩下的见文末「剩下的是什么」)。 */
-const BASELINE = 166
+const BASELINE = 156
 
 const SRC = join(__dirname, '..')
 
