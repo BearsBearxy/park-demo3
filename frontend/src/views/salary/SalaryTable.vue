@@ -86,7 +86,7 @@ const wideCols = computed<WideCol[]>(() => {
 const wrapEl = ref<HTMLElement | null>(null)
 // 换数据(rows 换了)或进出编辑态(序号格里的勾选框只在编辑态占宽)按新数据重算;同一份数据原地编辑只增不减
 const dataKey = computed(() => [props.rows, props.edit])
-const { fix, nameW, hStage } = useWideTable(wrapEl, wideCols, S12_H, dataKey)
+const { fix, nameW, hStage, sbH } = useWideTable(wrapEl, wideCols, S12_H, dataKey)
 const px = (n: number) => n + 'px'
 const colSt = (k: string) => {
   const w = px(fix.value.w[k])
@@ -94,7 +94,7 @@ const colSt = (k: string) => {
 }
 const idxSt = computed(() => colSt('idx'))
 const nameSt = computed(() => colSt('name'))
-const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: px(minTableH(S12_H)) } : undefined))
+const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: px(minTableH(S12_H) + sbH.value) } : undefined))
 </script>
 
 <template>

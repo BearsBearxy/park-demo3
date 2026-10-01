@@ -306,7 +306,7 @@ const wideCols = computed<WideCol[]>(() => [
 ])
 // 表头一行 40、行 40、合计 50(04-A 合计行约 50 高);没有分组表头(grpH 0)。不够 8 行先让合计不贴底,再不够给表格区 min-height、整页往下滚
 const GRID_H: HeightDims = { grpH: 0, leafH: 40, rowH: ROW_H, footH: 50 }
-const { fix, hStage } = useWideTable(wrapEl, wideCols, GRID_H, () => props.rows)
+const { fix, hStage, sbH } = useWideTable(wrapEl, wideCols, GRID_H, () => props.rows)
 const W = computed(() => ({ ...colW.value, ...fix.value.w }))
 const S = computed(() => {
   const s = fix.value.style
@@ -328,7 +328,7 @@ const tableW = computed(() => {
 const showTools = computed(() => tier.value !== 's')   // 手机档不动(规范 §2 第 21 条),不多占一行
 // 3 级:表格区最少露 8 行,卡片撑高、整页往下滚(卡 = 工具条 44 + 表格区 + 上下边框 2)
 const cardSt = computed(() => (hStage.value === 3
-  ? { minHeight: (showTools.value ? 44 : 0) + minTableH(GRID_H) + 2 + 'px' } : undefined))
+  ? { minHeight: (showTools.value ? 44 : 0) + minTableH(GRID_H) + 2 + sbH.value + 'px' } : undefined))
 
 function onInput(x: WorkbenchRow, f: DraftField, e: Event) {
   emit('cell-edit', { meterId: x.m.id, field: f, value: (e.target as HTMLInputElement).value })

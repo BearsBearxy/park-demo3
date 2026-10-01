@@ -156,11 +156,11 @@ const wideCols = computed<WideCol[]>(() => {
 })
 // 换数据(rows 换了)或进出编辑态(勾选框、删除钮只在编辑态占宽)按新数据重算;同一份数据原地编辑只增不减
 const dataKey = computed(() => [props.rows, props.edit])
-const { fix, nameW, hStage } = useWideTable(wrapEl, wideCols, S10_H, dataKey)
+const { fix, nameW, hStage, sbH } = useWideTable(wrapEl, wideCols, S10_H, dataKey)
 const px = (n: number) => n + 'px'
 const nameSt = computed(() => ({ width: px(nameW.value), minWidth: px(nameW.value), maxWidth: px(nameW.value), ...fix.value.style.name }))
 const totalSt = computed(() => ({ minWidth: px(fix.value.w.total), ...fix.value.style.total }))
-const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: px(minTableH(S10_H)) } : undefined))
+const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: px(minTableH(S10_H) + sbH.value) } : undefined))
 
 // ── S 档(≤600)卡列:浏览态用 FPWideCards 换掉这张 25/20 列宽表(稿 WideCardVariants §3「标准 88」)。
 // jsdom 无 matchMedia → tier 恒 'xl',桌面/既有测试照旧走 <table>,宽档 DOM 一个字节不变。

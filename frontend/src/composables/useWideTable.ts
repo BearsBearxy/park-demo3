@@ -120,11 +120,16 @@ export function useWideTable(
   const { tier } = useViewport()
   const visW = ref(0)
   const availH = ref(0)
+  /** 横向滚动条高:3 级的 min-height 要把它加上,不然有滚动条时只露约 7.5 行(1024×640 实测) */
+  const sbH = ref(0)
   const measure = () => {
     const el = wrap.value
     if (!el || !el.clientWidth) return   // 未布局 / KeepAlive 摘下时量到 0:保持上次,回来时 RO 再量
     visW.value = el.clientWidth          // 同值赋给 ref 不触发,拖窗口没变宽时不重算
     availH.value = el.clientHeight
+    const cs = getComputedStyle(el)
+    sbH.value = Math.max(0, Math.round(el.offsetHeight - el.clientHeight
+      - (parseFloat(cs.borderTopWidth) || 0) - (parseFloat(cs.borderBottomWidth) || 0)))
   }
   // ponytail: 只观察 wrap 本身——它的尺寸就是要量的东西,不像 useFitRows 另挂 html 与 window resize
   const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null
@@ -171,5 +176,5 @@ export function useWideTable(
     return held
   })
 
-  return { fix, nameW, hStage }
+  return { fix, nameW, hStage, sbH }
 }

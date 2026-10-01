@@ -174,9 +174,9 @@ const lblCols = computed<WideCol[]>(() => [{
   minW: Math.max(0, ...units.value.map(u => lblW('三个字') + (VAR_W[u.variant] ?? 0))),
 }])
 const wrapEl = ref<HTMLElement | null>(null)
-const { fix, nameW, hStage } = useWideTable(wrapEl, lblCols, LOSS_H, units)
+const { fix, nameW, hStage, sbH } = useWideTable(wrapEl, lblCols, LOSS_H, units)
 const fixLbl = computed(() => ({ ...w(nameW.value), ...fix.value.style.lbl }))
-const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: minTableH(LOSS_H) + 'px' } : undefined))
+const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: minTableH(LOSS_H) + sbH.value + 'px' } : undefined))
 
 // ── 只读镜像:格里的数是快照(生成时用的值),徽标是**当前生效**参数的生效方式(仅本月 / 长期);两者不一致时 stale 条会亮 ──
 // LIST-PAGE-SPEC §8:模板里每格 4 次调用,徽标对象按 (栋,键) 在 computed 里建一次 Map,模板只 get(不在渲染里线性 find + new 对象)

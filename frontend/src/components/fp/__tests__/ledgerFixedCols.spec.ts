@@ -215,4 +215,14 @@ describe('月度台账表格高度 · 不够 8 行按顺序让(07-B)', () => {
     expect((w.find('.lg-wrap').element as HTMLElement).style.minHeight).toBe('310px')
     expect(wrapCls(w)).toEqual(expect.arrayContaining(['lg-grp-free', 'lg-foot-free']))
   })
+
+  it('有 17 高的横向滚动条:最少高再加 17 = 327,滚动条不占那 8 行', async () => {
+    const off = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('lg-wrap') ? 309 + 17 : 0
+    })
+    try {
+      const w = await mountAt(1254, 309)
+      expect((w.find('.lg-wrap').element as HTMLElement).style.minHeight).toBe('327px')
+    } finally { off.mockRestore() }
+  })
 })

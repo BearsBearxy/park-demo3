@@ -101,13 +101,13 @@ const cols = computed(() => {
   if (showFill.value) c.push({ key: 'fill', side: 'R', w: 56, rank: 3 })
   return c
 })
-const { fix, nameW, hStage } = useWideTable(wrap, cols, DIMS, () => props.year)
+const { fix, nameW, hStage, sbH } = useWideTable(wrap, cols, DIMS, () => props.year)
 const fc = (k: string) => ({ 'pt-fix': k in fix.value.style })
 // ponytail: StickyStyle 是 interface,模板 :style 要的 CSSProperties 带 `--*` 索引签名,这里转一次;W1 改成 type 别名后可删
 const st = computed(() => fix.value.style as Record<string, CSSProperties>)
 // 封顶了才给名字框定宽(省略号靠它);没封顶按内容自然撑开,估宽偏小也不会误截
 const subBox = computed(() => nameW.value < subMax.value ? { width: nameW.value - 26 + 'px' } : undefined)
-const wrapStyle = computed(() => hStage.value === 3 ? { minHeight: minTableH(DIMS) + 2 + 'px' } : undefined)   // +2 上下边框
+const wrapStyle = computed(() => hStage.value === 3 ? { minHeight: minTableH(DIMS) + 2 + sbH.value + 'px' } : undefined)   // +2 上下边框
 
 // ── S 档(≤600)卡片化(响应式稿 WideCardVariants 板 §3,紧凑 64 档)────────────
 // 稿的诊断:本表的病是**标签太宽**,两根标签列吃掉三分之一屏,剩下放不下一个月;

@@ -1,6 +1,6 @@
 // useWideTable(LIST-PAGE-SPEC §9、画布 07-A/07-B/07-C):固定列退列、名称列封顶、数字列宽、表格高度分级,
 // 以及什么时候重算(实现规范 §2 第 3 条)。断言钉 left/right 像素,不钉配置对象。
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, ref, type Ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import {
@@ -141,15 +141,16 @@ afterEach(() => {
   _resetViewportForTest()
 })
 
-interface Probe { fix: Ref<FixPlan>; hStage: Ref<HeightStage> }
+interface Probe { fix: Ref<FixPlan>; hStage: Ref<HeightStage>; sbH: Ref<number> }
 function harness(cols: () => WideCol[], dataKey: Ref<unknown>, show = ref(true)) {
   const out = {} as Probe
   const Comp = defineComponent({
     setup() {
       const wrap = ref<HTMLElement | null>(null)
-      const { fix, hStage } = useWideTable(wrap, cols, LEDGER_H, dataKey)
+      const { fix, hStage, sbH } = useWideTable(wrap, cols, LEDGER_H, dataKey)
       out.fix = fix
       out.hStage = hStage
+      out.sbH = sbH
       return () => show.value
         ? h('div', { class: 'wrap', ref: wrap }, cols().map(c => h('span', { 'data-k': c.key, style: fix.value.style[c.key] })))
         : h('p', '加载中')
@@ -274,6 +275,19 @@ describe('useWideTable — 高度分级', () => {
     expect(out.hStage.value).toBe(3)
     await fireRO(1254, 400)
     expect(out.hStage.value).toBe(0)
+  })
+
+  it('有横向滚动条:量出滚动条高 17,不含上下边框(3 级 min-height 要加上它,才露满 8 行)', async () => {
+    const off = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('wrap') ? 309 + 17 + 2 : 0
+    })
+    try {
+      const { w, out } = harness(() => LEDGER, ref('k'))
+      ;(w.element as HTMLElement).style.border = '1px solid'
+      await fireRO(1254, 309)
+      expect(out.hStage.value).toBe(3)
+      expect(out.sbH.value).toBe(17)
+    } finally { off.mockRestore() }
   })
 
   it('S 档(≤600):表格区再矮也恒 0 级', async () => {

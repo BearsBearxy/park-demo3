@@ -69,9 +69,9 @@ const wideCols = computed<WideCol[]>(() => {
 const wrapEl = ref<HTMLElement | null>(null)
 // 父层换月、换账册、保存后重拉都会给新的列模型 → 按新数据重算一次列宽;
 // 同一张表里列宽只增不减(搜索筛掉长数、编辑改短都不挪位)
-const { fix, hStage } = useWideTable(wrapEl, wideCols, LG_DIMS, () => props.columns)
+const { fix, hStage, sbH } = useWideTable(wrapEl, wideCols, LG_DIMS, () => props.columns)
 // 第 4 步 还不够:表格区最少 列名 + 8 行高,整页往下滚(外层 .lgw-main 本来就是 overflow-y:auto)
-const wrapStyle = computed(() => (hStage.value === 3 ? { minHeight: minTableH(LG_DIMS) + 'px' } : undefined))
+const wrapStyle = computed(() => (hStage.value === 3 ? { minHeight: minTableH(LG_DIMS) + sbH.value + 'px' } : undefined))
 // 名称列封顶 1/5:表格布局不认 td 的 max-width,封顶宽写在名字本身上,超了省略、悬停看全称
 const nameStyle = computed(() => ({ maxWidth: fix.value.nameW + 'px' }))
 

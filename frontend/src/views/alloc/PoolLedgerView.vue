@@ -381,7 +381,7 @@ const wideCols = computed<WideCol[]>(() => {
 const wrapEl = ref<HTMLElement | null>(null)
 // 数据身份:换月 / 重新加载(pools 换了对象)、切期区按新数据重算列宽;同一份数据里列宽只增不减(07-C「列不会莫名挪位」)
 const wideKey = computed(() => ({ p: pools.value, z: zone.value }))
-const { fix, hStage } = useWideTable(wrapEl, wideCols, POOL_H, wideKey)
+const { fix, hStage, sbH } = useWideTable(wrapEl, wideCols, POOL_H, wideKey)
 const w = (px: number) => ({ width: px + 'px', minWidth: px + 'px', maxWidth: px + 'px' })
 const locFixed = computed(() => !!fix.value.style.loc)
 const locSt = computed(() => ({ ...w(fix.value.w.loc), ...fix.value.style.loc }))
@@ -393,7 +393,7 @@ const grpLblSt = computed(() => (locFixed.value
   : useSt.value))
 // 3 级:min-height 挂在表格区 .pl-tablearea 上(卡 = 工具条 44 + 卡边框 2 + .pl-wrap 上边线 1 + 列名与 8 行),
 // 整页往下滚。不能挂在 .pl-wrap 上 —— 卡片是 min-height:0 + overflow:hidden,卡不跟着长,超出的行和横向滚动条被裁掉
-const areaSt = computed(() => (hStage.value === 3 ? { minHeight: 44 + 2 + 1 + minTableH(POOL_H) + 'px' } : undefined))
+const areaSt = computed(() => (hStage.value === 3 ? { minHeight: 44 + 2 + 1 + minTableH(POOL_H) + sbH.value + 'px' } : undefined))
 
 // ── 生成本月/重新生成(编辑态;POST generate 后刷新) ──
 const cfgDirty = ref(false)   // 池配置/月度参数改动后提示「配置已变,请重新生成」
