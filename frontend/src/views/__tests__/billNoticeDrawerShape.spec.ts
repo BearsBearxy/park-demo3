@@ -11,6 +11,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { defineComponent, h, KeepAlive, ref } from 'vue'
 
 import { useAuthStore } from '@/stores/auth'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
@@ -145,8 +148,9 @@ async function openDrawer(w: Wrapper, i = 0) {
 }
 
 describe('催缴单抽屉 · ① 告警是副标题行上的徽标,不占正文的一行', () => {
-  // ⚠ 破坏验证:把 #submeta 那一段搬回正文(改回 .bn-bar.warn)→ 本行红。
-  it('一类一个徽标,写明类名与条数;正文里没有告警横条', async () => {
+  // ⚠ 破坏验证:#submeta 里的徽标删掉 → 前三条红;正文里加回整宽告警块(role=note / .fp-note.warn)→ 末条红。
+  //   (原来这里判 `.bn-bar.warn` —— 那个类已从 BillNoticesView 整个删掉,判它恒为假,是空转断言)
+  it('一类一个徽标,写明类名与条数;正文里没有整宽告警块', async () => {
     const w = await open()
     await openDrawer(w, 0)
     const badges = w.findAll('.bn-abadge')
@@ -154,7 +158,7 @@ describe('催缴单抽屉 · ① 告警是副标题行上的徽标,不占正文�
     expect(badges[0].text()).toContain('表没挂上合同')
     expect(badges[0].text()).toContain('2')
     expect(badges[1].text()).toContain('合同没有起止日期')
-    expect(w.find('.bn-bar.warn').exists(), '正文里不该再有整宽告警条').toBe(false)
+    expect(w.find('.fp-dwr-body').findAll('[role=note], .fp-note.warn, .bn-apanel').length, '正文里不该再有整宽告警块').toBe(0)
   })
 
   it('默认不展开:点一下才出明细与落点链,再点收起', async () => {
@@ -168,8 +172,8 @@ describe('催缴单抽屉 · ① 告警是副标题行上的徽标,不占正文�
     expect(panel.text()).toContain('A101力灏水')
     expect(panel.text()).toContain('力灏二楼水1')
     expect(panel.text()).toContain('去园区抄表')
-    // 时效那句仍在(它是这条告警唯一说得清「不是实时的」的地方)
-    expect(panel.text()).toContain('重新生成本月后这里才会变')
+    // 时效那句仍在(它是这条告警唯一说得清「不是实时的」的地方);字照画布 01-C
+    expect(panel.text()).toContain('不是实时的；重新生成本月后才会变')
 
     await w.findAll('.bn-abadge')[0].trigger('click')
     expect(w.find('.bn-apanel').exists()).toBe(false)
@@ -191,6 +195,36 @@ describe('催缴单抽屉 · ① 告警是副标题行上的徽标,不占正文�
     const w = await open()
     await openDrawer(w, 1)
     expect(w.findAll('.bn-abadge').length).toBe(0)
+  })
+})
+
+// 画布 01-C:原来点徽标在正文顶上铺一块 80px 的橙色明细,整块明细表被推下去;现在明细贴着徽标浮出。
+describe('催缴单抽屉 · 01-C 徽标浮层:明细贴着徽标浮出,正文不动', () => {
+  // ⚠ 破坏验证:把 .bn-apanel 从 Popover 里搬回正文(<template v-else> 顶上)→ 本条红。
+  it('点徽标:.bn-apanel 长在浮层容器里,正文第一块仍是头部三格', async () => {
+    const w = await open()
+    await openDrawer(w, 0)
+    await w.findAll('.bn-abadge')[0].trigger('click')
+    expect(w.find('.ds-popover-panel .bn-apanel').exists(), '明细在浮层里').toBe(true)
+    const body = w.find('.fp-dwr-body')
+    expect(body.find('.bn-apanel').exists(), '正文里没有明细块').toBe(false)
+    expect(body.element.firstElementChild?.classList.contains('bn-hgrid'), '正文第一块是头部三格').toBe(true)
+  })
+
+  // ⚠ 破坏验证:openDetail 里那句 `openWarn.value = ''` 删掉 → 本条红。
+  //   下一户必须也有**同一类**(合源创盈),换到没告警的户是假绿 —— 那户根本没有徽标可挂浮层。
+  it('下一户:浮层收起', async () => {
+    vi.mocked(billNoticesApi.list).mockResolvedValue([NOTICES[0], NOTICES[2]] as never)
+    const w = await open()
+    await w.findAll('.bn-table tbody tr').filter(r => r.find('.bn-tname').exists())[0].trigger('click')
+    await flushPromises()
+    await w.findAll('.bn-abadge')[0].trigger('click')
+    expect(w.find('.ds-popover-panel .bn-apanel').exists(), '前置:浮层开着').toBe(true)
+    await w.findAll('.bn-nav button').at(-1)!.trigger('click')
+    await flushPromises()
+    expect(w.find('.fp-dwr-hd h3').text(), '前置:换到了合源创盈').toBe('合源创盈')
+    expect(w.findAll('.bn-abadge').length, '前置:这户也有这一类').toBe(1)
+    expect(w.find('.ds-popover-panel').exists()).toBe(false)
   })
 })
 
@@ -286,8 +320,9 @@ describe('催缴单抽屉 · ④ 换户不跳:正文永远三块', () => {
         hgrid: body.findAll('.bn-hgrid').length,
         pay: body.findAll('.psg-bar').length,
         seg: body.findAll('.ds-seg, .seg').length,
-        warnBar: body.findAll('.bn-bar.warn').length,
+        warnBlock: body.findAll('[role=note], .fp-note.warn').length,
         apanel: body.findAll('.bn-apanel').length,
+        first: body.element.firstElementChild?.className ?? '',
       }
     }
     expect(await shape(0)).toEqual(await shape(1))
@@ -307,5 +342,78 @@ describe('催缴单抽屉 · ④ 换户不跳:正文永远三块', () => {
     expect(g.text()).toContain('上期欠费 · 收款流水未接入')
     expect(g.text()).not.toContain('上期欠费 0.00')
     expect(g.find('.bn-hsub').exists()).toBe(true)
+  })
+})
+
+// ── 对抗复查补的断言(2026-10-01)──────────────────────────────────────────────
+const VIEW_CSS = (() => {
+  const src = readFileSync(join(__dirname, '..', 'bills', 'BillNoticesView.vue'), 'utf8')
+  return src.slice(src.indexOf('<style scoped>') + '<style scoped>'.length, src.lastIndexOf('</style>'))
+})()
+
+describe('催缴单抽屉 · 01-C 副标题与徽标照图(spec-14)', () => {
+  // 破坏验证:drawerSub 拼回「在租合同 N 份 · 明细 N 行」→ 第一条红;括号写回半角 → 第一条红
+  it('副标题只写「2026-09（8 月水电）」(全角括号),不再拼合同数 / 行数', async () => {
+    const w = await open()
+    await openDrawer(w, 0)
+    const sub = w.find('.fp-dwr-hd p > span')
+    expect(sub.text()).toBe('2026-09（8 月水电）')
+  })
+  // 破坏验证:.bn-abadge 改回 20 高 / --fs-micro → 红;FPDrawer 的 submeta 行改回 20 → 徽标上下被裁 → 红
+  it('徽标 24 高、12 字;副标题那一行跟着 24,不裁徽标', async () => {
+    const s = document.createElement('style')
+    s.textContent = VIEW_CSS
+    document.head.appendChild(s)
+    try {
+      const w = await open()
+      await openDrawer(w, 0)
+      const b = getComputedStyle(w.find('.bn-abadge').element)
+      expect([b.height, b.fontSize]).toEqual(['24px', 'var(--fs-label)'])
+      expect((w.find('.fp-dwr-hd p').element as HTMLElement).style.height).toBe('24px')
+    } finally { s.remove() }
+  })
+})
+
+describe('催缴单抽屉 · 01-C 徽标浮层的摆法(asserts-8)', () => {
+  // 副标题行是 height + overflow:hidden 的一行,Popover 默认 absolute 摆会被它裁得只剩一条缝 ——
+  // 所以 fixed + 按实际落点校正:先放 (0,0) 量出抽屉 transform 带来的偏差,再挪到徽标正下方 6px。
+  // 破坏验证:onWarnOpen 里不校正(停在 top/left 0)→ 红;position 改回 absolute(或不传 :style)→ 红
+  it('点徽标:面板 position:fixed,贴在徽标左下(扣掉面板在 (0,0) 时量到的偏差)', async () => {
+    const rect = (r: Partial<DOMRect>) => ({ x: 0, y: 0, width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, toJSON: () => ({}), ...r }) as DOMRect
+    const spy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      if (this.classList.contains('bn-abadge')) return rect({ left: 300, top: 96, bottom: 120, right: 420 })
+      if (this.classList.contains('ds-popover-panel')) return rect({ left: 40, top: 10 })   // 抽屉带 transform:(0,0) 落到了 (40,10)
+      return rect({})
+    })
+    try {
+      const w = await open()
+      await openDrawer(w, 0)
+      await w.findAll('.bn-abadge')[0].trigger('click')
+      await flushPromises()
+      const vmx = w.vm as unknown as { warnBadge: HTMLElement | null; warnPop: unknown; openWarn: string }
+      const st = (w.find('.ds-popover-panel').element as HTMLElement).style
+      expect([st.position, st.top, st.left]).toEqual(['fixed', '116px', '260px'])
+    } finally { spy.mockRestore() }
+  })
+
+  // 破坏验证:onDeactivated 里不清 openWarn → 切回来浮层还开着 → 红
+  it('浮层开着时切走页签(KeepAlive 停用)再切回:浮层收起', async () => {
+    useBillingPeriodStore().pick(2026, 8)
+    const alive = ref(true)
+    const k = mount(defineComponent({
+      setup: () => () => h(KeepAlive, null, { default: () => (alive.value ? h(BillNoticesView) : null) }),
+    }), { global: { stubs: { Teleport: true } } })
+    try {
+      await flushPromises()
+      await k.findAll('.bn-table tbody tr').filter(r => r.find('.bn-tname').exists())[0].trigger('click')
+      await flushPromises()
+      await k.findAll('.bn-abadge')[0].trigger('click')
+      expect(k.find('.ds-popover-panel').exists(), '前提:浮层开着').toBe(true)
+      alive.value = false
+      await flushPromises()
+      alive.value = true
+      await flushPromises()
+      expect(k.find('.ds-popover-panel').exists()).toBe(false)
+    } finally { k.unmount() }
   })
 })

@@ -218,16 +218,18 @@ describe('催缴单 · 写操作的编辑态守卫', () => {
   it('❗canRun / canIssue 把 editMode 编进权限计算式 —— 浏览态没有写入口', async () => {
     const w = await open()
     // 权限齐但在浏览态:两个写入口都不该在。
-    // 把 :79 canRun 的 `&& editMode.value` 删掉 → 「重新生成」这条红;
-    // 把 :80 canIssue 的删掉 → 「批量确认」这条红。
+    // 把 canRun 的 `&& editMode.value` 删掉 → 「重新生成」这条红;
+    // 把 canIssue 的删掉 → 「批量确认」这条红。
+    // (2026-10-01 画布 05-A:批量确认从筛选行挪进表格卡工具条 .bn-tools;浏览态那条工具条留空占位)
     expect(w.find('.bn-actions').text(), '页头没有重新生成').not.toContain('重新生成')
-    expect(w.find('.bn-toolbar').text(), '工具条没有批量确认').not.toContain('批量确认')
+    expect(w.find('.bn-tools').exists(), '前置:表格卡工具条在').toBe(true)
+    expect(w.find('.bn-tools').text(), '工具条没有批量确认').not.toContain('批量确认')
 
     await clickEditBtn(w)
 
     // 反向也钉住:这两颗按钮本身还在(否则上面两条会变成永远为真的空断言)
     expect(w.find('.bn-actions').text()).toContain('重新生成')
-    expect(w.find('.bn-toolbar').text()).toContain('批量确认')
+    expect(w.find('.bn-tools').text()).toContain('批量确认')
   })
 
   // 审核动作簇(per-screen-review §01/§03-B)。屏这一层只负责两件事:键喂对、位置在编辑按钮左边;

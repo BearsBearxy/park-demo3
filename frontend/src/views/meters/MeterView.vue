@@ -1,15 +1,22 @@
 <script setup lang="ts">
 // 园区抄表 v5.1 壳(METER-V5-SPEC §1+§7):账期驱动的台账同款电子表格工作台,无段切换。
-// 标题行(账期年月+抄表进度条+常驻/编辑态按钮)+6 张可点击统计卡(点=状态筛选互斥切换)+
-// 筛选条(电水/分区/楼栋/归属/状态/搜索/重置)+MeterLedgerGrid+MeterDetailDrawer。
+// 宽档(画布 04-A / 04-B):标题行(标题 + 页面状态 +「租户表已抄 N / M」+ 期区段控;右侧浏览 3 颗 / 编辑 4 颗)+
+// 第二行(电水 + 状态页签 + 存疑胶囊 + 归属 + 搜索)+MeterLedgerGrid+MeterDetailDrawer。
+// S/M 档(摘要行 / 筛选钮 / M 档 6 张卡)照旧不动(实现规范 §2 第 21 条)。
 // 数据装载/竞态守卫(rSeq/bSeq)/绑定降级/导入链(registry 'meter')延续 v4 口径。
 // 草稿式编辑(§7.2):draft 归属本层;「完成」dirty>0 弹 SaveConfirmDialog,保存=逐变更表
-// POST(无读数)/PUT(有),行级失败收集 alert 并保留 dirty;放弃=丢 draft 回浏览态。
+// POST(无读数)/PUT(有),行级失败出结果回执并保留 dirty;放弃=丢 draft 回浏览态。
 // 编辑态不跨会话(onDeactivated 复位含 draft,EDIT-MODE-SPEC v2)。
-import { ref, computed, reactive, onMounted, onDeactivated, watch } from 'vue'
+import { ref, computed, reactive, onMounted, onDeactivated, onBeforeUnmount, watch, nextTick, h, withDirectives, type FunctionalComponent, type ComponentPublicInstance } from 'vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import FPStateTag from '@/components/fp/FPStateTag.vue'
+import FPAlertChip from '@/components/fp/FPAlertChip.vue'
+import { ask } from '@/utils/ask'
+import { receipt } from '@/utils/receipt'
+import { vTip } from '@/directives/tip'
 import { onReactivated } from '@/composables/onReactivated'
 import { useChainDeepPeriod } from '@/composables/useDeepPeriod'
 import { tenantMatchNames } from '@/utils/tenantAlias'
@@ -44,7 +51,7 @@ import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { chainStepsOf, noticeYmOf } from '@/nav/billingChain'
 import ChainMonthGate from '@/components/fp/ChainMonthGate.vue'
 import FPStepStrip from '@/components/fp/FPStepStrip.vue'
-import FPMoreMenu from '@/components/fp/FPMoreMenu.vue'
+import FPMoreMenu, { type MoreItem } from '@/components/fp/FPMoreMenu.vue'
 import { useViewport } from '@/composables/useViewport'
 import { useTopBarAction } from '@/composables/useTopBarAction'
 import { iconFor } from '@/components/ds/icon'
@@ -96,6 +103,9 @@ const { editMode, canEnter, missing: lockedPerms, asking, askFor, cancelAsk, onE
     // 审核键(§7.1):抄表屏**按年锁、按月审**。屏上编辑的确实是单月读数
     // (loadReadings(ym) / draft 按 ym 清),所以键取 ym 不取 year。
     reviewKey: () => (ym.value ? `meters:${ym.value}` : null),
+    // 改动数(实现规范 §1.7):关页签 / 退出登录按它问「这页有 N 处改动还没保存」,0 处不问。
+    // getter 惰性求值(进编辑态才被调),所以写在 dirtyIds 声明之前不会 TDZ
+    dirty: () => dirtyIds.value.length,
   })
 const importing = ref(false)
 const okMsg = ref('')
@@ -139,6 +149,8 @@ const readErr = ref('')
 // metersYm / readYm = 手上这两份数据是哪个月的 —— 切月途中两份可能还是旧月,导出要靠它们认
 const metersYm = ref('')
 const readYm = ref('')
+/** 失败件主句照 03-B / 06-D:「2025 年 3 月的抄表读数没读到」(同公共电核算、催缴单);按钮已写「重试」,句里不再说 */
+const ymWords = (at: string) => `${+at.slice(0, 4)} 年 ${+at.slice(5, 7)} 月`
 let mSeq = 0
 async function loadMeters() {
   const my = ++mSeq
@@ -152,7 +164,7 @@ async function loadMeters() {
     // 首载失败若不记,整页永久停在骨架屏(meters 恒 null),连个重试入口都没有。
     // 切了月又没拉到:手上那份是别的月的档案(租户、在不在册都可能不同),不许冒充本月 → 整页失败态
     if (metersYm.value !== at) meters.value = null
-    metersErr.value = '表档案加载失败，请重试'
+    metersErr.value = `${ymWords(at)}的表档案没读到`
   }
 }
 // 竞态守卫同 v4:切期保留旧数据到新数据落位,不闪 gate;上月读数供「上月行至」基准
@@ -173,7 +185,7 @@ async function loadReadings() {
     // 关键:打回「无数据」,绝不留旧月数据冒充新月 —— 年月已经切了,旧数组还挂着,
     // 用户在那些行上录一格,保存走的是旧行 id 的 PUT,直接覆盖上个账期的读数
     readings.value = []
-    readErr.value = '本月读数加载失败，请重试'
+    readErr.value = `${ymWords(at)}的抄表读数没读到`
   }
 }
 // 失败态锁录入:此刻「本月」列空着不是「没抄」而是「没读到」,在上面录=覆盖旧月或凭空补条;
@@ -242,15 +254,23 @@ async function onEditBtn() {
   if (dirtyIds.value.length > 0) { saveConfirm.value = true; return }
   exitEdit()          // 退出编辑 = 结束授权(ELEVATION-SPEC)
 }
-// 保存修改:逐变更表 POST(无读数)/PUT(有);行级失败收集 alert 并保留该行 dirty
+// 保存修改:逐变更表 POST(无读数)/PUT(有);行级失败出回执并保留该行 dirty
 async function onSaveChanges() {
   saveConfirm.value = false
   if (!editMode.value || !canReading.value) return
   if (saving.value) return
   // SPEC §3.4:本月还不在册的表录了本月读数,后端会让它自本月起在册 —— 先说清楚再存
   const heal = healRows(rowsAll.value, draft)
-  if (heal.length && !confirm(`${heal.length} 块表本月还不在册:${heal.slice(0, 5).map(x => x.tenantLabel ?? x.m.name).join('、')}`
-    + `${heal.length > 5 ? ' 等' : ''}。存下本月读数后,${heal.length > 1 ? '它们' : '这块表'}将从 ${ym.value} 起在册。继续保存?`)) return
+  if (heal.length) {
+    const ok = await ask({
+      title: `${heal.length} 块表本月还不在册，仍要保存？`,
+      body: `${heal.slice(0, 5).map(x => x.tenantLabel ?? x.m.name).join('、')}${heal.length > 5 ? ' 等' : ''}。`
+        + `存下本月读数后，${heal.length > 1 ? '它们' : '这块表'}将从 ${ym.value} 起在册。`,
+      action: '仍要保存',
+    })
+    // 问的这会儿编辑权可能被接管走了(弹窗不随 editMode 关):答完再自守一次
+    if (!ok || !editMode.value || saving.value) return
+  }
   saving.value = true
   const fails: string[] = []
   for (const id of dirtyIds.value.slice()) {
@@ -267,7 +287,11 @@ async function onSaveChanges() {
   }
   saving.value = false
   reloadAll()
-  if (fails.length > 0) alert(`${fails.length} 块表保存失败(改动已保留,可重试):\n${fails.join('\n')}`)
+  // 行级失败走结果回执(METER-V5-SPEC:58):失败不自己收、带「重试」,改动留在草稿里
+  if (fails.length > 0) {
+    receipt.fail(`${fails.length} 块表没存上，改动已保留：${fails.slice(0, 3).join('；')}${fails.length > 3 ? ' 等' : ''}`,
+      { label: '重试', run: () => void onSaveChanges() })
+  }
   // ⚠ 走 exitEdit() 而不是直接置 false:退出编辑必须同时结束授权。
   //   直接改 ref 的话,主管刚授权的 30 分钟会在保存成功后继续挂着
   //   (本页三条退出路径,只有这条曾经漏了)。
@@ -351,17 +375,17 @@ function resetFilters() {
 function cardClick(k: StatusFilter) {
   status.value = status.value === k ? 'all' : k
 }
-// 不在册那两批的说明:按状态段说话(SPEC §6),说清「列的是什么」+「怎么回到册上」
-const hiddenHint = computed(() => {
-  if (status.value === 'removed')
-    return '列出本月已拆、不在册上的表;自哪个月起已拆,悬停状态列可见。'
-      + '误标的:点开这一行,在「档案变更」的「在册状态」里撤回「已拆」那一行;拆除前的月份不受影响。'
-  if (status.value === 'notYet')
-    return '列出本月还不在册的表。要让它本月在册:点开这一行,'
-      + '在「档案变更」里把「在册状态」第一行的起始月改到本月或更早;本月还没有读数的表,'
-      + '也可以在表格里录本月读数,保存时会从本月起在册(已有本月读数的,改读数不会让它在册)。'
-  return ''
-})
+// 不在册那两批的说明:按状态段说话(SPEC §6),说清「列的是什么」+「怎么回到册上」。
+// 宽档挂在「已拆」「未在册」页签的悬停说明上(计划 §1.1);S/M 档没有页签,仍是选中后表格上方那条(§2 第 21 条)
+const HIDDEN_HINT = {
+  removed: '列出本月已拆、不在册上的表;自哪个月起已拆,悬停状态列可见。'
+    + '误标的:点开这一行,在「档案变更」的「在册状态」里撤回「已拆」那一行;拆除前的月份不受影响。',
+  notYet: '列出本月还不在册的表。要让它本月在册:点开这一行,'
+    + '在「档案变更」里把「在册状态」第一行的起始月改到本月或更早;本月还没有读数的表,'
+    + '也可以在表格里录本月读数,保存时会从本月起在册(已有本月读数的,改读数不会让它在册)。',
+}
+const hiddenHint = computed(() =>
+  (status.value === 'removed' || status.value === 'notYet' ? HIDDEN_HINT[status.value] : ''))
 
 // ── 行合流与各口径行集 ──
 // 行集含本月不在册的表(已拆 / 未在册):matchStatus 把它们挡在「全部」与各分母之外,
@@ -392,6 +416,40 @@ const gridRows = computed(() => {
 // 而 reloadAll() 只换 gridRows 的数组引用、视图身份没变,表格保住滚动位。加筛选维度记得同步加进来。
 const viewKey = computed(() =>
   [ym.value, kind.value, zone.value, building.value, own.value, status.value, q.value, suspectOnly.value].join('|'))
+
+// ── 宽档状态页签(画布 04-A 第二行「全部 未抄 2 待核 1」;实现规范 §2 第 16 条六张卡的去向) ──
+// 全部 / 未抄 / 待核 常驻;异常 / 待绑定 / 已拆 / 未在册 非零才出(选中的那一个数归零也留着,不在手底下消失)。
+// 租户表已抄进标题旁一句;派生就绪不出;已停用归表格组尾;存疑是下面那颗胶囊。
+// Segmented 的 label 只按字串插值,「字 + 灰色计数」和页签悬停说明走它的 icon 位(那一位本就收 VNode)
+const TabLabel: FunctionalComponent<{ t: string; n?: number; tip?: string }> = p =>
+  withDirectives(h('span', p.n == null ? p.t : [p.t, ' ', h('span', { class: 'mt-tab-n' }, String(p.n))]), [[vTip, p.tip]])
+const offCount = (s: 'removed' | 'notYet') =>
+  filterRows(rowsAll.value, { kind: kind.value, zone: zone.value, building: 'all', own: 'all', status: s, q: '' }).length
+const statusTabs = computed(() => {
+  const c = cards.value
+  const tabs: { k: StatusFilter; t: string; n?: number; opt?: boolean; tip?: string }[] = [
+    { k: 'all', t: '全部' },
+    { k: 'missing', t: '未抄', n: c.missing },
+    { k: 'pending', t: '待核', n: c.pending },
+    { k: 'anomaly', t: '异常', n: c.anomaly, opt: true },
+    { k: 'unbound', t: '待绑定', n: c.unbound, opt: true },
+    { k: 'removed', t: '已拆', n: offCount('removed'), opt: true, tip: HIDDEN_HINT.removed },
+    { k: 'notYet', t: '未在册', n: offCount('notYet'), opt: true, tip: HIDDEN_HINT.notYet },
+  ]
+  return tabs.filter(x => !x.opt || (x.n ?? 0) > 0 || status.value === x.k)
+    .map(x => ({ value: x.k, label: '', icon: h(TabLabel, { t: x.t, n: x.n, tip: x.tip }) }))
+})
+// 拖宽窗口 / 平板横过来跨出 S/M 档:楼栋、宽档页签里没有的状态(本月有变化 / 缺底数 / 已停用 / 待核·待绑定卡 …)
+// 只有窄档筛选面板改得了,宽档上看不见也清不掉 —— 跨档时清掉(同 BillNoticesView 的 watch(narrow))。键同 statusTabs 那七个
+const WIDE_TABS = new Set<StatusFilter>(['all', 'missing', 'pending', 'anomaly', 'unbound', 'removed', 'notYet'])
+watch(isSM, sm => {
+  if (sm) return
+  building.value = 'all'
+  if (!WIDE_TABS.has(status.value)) status.value = 'all'
+  panel.value = ''
+})
+const suspectTip = computed(() => `${suspectCount.value} 块表区域/位置/企业名称/编码全空;其中 ${shadowCount.value} 块另配到档案完整、`
+  + '同月示数与倍率全等的同栋同类表,疑似重复建档(红底,用量不计入楼栋分表Σ),其余只是档案不全(黄底,用量照常计入Σ)。点一下只看这些表')
 
 // ── 位置字段候选(§A.3/§A.4 共用:抽屉行内编辑 + 新增表弹窗) ──
 // 楼层/方位给基准表打底,再并上库内既有值(存量文件里出现过"中间""夹层"这类基准表外的写法);
@@ -467,7 +525,7 @@ const filterCount = computed(() =>
 const openRow = computed(() => rowsAll.value.find(x => x.m.id === openId.value) ?? null)
 watch(openRow, r => { if (openId.value != null && !r) openId.value = null })
 
-// ── 「按名精确匹配一键挂」(待核卡激活时工具栏侧出现,编辑态) ──
+// ── 「按名精确匹配一键挂」(编辑态;宽档在标题行「…」里,S/M 档待核筛选时进「⋯」) ──
 // 一键挂改的是表档案的 tenantId(POST /meters/auto-link → /api/meters/**),故判 meter-master
 const showAutoLink = computed(() =>
   editMode.value && canMaster.value && (status.value === 'attention' || status.value === 'pending'))
@@ -477,14 +535,21 @@ const linkEstimate = computed(() =>
 async function autoLink() {
   if (!editMode.value || !canMaster.value) return
   if (linking.value) return
-  if (!confirm(`按企业名称原文与租户档案精确匹配,预计可挂 ${linkEstimate.value} 块待核表。继续?`)) return
+  // linking 从问之前就立起来:问的这会儿菜单里那一项是灰的,连点不会排出两张确认
   linking.value = true
   try {
+    const n = linkEstimate.value
+    const ok = await ask({
+      title: '按企业名称一键挂待核表？',
+      body: `按企业名称原文与租户档案精确匹配，预计可挂 ${n} 块待核表。`,
+      action: `挂 ${n} 块`,
+    })
+    if (!ok || !editMode.value || !canMaster.value) return   // 问的这会儿被接管走了:答完再自守一次
     const r = await metersApi.autoLinkByName()
-    alert(`已挂 ${r.linked} 块,跳过 ${r.skipped} 块。`)
+    receipt.ok(`已挂 ${r.linked} 块，跳过 ${r.skipped} 块`)
     reloadAll()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '一键挂失败，请重试')
+    receipt.fail((e as { message?: string })?.message ?? '一键挂失败', { label: '重试', run: () => void autoLink() })
   } finally { linking.value = false }
 }
 
@@ -522,7 +587,10 @@ async function loadDelPreview() {
     const p = await metersApi.deletePreview(ym.value, delOpt.value)
     if (my === dSeq) delPreview.value = p
   } catch (e) {
-    if (my === dSeq) { delPreview.value = null; alert((e as { message?: string })?.message ?? '预览失败') }
+    if (my === dSeq) {
+      delPreview.value = null
+      receipt.fail((e as { message?: string })?.message ?? '删除预览没拉到', { label: '重试', run: () => void openDelDlg() })
+    }
   } finally {
     // 过期那次不许解锁:新预览还在飞,提前放行「确认删除」等于按旧数字执行
     if (my === dSeq) delBusy.value = false
@@ -533,7 +601,7 @@ async function openDelDlg() {
   delCascade.value = true; delDropMeters.value = true; delDropNotices.value = false
   await loadDelPreview()
   if (delPreview.value && delPreview.value.readings === 0) {
-    alert(`${ym.value} 没有抄表数据可删。`); delPreview.value = null
+    receipt.warn(`${ym.value} 没有抄表数据可删`); delPreview.value = null
   }
 }
 watch([delCascade, delDropMeters], () => { if (delPreview.value) loadDelPreview() })
@@ -562,7 +630,8 @@ async function confirmDelete() {
       + (blocked > 0 ? ` 另有 ${blocked} 份表档案跳过未删(池成员,或别的月的催缴单里还有它)。` : '')
     reloadAll()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '批量删除失败')
+    // 弹窗还开着(重拉的预览就摆在里面),再点一次就是重试,回执不另带按钮
+    receipt.fail((e as { message?: string })?.message ?? '批量删除失败')
     // 409 说明后端现状与弹窗里那份预览不同了(别人刚生成/确认了这个月的单):重拉,勾选项与确认键跟上。
     // 要 await:不然 finally 先把 delBusy 放开,确认键会按旧数字放行
     if (delPreview.value) await loadDelPreview()
@@ -579,24 +648,24 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
     importResult.value = await runImport('meter', payload as never, importCtx, fileName)
     reloadAll()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '导入失败')
+    receipt.fail((e as { message?: string })?.message ?? '导入失败')
   }
 }
 async function onTemplate() {
   try { await buildMeterTemplate(ym.value, zones.list) }
-  catch (e) { alert((e as { message?: string })?.message ?? '模板下载失败') }
+  catch (e) { receipt.fail((e as { message?: string })?.message ?? '模板下载失败', { label: '重试', run: () => void onTemplate() }) }
 }
 const exporting = ref(false)
 async function onExport() {
   if (exporting.value) return
   // 导出串月(J3-2):切月途中档案 / 读数可能还是上个月的,或者这个月没拉到 —— 不导半新半旧的册子
   if (loadErr.value || metersYm.value !== ym.value || readYm.value !== ym.value) {
-    alert(`${ym.value} 的表档案或读数还没加载好,稍后再导出。`); return
+    receipt.warn(`${ym.value} 的表档案或读数还没加载好，稍后再导出`); return
   }
   exporting.value = true
   // 只导站在本月在册的表(在用 + 停用),档案取本月那一段 —— 两件事都由 list(ym) 与 meterExcel 保证
   try { await exportMeterMonth(ym.value, meters.value ?? [], readings.value ?? [], zones.list) }
-  catch (e) { alert((e as { message?: string })?.message ?? '导出失败') }
+  catch (e) { receipt.fail((e as { message?: string })?.message ?? '导出失败', { label: '重试', run: () => void onExport() }) }
   finally { exporting.value = false }
 }
 
@@ -614,6 +683,17 @@ const moreActions = computed(() => [
   ...(showAutoLink.value ? [{ key: 'autolink', label: '按名精确匹配一键挂', icon: 'wand-2', disabled: linking.value || cards.value.pending === 0 }] : []),
   ...(editMode.value && canReading.value ? [{ key: 'del', label: '批量删除本期', icon: 'trash-2', disabled: delBusy.value }] : []),
 ])
+// ── 宽档标题行的「…」(画布 04-A 浏览:下载模板;04-B 编辑:导出当月 / 下载模板 / 批量删除本期 红) ──
+// 一键挂是现有功能,图上「…」没画但不能丢入口,跟进编辑态这一份(实现规范 §2 第 17 条)。
+// 与上面 S/M 档那份 moreActions 条目不同、判据相同,两份各管各档,别合。
+const headMore = computed<MoreItem[]>(() => (editMode.value
+  ? [
+      { key: 'export', label: '导出当月', icon: 'download', disabled: exporting.value },
+      { key: 'template', label: '下载模板', icon: 'file-spreadsheet' },
+      ...(canMaster.value ? [{ key: 'autolink', label: '按名精确匹配一键挂', icon: 'wand-2', disabled: linking.value || cards.value.pending === 0 }] : []),
+      ...(canReading.value ? [{ key: 'del', label: '批量删除本期', icon: 'trash-2', disabled: delBusy.value, danger: true }] : []),
+    ]
+  : [{ key: 'template', label: '下载模板', icon: 'file-spreadsheet' }]))
 function onMoreAction(k: string) {
   if (k === 'template') void onTemplate()
   else if (k === 'export') void onExport()
@@ -706,9 +786,35 @@ const emptyText = computed(() => {
   // 分区是一级页签恒定生效,不计入"筛过"判定
   const filtered = building.value !== 'all' || own.value !== 'all'
     || status.value !== 'all' || q.value.trim() !== ''
-  return filtered ? '当前筛选下没有匹配的表(点「重置」清筛选)'
+  // 宽档已没有「重置」(实现规范 §2 第 17 条),这句不再指它
+  return filtered ? '当前筛选下没有匹配的表'
     : '该分区暂无表档案 —— 可导入整册抄表工作簿自动建档,或编辑模式下「新增表」。'
 })
+
+// 本月没有读数(原 .mt-empty 流内条):标题旁贴页面状态,内容区换成空状态(LAYOUT-STABILITY §4「本月尚未生成」那一行)。
+// 只在「能录的编辑态」之外换:编辑态里表格就是逐块录入的地方,换掉它空月就只剩导入一条路(导入在标题行)
+const emptySub = computed(() => (canReading.value
+  ? '进入「编辑模式」后可以导入整册抄表工作簿,或在表格里逐块录入本月示数。'
+  : '各表这个月的读数都还没录。'))
+// 编辑钮禁用时的说明(原生 title 换悬停说明)
+const editTip = computed(() => (!editMode.value && loadErr.value ? '本月数据没读到,先点「重试」再录入' : null))
+
+// 批量删除确认(画布 02-B 右):删除类默认焦点在「取消」;Esc = 取消。
+// Esc 挂 window capture(同 FPConfirmHost):页上的 ds/Select 在 document capture 上把 Esc 截走了(不管下拉开没开),
+// 挂在遮罩上的 @keydown.esc 永远收不到 —— 宽档第二行的「全部归属」就是一个
+const delCancel = ref<ComponentPublicInstance | null>(null)
+function onDelEsc(e: KeyboardEvent) {
+  if (e.key !== 'Escape' || !delPreview.value) return
+  e.stopPropagation()
+  delPreview.value = null
+}
+watch(() => !!delPreview.value, async on => {
+  if (!on) { window.removeEventListener('keydown', onDelEsc, true); return }
+  window.addEventListener('keydown', onDelEsc, true)
+  await nextTick()
+  ;(delCancel.value?.$el as HTMLElement | undefined)?.focus()
+})
+onBeforeUnmount(() => window.removeEventListener('keydown', onDelEsc, true))
 </script>
 
 <template>
@@ -730,59 +836,58 @@ const emptyText = computed(() => {
     <!-- 链路条:期写在这里,五道工序横跳不换期 -->
     <FPStepStrip :steps="chainSteps" current="meters" :period="ym" @back="period.clear()" />
 
-    <!-- 标题行:h2+账期+抄表进度条;右=模板/导出(常驻)+导入/新增表(编辑态)+编辑模式(最右)
+    <!-- 标题行(画布 04-A / 04-B「七个按钮收成四个」):
+         左 = 标题 + 页面状态(编辑中 · N 处改动 / 本月还没有读数 / 本月没导册子)+「租户表已抄 N / M」+ 期区段控;
+         右 = 浏览「导出当月 · … · 编辑模式」/ 编辑「导入 · 新增表 · … · 完成」,「…」里是其余动作。
          S 与 M 档整行都不渲染(§5.10 判据四:顶栏/平板顶栏 52px 已经写着屏名,流内不再写第二遍)。
          整块挂 v-if 而不是 display:none —— 行里那两颗按钮(编辑模式/审核簇)在窄档
          要换位置,留着一份藏起来的就成了两份同名控件。 -->
     <div v-if="!isSM" class="mt-head">
       <div class="mt-head-l">
         <h2 class="mt-title"><span class="ic"><component :is="iconFor('gauge')" :size="18" /></span>园区抄表</h2>
-        <div class="mt5-prog" :title="`抄表进度(随电水/分区筛选):已抄 ${cards.read} / 租户表 ${cards.tenant}`">
-          <div class="bar"><span :style="{ width: progressPct + '%' }" /></div>
-          <span class="txt">{{ cards.read }}/{{ cards.tenant }} · {{ progressPct }}%</span>
-        </div>
+        <!-- 页面状态(十件 ⑥):贴标题,不另起一行。草稿式编辑(§7.2)的改动数也在这里 -->
+        <FPStateTag v-if="editMode" tone="edit">编辑中 · {{ dirtyIds.length }} 处改动</FPStateTag>
+        <FPStateTag v-if="!loadErr && !readings.length" tone="warn">本月还没有读数</FPStateTag>
+        <!-- SPEC §10.4 这个期区 × 表类这个月一笔册子记录都没有(原 .mt-bookbar);整月没读数时让位给上一枚 -->
+        <FPStateTag v-else-if="!loadErr && bookGap" v-tip="bookGap" tone="warn">本月没导册子</FPStateTag>
+        <!-- 随电水 / 期区,不受状态页签、归属、搜索影响(原进度条) -->
+        <span class="mt-prog">租户表已抄 <b>{{ cards.read }}</b> / {{ cards.tenant }}</span>
+        <!-- 分区=一级页签(用户拍板 2026-07-28),挪进标题行(画布 04-A) -->
+        <Segmented :options="ZONE_OPTS" :model-value="zone" size="sm" @update:model-value="zone = $event; building = 'all'" />
       </div>
       <div class="mt5-actions">
-        <!-- 草稿式编辑(§7.2):编辑中显改动数 tag;「完成」经 onEditBtn 走确认流 -->
-        <span v-if="editMode" class="mt5-tag">编辑中 · {{ dirtyIds.length }} 处改动</span>
-        <Button variant="outline" size="sm" @click="onTemplate">
-          <template #leading><component :is="iconFor('file-spreadsheet')" :size="14" /></template>
-          下载模板
-        </Button>
-        <Button variant="outline" size="sm" :disabled="exporting" @click="onExport">
+        <!-- 导入/新增表只在编辑态(EDIT-MODE-SPEC);导出当月浏览态在外面,编辑态收进「…」(实现规范 §2 第 15 条)。
+             导入写的是读数(表顺带建档)→ meter-reading;新增表是纯档案 → meter-master。
+             「导入」不带 ▾:只有一种导入,下拉里没东西可放(§2 第 18 条) -->
+        <template v-if="editMode">
+          <Button v-if="canReading" variant="outline" size="sm" @click="importing = true">
+            <template #leading><component :is="iconFor('upload')" :size="14" /></template>
+            导入
+          </Button>
+          <Button v-if="canMaster" variant="outline" size="sm" @click="openMeterDlg">
+            <template #leading><component :is="iconFor('plus')" :size="14" /></template>
+            新增表
+          </Button>
+        </template>
+        <Button v-else variant="outline" size="sm" :disabled="exporting" @click="onExport">
           <template #leading><component :is="iconFor('download')" :size="14" /></template>
           导出当月
         </Button>
-        <!-- 导入/新增表收编辑态(EDIT-MODE-SPEC);模板/导出=只读操作常驻 -->
-        <!-- 导入写的是读数(表顺带建档)→ meter-reading;新增表是纯档案 → meter-master -->
-        <Button v-if="editMode && canReading" variant="outline" size="sm" @click="importing = true">
-          <template #leading><component :is="iconFor('upload')" :size="14" /></template>
-          导入
-        </Button>
-        <Button v-if="editMode && canMaster" variant="outline" size="sm" @click="openMeterDlg">
-          <template #leading><component :is="iconFor('plus')" :size="14" /></template>
-          新增表
-        </Button>
-        <!-- §H5 批量删除本期(整月,不可逆):编辑态 + meter-reading:edit(DELETE /api/meters/readings) -->
-        <Button
-          v-if="editMode && canReading" variant="danger" size="sm" :disabled="delBusy"
-          title="删除本账期全部读数,并级联删除该月派生快照与删完零读数的表档案(池成员表跳过);执行前会先给出预览数字并要求手打账期确认"
-          @click="openDelDlg"
-        >
-          <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
-          批量删除本期
-        </Button>
+        <!-- 「批量删除本期」(§H5 整月不可逆)在这里面是红字一项,点了先出预览确认单、手打账期才放行 -->
+        <FPMoreMenu :items="headMore" @select="onMoreAction" />
         <!-- 审核动作簇(§01):长在编辑按钮**左边**,同一条 flex 行 —— 编辑按钮位一个像素不动。
              四态八格由组件自己判(全站唯一那一份),屏这一层只负责喂键与人话名。 -->
         <FPReviewActions :keys="reviewKeys" :label="reviewLabel" :can-edit="canEnter" :edit="editMode" />
-        <!-- 编辑模式:任一权限(或能请授权)即画按钮;进得去 ⇒ 两把权限一定齐(useEditMode 铁律 ①) -->
-        <FPEditModeButton
-          :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
-                          :review-note="reviewNote" :review-tip="reviewTip"
-          :disabled="saving || (!editMode && loadErr)"
-          :title="!editMode && loadErr ? '本月数据未加载成功,先点失败条上的「重试」再录入' : undefined"
-          @toggle="onEditBtn"
-        />
+        <!-- 编辑模式:任一权限(或能请授权)即画按钮;进得去 ⇒ 两把权限一定齐(useEditMode 铁律 ①)。
+             悬停说明挂外面这层:钮禁用时自己收不到鼠标 -->
+        <span v-tip="editTip" class="mt-ebtn">
+          <FPEditModeButton
+            :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
+            :review-note="reviewNote" :review-tip="reviewTip"
+            :disabled="saving || (!editMode && loadErr)"
+            @toggle="onEditBtn"
+          />
+        </span>
       </div>
     </div>
 
@@ -810,42 +915,22 @@ const emptyText = computed(() => {
     </div>
 
 
-    <!-- 统计卡行(6 张,随电水/分区;点=状态筛选互斥切换,选中高亮)
-         ⚠ 判据仍是 isS,**M 档照画 6 张**(下面 @media 960 降三列两行)。
+    <!-- 统计卡行(6 张,随电水/分区;点=状态筛选互斥切换,选中高亮)—— **只剩 M 档**。
+         宽档的 6 张已并进第二行的状态页签(画布 04-A「六张统计卡并进状态页签」);S/M 档照旧(实现规范 §2 第 21 条)。
          §5.7 那张「≥5 张先砍成一行摘要」的表自己写着「S 档规则」,而 M 档的共同口径是
          §3.5-pre:「只收留白与行数,不收内容;不允许把入口藏进溢出菜单」——
          摘要行是把值为 0 的三个维度收进「更多」,那是收内容,M 档不做。 -->
-    <div v-if="!isS" class="mt5-cards">
+    <div v-if="isM" class="mt5-cards">
       <button
         v-for="c in cardDefs" :key="c.k"
+        v-tip="status === c.k ? '再点取消筛选' : '点击按此维度筛选表格'"
         class="mt5-card" :class="[c.cls, { on: status === c.k }]"
-        :title="status === c.k ? '再点取消筛选' : '点击按此维度筛选表格'"
         @click="cardClick(c.k)"
       >
         <span class="lab">{{ c.label }}</span>
         <span class="val">{{ c.val }}</span>
         <span class="sub">{{ c.sub }}</span>
       </button>
-    </div>
-
-    <!-- 加载失败条:两条各自成行(同 PoolLedgerView §F11,别让一条盖掉另一条的原因) -->
-    <FPLoadError v-if="readErr || metersErr" @retry="retryLoad">
-      <!-- .msg 由 FPLoadError 用 :deep 接住:两条各自成行,别让一条盖掉另一条的原因 -->
-      <div class="msg">
-        <div v-if="readErr">{{ readErr }} —— 读数列一律置空(不拿上月数据顶替),编辑模式已锁,重试成功后再录入</div>
-        <div v-if="metersErr">{{ metersErr }} —— 表档案停留在上次拉到的版本,编辑模式已锁</div>
-      </div>
-    </FPLoadError>
-
-    <!-- 月度空态引导(三分支:编辑态/可编辑/只读);读数没拉到不是「本月无数据」,让位给失败条 -->
-    <div v-if="!readErr && readings.length === 0" class="mt-empty">
-      <component :is="iconFor('info')" :size="14" />
-      <span>
-        {{ year }}年{{ month }}月暂无抄表数据 ——
-        <template v-if="editMode && canReading">可<button class="mt-link" @click="importing = true">导入</button>整册抄表工作簿(自动建档),或行内直接录入本月示数。</template>
-        <template v-else-if="canReading">进入右上角「编辑模式」后可录入或导入。</template>
-        <template v-else>各表读数列为空。</template>
-      </span>
     </div>
 
     <!-- S/M 档筛选条(§5.10):搜索框 + 一颗带已选计数的筛选钮 +「⋯」,44 高。
@@ -879,65 +964,52 @@ const emptyText = computed(() => {
              按 §2 优先级表第 1 条「塞进已有位置」——挂成编辑钮的角标,
              绝对定位不参与布局,出现与否零位移。几何与筛选钮那颗计数角标同一份。
              S 档编辑钮进了顶栏,这个数跟着进顶栏动作的 label(同一条优先级第 1 条)。 -->
-        <span class="mt5-ebtn mt5-mact">
+        <span v-tip="editTip" class="mt5-ebtn mt5-mact">
           <FPEditModeButton
             :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
             :review-note="reviewNote" :review-tip="reviewTip"
             :disabled="saving || (!editMode && loadErr)"
-            :title="!editMode && loadErr ? '本月数据未加载成功,先点失败条上的「重试」再录入' : undefined"
             @toggle="onEditBtn"
           />
-          <span v-if="editMode && dirtyIds.length" class="n" :title="`编辑中 · ${dirtyIds.length} 处改动`">{{ dirtyIds.length }}</span>
+          <span v-if="editMode && dirtyIds.length" v-tip="`编辑中 · ${dirtyIds.length} 处改动`" class="n">{{ dirtyIds.length }}</span>
         </span>
       </template>
       <FPMoreMenu :items="moreActions" @select="onMoreAction" />
     </div>
 
-    <!-- 筛选条:电/水 → 分区 → 楼栋(数据驱动) → 归属 → 状态 → 搜索 → 一键挂/分时列/重置 -->
+    <!-- 第二行(画布 04-A):电表/水表 → 状态页签 → 存疑胶囊 ……… 全部归属 → 搜索。
+         楼栋交给表格分组行收起、重置删掉、一键挂进编辑态「…」(实现规范 §2 第 17 条);状态下拉不再有,
+         它的细项(本月有变化 / 缺底数 / 期区对不上 …)宽档不再能单独筛,S/M 档筛选面板里照旧 -->
     <div v-if="!isSM" class="mt5-filters">
-      <Segmented :options="ZONE_OPTS" :model-value="zone" size="sm" @update:model-value="zone = $event; building = 'all'" />
       <Segmented :options="KIND_OPTS" :model-value="kind" size="sm" @update:model-value="kind = $event" />
+      <Segmented class="mt-tabs" :options="statusTabs" :model-value="status" size="sm" @update:model-value="status = $event as StatusFilter" />
+      <!-- 存疑(V75 §E3/§F1)走入口胶囊(十件 ②):有存疑表才出;点了只列两级存疑档案(疑似重复 + 档案不全),
+           筛选生效时实底 + ×,点 × 回到全部 -->
+      <FPAlertChip
+        v-if="suspectCount > 0" v-tip="suspectTip" :count="suspectCount" label="存疑" :active="suspectOnly"
+        @open="suspectOnly = true" @clear="suspectOnly = false"
+      />
+      <span style="flex:1" />
       <div style="width:132px">
-        <Select :options="buildingOpts" :model-value="building" size="sm" @update:model-value="building = $event" />
-      </div>
-      <div style="width:110px">
         <Select :options="OWN_OPTS" :model-value="own" size="sm" @update:model-value="own = $event" />
-      </div>
-      <div style="width:110px">
-        <Select :options="STATUS_OPTS" :model-value="statusSel" size="sm" @update:model-value="status = $event as StatusFilter" />
       </div>
       <div class="mx-search">
         <span class="mx-search-icon">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </span>
-        <input v-model="q" placeholder="搜索租户/原文/房号/表号/编码" />
+        <input v-model="q" placeholder="搜索租户 / 房号 / 表号 / 编码" />
       </div>
-      <!-- 只看存疑(V75 §E3/§F1):有存疑表才出现;按下=只列两级存疑档案(疑似重复 + 档案不全) -->
-      <Button
-        v-if="suspectCount > 0" :variant="suspectOnly ? 'filled' : 'outline'" size="sm"
-        :title="`${suspectCount} 块表区域/位置/企业名称/编码全空;其中 ${shadowCount} 块另配到档案完整、同月示数与倍率全等的同栋同类表,疑似重复建档(红底,用量不计入楼栋分表Σ),其余只是档案不全(黄底,用量照常计入Σ)`"
-        @click="suspectOnly = !suspectOnly"
-      >
-        <template #leading><component :is="iconFor('alert-triangle')" :size="14" /></template>
-        只看存疑 · {{ suspectCount }}
-      </Button>
-      <span style="flex:1" />
-      <!-- 「按名精确匹配一键挂」:待核卡激活时工具栏侧出现(编辑态,S2 §3) -->
-      <Button v-if="showAutoLink" variant="outline" size="sm" :disabled="linking || cards.pending === 0" @click="autoLink">
-        <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>
-        按名精确匹配一键挂
-      </Button>
-      <Button variant="outline" size="sm" @click="resetFilters">重置</Button>
     </div>
 
-    <!-- 隐藏表出口的说明条:这两批平时不产行,列出来是为了改回去,所以得直说改哪一格 -->
-    <div v-if="hiddenHint" class="mt-hidbar">
+    <!-- 隐藏表出口的说明条(只剩 S/M 档;宽档挂在「已拆」「未在册」页签的悬停说明上):
+         这两批平时不产行,列出来是为了改回去,所以得直说改哪一格 -->
+    <div v-if="isSM && hiddenHint" class="mt-hidbar">
       <component :is="iconFor('info')" :size="14" />
       <span>{{ hiddenHint }}</span>
       <span v-if="!editMode" class="mt-hidbar-em">先点右上「编辑模式」才能改。</span>
     </div>
-    <!-- 本月册子(SPEC §10.4):整月没读数时让位给上面的空态引导,不叠两条 -->
-    <div v-if="bookGap && readings.length" class="mt-bookbar">
+    <!-- 本月册子(SPEC §10.4):只剩 S/M 档(宽档是标题旁「本月没导册子」);整月没读数时让位给空状态,不叠两条 -->
+    <div v-if="isSM && bookGap && readings.length" class="mt-bookbar">
       <component :is="iconFor('info')" :size="14" />
       <span>{{ bookGap }}</span>
     </div>
@@ -947,10 +1019,22 @@ const emptyText = computed(() => {
          20px + 一道 14 的 gap = 34px —— 正好一行表。撤掉后表从 8 行回到 9 行。
          理由与影响面记在规范 §5.3;块序与行数由 meterNarrow.spec 的块高断言钉着。
          录入仍不禁止、不隐藏、不优化(§11.2),只是不再为这句话留一整行。 -->
-    <!-- 台账同款电子表格(§7 v5.1):分时列常驻,无分页,草稿式编辑 -->
+    <!-- 内容区三选一(LAYOUT-STABILITY §3 / §4):
+         ① 读数或档案没拉到 → 加载失败换掉表格本身(两条各自成行,别让一条盖掉另一条的原因);
+         ② 本月一条读数都没有、又不在能录的编辑态 → 空状态;
+         ③ 台账同款电子表格(§7 v5.1):无分页,草稿式编辑 -->
+    <FPLoadError v-if="loadErr" sub="屏上不显示上个月的数字" @retry="retryLoad">
+      <div class="msg">
+        <div v-if="readErr">{{ readErr }}</div>
+        <div v-if="metersErr">{{ metersErr }}</div>
+      </div>
+    </FPLoadError>
+    <FPEmpty v-else-if="!readings.length && !editable" :sub="emptySub">{{ ym }} 还没有抄表读数</FPEmpty>
     <MeterLedgerGrid
+      v-else
       :rows="gridRows" :view-key="viewKey" :edit-mode="editable" :kind="kind" :zone="zone" :draft="draft"
       :building-name-by-id="buildingNameById" :empty-text="emptyText"
+      :tou-base="kindZoneRows" :retired-open="status === 'retired' || status === 'changed'"
       @open="openId = $event" @cell-edit="onCellEdit"
     />
 
@@ -1067,7 +1151,7 @@ const emptyText = computed(() => {
           <div class="mt-dlg-row">
             <Input v-model="mForm.code" label="表编码(可空,导入首选身份键)" size="sm" />
           </div>
-          <div class="mt-dlg-err">{{ mErr }}</div>
+          <p class="fp-field-err"><template v-if="mErr">{{ mErr }}</template></p>
         </div>
         <div class="mt-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="meterDlg = false">取消</Button>
@@ -1079,16 +1163,18 @@ const emptyText = computed(() => {
       </div>
     </div>
 
-    <!-- §H5 批量删除本期:复述预览数字 + 级联勾选 + 手打账期才放行(不可逆,无撤销) -->
-    <div v-if="delPreview" class="mt-mask" @mousedown="delPreview = null">
-      <div class="mt-dlg" @mousedown.stop>
+    <!-- §H5 批量删除本期:复述预览数字 + 级联勾选 + 手打账期才放行(不可逆,无撤销)。
+         外形照确认弹窗(十件 ⑨,画布 02-B 右):标题是问句、正文给数、主按钮写动作本身「删除 N 条」、默认焦点在「取消」、Esc = 取消。
+         不走 ask():它没有勾选项和输入框;手打账期保留到用户定(实现规范 §2 第 7 条) -->
+    <div v-if="delPreview" class="mt-mask ask" @mousedown="delPreview = null">
+      <div class="mt-dlg ask" role="alertdialog" aria-modal="true" aria-labelledby="mt-del-t" @mousedown.stop>
         <div class="mt-dlg-h">
-          <h3>批量删除本期 · {{ delPreview.ym }}</h3>
-          <p>不可逆操作,删除后无法撤销。请核对下列数字后输入账期确认。</p>
+          <h3 id="mt-del-t">删除 {{ delPreview.ym }} 全部读数？</h3>
+          <p>共 <b>{{ delPreview.readings }}</b> 条已录读数，删除后不能撤销。</p>
         </div>
         <div class="mt-dlg-b">
           <ul class="mt5-del-list">
-            <li>将删除读数 <b>{{ delPreview.readings }}</b> 条,涉及 <b>{{ delPreview.meters }}</b> 块表</li>
+            <li>涉及 <b>{{ delPreview.meters }}</b> 块表</li>
             <li>其中 <b>{{ delPreview.metersEmptied }}</b> 块表删完后零读数</li>
             <li>将删除该月派生快照 <b>{{ delPreview.derived }}</b> 条(池核算/逐表明细/损耗/分摊结果)</li>
             <li v-if="delLockedN > 0" class="warn">
@@ -1131,14 +1217,13 @@ const emptyText = computed(() => {
           <Input v-model="delTyped" :label="`确认请输入账期 ${delPreview.ym}`" :placeholder="delPreview.ym" size="sm" />
         </div>
         <div class="mt-dlg-f">
-          <Button variant="gray" size="sm" @click="delPreview = null">取消</Button>
+          <Button ref="delCancel" variant="outline" @click="delPreview = null">取消</Button>
           <Button
-            variant="danger" size="sm"
+            variant="danger"
             :disabled="delBusy || delLockedN > 0 || (delOpenN > 0 && !canBillRun) || delTyped.trim() !== delPreview.ym"
             @click="confirmDelete"
           >
-            <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
-            确认删除
+            删除 {{ delPreview.readings }} 条
           </Button>
         </div>
       </div>
@@ -1148,7 +1233,7 @@ const emptyText = computed(() => {
     <FPLockDialogs :locked-by="lockedBy" :evicted-by="evictedBy" :scope="lockScope()"
                    :what="`园区抄表 ${year} 年`"
                    @taken="onTaken" @close-takeover="lockedBy = null" @close-evicted="evictedBy = null" />
-    <FPToast v-model="okMsg" :tone="toastTone" placement="page" :duration="toastTone === 'warning' ? 0 : 6000" />
+    <FPToast v-model="okMsg" :tone="toastTone" placement="page" :duration="toastTone === 'warning' ? 0 : 4000" />
     <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
   </div>
 </template>
@@ -1156,21 +1241,17 @@ const emptyText = computed(() => {
 <style scoped>
 .mt-page { display: flex; flex-direction: column; gap: 14px; height: 100%; min-height: 0; box-sizing: border-box; max-width: 1600px; margin: 0 auto; width: 100%; }
 
-/* 标题行(pm-head 家族):左=标题+账期+进度条;右=按钮组 */
+/* 标题行(pm-head 家族):左=标题+页面状态+已抄数+期区段控;右=按钮组 */
 .mt-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .mt-head-l { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .mt-title { margin: 0 6px 0 0; display: flex; align-items: center; gap: 11px; font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .mt-title .ic { width: 34px; height: 34px; border-radius: 10px; background: var(--surface-sunken); display: grid; place-items: center; color: var(--text-secondary); flex: 0 0 auto; }
 .mt5-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-/* 编辑中改动数 tag(lg-tag.edit 同款) */
-.mt5-tag { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: var(--radius-full); background: var(--warn-soft); color: var(--hue-orange); font-size: 12.5px; font-weight: var(--fw-medium); font-variant-numeric: tabular-nums; white-space: nowrap; }
-
-/* 抄表进度条(已抄/租户表数,随 kind/zone) */
-.mt5-prog { display: flex; align-items: center; gap: 8px; cursor: help; }
-.mt5-prog .bar { width: 132px; height: 6px; border-radius: var(--radius-full); background: var(--bg-sunken); overflow: hidden; }
-.mt5-prog .bar span { display: block; height: 100%; border-radius: var(--radius-full); background: rgb(52, 168, 83); transition: width var(--dur-fast) var(--ease-standard); }
-.mt5-prog .txt { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-micro); color: var(--text-muted); white-space: nowrap; }
-
+/* 「租户表已抄 76 / 78」(画布 04-A):已抄那个数深色,其余灰 */
+.mt-prog { font-size: var(--fs-label); color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mt-prog b { font-weight: var(--fw-semibold); color: var(--text-primary); }
+/* 编辑钮的悬停说明挂在这层(钮禁用时自己收不到鼠标);不参与排版 */
+.mt-ebtn { display: inline-flex; flex: 0 0 auto; }
 /* 统计卡行:6 张可点击卡,选中高亮 */
 .mt5-cards { flex: 0 0 auto; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
 .mt5-card { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 12px 14px; min-width: 0; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); cursor: pointer; text-align: left; font: inherit; transition: border-color var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard); }
@@ -1185,22 +1266,17 @@ const emptyText = computed(() => {
 .mt5-card.bad .val { color: var(--hue-red); }
 .mt5-card.coral .val { color: var(--coral-text); }
 
-/* 筛选条:单行 */
+/* 第二行:单行 */
 .mt5-filters { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* 状态页签里的计数灰字(字 + 灰色计数,实现规范 §1.9);标签是 TabLabel 渲染的,不带本组件的 scope 属性 */
+.mt-tabs :deep(.mt-tab-n) { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
-/* 月度空态引导条 */
-.mt-empty { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); }
-.mt-link { border: none; background: none; padding: 0; margin: 0 2px; font: inherit; color: var(--hue-blue); cursor: pointer; }
-.mt-link:hover { text-decoration: underline; }
-
-/* 加载失败条(借空态条骨架换红):提示 + 重试入口 */
-/* 隐藏表出口说明条:蓝调=这不是错误,是「你正在看平时不显示的那批」 */
+/* 隐藏表出口说明条(只剩 S/M 档):蓝调=这不是错误,是「你正在看平时不显示的那批」 */
 .mt-hidbar, .mt-bookbar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; border: 1px solid rgb(206, 223, 252); border-radius: var(--radius-md); background: rgb(238, 244, 255); font-size: 12px; color: rgb(28, 84, 168); }
 :root[data-theme="dark"] .mt-hidbar, :root[data-theme="dark"] .mt-bookbar { border-color: color-mix(in srgb, var(--hue-blue) 35%, transparent); background: var(--info-soft); color: var(--hue-blue); }
 .mt-hidbar-em { font-weight: var(--fw-semibold); }
 /* 一句话较长:字跟图标同一行、在自己那一格里折行(不整段掉到图标下面) */
 .mt-bookbar > span { flex: 1 1 0; min-width: 0; }
-.mt-empty .msg { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 /* 首载失败占满 gate 的位置(与 .page-loading 同为整页态,顶部起排不居中) */
 .mt-gate-fail { padding: 24px 0; max-width: 1600px; margin: 0 auto; width: 100%; box-sizing: border-box; }
 
@@ -1210,11 +1286,11 @@ const emptyText = computed(() => {
 .mt-dlg-h { padding: 20px 22px 0; }
 .mt-dlg-h h3 { margin: 0; font-size: 16px; font-weight: var(--fw-semibold); color: var(--text-primary); }
 .mt-dlg-h p { margin: 6px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--text-muted); }
+.mt-dlg-h p b { font-weight: var(--fw-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .mt-dlg-b { padding: 16px 22px 4px; display: flex; flex-direction: column; gap: 12px; }
 .mt-dlg-row { display: flex; gap: 12px; }
 .mt-dlg-row > * { flex: 1; min-width: 0; }
 .mt-fld label { display: block; margin-bottom: 5px; font-size: var(--fs-label); color: var(--text-secondary); }
-.mt-dlg-err { font-size: 11.5px; color: var(--hue-red); min-height: 14px; }
 
 /* §H5 批量删除确认:预览数字复述 + 级联勾选 */
 .mt5-del-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: var(--text-secondary); }
@@ -1224,6 +1300,15 @@ const emptyText = computed(() => {
 .mt5-del-ck { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
 .mt5-del-nobill { margin: 0; font-size: 12.5px; color: var(--hue-orange); }
 .mt-dlg-f { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 22px 20px; }
+/* 批量删除本期照确认弹窗(十件 ⑨,FPConfirmHost 同一套令牌):盖住一切弹窗的 --z-confirm、--shadow-dialog、
+   四边 24、标题 16 / 正文 14 次要色;440 宽,正文里的数加粗 */
+.mt-mask.ask { z-index: var(--z-confirm); }
+.mt-dlg.ask { width: min(440px, 90vw); background: var(--surface-raised); box-shadow: var(--shadow-dialog); }
+.mt-dlg.ask .mt-dlg-h { padding: 24px 24px 0; }
+.mt-dlg.ask .mt-dlg-h h3 { font-size: var(--fs-h3); line-height: 24px; }
+.mt-dlg.ask .mt-dlg-h p { margin-top: 8px; font-size: var(--fs-body); line-height: 20px; color: var(--text-secondary); }
+.mt-dlg.ask .mt-dlg-b { padding: 16px 24px 0; }
+.mt-dlg.ask .mt-dlg-f { padding: 24px; }
 
 /* ── S 档屏顶三块(RESPONSIVE-LAYOUT-SPEC §5.7 + §5.10)────────────────────────
    这几块整条挂在 v-if="isS" / v-if="isSM"(JS 档位)上,宽档 DOM 里根本不存在 —— 故**不套 @media**

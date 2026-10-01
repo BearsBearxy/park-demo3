@@ -10,6 +10,7 @@ import { METER_KIND_LABEL } from '@/utils/meterExcel'
 import { rangeText, lockedText, EARLIEST, type AssignChoice } from './meterTimeline'
 import Button from '@/components/ds/Button.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
+import FPNote from '@/components/fp/FPNote.vue'
 
 const props = defineProps<{
   title: string
@@ -84,9 +85,9 @@ async function confirm() {
       </button>
     </div>
 
-    <p v-if="tenantTo && chosen && chosen.span.from !== EARLIEST" class="ad-note">
+    <FPNote v-if="tenantTo && chosen && chosen.span.from !== EARLIEST" tone="info">
       水电按月抄表，{{ ymCn(chosen.span.from) }}月整月算给 {{ tenantTo }}。
-    </p>
+    </FPNote>
 
     <div v-if="siblings.length" class="ad-sibs">
       <span class="lab">同房间的表(站在 {{ ym }} 看同楼栋、同房号),一起改:</span>
@@ -104,7 +105,7 @@ async function confirm() {
       <span>一并更正后面 {{ impact.migrateCopies }} 段(按旧档案补记的)</span>
     </label>
 
-    <p class="ad-err"><template v-if="err">{{ err }}</template></p>
+    <p class="fp-field-err"><template v-if="err">{{ err }}</template></p>
 
     <template #footer>
       <Button variant="gray" size="sm" :disabled="busy" @click="close">取消</Button>
@@ -125,10 +126,8 @@ async function confirm() {
 .ad-opt:disabled .t { color: var(--text-disabled); }
 .ad-opt .s { font-size: var(--fs-label); color: var(--text-secondary); font-family: var(--font-sans); }
 .ad-opt .lk { font-size: var(--fs-label); color: var(--caution-text); overflow-wrap: anywhere; }
-.ad-note { margin: 0; padding: 8px 12px; border-radius: var(--radius-md); background: var(--info-soft); font-size: var(--fs-label); color: var(--text-primary); }
 .ad-sibs { display: flex; flex-direction: column; gap: 6px; }
 .ad-sibs .lab { font-size: var(--fs-label); color: var(--text-muted); }
 .ad-ck { display: flex; align-items: flex-start; gap: 8px; font-size: var(--fs-label); color: var(--text-secondary); cursor: pointer; overflow-wrap: anywhere; }
 .ad-ck input { margin-top: 2px; flex: 0 0 auto; }
-.ad-err { margin: 0; min-height: 18px; line-height: 18px; font-size: var(--fs-label); color: var(--hue-red); overflow-wrap: anywhere; }
 </style>

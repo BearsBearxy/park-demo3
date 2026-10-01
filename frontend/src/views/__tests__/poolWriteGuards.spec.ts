@@ -43,6 +43,7 @@ vi.mock('@/api/alloc', () => ({
   allocApi: {
     pools: vi.fn(() => Promise.resolve({ generated: false, rows: [] })),
     memberDiff: vi.fn(() => Promise.resolve([])),
+    meterDiff: vi.fn(() => Promise.resolve([])),
     rules: vi.fn(() => Promise.resolve([])),
     generate: vi.fn(() => Promise.resolve({ warnings: [] })),
     createRule: vi.fn(() => Promise.resolve({})),
@@ -86,7 +87,8 @@ vi.mock('@/api/review', () => ({
 
 import PoolLedgerView from '../alloc/PoolLedgerView.vue'
 import { allocApi, type AllocRuleDTO } from '@/api/alloc'
-import { paramsApi } from '@/api/params'
+import { paramsApi, type ParamStatusDTO } from '@/api/params'
+import { askQueue, answer } from '@/utils/ask'
 
 /** vm 直呼写函数用(script setup 的顶层绑定在 dev 构建里挂在实例代理上,meterPeriodFlow 同款) */
 interface Vm {
@@ -185,18 +187,20 @@ describe('PoolLedgerView 写口守卫', () => {
     w.unmount()
   })
 
-  it('④b 浏览态直呼 delPool:有 id、confirm 恒真也删不动', async () => {
+  it('④b 浏览态直呼 delPool:有 id 也不问、删不动', async () => {
     const w = await mountPicked()
     const vm = w.vm as unknown as Vm
-    // 前置做足:id 非空(守卫后第一个早退)+ confirm 恒真(第二个早退)
+    // 前置做足:id 非空(守卫后第一个早退);确认框(ask)一出就答「删除池」
     vm.form.id = 7
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     expect(vm.editMode, '前置:浏览态').toBe(false)
-    await vm.delPool()
+    const done = vm.delPool()
     await flushPromises()
-    // production 删掉 :726 `if (!editMode.value) return` → deleteRule(7) 被打出去 → 红
+    // production 删掉开头的 `if (!editMode.value) return` → 浏览态也弹「删除池「…」？」→ 红
+    expect(askQueue, '浏览态连确认框都不该出').toHaveLength(0)
+    if (askQueue.length) answer(true)
+    await done
+    await flushPromises()
     expect(allocApi.deleteRule).not.toHaveBeenCalled()
-    confirmSpy.mockRestore()
     w.unmount()
   })
 
@@ -268,6 +272,35 @@ describe('PoolLedgerView 写口守卫', () => {
     expect(texts[iSubmit], '双键屏两把一起交').toBe('交审（2 项）')
     // §01:动作簇在编辑按钮**左边**,不是右边、也不是另起一行
     expect(iSubmit, '动作簇必须排在编辑按钮之前').toBeLessThan(iEdit)
+    w.unmount()
+  })
+})
+
+// T16(画布 06-C 方案 A):问题面板从右侧抽屉换成贴着入口的浮层;stale / 池配置改过并成「待重算」一组,组头「重算本月」。
+describe('公共电核算 · 问题面板', () => {
+  // 参数 10:00 改过、池结果 9:00 算的 → stale
+  const STALE: ParamStatusDTO = {
+    priceOk: 6, priceTotal: 6, pendingChanges: 2, lastChangeAt: '2025-04-02T10:00:00',
+    poolSnapshotAt: '2025-04-02T09:00:00', billBatchAt: null, stale: true, otherMonthsAffected: [],
+    lastChangeSource: 'param', staleSources: ['param'],
+  }
+  // 破坏验证:组头 action 的 label 改回「重新生成」→ 第二条红;run 不调 onGenerate → 第三条红;
+  //           面板退回 FPSideDrawer(带遮罩)→ 第一条红
+  it('⑧ 打开面板页面不变暗;编辑态「待重算」组头是「重算本月」,点了按本月生成', async () => {
+    vi.mocked(paramsApi.status).mockResolvedValueOnce(STALE)
+    vi.mocked(allocApi.generate).mockClear()
+    const w = await mountPicked()
+    await w.findAll('button').find(b => b.text().includes('编辑模式'))!.trigger('click')
+    await flushPromises()
+    await w.find('button.fac').trigger('click')
+    await flushPromises()
+    expect(document.querySelector('.fp-sdw-mask'), '问题面板不带遮罩').toBeNull()
+    const head = w.findAll('.fap-gh').find(h => h.text().includes('待重算'))!
+    const btn = head.findAll('button').find(b => b.text() === '重算本月')
+    expect(btn, '组头有「重算本月」').toBeDefined()
+    await btn!.trigger('click')
+    await flushPromises()
+    expect(allocApi.generate).toHaveBeenCalledWith('2025-03')
     w.unmount()
   })
 })

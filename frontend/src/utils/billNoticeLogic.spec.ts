@@ -6,7 +6,7 @@ import {
   groupByBuilding, groupDormExcelStyle, groupExcelStyle, groupRentByPremise, lineNoteKey, mergeMaintRows,
   mergeNoteKey, noteDisplay, noteKeyId, priceScopeLabel,
   rentAreaText, rentByTenant, rentFeeName, resolvePhase, segLabel, tenantBuildings, tenantKpis,
-  warnSummaryLines,
+  warnSummaryLines, warnHead, tenantTabCounts, buildNoticeAlertGroups, type TabRow,
   type DormLineBase, type NoticeLike, type RentLineBase, type UtilRowLine,
 } from './billNoticeLogic'
 
@@ -999,7 +999,7 @@ describe('buildUtilRows 水电明细拍平', () => {
   })
 })
 
-// 落点:列表行尾「!」的悬浮 + 明细抽屉的户头横幅。两处都只有这一个数据源。
+// 落点:列表警告格的悬停说明 + 明细抽屉的徽标。两处都只有这一个数据源。
 describe('warnSummaryLines 一户的告警摘要(一类一行 = 块头 + 条目)', () => {
   const A = (code: string, payload = '', hint = '') => ({ code, payload, hint })
 
@@ -1035,11 +1035,47 @@ describe('warnSummaryLines 一户的告警摘要(一类一行 = 块头 + 条目)
   })
 
   // ⚠ 这两个落点要把这户的告警**全部**说完:drawer:false 的类(§6-3 不进屏级抽屉)在这里照出,
-  //   否则行尾「!」亮着灯、悬浮里却一个字都没有。
+  //   否则警告格亮着灯、悬停里却一个字都没有。
   //   破坏验证:改成复用 buildNoticeAlertGroups(它滤掉 drawer:false) → 本行红。
   it('不进屏级抽屉的类(本期合计为负)照样出,且不复述成「X:X」', () => {
     expect(warnSummaryLines([A('W_TOTAL_NEGATIVE')])).toBe('本期合计为负')
   })
 
-  it('无告警出空串(横幅与「!」都不渲染)', () => expect(warnSummaryLines([])).toBe(''))
+  it('无告警出空串(警告格不出字)', () => expect(warnSummaryLines([])).toBe(''))
+})
+
+// ── 画布 05-A:四张统计卡并进状态页签;警告列写「首类 +N」;问题面板点一条跳行 ──
+describe('tenantTabCounts 状态页签的数(部分确认进待核对,缺收款公司进有警告)', () => {
+  const R = (st: TabRow['st'], gap = false, alerts: TabRow['alerts'] = []): TabRow => ({ st, gap, alerts })
+  // 破坏验证:inTab 的 todo 去掉 partial → todo 1 红;warned 去掉 `|| r.gap` → warned 0 红
+  it('draft/partial/confirmed/exported 各 1、其中 1 户缺收款公司', () => {
+    expect(tenantTabCounts([R('draft'), R('partial', true), R('confirmed'), R('exported')]))
+      .toEqual({ all: 4, todo: 2, confirmed: 1, exported: 1, warned: 1 })
+  })
+  // 破坏验证:warned 改成只看 r.gap → 2 变 1 红
+  it('有告警没缺口也算有警告;告警 + 缺口的户只算一次', () => {
+    const a = { code: 'W_PRICE_MISSING', payload: 'water', hint: '' }
+    expect(tenantTabCounts([R('confirmed', false, [a]), R('draft', true, [a]), R('draft')]).warned).toBe(2)
+  })
+})
+
+describe('warnHead 警告列一格', () => {
+  const A = (code: string, payload = '', hint = '') => ({ code, payload, hint })
+  // 两类(组序按 WARN_CODES,不按入参):首类 = 房号两边对不上,+1
+  it('两类告警 → 首类 + more 1', () => {
+    expect(warnHead([A('W_PACKAGE_NO_POOL', 'share_elec_floor'), A('W_ROOM_MISMATCH', '547'), A('W_ROOM_MISMATCH', '548')]))
+      .toEqual({ title: '房号两边对不上', more: 1 })
+  })
+  it('无告警 null', () => expect(warnHead([])).toBeNull())
+})
+
+describe('buildNoticeAlertGroups 明细带户 id(面板点一条跳到那一户)', () => {
+  it('两户同一类:两条各带自己的 tenantId', () => {
+    const a = { code: 'W_ROOM_MISMATCH', payload: '547', hint: '' }
+    const gs = buildNoticeAlertGroups([
+      { tenantId: 5, tenantName: '联塑精锢', alerts: [a] },
+      { tenantId: 9, tenantName: '广联', alerts: [a] },
+    ])
+    expect(gs.map(g => g.items.map(i => [i.hint, i.tenantId]))).toEqual([[['联塑精锢', 5], ['广联', 9]]])
+  })
 })

@@ -67,6 +67,9 @@ import PoolLedgerView from '../alloc/PoolLedgerView.vue'
 import { allocApi } from '@/api/alloc'
 import { paramsApi } from '@/api/params'
 import { metersApi } from '@/api/meters'
+import { askQueue, answer } from '@/utils/ask'
+
+type TipEl = HTMLElement & { _tip?: { text: string } }
 
 // 真实形状:二期 #15 五车间广告字灯(纯标准行,折入绿化水泵),绑表 1 块;#16 五车间电梯 2023-10 起绑火炬园表(−1)
 const ROW = (p: Partial<AllocPoolRowDTO>): AllocPoolRowDTO => ({
@@ -105,7 +108,7 @@ beforeEach(() => {
   push.mockClear()
 })
 const mounted: VueWrapper[] = []
-afterEach(() => { mounted.splice(0).forEach(w => w.unmount()); document.body.innerHTML = '' })
+afterEach(() => { mounted.splice(0).forEach(w => w.unmount()); document.body.innerHTML = ''; askQueue.splice(0) })
 
 async function open(row?: AllocPoolRowDTO, edit = false) {
   useBillingPeriodStore().pick(2024, 2)
@@ -135,7 +138,7 @@ describe('池按月配置 · 抽屉', () => {
     expect(box, '园区自担也要有这个勾选框').toBeDefined()
     expect(box!.textContent).toContain('只改本月起（2024-02）：电表、折入的标准、受益人都从这个月起用，之前的月份不动')
     // 对抗复查 A1:名称 / 方法 / 费项不分月,勾了也对所有月生效 —— 悬停说明要讲清(破坏验证:删掉这句 → 红)
-    expect(box!.title).toContain('名称、分摊方式、费项这些不分月，勾不勾都是所有月份一起改')
+    expect((box as TipEl)._tip?.text).toContain('名称、分摊方式、费项这些不分月，勾不勾都是所有月份一起改')
   })
 
   // 破坏验证:初始勾选退回只看受益人(r.members.some(src==='month'))→ 前两条断言红;
@@ -200,19 +203,20 @@ describe('池按月配置 · 抽屉', () => {
     expect(document.body.textContent).not.toContain('分摊标准小数位')
   })
 
-  // 破坏验证:confirmUnbind 的 filter 去掉 `&& r.ym >= from` → 确认框多点名 2023-10、2024-01 → 红
+  // 破坏验证:confirmUnbind 的 filter 去掉 `&& r.ym >= from` → 确认框多点名 2023-10、2024-01 → 红;
+  //           months.join('、') 改成别的分隔符 → 本月及以后两个月连写的那句对不上 → 红
   it('❗勾了「只改本月起」移出表:确认框只点名本月及以后有读数的月份', async () => {
     vi.mocked(metersApi.meterReadings).mockResolvedValue([
-      reading('2023-10', 1065.9), reading('2024-01', 812), reading('2024-02', 1065.9), reading('2024-03', 0),
+      reading('2023-10', 1065.9), reading('2024-01', 812), reading('2024-02', 1065.9), reading('2024-03', 0), reading('2024-04', 640.5),
     ])
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const w = await open(ROW({ meters: [{ ...ROW({}).meters[0], src: 'month' }] }))
     expect((w.vm as unknown as Vm).form.monthOnly, '前置:按月版本 → 默认勾上').toBe(true)
     const row = [...document.querySelectorAll('.pl-bindrow')].find(r => r.textContent?.includes('五车间·广告字灯·消防分表')) as HTMLElement
     ;(row.querySelector('input') as HTMLInputElement).click()
     await flushPromises()
-    expect(confirm.mock.calls[0][0]).toContain('这 1 个月有读数(用量非零):2024-02\n')
+    expect(askQueue[0].body).toContain('这 2 个月有读数（用量非零）：2024-02、2024-04。')
+    answer(true)
+    await flushPromises()
     expect((w.vm as unknown as Vm).form.meters).toEqual([])
-    confirm.mockRestore()
   })
 })

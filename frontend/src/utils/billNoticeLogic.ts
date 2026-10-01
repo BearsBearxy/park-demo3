@@ -774,21 +774,22 @@ export function tenantKpis(rows: { totalAmount: number; rent: number | null; ale
 // AlertGroup,屏里 gs.push(...) 就能用,不在 .vue 里再转一层 —— 那样单测就盯不住分组逻辑了。
 //
 // drawer:false 的类别(今天只有 W_TOTAL_NEGATIVE)不进这里:FPAlertPanel §6-3 明文
-// 「只报不给动作的告警不许进来」。它的落点仍是列表行尾「!」与明细抽屉横幅。
+// 「只报不给动作的告警不许进来」。它的落点是列表警告格与明细抽屉的徽标(2026-10-01 画布 05-A / 01-C)。
 export interface NoticeAlertGroup {
   key: string
   title: string
   desc: string
   tone: 'warn'
-  items: { text: string; hint?: string }[]
+  /** tenantId:点这一条跳到表里那一户(问题面板「点一条跳行并闪」,06-C) */
+  items: { text: string; hint?: string; tenantId: number }[]
   route: string
   actionLabel: string
 }
 export function buildNoticeAlertGroups(
-  rows: { tenantName: string | null; alerts: NoticeAlert[] }[],
+  rows: { tenantId: number; tenantName: string | null; alerts: NoticeAlert[] }[],
 ): NoticeAlertGroup[] {
   // 同一条告警可能落在多户身上(如两户各有一块表没挂合同),条目按「户 + 该条的字」去重
-  const byCode = new Map<string, Map<string, { text: string; hint?: string }>>()
+  const byCode = new Map<string, Map<string, { text: string; hint?: string; tenantId: number }>>()
   for (const r of rows) {
     for (const a of r.alerts) {
       const c = warnCopy(a.code)
@@ -796,7 +797,7 @@ export function buildNoticeAlertGroups(
       const text = warnItemText(a.code, a.payload, a.hint)
       const who = r.tenantName ?? ''
       const m = byCode.get(a.code) ?? new Map()
-      m.set(`${who}|${text}`, { text, hint: who || undefined })
+      m.set(`${who}|${text}`, { text, hint: who || undefined, tenantId: r.tenantId })
       byCode.set(a.code, m)
     }
   }
@@ -812,7 +813,7 @@ export function buildNoticeAlertGroups(
     })
 }
 
-// 一户的告警按类分组。两个落点共用这一份:列表行尾「!」的悬浮(warnSummaryLines)、
+// 一户的告警按类分组。两个落点共用这一份:列表警告格(warnHead / warnSummaryLines 的悬停说明)、
 // 明细抽屉标题行上的徽标与点开面板(BillNoticesView)。组序用 WARN_CODES,不按入参顺序。
 //
 // ⚠ 不复用 buildNoticeAlertGroups:它按 FPAlertPanel §6-3 滤掉了 drawer:false 的类
@@ -838,7 +839,30 @@ export function warnGroupsOf(alerts: NoticeAlert[]): WarnGroup[] {
   }))
 }
 
-// 一户的告警摘要:**一类一行 = 块头 + 该类的条目**。落点是列表行尾「!」的悬浮。
+// 警告列一格(画布 05-A,datagrid「格内写法:第一项 +N」):写首类 + 其余几类。无告警 null。
+export function warnHead(alerts: NoticeAlert[]): { title: string; more: number } | null {
+  const gs = warnGroupsOf(alerts)
+  return gs.length ? { title: gs[0].title, more: gs.length - 1 } : null
+}
+
+// ── 状态页签(画布 05-A「全部 12 待核对 7 已确认 3 已导出 2 有警告 4」,替四张统计卡) ──
+// 户级状态同 payBookLogic.tenantStatus(这里只写字面量:payBookLogic 反向 import 本文件,不回引)。
+export type NoticeTab = 'all' | 'todo' | 'confirmed' | 'exported' | 'warned'
+export const NOTICE_TABS: NoticeTab[] = ['all', 'todo', 'confirmed', 'exported', 'warned']
+export interface TabRow { st: 'draft' | 'partial' | 'confirmed' | 'exported'; alerts: NoticeAlert[]; gap: boolean }
+export function inTab(r: TabRow, t: NoticeTab): boolean {
+  if (t === 'all') return true
+  if (t === 'todo') return r.st === 'draft' || r.st === 'partial'   // 09-29 拍板:部分确认并进待核对
+  if (t === 'warned') return r.alerts.length > 0 || r.gap           // 规范 §2-23:缺收款公司算
+  return r.st === t
+}
+export function tenantTabCounts(rows: TabRow[]): Record<NoticeTab, number> {
+  const c: Record<NoticeTab, number> = { all: 0, todo: 0, confirmed: 0, exported: 0, warned: 0 }
+  for (const r of rows) for (const t of NOTICE_TABS) if (inTab(r, t)) c[t]++
+  return c
+}
+
+// 一户的告警摘要:**一类一行 = 块头 + 该类的条目**。落点是列表警告格的悬停说明。
 //
 // 只列条目不给块头,屏上就是几个光秃秃的名字 ——「A101旭化成水 / 旭化成二楼水1 / 旭化成二楼水2」,
 // 看的人不知道这三个名字在说什么(2026-09-23 用户原话:每个租户的卡里面还是莫名其妙的提示)。

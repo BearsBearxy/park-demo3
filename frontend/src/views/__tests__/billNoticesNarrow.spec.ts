@@ -73,6 +73,7 @@ import { buildingApi } from '@/api/building'
 import { companyBookApi, billDeliveryApi } from '@/api/billDelivery'
 import { billsApi } from '@/api/bills'
 import { _resetViewportForTest } from '@/composables/useViewport'
+import { ask } from '@/utils/ask'
 import BillNoticesView from '@/views/bills/BillNoticesView.vue'
 
 const SRC = join(__dirname, '..', '..')
@@ -88,6 +89,8 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn() }),
   useRoute: () => ({ query: {} }),
 }))
+// 二次确认走 ask(十件 ⑨,2026-10-01 替掉 confirm);本文件不挂 FPConfirmHost,答案由各用例给
+vi.mock('@/utils/ask', async (o) => ({ ...await o<typeof import('@/utils/ask')>(), ask: vi.fn() }))
 vi.mock('@/api/billNotices', () => ({
   billNoticesApi: {
     list: vi.fn(), months: vi.fn(), detail: vi.fn(),
@@ -273,16 +276,26 @@ describe('§5.7 屏顶 KPI 卡行 —— 4 张 ⇒ 横滑胶囊行,不是 2×2',
 
 // ════════════════════════════════════════════════════════════════════════════
 describe('§5.10 屏标题行 —— 屏名不上屏,动作收成 1 主 +「⋯」,状态留一颗徽标', () => {
-  it('XL 档基线:h2 屏名 / 期段控 / 五颗只读动作都在,没有「⋯」(§9 零差异)', async () => {
+  // ⚠ 改写(2026-10-01 画布 05-A「八个按钮收成四个」):桌面五颗只读钮并成「簿册 ▾」「导出 ▾」两个带字菜单,
+  //   原判据「五颗 ds-btn 都在、没有 .fp-more」照稿不再成立。新判据仍钉「窄档那套没漏到桌面」:
+  //   桌面没有「⋯」那颗无字钮(.fp-more-btn)、没有筛选钮,五个入口一个不少地在两个菜单里。
+  it('XL 档基线:h2 屏名 / 期段控在;五个只读入口在「簿册 ▾」「导出 ▾」里,没有「⋯」', async () => {
     const v = await open('xl')
     expect(v.find('h2.bn-title').exists()).toBe(true)
     expect(v.find('h2.bn-title').text()).toContain('催缴单')
     expect(v.findAll('.bn-head-l .ds-seg-item')).toHaveLength(3)
-    const labels = v.findAll('.bn-actions .ds-btn').map(b => b.text())
-    expect(labels).toEqual(expect.arrayContaining(['收款公司', '收款簿', '系数簿', '导出通知单', '导出对账表']))
     expect(v.find('.bn-actions .fp-emb').exists()).toBe(true)
-    expect(v.find('.bn-actions .fp-more').exists()).toBe(false)
+    expect(v.find('.bn-actions .fp-more-btn').exists(), '「⋯」是窄档的').toBe(false)
     expect(v.find('.bn-fbtn').exists()).toBe(false)
+    const menus = v.findAll('.bn-actions .fp-more-lbl')
+    expect(menus.map(b => b.text())).toEqual(['簿册', '导出'])
+    const items: string[] = []
+    for (const m of menus) {
+      await m.trigger('click')
+      items.push(...v.findAll('.fp-more-item').map(b => b.text()))
+      await m.trigger('click')
+    }
+    expect(items).toEqual(['收款公司', '收款簿', '系数簿', '导出通知单', '导出对账表'])
   })
 
   it('S 档:h2 屏名整个不进 DOM(判据四 —— 顶栏 52px 已经写着「催缴单」)', async () => {
@@ -376,19 +389,20 @@ describe('§5.10 屏标题行 —— 屏名不上屏,动作收成 1 主 +「⋯�
     expect(items.some(t => t.includes('待处理') || t.includes('审核'))).toBe(false)
   })
 
-  it('§5.11:「⋯」里一点就不可逆的「重新生成」走二次确认,confirm 说不就不发请求', async () => {
+  it('§5.11:「⋯」里一点就不可逆的「重新生成」走二次确认,说不就不发请求', async () => {
     const v = await open('s')
     useUiStore().topBarAction!.onClick()          // 进编辑态,generate 那条才进菜单
     await flushPromises()
     await v.find('.bn-actions .fp-more-btn').trigger('click')
     const gen = v.findAll('.fp-more-item').find(b => /重新生成|生成本月/.test(b.text()))
     expect(gen, '编辑态下菜单里应该有生成那条').toBeTruthy()
-    const confirmSpy = vi.fn().mockReturnValue(false)
-    vi.stubGlobal('confirm', confirmSpy)
+    vi.mocked(ask).mockResolvedValue(false)
     await gen!.trigger('click')
     await flushPromises()
-    expect(confirmSpy).toHaveBeenCalledOnce()
-    expect(confirmSpy.mock.calls[0][0]).toContain('覆盖')
+    expect(ask).toHaveBeenCalledOnce()
+    const q = vi.mocked(ask).mock.calls[0][0]
+    expect(q.body).toContain('覆盖')
+    expect(q.danger, '覆盖整月是删除类:主按钮红、焦点在取消').toBe(true)
     expect(billNoticesApi.generate).not.toHaveBeenCalled()
   })
 
@@ -400,22 +414,22 @@ describe('§5.10 屏标题行 —— 屏名不上屏,动作收成 1 主 +「⋯�
     const entry = v.findAll('.fp-more-item').find(b => b.text().includes('批量确认'))
     expect(entry, '编辑态下菜单里应该有批量确认那条').toBeTruthy()
     await entry!.trigger('click')
-    // 先断真的进了选择态(操作条换上来了),再断确认这件事
-    const all = v.find('.bn-toolbar .bn-bulkb')
+    // 先断真的进了选择态(选择条换上来了 —— 2026-10-01 起它在表格卡里,画布 05-C),再断确认这件事
+    const all = v.find('.bn-selbar .bn-selb')
     expect(all.exists()).toBe(true)
     expect(all.text()).toContain('全选')
     await all.trigger('click')
-    const go = v.findAll('.bn-toolbar .ds-btn').find(b => b.text().includes('确认选中'))
-    expect(go, '选中之后该有「确认选中 N 户」').toBeTruthy()
-    const confirmSpy = vi.fn().mockReturnValue(false)
-    vi.stubGlobal('confirm', confirmSpy)
+    const go = v.findAll('.bn-selbar .ds-btn').find(b => /确认 \d+ 户/.test(b.text()))
+    expect(go, '选中之后该有「确认 N 户」').toBeTruthy()
+    vi.mocked(ask).mockResolvedValue(false)
     await go!.trigger('click')
     await flushPromises()
-    expect(confirmSpy).toHaveBeenCalledOnce()
+    expect(ask).toHaveBeenCalledOnce()
     // 2026-09-23:交付轴不再是单向的(S20 §1.3 那条「不提供退回草稿按钮」已被推翻),
     // 这句二次确认改成说**代价**——重生成会跳过这几户,要反悔得逐户去抽屉里取消。
-    expect(confirmSpy.mock.calls[0][0]).toContain('重新生成会跳过这几户')
-    expect(confirmSpy.mock.calls[0][0], '这句话现在是假的').not.toContain('不能改回草稿')
+    const q = vi.mocked(ask).mock.calls[0][0]
+    expect(q.body).toContain('重新生成会跳过这几户')
+    expect(`${q.title}${q.body}`, '这句话现在是假的').not.toContain('不能改回草稿')
     expect(billDeliveryApi.confirm).not.toHaveBeenCalled()
   })
 
@@ -425,21 +439,24 @@ describe('§5.10 屏标题行 —— 屏名不上屏,动作收成 1 主 +「⋯�
     await flushPromises()
     const one = v.find('.bn-cfm')
     expect(one.exists(), '编辑态下 draft 户行上该有「确认」').toBe(true)
-    const confirmSpy = vi.fn().mockReturnValue(true)
-    vi.stubGlobal('confirm', confirmSpy)
+    vi.mocked(ask).mockResolvedValue(true)
     vi.mocked(billDeliveryApi.confirm).mockResolvedValue({ confirmed: 1, skipped: 0 } as never)
     await one.trigger('click')
     await flushPromises()
-    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(ask).not.toHaveBeenCalled()
     expect(billDeliveryApi.confirm).toHaveBeenCalledOnce()
   })
 })
 
 // ════════════════════════════════════════════════════════════════════════════
 describe('§5.10 筛选行 —— >2 件控件就收:搜索留外面,选择器进面板', () => {
-  it('XL 档基线:复选框与批量确认在行上,没有筛选钮、没有面板(§9 零差异)', async () => {
+  // ⚠ 改写(2026-10-01 画布 05-A「四张统计卡并进状态页签」):桌面第二行 = 状态页签 + 搜租户名,
+  //   「仅看有警告」并进「有警告」页签、「批量确认」进表格卡工具条。窄档没漏到桌面这条仍钉:没有筛选钮、没有面板。
+  it('XL 档基线:状态页签 + 搜索在行上,没有复选框、没有筛选钮、没有面板', async () => {
     const v = await open('xl')
-    expect(v.find('.bn-toolbar .bn-chk').exists()).toBe(true)
+    expect(v.findAll('.bn-toolbar .bn-tabs .ds-seg-item').map(b => b.text()))
+      .toEqual(['全部 2', '待核对 2', '已确认 0', '已导出 0', '有警告 1'])
+    expect(v.find('.bn-toolbar .bn-chk').exists()).toBe(false)
     expect(v.find('.bn-toolbar .bn-search').exists()).toBe(true)
     expect(v.find('.bn-fbtn').exists()).toBe(false)
     expect(v.find('.bn-fpanel').exists()).toBe(false)
@@ -472,6 +489,10 @@ describe('§5.10 筛选行 —— >2 件控件就收:搜索留外面,选择器�
       '前提:编辑态没进去,下面那条就成了恒真').toBe(true)
     expect(v.findAll('.bn-toolbar .ds-btn').map(b => b.text()),
       'M 档「批量确认」该收进「⋯」,不该留在筛选行上').not.toContain('批量确认')
+    // 桌面它在表格卡工具条里(画布 05-A);M 档那条工具条不画(空条白占一行)
+    expect(v.find('.bn-tools').exists(), 'M 档不该有表格卡工具条').toBe(false)
+    // 页签是桌面的;M 档照旧(规范 §2-21 三屏 S/M 分支不动)
+    expect(v.find('.bn-tabs').exists()).toBe(false)
     const btn = v.find('.bn-toolbar .bn-fbtn')
     expect(btn.exists()).toBe(true)
     expect(btn.text()).toContain('一期')
@@ -538,15 +559,19 @@ describe('§G 屏顶块高逐条钉死(算术见文件头,收完 0 行 → 9 行
     expect(STAT_CSS).toContain('line-height: 16px')      // .fs-s
   })
 
+  // ⚠ 收窄(2026-10-01):桌面照 03-C 改成 40 行高(画布 05-A),三屏 S/M 分支不动(规范 §2-21)——
+  //   原判据「全文件 34」改成「M↓ 块里 34」,算术的两个除数仍是它;桌面 40 在 billNoticeLayout.spec 里钉。
   it('页面 gap 14、表头 34 / 行高 34 / tfoot 40(算术里的三个除数没被改掉)', () => {
     expect(VIEW_CSS).toContain('.bn-page { position: relative; display: flex; flex-direction: column; gap: 14px;')
-    expect(VIEW_CSS).toContain('.bn-table thead th { position: sticky; top: 0; height: 34px;')
-    expect(VIEW_CSS).toContain('.bn-table tbody td { height: 34px;')
-    expect(VIEW_CSS).toContain('.bn-table tfoot th { position: sticky; bottom: 0; z-index: 5; height: 40px;')
+    expect(mediaBlock(VIEW_CSS, Q960)).toContain('.bn-table thead th, .bn-table tbody td, .bn-table tr.bn-band td, .bn-table tbody tr.bn-band:hover td { height: 34px; }')
+    // 桌面合计行照 05-A 改 44 高(billNoticeLayout.spec 钉);M↓ 块里压回 40,算术的除数仍是它
+    expect(mediaBlock(VIEW_CSS, Q960)).toContain('.bn-table tfoot th { height: 40px; }')
   })
 
-  it('§5.4 没被顺手改掉:colgroup 一根不动,窄了照旧在 .bn-wrap 内横滚', () => {
-    expect(mediaBlock(VIEW_CSS, Q960)).toContain('.bn-table { min-width: 920px; }')
+  // ⚠ 兜底宽 920 → 980(2026-10-01):画布 05-A 删「行数」列、警告列改写类名(210 宽),定宽合计 770 → 820;
+  //   兜底要让唯一弹性的「位置」列在批量态(+36)仍有 124px,算法同原来那条注释。
+  it('§5.4 没被顺手改掉:colgroup 定宽,窄了照旧在 .bn-wrap 内横滚', () => {
+    expect(mediaBlock(VIEW_CSS, Q960)).toContain('.bn-table { min-width: 980px; }')
     expect(VIEW_CSS).toContain('.bn-wrap { flex: 1 1 auto; min-height: 0; overflow: auto;')
   })
 })
