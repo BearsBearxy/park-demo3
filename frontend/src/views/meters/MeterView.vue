@@ -108,8 +108,6 @@ const { editMode, canEnter, missing: lockedPerms, asking, askFor, cancelAsk, onE
     dirty: () => dirtyIds.value.length,
   })
 const importing = ref(false)
-const okMsg = ref('')
-const toastTone = ref<'success' | 'warning'>('success')
 const openId = ref<number | null>(null)
 onDeactivated(() => {
   importing.value = false; openId.value = null
@@ -618,16 +616,15 @@ async function confirmDelete() {
     const r = await metersApi.batchDelete(p.ym, opt)
     delPreview.value = null
     // 「有表被跳过未删」是用户必须看到的 —— 那几块表他以为删了、其实还在。
-    // 所以有跳过时走 warning 且**不自动消失**(duration=0,组件给关闭按钮),干净时才自动收。
+    // 所以有跳过时走警告回执(不自收,带 ×),干净时才是 4 秒自收的成功回执。
     const blocked = r.meterBlocked.length
-    toastTone.value = blocked > 0 ? 'warning' : 'success'
     const arch = (r.assignRows ?? 0) + (r.statusRows ?? 0)
     const bills = opt.dropDraftNotices ? (r.draftNotices ?? 0) + (r.voidNotices ?? 0) : 0
-    okMsg.value = `已删除 ${r.readings} 条读数、${r.meterDeleted.length} 份表档案、${r.derived} 条派生快照`
+    receipt[blocked > 0 ? 'warn' : 'ok'](`已删除 ${r.readings} 条读数、${r.meterDeleted.length} 份表档案、${r.derived} 条派生快照`
       + (bills > 0 ? `、${bills} 张草稿催缴单` : '')
       + (arch > 0 ? `、${arch} 条本期导入写下的表档案记录` : '')
       + ((r.bookRows ?? 0) > 0 ? `、${r.bookRows} 条本月册子记录` : '') + '。'
-      + (blocked > 0 ? ` 另有 ${blocked} 份表档案跳过未删(池成员,或别的月的催缴单里还有它)。` : '')
+      + (blocked > 0 ? ` 另有 ${blocked} 份表档案跳过未删(池成员,或别的月的催缴单里还有它)。` : ''))
     reloadAll()
   } catch (e) {
     // 弹窗还开着(重拉的预览就摆在里面),再点一次就是重试,回执不另带按钮
@@ -850,8 +847,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDelEsc, true))
         <FPStateTag v-if="!loadErr && !readings.length" tone="warn">本月还没有读数</FPStateTag>
         <!-- SPEC §10.4 这个期区 × 表类这个月一笔册子记录都没有(原 .mt-bookbar);整月没读数时让位给上一枚 -->
         <FPStateTag v-else-if="!loadErr && bookGap" v-tip="bookGap" tone="warn">本月没导册子</FPStateTag>
-        <!-- 随电水 / 期区,不受状态页签、归属、搜索影响(原进度条) -->
-        <span class="mt-prog">租户表已抄 <b>{{ cards.read }}</b> / {{ cards.tenant }}</span>
+        <!-- 随电水 / 期区,不受状态页签、归属、搜索影响(原进度条)。没读到时不出:空数组算出来的「已抄 0」和下面的失败面矛盾 -->
+        <span v-if="!loadErr" class="mt-prog">租户表已抄 <b>{{ cards.read }}</b> / {{ cards.tenant }}</span>
         <!-- 分区=一级页签(用户拍板 2026-07-28),挪进标题行(画布 04-A) -->
         <Segmented :options="ZONE_OPTS" :model-value="zone" size="sm" @update:model-value="zone = $event; building = 'all'" />
       </div>
@@ -982,7 +979,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDelEsc, true))
          它的细项(本月有变化 / 缺底数 / 期区对不上 …)宽档不再能单独筛,S/M 档筛选面板里照旧 -->
     <div v-if="!isSM" class="mt5-filters">
       <Segmented :options="KIND_OPTS" :model-value="kind" size="sm" @update:model-value="kind = $event" />
-      <Segmented class="mt-tabs" :options="statusTabs" :model-value="status" size="sm" @update:model-value="status = $event as StatusFilter" />
+      <!-- 没读到时整排状态页签不出:「未抄 N」是拿空读数算的,同屏失败面说的是没读到 -->
+      <Segmented v-if="!loadErr" class="mt-tabs" :options="statusTabs" :model-value="status" size="sm" @update:model-value="status = $event as StatusFilter" />
       <!-- 存疑(V75 §E3/§F1)走入口胶囊(十件 ②):有存疑表才出;点了只列两级存疑档案(疑似重复 + 档案不全),
            筛选生效时实底 + ×,点 × 回到全部 -->
       <FPAlertChip
@@ -1047,7 +1045,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDelEsc, true))
     <!-- 详情抽屉:三页签(表档案/历史读数/合同绑定) -->
     <MeterDetailDrawer
       :row="openRow" :edit-mode="editMode && !loadErr" :default-ym="ym"
-      :tenants="tenants" :buildings="buildings" :bind-available="bindRows !== null && !bindFail"
+      :tenants="tenants" :buildings="buildings" :bind-available="!bindFail" :bind-loading="bindRows === null"
       :area-opts="areaOpts" :floor-opts="floorOpts" :side-opts="sideOpts"
       @close="openId = null" @reload="reloadAll"
     />
@@ -1233,7 +1231,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDelEsc, true))
     <FPLockDialogs :locked-by="lockedBy" :evicted-by="evictedBy" :scope="lockScope()"
                    :what="`园区抄表 ${year} 年`"
                    @taken="onTaken" @close-takeover="lockedBy = null" @close-evicted="evictedBy = null" />
-    <FPToast v-model="okMsg" :tone="toastTone" placement="page" :duration="toastTone === 'warning' ? 0 : 4000" />
     <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
   </div>
 </template>

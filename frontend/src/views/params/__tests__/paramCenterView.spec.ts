@@ -415,6 +415,8 @@ describe('ParamCenterView 告警 chip + 抽屉', () => {
     // 重算后重拉的 status 不再 stale → chip 归零,抽屉留开显空态
     expect(w.find('button.fac').text()).toContain('无待处理')
     expect(drawer()!.textContent).toContain('本月没有待处理事项')
+    // 破坏验证:onRecalcOthers 的 receipt.ok 换回页底自己的 FPToast → 红
+    expect(receipts.map(r => [r.tone, r.text]), '摘要走底部成功回执').toEqual([['ok', '已重算 2 个月：2023-08、2023-10']])
     recalc.mockReset()
     w.unmount()
   })
@@ -609,6 +611,49 @@ describe('ParamCenterView 提示件', () => {
       expect(recalc).toHaveBeenCalledWith('2024-02')
       const r = receipts.at(-1)
       expect([r?.tone, r?.text, r?.action?.label]).toEqual(['fail', '重算挂了', '重试'])
+    } finally { recalc.mockReset(); w.unmount() }
+  })
+
+  // 警告说的是钱会摊丢,用户必须读到:有警告就走不自收的警告回执,第一条原文照抄,写明其余去哪看。
+  // 破坏验证:有警告那支 receipt.warn 换回 receipt.ok → 红;摘要里加回「（见控制台）」→ 红
+  it('❗重算成功但有警告:不自收的警告回执,带第一条原文和其余去哪看', async () => {
+    const { paramsApi } = await import('@/api/params')
+    vi.mocked(paramsApi.status).mockResolvedValueOnce({ ...STALE2 })
+    const recalc = vi.mocked(paramsApi.recalc)
+    recalc.mockReset()
+    recalc.mockResolvedValueOnce({ pools: 1, lossUnits: 2, notices: 3, skippedConfirmed: 0, warnings: ['甲', '乙'] })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const w = await mountPage()
+    try {
+      await enterEdit(w)
+      await openChip(w)
+      acts().find(b => b.textContent?.includes('重算本月'))!.click()
+      await flushPromises()
+      answer(true)
+      await flushPromises()
+      expect(receipts.map(r => [r.tone, r.text]))
+        .toEqual([['warn', '重算完成：池 1 · 损耗单元 2 · 催缴单 3（跳过已确认 / 已导出 0）。警告 2 条，第一条：甲。'
+          + '其余 1 条要到公共电核算重新生成本月才看得到。']])
+    } finally { recalc.mockReset(); warn.mockRestore(); w.unmount() }
+  })
+
+  // 破坏验证:onRecalcOthers 失败那支的 receipt.fail 换成 receipt.ok → 红
+  it('❗一键重算中途失败:失败回执报断点和已完成几个月(不自收)', async () => {
+    const { paramsApi } = await import('@/api/params')
+    vi.mocked(paramsApi.status).mockResolvedValueOnce({ ...STALE2 })
+    const recalc = vi.mocked(paramsApi.recalc)
+    recalc.mockReset()
+    recalc.mockResolvedValueOnce({ pools: 1, lossUnits: 1, notices: 1, skippedConfirmed: 0, warnings: [] })
+      .mockRejectedValueOnce(new Error('炸了'))
+    const w = await mountPage()
+    try {
+      await enterEdit(w)
+      await openChip(w)
+      acts().find(b => b.textContent?.includes('一键重算这 2 个月'))!.click()
+      await flushPromises()
+      answer(true)
+      await flushPromises()
+      expect(receipts.map(r => [r.tone, r.text])).toEqual([['fail', '重算中断于 2023-10（炸了）；已完成 1 个月']])
     } finally { recalc.mockReset(); w.unmount() }
   })
 
@@ -835,6 +880,8 @@ describe('ParamCenterView 提示件', () => {
       ;(w.vm as unknown as { editRow: object | null }).editRow = ROWS[2]
       await nextTick()
       expect(auth.dirtyTotal).toBe(1)
+      // 破坏验证:dirty 去掉 approxDirty 包装 → 红(离开确认会说「1 处改动」,其实只知道浮层开着)
+      expect(auth.dirtyApproxOn(''), '浮层开着只知道在改、不知道改了几处').toBe(true)
     } finally { w.unmount() }
   })
 })

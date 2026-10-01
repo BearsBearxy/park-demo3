@@ -29,6 +29,7 @@ import { useChainDeepPeriod } from '@/composables/useDeepPeriod'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
 import FPStateTag from '@/components/fp/FPStateTag.vue'
 import FPTableTools from '@/components/fp/FPTableTools.vue'
 import { ask } from '@/utils/ask'
@@ -60,7 +61,7 @@ import {
 } from '@/utils/poolLedgerLogic'
 import { zoneLabel } from '@/utils/zoneLabel'
 import { floorLabels } from '@/utils/floorLabels'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, approxDirty } from '@/stores/auth'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { chainStepsOf } from '@/nav/billingChain'
 import ChainMonthGate from '@/components/fp/ChainMonthGate.vue'
@@ -100,7 +101,7 @@ const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, h
     reviewKey: () => (ym.value ? [`alloc:${ym.value}`, `alloc-loss:${ym.value}`] : null),
     // 改动数(EDIT-MODE §6.1):表格逐行即时写库,cfgDirty 是「待重算」不是草稿;唯一的草稿是开着的池配置抽屉,
     // 开着按 1 处算 —— 关页签 / 退出登录 / 关浏览器前问一句,关着不拦
-    dirty: () => (poolDlg.value ? 1 : 0),
+    dirty: approxDirty(() => (poolDlg.value ? 1 : 0)),
   })
 // alertOpen 必须一起收:告警面板是 FPSideDrawer(Teleport to body),子树随 KeepAlive
 // 停用消失时它留在 body 上飘着,盖在下一个屏上(同 MeterView 的 openId)。
@@ -326,7 +327,6 @@ const showPl = computed(() => !hiddenCols.value.includes('pl'))
 /** 应分摊之后的尾巴:分摊方式 / 分摊标准 / 分摊基数 / 加减度数 + 列菜单里放出来的实收 / 盈亏 */
 const tailN = computed(() => 4 + (showPaid.value ? 1 : 0) + (showPl.value ? 1 : 0))
 /** 位置 用途 电表 倍率 上月 本月 用量 应分摊 = 8,+ 尖峰平谷(开着时)+ 尾巴 */
-const colCount = computed(() => 8 + segCols.value.length + tailN.value)
 
 // row 模式(分时列收着):有分时读数的那一行带 ›,点开在下面出段行 —— 有值的段各一行,全空的段并成一行;
 // 空的尖段不出(04-A A座总电只有峰 / 平 / 谷、04-C「平段 · 谷段」;和园区抄表 touSegLines 同一写法)
@@ -581,9 +581,9 @@ const alertGroups = computed<AlertGroup[]>(() => {
   const regen = genAction('重新生成')
   if (genWarnings.value.length && regen) gs.push({
     key: 'gen', title: '本次生成告警',
-    desc: '引擎生成时报的静默吞钱防线:池没有受益人(应分摊的钱没摊到任何一户)、缺读数、缺参数。'
-      + '不管它,这笔钱就在账上消失、谁也不会被收。全期别一份,不随一期/二期页签过滤;'
-      + '逐条核对源头后重新生成即清空(换账期也会清)。',
+    desc: '这次生成时查出的问题：池没有受益人、表缺读数、参数没填等。'
+      + '不处理的话，有的钱摊不到任何一户、谁也不交，有的户会多摊或少摊。'
+      + '改好后重新生成，这一组就清掉（换账期也会清）；不分一期、二期。',
     items: genWarnings.value.map(text => ({ text })),
     action: regen,
   })
@@ -1115,7 +1115,8 @@ async function delPool() {
         <!-- 卡内右上一条(03-A):分时用量开关(按比例出列,没有分时读数就不出)+ 列菜单(实收 / 盈亏默认隐藏) -->
         <FPTableTools :mode="touM" switch-label="分时用量" :tou="touOn" :columns="EXTRA_COLS"
                       v-model:hidden="hiddenCols" @update:tou="setTou" />
-        <div ref="wrapEl" class="pl-wrap">
+        <FPEmpty v-if="bands.length === 0" :sub="editMode ? '点右上「新增池」开始录入。' : undefined">{{ zoneLabel(zone) }}暂无池配置</FPEmpty>
+        <div v-else ref="wrapEl" class="pl-wrap">
           <table class="pl-table" :class="{ 'hs-foot': hStage >= 2 }">
             <thead>
               <tr>
@@ -1239,9 +1240,6 @@ async function delPool() {
                   </template>
                 </template>
               </template>
-              <tr v-if="bands.length === 0">
-                <td class="pl-noro" :colspan="colCount">{{ zoneLabel(zone) }}暂无池配置{{ editMode ? '，点右上「新增池」开始录入' : '' }}</td>
-              </tr>
             </tbody>
             <!-- 合计:Σ用量 / Σ应分摊,没出应分摊的纯标准行不计(口径见 bandFooter) -->
             <tfoot>
@@ -1632,7 +1630,6 @@ td.ct { text-align: center; }
 /* 抽屉③只读一行:当月分母/加度 + 去参数页改 */
 .pl-roparam { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-sunken); font-size: 12px; color: var(--text-secondary); }
 
-.pl-noro { text-align: center; padding: 40px 16px; color: var(--text-disabled); font-size: var(--fs-label); }
 
 /* 合计(sticky bottom;不够 8 行时 .hs-foot 让它跟在最后一行后面)。行高 50、合计数 16(03-A),与 POOL_H.footH 同步 */
 .pl-table tfoot th { position: sticky; bottom: 0; z-index: 5; height: 50px; font-weight: var(--fw-semibold); background: var(--surface-card); border-top: 2px solid var(--border-strong); color: var(--text-primary); }

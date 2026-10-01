@@ -158,6 +158,24 @@ describe('远程授权 · 等待中撤回请求', () => {
     expect(cancels()).toEqual([['/auth/approvals/req-7']])
   })
 
+  // 只切页签不撤的话,2 分钟后框里报超时、铃铛冒「远程授权超时」,人早就改走另一条路了。
+  // 破坏验证:去掉 watch(tab) 那条 cancelRequest → 红
+  it('❗等待中点「改为请人走过来」→ 当场撤回、倒计时停,之后不报超时', async () => {
+    const { w, vm } = await openPicked()
+    vi.useFakeTimers()
+    try {
+      vi.mocked(api.post).mockResolvedValueOnce({ id: 'req-3', leftMs: 120_000 } as never)
+      await vm.send()
+      await w.vm.$nextTick()
+      await w.findAll('button').find((b) => b.text() === '改为请人走过来')!.trigger('click')
+      expect(cancels()).toEqual([['/auth/approvals/req-3']])
+      expect(vm.tab).toBe('onsite')
+      vi.advanceTimersByTime(130_000)
+      await w.vm.$nextTick()
+      expect(w.find('.fp-field-err').text()).toBe('')
+    } finally { vi.useRealTimers() }
+  })
+
   // 破坏验证:把 cancelRequest 里的 `leftMs.value > 0` 去掉 → 超时后关也撤 → 红。
   // 超时了的请求不能撤:撤掉的话服务端那条「授权超时」就不写了,人永远不知道它超时了。
   it('倒数到 0 之后再关 → 不撤(那次算超时)', async () => {

@@ -34,6 +34,7 @@ import DatePicker from '@/components/ds/DatePicker.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
 import FPNote from '@/components/fp/FPNote.vue'
 import MeterAssignDialog from './MeterAssignDialog.vue'
 import MeterTimelinePane from './MeterTimelinePane.vue'
@@ -46,7 +47,8 @@ const props = defineProps<{
   defaultYm: string              // 查看月 V:档案站在这个月看、按月改从这个月起;也是新增读数的默认月份
   tenants: TenantDTO[]
   buildings: BuildingDTO[]
-  bindAvailable: boolean         // GET /binding 是否可用(后端未就绪降级)
+  bindAvailable: boolean         // GET /binding 是否可用(页面那趟失败 = false)
+  bindLoading?: boolean          // 页面那趟 GET /binding 还在路上:先显示加载中,不出失败态
   areaOpts: string[]             // §A.3 位置字段候选(库内既有值 ∪ 基准表,由 MeterView 汇总)
   floorOpts: string[]
   sideOpts: string[]
@@ -688,9 +690,8 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
       <!-- 失败态:给出原因与重试入口(此时 history 恒 null,「新增读数」照旧禁用 —— 不知道有哪些月就录会撞 409) -->
       <FPLoadError v-if="historyErr" @retry="loadHistory">{{ historyErr }}</FPLoadError>
       <div v-else-if="!history" class="md-empty">加载中…</div>
-      <div v-else-if="drawerRows.length === 0 && !adding" class="md-empty">
-        该表暂无读数{{ editReading ? ',点下方「新增读数」补录历史月,或在表格里直接录当月。' : ',进入编辑模式后可补录。' }}
-      </div>
+      <FPEmpty v-else-if="drawerRows.length === 0 && !adding"
+        :sub="editReading ? '点下方「新增读数」补录历史月,或在表格里直接录当月。' : '进入编辑模式后可补录。'">该表暂无读数</FPEmpty>
       <div v-else class="md-hwrap">
         <table class="md-htable">
           <!-- 列宽预算(抽屉内容宽~692):月份128(原生月选 2024年08月+图标要够)+上月104+本月104+用量96+状态84=516,备注弹性 -->
@@ -807,13 +808,11 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
 
     <!-- ── 合同绑定 ── -->
     <template v-else-if="tab === 'bind' && m">
-      <div v-if="m.ownership !== 'tenant'" class="md-empty">
-        非租户表({{ ownershipLabel(m.ownership, m.kind) }})无合同绑定。
-      </div>
-      <div v-else-if="!bindAvailable" class="md-empty">
-        绑定数据不可用 —— 需要后端 GET /api/meters/binding 端点(S2-BIND-SPEC §3)。
-      </div>
-      <div v-else-if="!bind" class="md-empty">该表不在本月绑定报表中。</div>
+      <FPEmpty v-if="m.ownership !== 'tenant'">非租户表({{ ownershipLabel(m.ownership, m.kind) }})无合同绑定</FPEmpty>
+      <!-- 页面那趟绑定数据没读到(失败降级为 null);抽屉自己重拉不了,指到刷新 -->
+      <FPEmpty v-else-if="!bindAvailable" tone="error" sub="刷新页面后再看。">本月的绑定数据没读到</FPEmpty>
+      <div v-else-if="bindLoading" class="md-empty">加载中…</div>
+      <FPEmpty v-else-if="!bind">该表不在本月绑定报表中</FPEmpty>
       <template v-else>
         <!-- 编辑态但档案分段没加载出来:改绑定 / 挂租户都按月写,点不了要说清为什么,并给重试 -->
         <FPNote v-if="editProfile && tlErr" tone="danger" @action="loadTimeline">

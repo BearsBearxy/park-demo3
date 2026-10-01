@@ -21,6 +21,7 @@ import { join } from 'node:path'
 import MeterView from '@/views/meters/MeterView.vue'
 import MeterLedgerGrid from '@/views/meters/MeterLedgerGrid.vue'
 import MeterStatusDialog from '@/views/meters/MeterStatusDialog.vue'
+import MeterDetailDrawer from '@/views/meters/MeterDetailDrawer.vue'
 import FPAlertChip from '@/components/fp/FPAlertChip.vue'
 import {
   metersApi, type MeterDTO, type MeterReadingDTO, type MeterBindingDTO, type MeterDeleteDTO,
@@ -273,17 +274,22 @@ describe('P4-C3 · 空状态 / 加载失败换掉表格区', () => {
     expect(w.find('.fp-empty').exists()).toBe(false)
   })
 
-  it('读数没拉到:加载失败换掉表格(有「重试」、没有表格);重试成功表格回来', async () => {
+  // 破坏验证:.mt-prog 去掉 v-if="!loadErr" → 「已抄」那条红;.mt-tabs 去掉 v-if="!loadErr" → 页签那条红
+  it('读数没拉到:加载失败换掉表格(有「重试」、没有表格);已抄数和计数页签不出;重试成功都回来', async () => {
     vi.mocked(metersApi.readings).mockRejectedValue(new Error('后端挂了'))
     const w = await open()
     const retry = w.findAll('.fp-empty.error button').find(b => b.text().includes('重试'))
     expect(retry, '失败态没给重试').toBeTruthy()
     expect(w.findComponent(MeterLedgerGrid).exists(), '失败了表格还在(流内红条那一形)').toBe(false)
+    expect(w.find('.mt-prog').exists(), '「租户表已抄 0 / 78」是拿空读数算的,和失败面矛盾').toBe(false)
+    expect(w.find('.mt-tabs').exists(), '「未抄 78」同理').toBe(false)
     vi.mocked(metersApi.readings).mockImplementation((ym: string) => Promise.resolve(ym === YM ? READINGS : []))
     await retry!.trigger('click')
     await flushPromises()
     expect(w.find('.fp-empty.error').exists()).toBe(false)
     expect(w.findComponent(MeterLedgerGrid).exists()).toBe(true)
+    expect(w.find('.mt-prog').text()).toBe('租户表已抄 76 / 78')
+    expect(w.findAll('.mt-tabs [role="tab"]').map(t => t.text())).toEqual(['全部', '未抄 2', '待核 1'])
   })
 })
 
@@ -536,5 +542,19 @@ describe('对抗复查 · 问着的时候(asserts-2)', () => {
     await Promise.all([p1, p2])
     await flushPromises()
     expect(metersApi.createReading).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('对抗复查 · 绑定数据在路上 ≠ 没读到', () => {
+  // 破坏验证:MeterView 的 :bind-available 改回 `bindRows !== null && !bindFail` → 第一段红(在途就报「没读到」)
+  it('首趟 GET /binding 没回来:抽屉拿到「可用 + 加载中」;失败了才是不可用', async () => {
+    let fail!: (e: unknown) => void
+    vi.mocked(metersApi.binding).mockReturnValue(new Promise((_, rej) => { fail = rej }))
+    const w = await open()
+    const dr = w.findComponent(MeterDetailDrawer)
+    expect([dr.props('bindAvailable'), dr.props('bindLoading')], '在途').toEqual([true, true])
+    fail(new Error('后端挂了'))
+    await flushPromises()
+    expect(dr.props('bindAvailable'), '失败').toBe(false)
   })
 })

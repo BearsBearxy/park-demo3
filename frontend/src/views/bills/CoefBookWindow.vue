@@ -32,7 +32,6 @@ import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
 import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
 import { useEditLock } from '@/composables/useEditLock'
 import { S } from '@/utils/lockScopes'
-import FPToast from '@/components/fp/FPToast.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
 import { ask, askLeave } from '@/utils/ask'
@@ -179,7 +178,6 @@ watch(() => props.open, o => {
   uni.value = ''
   stash.value.clear()
   selected.value.clear()
-  okMsg.value = ''
   load()
 })
 
@@ -310,11 +308,8 @@ async function setEffYm(v: string) {
 }
 
 // ── 保存:顺序提交(价目键=逐户 PUT /params 序列含配套键,注册表校验+变更日志;层份键=逐池 PUT /alloc/rules
-//    整组月版本);失败中断报错并刷新已提交部分;成功 toast+重拉 ──
+//    整组月版本);失败中断报错并刷新已提交部分;成功回执+重拉 ──
 const saving = ref(false)
-const okMsg = ref('')
-// 自动消失与关闭按钮由 FPToast 内部管（LAYOUT-STABILITY-SPEC §2 优先级 2：浮层，不进文档流）
-function flashOk(msg: string) { okMsg.value = msg }
 async function onSave() {
   // 自守:失败回执上的「重试」点下去时可能已退出编辑 / 换了月且没读到
   if (saving.value || stash.value.size === 0 || !editMode.value || loadErr.value) return
@@ -342,7 +337,7 @@ async function onSave() {
       }
       const n = new Set(items.flatMap(i => i.touched)).size
       stash.value.clear()
-      flashOk(`已保存 ${n} 户${meta.label} · 自 ${effYm.value} 起版本组生效(整名单快照)`)
+      receipt.ok(`已保存 ${n} 户${meta.label} · 自 ${effYm.value} 起版本组生效(整名单快照)`)
     } else {
       const items = buildPricePlan(meta, stash.value, effYm.value)
       let ok = 0
@@ -357,7 +352,7 @@ async function onSave() {
         stash.value.delete(it.tenantId)
         ok++
       }
-      flashOk(`已保存 ${ok} 户${meta.label} · 自 ${effYm.value} 起生效`)
+      receipt.ok(`已保存 ${ok} 户${meta.label} · 自 ${effYm.value} 起生效`)
     }
     selected.value.clear()
     uni.value = ''
@@ -396,10 +391,6 @@ async function onClose() {
     <!-- 已失败时不换成「加载中…」:重试在途失败件留在原地,到数才退场 -->
     <div v-if="loading && !loadErr" class="cb-empty">加载中…</div>
     <template v-else>
-      <!-- 成功提示(5s 自消)。page 模式贴屏幕底部:弹窗 body 是 overflow:auto 滚动容器,
-           absolute 贴底会跟着内容滚走;且 --z-toast(400) > --z-modal-2(320),不被弹窗遮住 -->
-      <FPToast v-model="okMsg" placement="page" :duration="5000" />
-
       <!-- 控制行:期页签+搜索 | 系数下拉+生效月 -->
       <div class="cb-controls">
         <Segmented :options="PHASE_OPTS" :model-value="phase" size="sm" @update:model-value="setPhase" />

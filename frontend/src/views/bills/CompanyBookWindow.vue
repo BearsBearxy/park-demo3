@@ -16,7 +16,6 @@ import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
-import FPToast from '@/components/fp/FPToast.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
 import { ask, askLeave } from '@/utils/ask'
@@ -43,9 +42,6 @@ const companies = ref<CompanyFullDTO[]>([])
 const loadErr = ref('')
 const selId = ref<number | null>(null)        // null + creating=false → 未选中
 const creating = ref(false)
-const okMsg = ref('')
-// 自动消失与关闭按钮由 FPToast 内部管（LAYOUT-STABILITY-SPEC §2 优先级 2：浮层，不进文档流）
-function flashOk(msg: string) { okMsg.value = msg }
 
 // ── 公司表单 ──
 const form = ref({ name: '', short: '', fullName: '', status: 1 })
@@ -103,12 +99,11 @@ watch(() => props.open, o => {
   selId.value = null
   creating.value = false
   acctEdit.value = null
-  okMsg.value = ''
   load()
 })
 
 function guardDirty(): Promise<boolean> {
-  return askLeave({ page: creating.value ? '新增公司' : cur.value?.name ?? '收款公司', count: dirtyN(), verb: '离开' })
+  return askLeave({ page: creating.value ? '新增公司' : cur.value?.name ?? '收款公司', count: dirtyN(), verb: '离开', approx: true })   // dirtyN 是两个标志相加,不是处数
 }
 async function pick(id: number) {
   if (id === selId.value && !creating.value) return
@@ -142,7 +137,7 @@ async function saveCompany() {
     const saved = creating.value
       ? await companyBookApi.create(req)
       : await companyBookApi.update(selId.value!, req)
-    flashOk(creating.value ? `已新增公司「${saved.name}」` : `已保存「${saved.name}」`)
+    receipt.ok(creating.value ? `已新增公司「${saved.name}」` : `已保存「${saved.name}」`)
     await load(saved.id)
     emit('saved')
   } catch (e) { receipt.fail(errMsg(e, '保存失败'), { label: '重试', run: () => void saveCompany() }) } finally { saving.value = false }
@@ -223,7 +218,7 @@ async function setDefault(a: CompanyAccountDTO) {
 
 async function onClose() {
   if (saving.value) return
-  if (!(await askLeave({ page: '收款公司', count: dirtyN() }))) return
+  if (!(await askLeave({ page: '收款公司', count: dirtyN(), approx: true }))) return
   emit('close')
 }
 </script>
@@ -241,10 +236,6 @@ async function onClose() {
     <!-- 加载失败换掉整个窗体内容(不再弹窗关窗),重试接上 load -->
     <FPLoadError v-else-if="loadErr" :sub="loadErr" @retry="load()">收款公司没读到</FPLoadError>
     <template v-else>
-      <!-- 成功提示(4s 自消)。page 模式贴屏幕底部:弹窗 body 是 overflow:auto 滚动容器,
-           absolute 贴底会跟着内容滚走;且 --z-toast(400) > --z-modal-2(320),不被弹窗遮住 -->
-      <FPToast v-model="okMsg" placement="page" :duration="4000" />
-
       <div class="cw-split">
         <!-- 左:公司列表(S 档 = 第一级,选中后让位给内容) -->
         <div v-if="showList" class="cw-list">

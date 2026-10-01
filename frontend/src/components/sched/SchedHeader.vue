@@ -4,7 +4,7 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, approxDirty } from '@/stores/auth'
 import { useScreen } from '@/composables/useTabShells'
 import { useEditLock } from '@/composables/useEditLock'
 import { useReviewStore } from '@/stores/review'
@@ -35,6 +35,11 @@ const props = withDefaults(defineProps<{
    *  同一个数登记给 auth,关页签 / 退出登录 / 关浏览器按它问(0 处不问)。
    *  附表10 与母册附表传草稿处数;其余 5 屏即时落库,唯一的草稿是开着的新增抽屉 / 导入窗,开着传 1。 */
   dirty?: number
+  /** dirty 是「开着传 1」的标志、不是真处数(即时落库的 5 屏):离开确认不报「N 处」。 */
+  dirtyApprox?: boolean
+  /** 导入只替换本期之前导入的行、手工录的行不动(附表10 / 工资:后端只删 source='import' 的行)。
+   *  不传 = 整期替换(光伏 / 充电桩 / 电费 / 水电按导入的月整块删了重插,损益附表整年清掉重插)。 */
+  importKeepsManual?: boolean
   /** 本期的编辑锁作用域(CONCURRENCY-SPEC §3.1),如 `sched:pv:2025`。
    *  **不传 = 这一屏不上锁**,行为与加锁之前一个字不差。 */
   scope?: string | null
@@ -60,7 +65,7 @@ const props = withDefaults(defineProps<{
    *   接上去等于一个月审了就把整年 12 行一起锁死。所以 reviewBlock 那几条仍只读 reviewKey。
    */
   reviewKeys?: string[] | null
-}>(), { showImport: false, importDisabled: false, dirty: 0, scope: null, reviewKey: null, reviewKeys: null })
+}>(), { showImport: false, importDisabled: false, dirty: 0, dirtyApprox: false, importKeepsManual: false, scope: null, reviewKey: null, reviewKeys: null })
 
 const emit = defineEmits<{ back: []; 'toggle-edit': [forced?: boolean]; import: [] }>()
 
@@ -79,7 +84,8 @@ const meId = Symbol('sched-header')
 const screen = useScreen()
 // 改动数(EDIT-MODE §6.1):关页签 / 退出登录 / 关浏览器按它问,0 处不弹。
 // 页头与下面的锁各登记一条,**必须是同一个函数** —— auth 按函数去重,两个函数就算成 2 倍。
-const dirtyCount = () => props.dirty
+// dirtyApprox 是屏的固定属性,建组件时读一次就够。
+const dirtyCount = props.dirtyApprox ? approxDirty(() => props.dirty) : () => props.dirty
 watch(() => props.edit, (on) => { if (on) auth.openEditor(meId, screen, dirtyCount); else auth.closeEditor(meId) })
 onUnmounted(() => auth.closeEditor(meId))
 
@@ -250,7 +256,7 @@ async function onTaken() {
 async function onImport() {
   const n = props.dirty
   if (n > 0 && !(await ask({
-    title: '导入会整期替换本期数据',
+    title: props.importKeepsManual ? '导入会替换本期之前导入的行，手工录的行不动' : '导入会整期替换本期数据',
     body: `本期有 ${n} 处改动还没保存，导入后会丢失。`,
     action: '仍要导入',
   }))) return

@@ -124,6 +124,8 @@ describe('PoolLedgerView 写口守卫', () => {
     await w.findAll('button').find(b => b.text().includes('新增池'))!.trigger('click')
     await flushPromises()
     expect(document.querySelector('.fp-dwr-backdrop'), '前置:池配置抽屉开着').not.toBeNull()
+    // 破坏验证:PoolLedgerView 的 dirty 去掉 approxDirty 包装 → 红(离开确认会说「1 处改动」,其实只知道抽屉开着)
+    expect(useAuthStore().dirtyApproxOn(''), '抽屉开着就算 1,不报处数').toBe(true)
     // 提权到期同款路径:权限掉光 → useEditMode 的 watch([editMode, missing]) 把 editMode 就地转假
     useAuthStore().permissions = []
     await flushPromises()

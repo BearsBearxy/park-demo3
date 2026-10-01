@@ -77,6 +77,15 @@ describe('SchedHeader 导入前确认(02-B 左)', () => {
     expect(w.emitted('import')).toHaveLength(1)
   })
 
+  // 附表10 / 工资的导入只删本期 source='import' 的行(S10Service / SalaryService.importRows),手工行不动。
+  // 破坏验证:onImport 的 title 去掉 importKeepsManual 分支 → 红
+  it('❗importKeepsManual → 说「只替换之前导入的行」,不说整期替换', async () => {
+    const w = hdr({ dirty: 3, importKeepsManual: true })
+    await importBtn(w).trigger('click')
+    await flushPromises()
+    expect(askQueue[0]?.title).toBe('导入会替换本期之前导入的行，手工录的行不动')
+  })
+
   it('没草稿 → 不问,直接导', async () => {
     const w = hdr({ dirty: 0 })
     await importBtn(w).trigger('click')
@@ -109,6 +118,18 @@ describe('SchedHeader 改动数报给 auth(EDIT-MODE §6.1)', () => {
     expect(auth.dirtyTotal).toBe(3)
     await w.setProps({ dirty: 0 })
     expect(auth.dirtyTotal, '0 处改动关页签不该再问').toBe(0)
+  })
+
+  // 即时落库的 5 屏传的是「抽屉 / 导入窗开着 ? 1 : 0」。破坏验证:dirtyCount 不按 dirtyApprox 标 → 红
+  it('❗dirtyApprox → 登记成数不准(离开确认不报处数);不传就是真处数', async () => {
+    const auth = useAuthStore()
+    const w = hdr({ edit: false, dirty: 1, dirtyApprox: true })
+    await w.setProps({ edit: true })
+    expect(auth.dirtyApproxOn('')).toBe(true)
+    w.unmount()
+    const w2 = hdr({ edit: false, dirty: 1 })
+    await w2.setProps({ edit: true })
+    expect(auth.dirtyApproxOn('')).toBe(false)
   })
 })
 

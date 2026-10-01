@@ -175,4 +175,15 @@ describe('台账 · 新建 / 删除公司弹窗的字段报错', () => {
     expect(w.find('.fp-field-err').text()).toBe('名称与「园区水电管理公司」不一致')
     expect(w.findAll('button').find(b => b.text().includes('永久删除'))!.attributes('disabled')).toBeDefined()
   })
+
+  // 前端删公司不带 force,名下有数据时后端拒删(CompanyService.delete):不许再说「数据会一起删掉」
+  it('❗删除公司:文案说名下有数据删不掉,不说「一并删除」', async () => {
+    const w = mount(LedgerDeleteCompanyDialog, { props: { books: [{ id: 3, name: '水电账', companyName: '园区水电管理公司' }] } })
+    expect(w.text()).toContain('名下还有台账、报表或催缴单的删不掉')
+    await w.find('.lg-dlg-row').trigger('click')
+    expect(w.text()).toContain('名下还有台账、报表或催缴单时删不掉')
+    // 收款账户 / 收款簿的指定随公司级联删(V34 / V94),不在拒删守卫里 —— 要说出来。破坏验证:删掉这半句 → 红
+    expect(w.text()).toContain('将删除该公司和它的账册、收款账户;收款簿里指给它的收款项也一起清掉')
+    expect(w.text()).not.toMatch(/一并删除|连同全部台账/)
+  })
 })

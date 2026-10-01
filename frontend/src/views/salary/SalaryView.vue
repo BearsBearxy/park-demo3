@@ -336,7 +336,7 @@ const onExport = () => guard('导出失败', async () => {
           perm="entry:edit"
           @back="backToMonths"
           @toggle-edit="edit = !edit"
-         :show-import="true" @import="importing = true" :dirty="drawer || importing ? 1 : 0">
+         :show-import="true" @import="importing = true" :dirty="drawer || importing ? 1 : 0" dirty-approx import-keeps-manual>
           <template #edit-actions>
             <Button variant="outline" size="sm" @click="drawer = true">
               <template #leading><component :is="iconFor('plus')" :size="14" /></template>

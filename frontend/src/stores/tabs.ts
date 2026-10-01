@@ -136,7 +136,7 @@ export const useTabsStore = defineStore('tabs', () => {
   async function leaveOk(vs: string[], verb?: string): Promise<boolean> {
     for (const v of vs) {
       const n = dirtyOf(v)
-      if (n > 0 && !(await askLeave({ page: titleOf(v), count: n, verb }))) return false
+      if (n > 0 && !(await askLeave({ page: titleOf(v), count: n, verb, approx: useAuthStore().dirtyApproxOn(v) }))) return false
     }
     return true
   }

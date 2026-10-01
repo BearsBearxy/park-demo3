@@ -874,6 +874,8 @@ describe('电费成本总览 · 提示件(S4)', () => {
     expect(auth.dirtyTotal, '金额 / 备注 / 电价都是即时提交,关页签不该白问').toBe(0)
     ;(w.vm as unknown as { meterDlg: boolean }).meterDlg = true
     expect(auth.dirtyTotal).toBe(1)
+    // 破坏验证:dirty 去掉 approxDirty 包装 → 红(离开确认会说「1 处改动」,其实只知道弹窗开着)
+    expect(auth.dirtyApproxOn(''), '开着就算 1,不报处数').toBe(true)
   })
 
   it('❗电表清单首载就挂 → 整页是全站那一种加载失败(带副句和重试)', async () => {

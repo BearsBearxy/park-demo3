@@ -36,7 +36,7 @@ import {
   type ParamRow, type RuleGroup,
 } from '@/utils/paramCenterLogic'
 import { LOSS_BASE_FORM_B_TEMPLATE, PARAM_DEFS, paramDef, writePlan, type ParamMode } from '@/utils/paramRegistry'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, approxDirty } from '@/stores/auth'
 import { useZonesStore } from '@/stores/zones'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { chainStepsOf, noticeYmOf } from '@/nav/billingChain'
@@ -56,7 +56,6 @@ import ParamHistoryDrawer from './ParamHistoryDrawer.vue'
 import ParamChangesDrawer from './ParamChangesDrawer.vue'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
-import FPToast from '@/components/fp/FPToast.vue'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 
@@ -81,7 +80,7 @@ const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, h
     reviewKey: () => (ym.value ? `params:${ym.value}` : null),
     // 改动数(EDIT-MODE §6.1):参数逐行即时写库,没有整页草稿;开着的修改浮层 / 新增例外抽屉 / ③ 行内「添加」
     // 各算 1 处(照公共电核算 poolDlg 的算法:里面填了什么看不见,宁可多问)。refs 在下面声明,闭包到关页签时才求值
-    dirty: () => (editRow.value ? 1 : 0) + (exOpen.value ? 1 : 0) + (addExcl.value ? 1 : 0),
+    dirty: approxDirty(() => (editRow.value ? 1 : 0) + (exOpen.value ? 1 : 0) + (addExcl.value ? 1 : 0)),
   })
 onDeactivated(() => {
   editRow.value = null; exOpen.value = false; addExcl.value = null
@@ -123,8 +122,6 @@ const ZONE_OPTS = computed(() => [{ value: 'all', label: '全园' }, ...zones.li
 const rows = ref<ParamRowDTO[] | null>(null)
 const status = ref<ParamStatusDTO | null>(null)
 const loadErr = ref('')
-const flash = ref('')            // 重算 / 复制上月电价 的一次性摘要
-const batchErr = ref('')         // 跨月批量重算的失败断点(error toast,不自动关)
 /**
  * 换期重取时的退让（加载态设计稿 §06 第一档）。旧数据留在原地不闪，
  * 但必须退一步并**停止接受交互** —— 它还是上一期的。顶边那条线是唯一的「在忙」信号。
@@ -144,7 +141,7 @@ async function load() {
     ])
     if (my !== seq) return
     // 错误只在成功分支清:开头先清的话,重试那一下失败态先闪掉、旧行露出来,回包再失败又换回来
-    rows.value = rs; status.value = st; flash.value = ''; loadErr.value = ''
+    rows.value = rs; status.value = st; loadErr.value = ''
     scrollToSection()
   } catch (e) {
     if (my !== seq) return
@@ -477,12 +474,15 @@ async function onRecalc() {
   // 等回答的这段时间里可能被接管、换了月 —— 再守一遍
   if (!canRecalc.value || loadErr.value || ym.value !== at) return
   busy.value = true
-  flash.value = ''
   try {
     const r = await paramsApi.recalc(ym.value)
-    const warn = r.warnings.length ? ` · 警告 ${r.warnings.length} 条（见控制台）` : ''
-    if (r.warnings.length) console.warn('[params] recalc warnings', r.warnings)
-    flash.value = `重算完成：池 ${r.pools} · 损耗单元 ${r.lossUnits} · 催缴单 ${r.notices}（跳过已确认 / 已导出 ${r.skippedConfirmed}）${warn}`
+    const done = `重算完成：池 ${r.pools} · 损耗单元 ${r.lossUnits} · 催缴单 ${r.notices}（跳过已确认 / 已导出 ${r.skippedConfirmed}）`
+    // 警告说的是钱会摊丢 / 多摊少摊(AllocService.generate),用户必须读到 → 警告回执不自收,第一条原文照抄。
+    // 全部明细本屏没地方放:公共电核算重新生成一次,它的「本次生成告警」组会逐条列出
+    const ws = r.warnings
+    if (!ws.length) receipt.ok(done)
+    else if (ws.length === 1) receipt.warn(`${done}。警告：${ws[0]}`)
+    else receipt.warn(`${done}。警告 ${ws.length} 条，第一条：${ws[0]}。其余 ${ws.length - 1} 条要到公共电核算重新生成本月才看得到。`)
     status.value = await paramsApi.status(ym.value)
     // 生成改的正是矩阵格子上的点(池/损耗亮起、stale 清掉)—— 换出账月时要立刻看得见
     void period.reloadChain().catch(() => { /* 矩阵刷新失败不阻断本屏 */ })
@@ -517,9 +517,9 @@ async function onRecalcOthers() {
     // 跨月重算改的是好几个月的格子,矩阵整张重取
     void period.reloadChain().catch(() => { /* 矩阵刷新失败不阻断本屏 */ })
   }
-  // load() 成功时会清 flash,所以摘要放它后面。失败走单独的 error toast(§4.1:不自动关,让用户读完失败月份)
-  if (failed) batchErr.value = `重算中断于 ${failed}${batchDone.value ? `；已完成 ${batchDone.value} 个月` : ''}`
-  else flash.value = `已重算 ${batchDone.value} 个月：${list.join('、')}`
+  // 失败走失败回执(不自收,让用户读完失败月份)
+  if (failed) receipt.fail(`重算中断于 ${failed}${batchDone.value ? `；已完成 ${batchDone.value} 个月` : ''}`)
+  else receipt.ok(`已重算 ${batchDone.value} 个月：${list.join('、')}`)
 }
 async function onCopy() {
   if (!editMode.value) return
@@ -534,7 +534,7 @@ async function onCopy() {
   try {
     const r = await paramsApi.copyPrev(at)
     await load()
-    flash.value = `复制完成：新增 ${r.copied} 行，跳过已存在 ${r.skipped} 行。`
+    receipt.ok(`复制完成：新增 ${r.copied} 行，跳过已存在 ${r.skipped} 行。`)
   } catch (e) {
     receipt.fail(errMsg(e, '复制失败'), { label: '重试', run: () => void onCopy() })
   } finally { busy.value = false }
@@ -903,11 +903,6 @@ const FIXED_RULES = [
     <FPLockDialogs :locked-by="lockedBy" :evicted-by="evictedBy" :scope="lockScope()"
                    :what="`计费参数 ${ym}`"
                    @taken="onTaken" @close-takeover="lockedBy = null" @close-evicted="evictedBy = null" />
-
-    <!-- 重算/复制上月电价的摘要。原来是 .pm-actions 里 flex:1 1 100% 的一个 span ——
-         它一出现就换行,把整条工具栏撑高一行,下面全部内容跟着往下跳(LAYOUT-STABILITY-SPEC §4)。 -->
-    <FPToast v-model="flash" placement="page" :duration="6000" />
-    <FPToast v-model="batchErr" tone="error" placement="page" :duration="0" />
 
     <ParamEditPopover :open="!!editRow" :row="editRow" :ym="ym" :ref-options="refOptions" @close="editRow = null" @save="onSave" />
     <ParamHistoryDrawer :open="!!histRow" :row="histRow" @close="histRow = null" />

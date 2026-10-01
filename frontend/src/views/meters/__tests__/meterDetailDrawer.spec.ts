@@ -603,6 +603,25 @@ describe('T19 · 抽屉里的提示件(机械替换)', () => {
     expect(vi.mocked(metersApi.update).mock.calls[0][1]).toMatchObject({ suspect: '' })
   })
 
+  it('历史读数 / 合同绑定没东西可显示:空状态件占住页签内容区(不是灰字一行)', async () => {
+    const w = await mountDrawer()
+    await toTab(w, 'history')
+    expect(w.find('.fp-empty .t').text()).toBe('该表暂无读数')
+    expect(w.find('.fp-empty .sub').text()).toContain('「新增读数」')
+    await toTab(w, 'bind')
+    expect(w.find('.fp-empty:not(.error)').text()).toBe('该表不在本月绑定报表中')
+    await w.setProps({ bindAvailable: false })
+    expect(w.find('.fp-empty.error .t').text()).toBe('本月的绑定数据没读到')
+    // 页面那趟还在路上:加载中,不出失败态。破坏验证:抽屉里删掉 bindLoading 那一支 → 红
+    await w.setProps({ bindAvailable: true, bindLoading: true })
+    expect(w.find('.fp-empty.error').exists(), '在途不是没读到').toBe(false)
+    expect(w.find('.md-empty').text()).toBe('加载中…')
+    const pub = await mountDrawer({ row: rowOf({ ownership: 'share' }) })
+    await toTab(pub, 'bind')
+    expect(pub.find('.fp-empty .t').text()).toMatch(/^非租户表\(.+\)无合同绑定$/)
+    expect(pub.find('.md-empty').exists()).toBe(false)
+  })
+
   it('历史读数没读到:整块换成加载失败件(role=alert),唯一的钮「重试」重拉', async () => {
     vi.mocked(metersApi.meterReadings).mockRejectedValueOnce({ message: '历史读数没读到' })
     const w = await mountDrawer()

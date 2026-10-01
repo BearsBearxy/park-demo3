@@ -315,6 +315,10 @@ const collShown = computed(() => collects.value.filter((c) => c.ym.startsWith(ye
  *  取第 5 位起的子串是空串、转成数字就是 0,屏上会印出不存在的「0月」。
  *  取 collShown 的最后一项还顺带让 n=collShown.length 真的成为这句的分母。 */
 const cpBar = computed(() => collShown.value.at(-1) ?? null)
+/** 卡头「显示 YYYY-MM」(画布 06-D 中格:单图回退贴那张图的卡头)。所选月在这张图最后一根柱之后
+ *  (台账还没录到所选月)才挂:这时 KPI 瓦和这张图的读数句说的都是那根柱的月。所选月落在柱子范围里
+ *  (含中间断月)不挂 —— 这张图本来就是「所选年近 6 期」,不跟所选月走;所选年一根柱都没有也不挂(卡里是空状态)。 */
+const collUsedYm = computed(() => (cpBar.value && period.ym.value && period.ym.value > cpBar.value.ym ? cpBar.value.ym : null))
 const collectOption = computed<object | null>(() => {
   if (!collShown.value.length) return null
   const target = anaSettings.collectTarget
@@ -404,11 +408,14 @@ const conclusion = computed(() => buildConclusion(
       <!-- 前后对照瓦(故意留着):护栏修复前的口径,12 月冲回无条件计入年度收入 -->
     </template>
 
-    <!-- §五策略2 期间回退(画布 06-D):所选月无损益 → KPI/构成环锚定最近覆盖月;收缴率取期回退同样标出
-         (复审:原仅 KPI 小字披露)。贴在期间选择旁,不另起一行,数据到了也不推正文。 -->
+    <!-- §五策略2 期间回退(画布 06-D):所选月无损益 → KPI/构成环锚定最近覆盖月。贴在期间选择旁,不另起一行,
+         数据到了也不推正文。构成环、收缴率两张图各自的回退贴在各自卡头(06-D 中格:单图回退贴卡头)。 -->
     <template #period-note>
       <FPStateTag v-if="pnlUsedYm" tone="muted">{{ periodNote(ymOf(drawnSel.year, drawnSel.month), pnlUsedYm) }}</FPStateTag>
-      <FPStateTag v-if="cp && period.ym.value && cp.ym !== period.ym.value" tone="muted">收缴率显示 {{ cp.ym }}</FPStateTag>
+      <!-- 收缴率 KPI 瓦取 ≤所选月的最后一期(colPick)。所选月落在中间断月(06 有、05 无,选 05)或所选年还没有柱时,
+           瓦上是别的月、卡头又不挂(collUsedYm 只管所选月晚于最后一根柱),只剩瓦里小字 —— 复审判过不够,这里补一枚。
+           卡头已挂时不重复。 -->
+      <FPStateTag v-if="cp && period.ym.value && cp.ym !== period.ym.value && !collUsedYm" tone="muted">收缴率显示 {{ cp.ym }}</FPStateTag>
     </template>
 
     <!-- 首进:版式已知就不转圈(C6-01)。每块骨架的高 = 它顶替的那张图的 :height 字面值
@@ -423,7 +430,7 @@ const conclusion = computed(() => buildConclusion(
          预测带是自绘 SVG(不降档)、异常速览是 DOM 列表,两块照旧写死。 -->
     <!-- 2026-09-16 起骨架照抄真版式:结论条、各卡卡头与读数句、异常清单、回测表都按
          库里现有数据的样子留位(结论三句;回测六行;异常速览四条)—— 手机上这些字都会折行,灰条顶不住。
-         随数据变的字换成同长的隐形占位。台账取期回退 2026-10-01 起是期间选择旁的标签,正文不再给它留位。
+         随数据变的字换成同长的隐形占位。台账取期回退 2026-10-01 起是收缴率卡头标题里的行内标签,正文不再给它留位。
          数据换了形状(台账补齐、回测变成七行)时,首进会差出那一段,届时照新数据改这里。 -->
     <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <template v-if="!ready || (pnlLoading && !pnl)">
@@ -554,7 +561,8 @@ const conclusion = computed(() => buildConclusion(
       <!-- s4:收入构成环 -->
       <div class="av2-card av2-s4">
         <div class="av2-card-h">
-          <span class="t">收入构成 · {{ isMonth ? '本月' : '本年' }}</span>
+          <!-- 构成环与 KPI 同锚(usedMi):所选月无损益时画的是 pnlUsedYm 那个月,卡头写明 -->
+          <span class="t">收入构成 · {{ isMonth ? '本月' : '本年' }}<FPStateTag v-if="pnlUsedYm" tone="muted" style="margin-left: 8px">显示 {{ pnlUsedYm }}</FPStateTag></span>
           <span class="hint">合计 {{ money(compoTotal || null) }}<span class="hint-desk"> · 点击扇区看趋势</span><span class="hint-touch"> · 点扇区看趋势</span></span>
         </div>
         <AnaEChart v-if="compo.length" :option="donutOption" :height="300" @chart-click="onDonutClick" />
@@ -609,7 +617,7 @@ const conclusion = computed(() => buildConclusion(
 
       <div class="av2-card av2-s4 cv2-coll">
         <div class="av2-card-h">
-          <span class="t">收缴率 vs 目标</span>
+          <span class="t">收缴率 vs 目标<FPStateTag v-if="collUsedYm" tone="muted" style="margin-left: 8px">显示 {{ collUsedYm }}</FPStateTag></span>
           <span class="hint">{{ year }}年近 6 期(台账共 {{ collects.length }} 期)<span class="hint-desk">· 点击看欠费清单</span><span class="hint-touch">· 点柱看欠费清单</span></span>
         </div>
         <AnaEChart v-if="collectOption" :option="collectOption" :height="250" @chart-click="onCollectClick" />

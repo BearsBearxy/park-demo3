@@ -25,7 +25,6 @@ import Select from '@/components/ds/Select.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
-import FPToast from '@/components/fp/FPToast.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import FPMark from '@/components/fp/FPMark.vue'
 import { ask, askLeave } from '@/utils/ask'
@@ -108,7 +107,6 @@ watch(() => props.open, o => {
   uniCo.value = ''
   stash.value = new Map()
   selected.value = new Set()
-  okMsg.value = ''
   load()
 })
 
@@ -201,9 +199,6 @@ async function setSlot(v: string) {
 
 // ── 保存:逐条 PUT(后端单格 upsert);失败中断报错并把已提交部分落到本地缓存 ──
 const saving = ref(false)
-const okMsg = ref('')
-// 自动消失与关闭按钮由 FPToast 内部管（LAYOUT-STABILITY-SPEC §2 优先级 2：浮层，不进文档流）
-function flashOk(msg: string) { okMsg.value = msg }
 async function onSave() {
   // 自守:失败回执上的「重试」点下去时可能已退出编辑
   if (saving.value || stash.value.size === 0 || !editMode.value || loadErr.value) return
@@ -225,7 +220,7 @@ async function onSave() {
       paymap.value.set(payKey(row.tenantId, row.feeKey), row.companyId)
       ok++
     }
-    flashOk(`已保存 ${ok} 条收款指定 · 下次生成催缴单即按新映射拆单(已生成的单需重新生成才刷新)`)
+    receipt.ok(`已保存 ${ok} 条收款指定 · 下次生成催缴单即按新映射拆单(已生成的单需重新生成才刷新)`)
     selected.value = new Set()
     uniCo.value = ''
     emit('saved')
@@ -263,10 +258,6 @@ async function onClose() {
     <!-- 已失败时不换成「加载中…」:重试在途失败件留在原地,到数才退场 -->
     <div v-if="loading && !loadErr" class="pb-empty">加载中…</div>
     <template v-else>
-      <!-- 成功提示(5s 自消)。page 模式贴屏幕底部:弹窗 body 是 overflow:auto 滚动容器,
-           absolute 贴底会跟着内容滚走;且 --z-toast(400) > --z-modal-2(320),不被弹窗遮住 -->
-      <FPToast v-model="okMsg" placement="page" :duration="5000" />
-
       <!-- 控制行:期页签+搜索+只看未设置 | 收款槽下拉 -->
       <div class="pb-controls">
         <Segmented :options="PHASE_OPTS" :model-value="phase" size="sm" @update:model-value="setPhase" />

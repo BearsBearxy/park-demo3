@@ -376,11 +376,9 @@ const acting = ref<string | null>(null)          // 在途的那把键,防连点
 const dialog = ref<{ keys: string[]; label: string; action: 'return' | 'withdraw' } | null>(null)
 
 /**
- * 动作的报错分流。**423 / 409 / 403 不许合成一句** —— 三者要用户去做的事完全不同:
- *   409 = 上游没审完 → 去催上游 / 先审上游
- *   403 = 你没有这张表的权限 → 去找有权限的人
- *   其余(含 423)= 后端已经写好了准话,原样弹
- * 合成一句的话,用户分不出该找谁。
+ * 动作的报错分流。403 冠「你没有这张表的权限」→ 去找有权限的人;其余(409 / 423 …)后端已经写好了准话,原样报。
+ *   409 不冠前缀:后端的 409 除了「先通过 X 的审核」还有「当前是「待审核」,不能交审」,
+ *   统一冠「上游还没审完」会和原话相反。
  * 走失败回执(画布 02-C)。不带「重试」:多键行逐把写、中途失败时前几把已经写进去了,
  * 拿点击那一刻的键再跑一遍,头一把就吃 409「当前是待审核,不能交审」;batch 失败后已重取清单,
  * 行上那颗按钮按新状态重算过,再点它就是重试。
@@ -393,9 +391,7 @@ async function runAction(key: string, fn: () => Promise<unknown>) {
   } catch (e) {
     const err = e as { code?: number; message?: string }
     const msg = err?.message ?? '操作失败'
-    receipt.fail(err?.code === 409 ? `上游还没审完：${msg}`
-        : err?.code === 403 ? `你没有这张表的权限：${msg}`
-        : msg)
+    receipt.fail(err?.code === 403 ? `你没有这张表的权限：${msg}` : msg)
   } finally {
     acting.value = null
   }

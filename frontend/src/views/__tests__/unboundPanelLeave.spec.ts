@@ -351,7 +351,7 @@ describe('附表10 · 导入前确认,答完再守编辑态', () => {
     await flushPromises()
     await w.findAll('.s10-page button').find(b => b.text() === '导入 Excel')!.trigger('click')
     await flushPromises()
-    expect(askQueue.map(a => [a.title, a.body])).toEqual([['导入会整期替换本期数据', '本期有 1 处改动还没保存，导入后会丢失。']])
+    expect(askQueue.map(a => [a.title, a.body])).toEqual([['导入会替换本期之前导入的行，手工录的行不动', '本期有 1 处改动还没保存，导入后会丢失。']])
     w.findComponent(SchedHeader).vm.$emit('toggle-edit', true)   // 被接管 / 提权到期 / 换期
     await flushPromises()
     answer(true)

@@ -140,6 +140,10 @@ function cancelRequest() {
   stopTick(); waiting.value = false
 }
 
+// 等待中切回「请人走过来」(底部按钮或上面的分段都算):远程那条不要了,当场撤回、停倒计时 ——
+// 不撤的话 2 分钟后框里报超时、铃铛冒「远程授权超时」,人早就改走另一条路了。
+watch(tab, (t) => { if (t === 'onsite' && waiting.value) cancelRequest() })
+
 const pickedName = computed(() =>
   candidates.value?.find((c) => c.username === picked.value)?.displayName ?? '')
 const mmss = computed(() => {
@@ -288,7 +292,7 @@ async function submit() {
            这是当初否掉远程批准的第二条理由，今天依然成立。 -->
       <template v-if="canRemote && tab === 'remote' && waiting">
         <Button variant="gray" size="sm" @click="cancelRequest">取消请求</Button>
-        <Button variant="outline" size="sm" @click="tab = 'onsite'; waiting = false">改为请人走过来</Button>
+        <Button variant="outline" size="sm" @click="tab = 'onsite'">改为请人走过来</Button>
       </template>
       <template v-else-if="canRemote && tab === 'remote'">
         <Button variant="gray" size="sm" @click="emit('close')">取消</Button>

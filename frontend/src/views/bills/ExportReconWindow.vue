@@ -7,6 +7,7 @@ import { buildReconSheets, type ExportReconReq, type PayNoticeIn } from '@/utils
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
 
 const props = defineProps<{
   open: boolean
@@ -47,7 +48,9 @@ function onExport() {
             :subtitle="`发财务 · ${ym} · 单文件多 sheet,每家收款公司一张 + 总表`"
             @close="emit('close')">
 
-    <table class="er-table">
+    <!-- 本月没有催缴单:空状态换掉表格。不按 sheets 判 —— 总表恒出,没有单时 sheets 也有一行零总表 -->
+    <FPEmpty v-if="!notices.length" sub="先在催缴单页生成本月。">本月没有催缴单可对账</FPEmpty>
+    <table v-else class="er-table">
       <colgroup>
         <col style="width:36px" /><col style="width:180px" /><col style="width:72px" />
         <col style="width:120px" /><col />
@@ -73,9 +76,6 @@ function onExport() {
           <td><span class="er-num">{{ s.tenants }}</span></td>
           <td><span class="er-num">{{ money(s.amount) }}</span></td>
           <td class="l"><span class="er-note">{{ s.note }}</span></td>
-        </tr>
-        <tr v-if="sheets.length === 0">
-          <td class="er-noro" colspan="5">本月没有催缴单可对账 —— 先在催缴单页生成本月。</td>
         </tr>
       </tbody>
     </table>
@@ -105,6 +105,5 @@ function onExport() {
 .er-table tr.none .er-name { color: rgb(178, 100, 0); }
 .er-num { display: block; text-align: right; font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .er-note { font-size: 11.5px; color: var(--text-muted); }
-.er-noro { text-align: center !important; padding: 30px 12px !important; color: var(--text-disabled); font-size: var(--fs-label); }
 .er-foot { flex: 1; font-size: 11.5px; color: var(--text-muted); }
 </style>

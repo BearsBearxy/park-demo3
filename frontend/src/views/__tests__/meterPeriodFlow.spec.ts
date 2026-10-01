@@ -849,6 +849,21 @@ describe('光伏分栋抄表 · 提示件(确认 / 回执 / 字段报错 / 空�
     expect(pvMeterApi.updateStation).not.toHaveBeenCalled()
   })
 
+  // 破坏验证:priceYuan 那句改回 receipt.ok(4 秒自收,指引读不完)→ 红;去掉 field === 'priceYuan' 判断 → 改容量也出 → 红
+  it('❗改单价存上 → 底部警告回执(是一段修历史记录的指引,不自收);改别的格存上不出', async () => {
+    vi.mocked(pvMeterApi.updateStation).mockResolvedValue(undefined as never)
+    const w = await toTable()
+    vmOf(w).editMode = true
+    await flushPromises()
+    await cell(w, 1).setValue('220')
+    await flushPromises()
+    expect(receipts, '改容量不出指引').toHaveLength(0)
+    await cell(w, 4).setValue('0.7')
+    await flushPromises()
+    expect(receipts.map(r => r.tone)).toEqual(['warn'])
+    expect(receipts[0].text).toMatch(/^已保存。历史抄表记录仍按录入时单价计收益/)
+  })
+
   it('❗行内改值被后端拒 → 回滚 + 失败回执带后端原话', async () => {
     vi.mocked(pvMeterApi.updateStation).mockRejectedValue(new Error('电站名重复'))
     const w = await toTable()
@@ -975,6 +990,8 @@ describe('光伏分栋抄表 · 提示件(确认 / 回执 / 字段报错 / 空�
     vmOf(w).startAdd()
     await flushPromises()
     expect(auth.dirtyTotal, '新增行开着没存').toBe(1)
+    // 破坏验证:dirty 去掉 approxDirty 包装 → 红(离开确认会说「1 处改动」,其实只知道新增行开着)
+    expect(auth.dirtyApproxOn(''), '开着就算 1,不报处数').toBe(true)
     vmOf(w).cancelForm()
     await flushPromises()
     expect(auth.dirtyTotal).toBe(0)

@@ -482,6 +482,9 @@ describe('弹层里的图瞬现(原则 7)', () => {
 describe('期间回退:期间选择旁的标签 / 图卡里一行,不用满宽横条', () => {
   type TipEl = HTMLElement & { _tip?: { text: string } }
   const tags = (w: VueWrapper) => w.findAll('.anx-period .fp-state').map((e) => e.text())
+  /** 驾驶舱某张图卡头里的回退标签(画布 06-D 中格:单图回退贴卡头) */
+  const headTag = (w: VueWrapper, title: string) =>
+    w.findAll('.av2-grid[data-stale-host] .av2-card-h .t').find((t) => t.text().startsWith(title))!.find('.fp-state')
   async function bootAug(comp: Component) {
     providePeriodMonths(MONTHS, MONTHS)
     usePeriod().setGran('month')
@@ -493,23 +496,45 @@ describe('期间回退:期间选择旁的标签 / 图卡里一行,不用满宽�
     return w
   }
 
-  it('❗驾驶舱:选 2026-08 而损益只录到 7 月 → 期间旁「显示 2026-07 · 8 月无数据」,正文里没有它', async () => {
+  it('❗驾驶舱:选 2026-08 而损益只录到 7 月 → 期间旁「显示 2026-07 · 8 月无数据」;构成环同锚,卡头「显示 2026-07」', async () => {
     vi.mocked(data.fetchPnlSummary).mockImplementation(async (y: number) => {
       const s = pnlSum(y)
       return y === 2026 ? { ...s, months: s.months.filter((m) => m !== 8) } : s
     })
     const w = await bootAug(CockpitView)
     expect(tags(w)).toEqual(['显示 2026-07 · 8 月无数据'])
-    expect(w.find('.anx-body .fp-state').exists(), '回退标签跑进正文了').toBe(false)
+    expect(headTag(w, '收入构成').text()).toBe('显示 2026-07')
+    expect(w.findAll('.anx-body .fp-state').length, '正文里只该有构成环卡头那一枚').toBe(1)
+    usePeriod().setMonth(7)
+    await flushPromises()
+    expect(headTag(w, '收入构成').exists(), '7 月有损益,卡头标签该撤').toBe(false)
   })
 
-  it('❗驾驶舱:收缴率取期回退(台账只到 7 月)→ 期间旁另挂「收缴率显示 2026-07」', async () => {
+  it('❗驾驶舱:台账只到 7 月 → 收缴率卡头「显示 2026-07」,期间旁不挂;选 6 月(在柱子范围里)不挂', async () => {
     vi.mocked(data.fetchCollectRates).mockResolvedValue([
       { ym: '2026-06', receivable: 100000, collected: 90000, rate: 90 },
       { ym: '2026-07', receivable: 120000, collected: 96000, rate: 80 },
     ])
     const w = await bootAug(CockpitView)
-    expect(tags(w)).toEqual(['收缴率显示 2026-07'])
+    expect(tags(w)).toEqual([])
+    expect(headTag(w, '收缴率 vs 目标').text()).toBe('显示 2026-07')
+    usePeriod().setMonth(6)
+    await flushPromises()
+    expect(headTag(w, '收缴率 vs 目标').exists(), '所选月在柱子范围里,这张图没有回退').toBe(false)
+  })
+
+  // 破坏验证:删掉 #period-note 里那枚「收缴率显示」→ 红(KPI 瓦是 4 月的数,屏上只剩瓦里小字)
+  it('❗驾驶舱:台账断月(04、06 有,05 无)选 05 → KPI 瓦按 04,期间旁「收缴率显示 2026-04」;卡头不挂', async () => {
+    vi.mocked(data.fetchCollectRates).mockResolvedValue([
+      { ym: '2026-04', receivable: 100000, collected: 90000, rate: 90 },
+      { ym: '2026-06', receivable: 120000, collected: 96000, rate: 80 },
+    ])
+    const w = await bootAug(CockpitView)
+    expect(tags(w), '选 08:卡头已挂「显示 2026-06」,期间旁不重复').toEqual([])
+    usePeriod().setMonth(5)
+    await flushPromises()
+    expect(tags(w)).toEqual(['收缴率显示 2026-04'])
+    expect(headTag(w, '收缴率 vs 目标').exists(), '05 在柱子范围里,图没有回退').toBe(false)
   })
 
   it('❗驾驶舱:当年有收入为负的月 → 主图卡里图上方一行块内提示(FPNote),不是横条', async () => {

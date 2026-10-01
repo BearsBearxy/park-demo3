@@ -1,7 +1,7 @@
 // 催缴单屏照画布 05 节落地的版式判据(2026-10-01,计划 S3 · P4-D1–D6、T15)。
 //   05-A 改后:标题行「待处理 5 · 簿册 ▾ · 导出 ▾ · 编辑模式」;四张统计卡并进状态页签;表头六列;
 //        警告写类别「首类 +N」;分组行兼小计可收起;本期合计列加粗浅底(03-C 同一套)。
-//   05-B 本月未生成:标题旁「本月未生成」+ 卡里空状态「2023-09 的催缴单还没生成 / ▷ 生成本月」。
+//   05-B 本月未生成:标题旁不贴标签(图上没有)+ 卡里空状态「2023-09 的催缴单还没生成 / ▷ 生成本月」。
 //   05-C 批量确认:表格卡工具条换成选择条;已确认 / 已导出勾选框禁用;分组行「7 户 · 可确认 5」。
 //   06-C 问题面板:点一条跳到表里那一户并闪一下。
 //
@@ -26,6 +26,7 @@ import { buildingApi } from '@/api/building'
 import { companyBookApi, billDeliveryApi } from '@/api/billDelivery'
 import { billsApi } from '@/api/bills'
 import { ask } from '@/utils/ask'
+import { receipts } from '@/utils/receipt'
 import type { ContractDTO } from '@/types/contract'
 import type { BuildingDTO } from '@/types/building'
 import BillNoticesView from '@/views/bills/BillNoticesView.vue'
@@ -267,17 +268,19 @@ describe('P4-D3 表格列、警告写类别、分组行(画布 05-A)', () => {
 
 // ════════════════════════════════════════════════════════════════════════════
 describe('P4-D4 本月未生成(画布 05-B)', () => {
-  // 破坏验证:FPEmpty 的 #action 去掉 v-if="canRun" 的编辑态条件(写成恒出)→ 浏览态那条红
-  it('编辑态:没有流内灰条、没有表;卡里空状态带「生成本月」;标题旁「本月未生成」;不出页签', async () => {
+  // 破坏验证:FPEmpty 的 #action 去掉 v-if="canRun" 的编辑态条件(写成恒出)→ 浏览态那条红;
+  //          标题旁加回 <FPStateTag v-if="noRows">本月未生成</FPStateTag> → 两处「不贴标签」红
+  it('编辑态:没有流内灰条、没有表;卡里空状态带「生成本月」;标题旁不贴「本月未生成」(图上没有);不出页签', async () => {
     vi.mocked(billNoticesApi.list).mockResolvedValue([])
     const v = await open()
-    expect(v.find('.bn-head-l .fp-state').text()).toBe('本月未生成')
+    expect(v.find('.bn-head-l .fp-state').exists(), '浏览态标题旁不贴标签').toBe(false)
     expect(v.find('.bn-card .fp-empty').exists(), '浏览态也是空状态').toBe(true)
     expect(v.find('.bn-card .fp-empty').findAll('button'), '浏览态不给写入口').toHaveLength(0)
     await enterEdit(v)
     expect(v.find('.bn-bar').exists()).toBe(false)
     expect(v.find('.bn-table').exists()).toBe(false)
     expect(v.find('.bn-tabs').exists()).toBe(false)
+    expect(v.find('.bn-head-l .fp-state').exists(), '编辑态(画布 05-B)标题旁也不贴标签').toBe(false)
     expect(v.find('.bn-card .fp-empty .t').text()).toBe('2023-09 的催缴单还没生成')
     expect(v.find('.bn-card .fp-empty .sub').text()).toContain('按 8 月读数和 9 月租金生成')
     const btns = v.find('.bn-card').findAll('button')
@@ -285,7 +288,9 @@ describe('P4-D4 本月未生成(画布 05-B)', () => {
   })
 
   // 破坏验证:onGenerate 的 `rows.value?.length &&` 去掉(空月也问)→ ask 被调 → 红
-  it('空月点「生成本月」直接生成,不问(没有可覆盖的东西)', async () => {
+  // 破坏验证:onGenerate 的 receipt.ok 换回页底自己的 FPToast → receipts 为空 → 红
+  it('空月点「生成本月」直接生成,不问(没有可覆盖的东西);摘要走底部成功回执', async () => {
+    receipts.splice(0)
     vi.mocked(billNoticesApi.list).mockResolvedValue([])
     const v = await open()
     await enterEdit(v)
@@ -293,6 +298,8 @@ describe('P4-D4 本月未生成(画布 05-B)', () => {
     await flushPromises()
     expect(ask).not.toHaveBeenCalled()
     expect(billNoticesApi.generate).toHaveBeenCalledWith('2023-09')
+    expect(receipts.map(r => [r.tone, r.text])).toEqual([['ok', '已生成 9 单 / 36 行,3 单带警告(含已签发跳过户)']])
+    expect(v.find('.fpt').exists(), '页底不再有自己那条提示').toBe(false)
   })
 
   // 破坏验证:loadMonth 的 list 调用加回 `.catch(() => [])` → 屏上说「还没生成」→ 红
@@ -467,6 +474,28 @@ describe('T15 问题面板跳行、机械替换、改动数', () => {
     await flushPromises()
     await v.find('.bn-npen').trigger('click')
     expect(auth.dirtyTotal).toBe(1)
+    // 破坏验证:dirty 去掉 approxDirty 包装 → 红(离开确认会说「1 处改动」,其实只知道备注开着)
+    expect(auth.dirtyApproxOn(''), '备注开着只知道在写、不知道改了几处').toBe(true)
+  })
+
+  // 破坏验证:租金页改回 <div class="bn-empty"> → 第一段红;水电页改回表里一行 <td class="bn-noro"> → 第二段红
+  it('明细里一行都没有:场地租金、水电费两页都是空状态换掉表格,不是表里一行灰字', async () => {
+    vi.mocked(billNoticesApi.detail).mockImplementation(async (id: number) => {
+      const n = mkNotices().find(x => x.id === id)!
+      return { id: n.id, ym: n.ym, tenantId: n.tenantId, tenantName: n.tenantName, payCompanyId: n.payCompanyId,
+        payCompanyName: n.payCompanyName, noticeKind: n.noticeKind, premiseText: n.premiseText,
+        totalAmount: n.totalAmount, prevDue: n.prevDue, status: n.status, warns: n.warns, lines: [] }
+    })
+    const v = await open()
+    await rowOf(v, '广联').trigger('click')
+    await flushPromises()
+    expect(v.find('.bn-hgrid').exists(), '前置:抽屉开着').toBe(true)
+    expect(v.find('.bn-dtable').exists()).toBe(false)
+    expect(v.find('.fp-empty .t').text()).toBe('本月无租金行')
+    await v.findAll('[role="tab"]').find(t => t.text() === '水电费')!.trigger('click')
+    await flushPromises()
+    expect(v.find('.bn-dtable').exists(), '空状态和表格互斥').toBe(false)
+    expect(v.find('.fp-empty .t').text()).toBe('本单无水电行')
   })
 })
 

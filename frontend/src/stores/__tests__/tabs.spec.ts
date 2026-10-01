@@ -5,8 +5,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 import { useTabsStore, HOME, NEWTAB, tabMeta } from '../tabs'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, approxDirty } from '@/stores/auth'
 import { _resetViewportForTest } from '@/composables/useViewport'
+import { askQueue, answer } from '@/utils/ask'
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -511,5 +512,35 @@ describe('页签模型 · 手机(S 档没有页签条)', () => {
     go(s, 'tenants')
     go(s, 'contracts')
     expect(vals(s)).toEqual([HOME, 'meters', 'ledger', 'contracts'])
+  })
+})
+
+// 改动数有的是「弹窗开着就算 1」的标志:弹窗里一个字没改也报「1 处改动」是假话。
+// 破坏验证:tabs.leaveOk 不传 approx → 第一条红;askLeave 的 approx 分支删掉 → 第一条红;
+//          APPROX 初值去掉 ONE → 第二条红。
+describe('页签模型 · 离开确认(数不准的改动数不报处数)', () => {
+  beforeEach(() => { askQueue.splice(0) })
+  const bodyOf = async (s: S, v: string) => {
+    const p = s.leaveOk([v])
+    await nextTick()
+    const b = askQueue[0]?.body
+    answer(false); await p
+    return b
+  }
+  it('❗approxDirty 标过的 → 只说「正在编辑」;真处数照报', async () => {
+    const s = useTabsStore()
+    const auth = useAuthStore()
+    const a = Symbol('a'), b = Symbol('b')
+    auth.openEditor(a, 'alloc', approxDirty(() => 1))
+    auth.openEditor(b, 'ledger', () => 3)
+    expect(await bodyOf(s, 'alloc')).toBe('这页正在编辑，关闭后没保存的内容会丢。')
+    expect(await bodyOf(s, 'ledger')).toBe('这页有 3 处改动还没保存。')
+    auth.closeEditor(a); auth.closeEditor(b)
+  })
+  it('❗没接改动数的(缺省按 1)也算数不准', async () => {
+    const s = useTabsStore()
+    const off = editOn('meters')
+    expect(await bodyOf(s, 'meters')).toBe('这页正在编辑，关闭后没保存的内容会丢。')
+    off()
   })
 })

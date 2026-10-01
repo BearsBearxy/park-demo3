@@ -174,6 +174,16 @@ describe('P4-B1 页面三态(03-B)', () => {
     expect(w.find('.pl-head').text()).toContain('本月未生成')
   })
 
+  // 破坏验证:FPEmpty 改回 tbody 里一行 <td class="pl-noro"> → 第一条红;副句不分编辑态 → 浏览态那条红
+  it('这个期区一个池都没有:空状态换掉表格(不是表里一行灰字);编辑态副句指向「新增池」', async () => {
+    const w = await open([])
+    expect(w.find('.pl-table').exists(), '空状态和表格互斥').toBe(false)
+    expect(w.find('.pl-card .fp-empty .t').text()).toBe('一期暂无池配置')
+    expect(w.find('.pl-card .fp-empty .sub').exists(), '浏览态点不到「新增池」,不提它').toBe(false)
+    await enterEdit(w)
+    expect(w.find('.pl-card .fp-empty .sub').text()).toBe('点右上「新增池」开始录入。')
+  })
+
   // 破坏验证:<div v-else class="pl-tablearea"> 去掉 v-else → 表格和失败件同时在 → 第一条红
   it('加载失败:整块换掉表格区,一句 + 重试', async () => {
     vi.mocked(allocApi.pools).mockRejectedValue(new Error('网关超时'))
@@ -607,6 +617,20 @@ describe('对抗复查 · 「本次生成告警」组要给得出动作(spec-17,
     useAuthStore().permissions = []
     await flushPromises()
     expect(groupHead(w, '本次生成告警'), '只报不给动作的不许进面板').toBeUndefined()
+  })
+
+  // 破坏验证:desc 改回「引擎生成时报的静默吞钱防线…」→ 红
+  it('组说明是给用户看的:说清是什么、不处理会怎样,不写开发用语', async () => {
+    const w = await open()
+    await enterEdit(w)
+    vmOf(w).genWarnings = [WARN]
+    await flushPromises()
+    await openPanel(w)
+    const desc = w.findAll('.fap-g').find(g => g.find('.fap-gh').text().includes('本次生成告警'))!.find('.fap-desc').text()
+    expect(desc).toBe('这次生成时查出的问题：池没有受益人、表缺读数、参数没填等。'
+      + '不处理的话，有的钱摊不到任何一户、谁也不交，有的户会多摊或少摊。'
+      + '改好后重新生成，这一组就清掉（换账期也会清）；不分一期、二期。')
+    expect(desc).not.toMatch(/引擎|静默|防线|期别/)
   })
 })
 

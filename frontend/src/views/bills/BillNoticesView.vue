@@ -34,7 +34,7 @@ import {
   type CrossMark, type NoteKey, type NoticeAlert, type QtyCell, type ShareMergeRow,
   type TenantBuildings, type TenantNoticeRow,
 } from '@/utils/billNoticeLogic'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, approxDirty } from '@/stores/auth'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
 import { S } from '@/utils/lockScopes'
@@ -54,7 +54,6 @@ import FPMoreMenu from '@/components/fp/FPMoreMenu.vue'
 import { useViewport } from '@/composables/useViewport'
 import { useTopBarAction } from '@/composables/useTopBarAction'
 import FPAlertPanel, { type AlertGroup } from '@/components/fp/FPAlertPanel.vue'
-import FPStateTag from '@/components/fp/FPStateTag.vue'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import FPMark from '@/components/fp/FPMark.vue'
@@ -104,7 +103,7 @@ const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, h
     // 催缴单键按催缴单月(收费月)记;月锁仍是链月(抄表月)那一把,与另外四屏同占
     reviewKey: () => (noticeYm.value ? `bill-notices:${noticeYm.value}` : null),
     // 惰性求值,引用下面才声明的 noteEditKey 没有 TDZ(同 useChainDeepPeriod 那一处)
-    dirty: () => (noteEditKey.value != null ? 1 : 0),
+    dirty: approxDirty(() => (noteEditKey.value != null ? 1 : 0)),
   })
 const canRun = computed(() => mayRun.value && editMode.value)
 const canIssue = computed(() => mayIssue.value && editMode.value)
@@ -191,7 +190,7 @@ async function loadMonth() {
 }
 // v-else 分支里 rows 恒非空(失败分支也落成 []),模板里的类型收窄跨不过 v-else,统一走 list
 const list = computed(() => rows.value ?? [])
-/** 本月没有单(不是没读到):标题旁「本月未生成」+ 内容区空状态(画布 05-B) */
+/** 本月没有单(不是没读到):内容区空状态(画布 05-B;标题旁不贴标签,图上没有) */
 const noRows = computed(() => !loadErr.value && list.value.length === 0)
 const staleMsg = computed(() => staleText(status.value, 'bill'))
 // 深链协议:KeepAlive 缓存实例只在 setup 消费 query,必须 openFresh
@@ -516,7 +515,7 @@ async function confirmTenants(tids: number[]) {
   confirming.value = true
   try {
     const res = await billDeliveryApi.confirm(noticeYm.value, tids)
-    flashOk(`已确认 ${res.confirmed} 单${res.skipped ? `,跳过 ${res.skipped} 单(已确认/已作废)` : ''}`)
+    receipt.ok(`已确认 ${res.confirmed} 单${res.skipped ? `,跳过 ${res.skipped} 单(已确认/已作废)` : ''}`)
     exitBulk()
     await loadMonth()
   } catch (e) { receipt.fail(errMsg(e, '确认失败')) } finally { confirming.value = false }
@@ -535,7 +534,7 @@ async function unconfirmTenant(tid: number) {
   confirming.value = true
   try {
     const res = await billDeliveryApi.unconfirm(noticeYm.value, [tid], reason.trim())
-    flashOk(`已退回 ${res.reverted} 单${res.skipped ? `,跳过 ${res.skipped} 单(已导出/已作废)` : ''}`)
+    receipt.ok(`已退回 ${res.reverted} 单${res.skipped ? `,跳过 ${res.skipped} 单(已导出/已作废)` : ''}`)
     await loadMonth()
   } catch (e) { receipt.fail(errMsg(e, '取消确认失败')) } finally { confirming.value = false }
 }
@@ -557,7 +556,7 @@ async function voidTenant(tid: number) {
   let done = 0
   try {
     for (const n of live) { await billNoticesApi.void(n.id, reason.trim()); done++ }
-    flashOk(`已作废 ${done} 张单;重新生成本月后这户重出`)
+    receipt.ok(`已作废 ${done} 张单;重新生成本月后这户重出`)
   } catch (e) {
     receipt.fail(`${done ? `已作废 ${done} 张,其余没作废:` : ''}${errMsg(e, '作废失败')}`)
   } finally {
@@ -612,7 +611,7 @@ async function onExportNotice(req: ExportNoticeReq) {
     exportResult.value = `已导出 ${res.files} 个租户文件 / ${res.sheets} 张通知单`
       + (noPayCo ? ` · 其中 ${gapWord(noPayCo)}` : '')
       + (marked ? '' : ' · 未能标记为「已导出」(需签发权限),单据状态不变')
-    flashOk(exportResult.value)
+    receipt.ok(exportResult.value)
     expNoticeOpen.value = false
     await loadMonth()
   } catch (e) { receipt.fail(errMsg(e, '导出失败')) } finally { exportBusy.value = false }
@@ -629,7 +628,7 @@ async function onExportTenant() {
     const res = await exportTenantNotice(item, dlgYm.value, accountResolver(), companyResolver())
     if (!res.sheets) { receipt.warn('这户本月没有可导出的费用行'); return }
     const marked = await billDeliveryApi.markExported(dlgYm.value, [r.tenantId]).then(() => true).catch(() => false)
-    flashOk(`已导出 ${r.tenantName ?? '#' + r.tenantId}${res.sheets > 1 ? ` · ${res.sheets} 家收款公司分 sheet` : ''}`
+    receipt.ok(`已导出 ${r.tenantName ?? '#' + r.tenantId}${res.sheets > 1 ? ` · ${res.sheets} 家收款公司分 sheet` : ''}`
       + (marked ? '' : ' · 未能标记为「已导出」(需签发权限)'))
     await loadMonth()
   } catch (e) { receipt.fail(errMsg(e, '导出失败')) } finally { cardBusy.value = false }
@@ -650,7 +649,7 @@ async function onExportRecon(req: ExportReconReq) {
         })
     }
     await exportReconWorkbook(recon, req.ym, req.sheets)
-    flashOk(`对账表已导出(${req.sheets.length} 个 sheet)`)
+    receipt.ok(`对账表已导出(${req.sheets.length} 个 sheet)`)
     expReconOpen.value = false
   } catch (e) { receipt.fail(errMsg(e, '导出失败')) } finally { exportBusy.value = false }
 }
@@ -676,15 +675,12 @@ async function onSlotSave(p: { colIds: string[]; companyId: number }) {
   try {
     for (const colId of p.colIds) await billsApi.setPaymap({ tenantId: tid, feeKey: colId as never, companyId: p.companyId })
     await loadPayMap()   // 不 await 的话 PUT 成功了卡片可能还印着「未设置」——本身就是一条「设了还显示」
-    flashOk(`已指定 ${p.colIds.length} 项收款公司;重新生成本月催缴单后按新归属拆单`)
+    receipt.ok(`已指定 ${p.colIds.length} 项收款公司;重新生成本月催缴单后按新归属拆单`)
   } catch (e) { receipt.fail(errMsg(e, '保存失败')) } finally { slotSaving.value = false }
 }
 
 // ── 重新生成(admin;已有单先 ask 再 POST generate,轻提示显摘要,完成刷新) ──
 const generating = ref(false)
-const okMsg = ref('')
-// 自动消失与关闭按钮由 FPToast 内部管（LAYOUT-STABILITY-SPEC §2 优先级 2：浮层，不进文档流）
-function flashOk(msg: string) { okMsg.value = msg }
 async function onGenerate() {
   if (!canRun.value || generating.value || loadErr.value) return
   if (rows.value?.length && !await ask({
@@ -696,7 +692,7 @@ async function onGenerate() {
   generating.value = true
   try {
     const res = await billNoticesApi.generate(noticeYm.value)
-    flashOk(`已生成 ${res.generated} 单 / ${res.lines} 行,${res.warned} 单带警告(含已签发跳过户)`)
+    receipt.ok(`已生成 ${res.generated} 单 / ${res.lines} 行,${res.warned} 单带警告(含已签发跳过户)`)
     await loadMonth()
     // 生成改的正是矩阵格子上的点(池/损耗亮起、stale 清掉)—— 换出账月时要立刻看得见
     void period.reloadChain().catch(() => { /* 矩阵刷新失败不阻断本屏 */ })
@@ -985,7 +981,7 @@ function onMore(key: string) {
     <!-- 链路条:期写在这里,五道工序横跳不换期 -->
     <FPStepStrip :steps="chainSteps" current="bill-notices" :period="`${noticeYm}(${month} 月水电)`" @back="period.clear()" />
 
-    <!-- 标题行(画布 05-A「八个按钮收成四个」):左 = 屏名 + 期段控 + 页面状态;
+    <!-- 标题行(画布 05-A「八个按钮收成四个」):左 = 屏名 + 期段控(本月没有单也不贴标签,画布 05-B);
          右 = 待处理 · 簿册 ▾ · 导出 ▾ ·(编辑态)重新生成 · 审核簇 · 编辑模式。生成本月进空状态,批量确认进表格卡 -->
     <div class="bn-head">
       <div class="bn-head-l">
@@ -993,8 +989,6 @@ function onMore(key: string) {
         <h2 v-if="!narrow" class="bn-title"><span class="ic"><component :is="iconFor('file-check-2')" :size="18" /></span>催缴单</h2>
         <!-- §5.10 筛选:期段控是「反正都要点开的选择器」,M↓ 收进筛选面板 -->
         <Segmented v-if="!narrow" :options="PHASE_OPTS" v-model="phase" size="sm" />
-        <!-- 页面状态(十件 ⑥):本月没有单。替原来表格上方那条灰色流内条 -->
-        <FPStateTag v-if="noRows" tone="warn">本月未生成</FPStateTag>
         <!-- 窄档(§5.10)问题入口仍在左组:三屏的 S/M 分支这次不动(规范 §2-21) -->
         <FPAlertPanel v-if="narrow" v-model:open="alertOpen" :count="alertCount" :groups="allAlertGroups" />
       </div>
@@ -1039,9 +1033,6 @@ function onMore(key: string) {
       <FPStat label="警告户数" :value="String(kpis.warned)" :sub="kpis.warned ? '悬停「警告」那一格看是哪几类' : undefined" />
     </div>
 
-    <!-- 写操作的即时反馈(LAYOUT-STABILITY §6-4 走 FPToast;时长用组件默认 4 秒,规范 §1.1)。
-         page 模式:本屏无 relative 容器,且 --z-toast 最高不被遮 -->
-    <FPToast v-model="okMsg" placement="page" />
     <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
 
     <!-- 第二行:桌面 = 状态页签 + 搜租户名(画布 05-A);窄档 = 搜索 + 筛选钮(§5.10,不动)。
@@ -1279,7 +1270,7 @@ function onMore(key: string) {
         <!-- 场地租金 tab(S5 刀4):fee_group='rent' 落库行,一场地一块(厂房/办公室/宿舍逐间);
              面积列显「建筑+公摊」拆解,备注列显按天折算式/免租期扣减 -->
         <template v-if="dlgTab === 'rent'">
-          <div v-if="rentG.groups.length === 0" class="bn-empty">本月无租金行 —— 重新生成后按合同条款派生</div>
+          <FPEmpty v-if="rentG.groups.length === 0" size="sm" sub="重新生成后按合同条款派生。">本月无租金行</FPEmpty>
           <div v-else class="bn-dwrap">
             <table class="bn-dtable">
               <colgroup>
@@ -1348,7 +1339,8 @@ function onMore(key: string) {
 
         <!-- 水电费 tab v3(可莱恩 worksheet 版式):非宿舍 电/水两部逐场地费块+维护费块 → 宿舍逐间子表 → 末行合计 -->
         <template v-else>
-          <div class="bn-dwrap">
+          <FPEmpty v-if="utilRows.length === 0 && dormLines.length === 0" size="sm">本单无水电行</FPEmpty>
+          <div v-else class="bn-dwrap">
             <table class="bn-dtable">
               <colgroup>
                 <col style="width:38px" />
@@ -1475,9 +1467,6 @@ function onMore(key: string) {
                     <td :colspan="2"></td>
                   </tr>
                 </template>
-                <tr v-if="utilRows.length === 0 && dormLines.length === 0">
-                  <td :colspan="12" class="bn-noro">本单无水电行</td>
-                </tr>
               </tbody>
             </table>
           </div>

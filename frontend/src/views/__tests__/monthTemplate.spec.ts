@@ -15,6 +15,7 @@ import S10View from '@/views/sales-income/S10View.vue'
 import SchedHeader from '@/components/sched/SchedHeader.vue'
 import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
 import { booksApi } from '@/api/books'
+import { companyApi } from '@/api/ledger'
 import type { Book, BookDef } from '@/types/book'
 import type { LedgerMonthDTO, LedgerRowDTO } from '@/types/ledger'
 import type { S10MonthDTO, S10RecordDTO, S10OverviewDTO } from '@/types/s10'
@@ -72,7 +73,7 @@ vi.mock('@/api/books', () => ({
   booksApi: { list: vi.fn(), templateAt: vi.fn(), versions: vi.fn(), pin: vi.fn(), saveTemplate: vi.fn() },
 }))
 vi.mock('@/api/ledger', () => ({
-  companyApi: { list: () => Promise.resolve([{ id: 9, name: '甲公司' }]) },
+  companyApi: { list: () => Promise.resolve([{ id: 9, name: '甲公司' }]), remove: vi.fn() },
   ledgerApi: {
     years: () => Promise.resolve([{ year: 2026, months: 1 }]),
     overview: (_c: number, y: number) => Promise.resolve({
@@ -136,7 +137,9 @@ describe('按月取模板 · 台账', () => {
     w.unmount()
   })
 
-  it('templateAt 挂了:不静默 —— 列退回链尾版并提示', async () => {
+  // 破坏验证:loadMonthBook 的 receipt.fail 换回页底自己的 FPToast → receipts 为空 → 红
+  it('templateAt 挂了:不静默 —— 列退回链尾版并出失败回执', async () => {
+    receipts.splice(0)
     vi.mocked(booksApi.templateAt).mockResolvedValueOnce(ledgerSep)
     const w = mount(LedgerView)
     await flushPromises()
@@ -148,7 +151,52 @@ describe('按月取模板 · 台账', () => {
     await flushPromises()
 
     expect(heads(w)).not.toContain('九月列')
-    expect(w.text()).toContain('模板版本')   // FPToast 里的那句
+    expect(receipts.map(r => [r.tone, r.text]))
+      .toEqual([['fail', '2026 年 10 月的模板版本没取到,当前按链尾版显示;请刷新重试']])
+    w.unmount()
+  })
+})
+
+// 台账屏自己的结果句走底部回执(不再是页底另一条 FPToast,和回执叠在一起)
+describe('台账 · 结果回执', () => {
+  type Vm = { removeCompany: (bookId: number) => Promise<void>; onTplPin: (ver: number) => Promise<void> }
+  async function openLedger() {
+    receipts.splice(0)
+    vi.mocked(booksApi.templateAt).mockResolvedValue(ledgerSep)
+    const w = mount(LedgerView)
+    await flushPromises()
+    return w
+  }
+
+  // 破坏验证:成功句改回「已删除「X」及其全部数据」→ 红;去掉收款账户 / 收款簿那半句 → 红
+  it('删掉公司:说清一起没掉的账册、收款账户、收款簿指定(删得掉的只有名下没数据的公司,不说「全部数据」)', async () => {
+    vi.mocked(companyApi.remove).mockResolvedValueOnce(undefined as never)
+    const w = await openLedger()
+    await (w.vm as unknown as Vm).removeCompany(1)
+    await flushPromises()
+    expect(companyApi.remove).toHaveBeenCalledWith(9)
+    expect(receipts.map(r => [r.tone, r.text]))
+      .toEqual([['ok', '已删除「甲公司」和它的账册、收款账户；收款簿里指给它的收款项已清掉']])
+    w.unmount()
+  })
+
+  // 破坏验证:409 分支去掉(直接显示后端原话)→ 红
+  it('名下还有数据(409):本地一句真话,不转述后端的「确认请再删一次」(前端不带 force,再删也是 409)', async () => {
+    vi.mocked(companyApi.remove).mockRejectedValueOnce({ code: 409, message: '「甲公司」名下还有 3 行月度台账…确认请再删一次。' })
+    const w = await openLedger()
+    await (w.vm as unknown as Vm).removeCompany(1)
+    await flushPromises()
+    expect(receipts.map(r => [r.tone, r.text])).toEqual([['fail', '「甲公司」名下还有台账、报表或催缴单，删不掉。']])
+    w.unmount()
+  })
+
+  // 破坏验证:onTplPin 的 receipt.ok 换回页底自己的 FPToast → 红
+  it('本月切到别的模板版本:底部成功回执', async () => {
+    vi.mocked(booksApi.pin).mockResolvedValueOnce(ledgerOct)
+    const w = await openLedger()
+    await (w.vm as unknown as Vm).onTplPin(4)
+    await flushPromises()
+    expect(receipts.map(r => [r.tone, r.text])).toEqual([['ok', '本月已切到模板 v4']])
     w.unmount()
   })
 })

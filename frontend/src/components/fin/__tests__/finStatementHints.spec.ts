@@ -219,6 +219,18 @@ describe('三大报表 · 提示件(useFinStatementScreen)', () => {
     expect(vi.mocked(companyApi.remove).mock.calls).toEqual([[1], [1]])
   })
 
+  // 前端不带 force,名下有数据时后端恒 409:重试永远 409,不给「重试」。破坏验证:去掉 409 分支 → 红
+  it('❗删除公司 409(名下还有数据)→ 回执说删不掉,不带「重试」', async () => {
+    const s = await setup()
+    vi.mocked(companyApi.remove).mockRejectedValueOnce({ code: 409, message: '…确认请再删一次。' })
+    const p = s.onDeleteCompany()
+    await flushPromises()
+    expect(askQueue[0].body).toBe('名下还有台账、报表或催缴单时删不掉；删除后不能撤销。')
+    answer(true); await p
+    expect(last().text).toBe('「物业公司」名下还有台账、报表或催缴单，删不掉。')
+    expect(last().action).toBeUndefined()
+  })
+
   it('❗新建公司失败 → 失败回执,弹窗不关', async () => {
     const s = await setup()
     s.onNewCompany()

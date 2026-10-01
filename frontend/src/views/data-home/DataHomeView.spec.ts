@@ -1255,8 +1255,8 @@ describe('❗审核动作期间清单不许出现空帧', () => {
     await btn(rowByText(w, '办公·三期水电'), '交审')!.trigger('click')
     await flushPromises()
     expect(reviewApi.closedMonths, '进屏一趟 + 动作后一趟').toHaveBeenCalledTimes(2)
-    // 报错走失败回执(画布 02-C),不弹浏览器框;409 照旧点明「上游还没审完」
-    expect(receipts.map(r => [r.tone, r.text])).toEqual([['fail', '上游还没审完：boom']])
+    // 报错走失败回执(画布 02-C),不弹浏览器框;409 原样报后端那句,不冠「上游还没审完」
+    expect(receipts.map(r => [r.tone, r.text])).toEqual([['fail', 'boom']])
   })
 })
 

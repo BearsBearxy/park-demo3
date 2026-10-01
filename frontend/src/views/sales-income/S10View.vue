@@ -584,7 +584,7 @@ const tenantCount = computed(() => monthData.value?.rows.length ?? 0)
 async function onImportClick() {
   const n = dirty.size
   if (n > 0 && !(await ask({
-    title: '导入会整期替换本期数据',
+    title: '导入会替换本期之前导入的行，手工录的行不动',   // 后端只删本期 source='import' 的行(S10Service.importRows)
     body: `本期有 ${n} 处改动还没保存，导入后会丢失。`,
     action: '仍要导入',
   }))) return

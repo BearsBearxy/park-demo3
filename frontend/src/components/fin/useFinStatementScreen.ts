@@ -459,7 +459,7 @@ export function useFinStatementScreen(opts: {
     if (!t) return
     if (!(await ask({
       title: `删除「${t.name}」？`,
-      body: '它的全部台账与报表数据会一起删掉，删除后不能撤销。',
+      body: '名下还有台账、报表或催缴单时删不掉；删除后不能撤销。',
       action: '删除公司',
       danger: true,
     }))) return
@@ -493,7 +493,10 @@ export function useFinStatementScreen(opts: {
         if (companies.value.length) await pickCompany(companies.value[0].id)
       }
     } catch (e) {
-      receipt.fail(errMsg(e, '删除公司失败'), { label: '重试', run: () => void confirmDelete(t) })
+      // 409 = 名下还有台账 / 报表 / 催缴单(CompanyService.delete 不带 force 时拒删)。这里不带 force,
+      // 重试永远 409,所以不给「重试」;后端那句「确认请再删一次」在这里也不成立,换成本地的真话。
+      if ((e as { code?: number })?.code === 409) receipt.fail(`「${t.name}」名下还有台账、报表或催缴单，删不掉。`)
+      else receipt.fail(errMsg(e, '删除公司失败'), { label: '重试', run: () => void confirmDelete(t) })
     }
   }
 

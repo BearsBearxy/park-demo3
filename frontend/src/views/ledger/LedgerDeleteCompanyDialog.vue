@@ -43,7 +43,7 @@ function submit() {
       <template v-if="!picked">
         <div class="lg-dlg-h">
           <h3>删除账册</h3>
-          <p>选择要删除的账册(=记账公司)。删除<b>连同全部台账/报表数据,不可恢复</b>。</p>
+          <p>选择要删除的账册(=记账公司)。名下还有台账、报表或催缴单的删不掉;删除<b>不可恢复</b>。</p>
         </div>
         <div class="lg-dlg-b">
           <div class="lg-dlg-list">
@@ -63,10 +63,11 @@ function submit() {
       <template v-else>
         <div class="lg-dlg-h">
           <h3>删除公司「{{ picked.companyName }}」</h3>
-          <p>将删除该公司,<b>连同全部台账/报表数据,不可恢复</b>。</p>
+          <!-- 收款簿的指定与收款账户是 FK 级联删的(V34 / V94),不在 409 守卫里:只当收款主体、没出过单的公司照样删得掉 -->
+          <p>将删除该公司和它的账册、收款账户;收款簿里指给它的收款项也一起清掉,以后生成催缴单时这些格是「未设置」。<b>不可恢复</b>。</p>
         </div>
         <div class="lg-dlg-b fp-fsheet-bd">
-          <FPNote tone="danger" class="lg-dlg-warn">此操作立即生效且无法撤销:该公司名下所有月份的台账行与报表数据将一并删除。</FPNote>
+          <FPNote tone="danger" class="lg-dlg-warn">此操作立即生效且无法撤销。名下还有台账、报表或催缴单时删不掉。</FPNote>
           <div class="lg-dlg-lab">请输入公司名称「{{ picked.companyName }}」以确认</div>
           <input ref="inputRef" class="lg-dlg-in" v-model="typed"
                  :placeholder="picked.companyName" @keydown.enter="submit" />

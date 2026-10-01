@@ -15,7 +15,7 @@ import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { cpMeterApi, type CpStationDTO, type CpPowerUsageDTO } from '@/api/cpMeter'
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, approxDirty } from '@/stores/auth'
 import { useFormSheet } from '@/composables/useFormSheet'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
@@ -66,7 +66,7 @@ const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, h
   useEditMode(['meter-master:edit', 'meter-reading:edit', 'billing-run:edit'], {
     scope: () => S.cpMeter(props.vehicleType, year.value),
     // 改动数(02-A 离开确认):桩名 / 电表值即时提交,没有草稿;抽屉里开着的记录行、新增桩 / 导入弹窗算一处
-    dirty: () => (adding.value || editId.value != null || stationDlg.value || importing.value ? 1 : 0),
+    dirty: approxDirty(() => (adding.value || editId.value != null || stationDlg.value || importing.value ? 1 : 0)),
   })
 // RBAC v2:桩库档案(桩名/运营商/增删)= meter-master:edit;充电记录/电表用电量/导入 = meter-reading:edit;
 // 模拟填充在本屏是「读附表7/8 整年批量派生」,属出账运行 = billing-run:edit(RBAC-SPEC §5.3-⑥)。

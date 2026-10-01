@@ -14,6 +14,14 @@ export interface Grant {
 
 /** 还没接改动数的编辑器按 1 处算。全站共用这一个引用,去重时它们只算一次(见 sumDirty)。 */
 const ONE = () => 1
+/**
+ * 「数不准」的改动数函数:只知道开着、不知道改了几处(「弹窗开着就算 1」,没接改动数的 ONE 也是)。
+ * 离开确认见到它就不报「N 处」(dirtyApproxOn → tabs.leaveOk → askLeave approx)。
+ * 标在函数上而不是 openEditor 的参数上:useEditMode / useEditLock 原样把同一个函数递给 openEditor,中间层不用改。
+ */
+const APPROX = new WeakSet<() => number>([ONE])
+/** 把改动数函数标成「数不准」,原样返回:`dirty: approxDirty(() => (dlg.value ? 1 : 0))`。 */
+export function approxDirty(f: () => number): () => number { APPROX.add(f); return f }
 
 export const useAuthStore = defineStore('auth', () => {
   // 「记住登录状态」双轨:勾选走 localStorage(跨会话),不勾走 sessionStorage(关标签页即失效)。
@@ -226,6 +234,11 @@ export const useAuthStore = defineStore('auth', () => {
   }
   /** 这一屏(页签 value)有几处没保存的改动。关页签 / 退出登录的离开确认按它问(0 不弹)。 */
   function dirtyOn(screen: string): number { return sumDirty((s) => s === screen) }
+  /** 这一屏没保存的改动里有没有「数不准」的(见 approxDirty):有就不报处数。 */
+  function dirtyApproxOn(screen: string): boolean {
+    for (const e of editors.value.values()) if (e.screen === screen && APPROX.has(e.dirty) && e.dirty() > 0) return true
+    return false
+  }
   /** 全站没保存的改动合计。关浏览器 / 刷新只在 > 0 时拦。 */
   const dirtyTotal = computed(() => sumDirty(() => true))
 
@@ -350,6 +363,6 @@ export const useAuthStore = defineStore('auth', () => {
   return { token, me, drifted, displayName, role, permissions, navLayers, roleNames, mustChangePassword,
            isAuthed, isReadonly, roleLabel, landing, roleHome,
            can, hasOwn, authorizerOf, grants: liveGrants, elevationLeftMs, requestElevation, endElevation, refreshElevation, refreshMe,
-           openEditor, closeEditor, editing, editorCount, editingOn, dirtyOn, dirtyTotal, loginSeq,
+           openEditor, closeEditor, editing, editorCount, editingOn, dirtyOn, dirtyApproxOn, dirtyTotal, loginSeq,
            login, logout, clearMustChangePassword, setToken }
 })

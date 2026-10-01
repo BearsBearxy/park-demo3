@@ -1143,6 +1143,8 @@ describe('分桩充电明细 · 提示件(S4)', () => {
     await flushPromises()
     vm.startAdd()
     expect(auth.dirtyTotal).toBe(1)
+    // 破坏验证:dirty 去掉 approxDirty 包装 → 红(离开确认会说「1 处改动」,其实只知道记录行开着)
+    expect(auth.dirtyApproxOn(''), '开着就算 1,不报处数').toBe(true)
   })
 
   it('❗抽屉开着时本月记录挂了 → 抽屉里也是全站那一种加载失败,重试就地重拉', async () => {

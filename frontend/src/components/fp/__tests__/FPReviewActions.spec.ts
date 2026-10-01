@@ -448,13 +448,14 @@ describe('审核动作簇 FPReviewActions', () => {
 
   // 破坏验证:把 run() 的三分支合成一句 receipt.fail(msg) → 红;receipt.fail 改回 alert → 红
   it('❗409 与 403 分流成两句话(合成一句用户分不出该找谁),报在底部失败回执', async () => {
-    ;(reviewApi.approve as ReturnType<typeof vi.fn>).mockRejectedValueOnce({ code: 409, message: '计费参数还没审' })
+    // 409 原样报:后端的 409 还有「当前是「已审核」,不能交审」,冠「上游还没审完」就和原话相反
+    ;(reviewApi.approve as ReturnType<typeof vi.fn>).mockRejectedValueOnce({ code: 409, message: '计费参数 当前是「已审核」,不能通过' })
     const w = mountWith({
       rows: [row(KEY, 'submitted', { submittedBy: 'lisi' })],
       perms: ['entry:edit', 'review:approve'],
     })
     await click(w, '通过')
-    expect(receipts.map(r => [r.tone, r.text])).toEqual([['fail', '上游还没审完：计费参数还没审']])
+    expect(receipts.map(r => [r.tone, r.text])).toEqual([['fail', '计费参数 当前是「已审核」,不能通过']])
 
     ;(reviewApi.approve as ReturnType<typeof vi.fn>).mockRejectedValueOnce({ code: 403, message: '没有这张表的权限' })
     await click(w, '通过')

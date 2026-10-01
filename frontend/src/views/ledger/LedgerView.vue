@@ -241,7 +241,7 @@ async function loadMonthBook() {
     if (reqId === tplReq) monthBook.value = b
   } catch {
     // 失败不静默:列会退回链尾版,可能与本月的钱(archivedCols)对不上,得让人知道
-    if (reqId === tplReq) toastVer(`${y} 年 ${m} 月的模板版本没取到,当前按链尾版显示;请刷新重试`)
+    if (reqId === tplReq) receipt.fail(`${y} 年 ${m} 月的模板版本没取到,当前按链尾版显示;请刷新重试`)
   }
 }
 watch([activeBookId, year, month], loadMonthBook)
@@ -396,9 +396,15 @@ async function removeCompany(bookId: number) {
       monthDto.value = null; gateYears.value = null; extraYears.value = []
     }
     await Promise.all([loadBooks(), loadCompanies()])
-    toastVer(`已删除「${b.name}」及其全部数据`)
+    // 删得掉的只有名下没有台账、报表、催缴单的公司(见下),所以没有「全部数据」可删:删的是公司和它的账册
+    // 收款账户、收款簿里指给它的收款项随公司级联删(V34 / V94),回执照实说
+    receipt.ok(`已删除「${b.name}」和它的账册、收款账户；收款簿里指给它的收款项已清掉`)
   } catch (e) {
-    toastVer((e as { message?: string })?.message ?? '删除失败')
+    // 409 = 名下还有台账 / 报表 / 催缴单(CompanyService.delete 不带 force 时拒删)。前端不带 force,
+    // 后端那句「确认请再删一次」再删也是 409,不成立,换成本地的真话(同 useFinStatementScreen.confirmDelete)。
+    // 弹窗失败时不关,再点「删除」就是重试,回执不另带按钮
+    if ((e as { code?: number })?.code === 409) receipt.fail(`「${b.name}」名下还有台账、报表或催缴单，删不掉。`)
+    else receipt.fail((e as { message?: string })?.message ?? '删除失败')
   } finally {
     deleting.value = false
   }
@@ -408,10 +414,6 @@ async function removeCompany(bookId: number) {
 const tplOpen = ref(false)
 const tplVersions = ref<TemplateVersion[]>([])
 const tplSaving = ref(false)
-const verToast = ref('')
-function toastVer(msg: string) {
-  verToast.value = msg
-}
 function patchBook(b: Book) {
   monthBook.value = b   // 保存/钉版回的是**本月生效**的那一版 → 列即时重算
   // 册清单里的行恒是链尾版。保存产出的新版就是链尾,顺手换上;钉旧版只抬 latestVer。
@@ -435,7 +437,7 @@ async function onTplSave(def: BookDef, note: string) {
   try {
     const res = await booksApi.saveTemplate(book.value.id, def, year.value, month.value, note || undefined)
     patchBook(res.book)
-    toastVer(`模板已升版 v${res.book.ver}(仅本月)`)
+    receipt.ok(`模板已升版 v${res.book.ver}(仅本月)`)
     tplOpen.value = false
     await loadMonth()   // 归档列/合计按新版重算
   } catch (e) {
@@ -450,7 +452,7 @@ async function onTplPin(ver: number) {
   try {
     const b = await booksApi.pin(book.value.id, ver, year.value, month.value)
     patchBook(b)
-    toastVer(`本月已切到模板 v${b.ver}`)
+    receipt.ok(`本月已切到模板 v${b.ver}`)
     await loadMonth()
   } catch (e) {
     receipt.fail((e as { message?: string })?.message ?? '切换模板版本失败', { label: '重试', run: () => void onTplPin(ver) })
@@ -486,7 +488,7 @@ async function onMapApply(decisions: ColDecision[]) {
     // map+create 合成一次 saveTemplate 持久化(P5:任何保存都升版,只把本月切过去)
     const res = await booksApi.saveTemplate(b.id, def, year.value, m, '导入列映射')
     patchBook(res.book)
-    toastVer(`模板已升版 v${res.book.ver}(仅本月)`)
+    receipt.ok(`模板已升版 v${res.book.ver}(仅本月)`)
     finishMap({ def: res.book.definition, ignore })
   } catch (e) {
     // 面板留着:用户可改决策重试或取消(取消 → resolve null → 导入按取消收场)
@@ -944,8 +946,6 @@ function gotoTenants() {
     @confirm="removeCompany"
   />
 
-  <!-- 升版提示:收编进 FPToast(LAYOUT-STABILITY §4.1 反馈提示唯一组件,审查#31) -->
-  <FPToast v-model="verToast" placement="page" :duration="4000" />
   <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
 </template>
 

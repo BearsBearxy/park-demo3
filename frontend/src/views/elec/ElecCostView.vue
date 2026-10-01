@@ -17,7 +17,7 @@ import {
 } from '@/api/elecCost'
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, approxDirty } from '@/stores/auth'
 import { useFormSheet } from '@/composables/useFormSheet'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
@@ -65,7 +65,7 @@ const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, h
   useEditMode(['entry:edit', 'param-policy:edit'], {
     scope: () => S.elecCost(year.value, month.value),
     // 改动数(02-A 离开确认):金额 / 备注 / 电价都是即时提交,没有草稿;开着的新增电表 / 导入弹窗算一处
-    dirty: () => (meterDlg.value || importing.value ? 1 : 0),
+    dirty: approxDirty(() => (meterDlg.value || importing.value ? 1 : 0)),
     // 审核键(§7.1):**elec-model**,不是 elec-cost —— 后者是附表11 的报送台账(ElecView/elec_record)。
     // 两把键 2026-09-07 用户拍板拆开;这一把没有清单行,也不进整月锁账的集合。
     reviewKey: () => (year.value && month.value

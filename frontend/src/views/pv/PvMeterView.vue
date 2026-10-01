@@ -15,11 +15,10 @@ import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { pvMeterApi, type PvStationDTO } from '@/api/pvMeter'
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, approxDirty } from '@/stores/auth'
 import { useFormSheet } from '@/composables/useFormSheet'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
-import FPToast from '@/components/fp/FPToast.vue'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
@@ -57,7 +56,7 @@ const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, h
   useEditMode(['meter-master:edit', 'meter-reading:edit'], {
     scope: () => S.pvMeter(year.value),
     // 改动数(EDIT-MODE §6.1):行内格失焦即存,没存的只有开着的写入口 —— 抽屉里的新增 / 编辑行、新增电站弹窗、导入弹窗
-    dirty: () => (adding.value || editId.value != null || stationDlg.value || importing.value ? 1 : 0),
+    dirty: approxDirty(() => (adding.value || editId.value != null || stationDlg.value || importing.value ? 1 : 0)),
   })
 // RBAC v2:电站档案(名称/容量/单价/增删)= meter-master:edit;抄表记录与导入 = meter-reading:edit。
 // 模拟填充也判 master —— 它对缺单价的电站反写 price_yuan(RBAC-SPEC §5.3-⑤),是电站单价的写旁路。
@@ -298,8 +297,8 @@ function commitStation(st: PvStationDTO, field: StationNumField, raw: string) {
     .then(() => {
       // 错价修正回路(P0-3):改价只影响之后新录,提示历史修正路径(导出「明细」sheet 改后重导即按新价重新快照)
       // 这条不是「已保存」而是一段**操作指引**(历史记录怎么修),用户可能要照着做 ——
-      // 所以 duration=0 不自动消失,由他读完自己关。
-      if (field === 'priceYuan') okMsg.value = '已保存。历史抄表记录仍按录入时单价计收益；如需按新价修正本月，请导出明细修改后重导，或删除记录重录。'
+      // 所以走警告回执:不自收、带 ×,由他读完自己关。
+      if (field === 'priceYuan') receipt.warn('已保存。历史抄表记录仍按录入时单价计收益；如需按新价修正本月，请导出明细修改后重导，或删除记录重录。')
     })
     .catch((e) => {
       st[field] = prev
@@ -444,7 +443,6 @@ async function submitStation() {
 
 // ── 导入(registry 闭环:解析→预览→确认→入库→import_log)/模板/导出 ──
 const importing = ref(false)
-const okMsg = ref('')
 const importResult = ref<ImportResultDTO | null>(null)
 // charging/pvMeter 模式:解析期行级错误暂存 ctx._parseErrors,run 时并入结果——
 // parserProps 与 runImport 必须同一 ctx 引用;每次解析整体覆写,无陈旧残留
@@ -875,7 +873,6 @@ async function onTemplate() {
     <FPLockDialogs :locked-by="lockedBy" :evicted-by="evictedBy" :scope="lockScope()"
                    :what="`光伏分栋抄表 ${year} 年`"
                    @taken="onTaken" @close-takeover="lockedBy = null" @close-evicted="evictedBy = null" />
-    <FPToast v-model="okMsg" tone="info" placement="page" :duration="0" />
   </div>
 </template>
 

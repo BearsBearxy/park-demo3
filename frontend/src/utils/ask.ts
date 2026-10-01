@@ -28,12 +28,12 @@ export function answer(ok: boolean) {
   askQueue.shift()?.resolve(ok)
 }
 
-/** 离开确认(02-A):0 处改动不弹,直接放行 */
-export function askLeave({ page, count, verb = '关闭' }: { page: string; count: number; verb?: string }): Promise<boolean> {
+/** 离开确认(02-A):0 处改动不弹,直接放行。approx = 改动数是「开着就算 1」那种(auth approxDirty),不报处数 */
+export function askLeave({ page, count, verb = '关闭', approx = false }: { page: string; count: number; verb?: string; approx?: boolean }): Promise<boolean> {
   if (count <= 0) return Promise.resolve(true)
   return ask({
     title: `${verb}「${page}」？`,
-    body: `这页有 ${count} 处改动还没保存。`,
+    body: approx ? `这页正在编辑，${verb}后没保存的内容会丢。` : `这页有 ${count} 处改动还没保存。`,
     action: `放弃改动并${verb}`,
     cancel: '继续编辑',
     danger: true,

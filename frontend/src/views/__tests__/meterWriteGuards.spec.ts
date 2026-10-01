@@ -154,7 +154,6 @@ interface MeterVm {
   meterDlg: boolean
   delPreview: MeterDeleteDTO | null
   delTyped: string
-  okMsg: string
   mForm: typeof M_FORM
   loadReadings: () => Promise<void>
   confirmDelete: () => Promise<void>
@@ -586,7 +585,24 @@ describe('园区抄表 · 导入结果与批删预览报档案改动(SPEC §3.2 
     expect(w.find('.mt5-del-list').text()).toContain('连带删除本月册子记录 9 条,删后这个月算作没导入过册子')
     await vm.confirmDelete()
     await flushPromises()
-    expect(vm.okMsg).toContain('、9 条本月册子记录。')
+    expect(receipts.map(r => r.tone), '删干净了 = 底部成功回执').toEqual(['ok'])
+    expect(receipts[0].text).toContain('、9 条本月册子记录。')
+  })
+
+  // 破坏验证:confirmDelete 里 receipt[blocked > 0 ? 'warn' : 'ok'] 写死成 'ok' → 红(跳过的表一闪就没了)
+  it('❗批量删除本期:有表档案跳过没删 → 警告回执(不自收),句里报跳过几份', async () => {
+    const w = await open()
+    const vm = vmOf(w)
+    vi.mocked(metersApi.batchDelete).mockResolvedValue({ ...DEL_DONE, meterBlocked: ['测试表C'] })
+    vm.editMode = true
+    await flushPromises()
+    vm.delPreview = { ...DEL_PREVIEW }
+    vm.delTyped = YM
+    await flushPromises()
+    await vm.confirmDelete()
+    await flushPromises()
+    expect(receipts.map(r => r.tone)).toEqual(['warn'])
+    expect(receipts[0].text).toContain('另有 1 份表档案跳过未删')
   })
 
   // ── 该月的催缴单(用户 2026-09-24「想批量删除,结果也是删不了」):三种形状各一条 ──
@@ -630,7 +646,7 @@ describe('园区抄表 · 导入结果与批删预览报档案改动(SPEC §3.2 
     await vm.confirmDelete()
     await flushPromises()
     expect(metersApi.batchDelete).toHaveBeenCalledWith(YM, { cascade: true, dropEmptyMeters: true, dropDraftNotices: true })
-    expect(vm.okMsg).toContain('、248 张草稿催缴单')
+    expect(receipts.at(-1)!.text).toContain('、248 张草稿催缴单')
   })
 
   it('❗批量删除本期 · 有已确认/已导出的单:列户名(最多 5 户,余者等 N 户),确认键禁用', async () => {

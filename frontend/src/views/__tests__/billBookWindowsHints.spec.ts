@@ -45,10 +45,12 @@ import CoefBookWindow from '@/views/bills/CoefBookWindow.vue'
 import PayBookWindow from '@/views/bills/PayBookWindow.vue'
 import CompanyBookWindow from '@/views/bills/CompanyBookWindow.vue'
 import ExportNoticeWindow from '@/views/bills/ExportNoticeWindow.vue'
+import ExportReconWindow from '@/views/bills/ExportReconWindow.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { paramsApi } from '@/api/params'
 import { billsApi } from '@/api/bills'
+import { allocApi } from '@/api/alloc'
 import { companyBookApi } from '@/api/billDelivery'
 
 // ── 夹具(按真实 DTO 声明;两期三户,有一户跨两栋) ──
@@ -239,6 +241,27 @@ describe('系数簿', () => {
     await settle()
     expect(vi.mocked(paramsApi.put).mock.calls.length).toBeGreaterThan(calls)
     expect(vm.stash.size, '重试成功,暂存清空').toBe(0)
+    expect(receipts.map(r => r.tone), '成功走底部回执,不是窗口里自己的成功条').toEqual(['fail', 'ok'])
+    expect(receipts.at(-1)!.text).toMatch(/^已保存 1 户.+ · 自 2026-03 起生效$/)
+  })
+
+  it('❗层份键保存成功:走底部成功回执(版本组那一句)', async () => {
+    vi.mocked(allocApi.pools).mockResolvedValue({ generated: true, rows: [{
+      ruleId: 1, zone: 'p2', name: 'A座·电梯', buildingId: 1, floorLabel: null, side: null, feeName: '电梯',
+      method: 'floor', stdKind: null, roundScale: 2, baseKey: null, note: null,
+      meters: [{ meterId: 5, sign: 1 }], links: [], members: [{ tenantId: 11, weight: 1, src: 'default' }],
+    }] } as never)
+    vi.mocked(allocApi.rules).mockResolvedValue([{ id: 1, feeKey: 'share_elec_elevator', coefficient: 6, extraQty: 170 }] as never)
+    vi.mocked(allocApi.updateRule).mockResolvedValue(undefined as never)
+    const w = await coefInEdit()
+    const vm = w.vm as unknown as CoefVm
+    await vm.setCoef('elevator_share')
+    vm.stash.set(11, 2)
+    await settle()
+    await w.findAll('button').find(b => b.text().startsWith('保存('))!.trigger('click')
+    await settle()
+    expect(allocApi.updateRule).toHaveBeenCalledTimes(1)
+    expect(receipts.map(r => [r.tone, r.text])).toEqual([['ok', '已保存 1 户电梯层份 · 自 2026-03 起版本组生效(整名单快照)']])
   })
 
   it('❗退出编辑:不保存 → 再问放弃(退出编辑「系数簿」),放弃后退出并清空暂存', async () => {
@@ -361,6 +384,19 @@ describe('收款簿', () => {
     expect(receipts.at(-1)).toMatchObject({ tone: 'fail', action: { label: '重试' } })
     expect(receipts.at(-1)!.text).toContain('写库失败')
   })
+
+  it('❗保存成功走底部成功回执(4 秒自收),不是窗口里自己的成功条', async () => {
+    useAuthStore().permissions = ['billing-issue:edit']
+    const w = await openPay()
+    const vm = w.vm as unknown as PayVm
+    vm.editMode = true
+    await settle()
+    vm.stash = new Map([['12|elecStd', 8]])
+    await settle()
+    await w.findAll('button').find(b => b.text().startsWith('保存('))!.trigger('click')
+    await settle()
+    expect(receipts.map(r => [r.tone, r.text])).toEqual([['ok', '已保存 1 条收款指定 · 下次生成催缴单即按新映射拆单(已生成的单需重新生成才刷新)']])
+  })
 })
 
 // ─────────────────────────────── 收款公司 ───────────────────────────────
@@ -402,10 +438,21 @@ describe('收款公司', () => {
     await w.find('.cw-pane input').setValue('一泽科技(新)')
     await w.findAll('.cw-item').find(b => b.text().includes('二源置业'))!.trigger('click')
     await settle()
-    expect(askQueue[0]).toMatchObject({ title: '离开「一泽科技」？', body: '这页有 1 处改动还没保存。', action: '放弃改动并离开' })
+    expect(askQueue[0]).toMatchObject({ title: '离开「一泽科技」？', body: '这页正在编辑，离开后没保存的内容会丢。', action: '放弃改动并离开' })
     answer(false)
     await settle()
     expect((w.find('.cw-pane input').element as HTMLInputElement).value).toBe('一泽科技(新)')
+  })
+
+  // 破坏验证:saveCompany 的 receipt.ok 换回窗里自己的 FPToast → 红
+  it('❗保存公司成功走底部成功回执,不是窗里自己那条提示(两条会在底部叠在一起)', async () => {
+    const w = await openCompany()
+    await w.find('.cw-pane input').setValue('一泽科技(新)')
+    vi.mocked(companyBookApi.update).mockResolvedValueOnce({ id: 1, name: '一泽科技(新)' } as never)
+    await w.findAll('.cw-pane button').find(b => b.text() === '保存')!.trigger('click')
+    await settle()
+    expect(receipts.map(r => [r.tone, r.text])).toEqual([['ok', '已保存「一泽科技(新)」']])
+    expect(w.find('.fpt').exists()).toBe(false)
   })
 
   it('❗保存公司失败走失败回执带「重试」', async () => {
@@ -435,7 +482,7 @@ describe('收款公司', () => {
     expect(useAuthStore().dirtyTotal).toBe(2)
     w.findComponent(FPDrawer).vm.$emit('close')
     await settle()
-    expect(askQueue[0]).toMatchObject({ title: '关闭「收款公司」？', body: '这页有 2 处改动还没保存。' })
+    expect(askQueue[0]).toMatchObject({ title: '关闭「收款公司」？', body: '这页正在编辑，关闭后没保存的内容会丢。' })
     answer(false)
     await settle()
     expect(w.emitted('close')).toBeUndefined()
@@ -705,5 +752,18 @@ describe('导出通知单', () => {
     answer(true)
     await settle()
     expect(w.emitted('export')).toHaveLength(1)
+  })
+})
+
+describe('导出对账表', () => {
+  it('❗本月没有催缴单:空状态换掉表格(不再是一张只有零总表的表);有单了表格回来', async () => {
+    const w = mount(ExportReconWindow, { props: { open: true, ym: '2026-03', notices: [] }, ...stubs })
+    mounted.push(w)
+    await settle()
+    expect(w.find('.fp-empty').text()).toContain('本月没有催缴单可对账')
+    expect(w.find('.er-table').exists(), '和表格互斥').toBe(false)
+    await w.setProps({ notices: NOTICES })
+    expect(w.find('.fp-empty').exists()).toBe(false)
+    expect(w.find('.er-table').exists()).toBe(true)
   })
 })
