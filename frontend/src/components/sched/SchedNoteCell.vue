@@ -30,7 +30,7 @@ function commit() {
     @change="commit"
     @blur="commit"
   />
-  <span v-else-if="note" class="lc-note-ro" :title="note">{{ note }}</span>
+  <span v-else-if="note" class="lc-note-ro" v-tip="note">{{ note }}</span>
   <span v-else class="lc-note-empty">—</span>
 </template>
 

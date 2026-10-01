@@ -62,12 +62,12 @@ const tipW = computed(() => {
   let m = 0
   for (const l of tipLines.value) {
     let px = 0
-    for (const ch of l) px += CJK.test(ch) ? 12 : 6.6
+    for (const ch of l) px += CJK.test(ch) ? 12 : 7.2
     m = Math.max(m, px)
   }
   return Math.ceil(m) + 20
 })
-const tipH = computed(() => 12 + tipLines.value.length * 16)
+const tipH = computed(() => 12 + tipLines.value.length * 18)
 const tipX = computed(() => {
   const b = hoverBar.value
   if (!b) return 0
@@ -112,8 +112,8 @@ const tipX = computed(() => {
 
       <template v-if="tipLines.length && hoverBar">
         <g :transform="`translate(${tipX}, ${box.padT})`">
-          <rect :width="tipW" :height="tipH" rx="8" class="auh-tip" />
-          <text v-for="(l, i) in tipLines" :key="i" x="10" :y="20 + i * 16"
+          <rect :width="tipW" :height="tipH" rx="6" class="auh-tip" />
+          <text v-for="(l, i) in tipLines" :key="i" x="10" :y="19 + i * 18"
             :class="['auh-tiptext', i === 0 ? 'auh-tiptitle' : '']">{{ l }}</text>
         </g>
       </template>
@@ -144,7 +144,7 @@ const tipX = computed(() => {
 .auh-selflab { fill: var(--text-primary); font-size: 12px; font-weight: 600; text-anchor: middle; }
 .auh-cap { fill: var(--sv-cap); font-size: 11px; text-anchor: middle; }
 .auh-of { fill: var(--sv-label); font-size: 11px; text-anchor: end; }
-.auh-tip { fill: var(--sv-tip-bg); }
-.auh-tiptext { fill: var(--sv-tip-text); font-size: 11px; font-variant-numeric: tabular-nums; }
-.auh-tiptitle { fill: var(--text-on-solid); font-weight: 600; font-size: 12px; }
+.auh-tip { fill: var(--tip-bg); }
+.auh-tiptext { fill: var(--text-on-solid); font-size: 12px; font-variant-numeric: tabular-nums; }
+.auh-tiptitle { font-weight: 600; }
 </style>

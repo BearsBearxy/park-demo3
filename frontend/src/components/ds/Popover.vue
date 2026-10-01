@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
+import { askQueue } from "@/utils/ask";
 
 export interface PopoverProps {
   /** Element that toggles the popover — pass via slot:trigger instead. */
@@ -47,6 +48,9 @@ function setOpen(v: boolean) {
 const root = ref<HTMLElement | null>(null);
 
 function onDoc(e: MouseEvent) {
+  // 确认弹窗(ask,Teleport 到 body)开着时,点它的按钮不算「点外面」:组头动作先问一句,
+  // 答完面板还得开着 —— 批量重算的逐月进度只画在面板里(FPAlertPanel)
+  if (askQueue.length) return;
   if (root.value && !root.value.contains(e.target as Node)) setOpen(false);
 }
 function onKey(e: KeyboardEvent) {

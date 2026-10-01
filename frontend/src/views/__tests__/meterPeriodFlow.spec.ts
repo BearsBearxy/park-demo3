@@ -13,6 +13,16 @@ import { usePresenceStore } from '@/stores/presence'
 import { locksApi } from '@/api/locks'
 import { S } from '@/utils/lockScopes'
 import api from '@/api'
+import { ask } from '@/utils/ask'
+import { receipts } from '@/utils/receipt'
+import { exportPvMeterMonth } from '@/utils/pvMeterExcel'
+
+// 确认弹窗(十件 ⑨)桩成可控的 promise:默认答「是」,要测「取消 / 问的途中被接管」的用例自己覆盖
+vi.mock('@/utils/ask', async (o) => ({ ...await o<typeof import('@/utils/ask')>(), ask: vi.fn() }))
+// 导出要真跑 xlsx,这里只测「失败回执带重试」那一条,桩掉
+vi.mock('@/utils/pvMeterExcel', async (o) => ({
+  ...await o<typeof import('@/utils/pvMeterExcel')>(), exportPvMeterMonth: vi.fn(), buildPvMeterTemplate: vi.fn(),
+}))
 
 /**
  * 运营账屏动线的端到端证明（2026-08-29「两本账」设计稿 §③）。
@@ -79,6 +89,8 @@ beforeEach(() => {
   vi.mocked(pvMeterApi.stations).mockResolvedValue(STATIONS as never)
   vi.mocked(pvMeterApi.readings).mockResolvedValue([] as never)
   vi.mocked(pvMeterApi.months).mockResolvedValue(['2025-01', '2025-02', '2025-03'])
+  vi.mocked(ask).mockResolvedValue(true)
+  receipts.splice(0)
 })
 
 async function open() {
@@ -208,7 +220,6 @@ describe('光伏分栋抄表 · 选期动线', () => {
     vi.mocked(pvMeterApi.months).mockClear()
 
     vi.mocked(pvMeterApi.deleteReading).mockResolvedValue(undefined as never)
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const vm = w.vm as unknown as { delRow: (id: number, d: string) => Promise<void> }
     await vm.delRow(1, '2025-08-05')
     await flushPromises()
@@ -265,11 +276,13 @@ describe('光伏分栋抄表 · 取数失败时不许猜', () => {
     expect(btn(w, '导出')!.attributes('disabled'), '失败态还能导出').toBeDefined()
   })
 
-  it('❗失败条与「本月暂无记录」不许同屏 —— 后者会被读成结论', async () => {
+  it('❗失败面与「本月还没有抄表记录」不许同屏 —— 后者会被读成结论', async () => {
     vi.mocked(pvMeterApi.readings).mockRejectedValue(new Error('后端挂了'))
     const w = await toTable()
     expect(w.find('.fp-empty.error').exists()).toBe(true)
-    expect(w.find('.pm-empty').exists(), '「暂无记录」把失败说成了「真的没有」').toBe(false)
+    // 空状态(内容区)与页面状态标签(标题旁)两处都不许说「没有」
+    expect(w.find('.fp-empty.empty').exists(), '空状态把失败说成了「真的没有」').toBe(false)
+    expect(w.text(), '标题旁标签把失败说成了「真的没有」').not.toContain('还没有抄表记录')
   })
 
   it('❗电站档案挂了 → 硬失败面 + 重试,不是永久转圈', async () => {
@@ -278,8 +291,9 @@ describe('光伏分栋抄表 · 取数失败时不许猜', () => {
     vi.mocked(pvMeterApi.stations).mockRejectedValue(new Error('档案挂了'))
     const w = await toTable()
     expect(w.find('.page-spin').exists(), '不许永久转圈').toBe(false)
-    expect(w.find('.pm-gate-fail').exists()).toBe(true)
-    expect(w.text()).toContain('电站档案加载失败')
+    expect(w.find('.fp-empty.error').exists(), '失败件(一句 + 原因 + 重试)').toBe(true)
+    expect(w.text()).toContain('电站档案没读到')
+    expect(w.text(), '后端给的原因要写出来').toContain('档案挂了')
 
     vi.mocked(pvMeterApi.stations).mockResolvedValue(STATIONS as never)
     await btn(w, '重试')!.trigger('click')
@@ -298,7 +312,7 @@ describe('光伏分栋抄表 · 取数失败时不许猜', () => {
 
     await w.findAll('.bmm-card')[2].trigger('click')   // 换月:读数这次是成功的
     await flushPromises()
-    expect(w.text(), '档案的失败被读数的成功抹掉了').toContain('电站档案加载失败')
+    expect(w.text(), '档案的失败被读数的成功抹掉了').toContain('电站档案没读到')
   })
 
   it('重试只重来挂掉的那一份', async () => {
@@ -357,7 +371,7 @@ describe('光伏分栋抄表 · 门不许在错误的时机敞开', () => {
     expect(w.find('.fp-empty.error').exists(), '失败条不该在重试一开始就消失').toBe(true)
     expect(btn(w, '导出')!.attributes('disabled'), '在途时导出必须仍禁用').toBeDefined()
     expect(w.findAll('.pm-edit'), '在途时不该冒出写入口').toHaveLength(0)
-    expect(w.find('.pm-empty').exists(), '在途时不该宣布「本月暂无」').toBe(false)
+    expect(w.text(), '在途时不该宣布「本月还没有」').not.toContain('还没有抄表记录')
   })
 
   it('❗重试成功之后门要重新打开 —— 光会关不会开就是把人永久锁在外面', async () => {
@@ -497,7 +511,7 @@ describe('光伏分栋抄表 · 门不许在错误的时机敞开', () => {
     await stale
     await flushPromises()
 
-    expect(w.text(), '成功之后不该再冒出失败文案').not.toContain('电站档案加载失败')
+    expect(w.text(), '成功之后不该再冒出失败文案').not.toContain('电站档案没读到')
     expect(w.findAll('.pm-edit').length, '数据是对的却被锁成只读').toBeGreaterThan(0)
   })
 
@@ -529,6 +543,8 @@ describe('光伏分栋抄表 · 门不许在错误的时机敞开', () => {
       props: { on: { type: Boolean, default: true } },
       template: '<KeepAlive><PvMeterView v-if="on" /></KeepAlive>',
     })
+    // 本月有记录:浏览态空月份的内容区是空状态,没有电站行可点
+    vi.mocked(pvMeterApi.readings).mockResolvedValue(MAR as never)
     const w = mount(Host, { global: { stubs: { Teleport: true } } })
     await flushPromises()
     await w.findAll('.bmm-card')[2].trigger('click')
@@ -559,14 +575,15 @@ describe('光伏分栋抄表 · 门不许在错误的时机敞开', () => {
     // 「本月读数未加载成功…别在这里录」,并把真实记录全部藏起来 —— 说了假话还删了信息。
     vi.mocked(pvMeterApi.readings).mockResolvedValue(MAR as never)
     const w = await toTable()
+    // 抽屉先开着(档案挂掉后主表让位给失败件,行就点不到了),再让档案重拉失败
+    await w.findAll('.pm-table tbody tr')[0].trigger('click')
+    await flushPromises()
     vi.mocked(pvMeterApi.stations).mockRejectedValue(new Error('档案挂了'))
     await (w.vm as unknown as { loadStations: () => Promise<void> }).loadStations()
     await flushPromises()
-    expect(w.text(), '前提:档案的失败已经上屏').toContain('电站档案加载失败')
+    expect(w.text(), '前提:档案的失败已经上屏').toContain('电站档案没读到')
 
-    await w.findAll('.pm-table tbody tr')[0].trigger('click')
-    await flushPromises()
-    expect(w.text(), '读数好好的,抽屉不该说读数没加载成功').not.toContain('本月读数未加载成功')
+    expect(w.text(), '读数好好的,抽屉不该说读数没读到').not.toContain('月的读数没读到')
     expect(w.findAll('.pm-dtable tbody tr').length, '这一站的真实记录被藏了').toBeGreaterThan(0)
   })
 })
@@ -646,6 +663,7 @@ describe('光伏分栋抄表 · 锁弹窗接线(C1/C2)', () => {
 describe('光伏分栋抄表 · 未装表行', () => {
   async function openWithNoMeter() {
     vi.mocked(pvMeterApi.stations).mockResolvedValue(STATIONS_WITH_NOMETER as never)
+    vi.mocked(pvMeterApi.readings).mockResolvedValue(MAR as never)   // 有记录的月才有表(空月浏览态是空状态)
     const w = await open()
     // 走完选期门落到表格(同上面那些用例:点第 3 个月格)
     await w.findAll('.bmm-card')[2].trigger('click')
@@ -770,5 +788,229 @@ describe('光伏分栋抄表 · 行内日期格', () => {
     dp.vm.$emit('update:modelValue', '2025-03-09')
     await flushPromises()
     expect(vm.form.readDate).toBe('2025-03-09')
+  })
+})
+
+/**
+ * 提示件替换(S4 T28,画布 02-B / 02-C / 06-B ⑤⑥⑦⑨):原生 confirm / alert 换成确认弹窗、回执、字段报错;
+ * 流内「本月暂无」虚线条换成标题旁标签 + 内容区空状态;编辑态把改动数报给关页签那道问。
+ */
+describe('光伏分栋抄表 · 提示件(确认 / 回执 / 字段报错 / 空状态)', () => {
+  async function toTable() {
+    const w = await open()
+    await w.findAll('.bmm-card')[2].trigger('click')   // 2025-03
+    await flushPromises()
+    return w
+  }
+  const vmOf = (w: VueWrapper) => w.vm as unknown as {
+    editMode: boolean; adding: boolean; form: Record<string, string>
+    startAdd: () => void; cancelForm: () => void; saveForm: () => Promise<void>
+    delRow: (id: number, d: string) => Promise<void>; onSimulate: () => Promise<void>; loadReadings: () => Promise<void>
+  }
+  /** 第一行(B 座)第 i 个行内输入框:0 名称 1 容量 2 板数 3 单块 W 4 单价 */
+  const cell = (w: VueWrapper, i: number) => w.findAll('.pm-table tbody tr')[0].findAll('input.pm-edit')[i]
+
+  it('❗本月一条读数都没有:浏览态 = 标题旁标签 + 空状态换掉表格;编辑态留着表格好点行录入', async () => {
+    const w = await toTable()   // readings 默认 []
+    expect(w.find('.pm-titlerow .fp-state').text(), '标题旁页面状态').toBe('本月还没有抄表记录')
+    expect(w.find('.fp-empty.empty').text(), '内容区空状态').toContain('2025 年 3 月还没有抄表记录')
+    expect(w.find('.pm-table').exists(), '空状态和表格互斥').toBe(false)
+
+    vmOf(w).editMode = true
+    await flushPromises()
+    expect(w.find('.pm-table').exists(), '编辑态要能点电站行进抽屉录入').toBe(true)
+    expect(w.find('.fp-empty.empty').exists()).toBe(false)
+  })
+
+  it('❗行内格填负数 → 表卡底边报字段错、那一格框红,不发请求、不走回执;改对后报错撤掉', async () => {
+    vi.mocked(pvMeterApi.updateStation).mockResolvedValue(undefined as never)
+    const w = await toTable()
+    vmOf(w).editMode = true
+    await flushPromises()
+
+    await cell(w, 1).setValue('-5')
+    expect(w.find('.pm-cellerr').text()).toBe('「B 座」装机容量：请输入非负数字')
+    expect(cell(w, 1).classes(), '出错那一格要框红').toContain('bad')
+    expect(pvMeterApi.updateStation, '负数不许写库').not.toHaveBeenCalled()
+    expect(receipts, '字段错误不走回执').toHaveLength(0)
+
+    await cell(w, 1).setValue('220')
+    await flushPromises()
+    expect(w.find('.pm-cellerr').text(), '改对了报错要撤').toBe('')
+    expect(pvMeterApi.updateStation).toHaveBeenCalledTimes(1)
+  })
+
+  it('❗电站名清空 → 字段报错,不发请求', async () => {
+    const w = await toTable()
+    vmOf(w).editMode = true
+    await flushPromises()
+    await cell(w, 0).setValue('  ')
+    expect(w.find('.pm-cellerr').text()).toBe('「B 座」电站名称：不能为空')
+    expect(pvMeterApi.updateStation).not.toHaveBeenCalled()
+  })
+
+  it('❗行内改值被后端拒 → 回滚 + 失败回执带后端原话', async () => {
+    vi.mocked(pvMeterApi.updateStation).mockRejectedValue(new Error('电站名重复'))
+    const w = await toTable()
+    vmOf(w).editMode = true
+    await flushPromises()
+    await cell(w, 0).setValue('C、D 座')
+    await flushPromises()
+    expect(receipts.map(r => [r.tone, r.text])).toEqual([['fail', '电站名重复']])
+  })
+
+  it('❗抽屉新增行没选日期 / 电量为负 → 字段报错贴在记录表下面,不发请求、不走回执', async () => {
+    vi.mocked(pvMeterApi.readings).mockResolvedValue(MAR as never)
+    const w = await toTable()
+    const vm = vmOf(w)
+    vm.editMode = true
+    await flushPromises()
+    await w.findAll('.pm-table tbody tr')[0].trigger('click')
+    await flushPromises()
+    vm.startAdd()
+    await flushPromises()
+    expect(w.find('.pm-formerr').exists(), '行展开时报错位常驻').toBe(true)
+    expect(w.find('.pm-formerr').text()).toBe('')
+
+    vm.form = { readDate: '', genTotal: '10', selfUse: '8', gridFeed: '2', note: '' }
+    await vm.saveForm()
+    await flushPromises()
+    expect(w.find('.pm-formerr').text()).toBe('请选择抄表日期')
+
+    vm.form = { readDate: '2025-03-09', genTotal: '-1', selfUse: '8', gridFeed: '2', note: '' }
+    await vm.saveForm()
+    await flushPromises()
+    expect(w.find('.pm-formerr').text()).toBe('电量不能为负')
+    expect(pvMeterApi.createReading).not.toHaveBeenCalled()
+    expect(receipts).toHaveLength(0)
+  })
+
+  it('❗抄表记录保存被后端拒(同站同日)→ 失败回执带后端原话', async () => {
+    vi.mocked(pvMeterApi.readings).mockResolvedValue(MAR as never)
+    vi.mocked(pvMeterApi.createReading).mockRejectedValue(new Error('该站 2025-03-09 已有抄表记录'))
+    const w = await toTable()
+    const vm = vmOf(w)
+    vm.editMode = true
+    await flushPromises()
+    await w.findAll('.pm-table tbody tr')[0].trigger('click')
+    await flushPromises()
+    vm.startAdd()
+    vm.form = { readDate: '2025-03-09', genTotal: '10', selfUse: '8', gridFeed: '2', note: '' }
+    await vm.saveForm()
+    await flushPromises()
+    expect(receipts.map(r => [r.tone, r.text])).toEqual([['fail', '该站 2025-03-09 已有抄表记录']])
+  })
+
+  it('❗删记录走确认弹窗(删除类):答「取消」不删', async () => {
+    const w = await toTable()
+    vmOf(w).editMode = true
+    await flushPromises()
+    vi.mocked(ask).mockResolvedValue(false)
+    await vmOf(w).delRow(1, '2025-03-05')
+    expect(ask).toHaveBeenCalledWith(expect.objectContaining({ title: '删除 2025-03-05 的抄表记录？', action: '删除', danger: true }))
+    expect(pvMeterApi.deleteReading, '答了取消还删了').not.toHaveBeenCalled()
+  })
+
+  it('❗问的途中编辑态被就地打假(接管 / 提权到期)→ 答了「删除」也不删', async () => {
+    const w = await toTable()
+    vmOf(w).editMode = true
+    await flushPromises()
+    let answer!: (ok: boolean) => void
+    vi.mocked(ask).mockImplementation(() => new Promise((res) => { answer = res }))
+    const p = vmOf(w).delRow(1, '2025-03-05')
+    vmOf(w).editMode = false
+    await flushPromises()
+    answer(true)
+    await p
+    expect(pvMeterApi.deleteReading, '浏览态下删了库').not.toHaveBeenCalled()
+  })
+
+  it('模拟填充:确认后成功回执写填充 / 跳过各几条', async () => {
+    vi.mocked(pvMeterApi.simulate).mockResolvedValue({ filled: 3, skipped: 1 } as never)
+    const w = await toTable()
+    vmOf(w).editMode = true
+    await flushPromises()
+    await vmOf(w).onSimulate()
+    await flushPromises()
+    expect(receipts.map(r => [r.tone, r.text]))
+      .toEqual([['ok', '模拟完成：填充 3 条，跳过 1 条（手工 / 导入占位、值未变或缺站）']])
+  })
+
+  it('❗导出失败 → 失败回执带「重试」,点了再导一次', async () => {
+    vi.mocked(pvMeterApi.readings).mockResolvedValue(MAR as never)
+    vi.mocked(exportPvMeterMonth).mockRejectedValue(new Error('磁盘满了'))
+    const w = await toTable()
+    await w.findAll('button').find(b => b.text().includes('导出'))!.trigger('click')
+    await flushPromises()
+    expect(receipts.map(r => [r.tone, r.text, r.action?.label])).toEqual([['fail', '磁盘满了', '重试']])
+    receipts[0].action!.run()
+    await flushPromises()
+    expect(exportPvMeterMonth).toHaveBeenCalledTimes(2)
+  })
+
+  it('❗抽屉里读数没读到 → 抽屉内失败件带重试,点了重拉本月读数', async () => {
+    vi.mocked(pvMeterApi.readings).mockResolvedValue(MAR as never)
+    const w = await toTable()
+    await w.findAll('.pm-table tbody tr')[0].trigger('click')
+    await flushPromises()
+    vi.mocked(pvMeterApi.readings).mockRejectedValue(new Error('后端挂了'))
+    await vmOf(w).loadReadings()
+    await flushPromises()
+    const drawer = w.findComponent({ name: 'FPDrawer' })
+    expect(drawer.find('.fp-empty.error').text()).toContain('2025 年 3 月的读数没读到')
+    vi.mocked(pvMeterApi.readings).mockClear()
+    await drawer.find('.fp-empty.error button').trigger('click')
+    expect(pvMeterApi.readings).toHaveBeenCalledWith(2025, 3)
+  })
+
+  it('❗改动数:抽屉里展开新增行 = 1 处(关页签要问),收起 = 0(不问)', async () => {
+    vi.mocked(pvMeterApi.readings).mockResolvedValue(MAR as never)
+    const w = await toTable()
+    const auth = useAuthStore()
+    vmOf(w).editMode = true
+    await flushPromises()
+    expect(auth.dirtyTotal, '只是进了编辑态、什么都没开').toBe(0)
+    await w.findAll('.pm-table tbody tr')[0].trigger('click')
+    await flushPromises()
+    vmOf(w).startAdd()
+    await flushPromises()
+    expect(auth.dirtyTotal, '新增行开着没存').toBe(1)
+    vmOf(w).cancelForm()
+    await flushPromises()
+    expect(auth.dirtyTotal).toBe(0)
+  })
+
+  // 删电站:删除类确认,问的是抽屉里那一座;问的途中换了站 → 答「删除电站」也不删(不拿这次确认去删另一座)
+  type StVm = { editMode: boolean; openSt: unknown; delStation: () => Promise<void> }
+  // 破坏验证:delStation 的 ask 去掉 danger → 第一条红
+  it('❗删电站走删除类确认,写的是抽屉里那一座;答「删除电站」才删', async () => {
+    vi.mocked(pvMeterApi.deleteStation).mockResolvedValue(undefined as never)
+    const w = await toTable()
+    const vm = w.vm as unknown as StVm
+    vm.editMode = true
+    await flushPromises()
+    await w.findAll('.pm-table tbody tr')[0].trigger('click')   // B 座
+    await flushPromises()
+    await vm.delStation()
+    expect(ask).toHaveBeenCalledWith(expect.objectContaining({ title: '删除电站「B 座」？', action: '删除电站', danger: true }))
+    expect(pvMeterApi.deleteStation).toHaveBeenCalledWith(1)
+  })
+
+  // 破坏验证:delStation 答完后的 `openSt.value?.id !== st.id` 去掉 → 删了 B 座 → 红
+  it('❗删电站:问的途中换成了另一座,答「删除电站」也不删', async () => {
+    const w = await toTable()
+    const vm = w.vm as unknown as StVm
+    vm.editMode = true
+    await flushPromises()
+    await w.findAll('.pm-table tbody tr')[0].trigger('click')   // B 座
+    await flushPromises()
+    let answer!: (ok: boolean) => void
+    vi.mocked(ask).mockImplementation(() => new Promise((res) => { answer = res }))
+    const p = vm.delStation()
+    vm.openSt = STATIONS[1]   // 换到 C、D 座
+    await flushPromises()
+    answer(true)
+    await p
+    expect(pvMeterApi.deleteStation).not.toHaveBeenCalled()
   })
 })

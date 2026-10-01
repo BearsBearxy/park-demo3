@@ -18,6 +18,8 @@ import AnaShell from './AnaShell.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 import { iconFor } from '@/components/ds/icon'
 import PvChips from './PvChips.vue'
@@ -71,7 +73,9 @@ const readings = ref<PvReadingDTO[]>([])
 const prevReadings = ref<PvReadingDTO[] | undefined>(undefined)
 const crit = ref<Criteria>({ ...DEFAULT_CRITERIA })
 const loading = ref(true)
-const failed = ref(false)
+/** 没读到的那一年(null = 没失败)。只在成功分支清:点「重试」在途时失败卡留在原地,不先闪回旧年内容;
+ *  记年不记布尔:失败卡留着时换了年,卡上的字仍说失败的那一年 */
+const failed = ref<number | null>(null)
 // 换年在途(C5-02):旧内容留在原地退让,不卸载。过 200ms 门槛才亮、退场立刻 —— 本地后端几十毫秒
 // 就回来的那种请求全程静默,闪一下比不显示更晃眼
 const staleShown = useDeferredFlag(loading)
@@ -145,7 +149,6 @@ const needPrev = () => section.value === 'abs'
 async function load(y: number) {
   const my = ++seq
   loading.value = true
-  failed.value = false
   try {
     const [sts, rds, cr] = await Promise.all([
       stations.value.length ? Promise.resolve(stations.value) : pvMeterApi.stations(),
@@ -158,9 +161,10 @@ async function load(y: number) {
     crit.value = cr
     loadedYear.value = y
     prevReadings.value = undefined
+    failed.value = null
     if (needPrev()) await loadPrev(y, my)
   } catch {
-    if (my === seq) failed.value = true
+    if (my === seq) failed.value = y
   } finally {
     if (my === seq) loading.value = false
   }
@@ -482,7 +486,8 @@ onDeactivated(() => { drawerOpen.value = false })
       </div>
     </div>
     <!-- skel:end -->
-    <AnaEmpty v-else-if="failed" label="分栋抄表数据没加载成功" hint="刷新重试；仍不行就到分栋抄表屏看数据在不在" />
+    <!-- 加载失败(画布 06-D 右格):换掉内容区,带重试;重试走同一个 load(首进 / 换年共用) -->
+    <FPLoadError v-else-if="failed" sub="屏上不显示别的年份的数字" @retry="load(year)">{{ failed }} 年的分栋抄表数据没读到</FPLoadError>
     <AnaEmpty
       v-else-if="!snap"
       :label="year + ' 年暂无分栋抄表记录'"
@@ -509,10 +514,10 @@ onDeactivated(() => { drawerOpen.value = false })
           :row="selRow" :ticks="snap.ticks" :tick-labels="snap.tickLabels" :gran="snap.gran"
           :elapsed-n="snap.elapsedN" :fact="fact" :unreadable="isUnreadable(selRow, snap)"
         />
-        <div v-else class="pma-note pma-nochart" :style="{ height: mainBlockH }">这一段没有已投产的楼栋，画不出逐刻度比值。</div>
+        <div v-else class="pma-nochart" :style="{ height: mainBlockH }"><FPEmpty size="sm">这一段没有已投产的楼栋，画不出逐刻度比值。</FPEmpty></div>
 
         <div class="pma-div"></div>
-        <!-- 判据脚固定两行,每行钉高、不折行:第一行判据原文 + 去改,第二行范围窗口(放不下省略,全文进 title)+ 末尾那句。
+        <!-- 判据脚固定两行,每行钉高、不折行:第一行判据原文 + 去改,第二行范围窗口(放不下省略,全文进悬停说明)+ 末尾那句。
              折行数随选中栋 / 档位变的话主卡就跟着变高(V4 §2.1 卡高恒定)。
              ≤600 换排法:第一行成两列网格(68)、第二行允许折行并显全文(32) —— 高照样两档各自钉死,见 <style> S 档块 -->
         <div v-if="foot" class="pma-b2">
@@ -521,7 +526,7 @@ onDeactivated(() => { drawerOpen.value = false })
             <button class="pma-lk" @click="gotoParams">去改</button>
           </div>
           <div class="pma-b2-r">
-            <span class="base" :title="foot.baseNote ?? undefined">{{ foot.baseNote }}</span>
+            <span v-tip="foot.baseNote" class="base">{{ foot.baseNote }}</span>
             <span class="tail">{{ foot.tail }}</span>
           </div>
         </div>
@@ -572,17 +577,17 @@ onDeactivated(() => { drawerOpen.value = false })
               />
               <div class="av2-s4 pma-stack">
                 <PvAcfBars v-if="labView.acf" :data="labView.acf" />
-                <div v-else class="av2-card"><div class="pma-note">没有够长的逐日偏差序列，画不出这张图。</div></div>
+                <div v-else class="av2-card"><FPEmpty size="sm">没有够长的逐日偏差序列，画不出这张图。</FPEmpty></div>
                 <template v-if="labShowAll">
                   <PvNullHist v-if="labView.nul" :data="labView.nul" :period="labView.period" />
-                  <div v-else class="av2-card"><div class="pma-note">选中的栋没有可用的观测段，画不出这张图。</div></div>
+                  <div v-else class="av2-card"><FPEmpty size="sm">选中的栋没有可用的观测段，画不出这张图。</FPEmpty></div>
                 </template>
               </div>
               <PvLabTable v-if="labShowAll" class="av2-s12" :rows="labView.rows" :year="snap.year" />
               <!-- 窄档只留前四块,其余两块点开才出。按钮排在最后 —— 展开只往下长,已画出来的一格不动 -->
               <button v-if="!labShowAll" type="button" class="av2-s12 pma-more" @click="labMore = true">更多分析</button>
             </template>
-            <div v-else class="av2-s12 pma-note">这一档的量还没算出来。</div>
+            <FPEmpty v-else class="av2-s12" size="sm">这一档的量还没算出来。</FPEmpty>
           </template>
 
           <!-- ── 账面量 ── -->
@@ -623,7 +628,7 @@ onDeactivated(() => { drawerOpen.value = false })
         </span>
       </template>
 
-      <div v-if="!drawer" class="pma-note">这栋可用的逐日偏离不足 8 天，画不出逐日曲线。</div>
+      <FPEmpty v-if="!drawer" size="sm">这栋可用的逐日偏离不足 8 天，画不出逐日曲线。</FPEmpty>
       <div v-else class="pma-drawer">
         <!-- 手机:四块改段控一次看一块(手机稿 §1);桌面 sheet=false,四块照旧竖排全见,这一行不出。
              切档只换渲染不重算:四块的数是 drawer 这一个 computed 一次算完的,换档不碰它。 -->
@@ -632,7 +637,7 @@ onDeactivated(() => { drawerOpen.value = false })
         </div>
         <template v-if="!sheet || tab === 'drift'">
           <PvDriftChart v-if="drawer.drift" :data="drawer.drift" />
-          <div v-else class="av2-card"><div class="pma-note">这栋可用的逐日偏离不够画出常态线，这一块不画。</div></div>
+          <div v-else class="av2-card"><FPEmpty size="sm">这栋可用的逐日偏离不够画出常态线，这一块不画。</FPEmpty></div>
         </template>
         <PvControlChart v-if="(!sheet || tab === 'ctrl') && drawer.control" :data="drawer.control" :seg-month="drawer.drift?.seg?.month ?? null" />
         <PvBetaChart v-if="!sheet || tab === 'beta'" :slots="drawer.beta" :year="snap?.year ?? year" />
@@ -674,7 +679,7 @@ onDeactivated(() => { drawerOpen.value = false })
    「占位块与大图同高」只读 CSS 文本 —— 写死多少它都绿,掩着。
    这里用视口判据而不是容器判据:大图住在 .av2-s12(整幅内容宽),两者在这一处等价
    (601–960 平板档容器仍 ≥420,走桌面 236,与 max-width:600 的分界一致)。 */
-.pma-nochart { margin-top: 12px; box-sizing: border-box; }   /* 高度由 mainBlockH 内联下发,与骨架同源 */
+.pma-nochart { margin-top: 12px; box-sizing: border-box; display: flex; flex-direction: column; }   /* 高度由 mainBlockH 内联下发,与骨架同源;FPEmpty 在里面撑满 */
 
 .pma-seg { display: flex; align-items: center; gap: 12px; min-height: 32px; }
 .pma-seghint { font-size: 11px; line-height: 1.5; color: var(--text-muted); min-width: 0; }
@@ -689,12 +694,6 @@ onDeactivated(() => { drawerOpen.value = false })
 .pma-badge {
   margin-left: auto; flex: 0 0 auto; font-size: 11px; line-height: 18px; height: 18px; padding: 0 8px;
   border-radius: 999px; background: var(--surface-sunken); color: var(--text-muted); white-space: nowrap;
-}
-
-.pma-note {
-  font-size: 11px; color: var(--text-secondary);
-  background: var(--surface-sunken); border-radius: 4px;
-  padding: 8px 10px; line-height: 1.6;
 }
 
 .pma-drawer { display: flex; flex-direction: column; gap: 8px; }

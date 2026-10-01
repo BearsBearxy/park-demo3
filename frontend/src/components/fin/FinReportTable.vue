@@ -87,11 +87,11 @@ function inputVal(r: FinTableRow, field: string): string {
             <input v-if="canSelect(r)" class="fin-ck" type="checkbox" :checked="selected?.has(r.key)" @change="emit('toggleSelect', r)" />
           </td>
           <td class="fin-c1">
-            <span class="fin-rowlabel" :class="['lv' + r.level, { label: r.type === 'label', subtotal: r.type === 'subtotal' }]" :title="r.label">
+            <span class="fin-rowlabel" :class="['lv' + r.level, { label: r.type === 'label', subtotal: r.type === 'subtotal' }]" v-tip="r.label">
               {{ r.label }}
               <span v-if="r.parentAuto && r.childCount" class="chip">{{ r.childCount }} 子类</span>
-              <button v-if="editable && r.custom" class="custom-x" title="删除子类" @click="emit('removeChild', r)"><component :is="iconFor('x')" :size="13" /></button>
-              <button v-if="editable && r.canAddChild" class="addchild" title="添加子类" @click="emit('addChild', r)"><component :is="iconFor('plus')" :size="13" /></button>
+              <button v-if="editable && r.custom" class="custom-x" v-tip="'删除子类'" @click="emit('removeChild', r)"><component :is="iconFor('x')" :size="13" /></button>
+              <button v-if="editable && r.canAddChild" class="addchild" v-tip="'添加子类'" @click="emit('addChild', r)"><component :is="iconFor('plus')" :size="13" /></button>
             </span>
           </td>
           <td><span class="fin-no">{{ r.type === 'label' || r.custom ? '' : r.no ?? r.key }}</span></td>

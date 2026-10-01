@@ -45,7 +45,7 @@ const idleMin = computed(() => Math.floor((held.value?.idleMs ?? 0) / 60000))
        与下面那颗 Button 同 min-width / 同高 —— 换的是内容不是版面(LAYOUT-STABILITY)。
        canEnter 为假(只读账号 / 园区股东)时两颗都不出:那种账号本来就没有编辑按钮,
        单给他看一句「已审核」是凭空多一条他用不上的信息。 -->
-  <span v-if="canEnter && reviewNote" class="fp-emb fp-emb-rv" :title="reviewTip ?? undefined">
+  <span v-if="canEnter && reviewNote" class="fp-emb fp-emb-rv" v-tip="reviewTip">
     <component :is="iconFor('lock')" :size="14" />{{ reviewNote }}
   </span>
   <Button

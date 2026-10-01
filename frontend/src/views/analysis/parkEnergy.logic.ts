@@ -114,7 +114,7 @@ export function buildSankeyReading(s: SankeyData): string {
 }
 
 /** §五策略2 桑基月锚:所选月有 s10 → 该月;否则 ≤所选的最近 s10 月;再无 → 最早 s10 月;全无 → null。
- *  (yms 为升序 s10 覆盖月;回退结果 ≠ 所选月时调用方必须渲染 AnaPeriodBanner,禁静默) */
+ *  (yms 为升序 s10 覆盖月;回退结果 ≠ 所选月时调用方必须在桑基卡头标出,禁静默) */
 export function anchorS10Ym(yms: string[], ym: string): string | null {
   if (!yms.length) return null
   if (yms.includes(ym)) return ym

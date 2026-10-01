@@ -4,7 +4,7 @@
 // 序号+姓名 sticky 左列,组色带,全部派生列(后端下发,不重算),签收态,tfoot 合计,种子/手动/导入角标(均可删)。
 import { computed, ref } from 'vue'
 import { iconFor } from '@/components/ds/icon'
-import Button from '@/components/ds/Button.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
 import SchedNoteCell from '@/components/sched/SchedNoteCell.vue'
 import FPWideCards, { type WideCard } from '@/components/fp/FPWideCards.vue'
 import { useViewport } from '@/composables/useViewport'
@@ -99,16 +99,9 @@ const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: px(minTableH(S1
 
 <template>
   <div class="s12-tablewrap" ref="wrapEl" :style="wrapSt">
-    <!-- 空月引导态(jsx 386-397) -->
-    <div v-if="rows.length === 0" class="s12-empty">
-      <div class="s12-empty-ic"><component :is="iconFor('wallet')" :size="24" /></div>
-      <div class="s12-empty-t">{{ year }}年{{ month }}月 暂无工资记录</div>
-      <div class="s12-empty-s">进入编辑模式可手动新增;记录自动归入对应月份。</div>
-      <Button v-if="edit" variant="filled" @click="emit('add')">
-        <template #leading><component :is="iconFor('plus')" :size="16" /></template>
-        新增工资
-      </Button>
-    </div>
+    <!-- 空月:全站同一种空状态(十件 ⑦),占住表格区居中。s12-empty-t 只留作测试钩子 -->
+    <FPEmpty v-if="rows.length === 0" class="s12-empty" sub="进入编辑模式可手动新增;记录自动归入对应月份。"
+             :action="edit ? '新增工资' : undefined" @action="emit('add')"><span class="s12-empty-t">{{ year }}年{{ month }}月 暂无工资记录</span></FPEmpty>
 
     <!-- S 档**查看态**卡列(§5.3 查看优先):整卡一个点击目标 → 只读明细抽屉看整行。
          编辑态回落原表 —— 全选框(:122)/逐行勾选(:150)/备注直编(:203)/行删除(:206)
@@ -136,7 +129,7 @@ const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: px(minTableH(S1
                 class="s12-cb"
                 :checked="allSelected"
                 :disabled="rows.length === 0"
-                title="全选"
+                v-tip="'全选'"
                 @change="emit('selectAll', ($event.target as HTMLInputElement).checked)"
               />
               <span style="font-size:11px">序号</span>
@@ -185,7 +178,7 @@ const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: px(minTableH(S1
                 type="checkbox"
                 class="s12-cb"
                 :checked="selectedIds?.has(r.id) ?? false"
-                title="选中以批量删除"
+                v-tip="'选中以批量删除'"
                 @change="emit('toggleSelect', r)"
               />
               <span>{{ i + 1 }}</span>
@@ -214,7 +207,7 @@ const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: px(minTableH(S1
           <td class="s12-c-num" :class="r.leaveDays ? 's12-c-red' : 's12-c-muted'">{{ r.leaveDays || '0' }}</td>
           <td class="s12-c-num s12-c-muted">{{ r.actualDays }}</td>
           <td class="c">
-            <span class="s12-fa" :class="r.fullAttend ? 'yes' : 'no'" :title="r.fullAttend ? '全勤' : '非全勤'">
+            <span class="s12-fa" :class="r.fullAttend ? 'yes' : 'no'" v-tip="r.fullAttend ? '全勤' : '非全勤'">
               <component :is="iconFor(r.fullAttend ? 'check' : 'minus')" :size="14" />
             </span>
           </td>
@@ -233,13 +226,13 @@ const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: px(minTableH(S1
             </span>
           </td>
           <!-- 备注 -->
-          <td class="l s12-c-note" :title="r.note ?? ''">
+          <td class="l s12-c-note">
             <SchedNoteCell :note="r.note" :edit="edit" @save="emit('note', r, $event)" />
           </td>
           <!-- 编辑态删除(seed/manual/import 同等可删) -->
           <td v-if="edit">
             <span class="s12-acts">
-              <button class="s12-actbtn del" title="删除" @click="emit('delete', r)">
+              <button class="s12-actbtn del" v-tip="'删除'" @click="emit('delete', r)">
                 <component :is="iconFor('trash-2')" :size="15" />
               </button>
             </span>
@@ -344,10 +337,8 @@ const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: px(minTableH(S1
 .s12-table tfoot .s12-c-num { color:var(--brand-deep); font-weight:var(--fw-semibold); }
 .s12-foot-lbl { text-align:left; font-size:13px; color:var(--text-primary); }
 
-.s12-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; height:100%; min-height:240px; padding:40px; text-align:center; }
-.s12-empty-ic { width:52px; height:52px; border-radius:16px; background:var(--surface-card); display:grid; place-items:center; color:var(--text-muted); }
-.s12-empty-t { font-size:15px; font-weight:var(--fw-semibold); color:var(--text-primary); }
-.s12-empty-s { font-size:13px; color:var(--text-muted); max-width:400px; line-height:1.5; }
+/* 空月:表格区是块级滚动盒,FPEmpty 的 flex 撑不开它,这里给满高才能上下居中 */
+.s12-empty { height:100%; }
 
 /* 触屏(RESPONSIVE-LAYOUT-SPEC §6.1):hover 显形的行内删除钮常显(半透明弱化,不可达=功能丢失) */
 @media (hover: none) {

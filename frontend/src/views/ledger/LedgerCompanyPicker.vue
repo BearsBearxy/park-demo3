@@ -57,7 +57,7 @@ function lgWan(v: number): string {
             <div class="l">{{ curMonth }} 月应收</div>
             <div class="v muted">{{ lgWan(statsById[c.id]?.recv ?? 0) }}</div>
           </div>
-          <button v-if="auth.can('company:manage')" class="lg-pc-del" title="删除公司" @click.stop="emit('delete-company', c)">
+          <button v-if="auth.can('company:manage')" class="lg-pc-del" v-tip="'删除公司'" @click.stop="emit('delete-company', c)">
             <component :is="iconFor('trash-2')" :size="14" />
           </button>
         </div>

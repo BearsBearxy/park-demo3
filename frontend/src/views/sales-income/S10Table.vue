@@ -9,6 +9,8 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import FPWideCards, { type WideCard } from '@/components/fp/FPWideCards.vue'
+import FPMark from '@/components/fp/FPMark.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
 import { useViewport } from '@/composables/useViewport'
 import { minTableH, numW, textW, useWideTable, type HeightDims, type WideCol } from '@/composables/useWideTable'
 import { finMoney } from '@/utils/finFmt'
@@ -131,14 +133,15 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
 }
 
 // ── 固定列与表格高度(LIST-PAGE-SPEC §9;07-C 附表10 行):租户(名称列,rank 0)→ 合计(rank 1) ──
-// 列宽按内容估,不量 DOM:租户 = 最长那一行(名字 + 未绑定点 16 + 手动签 40;编辑态再加勾选 23、删除钮 32),
+// 列宽按内容估,不量 DOM:租户 = 最长那一行(名字 + 「● 未绑定」标记 56 + 手动签 40;编辑态再加勾选 23、删除钮 32),
 // 封顶可见宽 1/5,超了名字省略、悬停看全称;合计 = 整列最长的数(含总计),不省略。
 // 左右各只有一根,offset 恒 0;宽度只决定合计退不退(两根加起来 > 40% 可见宽就退)。
 const S10_H: HeightDims = { grpH: 34, leafH: 34, rowH: 38, footH: 42 }
 const cellW = (text: string, extra = 0) => textW([text], 12.5, 28) + extra
-// 格里除名字外不缩的件(各含间距 8):编辑态勾选 23、未绑定点 16、手动签 40、编辑态删除钮 32
+// 格里除名字外不缩的件(各含间距 8):编辑态勾选 23、未绑定标记 56(FPMark 点 6、间距 4、三个字)、手动签 40、编辑态删除钮 32
+const UNBOUND_W = 8 + textW(['未绑定'], 12, 10)
 const extraW = (r: S10RecordDTO, e: boolean) =>
-  (e ? 23 : 0) + (r.tenantId == null ? 16 : 0) + (r.source !== 'seed' ? 40 + (e ? 32 : 0) : 0)
+  (e ? 23 : 0) + (r.tenantId == null ? UNBOUND_W : 0) + (r.source !== 'seed' ? 40 + (e ? 32 : 0) : 0)
 const wideCols = computed<WideCol[]>(() => {
   const e = props.edit
   const t = totals.value
@@ -173,7 +176,7 @@ const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: px(minTableH(S1
 //   amount ← 桌面最右 sticky『合计』列 td.s10-c-total       = totals.byRow(浏览态即后端 r.total)
 //   sub    ← 桌面『备注』列 td.s10-c-note                   = r.note(无备注则不画这一行)
 //   pill   ← 桌面行内**已有**的两个状态标记,按桌面的优先级复用同一判据与同一措辞:
-//              未绑定 = r.tenantId == null(.s10-unbound-dot;与工具条「未绑定 N」同一判据)
+//              未绑定 = r.tenantId == null(.s10-unbound 标记;与工具条「未绑定 N」同一判据)
 //              手动   = r.source !== 'seed'(.s10-userbadge)
 //              两者都不成立(已绑定的种子行)= 不画胶囊,与桌面行上什么都不显示一致。
 // 稿点名的『本年合计』『当月计费』两栏:本屏一次只加载一个月(S10MonthDTO),行 DTO 上
@@ -201,18 +204,12 @@ function s10Card(r: S10RecordDTO): WideCard {
 
 <template>
   <div class="s10-wrap" ref="wrapEl" :style="wrapSt">
-    <!-- 空态（jsx 364-375） -->
-    <div v-if="props.rows.length === 0" class="s10-empty">
-      <div class="s10-empty-ic"><component :is="iconFor('receipt')" :size="24" /></div>
-      <div class="s10-empty-t">{{ year }} 年 {{ month }} 月 · {{ phaseName }} 暂无收款记录</div>
-      <div class="s10-empty-s">该月尚未录入。进入编辑模式后可导入 Excel,或手动新增租户。</div>
-      <div v-if="edit"><button class="s10-emptybtn" @click="emit('add')">
-        <component :is="iconFor('plus')" :size="16" />新增租户
-      </button></div>
-      <button v-else class="s10-emptybtn" @click="emit('edit')">
-        <component :is="iconFor('pencil')" :size="16" />编辑模式
-      </button>
-    </div>
+    <!-- 空状态(十件 ⑦:占住内容区,一句 + 副句 + 一个按钮) -->
+    <FPEmpty v-if="props.rows.length === 0" class="s10-empty"
+             sub="该月尚未录入。进入编辑模式后可导入 Excel,或手动新增租户。"
+             :action="edit ? '新增租户' : '编辑模式'" @action="edit ? emit('add') : emit('edit')">
+      {{ year }} 年 {{ month }} 月 · {{ phaseName }} 暂无收款记录
+    </FPEmpty>
 
     <!-- S 档浏览态:卡列(整卡点击 = 桌面点租户名的同一条动线 bindRow → S10BindDrawer) -->
     <FPWideCards
@@ -236,7 +233,7 @@ function s10Card(r: S10RecordDTO): WideCard {
                 class="s10-cb"
                 :checked="allSelected"
                 :disabled="selectableRows.length === 0"
-                title="全选可删行"
+                v-tip="'全选可删行'"
                 @change="emit('selectAll', ($event.target as HTMLInputElement).checked)"
               />
               <span>租户</span>
@@ -277,22 +274,20 @@ function s10Card(r: S10RecordDTO): WideCard {
                 class="s10-cb"
                 :checked="selectedIds?.has(r.id) ?? false"
                 :disabled="r.source === 'seed'"
-                title="选中以批量删除"
+                v-tip="'选中以批量删除'"
                 @change="emit('toggleSelect', r)"
               />
               <!-- 名字两态统一为可点击文本:账面名/绑定都在行抽屉里改(与园区抄表同一动线,
                    用户 2026-08-23 拍板「不在表格上直接修改」) -->
               <span class="s10-tname act" v-tip="{ text: r.tenantName, sub: '点击查看/绑定租户' }"
                     @click="emit('bindRow', r)">{{ r.tenantName }}</span>
-              <!-- 未绑定:紧凑圆点(文字胶囊会挤长租户名,与台账 .lg-unbound-dot 对齐,2026-08-24 拍板);
-                   语义进 title,点击仍触发 bindRow -->
-              <span v-if="r.tenantId == null" class="s10-unbound-dot" title="未绑定租户档案 · 点击处理"
-                    @click="emit('bindRow', r)"></span>
+              <!-- 未绑定:就地标记 点 + 字(十件 ①,与台账同形;原来只有圆点、意思全靠 title),点击仍触发 bindRow -->
+              <FPMark v-if="r.tenantId == null" tone="warn" class="s10-unbound" @click="emit('bindRow', r)">未绑定</FPMark>
               <span v-if="r.source !== 'seed'" class="s10-userbadge">手动</span>
               <button
                 v-if="edit && r.source !== 'seed'"
                 class="s10-del"
-                title="删除该租户"
+                v-tip="'删除该租户'"
                 @click="emit('delete', r)"
               ><component :is="iconFor('trash-2')" :size="14" /></button>
             </span>
@@ -392,12 +387,8 @@ function s10Card(r: S10RecordDTO): WideCard {
 .s10-cb:disabled { cursor:not-allowed; opacity:.4; }
 .s10-tname { font-weight:var(--fw-medium); color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; min-width:0; }
 .s10-userbadge { display:inline-flex; align-items:center; height:17px; padding:0 6px; border-radius:var(--radius-full); background:var(--accent-sky); color:var(--hue-blue); font-size:10px; font-weight:var(--fw-semibold); flex:0 0 auto; }
-/* 未绑定:紧凑圆点(琥珀描边,warning 语义);完整提示走 title(对齐台账 .lg-unbound-dot) */
-.s10-unbound-dot {
-  flex:0 0 auto; width:8px; height:8px; border-radius:50%;
-  border:2px solid var(--status-warning); background:transparent; box-sizing:border-box;
-  cursor:pointer;
-}
+/* 未绑定标记:名字超宽时省略的是名字,标记不缩 */
+.s10-unbound { flex:0 0 auto; cursor:pointer; }
 .s10-tname.act { cursor: pointer; }
 .s10-tname.act:hover { color: var(--hue-blue); }
 .s10-del { width:24px; height:24px; border:none; background:transparent; border-radius:6px; color:var(--text-disabled); cursor:pointer; display:grid; place-items:center; flex:0 0 auto; margin-left:auto; opacity:0; }
@@ -422,12 +413,8 @@ function s10Card(r: S10RecordDTO): WideCard {
 .s10-table tfoot .s10-foot-note { background:var(--surface-white); }
 
 /* 空态 */
-.s10-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; height:100%; min-height:280px; padding:40px; text-align:center; }
-.s10-empty-ic { width:52px; height:52px; border-radius:16px; background:var(--surface-card); display:grid; place-items:center; color:var(--text-muted); }
-.s10-empty-t { font-size:15px; font-weight:var(--fw-semibold); color:var(--text-primary); }
-.s10-empty-s { font-size:13px; color:var(--text-muted); max-width:420px; line-height:1.5; }
-.s10-emptybtn { display:inline-flex; align-items:center; gap:7px; height:38px; padding:0 18px; border:none; border-radius:var(--radius-full); background:var(--ink-900); color:var(--control-solid-text); cursor:pointer; font-family:var(--font-sans); font-size:13.5px; font-weight:var(--fw-medium); }
-.s10-emptybtn:hover { background:var(--control-solid-hover); }
+/* 空状态撑满表格区(.s10-wrap 是块级滚动容器,FPEmpty 自己的 flex 撑不开) */
+.s10-empty { height:100%; }
 
 /* 深链定位行:2s 高亮渐隐(结束后还原表格自身背景) */
 tr.row-flash td { animation: s10-row-flash var(--dur-highlight) var(--ease-standard); }

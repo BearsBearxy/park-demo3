@@ -135,7 +135,7 @@ describe('§5.6 第 2 类 · TemplateEditorPanel 版本链(有序 → 摘要 + �
     await flushPromises()
     await nextTick()
     expect(w.find('.te-vers').exists(), '选完要把面板收起来,不然挡着预览').toBe(false)
-    expect(w.find('.te-histbar').text()).toContain('正在查看 v3')
+    expect(w.find('.te-titlerow .fp-state').text()).toContain('正在查看 v3')
   })
 
   it('❗XL 档:仍是右侧纵向链,没有摘要行;定宽 232 原样', () => {

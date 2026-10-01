@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
 import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
-import type { LockHolder } from '@/api/locks'
+import { locksApi, type LockHolder } from '@/api/locks'
 
 const holder: LockHolder = {
   user: 'lisi', displayName: '李四', heldMs: 60_000, idleMs: 1_000, idle: false,
@@ -44,5 +44,29 @@ describe('FPLockDialogs', () => {
     const w = mk({})
     expect(w.find('.tk-body').exists()).toBe(false)
     expect(w.find('.evd-scrim').exists()).toBe(false)
+  })
+})
+
+describe('FPTakeoverDrawer · 块内提示与字段报错', () => {
+  const td = (h: LockHolder) => mount(FPTakeoverDrawer, {
+    props: { holder: h, scope: 'billing-chain:2024-02', what: '公共电核算 2024-02' },
+    global: { stubs: { teleport: true } },
+  })
+
+  it('持有人空闲:「未保存的内容要他自己复制走」是块内提示 FPNote 黄档', () => {
+    const w = td({ ...holder, idle: true, idleMs: 25 * 60_000 })
+    expect(w.find('.fp-note.warn').text()).toContain('他未保存的内容需要他自己复制走')
+  })
+
+  it('接管失败:错误落在常驻的 .fp-field-err 里,没出错时这一行也占着', async () => {
+    const w = td({ ...holder, idle: true, idleMs: 25 * 60_000 })
+    expect(w.find('.fp-field-err').exists(), '常驻占位:出错前就在').toBe(true)
+    expect(w.find('.fp-field-err').text()).toBe('')
+    const spy = vi.spyOn(locksApi, 'takeover').mockRejectedValueOnce({ message: '锁已被别人接走' })
+    await w.findAll('button').find(b => b.text() === '确认接管')!.trigger('click')
+    await flushPromises()
+    expect(spy).toHaveBeenCalled()
+    expect(w.find('.fp-field-err').text()).toBe('锁已被别人接走')
+    spy.mockRestore()
   })
 })

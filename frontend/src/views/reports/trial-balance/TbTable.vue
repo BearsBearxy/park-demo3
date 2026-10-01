@@ -59,7 +59,7 @@ function inputVal(r: TbAccount, field: TbFieldKey): string {
         <tr v-for="r in rows" :key="r.rowKey">
           <td>
             <span class="tb-codebox">
-              <input v-if="editable" class="tb-ck" type="checkbox" title="选择科目(批量删除)" :checked="selected?.has(r.rowKey)" @change="emit('select', r.rowKey)" />
+              <input v-if="editable" class="tb-ck" type="checkbox" v-tip="'选择科目(批量删除)'" :checked="selected?.has(r.rowKey)" @change="emit('select', r.rowKey)" />
               <span class="tb-code">{{ r.code ?? '' }}</span>
             </span>
           </td>
@@ -69,12 +69,12 @@ function inputVal(r: TbAccount, field: TbFieldKey): string {
                 v-if="parents.has(r.rowKey)"
                 class="tb-caret"
                 :class="{ open: expanded.has(r.rowKey) }"
-                :title="expanded.has(r.rowKey) ? '收起下级' : '展开下级'"
+                v-tip="expanded.has(r.rowKey) ? '收起下级' : '展开下级'"
                 @click="emit('toggle', r.rowKey)"
               ><component :is="iconFor('chevron-right')" :size="14" /></button>
               <span v-else class="tb-caret-ph" />
               <span class="tb-name">{{ r.label }}</span>
-              <button v-if="editable" class="tb-x" title="删除科目(含下级)" @click="emit('remove', r.rowKey)"><component :is="iconFor('x')" :size="13" /></button>
+              <button v-if="editable" class="tb-x" v-tip="'删除科目(含下级)'" @click="emit('remove', r.rowKey)"><component :is="iconFor('x')" :size="13" /></button>
             </span>
           </td>
           <td v-for="f in TB_FIELDS" :key="f.key">

@@ -19,6 +19,7 @@ import type { Book, BookDef } from '@/types/book'
 import type { LedgerMonthDTO, LedgerRowDTO } from '@/types/ledger'
 import type { S10MonthDTO, S10RecordDTO, S10OverviewDTO } from '@/types/s10'
 import { FEE_KEYS } from '@/utils/ledgerColumns'
+import { receipts } from '@/utils/receipt'
 
 // ── 夹具:链尾版与各月版本各带一个专属列名,断言直接看表头上是哪一版 ──
 const defWith = (id: string, label: string): BookDef => ({
@@ -174,8 +175,8 @@ describe('按月取模板 · 附表10', () => {
     w.unmount()
   })
 
-  it('templateAt 挂了:不静默 —— 列退回链尾版并提示(本屏报错口径是 alert)', async () => {
-    const alerted = vi.spyOn(window, 'alert').mockImplementation(() => {})
+  it('templateAt 挂了:不静默 —— 列退回链尾版并提示(本屏报错口径是失败回执)', async () => {
+    receipts.splice(0)
     vi.mocked(booksApi.templateAt).mockResolvedValueOnce(s10Sep)
     const w = mount(S10View)
     await flushPromises()
@@ -187,8 +188,7 @@ describe('按月取模板 · 附表10', () => {
     await flushPromises()
 
     expect(heads(w)).not.toContain('九月列')
-    expect(alerted).toHaveBeenCalled()
-    alerted.mockRestore()
+    expect(receipts.map(r => [r.tone, r.text])).toEqual([['fail', '网络挂了']])
     w.unmount()
   })
 })

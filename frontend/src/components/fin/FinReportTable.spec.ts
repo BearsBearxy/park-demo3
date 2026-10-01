@@ -78,4 +78,16 @@ describe('FinReportTable', () => {
     expect(trs[1].find('.addchild').exists()).toBe(true)
     expect(trs[1].find('.custom-x').exists()).toBe(true)
   })
+
+  // 2026-10-01 悬停说明(十件 ⑩)走 v-tip,挂在元素的 _tip 上;组件里不再有浏览器 title
+  it('行名、删除子类 / 添加子类两颗图标钮的悬停说明走 v-tip', () => {
+    const tip = (el: Element) => (el as HTMLElement & { _tip?: { text: string } })._tip?.text
+    const one: FinTableRow[] = [{ key: 'isc-1', label: '一期租户', level: 1, type: 'normal', custom: true, canAddChild: true }]
+    const w = mount(FinReportTable, { props: { rows: one, columns, valueOf, editable: true } })
+    expect(tip(w.get('.fin-rowlabel').element)).toBe('一期租户')
+    expect(tip(w.get('.custom-x').element)).toBe('删除子类')
+    expect(tip(w.get('.addchild').element)).toBe('添加子类')
+    expect(w.get('.addchild').attributes('aria-label'), '图标钮没有字,读屏靠它').toBe('添加子类')
+    expect(w.element.querySelector('[title]')).toBeNull()
+  })
 })

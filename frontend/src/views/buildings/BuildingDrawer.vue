@@ -16,10 +16,11 @@ import type { BuildingDTO, BuildingDetailDTO, BuildingUpdateReq, UnitDTO } from 
 import type { UnitDTO as MapUnit } from '@/components/fp/FPUnitMap.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFormSheet } from '@/composables/useFormSheet'
+import { ask } from '@/utils/ask'
+import { receipt } from '@/utils/receipt'
 
 const auth = useAuthStore()
-// 编辑单元弹卡带输入 → S 档全屏 sheet;两个删除确认只有一句话 + 两个钮,按判据仍是居中小卡
-// (styles/form-sheet.css)。
+// 编辑单元弹卡带输入 → S 档全屏 sheet(styles/form-sheet.css);两个删除确认走 ask(十件 ⑨)。
 const sheet = useFormSheet()
 
 const props = defineProps<{
@@ -34,9 +35,17 @@ const emit = defineEmits<{ close: []; edit: []; delete: []; refreshed: [Building
 
 const selUnit = ref<UnitDTO | null>(null)
 
-// 删除确认弹窗(样式自带,结构参考 FinDialogs delco 的 .fin-mask/.fin-dlg)
-const delConfirm = ref(false)
-function confirmDelete() { delConfirm.value = false; emit('delete') }
+// 删楼栋:问句标题、正文给数、主按钮写动作本身;答「删除楼栋」才上抛,请求在 BuildingsView 里发
+async function askDelete() {
+  const x = b.value
+  if (!x) return
+  if (await ask({
+    title: `删除「${x.name}」？`,
+    body: `楼内 ${x.unitCount} 个单元会一并删除，删除后不能撤销。有合同的楼栋删不了。`,
+    action: '删除楼栋',
+    danger: true,
+  })) emit('delete')
+}
 
 // reset selection when drawer opens new building
 // FPUnitMap 回传的就是本组件经 :building 传入的完整 UnitDTO,仅事件签名较窄,cast 回来
@@ -76,6 +85,11 @@ function resetSel() { selUnit.value = null }
 
 // ─── 楼层/单元管理 ─────────────────────────────────────────
 const errMsg = (e: unknown) => (e as { message?: string })?.message ?? '操作失败'
+// 写失败报回执(十件 ⑧,不自收)带「重试」;编辑单元弹窗里的错误仍贴在字段下面
+function fail(what: string, e: unknown, run: () => void) {
+  const m = (e as { message?: string })?.message
+  receipt.fail(m ? `${what}：${m}` : what, { label: '重试', run })
+}
 // ds/Select 的 value 一律字符串,楼层号进出各转一次
 const floorOpts = computed(() =>
   Array.from({ length: b.value?.floorCount ?? 0 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}F` })))
@@ -92,7 +106,7 @@ async function refresh() {
 async function onAddUnit(floor: number) {
   if (!b.value) return
   try { await buildingApi.addUnit(b.value.id, { floor }); await refresh() }
-  catch (e) { alert(errMsg(e)) }
+  catch (e) { fail('添加单元失败', e, () => void onAddUnit(floor)) }
 }
 
 // 换层(unitNo/面积不变,仅改 floor)
@@ -104,8 +118,12 @@ async function onMoveFloor(v: string) {
   const u = selUnit.value
   const f = +v
   if (!u || f === u.floor) return
+  await moveOne(u, f)
+}
+// 重试钉住当时那块单元:回执还挂着时选中项可能已换
+async function moveOne(u: UnitDTO, f: number) {
   try { await moveUnitToFloor(u, f); await refresh() }
-  catch (err) { alert(errMsg(err)) }
+  catch (err) { fail('换层失败', err, () => void moveOne(u, f)) }
 }
 // 在租租户行「换层」快捷:对该租户在本栋的全部单元执行换层
 // model-value 恒为 ''(纯动作触发器),选完自动回到 placeholder「换层」
@@ -115,7 +133,7 @@ async function onTenantMove(tUnits: UnitDTO[], v: string) {
   try {
     for (const u of tUnits) if (u.floor !== f) await moveUnitToFloor(u, f)
     await refresh()
-  } catch (err) { alert(errMsg(err)); await refresh() }
+  } catch (err) { fail('换层失败', err, () => void onTenantMove(tUnits, v)); await refresh() }
 }
 
 // 编辑单元(小弹窗改 unitNo/面积)
@@ -146,13 +164,19 @@ async function submitUnitEdit() {
 }
 
 // 删除单元(有合同后端 409)
-const delUnitConfirm = ref(false)
-async function confirmDeleteUnit() {
+async function askDeleteUnit() {
   const u = selUnit.value
   if (!u) return
-  delUnitConfirm.value = false
+  if (await ask({
+    title: `删除单元「${u.floor}F-${u.unitNo}」？`,
+    body: '删除后不能撤销。有合同记录的单元删不了。',
+    action: '删除单元',
+    danger: true,
+  })) await deleteUnit(u)
+}
+async function deleteUnit(u: UnitDTO) {
   try { await buildingApi.removeUnit(u.id); await refresh() }
-  catch (e) { alert(errMsg(e)) }
+  catch (e) { fail('删除单元失败', e, () => void deleteUnit(u)) }
 }
 
 // 楼层管理:BuildingUpdateReq 是全量 PUT,从当前 DTO 组装完整 body
@@ -169,12 +193,12 @@ const canRemoveTop = computed(() => !!b.value && b.value.floorCount > 1 && !topH
 async function addFloor() {
   if (!b.value) return
   try { await buildingApi.update(b.value.id, updBody(b.value.floorCount + 1)); await refresh() }
-  catch (e) { alert(errMsg(e)) }
+  catch (e) { fail('添加楼层失败', e, () => void addFloor()) }
 }
 async function removeTopFloor() {
   if (!b.value || !canRemoveTop.value) return
   try { await buildingApi.update(b.value.id, updBody(b.value.floorCount - 1)); await refresh() }
-  catch (e) { alert(errMsg(e)) }
+  catch (e) { fail('删除顶层失败', e, () => void removeTopFloor()) }
 }
 
 // 新增合同(锁定当前楼栋),成功后刷新 drawer detail + 上抛列表刷新
@@ -202,7 +226,7 @@ async function onContractCreated() {
     <template #footer>
       <!-- 危险态跟全站多数派(TenantDrawer/ContractDrawer 页脚删除)统一走 danger:
            原来和旁边「编辑楼栋」同为 gray,一眼分不出,误点即连带删掉栋内全部单元 -->
-      <Button v-if="auth.can('master:edit')" variant="danger" size="sm" @click="delConfirm = true">
+      <Button v-if="auth.can('master:edit')" variant="danger" size="sm" @click="askDelete">
         <template #leading><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></template>
         删除
       </Button>
@@ -255,7 +279,7 @@ async function onContractCreated() {
               v-if="auth.can('master:edit')"
               variant="outline" size="sm"
               :disabled="!canRemoveTop"
-              :title="topHasUnits ? '顶层存在单元,不可删除' : ((b?.floorCount ?? 0) <= 1 ? '至少保留一层' : undefined)"
+              v-tip="topHasUnits ? '顶层存在单元,不可删除' : ((b?.floorCount ?? 0) <= 1 ? '至少保留一层' : undefined)"
               @click="removeTopFloor"
             >删除顶层</Button>
           </span>
@@ -290,13 +314,13 @@ async function onContractCreated() {
           <!-- 合同派生面积(S15 服务刀字段):单元未录面积时给占用合同的租赁面积兜底展示 -->
           <span v-if="!selUnit.area && selUnit.derivedArea"
                 style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono)"
-                title="合同派生面积:单元未录面积,取占用合同计费行面积(绑定行Σ,无绑定按同类型行均摊)">≈{{ selUnit.derivedArea.toLocaleString('en-US') }} ㎡ 合同</span>
+                v-tip="'合同派生面积:单元未录面积,取占用合同计费行面积(绑定行Σ,无绑定按同类型行均摊)'">≈{{ selUnit.derivedArea.toLocaleString('en-US') }} ㎡ 合同</span>
         </span>
         <span style="display:flex;align-items:center;gap:8px">
           <!-- 跨栋占用(S15 服务刀字段):经附加单元挂入的外栋合同 -->
           <span v-if="selUnit.crossBuilding"
                 style="font-size:11.5px;color:var(--slate-text);background:var(--accent-slate);padding:2px 8px;border-radius:999px"
-                title="跨栋占用:该单元由其他楼栋的合同经附加单元挂入">跨栋{{ selUnit.homeBuildingName ? ' · ' + selUnit.homeBuildingName : '' }}</span>
+                v-tip="'跨栋占用:该单元由其他楼栋的合同经附加单元挂入'">跨栋{{ selUnit.homeBuildingName ? ' · ' + selUnit.homeBuildingName : '' }}</span>
           <span style="font-size:12px;color:var(--text-muted)">{{ STATUS_LABEL[selUnit.status] }}</span>
         </span>
       </div>
@@ -324,7 +348,7 @@ async function onContractCreated() {
         </label>
         <span style="flex:1"></span>
         <Button variant="outline" size="sm" @click="openUnitDlg">编辑单元</Button>
-        <Button variant="outline" size="sm" @click="delUnitConfirm = true">删除单元</Button>
+        <Button variant="outline" size="sm" @click="askDeleteUnit">删除单元</Button>
       </div>
     </div>
 
@@ -348,7 +372,7 @@ async function onContractCreated() {
           <span style="font-family:var(--font-mono);font-size:12.5px;font-weight:var(--fw-semibold)">{{ fpMoney(t.rent) }}</span>
           <Select
             v-if="auth.can('master:edit')"
-            size="sm" placeholder="换层" title="将该租户单元移至目标楼层"
+            size="sm" placeholder="换层" v-tip="'将该租户单元移至目标楼层'"
             :options="floorOpts" :model-value="''"
             :style="{ width: '84px', flex: '0 0 auto' }"
             @update:model-value="onTenantMove(t.units, $event)"
@@ -363,22 +387,6 @@ async function onContractCreated() {
       <p style="margin:0;font-size:13px;color:var(--text-secondary);line-height:1.6">{{ b.remark }}</p>
     </div>
   </FPDrawer>
-
-  <!-- 删除确认弹窗 -->
-  <Teleport to="body">
-    <div v-if="delConfirm && b" class="bd-mask" @mousedown="delConfirm = false">
-      <div class="bd-dlg" role="dialog" aria-modal="true" @mousedown.stop>
-        <div class="bd-dlg-h">
-          <h3>删除楼栋</h3>
-          <p>确认删除“{{ b.name }}”?其全部单元将一并删除,此操作不可撤销。有合同的楼栋不可删除。</p>
-        </div>
-        <div class="bd-dlg-f">
-          <Button variant="gray" size="sm" @click="delConfirm = false">取消</Button>
-          <Button variant="danger" size="sm" @click="confirmDelete">确认删除</Button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
 
   <!-- 编辑单元弹窗 -->
   <Teleport to="body">
@@ -399,27 +407,11 @@ async function onContractCreated() {
             <input class="bd-in" type="number" min="0" v-model.number="uArea" placeholder="0"
                    @input="uErr = ''" @keydown.enter="submitUnitEdit" />
           </div>
-          <div class="bd-erm">{{ uErr }}</div>
+          <p class="fp-field-err"><template v-if="uErr">{{ uErr }}</template></p>
         </div>
         <div class="bd-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="unitDlg = false">取消</Button>
           <Button variant="filled" size="sm" @click="submitUnitEdit">保存</Button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
-
-  <!-- 删除单元确认弹窗 -->
-  <Teleport to="body">
-    <div v-if="delUnitConfirm && selUnit" class="bd-mask" @mousedown="delUnitConfirm = false">
-      <div class="bd-dlg" role="dialog" aria-modal="true" @mousedown.stop>
-        <div class="bd-dlg-h">
-          <h3>删除单元</h3>
-          <p>确认删除单元“{{ selUnit.floor }}F-{{ selUnit.unitNo }}”?此操作不可撤销。存在合同记录的单元不可删除。</p>
-        </div>
-        <div class="bd-dlg-f">
-          <Button variant="gray" size="sm" @click="delUnitConfirm = false">取消</Button>
-          <Button variant="danger" size="sm" @click="confirmDeleteUnit">确认删除</Button>
         </div>
       </div>
     </div>
@@ -450,7 +442,6 @@ async function onContractCreated() {
 .bd-in { width:100%; box-sizing:border-box; height:40px; padding:0 12px; font-size:13.5px; color:var(--text-primary); border:1px solid var(--border-control); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
 .bd-in:focus { border-color:var(--hue-blue); }
 .bd-in.err { border-color:var(--hue-red); }
-.bd-erm { font-size:11.5px; color:var(--hue-red); min-height:14px; }
 
 /* 楼层单元图加载骨架(高度由内联 min-height 给,按楼层数估) */
 .bd-mapskel { background:var(--bg-sunken); border-radius:var(--radius-lg); }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 未绑定租户问题面板(V105):台账 / 附表10 共用。每个账面名一张卡:
+// 未绑定租户问题清单(V105):台账 / 附表10 共用,放在「未绑定」入口胶囊的问题面板(FPAlertPanel)默认插槽里。每个账面名一张卡:
 // 出现位置 + 金额 + 可一键绑定的精确命中 / 相近候选(子租户前缀·剥后缀·一字之差) + 手动选择器。
 // 只读态(canAct=false)整面板可看不可操作——绑定是写,走编辑模式门(EDIT-MODE-SPEC §①)。
 import { ref, computed } from 'vue'
@@ -7,6 +7,8 @@ import { suggestBind, type BindSuggestion } from '@/utils/tenantSuggest'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import type { FPTenantOption } from '@/components/fp/fpTenantPicker'
 import Button from '@/components/ds/Button.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import FPNote from '@/components/fp/FPNote.vue'
 import { iconFor } from '@/components/ds/icon'
 import { finMoney } from '@/utils/finFmt'
 
@@ -55,17 +57,17 @@ async function doBind(name: string, tenantId: number) {
 
 <template>
   <div class="tip-wrap">
-    <p v-if="!groups.length" class="tip-empty">本表全部行都已对上租户档案,没有待处理的问题。</p>
+    <FPEmpty v-if="!groups.length" size="sm" sub="没有要绑定的账面名">本表全部行都已对上租户档案</FPEmpty>
     <template v-else>
       <p class="tip-lead">
         以下账面名没有对上租户档案,<b>数据已照常导入</b>,不影响合计;绑定后即可参与按租户的汇总与核对。
         绑定按账面名生效:<b>其他月份/公司的同名未绑定行会一并挂上</b>。
       </p>
-      <p v-if="!canAct && actHint" class="tip-hint-ro">{{ actHint }}</p>
+      <FPNote v-if="!canAct && actHint" tone="info">{{ actHint }}</FPNote>
 
       <div v-for="g in groups" :key="g.name" class="tip-card">
         <div class="tip-head">
-          <span class="tip-name" :title="g.name">{{ g.name }}</span>
+          <span class="tip-name" v-tip="g.name">{{ g.name }}</span>
           <span class="tip-meta">{{ g.count }} 行 · {{ finMoney(g.total) }}</span>
         </div>
         <div class="tip-where">{{ g.where }}</div>
@@ -111,13 +113,9 @@ async function doBind(name: string, tenantId: number) {
 </template>
 
 <style scoped>
-.tip-wrap { display: flex; flex-direction: column; gap: 12px; }
-.tip-empty { margin: 24px 0; text-align: center; color: var(--text-muted); font-size: 14px; }
+/* 面板(Popover)本身只给上下 6,左右内边距这里出,与面板分组的 12 对齐 */
+.tip-wrap { display: flex; flex-direction: column; gap: 12px; padding: 6px 12px 8px; }
 .tip-lead { margin: 0; font-size: 12px; line-height: 1.6; color: var(--text-secondary); }
-.tip-hint-ro {
-  margin: 0; font-size: 12px; color: var(--status-warning);
-  background: var(--bg-sunken); border-radius: var(--radius-sm); padding: 8px 10px;
-}
 .tip-card {
   background: var(--surface-card); border-radius: var(--radius-md);
   padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;

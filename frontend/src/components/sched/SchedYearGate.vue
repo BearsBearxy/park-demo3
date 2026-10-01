@@ -81,7 +81,7 @@ function submit() {
   <div class="sm-gate">
     <div class="sm-gate-head">
       <div class="sm-gate-headl">
-        <button v-if="backLabel" class="sm-gate-back" :title="backLabel" @click="emit('back')">
+        <button v-if="backLabel" class="sm-gate-back" v-tip="backLabel" @click="emit('back')">
           <component :is="iconFor('arrow-left')" :size="16" />
         </button>
         <div>
@@ -108,14 +108,14 @@ function submit() {
         <button
           v-if="removable(y.year)"
           class="sm-yc-del"
-          title="移除该年(无数据)"
+          v-tip="'移除该年(无数据)'"
           @click.stop="removeYear(y.year)"
         ><component :is="iconFor('trash-2')" :size="14" /></button>
         <!-- hover 进入箭头:仅非当前年显示;当前年右上角是「最新」角标,不再叠箭头(避免重叠冲突) -->
         <span v-else-if="y.year !== current" class="sm-yc-go"><component :is="iconFor('arrow-right')" :size="16" /></span>
         <!-- 绝对定位:有人在编辑和没人在编辑,卡片尺寸完全一样(LAYOUT-STABILITY) -->
         <div v-if="editorsOf(y.year).length" class="sm-yc-who"
-             :title="editorsOf(y.year).map(e => e.displayName + ' 正在编辑').join('、')">
+             v-tip="editorsOf(y.year).map(e => e.displayName + ' 正在编辑').join('、')">
           <Avatar v-for="e in editorsOf(y.year).slice(0, 3)" :key="e.sid"
                   :uid="e.user" :name="e.displayName" :size="22" class="sm-yc-av" />
           <span v-if="editorsOf(y.year).length > 3" class="sm-yc-more">+{{ editorsOf(y.year).length - 3 }}</span>
@@ -153,7 +153,7 @@ function submit() {
             inputmode="numeric" placeholder="如:2023" maxlength="4"
             @keydown.enter="submit"
           />
-          <div class="sm-yerr">{{ err }}</div>
+          <p class="fp-field-err">{{ err }}</p>
         </div>
         <div class="sm-ydlg-f">
           <button class="sm-ybtn gray" @click="dlg = false">取消</button>
@@ -229,7 +229,7 @@ function submit() {
 .sm-yin { width:100%; box-sizing:border-box; height:40px; padding:0 12px; font-size:14px; color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-mono); font-variant-numeric:tabular-nums; transition:border-color var(--dur-fast) var(--ease-standard); }
 .sm-yin:focus { border-color:var(--hue-blue); }
 .sm-yin.err { border-color:var(--hue-red); }
-.sm-yerr { font-size:11.5px; color:var(--hue-red); margin-top:7px; min-height:14px; }
+.sm-ydlg-b .fp-field-err { margin-top:6px; }
 .sm-ydlg-f { display:flex; justify-content:flex-end; gap:8px; padding:14px 22px 20px; }
 .sm-ybtn { height:34px; padding:0 16px; border-radius:var(--radius-full); border:none; cursor:pointer; font-family:var(--font-sans); font-size:13px; font-weight:var(--fw-medium); display:inline-flex; align-items:center; gap:6px; transition:background var(--dur-fast) var(--ease-standard), filter var(--dur-fast) var(--ease-standard); }
 .sm-ybtn.gray { background:var(--surface-sunken); color:var(--text-secondary); }

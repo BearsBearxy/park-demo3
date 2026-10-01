@@ -3,7 +3,7 @@
 //            后端同款豁免见 PvMeterService 上的 @NoReviewGuard。
 // 分栋抄表明细(PV-METER-SPEC §2)— 与附表6 月度汇总并列的新屏,由 PvView 功能门进入。
 // 一行一电站(13 站种子),月度量=该站该月记录求和;点行开抽屉逐条增删改;
-// 容量/单价行内乐观更新(BillsView setPayCo 模式:即时更新,失败回滚 alert);
+// 容量/单价行内乐观更新(BillsView setPayCo 模式:即时更新,失败回滚 + 失败回执);
 // 收益口径=self_use × price_snap(录入时快照,调站价不漂移历史)。viewer 全只读。
 // 编辑模式遵 EDIT-MODE-SPEC v2:浏览态完全只读——常量(容量/单价)行内改、电站增删、导入、抽屉抄表记录增删改全部收编辑态。
 // 布局遵 LIST-PAGE-SPEC 列宽铁律(定宽列+唯一弹性列,fixed 布局);
@@ -25,6 +25,10 @@ import { useEditMode } from '@/composables/useEditMode'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import FPStateTag from '@/components/fp/FPStateTag.vue'
+import { ask } from '@/utils/ask'
+import { receipt } from '@/utils/receipt'
 import { useMonthGate } from '@/composables/useMonthGate'
 import FPMonthGate from '@/components/fp/FPMonthGate.vue'
 import { iconFor } from '@/components/ds/icon'
@@ -50,7 +54,11 @@ const sheet = useFormSheet()
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
         lockedBy, evictedBy, lockScope, onTaken } =
-  useEditMode(['meter-master:edit', 'meter-reading:edit'], { scope: () => S.pvMeter(year.value) })
+  useEditMode(['meter-master:edit', 'meter-reading:edit'], {
+    scope: () => S.pvMeter(year.value),
+    // 改动数(EDIT-MODE §6.1):行内格失焦即存,没存的只有开着的写入口 —— 抽屉里的新增 / 编辑行、新增电站弹窗、导入弹窗
+    dirty: () => (adding.value || editId.value != null || stationDlg.value || importing.value ? 1 : 0),
+  })
 // RBAC v2:电站档案(名称/容量/单价/增删)= meter-master:edit;抄表记录与导入 = meter-reading:edit。
 // 模拟填充也判 master —— 它对缺单价的电站反写 price_yuan(RBAC-SPEC §5.3-⑤),是电站单价的写旁路。
 const canMaster = computed(() => auth.can('meter-master:edit'))
@@ -135,8 +143,8 @@ async function loadStations() {
   try {
     const data = await pvMeterApi.stations()
     if (my === stSeq) { stations.value = data; stationsErr.value = '' }
-  } catch {
-    if (my === stSeq) stationsErr.value = '电站档案加载失败,请重试'
+  } catch (e) {
+    if (my === stSeq) stationsErr.value = (e as { message?: string })?.message ?? '电站档案加载失败'
   }
 }
 /** 失败条上的「重试」:只重来挂掉的那一份(照 MeterView.vue:133-134)。 */
@@ -146,6 +154,12 @@ function retryLoad() {
 }
 /** 任一份没拿全 —— 写入口与导出都按这个判。 */
 const loadErr = computed(() => readErr.value || stationsErr.value)
+/** 本月一条读数都没有(浏览态换掉表格的空状态)的副句 */
+const emptySub = computed(() => (canReading.value
+  ? '进入「编辑模式」后可以导入整月抄表 Excel,或点电站行逐条录入。'
+  : '各站这个月的发电、消纳都还没录。'))
+/** 失败面副句:后端给的原因 + 屏上现在是什么样 */
+const loadErrSub = computed(() => `${[readErr.value, stationsErr.value].filter(Boolean).join('；')} · 屏上不显示上一期的数字`)
 
 /**
  * 换期重取时的退让（加载态设计稿 §06 第一档，逐字照 PoolLedgerView/SalaryView）。
@@ -254,14 +268,29 @@ const stationPayload = (st: PvStationDTO) => ({
   panelCount: st.panelCount, panelWatt: st.panelWatt,
 })
 
-// ── 行内编辑容量/单价/板数/单块标称功率(乐观更新:即时改本地,失败回滚 alert;PUT 带全量) ──
+// ── 行内编辑容量/单价/板数/单块标称功率(乐观更新:即时改本地,失败回滚 + 失败回执;PUT 带全量) ──
 type StationNumField = 'capacityKwp' | 'priceYuan' | 'panelCount' | 'panelWatt'
+type StationField = StationNumField | 'name'
+// 行内格的字段报错(十件 ⑤,不走回执):行高放不下格子下面那一行,报错贴在表卡底边,那一格框红。
+// ponytail: 一个槽,同时只报最后一格;要逐格同时报再换成按格的 Map。
+const CELL_LABEL: Record<StationField, string> = {
+  name: '电站名称', capacityKwp: '装机容量', priceYuan: '单价', panelCount: '板数', panelWatt: '单块 W',
+}
+const cellErr = ref<{ id: number; f: StationField; text: string } | null>(null)
+const isBad = (st: PvStationDTO, f: StationField) => cellErr.value?.id === st.id && cellErr.value.f === f
+/** 报这一格的错;传空串 = 这一格改对了,只清它自己那条 */
+function markCell(st: PvStationDTO, f: StationField, msg: string) {
+  if (msg) cellErr.value = { id: st.id, f, text: `「${st.name}」${CELL_LABEL[f]}：${msg}` }
+  else if (isBad(st, f)) cellErr.value = null
+}
 function commitStation(st: PvStationDTO, field: StationNumField, raw: string) {
   // 写口自守(照 BillNoticesView.vue:301/415/431 的既有写法):editMode 会**就地**转假
   // (被别人接管 / 30 分钟提权到期),而调用者各有各的 v-if —— 守在发请求这一层才不漏。
   if (!editStation.value) return
   const v = raw.trim() === '' ? null : Number(raw)
-  if (v != null && (!isFinite(v) || v < 0)) { alert('请输入非负数字'); return }
+  const bad = v != null && (!isFinite(v) || v < 0)
+  markCell(st, field, bad ? '请输入非负数字' : '')
+  if (bad) return
   if (v === st[field]) return
   const prev = st[field]
   st[field] = v
@@ -274,7 +303,7 @@ function commitStation(st: PvStationDTO, field: StationNumField, raw: string) {
     })
     .catch((e) => {
       st[field] = prev
-      alert((e as { message?: string })?.message ?? '保存失败，请重试')
+      receipt.fail((e as { message?: string })?.message ?? '保存失败，请重试')
     })
 }
 
@@ -282,14 +311,15 @@ function commitStation(st: PvStationDTO, field: StationNumField, raw: string) {
 function commitStationName(st: PvStationDTO, raw: string) {
   if (!editStation.value) return
   const v = raw.trim()
-  if (!v) { alert('电站名称不能为空'); return }
+  markCell(st, 'name', v ? '' : '不能为空')
+  if (!v) return
   if (v === st.name) return
   const prev = st.name
   st.name = v
   pvMeterApi.updateStation(st.id, stationPayload(st))
     .catch((e) => {
       st.name = prev
-      alert((e as { message?: string })?.message ?? '保存失败，请重试')   // 重名 409 中文文案直达
+      receipt.fail((e as { message?: string })?.message ?? '保存失败，请重试')   // 重名 409 中文文案直达
     })
 }
 
@@ -307,6 +337,7 @@ const drawerSub = computed(() => {
 const editId = ref<number | null>(null)     // 非空=行编辑中
 const adding = ref(false)                   // 新增行展开
 const form = ref({ readDate: '', genTotal: '', selfUse: '', gridFeed: '', note: '' })
+const formErr = ref('')   // 抽屉行的字段报错(没选日期 / 电量为负),贴在记录表下面,不走回执
 // 操作列仅编辑态存在(EDIT-MODE-SPEC v2)
 const opCols = computed(() => (editReading.value ? 7 : 6))
 // 自消纳+上网 > 发电总量 → 黄警示不阻断(spec §1:抄表现实有损耗差)
@@ -324,12 +355,14 @@ function startAdd() {
   const isCur = year.value === today.getFullYear() && month.value === today.getMonth() + 1
   const d = isCur ? `${year.value}-${pad2(month.value)}-${pad2(today.getDate())}` : monthLast.value
   form.value = { readDate: d, genTotal: '', selfUse: '', gridFeed: '', note: '' }
+  formErr.value = ''
 }
 function startEdit(r: (typeof drawerRows.value)[number]) {
   adding.value = false; editId.value = r.id
   form.value = { readDate: r.readDate, genTotal: String(r.genTotal), selfUse: String(r.selfUse), gridFeed: String(r.gridFeed), note: r.note ?? '' }
+  formErr.value = ''
 }
-function cancelForm() { editId.value = null; adding.value = false }
+function cancelForm() { editId.value = null; adding.value = false; formErr.value = '' }
 watch(openSt, cancelForm)   // 换站/关抽屉时收起编辑行
 // 退出编辑模式收起一切写入口(v2:浏览态零写入口)。
 // ⚠ 两个弹窗必须一起关。它们的 v-if 只判自己那个 ref,不判编辑态,而 editMode 会**就地**转假:
@@ -339,6 +372,7 @@ watch(openSt, cancelForm)   // 换站/关抽屉时收起编辑行
 watch(editMode, v => {
   if (v) return
   cancelForm()
+  cellErr.value = null
   stationDlg.value = false
   importing.value = false
 })
@@ -346,9 +380,9 @@ watch(editMode, v => {
 async function saveForm() {
   if (!editReading.value) return
   if (!openSt.value) return
-  if (!form.value.readDate) { alert('请选择抄表日期'); return }
   const g = num(form.value.genTotal), s = num(form.value.selfUse), f = num(form.value.gridFeed)
-  if (g < 0 || s < 0 || f < 0) { alert('电量不能为负'); return }
+  formErr.value = !form.value.readDate ? '请选择抄表日期' : g < 0 || s < 0 || f < 0 ? '电量不能为负' : ''
+  if (formErr.value) return
   const req = { stationId: openSt.value.id, readDate: form.value.readDate, genTotal: g, selfUse: s, gridFeed: f, note: form.value.note.trim() || null }
   try {
     // 新录快照当时站单价;编辑改量不改快照(后端语义,IT 锁死)
@@ -358,24 +392,26 @@ async function saveForm() {
     await reloadAfterWrite()
   } catch (e) {
     // 同站同日 409 等 → 后端中文 message 直达
-    alert((e as { message?: string })?.message ?? '保存失败')
+    receipt.fail((e as { message?: string })?.message ?? '保存失败')
   }
 }
 
 async function delRow(id: number, date: string) {
   if (!editReading.value) return
-  if (!confirm(`确认删除 ${date} 的抄表记录?`)) return
+  const ok = await ask({ title: `删除 ${date} 的抄表记录？`, body: '删除后不能撤销。', action: '删除', danger: true })
+  if (!ok || !editReading.value) return   // 问的途中被接管 / 提权到期:不写
   try { await pvMeterApi.deleteReading(id); await reloadAfterWrite() }
-  catch (e) { alert((e as { message?: string })?.message ?? '删除失败') }
+  catch (e) { receipt.fail((e as { message?: string })?.message ?? '删除失败') }
 }
 
 async function delStation() {
   if (!editStation.value) return
   const st = openSt.value
   if (!st) return
-  if (!confirm(`确认删除电站「${st.name}」?有抄表记录的电站不可删除。`)) return
+  const ok = await ask({ title: `删除电站「${st.name}」？`, body: '有抄表记录的电站删不掉。', action: '删除电站', danger: true })
+  if (!ok || !editStation.value || openSt.value?.id !== st.id) return   // 问的途中被接管 / 换了站:不写
   try { await pvMeterApi.deleteStation(st.id); openSt.value = null; await loadStations() }
-  catch (e) { alert((e as { message?: string })?.message ?? '删除失败') }   // 有记录 409 → 中文守卫文案
+  catch (e) { receipt.fail((e as { message?: string })?.message ?? '删除失败') }   // 有记录 409 → 中文守卫文案
 }
 
 // ── 新增电站弹窗(名称/期数/容量/单价) ──
@@ -420,24 +456,29 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
     importResult.value = await runImport('pvMeter', payload as never, importCtx, fileName)
     await reloadAfterWrite()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '导入失败')
+    receipt.fail((e as { message?: string })?.message ?? '导入失败')
   }
 }
 
-// ── 模拟填充(编辑态;照 CpMeterView:confirm→POST→alert→重载):按附表6 phase 月度汇总推导当前年分栋抄表记录 ──
+// ── 模拟填充(编辑态;照 CpMeterView:确认→POST→回执→重载):按附表6 phase 月度汇总推导当前年分栋抄表记录 ──
 const simulating = ref(false)
 async function onSimulate() {
   if (!editStation.value) return   // 模拟填充会反写 price_yuan,是电站单价的写旁路
   if (simulating.value) return
-  if (!confirm(`模拟填充 ${year.value} 全年：按附表6 各期月度汇总反推电站容量/单价(空位才填,年等效 950h、站内容量比例均为假设)，并按容量占比拆分各栋月末抄表记录(发电=消纳×1.03 损耗假设)。\n\n只填空位与既有「模拟」灰标记录，绝不覆盖手工录入/导入的数据。确认执行？`)) return
+  const ok = await ask({
+    title: `模拟填充 ${year.value} 全年？`,
+    body: '按附表6 各期月度汇总反推电站容量 / 单价（空位才填，年等效 950h、站内容量比例均为假设），并按容量占比拆分各栋月末抄表记录（发电 = 消纳 × 1.03 损耗假设）。只填空位和已有的「模拟」灰标记录，不覆盖手工录入或导入的数据。',
+    action: '模拟填充',
+  })
+  if (!ok || !editStation.value || simulating.value) return   // 问的途中被接管 / 已在跑:不写
   simulating.value = true
   try {
     const r = await pvMeterApi.simulate(year.value)
-    alert(`模拟完成：填充 ${r.filled} 条，跳过 ${r.skipped} 条（手工/导入占位、值未变或缺站）。`)
+    receipt.ok(`模拟完成：填充 ${r.filled} 条，跳过 ${r.skipped} 条（手工 / 导入占位、值未变或缺站）`)
     await Promise.all([loadStations(), loadReadings()])
     await loadMonths()   // 新写入的月要在选期矩阵上亮起来
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '模拟填充失败')
+    receipt.fail((e as { message?: string })?.message ?? '模拟填充失败')
   } finally {
     simulating.value = false
   }
@@ -448,12 +489,12 @@ async function onExport() {
   if (exporting.value) return
   exporting.value = true
   try { await exportPvMeterMonth(readings.value ?? [], stations.value ?? [], year.value, month.value) }
-  catch (e) { alert((e as { message?: string })?.message ?? '导出失败') }
+  catch (e) { receipt.fail((e as { message?: string })?.message ?? '导出失败', { label: '重试', run: () => void onExport() }) }
   finally { exporting.value = false }
 }
 async function onTemplate() {
   try { await buildPvMeterTemplate() }
-  catch (e) { alert((e as { message?: string })?.message ?? '模板下载失败') }
+  catch (e) { receipt.fail((e as { message?: string })?.message ?? '模板下载失败', { label: '重试', run: () => void onTemplate() }) }
 }
 </script>
 
@@ -478,11 +519,9 @@ async function onTemplate() {
 
   <!-- 站清单一次都没拿到:没有它连表头都铺不出来,只能给硬失败面(照 MeterView.vue:554)。
        少了这句 stations 恒为 null,下面那行转圈永不停。 -->
-  <div v-else-if="!stations && stationsErr" class="pm-gate-fail">
-    <component :is="iconFor('alert-triangle')" :size="18" />
-    <span>{{ stationsErr }}</span>
-    <Button variant="outline" size="sm" @click="loadStations">重试</Button>
-  </div>
+  <FPLoadError v-else-if="!stations && stationsErr" class="pm-gate-fail" :sub="`${stationsErr} · 没有电站清单,表格铺不出来`" @retry="loadStations">
+    电站档案没读到
+  </FPLoadError>
 
   <div v-else-if="!stations || !readings" class="page-loading"><span class="page-spin" /></div>
 
@@ -494,7 +533,11 @@ async function onTemplate() {
     <div class="pm-head">
       <div class="pm-headl">
         <div>
-          <h2 class="pm-title"><span class="ic"><component :is="iconFor('gauge')" :size="18" /></span>分栋抄表明细</h2>
+          <div class="pm-titlerow">
+            <h2 class="pm-title"><span class="ic"><component :is="iconFor('gauge')" :size="18" /></span>分栋抄表明细</h2>
+            <!-- 页面状态(十件 ⑥):贴标题,不另起一行(原流内「本月暂无抄表记录」虚线条) -->
+            <FPStateTag v-if="!loadErr && !readings.length" tone="warn">本月还没有抄表记录</FPStateTag>
+          </div>
           <p class="pm-sub">按日期逐条抄表,自动汇月 · 电量 kWh / 收益 元 · 收益 = 自消纳 × 录入时单价快照</p>
         </div>
       </div>
@@ -536,8 +579,8 @@ async function onTemplate() {
              而 utils/pvMeterExcel 不按 year/month 过滤行,只拿它们做文件名/sheet 名/标题:
              产出「…2025年07月.xlsx」而内容是 3 月的量,发出去无从分辨。 -->
         <Button variant="filled" size="sm" :disabled="exporting || !!loadErr || reloading"
-                :title="loadErr ? '数据未加载成功,导出会得到一份全零的表 —— 先重试'
-                        : reloading ? '本期读数还在路上,现在导出拿到的是上一期的数' : undefined"
+                v-tip="loadErr ? '数据没读到,导出会得到一份全零的表 —— 先重试'
+                       : reloading ? '本期读数还在路上,现在导出拿到的是上一期的数' : null"
                 @click="onExport">
           <template #leading><component :is="iconFor('download')" :size="14" /></template>
           导出
@@ -550,36 +593,31 @@ async function onTemplate() {
              `:disabled="!!loadErr"` 会把**编辑态里的那颗「完成」**一起禁掉 ——
              正在编辑时取数挂一次就退不出去,锁也交不回去,别人只能干等 3 分钟或走接管。
              禁的只该是"进",不该是"出"。 -->
-        <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
-                          :disabled="!editMode && !!loadErr"
-                          :title="!editMode && loadErr ? '数据未加载成功,先点失败条上的「重试」再进编辑' : undefined"
-                          @toggle="toggleEdit()" />
+        <!-- 悬停说明挂外层 span:FPEditModeButton 的根随状态在 span / Button / 空之间换,指令挂不稳(照 MeterView .mt-ebtn) -->
+        <span v-tip="!editMode && loadErr ? '本月数据没读到,先点「重试」再进编辑' : null" class="pm-ebtn">
+          <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
+                            :disabled="!editMode && !!loadErr"
+                            @toggle="toggleEdit()" />
+        </span>
       </div>
     </div>
 
-    <!-- 空态引导(spec §2:去导入或抽屉手录) -->
-    <!-- ⚠ 必须排除 readErr(照 MeterView.vue:638):失败态下 readings 被清成 [],
-         不排除的话「加载失败」与「本月真的没有」同屏并列,而后者会盖过前者 —— 用户读到的是「没有」 -->
-    <div v-if="!loadErr && readings.length === 0" class="pm-empty">
-      <component :is="iconFor('info')" :size="14" />
-      <span>
-        {{ year }}年{{ month }}月暂无抄表记录 ——
-        <template v-if="editReading">可<button class="pm-link" @click="importing = true">导入</button>整月抄表 Excel,或点击任意电站行进入抽屉手动录入。</template>
-        <template v-else-if="canReading">进入右上角「编辑模式」后可录入或导入。</template>
-        <template v-else>各站显示零值。</template>
-      </span>
-    </div>
-
-    <!-- 主表:一行一电站;列宽铁律(fixed 布局,电站名=唯一弹性列) -->
-    <!-- 本期取数失败:说出来 + 给重试。改前 loadReadings 连 try/catch 都没有,
-         失败后旧数据顶着新期标继续显示,零提示、不自愈(对抗复查坐实) -->
-    <FPLoadError v-if="loadErr" @retry="retryLoad">
-      <div v-if="readErr">{{ year }}年{{ month }}月读数加载失败:{{ readErr }} —— 表内为空,不拿上一期的数顶替,编辑模式已锁。</div>
-      <div v-if="stationsErr">{{ stationsErr }} —— 电站档案停留在上次拉到的版本。</div>
+    <!-- 内容区三选一(LAYOUT-STABILITY §3 / §4,照 MeterView):
+         ① 读数或电站档案没拉到 → 加载失败换掉表格本身(两条各自成行,别让一条盖掉另一条的原因)。
+            改前 loadReadings 连 try/catch 都没有,失败后旧数据顶着新期标继续显示(对抗复查坐实);
+            失败态下 readings 被清成 [],所以空状态必须排在它后面,不然「没读到」会被说成「真的没有」。
+         ② 本月一条读数都没有、又不在能写的编辑态 → 空状态(编辑态要留着表格:点电站行进抽屉录入、行内改档案)。
+         ③ 主表:一行一电站;列宽铁律(fixed 布局,电站名=唯一弹性列) -->
+    <FPLoadError v-if="loadErr" :sub="loadErrSub" @retry="retryLoad">
+      <div class="msg">
+        <div v-if="readErr">{{ year }} 年 {{ month }} 月的读数没读到</div>
+        <div v-if="stationsErr">电站档案没读到</div>
+      </div>
     </FPLoadError>
+    <FPEmpty v-else-if="!readings.length && !(editStation || editReading)" :sub="emptySub">{{ year }} 年 {{ month }} 月还没有抄表记录</FPEmpty>
 
     <!-- fp-stale 带 pointer-events:none —— 旧数据不许被点、被录(安全项,见 base.css) -->
-    <Card surface="white" :padding="0" class="pm-card"
+    <Card v-else surface="white" :padding="0" class="pm-card"
           :class="{ 'fp-stale': veil }" :aria-busy="veil">
       <div class="pm-tablewrap">
         <table class="pm-table">
@@ -620,23 +658,23 @@ async function onTemplate() {
               @click="r.st.metered ? (openSt = r.st) : null"
             >
               <!-- 电站名=站点常量:编辑模式行内改(点击不冒泡开抽屉),浏览态纯文本(EDIT-MODE-SPEC) -->
-              <td class="name" :title="r.st.name">
-                <input v-if="editStation" class="pm-edit l" type="text"
-                       :value="r.st.name" title="电站名,回车/失焦保存(需唯一)"
+              <td v-tip="editStation ? null : r.st.name" class="name">
+                <input v-if="editStation" class="pm-edit l" :class="{ bad: isBad(r.st, 'name') }" type="text"
+                       :value="r.st.name" v-tip="'电站名,回车/失焦保存(需唯一)'"
                        @click.stop
                        @change="commitStationName(r.st, ($event.target as HTMLInputElement).value)" />
                 <template v-else>
                   <span class="nm">{{ r.st.name }}</span>
                   <span v-if="phase === 'all'" class="pm-badge">{{ PHASE_LABEL[r.st.phase] }}</span>
-                  <span v-if="!r.st.metered" class="pm-badge mut" title="该栋未安装光伏计量表，不入分析，也无需催录入">未装表</span>
+                  <span v-if="!r.st.metered" v-tip="'该栋未安装光伏计量表，不入分析，也无需催录入'" class="pm-badge mut">未装表</span>
                 </template>
               </td>
               <!-- 容量/单价=站点常量:编辑模式行内改(点击不冒泡开抽屉),浏览态纯文本(EDIT-MODE-SPEC) -->
               <td class="num">
-                <input v-if="editStation" class="pm-edit" type="number" min="0" step="0.01"
+                <input v-if="editStation" class="pm-edit" :class="{ bad: isBad(r.st, 'capacityKwp') }" type="number" min="0" step="0.01"
                        :disabled="!r.st.metered"
                        :value="r.st.capacityKwp ?? ''" placeholder="—"
-                       :title="r.st.metered ? '装机容量,回车/失焦保存' : '该栋未装表，容量无意义'"
+                       v-tip="r.st.metered ? '装机容量,回车/失焦保存' : '该栋未装表，容量无意义'"
                        @click.stop
                        @change="commitStation(r.st, 'capacityKwp', ($event.target as HTMLInputElement).value)" />
                 <span v-else>{{ r.st.capacityKwp != null ? fq(r.st.capacityKwp) : '—' }}</span>
@@ -644,28 +682,28 @@ async function onTemplate() {
               <!-- 板数 × 单块标称功率 = 理论装机,是唯一不从发电量倒推的容量口径(PV-ANALYSIS-SPEC §03.5)。
                    一栋一个规格:混装的栋填主力值,偏离会在分栋分析的台账对照上显出来 —— 那正是要人去看的信号 -->
               <td class="num">
-                <input v-if="editStation" class="pm-edit" type="number" min="0" step="1"
+                <input v-if="editStation" class="pm-edit" :class="{ bad: isBad(r.st, 'panelCount') }" type="number" min="0" step="1"
                        :disabled="!r.st.metered"
                        :value="r.st.panelCount ?? ''" placeholder="—"
-                       :title="r.st.metered ? '光伏板数量(块),回车/失焦保存' : '该栋未装表，板数无意义'"
+                       v-tip="r.st.metered ? '光伏板数量(块),回车/失焦保存' : '该栋未装表，板数无意义'"
                        @click.stop
                        @change="commitStation(r.st, 'panelCount', ($event.target as HTMLInputElement).value)" />
                 <span v-else>{{ r.st.panelCount ?? '—' }}</span>
               </td>
               <td class="num">
-                <input v-if="editStation" class="pm-edit" type="number" min="0" step="0.1"
+                <input v-if="editStation" class="pm-edit" :class="{ bad: isBad(r.st, 'panelWatt') }" type="number" min="0" step="0.1"
                        :disabled="!r.st.metered"
                        :value="r.st.panelWatt ?? ''" placeholder="—"
-                       :title="r.st.metered ? '单块标称功率 W(出厂铭牌),回车/失焦保存' : '该栋未装表，单块功率无意义'"
+                       v-tip="r.st.metered ? '单块标称功率 W(出厂铭牌),回车/失焦保存' : '该栋未装表，单块功率无意义'"
                        @click.stop
                        @change="commitStation(r.st, 'panelWatt', ($event.target as HTMLInputElement).value)" />
                 <span v-else>{{ r.st.panelWatt ?? '—' }}</span>
               </td>
               <td class="num">
-                <input v-if="editStation" class="pm-edit" type="number" min="0" step="0.0001"
+                <input v-if="editStation" class="pm-edit" :class="{ bad: isBad(r.st, 'priceYuan') }" type="number" min="0" step="0.0001"
                        :disabled="!r.st.metered"
                        :value="r.st.priceYuan ?? ''" placeholder="—"
-                       :title="r.st.metered ? '消纳综合单价,只影响之后新录记录' : '该栋未装表，单价无意义'"
+                       v-tip="r.st.metered ? '消纳综合单价,只影响之后新录记录' : '该栋未装表，单价无意义'"
                        @click.stop
                        @change="commitStation(r.st, 'priceYuan', ($event.target as HTMLInputElement).value)" />
                 <span v-else>{{ r.st.priceYuan != null ? r.st.priceYuan : '—' }}</span>
@@ -679,6 +717,8 @@ async function onTemplate() {
           </tbody>
         </table>
       </div>
+      <!-- 行内格的字段报错(十件 ⑤):编辑态常驻占位,报错进出不顶动表格 -->
+      <template v-if="editStation"><p class="fp-field-err pm-cellerr">{{ cellErr?.text ?? '' }}</p></template>
     </Card>
 
     <!-- 抽屉:该站该月逐条抄表记录;增删改仅编辑态(EDIT-MODE-SPEC v2),浏览态=纯查看列表 -->
@@ -691,12 +731,13 @@ async function onTemplate() {
       :fixedHeight="true"
       @close="openSt = null"
     >
-      <!-- 抽屉里也要排除失败态:主屏的失败条在抽屉后面,抽屉自己说「暂无记录」就是唯一可见结论 -->
+      <!-- 抽屉里也要排除失败态:主屏的失败面在抽屉后面,抽屉自己说「还没有记录」就是唯一可见结论 -->
       <!-- 只判 readErr,不判合并槽:电站档案挂掉时读数是好好的,拿 loadErr 拦会**藏掉真实记录**并说一句假话 -->
-      <div v-if="readErr" class="pm-dempty">本月读数未加载成功 —— 关掉抽屉点失败条上的「重试」,别在这里录。</div>
-      <div v-else-if="drawerRows.length === 0 && !adding" class="pm-dempty">
-        该站本月暂无抄表记录{{ editReading ? ',点下方「新增记录」手动录入,或在列表页「导入」整月 Excel。' : canReading ? ',进入编辑模式后可录入或导入。' : '。' }}
-      </div>
+      <FPLoadError v-if="readErr" :sub="readErr" @retry="loadReadings">{{ year }} 年 {{ month }} 月的读数没读到</FPLoadError>
+      <FPEmpty v-else-if="drawerRows.length === 0 && !adding"
+               :sub="editReading ? '点下方「新增记录」手动录入,或在列表页「导入」整月 Excel。' : canReading ? '进入编辑模式后可录入或导入。' : undefined">
+        该站 {{ month }} 月还没有抄表记录
+      </FPEmpty>
       <div v-else class="pm-dwrap">
         <table class="pm-dtable">
           <!-- 列宽预算(抽屉内容宽~672):日期96+三量106×3+收益108=522,备注弹性≥80;数字 12px mono「47,366.13」量级不截断 -->
@@ -706,7 +747,7 @@ async function onTemplate() {
             <col style="width:106px" />
             <col style="width:106px" />
             <col style="width:108px" />
-            <col /><!-- 备注:唯一弹性列(截断走 title) -->
+            <col /><!-- 备注:唯一弹性列(截断走悬停说明) -->
             <col v-if="editReading" style="width:70px" />
           </colgroup>
           <thead>
@@ -728,11 +769,11 @@ async function onTemplate() {
                 <td><input v-model="form.genTotal" class="pm-din num" type="number" min="0" step="0.01" /></td>
                 <td><input v-model="form.selfUse" class="pm-din num" type="number" min="0" step="0.01" /></td>
                 <td><input v-model="form.gridFeed" class="pm-din num" type="number" min="0" step="0.01" /></td>
-                <td class="ro" :title="`按原快照单价 ${r.priceSnap ?? '—'} 计`">{{ fy(num(form.selfUse) * (r.priceSnap ?? 0)) }}</td>
+                <td v-tip="`按原快照单价 ${r.priceSnap ?? '—'} 计`" class="ro">{{ fy(num(form.selfUse) * (r.priceSnap ?? 0)) }}</td>
                 <td class="l"><input v-model="form.note" class="pm-din" type="text" placeholder="备注" /></td>
                 <td class="ops">
-                  <button class="pm-iop ok" title="保存" @click="saveForm"><component :is="iconFor('check')" :size="15" /></button>
-                  <button class="pm-iop" title="取消" @click="cancelForm"><component :is="iconFor('x')" :size="15" /></button>
+                  <button v-tip="'保存'" class="pm-iop ok" @click="saveForm"><component :is="iconFor('check')" :size="15" /></button>
+                  <button v-tip="'取消'" class="pm-iop" @click="cancelForm"><component :is="iconFor('x')" :size="15" /></button>
                 </td>
               </tr>
               <tr v-else>
@@ -740,12 +781,12 @@ async function onTemplate() {
                 <td>{{ fq(r.genTotal) }}</td>
                 <td>{{ fq(r.selfUse) }}</td>
                 <td>{{ fq(r.gridFeed) }}</td>
-                <td :title="r.priceSnap != null ? `快照单价 ${r.priceSnap} 元/kWh` : '录入时站未配单价,收益按 0'">{{ fy(r.revenue) }}</td>
+                <td v-tip="r.priceSnap != null ? `快照单价 ${r.priceSnap} 元/kWh` : '录入时站未配单价,收益按 0'">{{ fy(r.revenue) }}</td>
                 <!-- simulated 灰「模拟」徽标随备注列(徽标挤日期列会撑爆列宽预算;模拟记录 note 本就以「模拟:」开头,同列语义顺),录改后转 manual 自动消失 -->
-                <td class="l note" :title="r.note ?? undefined"><span v-if="r.source === 'simulated'" class="pm-sim" :title="r.note ?? '模拟数据'">模拟</span>{{ (r.source === 'simulated' ? (r.note ?? '').replace(/^模拟[:：]/, '') : r.note) || '—' }}</td>
+                <td v-tip="r.note || (r.source === 'simulated' ? '模拟数据' : null)" class="l note"><span v-if="r.source === 'simulated'" class="pm-sim">模拟</span>{{ (r.source === 'simulated' ? (r.note ?? '').replace(/^模拟[:：]/, '') : r.note) || '—' }}</td>
                 <td v-if="editReading" class="ops">
-                  <button class="pm-iop" title="编辑" @click="startEdit(r)"><component :is="iconFor('pencil')" :size="14" /></button>
-                  <button class="pm-iop danger" title="删除" @click="delRow(r.id, r.readDate)"><component :is="iconFor('trash-2')" :size="14" /></button>
+                  <button v-tip="'编辑'" class="pm-iop" @click="startEdit(r)"><component :is="iconFor('pencil')" :size="14" /></button>
+                  <button v-tip="'删除'" class="pm-iop danger" @click="delRow(r.id, r.readDate)"><component :is="iconFor('trash-2')" :size="14" /></button>
                 </td>
               </tr>
               <!-- 警示位常驻(LAYOUT-STABILITY-SPEC §4.2):编辑态一进来就占好这一行,内容才是条件的 -->
@@ -760,11 +801,11 @@ async function onTemplate() {
                 <td><input v-model="form.genTotal" class="pm-din num" type="number" min="0" step="0.01" /></td>
                 <td><input v-model="form.selfUse" class="pm-din num" type="number" min="0" step="0.01" /></td>
                 <td><input v-model="form.gridFeed" class="pm-din num" type="number" min="0" step="0.01" /></td>
-                <td class="ro" :title="`按当前站单价 ${openSt?.priceYuan ?? '—'} 预览,保存时快照`">{{ fy(num(form.selfUse) * (openSt?.priceYuan ?? 0)) }}</td>
+                <td v-tip="`按当前站单价 ${openSt?.priceYuan ?? '—'} 预览,保存时快照`" class="ro">{{ fy(num(form.selfUse) * (openSt?.priceYuan ?? 0)) }}</td>
                 <td class="l"><input v-model="form.note" class="pm-din" type="text" placeholder="备注" /></td>
                 <td class="ops">
-                  <button class="pm-iop ok" title="保存" @click="saveForm"><component :is="iconFor('check')" :size="15" /></button>
-                  <button class="pm-iop" title="取消" @click="cancelForm"><component :is="iconFor('x')" :size="15" /></button>
+                  <button v-tip="'保存'" class="pm-iop ok" @click="saveForm"><component :is="iconFor('check')" :size="15" /></button>
+                  <button v-tip="'取消'" class="pm-iop" @click="cancelForm"><component :is="iconFor('x')" :size="15" /></button>
                 </td>
               </tr>
               <tr class="warnrow">
@@ -774,6 +815,8 @@ async function onTemplate() {
           </tbody>
         </table>
       </div>
+      <!-- 抽屉行的字段报错(十件 ⑤):行展开时常驻占位,不走回执 -->
+      <template v-if="!readErr && (adding || editId != null)"><p class="fp-field-err pm-formerr">{{ formErr }}</p></template>
 
       <template v-if="editStation || editReading" #footer>
         <!-- 一切修改仅编辑态(EDIT-MODE-SPEC v2):删除电站=档案权,新增记录=读数权 -->
@@ -804,7 +847,7 @@ async function onTemplate() {
             <Input v-model="stForm.capacity" label="装机容量 kWp(可空)" placeholder="如:180.5" size="sm" type="number" />
             <Input v-model="stForm.price" label="消纳单价 元/kWh(可空)" placeholder="如:0.65" size="sm" type="number" />
           </div>
-          <div class="pm-dlg-err">{{ stErr }}</div>
+          <p class="fp-field-err">{{ stErr }}</p>
         </div>
         <div class="pm-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="stationDlg = false">取消</Button>
@@ -839,10 +882,7 @@ async function onTemplate() {
 <style scoped>
 /* position: relative —— FPLoadBar 是 absolute 定位,宿主不给参照它会跑到最近的定位祖先
    (AppShell 的 .fp-main-card)顶边去,横跨整个页签条。同批四屏都写了,这屏当初抄漏了。 */
-.pm-gate-fail {
-  display: flex; align-items: center; justify-content: center; gap: 10px;
-  height: 100%; color: var(--hue-red); font-size: 13px;
-}
+.pm-gate-fail { height: 100%; }
 .pm-page { position: relative; display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; box-sizing: border-box; max-width: 1600px; margin: 0 auto; width: 100%; }
 
 /* ── 标题行(样式同 BillsView 月历层 fin-head 家族) ── */
@@ -856,16 +896,13 @@ async function onTemplate() {
   transition: color var(--dur-fast), border-color var(--dur-fast);
 }
 .pm-permonth:hover { color: var(--hue-blue); border-color: var(--hue-blue); }
+.pm-ebtn { display: inline-flex; flex: 0 0 auto; }
 .pm-per { flex: 0 0 auto; font-family: var(--font-mono); font-size: 13px; font-weight: var(--fw-bold); }
 
+.pm-titlerow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .pm-title { margin: 0; display: flex; align-items: center; gap: 11px; font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .pm-title .ic { width: 34px; height: 34px; border-radius: 10px; background: var(--surface-sunken); display: grid; place-items: center; color: var(--text-secondary); flex: 0 0 auto; }
 .pm-sub { margin: 5px 0 0; font-size: var(--fs-label); color: var(--text-muted); }
-
-/* ── 空态引导条 ── */
-.pm-empty { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); }
-.pm-link { border: none; background: none; padding: 0; margin: 0 2px; font: inherit; color: var(--hue-blue); cursor: pointer; }
-.pm-link:hover { text-decoration: underline; }
 
 /* ── 主表卡片:13 站定量,不分页;短窗时卡片内滚动兜底(sticky 表头) ── */
 .pm-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--border-subtle); overflow: hidden; }
@@ -895,9 +932,11 @@ async function onTemplate() {
 .pm-edit:focus { outline: none; border-color: var(--hue-blue); background: var(--surface-white); }
 .pm-edit::placeholder { color: var(--text-disabled); }
 .pm-edit.l { text-align: left; font-family: var(--font-sans); }
+.pm-edit.bad, .pm-edit.bad:hover, .pm-edit.bad:focus { border-color: var(--delta-down-text); }
+.pm-cellerr { flex: none; padding: 0 20px 8px; }
 
 /* ── 抽屉记录表 ── */
-.pm-dempty { padding: 40px 12px; text-align: center; color: var(--text-disabled); font-size: var(--fs-label); }
+.pm-formerr { margin-top: 6px; }
 .pm-dwrap { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; }
 .pm-dtable { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12.5px; white-space: nowrap; }
 .pm-dtable th { padding: 8px 10px; text-align: right; font-family: var(--font-sans); font-weight: var(--fw-medium); font-size: 11px; color: var(--text-muted); background: var(--surface-card); border-bottom: 1px solid var(--divider); }
@@ -930,6 +969,5 @@ async function onTemplate() {
 .pm-dlg-b { padding: 16px 22px 4px; display: flex; flex-direction: column; gap: 12px; }
 .pm-dlg-row { display: flex; gap: 12px; }
 .pm-dlg-row > * { flex: 1; min-width: 0; }
-.pm-dlg-err { font-size: 11.5px; color: var(--hue-red); min-height: 14px; }
 .pm-dlg-f { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 22px 20px; }
 </style>

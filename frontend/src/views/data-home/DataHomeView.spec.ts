@@ -12,6 +12,13 @@ import { metersApi } from '@/api/meters'
 import { allocApi } from '@/api/alloc'
 import { billNoticesApi } from '@/api/billNotices'
 import { paramsApi } from '@/api/params'
+import { useAuthStore } from '@/stores/auth'
+import { askQueue, answer } from '@/utils/ask'
+import { receipts } from '@/utils/receipt'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+
+/** v-tip 挂在元素上的那一句(directives/tip.ts 存在 el._tip) */
+const tipOf = (el: Element) => (el as HTMLElement & { _tip?: { text: string } })._tip?.text
 
 // 锁 DATA-HOME-REDESIGN spec §2/§5:三级主次(总览行 → 流水线 → 当前步大卡 + 唯一主 CTA),
 // 以及「没问题的东西不占版面」(blockers 空 → 整条不渲染)。
@@ -27,6 +34,8 @@ beforeEach(() => {
   vi.mocked(billNoticesApi.months).mockClear()
   vi.mocked(paramsApi.status).mockClear()
   reconOverview.mockClear()
+  askQueue.splice(0)
+  receipts.splice(0)
 })
 
 const push = vi.fn(landNav)
@@ -151,6 +160,12 @@ describe('数据中心首页 · 两段式工作台', () => {
   it('period 为 null 时显示空库引导', async () => {
     const w = await mountWith({ period: null })
     expect(w.text()).toContain('还没开始出账')
+    // 空状态一种样子(画布 06-B ⑦):占住内容区的是 FPEmpty,按钮就是它的那一颗
+    const empty = w.findComponent(FPEmpty)
+    expect(empty.text()).toContain('还没开始出账')
+    await empty.find('button').trigger('click')
+    await flushPromises()
+    expect(push).toHaveBeenCalledWith('/meters')
     expect(w.find('.dh-rows').exists()).toBe(false)   // 空库不摆两栏清单空架子(选择器:胶囊行 → 两栏行,P2 T3)
     // 全新库只给一句引导,不摆空架子(F6):年份条同样不该先弹出一堆可点的「空」卡
     expect(w.findComponent({ name: 'BookMonthMatrix' }).exists()).toBe(false)
@@ -281,13 +296,35 @@ describe('数据中心首页 · 两段式工作台', () => {
     const w = await mountWith()
     const presence = usePresenceStore()
     presence.holdLock('ledger:1:2025-03', () => {})     // 本标签页本地持锁,不等服务端回声
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    useAuthStore().openEditor(Symbol('ledger'), 'ledger', () => 3)   // 台账屏有 3 处没保存
     const row = w.findAll('.dh-row-booking').find(r => r.text().includes('月度台账'))   // 选择器:胶囊行 → 两栏行,P2 T3
     expect(row, '清单里没有月度台账那一行').toBeTruthy()
     await row!.trigger('click')
-    expect(confirm, '台账的草稿也该问一句').toHaveBeenCalledOnce()
-    expect(push).not.toHaveBeenCalled()
-    confirm.mockRestore()
+    expect(askQueue, '台账的草稿也该问一句').toHaveLength(1)
+    // 离开确认(画布 02-A):标题问哪一页、正文给数、按钮写动作,删改动类 danger
+    expect(askQueue[0]).toMatchObject({
+      title: '重新打开「月度台账」？', body: '这页有 3 处改动还没保存。',
+      action: '放弃改动并重新打开', cancel: '继续编辑', danger: true,
+    })
+    answer(false)
+    await flushPromises()
+    expect(push, '继续编辑 = 不跳').not.toHaveBeenCalled()
+    await row!.trigger('click')
+    answer(true)
+    await flushPromises()
+    expect(push, '放弃改动 = 照常跳').toHaveBeenCalledWith({ path: '/ledger', query: { p: '2024-02' } })
+    presence.stop()
+  })
+
+  it('握着锁但 0 处改动:不弹,直接跳(EDIT-MODE-SPEC §6.1)', async () => {
+    const w = await mountWith()
+    const presence = usePresenceStore()
+    presence.holdLock('ledger:1:2025-03', () => {})
+    useAuthStore().openEditor(Symbol('ledger'), 'ledger', () => 0)
+    await w.findAll('.dh-row-booking').find(r => r.text().includes('月度台账'))!.trigger('click')
+    await flushPromises()
+    expect(askQueue).toHaveLength(0)
+    expect(push).toHaveBeenCalledWith({ path: '/ledger', query: { p: '2024-02' } })
     presence.stop()
   })
 
@@ -298,12 +335,15 @@ describe('数据中心首页 · 两段式工作台', () => {
       sid: presence.sid, user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'edit',
       editScopes: ['billing-chain:2025-03'], sinceMs: 0, idleMs: 0, self: true,
     }]
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    // 改动在公共电核算,点的是园区抄表那一行:pick 换的是五屏共读的期,问的是有改动的那一页
+    useAuthStore().openEditor(Symbol('alloc'), 'alloc', () => 2)
     await w.findAll('.dh-row-billing')[1].trigger('click')   // 选择器:胶囊行 → 两栏行,P2 T3
-    expect(confirm).toHaveBeenCalledOnce()
+    expect(askQueue).toHaveLength(1)
+    expect(askQueue[0].title).toBe('重新打开「公共电核算」？')
+    answer(false)
+    await flushPromises()
     expect(useBillingPeriodStore().picked).toBe(false)
     expect(push).not.toHaveBeenCalled()
-    confirm.mockRestore()
   })
 
   // openFresh 无条件重建目标屏 —— 草稿不分同月异月都会丢,所以确认框认「有没有锁」不认「哪个月」
@@ -315,12 +355,13 @@ describe('数据中心首页 · 两段式工作台', () => {
       sid: presence.sid, user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'edit',
       editScopes: ['meters:2024'], sinceMs: 0, idleMs: 0, self: true,
     }]
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    useAuthStore().openEditor(Symbol('meters'), 'meters', () => 1)
     await w.findAll('.dh-row-billing')[1].trigger('click')   // 选择器:胶囊行 → 两栏行,P2 T3
-    expect(confirm).toHaveBeenCalledOnce()
+    expect(askQueue).toHaveLength(1)
+    answer(false)
+    await flushPromises()
     expect(useBillingPeriodStore().picked).toBe(false)
     expect(push).not.toHaveBeenCalled()
-    confirm.mockRestore()
   })
 
   it('本人握着同月的链锁时点出账链行也弹确认(同月一样会丢草稿)', async () => {
@@ -330,12 +371,13 @@ describe('数据中心首页 · 两段式工作台', () => {
       sid: presence.sid, user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'edit',
       editScopes: ['billing-chain:2024-02'], sinceMs: 0, idleMs: 0, self: true,
     }]
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    useAuthStore().openEditor(Symbol('meters'), 'meters', () => 1)
     await w.findAll('.dh-row-billing')[1].trigger('click')   // 选择器:胶囊行 → 两栏行,P2 T3
-    expect(confirm).toHaveBeenCalledOnce()
+    expect(askQueue).toHaveLength(1)
+    answer(false)
+    await flushPromises()
     expect(useBillingPeriodStore().picked).toBe(false)
     expect(push).not.toHaveBeenCalled()
-    confirm.mockRestore()
   })
 
   it('多标签页:只看本标签页(sid)的锁 —— 别的标签页的自己座位持链锁不算', async () => {
@@ -347,11 +389,12 @@ describe('数据中心首页 · 两段式工作台', () => {
       { sid: presence.sid, user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'view',
         editScopes: [], sinceMs: 0, idleMs: 0, self: true },
     ]
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    // 有改动登记也不问:判「要不要问」只认本标签页座位上的锁,别的标签页的座位不算
+    useAuthStore().openEditor(Symbol('alloc'), 'alloc', () => 2)
     await w.findAll('.dh-row-billing')[1].trigger('click')   // 选择器:胶囊行 → 两栏行,P2 T3
-    expect(confirm).not.toHaveBeenCalled()
+    await flushPromises()
+    expect(askQueue).toHaveLength(0)
     expect(useBillingPeriodStore().picked).toBe(true)
-    confirm.mockRestore()
   })
   it('多标签页:本标签页(sid)持链锁即使排在后面也弹确认', async () => {
     const w = await mountWith()
@@ -362,11 +405,12 @@ describe('数据中心首页 · 两段式工作台', () => {
       { sid: presence.sid, user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'edit',
         editScopes: ['billing-chain:2024-02'], sinceMs: 0, idleMs: 0, self: true },
     ]
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    useAuthStore().openEditor(Symbol('alloc'), 'alloc', () => 2)
     await w.findAll('.dh-row-billing')[1].trigger('click')   // 选择器:胶囊行 → 两栏行,P2 T3
-    expect(confirm).toHaveBeenCalledOnce()
+    expect(askQueue).toHaveLength(1)
+    answer(false)
+    await flushPromises()
     expect(useBillingPeriodStore().picked).toBe(false)
-    confirm.mockRestore()
   })
 })
 
@@ -581,7 +625,7 @@ describe('数据中心首页 · 两栏清单(P2 T3)', () => {
     expect(icon.exists()).toBe(true)
     // padlock 悬停文案即 r.locked。R2 起本月锁账是派生的(全部键 approved),
     // 审核态还没到时文案是「审核态加载中」——「未上线」那句随 R1/R2 落地作废。
-    expect(icon.attributes('title')).toBe('审核态加载中')
+    expect(tipOf(icon.element)).toBe('审核态加载中')
     // title 要挂在 HTML 元素上(评审修补 T3 fix-brief #3):SVG 的 title 属性不出浏览器 tooltip,
     // 悬停要出文案,title 得挂在 svg 外面的包壳上 —— 断言收紧,光查属性在不在挡不住挂错元素。
     expect(icon.element.tagName.toLowerCase(), 'title 要挂在非 svg 元素上,否则浏览器不出 tooltip').not.toBe('svg')
@@ -904,12 +948,13 @@ describe('数据中心首页 · 主管条(P2 T6)', () => {
     const presence = usePresenceStore()
     presence.users = [seatEditor('张三', ['billing-chain:2025-06'])]
     presence.holdLock('billing-chain:2025-06', () => {})   // 本标签页在 params 屏那把锁底下持锁
+    useAuthStore().openEditor(Symbol('params'), 'params', () => 1)
     await w.vm.$nextTick()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     await w.find('.dh-sup-chip').trigger('click')
-    expect(confirm, 'chip 跳转不能绕开 go() 同款的确认').toHaveBeenCalledOnce()
+    expect(askQueue, 'chip 跳转不能绕开 go() 同款的确认').toHaveLength(1)
+    answer(false)
+    await flushPromises()
     expect(push).not.toHaveBeenCalled()
-    confirm.mockRestore()
     presence.stop()
   })
 
@@ -1055,7 +1100,7 @@ describe('数据中心首页 · 审核态与行动作(R2 T6)', () => {
     const w = await mountReview(reviewFixture({
       [`params:${YM}`]: { status: 'returned', reason: '电价填错了' },
     }))
-    expect(rowByText(w, '计费参数').find('.dh-rreview').attributes('title')).toBe('退回理由：电价填错了')
+    expect(tipOf(rowByText(w, '计费参数').find('.dh-rreview').element)).toBe('退回理由：电价填错了')
   })
 
   // 破坏验证:把 submitPending 换成 submit(即没录完就不画按钮)→ 红
@@ -1064,7 +1109,7 @@ describe('数据中心首页 · 审核态与行动作(R2 T6)', () => {
     const salary = rowByText(w, '附表12')           // fixture 里没有 salary 源项 → state 'na'
     const notices = rowByText(w, '催缴单')          // STEPS_4DONE 里 bill-notices 是 current → todo
     expect(btn(notices, '交审')!.attributes('disabled')).toBeDefined()
-    expect(btn(notices, '交审')!.attributes('title')).toContain('还没录完')
+    expect(tipOf(btn(notices, '交审')!.element)).toContain('还没录完')
     expect(salary.find('.dh-rreview').text(), 'na 行不出动作').toBe('未交审')
   })
 
@@ -1091,7 +1136,9 @@ describe('数据中心首页 · 审核态与行动作(R2 T6)', () => {
     }), [...EDITOR_PERMS, 'review:approve'])
     const alloc = rowByText(w, '公共电核算')
     expect(btn(alloc, '通过')!.attributes('disabled')).toBeDefined()
-    expect(btn(alloc, '通过')!.attributes('title')).toBe('先通过 计费参数 / 园区抄表 的审核')
+    expect(tipOf(btn(alloc, '通过')!.element)).toBe('先通过 计费参数 / 园区抄表 的审核')
+    // 悬停说明一律走 v-tip(画布 06-B ⑩),两栏里不留浏览器 title
+    expect(w.find('.dh-cols').findAll('[title]')).toHaveLength(0)
   })
 
   it('已审核的行出「撤销」,待审核的行出「通过」「退回」', async () => {
@@ -1195,7 +1242,6 @@ describe('❗审核动作期间清单不许出现空帧', () => {
   //   不刷的话清单已经变了而 ✓ 停在动作之前。
   it('❗中途失败也要刷年份条 —— 失败之前那几把已经写进去了', async () => {
     vi.mocked(reviewApi.closedMonths).mockReset().mockResolvedValue([])
-    vi.spyOn(window, 'alert').mockImplementation(() => {})
     vi.mocked(reviewApi.submit).mockReset()
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(Object.assign(new Error('boom'), { code: 409 }))
@@ -1203,6 +1249,8 @@ describe('❗审核动作期间清单不许出现空帧', () => {
     await btn(rowByText(w, '办公·三期水电'), '交审')!.trigger('click')
     await flushPromises()
     expect(reviewApi.closedMonths, '进屏一趟 + 动作后一趟').toHaveBeenCalledTimes(2)
+    // 报错走失败回执(画布 02-C),不弹浏览器框;409 照旧点明「上游还没审完」
+    expect(receipts.map(r => [r.tone, r.text])).toEqual([['fail', '上游还没审完：boom']])
   })
 })
 

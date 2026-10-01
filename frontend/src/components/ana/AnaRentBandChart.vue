@@ -76,12 +76,12 @@ const tipW = computed(() => {
   let m = 0
   for (const l of tipLines.value) {
     let px = 0
-    for (const ch of l) px += CJK.test(ch) ? 12 : 6.6
+    for (const ch of l) px += CJK.test(ch) ? 12 : 7.2
     m = Math.max(m, px)
   }
   return Math.ceil(m) + 20
 })
-const tipH = computed(() => 12 + tipLines.value.length * 16)
+const tipH = computed(() => 12 + tipLines.value.length * 18)
 const tipX = computed(() => {
   const hx = hoverX.value
   if (hx == null) return 0
@@ -140,8 +140,8 @@ const tipX = computed(() => {
       <template v-if="hoverX != null && tipLines.length">
         <line :x1="hoverX" :x2="hoverX" :y1="box.padT" :y2="box.height - box.padB" class="arb-hair" />
         <g :transform="`translate(${tipX}, ${box.padT + 4})`">
-          <rect :width="tipW" :height="tipH" rx="8" class="arb-tip" />
-          <text v-for="(l, i) in tipLines" :key="i" x="10" :y="20 + i * 16"
+          <rect :width="tipW" :height="tipH" rx="6" class="arb-tip" />
+          <text v-for="(l, i) in tipLines" :key="i" x="10" :y="19 + i * 18"
             :class="['arb-tiptext', i === 0 ? 'arb-tiptitle' : '']">{{ l }}</text>
         </g>
       </template>
@@ -175,7 +175,7 @@ const tipX = computed(() => {
 .arb-end-mid { fill: var(--text-primary); font-weight: 600; }
 .arb-end-locked { fill: var(--sv-locked); }
 .arb-hair { stroke: var(--sv-hair); stroke-width: 1; }
-.arb-tip { fill: var(--sv-tip-bg); }
-.arb-tiptext { fill: var(--sv-tip-text); font-size: 11px; font-variant-numeric: tabular-nums; }
-.arb-tiptitle { fill: var(--text-on-solid); font-weight: 600; font-size: 12px; }
+.arb-tip { fill: var(--tip-bg); }
+.arb-tiptext { fill: var(--text-on-solid); font-size: 12px; font-variant-numeric: tabular-nums; }
+.arb-tiptitle { font-weight: 600; }
 </style>

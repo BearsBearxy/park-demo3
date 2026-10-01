@@ -105,6 +105,17 @@ describe('FPWideCards · S 档卡片模板', () => {
     expect(css.match(/\.fpwc-c[^{]*:hover/), '卡上写了 :hover').toBeNull()
   })
 
+  // 本组件只在手机档出,全是触屏:v-tip 一按就冒,和同一下打开的详情抽屉一起出来,气泡(z-toast)还盖在抽屉上。
+  // 原生 title 在触屏上本来就不出 —— 什么都不挂与改前行为一致。
+  // 破坏验证:.nm 加回 v-tip="c.f.name" → 红
+  it('❗卡名不挂悬停说明,也不挂原生 title', () => {
+    const w = mount(FPWideCards, { props: { rows: ROWS, rowKey: 'id', fields, density: 88 } })
+    const nm = w.findAll('.fpwc-c .nm')
+    expect(nm.map(n => n.text())).toEqual(['鑫诚精密科技', '嘉华新材料'])
+    expect(nm.map(n => [(n.element as HTMLElement & { _tip?: unknown })._tip, n.attributes('title')]))
+      .toEqual([[undefined, undefined], [undefined, undefined]])
+  })
+
   it('❗宽档不出卡片(卡列只属于 S 档,别的档由调用方渲染原表)', () => {
     vi.unstubAllGlobals(); _resetViewportForTest()   // jsdom 原生 matchMedia → tier='xl'
     const w = mount(FPWideCards, { props: { rows: ROWS, rowKey: 'id', fields, density: 88, skeletonRows: 3 } })

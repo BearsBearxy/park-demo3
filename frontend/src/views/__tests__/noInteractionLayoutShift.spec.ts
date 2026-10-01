@@ -136,12 +136,6 @@ const WHITELIST: Record<string, string> = {
   'views/params/ParamCenterView.vue .pm-cardops':
     '§5 编辑态才出现的参数卡操作区（新增/删除行），长在卡片自己肚子里，不顶卡外的上下文',
 
-  // ── 二选一，不是新增 ────────────────────────────────────────────
-  // v-if / v-else 成对，任何时刻恰好渲染一个，没有「多出一条」这回事。
-
-  'views/sales-income/S10Table.vue v-if="edit"':
-    '空态卡里的按钮二选一（编辑态「新增租户」/ 浏览态「编辑模式」），v-else 兜底，永远只渲染一个',
-
   // ── master-detail 的详情栏：它就是这一屏的主体工作区 ─────────────
   // 点左侧清单 → 右侧详情整块换内容。右栏是 flex:1 的固定分栏，左清单一格不动，
   // 换的是栏**内**的内容，不存在「已渲染内容被顶走」。
@@ -193,14 +187,7 @@ const ERR_SLOT_WHITELIST: Record<string, string> = {
   //   不需要新条目：本扫描找的是「带 v-if 且 class 像错误条」的原生元素，
   //   而 FPLoadError 的 v-if 挂在宿主那侧的组件标签上，标签本身没有错误类名，扫描根本不会命中。
   //   （护栏没有变弱：这条扫描管的是 §4.2「表单校验位要常驻」，加载失败本就不归它管。）
-  'views/params/ParamChangesDrawer.vue .pc-err':
-    'A 加载失败态：抽屉打开即拉数据，err / 加载中 / 空态 / 表格是一条 v-if→v-else 链，任何时刻恰好渲染一个',
-  'views/params/ParamHistoryDrawer.vue .ph-err':
-    'A 加载失败态：同 ParamChangesDrawer，err / 加载中 / 内容 三选一的 v-else 链',
-
-  // ── B. 父容器已占位 ───────────────────────────────────────────────────────
-  'components/import/FpImportModal.vue .fpimp-msg.err':
-    'B 父容器已占位：外层 `.fpimp-msgs` 常驻且 min-height:38px，错误/告警进出都在这个恒高槽里，下面的汇总/预览一格不动',
+  //   同日 ParamChangesDrawer .pc-err / ParamHistoryDrawer .ph-err 也换成了 FPLoadError，两条豁免随之删掉；本节现无条目。
 
   // ── B′. 弹窗里的结果清单，不是字段校验 ─────────────────────────────────────
   // 宿主 .ir-scrim 是 position:fixed 的浮层弹窗，整块盖在页面上；它列的是「导入结果里有几行没进」，

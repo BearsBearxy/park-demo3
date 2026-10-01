@@ -34,9 +34,11 @@ describe('FPMoreMenu 带字触发', () => {
     expect(w.emitted('select')).toEqual([['payee']])
     expect(w.find('[role=menu]').exists()).toBe(false)
   })
-  it('不传 label 保持「…」原样:title 仍为「更多操作」', () => {
+  // 破坏验证:触发钮改回原生 title="更多操作" → 本条红(title 不再是 undefined、aria-label 没了)
+  it('不传 label 保持「…」原样:悬停说明走 v-tip「更多操作」(无原生 title,读屏读 aria-label)', () => {
     w = mount(FPMoreMenu, { props: { items: more } })
-    expect(w.find('.fp-more-btn').attributes('title')).toBe('更多操作')
+    const b = w.find('.fp-more-btn')
+    expect([b.attributes('title'), b.attributes('aria-label')]).toEqual([undefined, '更多操作'])
     expect(w.find('.fp-more-lbl').exists()).toBe(false)
   })
 })

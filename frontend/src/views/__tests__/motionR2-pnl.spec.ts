@@ -317,23 +317,23 @@ describe('对抗复查 2026-09-16:首进两趟取数 / 换年在途的横幅与�
     await flushPromises()
     return w
   }
-  /** 跨年步进在途:横幅不插、grid 不被推;到数后也没有横幅(2025-12 有数) */
+  /** 跨年步进在途:期间旁的回退标签不冒出来、grid 不被推;到数后也没有(2025-12 有数) */
   async function expectNoBannerAcrossYear(w: VueWrapper, fn: (...a: never[]) => Promise<unknown>, make: (...a: never[]) => unknown) {
     const grid = w.find('.av2-grid[data-stale-host]').element
     const before = grid.previousElementSibling
-    expect(w.find('.ana-pbanner').exists()).toBe(false)
+    expect(w.find('.anx-period .fp-state').exists()).toBe(false)
     const release = holdNext(fn as never, make as never)
     usePeriod().step(-1)
     await flushPromises()
     expect(usePeriod().ym.value).toBe('2025-12')
-    expect(w.find('.ana-pbanner').exists(), '在途拿新月对旧年的覆盖月,插进一条假横幅').toBe(false)
+    expect(w.find('.anx-period .fp-state').exists(), '在途拿新月对旧年的覆盖月,冒出一个假回退标签').toBe(false)
     expect(grid.previousElementSibling, 'grid 上方多了东西 = 被推下去').toBe(before)
     release()
     await flushPromises()
-    expect(w.find('.ana-pbanner').exists()).toBe(false)
+    expect(w.find('.anx-period .fp-state').exists()).toBe(false)
   }
 
-  it('❗驾驶舱:2026-01 步进到 2025-12,在途不插回退横幅', async () => {
+  it('❗驾驶舱:2026-01 步进到 2025-12,在途不出回退标签', async () => {
     const w = await bootJan(CockpitView)
     await expectNoBannerAcrossYear(w, data.fetchPnlSummary, (y: number) => pnlSum(y))
   })
@@ -360,7 +360,7 @@ describe('对抗复查 2026-09-16:首进两趟取数 / 换年在途的横幅与�
     expect(ys(), '名次没换到 translateY 上').toEqual(['translateY(0px)', 'translateY(34px)', 'translateY(102px)', 'translateY(68px)'])
   })
 
-  it('❗费用与报销:2026-01 步进到 2025-12,在途不插回退横幅', async () => {
+  it('❗费用与报销:2026-01 步进到 2025-12,在途不出回退标签', async () => {
     const w = await bootJan(ExpenseView)
     await expectNoBannerAcrossYear(w, data.fetchPnlYear, (_s: string, y: number) => s5For(y))
   })
@@ -475,5 +475,70 @@ describe('弹层里的图瞬现(原则 7)', () => {
     const inModal = w.findAllComponents({ name: 'AnaEChart' }).filter((c) => modal.element.contains(c.element))
     expect(inModal).toHaveLength(1)
     expect(inModal[0].props('entrance')).toBe(false)
+  })
+})
+
+// 画布 06-D 中格 / 实现规范 §1.5、§2 第 8 条:期间回退不用满宽横条 —— 整页回退贴期间选择旁,离群月是图卡里一行。
+describe('期间回退:期间选择旁的标签 / 图卡里一行,不用满宽横条', () => {
+  type TipEl = HTMLElement & { _tip?: { text: string } }
+  const tags = (w: VueWrapper) => w.findAll('.anx-period .fp-state').map((e) => e.text())
+  async function bootAug(comp: Component) {
+    providePeriodMonths(MONTHS, MONTHS)
+    usePeriod().setGran('month')
+    usePeriod().setYear(2026)
+    usePeriod().setMonth(8)
+    const w = mount(comp as never, STUBS)
+    mounted.push(w)
+    await flushPromises()
+    return w
+  }
+
+  it('❗驾驶舱:选 2026-08 而损益只录到 7 月 → 期间旁「显示 2026-07 · 8 月无数据」,正文里没有它', async () => {
+    vi.mocked(data.fetchPnlSummary).mockImplementation(async (y: number) => {
+      const s = pnlSum(y)
+      return y === 2026 ? { ...s, months: s.months.filter((m) => m !== 8) } : s
+    })
+    const w = await bootAug(CockpitView)
+    expect(tags(w)).toEqual(['显示 2026-07 · 8 月无数据'])
+    expect(w.find('.anx-body .fp-state').exists(), '回退标签跑进正文了').toBe(false)
+  })
+
+  it('❗驾驶舱:收缴率取期回退(台账只到 7 月)→ 期间旁另挂「收缴率显示 2026-07」', async () => {
+    vi.mocked(data.fetchCollectRates).mockResolvedValue([
+      { ym: '2026-06', receivable: 100000, collected: 90000, rate: 90 },
+      { ym: '2026-07', receivable: 120000, collected: 96000, rate: 80 },
+    ])
+    const w = await bootAug(CockpitView)
+    expect(tags(w)).toEqual(['收缴率显示 2026-07'])
+  })
+
+  it('❗驾驶舱:当年有收入为负的月 → 主图卡里图上方一行块内提示(FPNote),不是横条', async () => {
+    vi.mocked(data.fetchPnlSummary).mockImplementation(async (y: number) => {
+      const s = pnlSum(y)
+      if (y !== 2026) return s
+      const revenue = [...s.revenue]
+      revenue[2] = -50000
+      return { ...s, revenue }
+    })
+    const w = await bootAug(CockpitView)
+    const note = w.find('.av2-grid[data-stale-host] .av2-s8 .fp-note')
+    expect(note.exists(), '离群月提示不在主图卡里').toBe(true)
+    expect(note.text()).toBe('2026-03 收入为负,已计入年度营收/成本/利润与达成率')
+    expect(note.element.nextElementSibling?.classList.contains('stub-chart'), '提示不在图上方').toBe(true)
+  })
+
+  it('❗费用与报销:选 2026-08 而附表5 只录到 7 月 → 期间旁「显示 2026-07 · 8 月无数据」;异动榜科目名悬停看全称', async () => {
+    vi.mocked(data.fetchPnlYear).mockImplementation(async (_s: string, y: number) => {
+      const d = s5For(y)
+      return y === 2026 ? { ...d, rows: d.rows.map((r) => ({ ...r, m: r.m.map((v, i) => (i === 7 ? null : v)) })) } : d
+    })
+    const w = await bootAug(ExpenseView)
+    expect(tags(w)).toEqual(['显示 2026-07 · 8 月无数据'])
+    const lbs = w.findAll('.ex-mv .lb')
+    expect(lbs.length, '异动榜没出行,这条判据是空跑').toBeGreaterThan(0)
+    for (const lb of lbs) {
+      expect(lb.attributes('title')).toBeUndefined()
+      expect((lb.element as TipEl)._tip?.text).toBe(lb.text())
+    }
   })
 })

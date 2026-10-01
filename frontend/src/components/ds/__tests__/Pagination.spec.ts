@@ -1,6 +1,17 @@
 import { mount } from '@vue/test-utils'
 import { describe, it, expect } from 'vitest'
 import Pagination from '../Pagination.vue'
+import Select from '../Select.vue'
+
+// 2026-10-01 悬停说明(十件 ⑩)走 v-tip,挂在元素的 _tip 上;不再用浏览器 title
+describe('Pagination 每页条数的悬停说明', () => {
+  it('挂在下拉上、走 v-tip,不是浏览器 title', () => {
+    const w = mount(Pagination, { props: { pageCount: 3, total: 50 } })
+    const sel = w.findComponent(Select).element as HTMLElement & { _tip?: { text: string } }
+    expect(sel._tip?.text).toBe('每页显示多少条')
+    expect(w.element.querySelector('[title]')).toBeNull()
+  })
+})
 
 describe('Pagination (uncontrolled)', () => {
   it('clicking page 2 emits "page" with 2 and activates the pill', async () => {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // ponytail: 自建 <table>，表头用 Popover 排序触发器（需 VNode 表头，故不走纯文本插值的通用表格）
-import { computed, h, defineComponent, type VNode } from 'vue'
+import { computed, h, defineComponent, withDirectives, type VNode } from 'vue'
+import { vTip } from '@/directives/tip'
 import Popover from '@/components/ds/Popover.vue'
 import PopoverItem from '@/components/ds/PopoverItem.vue'
 import { fpSortRows } from './fpSort'
@@ -102,10 +103,9 @@ function renderSortHeader(col: SortableColumn) {
   const indicator = dir === 'asc' ? '↑' : dir === 'desc' ? '↓' : '↕'
   const align     = col.align || 'left'
 
-  const trigger = h('span', {
+  const trigger = withDirectives(h('span', {
     role: 'button',
     tabindex: '0',
-    title: '排序',
     style: {
       display: 'inline-flex',
       alignItems: 'center',
@@ -130,7 +130,7 @@ function renderSortHeader(col: SortableColumn) {
         lineHeight: '1',
       },
     }, indicator),
-  ])
+  ]), [[vTip, '排序']])
 
   function activeDot(thisDir: 'asc' | 'desc') {
     return dir === thisDir
@@ -226,7 +226,7 @@ function renderSortHeader(col: SortableColumn) {
           <td
             v-for="c in columns"
             :key="c.key"
-            :title="c.render ? undefined : String((r as any)[c.key] ?? '')"
+            v-tip="c.render ? undefined : String((r as any)[c.key] ?? '')"
             :style="{
               /* 等高铁律(LIST-PAGE-SPEC §4):垂直留白由 tr 定高提供(--mx-row-h),td 不吃上下 padding */
               padding: `0 ${cellPadX}`,
@@ -236,7 +236,7 @@ function renderSortHeader(col: SortableColumn) {
               color: 'var(--text-primary)',
               whiteSpace: c.wrap ? 'normal' : 'nowrap',
               /* 超长内容截断而不是把列撑宽(LIST-PAGE-SPEC §4):table-layout 保持 auto,
-                 列宽被 width:100% 压缩时才生效;全文靠上面的 :title 悬浮看 */
+                 列宽被 width:100% 压缩时才生效;全文靠上面的 v-tip 悬停看 */
               overflow: c.wrap ? undefined : 'hidden',
               textOverflow: c.wrap ? undefined : 'ellipsis',
               fontVariantNumeric: c.mono ? 'tabular-nums' : 'normal',

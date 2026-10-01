@@ -1,3 +1,15 @@
+<script lang="ts">
+/** 整页期间回退标签的字(画布 06-D 中格:「显示 2026-08 · 9 月无数据」)。
+ *  selected 是所选期:'YYYY-MM',或按年时的 'YYYY年';used 是屏上实际画的那一期 'YYYY-MM'。
+ *  同年只写月;跨年(选 2026-01 显示 2025-12)把年也写上,不然「1 月无数据」读不出是哪年的 1 月。 */
+export function periodNote(selected: string, used: string): string {
+  const y = selected.slice(0, 4)
+  const m = selected.length === 7 ? `${+selected.slice(5)} 月` : ''
+  const which = !m ? `${y} 年` : used.startsWith(y) ? m : `${y} 年 ${m}`
+  return `显示 ${used} · ${which}无数据`
+}
+</script>
+
 <script setup lang="ts">
 // P3 分析层外壳(视觉 1:1 app/screen-analysis.jsx anx-* 工具条):
 // 期间控制(按月/按年/年月下拉/步进,可用范围由真数据派生)+「目标与阈值」设置弹层(localStorage)。
@@ -162,6 +174,9 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
           <button :disabled="pmode === 'year' ? yAtEnd : period.atEnd.value"
             @click="pmode === 'year' ? stepYear(1) : period.step(1)"><component :is="iconFor('chevron-right')" :size="15" /></button>
         </div>
+        <!-- 整页期间回退(画布 06-D 中格):屏在这里放 FPStateTag「显示 2026-08 · 9 月无数据」,
+             贴在期间选择旁、不另起一行;只有某张图回退的,标签贴那张图的卡头,不进这里。 -->
+        <slot name="period-note" />
       </div>
       <div v-else-if="scopeChip" style="display: inline-flex; align-items: center; gap: 8px">
         <span class="anx-lbl"><component :is="iconFor('calendar')" :size="14" />口径</span>
@@ -172,7 +187,7 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
       <slot name="tools" />
 
       <div class="anx-right">
-        <!-- v2 对比开关(仅屏声明支持集时显示;不支持项禁用+title 说明) -->
+        <!-- v2 对比开关(仅屏声明支持集时显示;不支持项禁用+悬停说明) -->
         <div v-if="cmp" class="anx-cmp">
           <span class="anx-lbl">对比</span>
           <div class="anx-seg" role="group" aria-label="对比开关">
@@ -180,7 +195,7 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
               v-for="m in CMP_MODES" :key="m"
               :class="{ on: cmp.mode.value === m }"
               :disabled="m !== 'none' && !cmp.supported.includes(m)"
-              :title="m !== 'none' && !cmp.supported.includes(m) ? CMP_TIP[m] : undefined"
+              v-tip="m !== 'none' && !cmp.supported.includes(m) ? CMP_TIP[m] : undefined"
               @click="cmp.set(m)"
             >{{ CMP_LABEL[m] }}</button>
           </div>
@@ -189,7 +204,7 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
              matchMedia,模板换词要么恒桌面要么加分支;藏字则测试 text() 口径不变)。 -->
         <span class="anx-lbl"><component :is="iconFor('clock')" :size="12" /><span class="anx-asof-prefix">数据</span>截至 {{ asof }}</span>
         <div ref="popRoot" style="position: relative">
-          <button class="anx-icobtn" :class="{ on: pop }" title="目标与阈值" @click.stop="pop = !pop">
+          <button v-tip="'目标与阈值'" class="anx-icobtn" :class="{ on: pop }" @click.stop="pop = !pop">
             <component :is="iconFor('sliders-horizontal')" :size="16" />
           </button>
           <div v-if="pop" class="anx-pop" @click.stop>

@@ -17,6 +17,8 @@ import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
 import AnaBarRows from '@/components/ana/AnaBarRows.vue'
 import { PHASES } from '@/views/sales-income/layout'
 import { contractStatusOf, contractStatusColor } from '@/components/fp/contractStatus'
@@ -39,17 +41,21 @@ const err = ref('')
 const tenantList = ref<TenantDTO[]>([])
 const contracts = ref<ContractDTO[]>([])
 
+let seq = 0
 async function reload() {
-  // 切回重读会重跑本函数:错误不清,重试成功后屏上仍挂着上次的失败文案(P3 T2 评审坐实)
-  err.value = ''
+  const my = ++seq
   try {
     const [ts, cs] = await Promise.all([fetchTenants(), fetchContracts()])
+    if (my !== seq) return
     tenantList.value = ts
     contracts.value = cs
+    // 切回重读 / 点重试都重跑本函数:成功了要把上次的失败清掉(P3 T2 评审坐实);只在成功分支清,重试途中失败卡不闪
+    err.value = ''
   } catch (e) {
+    if (my !== seq) return
     err.value = e instanceof Error ? e.message : String(e)
   } finally {
-    loaded.value = true
+    if (my === seq) loaded.value = true
   }
 }
 onMounted(reload)
@@ -358,7 +364,7 @@ const listRows = computed(() => {
     <!-- skel:end -->
 
     <div v-else-if="err" class="ak-page">
-      <AnaEmpty label="分析数据加载失败" :hint="err" />
+      <FPLoadError :sub="err" @retry="reload">租户和合同数据没读到</FPLoadError>
     </div>
 
     <div v-else-if="!activeTenants.length" class="ak-page">
@@ -457,7 +463,7 @@ const listRows = computed(() => {
               租户清单
               <span v-if="phaseFilter != null" class="tp2-chip">
                 {{ phaseName(phaseFilter) }} · {{ filteredShares.length }} 户
-                <button class="x" title="清除过滤" @click="phaseFilter = null">×</button>
+                <button v-tip="'清除过滤'" class="x" @click="phaseFilter = null">×</button>
               </span>
             </span>
             <span class="hint">按月租金降序 · 前 {{ Math.min(LIST_N, filteredShares.length) }} 户 · 累计=已展示项</span>
@@ -465,7 +471,8 @@ const listRows = computed(() => {
           <!-- S 档换两行行卡:7 列 × 80 = 560 > 336,整块横向溢出。7 个字段一个不少、不折叠不省略号 ——
                第一行 序号 + 租户名 ——右端—— 月租金(万,主字段);第二行 期区 · 主楼栋 ——右端—— 占比 · 累计 · 合同数。
                行高 56,12 行 = 672(骨架按这个数分档)。占比条 .ak-inbar 是表格列宽里的东西,行卡上只留数字。 -->
-          <template v-if="!isS">
+          <FPEmpty v-if="!listRows.length" size="sm">该期区暂无有月租金的租户</FPEmpty>
+          <template v-else-if="!isS">
           <table class="ak-tbl">
             <thead><tr><th>租户</th><th>期区</th><th>月租金(万)</th><th>占比</th><th>累计</th><th>合同数</th><th>主楼栋</th></tr></thead>
             <tbody>
@@ -487,7 +494,6 @@ const listRows = computed(() => {
               <div class="r2"><span>{{ phaseName(t.phase) }} · {{ t.primaryBuilding || '—' }}</span><span class="mono">占 {{ t.share.toFixed(1) }}% · 累计 {{ t.cum.toFixed(0) }}% · {{ t.contractCount }} 份</span></div>
             </div>
           </div>
-          <div v-if="!listRows.length" class="tp2-none">该期区暂无有月租金的租户</div>
         </div>
 
         <!-- S 档「更多分析」:合同月租分布 / 续约风险 / 合同生命周期三块默认收起。
@@ -514,7 +520,6 @@ const listRows = computed(() => {
 .tp2-chip { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; font-size: 11px; font-weight: var(--fw-medium); color: var(--text-secondary); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 2px 8px; }
 .tp2-chip .x { border: none; background: transparent; cursor: pointer; color: var(--text-muted); font-size: 12px; padding: 0; line-height: 1; }
 .tp2-chip .x:hover { color: var(--text-primary); }
-.tp2-none { text-align: center; color: var(--text-disabled); font-size: var(--fs-label); padding: 18px 0; }
 /* 「更多分析」折叠条:桌面 display:none —— 不进栅格、不占位、零差异。S 档才长出来。 */
 .ak-foldbar { display: none; }
 @media (max-width: 600px) { /* S */

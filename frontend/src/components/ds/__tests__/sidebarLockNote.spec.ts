@@ -39,18 +39,22 @@ describe('侧栏 · 共锁注解', () => {
   }
 
   const ITEMS = [{ value: 'bill-notices', label: '催缴单' }]
+  // 2026-10-01:悬停说明从原生 title 换成 v-tip(挂在元素的 _tip 上);点按 aria-label 找
+  const tipOf = (d: { element: Element }) => (d.element as HTMLElement & { _tip?: { text: string } })._tip?.text
 
   it('❗共锁屏的编辑点要带「为什么四个一起亮」的解释', () => {
     seed()
     const w = mount(SidebarNav, { props: { sections: [{ items: ITEMS }] } })
-    const dot = w.find('span[title*="共用同一把月锁"]')
+    const dot = w.find('span[aria-label*="共用同一把月锁"]')
     expect(dot.exists(), 'scopeNote 必须从 editScopes 里命中前缀的那把锁取,不是 seat.scope').toBe(true)
-    expect(dot.attributes('title')).toContain('张三 正在编辑')
+    expect(tipOf(dot)).toContain('张三 正在编辑')
+    expect(tipOf(dot)).toContain('共用同一把月锁')
+    expect(dot.attributes('title'), '不再用浏览器 title').toBeUndefined()
   })
 
   it('没人编辑时不画点', () => {
     const w = mount(SidebarNav, { props: { sections: [{ items: ITEMS }] } })
-    expect(w.find('span[title*="正在编辑"]').exists()).toBe(false)
+    expect(w.find('span[aria-label*="正在编辑"]').exists()).toBe(false)
   })
 
   it('折叠的组把子项的编辑点聚到标题行;展开后点回到子项(SIDEBAR-UX-REDESIGN §3.2)', async () => {
@@ -58,26 +62,26 @@ describe('侧栏 · 共锁注解', () => {
     const w = mount(SidebarNav, { props: { sections: [{ title: '出账', items: ITEMS }], openTitles: [] } })
     expect(w.find('.fp-sbnav-row').exists()).toBe(false)                            // 收着
     const title = w.find('button.fp-sbnav-title')
-    expect(title.find('span[title*="张三 正在编辑"]').exists()).toBe(true)           // 聚合点在标题行
+    expect(title.find('span[aria-label*="张三 正在编辑"]').exists()).toBe(true)           // 聚合点在标题行
     await title.trigger('click')
     expect(w.emitted('toggle')).toEqual([['出账']])                                  // 开合由外层决定
     await w.setProps({ openTitles: ['出账'] })
-    expect(w.find('button.fp-sbnav-title span[title*="正在编辑"]').exists()).toBe(false)
-    expect(w.find('.fp-sbnav-row span[title*="张三 正在编辑"]').exists()).toBe(true)  // 点回到子项行
+    expect(w.find('button.fp-sbnav-title span[aria-label*="正在编辑"]').exists()).toBe(false)
+    expect(w.find('.fp-sbnav-row span[aria-label*="张三 正在编辑"]').exists()).toBe(true)  // 点回到子项行
   })
 
   it('在场点有 role="img" 与 aria-label —— 屏读能念出「谁在编辑哪一期」', () => {
     seed()
     const w = mount(SidebarNav, { props: { sections: [{ items: ITEMS }] } })
-    const dot = w.find('span[title*="正在编辑"]')
+    const dot = w.find('span[aria-label*="正在编辑"]')
     expect(dot.attributes('role')).toBe('img')
-    expect(dot.attributes('aria-label')).toBe(dot.attributes('title'))
+    expect(dot.attributes('aria-label')).toBe(tipOf(dot))
   })
 
   it('在场点可聚焦(tabindex=0),Enter 开 Popover', async () => {
     seed()
     const w = mount(SidebarNav, { props: { sections: [{ items: ITEMS }] } })
-    const dot = w.find('span[title*="正在编辑"]')
+    const dot = w.find('span[aria-label*="正在编辑"]')
     expect(dot.attributes('tabindex')).toBe('0')
     expect(w.find('.ds-popover-panel').exists()).toBe(false)
     await dot.trigger('keydown', { key: 'Enter' })
@@ -89,7 +93,7 @@ describe('侧栏 · 共锁注解', () => {
   it('❗点在场点只开 Popover,不许顺带把整行 select 掉(2026-09-06 实测坐实)', async () => {
     seed()
     const w = mount(SidebarNav, { props: { sections: [{ items: ITEMS }] } })
-    const dot = w.find('span[title*="正在编辑"]')
+    const dot = w.find('span[aria-label*="正在编辑"]')
     await dot.trigger('click')
     expect(w.find('.ds-popover-panel').exists(), '点击也该把面板打开').toBe(true)
     expect(w.emitted('select')).toBeUndefined()
@@ -98,7 +102,7 @@ describe('侧栏 · 共锁注解', () => {
   it('❗非 Enter 键不开 Popover —— 按键守卫删掉(只留 preventDefault+click)也会全绿的洞', async () => {
     seed()
     const w = mount(SidebarNav, { props: { sections: [{ items: ITEMS }] } })
-    const dot = w.find('span[title*="正在编辑"]')
+    const dot = w.find('span[aria-label*="正在编辑"]')
     await dot.trigger('keydown', { key: 'a' })
     expect(w.find('.ds-popover-panel').exists()).toBe(false)
   })
@@ -106,7 +110,7 @@ describe('侧栏 · 共锁注解', () => {
   it('❗Popover 面板真的载了文案,不是空壳 —— default slot 删空也要能被这条抓到', async () => {
     seed()
     const w = mount(SidebarNav, { props: { sections: [{ items: ITEMS }] } })
-    const dot = w.find('span[title*="正在编辑"]')
+    const dot = w.find('span[aria-label*="正在编辑"]')
     await dot.trigger('keydown', { key: 'Enter' })
     expect(w.find('.ds-popover-panel').text()).toContain('正在编辑')
   })
@@ -114,14 +118,14 @@ describe('侧栏 · 共锁注解', () => {
   it('文案带期:名字 · 期 · 共锁解释三段用 · 拼(§3.3)', () => {
     seed()
     const w = mount(SidebarNav, { props: { sections: [{ items: ITEMS }] } })
-    const dot = w.find('span[title*="正在编辑"]')
-    expect(dot.attributes('title')).toContain(' · 2026-08 · ')
+    const dot = w.find('span[aria-label*="正在编辑"]')
+    expect(tipOf(dot)).toContain(' · 2026-08 · ')
   })
 
   it('❗点的外层包壳要有 display:flex + alignItems:center —— 否则点被行内基线顶偏(2026-09-06 实测偏下 9px,jsdom 断不到像素,退而求其次断样式)', () => {
     seed()
     const w = mount(SidebarNav, { props: { sections: [{ items: ITEMS }] } })
-    const dot = w.find('span[title*="正在编辑"]')
+    const dot = w.find('span[aria-label*="正在编辑"]')
     // dot → Popover 的 trigger 包裹层 → Popover 根 span → 这一层是 SidebarNav 自己的外层包壳
     const outer = dot.element.parentElement?.parentElement?.parentElement as HTMLElement
     expect(outer.style.display).toBe('flex')
@@ -131,9 +135,10 @@ describe('侧栏 · 共锁注解', () => {
   it('❗折叠组的聚合点也要有 role="img" 与 aria-label —— 收着的时候它是唯一的在场信号', async () => {
     seed()
     const w = mount(SidebarNav, { props: { sections: [{ title: '出账', items: ITEMS }], openTitles: [] } })
-    const dot = w.find('button.fp-sbnav-title span[title*="张三 正在编辑"]')
+    const dot = w.find('button.fp-sbnav-title span[aria-label*="张三 正在编辑"]')
     expect(dot.attributes('role')).toBe('img')
-    expect(dot.attributes('aria-label')).toBe(dot.attributes('title'))
+    expect(dot.attributes('aria-label')).toBe(tipOf(dot))
+    expect(dot.attributes('title'), '不再用浏览器 title').toBeUndefined()
   })
 
   it('❗Popover 面板宽度不超侧栏内容区(约 206px)—— 260px 会被 234px 的 .fp-panel 裁光', async () => {
@@ -141,7 +146,7 @@ describe('侧栏 · 共锁注解', () => {
     // 这里钉住喂给 Popover 的 width prop 本身没有超过 .fp-panel 的内容区宽度(234-14*2=206)。
     seed()
     const w = mount(SidebarNav, { props: { sections: [{ items: ITEMS }] } })
-    const dot = w.find('span[title*="正在编辑"]')
+    const dot = w.find('span[aria-label*="正在编辑"]')
     await dot.trigger('keydown', { key: 'Enter' })
     const panel = w.find('.ds-popover-panel')
     const panelStyle = (panel.element as HTMLElement).style

@@ -10,7 +10,7 @@ import { join } from 'node:path'
 const SRC = join(__dirname, '..')
 const FILES = [
   'views/bills/BillNoticesView.vue', 'views/meters/MeterView.vue', 'views/meters/MeterLedgerGrid.vue', 'views/meters/meter-shared.css',
-  'views/params/ParamCenterView.vue', 'App.vue', 'components/ana/AnaPeriodBanner.vue', 'components/fp/FPToast.vue',
+  'views/params/ParamCenterView.vue', 'App.vue', 'components/fp/FPToast.vue',
   'components/fp/FPSideDrawer.vue', 'components/shell/CommandPalette.vue', 'components/shell/WhatsNewDialog.vue',
   'views/buildings/BuildingCard.vue', 'views/bills/CompanyBookWindow.vue', 'components/fp/FPAlertChip.vue',
 ]
@@ -66,10 +66,6 @@ describe('一处一个的浅色值:浅色照旧,暗色换令牌', () => {
   })
   it('❗楼栋卡「快到期」胶囊(行内样式挪进样式表才挂得上暗色)', () => {
     expect(look('<span class="bc-exp"></span>', 'span', 'color')).toEqual(['rgb(168,98,0)', 'var(--hue-orange)'])
-  })
-  it('❗期间回退提示条:字 = --warn-text(同值),底浅色照旧、暗色 --warn-bg', () => {
-    expect(look('<div class="ana-pbanner"></div>', 'div', 'background')).toEqual(['rgb(250,238,218)', 'var(--warn-bg)'])   // #faeeda
-    expect(look('<div class="ana-pbanner"></div>', 'div', 'color')).toEqual(['var(--warn-text)', 'var(--warn-text)'])
   })
 })
 

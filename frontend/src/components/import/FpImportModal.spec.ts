@@ -30,8 +30,8 @@ describe('FpImportModal', () => {
     await w.find('textarea').setValue(lines.join('\n'))
     await w.find('.fpimp-ta + div button').trigger('click')    // 解析粘贴内容
 
-    // 条数提示
-    expect(w.find('.fpimp-msg.ok').text()).toContain('6')
+    // 条数提示:块内提示(十件 ④ FPNote 蓝档),不是自写的底色条
+    expect(w.find('.fp-note.info').text()).toBe('已识别 6 条有效记录,确认后写入。')
     // 预览只渲染前 6 行
     const bodyRows = w.findAll('.fpimp-pvtable tbody tr')
     expect(bodyRows.length).toBe(6)
@@ -79,7 +79,17 @@ describe('FpImportModal', () => {
     // 仅一行表头 + 一行空名 → skipHeader 跳表头,空名跳过 → 0 有效
     await w.find('textarea').setValue('租户\t厂房租金\t商铺租金\n\t1\t2')
     await w.find('.fpimp-ta + div button').trigger('click')
-    expect(w.find('.fpimp-msg.err').exists()).toBe(true)
+    expect(w.find('.fpimp-msgs .fp-note.danger').text()).toContain('没有一行能匹配模板列')
+  })
+
+  it('customParse 带 warning:非阻断提示走 FPNote 黄档,与结果并排', async () => {
+    const customParse = () => ({ records: [{ a: 1, __preview: ['x'] }] as ImportRec[], warning: '发生额与系统推算差 3 元' })
+    const w = mount(FpImportModal, { props: { title: '导入', templateCols: ['A'], customParse } })
+    await w.find('.fpimp-tab:nth-child(2)').trigger('click')
+    await w.find('textarea').setValue('A\n1')
+    await w.find('.fpimp-ta + div button').trigger('click')
+    expect(w.find('.fpimp-msgs .fp-note.warn').text()).toBe('发生额与系统推算差 3 元')
+    expect(w.find('.fpimp-msgs .fp-note.danger').exists()).toBe(false)
   })
 
   it('customParse 返回 records → 复用预览 + import emit', async () => {
@@ -136,12 +146,12 @@ describe('FpImportModal', () => {
     await w.find('textarea').setValue('A	1')
     await w.find('.fpimp-ta + div button').trigger('click')
     expect(parseWorkbook.mock.calls[0][1]).toEqual({ ym: '2099-07', zone: 'p1', kind: 'elec' })
-    expect(w.find('.fpimp-fb').text()).toContain('按 2099-07 导入')
+    expect(w.find('.fpimp-fb .fp-note.warn').text()).toBe('按 2099-07 导入')
     // 账期是 ds/DatePicker 月份字段(2026-09-19 换掉原生月份框):点开、点 8 月
     await w.find('.fpimp-fb .dp-box').trigger('click')
     await w.find('.fpimp-fb [data-k="2099-08"]').trigger('click')
     expect(parseWorkbook.mock.calls[1][1]).toMatchObject({ ym: '2099-08' })
-    expect(w.find('.fpimp-fb').text()).toContain('按 2099-08 导入')
+    expect(w.find('.fpimp-fb .fp-note.warn').text()).toBe('按 2099-08 导入')
   })
 
   it('无 notice(标题齐全)不渲染补录条', async () => {

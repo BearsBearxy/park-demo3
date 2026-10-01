@@ -1,21 +1,20 @@
 <script setup lang="ts">
-// FinDialogs — 三报表共用弹窗三合一(公司新建/重命名、确认删除、添加子类)。
-// 1:1 移植 fin-common.jsx FinCompanyDialog/FinConfirm/FinAddRowDialog + .fin-mask/.fin-dlg 样式;
+// FinDialogs — 三报表共用弹窗(公司新建/重命名、添加子类)。删除公司的确认改走 ask(删除类),在 useFinStatementScreen。
+// 1:1 移植 fin-common.jsx FinCompanyDialog/FinAddRowDialog + .fin-mask/.fin-dlg 样式;
 // 遵 PAGE-BEHAVIOR-SPEC §2 居中弹窗:Teleport to body + backdrop flex 居中 + Esc 关闭 + 体内滚动。
 import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
+import FPNote from '@/components/fp/FPNote.vue'
 import type { FinCompany } from './useFinStatementScreen'
 import { useFormSheet } from '@/composables/useFormSheet'
 
-// company / addrow 两态带输入 → S 档全屏 sheet;delco 只有一句话 + 两个钮,按判据仍是居中小卡
-// (styles/form-sheet.css)。
+// company / addrow 两态带输入 → S 档全屏 sheet(styles/form-sheet.css)。
 const sheet = useFormSheet()
 
-// 单一 dlg 描述符,null = 不显示。company: 新建/重命名;delco: 确认删除;addrow: 加子类。
+// 单一 dlg 描述符,null = 不显示。company: 新建/重命名;addrow: 加子类。
 export type FinDialog =
   | { type: 'company'; mode: 'new' | 'edit'; company?: FinCompany }
-  | { type: 'delco'; company: FinCompany }
   | { type: 'addrow'; parentLabel: string; heading?: string; placeholder?: string; hint?: string }
 
 const props = defineProps<{
@@ -26,7 +25,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   submitCompany: [name: string]     // company 提交(new/edit 由父级依 mode 分派)
-  confirmDelete: []                  // delco 确认
   submitRow: [label: string]         // addrow 提交
 }>()
 
@@ -39,7 +37,7 @@ watch(() => props.dlg, async (d) => {
   err.value = ''
   if (d?.type === 'company') name.value = d.company?.name ?? ''
   else name.value = ''
-  if (d && (d.type === 'company' || d.type === 'addrow')) {
+  if (d) {
     await nextTick(); inputRef.value?.focus()
   }
 }, { immediate: true })
@@ -66,7 +64,7 @@ function submitRow() {
 
 <template>
   <Teleport to="body">
-    <div v-if="dlg" class="fin-mask" :class="{ 'fp-fsheet': sheet && dlg.type !== 'delco' }" @mousedown="emit('close')">
+    <div v-if="dlg" class="fin-mask" :class="{ 'fp-fsheet': sheet }" @mousedown="emit('close')">
       <!-- 公司新建 / 重命名 -->
       <div v-if="dlg.type === 'company'" class="fin-dlg" role="dialog" aria-modal="true" @mousedown.stop>
         <div class="fin-dlg-h">
@@ -78,29 +76,14 @@ function submitRow() {
             <div class="lab">公司名称</div>
             <input ref="inputRef" class="fin-in" :class="{ err }" v-model="name" placeholder="如:园区资产管理有限公司"
               @input="err = ''" @keydown.enter="submitCompany" />
+            <p class="fp-field-err"><template v-if="err">{{ err }}</template></p>
           </div>
-          <div class="fin-erm">{{ err }}</div>
         </div>
         <div class="fin-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="emit('close')">取消</Button>
           <Button variant="filled" size="sm" @click="submitCompany">
             <template #leading><component :is="iconFor('check')" /></template>
             {{ dlg.mode === 'edit' ? '保存' : '创建' }}
-          </Button>
-        </div>
-      </div>
-
-      <!-- 确认删除公司 -->
-      <div v-else-if="dlg.type === 'delco'" class="fin-dlg" role="dialog" aria-modal="true" @mousedown.stop>
-        <div class="fin-dlg-h">
-          <h3>删除管理公司</h3>
-          <p>确认删除「{{ dlg.company.name }}」及其全部台账与报表数据?此操作不可撤销。</p>
-        </div>
-        <div class="fin-dlg-f" style="padding-top:20px">
-          <Button variant="gray" size="sm" @click="emit('close')">取消</Button>
-          <Button variant="danger" size="sm" @click="emit('confirmDelete')">
-            <template #leading><component :is="iconFor('trash-2')" /></template>
-            确认删除
           </Button>
         </div>
       </div>
@@ -116,9 +99,9 @@ function submitRow() {
             <div class="lab">子类名称</div>
             <input ref="inputRef" class="fin-in" :class="{ err }" v-model="name" :placeholder="dlg.placeholder || '如:一期租户'"
               @input="err = ''" @keydown.enter="submitRow" />
+            <p class="fp-field-err"><template v-if="err">{{ err }}</template></p>
           </div>
-          <div class="fin-erm">{{ err }}</div>
-          <div v-if="dlg.hint" class="fin-dlg-note"><component :is="iconFor('info')" :size="15" /><span>{{ dlg.hint }}</span></div>
+          <FPNote v-if="dlg.hint" tone="info">{{ dlg.hint }}</FPNote>
         </div>
         <div class="fin-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="emit('close')">取消</Button>
@@ -147,8 +130,6 @@ function submitRow() {
 .fin-in { width:100%; box-sizing:border-box; height:36px; padding:0 12px; font-size:var(--fs-body); color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
 .fin-in:focus { border-color:var(--hue-blue); }
 .fin-in.err { border-color:var(--hue-red); }
-.fin-erm { font-size:11.5px; color:var(--hue-red); margin-top:-6px; min-height:14px; }
-.fin-dlg-note { display:flex; gap:8px; align-items:flex-start; padding:11px 13px; border-radius:var(--radius-md); background:var(--accent-sky); font-size:12px; line-height:1.55; color:var(--text-secondary); }
-.fin-dlg-note :deep(svg) { flex:0 0 auto; color:var(--hue-blue); margin-top:1px; }
+.fin-field .fp-field-err { margin-top:6px; }
 .fin-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:16px 22px 20px; }
 </style>

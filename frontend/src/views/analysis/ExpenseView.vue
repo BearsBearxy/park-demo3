@@ -3,16 +3,16 @@
 // KPI 6 瓦 + 主图 s8 四组堆叠柱+运营费用总计线(环比开=总计上月灰虚线 cmpBaseline())
 // + s4 本期费用结构环 + 第二排 s4×3:科目Top10(条色随组)/环比异动榜(费用降是好事)/报销办公专区。
 // 数据零新端点:fetchPnlYear('s5') 组带自带总计行不重算 + fetchPnlSummary 的 revenue(费用占收入比);
-// 纯函数见 expense.logic.ts;期间口径同驾驶舱(atPeriod:月=当月,年=Σ;月锚回退横幅显式)。
+// 纯函数见 expense.logic.ts;期间口径同驾驶舱(atPeriod:月=当月,年=Σ;月锚回退在期间选择旁标出)。
 import { computed, ref, watch } from 'vue'
-import AnaShell from './AnaShell.vue'
+import AnaShell, { periodNote } from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaBarRow from '@/components/ana/AnaBarRow.vue'
 import AnaBarRows from '@/components/ana/AnaBarRows.vue'
-import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
+import FPStateTag from '@/components/fp/FPStateTag.vue'
 import { cmpBaseline, fnum, hues, sgn } from '@/components/ana/anaFmt'
 import { anaPalette } from '@/components/ana/anaTheme'
 import { DUR, EASE } from '@/components/ana/anaMotion'
@@ -49,14 +49,14 @@ watch(year, async (y) => {
   finally { if (t === token) { loading.value = false; loadedYear.value = y } }
 }, { immediate: true })
 
-// ── 期间(§五策略2:所选月无附表5 → 锚定最近覆盖月 + 横幅显式) ──
+// ── 期间(§五策略2:所选月无附表5 → 锚定最近覆盖月 + 期间旁标签显式) ──
 const rows = computed(() => s5.value?.rows ?? [])
 const groups = computed(() => extractGroups(rows.value))
 const covered = computed(() => coveredMonths(groups.value))
 const empty = computed(() => !covered.value.length)
 const isMonth = computed(() => period.sel.value.gran === 'month')
-// 已画那一期(C5-02,同 CockpitView):换年在途 covered 还是旧年的,拿新选的月去对 —— 横幅凭空插进来、
-// 文案还是假的,到数再拔掉,整片 grid 被推下又弹回。同年换月跟选择;跨年在途冻结,与数据同一拍换。
+// 已画那一期(C5-02,同 CockpitView):换年在途 covered 还是旧年的,拿新选的月去对 —— 回退标签凭空冒出来、
+// 文案还是假的,到数再拔掉。同年换月跟选择;跨年在途冻结,与数据同一拍换。
 const drawnSel = ref(period.sel.value)
 watch([loadedYear, period.sel], ([ly, s]) => { if (ly === s.year) drawnSel.value = s }, { immediate: true })
 const mi = computed(() => drawnSel.value.month - 1)
@@ -169,7 +169,7 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
 </script>
 
 <template>
-  <!-- §五:月敏感屏(full);月锚回退横幅 + 年空态见主区 -->
+  <!-- §五:月敏感屏(full);月锚回退标签在期间选择旁(#period-note),年空态见主区 -->
   <AnaShell period-mode="full" :compare="['mom']" :busy="staleShown" :kpi-hold="loading && !s5 ? 6 : 0">
     <template #kpis>
       <!-- 年空不渲染 KPI(禁止假 0);首进还没数据时 empty 也为真。换年在途旧年瓦片留在原地,
@@ -185,6 +185,9 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
         <AnaKpiTile label="费用占收入比" :value="expRatio == null ? '—' : expRatio.toFixed(1) + '%'"
           :note="expRatio == null ? '当期无收入数据' : '收入 ' + money(revenue)" />
       </template>
+    </template>
+    <template #period-note>
+      <FPStateTag v-if="usedYm" tone="muted">{{ periodNote(ymOf(drawnSel.year, drawnSel.month), usedYm) }}</FPStateTag>
     </template>
 
     <!-- 首进:版式已知就不转圈(C6-01)。每块骨架的高 = 它顶替的那张图的 :height 字面值
@@ -242,8 +245,6 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
     <AnaEmpty v-else-if="empty" :label="loadedYear + ' 年附表5 无数据'"
       hint="费用分析依赖附表5 费用支出(销售/管理/财务/修缮 组带)" to="/expense-pnl" to-text="去录入附表5" />
     <template v-else>
-      <AnaPeriodBanner v-if="usedYm" :selected="ymOf(drawnSel.year, drawnSel.month)" :used="usedYm"
-        source="附表5" style="margin-bottom: 12px" />
       <!-- 换年在途:旧年内容留在原地退让(C5-02)。data-stale-host 常挂,类摘掉后退场才是 200 -->
       <div class="av2-grid" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown">
         <!-- 主图 s8:月度费用构成 -->
@@ -282,7 +283,7 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
           </div>
           <div v-if="movers.length" class="ex-movers">
             <div v-for="mv in movers" :key="mv.label" class="ex-mv">
-              <span class="lb" :title="mv.label">{{ mv.label }}</span>
+              <span v-tip="mv.label" class="lb">{{ mv.label }}</span>
               <span class="amt">{{ money(mv.delta) }}</span>
               <!-- invert 语义:费用增=红 / 降=蓝 -->
               <span class="pct" :style="{ color: mv.pct >= 0 ? 'var(--hue-red)' : 'var(--hue-blue)' }">{{ sgn(mv.pct) }}</span>

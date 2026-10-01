@@ -15,6 +15,7 @@ import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
+import FPStateTag from '@/components/fp/FPStateTag.vue'
 import { iconFor } from '@/components/ds/icon'
 import { usePeriod } from '@/analysis/usePeriod'
 import { fetchBudgetAll, fetchPnlSummary, fetchPnlYear } from '@/analysis/anaData'
@@ -189,6 +190,10 @@ const kpiOutlook = computed(() => {
           :note="years.length + ' 个年度 · ' + PNL_SOT_FROM_YEAR + ' 起实际=损益推算'" />
       </template>
     </template>
+    <!-- 期间是按月选的(别的屏带过来的):预算只有年度口径,整屏按全年显示 —— 期间选择旁标签(画布 06-D),不另起一行 -->
+    <template #period-note>
+      <FPStateTag v-if="period.sel.value.gran === 'month'" tone="muted">预算为年度口径 · 按 {{ year }} 全年显示</FPStateTag>
+    </template>
 
     <!-- 首进:版式已知就不转圈(C6-01)。第一行两卡照主图的 :height 300 留白;
          KPI 行由 .anx-kpis 的 min-height 94 兜位。数据到了原地硬切,不做淡入、卡片不错峰。
@@ -200,9 +205,6 @@ const kpiOutlook = computed(() => {
          金额换成同长的隐形占位,三行达成 / 前瞻是固定的收入·成本费用·利润。明细表块 = .bv2-tbl-wrap 的 max-height 420。 -->
     <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <div v-if="!ready" class="bv2-page bv2-skel">
-      <div v-if="period.sel.value.gran === 'month'" class="bv2-gran-hint">
-        <component :is="iconFor('info')" :size="13" />预算为年度口径,本屏按 {{ year }} 全年展示
-      </div>
       <div class="av2-grid">
         <div class="av2-card av2-s8">
           <div class="av2-card-h">
@@ -254,10 +256,6 @@ const kpiOutlook = computed(() => {
     </div>
 
     <div v-else class="bv2-page">
-      <div v-if="period.sel.value.gran === 'month'" class="bv2-gran-hint">
-        <component :is="iconFor('info')" :size="13" />预算为年度口径,本屏按 {{ year }} 全年展示
-      </div>
-
       <div class="av2-grid">
         <!-- 主图 span8:五年子弹图小倍数(§T3) -->
         <div class="av2-card av2-s8">
@@ -299,8 +297,8 @@ const kpiOutlook = computed(() => {
                 <tr><th>项目</th><th class="n">预算</th><th class="n">实际</th><th class="n">达成率</th><th class="n">差异</th><th>备注</th></tr>
               </thead>
               <tbody>
-                <tr v-for="(d, i) in detail" :key="i" :class="{ sub: d.sub, key: d.fromPnl, lk: !!d.link }"
-                  :title="d.link ? '打开对应损益附表' : undefined" @click="d.link && goSched(d.link)">
+                <tr v-for="(d, i) in detail" :key="i" v-tip="d.link ? '打开对应损益附表' : undefined"
+                  :class="{ sub: d.sub, key: d.fromPnl, lk: !!d.link }" @click="d.link && goSched(d.link)">
                   <td class="lbl">{{ d.label }}<span v-if="d.fromPnl" class="pnl-tag">系统</span>
                     <component :is="iconFor('arrow-right')" v-if="d.link" :size="12" class="go-ic" /></td>
                   <td class="n">{{ d.budget != null ? finFmt(d.budget) || '0.00' : '—' }}</td>
@@ -309,7 +307,7 @@ const kpiOutlook = computed(() => {
                   <td class="n" :style="d.diff != null && d.diff < 0 ? { color: 'var(--hue-red)' } : undefined">
                     {{ d.diff != null ? (d.diff < 0 ? '−' : '+') + finFmt(Math.abs(d.diff)) : '—' }}</td>
                   <!-- 预算备注常写整段说明(如「包括除四害、绿化、消防维护…」),截断后看不到口径 -->
-                  <td class="note" :title="d.note ?? undefined">{{ d.note ?? '' }}</td>
+                  <td v-tip="d.note" class="note">{{ d.note ?? '' }}</td>
                 </tr>
               </tbody>
             </table>
@@ -342,7 +340,6 @@ const kpiOutlook = computed(() => {
 
 <style scoped>
 .bv2-page { display: flex; flex-direction: column; gap: 10px; width: 100%; box-sizing: border-box; }
-.bv2-gran-hint { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--hue-orange); background: var(--warn-bg); border-radius: var(--radius-full); padding: 5px 13px; white-space: nowrap; }
 
 /* 达成明细行 */
 .bv2-ach-rows { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; border-top: 1px solid var(--divider); padding-top: 12px; }

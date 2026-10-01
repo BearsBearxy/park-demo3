@@ -26,6 +26,10 @@ import Segmented from '@/components/ds/Segmented.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPToast from '@/components/fp/FPToast.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
+import FPMark from '@/components/fp/FPMark.vue'
+import { ask, askLeave } from '@/utils/ask'
+import { receipt } from '@/utils/receipt'
 
 const props = defineProps<{
   open: boolean
@@ -59,7 +63,8 @@ const editMode = ref(false)
 //   而本窗口退出时又会被别的页面挡住结束不了。
 const meId = Symbol('pay-book')
 const screen = useScreen()
-watch(editMode, (on) => { if (on) auth.openEditor(meId, screen); else auth.closeEditor(meId) })
+// 改动数 = 暂存条数(EDIT-MODE-SPEC §6.1):关页签 / 关浏览器按它问,0 条不拦
+watch(editMode, (on) => { if (on) auth.openEditor(meId, screen, () => stash.value.size); else auth.closeEditor(meId) })
 // 铁律①(EDIT-MODE-SPEC v4):授权到期 / 点了「结束授权」→ 当场退回浏览态。
 // 本窗口不走 useEditMode,也没有编辑锁(收款簿改的是 bill_pay_company,不进出账链快照),
 // 所以那道守卫既不在 useEditMode 里、也不在 useEditLock 里 —— 只能在这儿补一条。
@@ -76,6 +81,7 @@ const curSlot = computed(() => slotOf(colId.value) ?? COL_SLOTS[0])
 const loading = ref(false)
 const companies = ref<CompanyFullDTO[]>([])
 const paymap = ref<PayMap>(new Map())
+const loadErr = ref('')
 let seq = 0
 async function load() {
   const my = ++seq
@@ -85,10 +91,10 @@ async function load() {
     if (my !== seq) return
     companies.value = cos
     paymap.value = buildPayMap(pm)
+    loadErr.value = ''
   } catch (e) {
     if (my !== seq) return
-    alert(errMsg(e, '收款簿数据加载失败'))
-    emit('close')
+    loadErr.value = errMsg(e, '收款簿数据加载失败')
   } finally { if (my === seq) loading.value = false }
 }
 watch(() => props.open, o => {
@@ -172,19 +178,23 @@ function unstash(id: number) {
 const stashOf = (id: number) => stash.value.get(payKey(id, colId.value))
 
 // 切期/切槽前放弃确认(暂存跨槽存活会让"保存(N)"里混着看不见的行,不如挡在这)
-function guardDrop(): boolean {
-  if (stash.value.size === 0) return true
-  if (!confirm(`有 ${stash.value.size} 条未保存暂存,切换将放弃这些改动。继续?`)) return false
+async function guardDrop(to: string): Promise<boolean> {
+  const n = stash.value.size
+  if (n === 0) return true
+  if (!(await ask({
+    title: `切换到「${to}」？`, body: `这页有 ${n} 处改动还没保存。`,
+    action: '放弃改动并切换', cancel: '继续编辑', danger: true,
+  }))) return false
   stash.value = new Map()
   return true
 }
-function setPhase(v: string) {
-  if (v === phase.value || !guardDrop()) return
+async function setPhase(v: string) {
+  if (v === phase.value || !(await guardDrop(PHASE_OPTS.find(o => o.value === v)?.label ?? v))) return
   phase.value = v
   selected.value = new Set()
 }
-function setSlot(v: string) {
-  if (v === colId.value || !guardDrop()) return
+async function setSlot(v: string) {
+  if (v === colId.value || !(await guardDrop(slotLabel(v as S10ColId)))) return
   colId.value = v
   selected.value = new Set()
 }
@@ -195,7 +205,8 @@ const okMsg = ref('')
 // 自动消失与关闭按钮由 FPToast 内部管（LAYOUT-STABILITY-SPEC §2 优先级 2：浮层，不进文档流）
 function flashOk(msg: string) { okMsg.value = msg }
 async function onSave() {
-  if (saving.value || stash.value.size === 0) return
+  // 自守:失败回执上的「重试」点下去时可能已退出编辑
+  if (saving.value || stash.value.size === 0 || !editMode.value || loadErr.value) return
   const plan = buildPayPlan(stash.value)
   saving.value = true
   try {
@@ -203,7 +214,8 @@ async function onSave() {
     for (const row of plan) {
       try { await billsApi.setPaymap(row) }
       catch (e) {
-        alert(errMsg(e, `「${nameOf(row.tenantId)}」保存失败`) + `;之前 ${ok} 条已提交生效,窗口数据已刷新`)
+        receipt.fail(errMsg(e, `「${nameOf(row.tenantId)}」保存失败`) + `;之前 ${ok} 条已提交生效,窗口数据已刷新`,
+          { label: '重试', run: () => void onSave() })
         await load()
         return
       }
@@ -222,11 +234,12 @@ async function onSave() {
 }
 
 async function exitEdit() {
-  if (stash.value.size > 0) {
-    if (confirm(`有 ${stash.value.size} 条暂存未保存。「确定」=先保存再退出;「取消」=下一步选择放弃`)) {
+  const n = stash.value.size
+  if (n > 0) {
+    if (await ask({ title: `退出编辑前保存 ${n} 条暂存？`, action: `保存 ${n} 条并退出`, cancel: '不保存' })) {
       await onSave()
       if (stash.value.size > 0) return
-    } else if (confirm(`放弃这 ${stash.value.size} 条暂存改动?`)) {
+    } else if (await askLeave({ page: '收款簿', count: n, verb: '退出编辑' })) {
       stash.value = new Map()
     } else return
   }
@@ -235,10 +248,9 @@ async function exitEdit() {
   auth.closeEditor(meId)        // 显式出集合:watch 是 pre flush,下一行同步就要用到结果
   void auth.endElevation()      // 退出编辑 = 结束授权(ELEVATION-SPEC)
 }
-function onClose() {
+async function onClose() {
   if (saving.value) return
-  if (stash.value.size > 0
-    && !confirm(`有 ${stash.value.size} 条未保存暂存,关闭将放弃。确认关闭?`)) return
+  if (!(await askLeave({ page: '收款簿', count: stash.value.size }))) return
   stash.value = new Map()
   emit('close')
 }
@@ -248,7 +260,8 @@ function onClose() {
   <FPDrawer :open="open" title="收款簿" icon="wallet" :width="1080" :fixed-height="true"
             :subtitle="`批量指定「租户 × 费用项」的收款公司 · ${ym} 在册 ${rowsAll.length} 户 · 映射与账期无关,改了即刻对以后生成的单生效`"
             @close="onClose">
-    <div v-if="loading" class="pb-empty">加载中…</div>
+    <!-- 已失败时不换成「加载中…」:重试在途失败件留在原地,到数才退场 -->
+    <div v-if="loading && !loadErr" class="pb-empty">加载中…</div>
     <template v-else>
       <!-- 成功提示(5s 自消)。page 模式贴屏幕底部:弹窗 body 是 overflow:auto 滚动容器,
            absolute 贴底会跟着内容滚走;且 --z-toast(400) > --z-modal-2(320),不被弹窗遮住 -->
@@ -258,7 +271,7 @@ function onClose() {
       <div class="pb-controls">
         <Segmented :options="PHASE_OPTS" :model-value="phase" size="sm" @update:model-value="setPhase" />
         <input v-model="q" class="pb-search" type="text" placeholder="搜租户名" />
-        <label class="pb-chk" title="只列该槽当前解析不出收款公司的户(含继承后仍为空)">
+        <label v-tip="'只列该槽当前解析不出收款公司的户(含继承后仍为空)'" class="pb-chk">
           <input type="checkbox" v-model="unsetOnly" />
           只看未设置
         </label>
@@ -269,6 +282,10 @@ function onClose() {
         </div>
       </div>
       <div class="pb-hint">{{ slotHint }}</div>
+
+      <!-- 加载失败换掉表格(不再弹窗关窗):期页签 / 收款槽照常可切,重试接上 load -->
+      <FPLoadError v-if="loadErr" :sub="loadErr" @retry="load">收款公司和收款映射没读到</FPLoadError>
+      <template v-else>
 
       <!-- 统一修改条:勾选租户→选公司→应用到选中 -->
       <div v-if="editMode" class="pb-unibar">
@@ -297,13 +314,13 @@ function onClose() {
           <thead>
             <tr>
               <th v-if="editMode" class="ct">
-                <input type="checkbox" :checked="allChecked" title="全选=当前筛选可见行" @change="toggleAll" />
+                <input v-tip="'全选=当前筛选可见行'" type="checkbox" :checked="allChecked" @change="toggleAll" />
               </th>
               <th class="l">租户</th>
               <th class="l">楼栋</th>
-              <th title="该户本月催缴单本期合计(参考,判断这户值不值得单独设)">本期合计</th>
-              <th title="当前收款公司;灰体=继承自上游槽,不是这一格自己设的">当前收款公司</th>
-              <th v-if="editMode" title="暂存新值(保存后写 bill_pay_company);×=单行撤销">暂存新值</th>
+              <th v-tip="'该户本月催缴单本期合计(参考,判断这户值不值得单独设)'">本期合计</th>
+              <th v-tip="'当前收款公司;灰体=继承自上游槽,不是这一格自己设的'">当前收款公司</th>
+              <th v-if="editMode" v-tip="'暂存新值(保存后写 bill_pay_company);×=单行撤销'">暂存新值</th>
             </tr>
           </thead>
           <tbody>
@@ -320,14 +337,14 @@ function onClose() {
                   <input type="checkbox" :checked="selected.has(r.tenantId)" @click.stop @change="toggleRow(r.tenantId)" />
                 </td>
                 <td class="l">
-                  <span class="pb-tname" :title="r.tenantName">
-                    {{ r.tenantName }}
-                    <em v-if="r.gap" class="pb-dot" :title="GAP_TIP">●</em>
+                  <span class="pb-tn">
+                    <span v-tip="r.tenantName" class="pb-tname">{{ r.tenantName }}</span>
+                    <FPMark v-if="r.gap" v-tip="GAP_TIP" tone="warn" class="pb-mark">缺收款公司</FPMark>
                   </span>
                 </td>
                 <td class="l">
-                  <span class="pb-txt dim"
-                        :title="r.bld.all.length > 1 ? r.bld.all.map(b => b.name).join('、') : undefined">
+                  <span v-tip="r.bld.all.length > 1 ? r.bld.all.map(b => b.name).join('、') : undefined"
+                        class="pb-txt dim">
                     {{ r.bld.main?.name ?? '–' }}<em v-if="r.bld.all.length > 1" class="pb-xb">+{{ r.bld.all.length - 1 }}栋</em>
                   </span>
                 </td>
@@ -344,7 +361,7 @@ function onClose() {
                 <td v-if="editMode">
                   <span v-if="stashOf(r.tenantId) != null" class="pb-stash">
                     <b>{{ coName.get(stashOf(r.tenantId)!) ?? `#${stashOf(r.tenantId)}` }}</b>
-                    <button class="pb-undo" title="撤销该行暂存" @click.stop="unstash(r.tenantId)">
+                    <button v-tip="'撤销该行暂存'" class="pb-undo" @click.stop="unstash(r.tenantId)">
                       <component :is="iconFor('x')" :size="12" />
                     </button>
                   </span>
@@ -360,6 +377,7 @@ function onClose() {
           </tbody>
         </table>
       </div>
+      </template>
     </template>
 
     <template #footer>
@@ -370,7 +388,7 @@ function onClose() {
           {{ saving ? '保存中…' : `保存(${stash.size})` }}
         </Button>
       </template>
-      <Button v-else-if="canAsk && !loading" variant="outline" size="sm"
+      <Button v-else-if="canAsk && !loading" variant="outline" size="sm" :disabled="!!loadErr"
               @click="canEdit ? (editMode = true) : (asking = ['billing-issue:edit'])">
         <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
         编辑模式
@@ -378,7 +396,7 @@ function onClose() {
       <Button variant="outline" size="sm" @click="onClose">关闭</Button>
     </template>
     <FPElevateDialog :perms="asking" what="改收款公司槽"
-                     @close="asking = null" @elevated="asking = null; editMode = true" />
+                     @close="asking = null" @elevated="asking = null; editMode = !loadErr" />
   </FPDrawer>
 </template>
 
@@ -413,8 +431,10 @@ function onClose() {
 .pb-band-sub { margin-left: 8px; font-size: 11.5px; color: var(--text-muted); }
 .pb-noro { text-align: center !important; padding: 40px 16px !important; color: var(--text-disabled); font-size: var(--fs-label); }
 
-.pb-tname { display: block; font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pb-dot { font-style: normal; margin-left: 5px; font-size: 9px; color: var(--hue-orange); cursor: help; }
+/* 名字可省略、悬停看全称;标记不缩,永远看得见 */
+.pb-tn { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.pb-tname { display: block; min-width: 0; font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pb-mark { flex: none; }
 .pb-txt { display: block; text-align: left; font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pb-txt.dim { color: var(--text-muted); }
 .pb-txt.ct-r { text-align: right; color: var(--text-disabled); }

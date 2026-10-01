@@ -165,7 +165,7 @@ describe('FPStepStrip', () => {
         current: 'x', period: '2025',
       },
     })
-    expect(w.find('.fss-step').attributes('title')).toBe('附表1 租金损益')
+    expect((w.find('.fss-step').element as HTMLElement & { _tip?: { text: string } })._tip?.text).toBe('附表1 租金损益')
   })
 
   it('hideBack:上面本来就没有一层时不画返回钮 —— 一个点了不动的按钮比没有按钮更坏', () => {

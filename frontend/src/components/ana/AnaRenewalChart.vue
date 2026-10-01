@@ -56,12 +56,12 @@ const tipW = computed(() => {
   let m = 0
   for (const l of tipLines.value) {
     let px = 0
-    for (const ch of l) px += CJK.test(ch) ? 12 : 6.6
+    for (const ch of l) px += CJK.test(ch) ? 12 : 7.2
     m = Math.max(m, px)
   }
   return Math.ceil(m) + 20
 })
-const tipH = computed(() => 12 + tipLines.value.length * 16)
+const tipH = computed(() => 12 + tipLines.value.length * 18)
 const tipX = computed(() => {
   const g = geo.value
   if (!g) return 0
@@ -96,8 +96,8 @@ const tipX = computed(() => {
 
       <template v-if="tipLines.length">
         <g :transform="`translate(${tipX}, 0)`">
-          <rect :width="tipW" :height="tipH" rx="8" class="arn-tip" />
-          <text v-for="(l, i) in tipLines" :key="i" x="10" :y="20 + i * 16"
+          <rect :width="tipW" :height="tipH" rx="6" class="arn-tip" />
+          <text v-for="(l, i) in tipLines" :key="i" x="10" :y="19 + i * 18"
             :class="['arn-tiptext', i === 0 ? 'arn-tiptitle' : '']">{{ l }}</text>
         </g>
       </template>
@@ -120,7 +120,7 @@ const tipX = computed(() => {
 .arn-marker { stroke: var(--sv-deep); stroke-width: 2; }
 .arn-tick { fill: var(--sv-label); font-size: 11px; text-anchor: middle; font-variant-numeric: tabular-nums; }
 .arn-tick-strong { fill: var(--text-primary); font-weight: 600; font-size: 12px; }
-.arn-tip { fill: var(--sv-tip-bg); }
-.arn-tiptext { fill: var(--sv-tip-text); font-size: 11px; font-variant-numeric: tabular-nums; }
-.arn-tiptitle { fill: var(--text-on-solid); font-weight: 600; font-size: 12px; }
+.arn-tip { fill: var(--tip-bg); }
+.arn-tiptext { fill: var(--text-on-solid); font-size: 12px; font-variant-numeric: tabular-nums; }
+.arn-tiptitle { font-weight: 600; }
 </style>

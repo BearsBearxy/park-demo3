@@ -10,7 +10,6 @@ import { useAuthStore } from '@/stores/auth'
 import Button from '@/components/ds/Button.vue'
 import Input from '@/components/ds/Input.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
-import { iconFor } from '@/components/ds/icon'
 import { permLabel, loadPermDict } from '@/api/perms'
 import { approvalsApi, type Authorizer } from '@/api/approvals'
 import { usePresenceStore } from '@/stores/presence'
@@ -266,12 +265,7 @@ async function submit() {
       <!-- ⚠ 错误位**常驻**(LAYOUT-STABILITY-SPEC §7)。写成 v-if 的话密码输错时
            这行凭空长出来,把下面的说明和「确认授权」按钮一起顶下去 ——
            用户正要重点一次的按钮在他手指底下跑掉。2026-08-22 用户截图指出。 -->
-      <p class="ev-err">
-        <template v-if="err">
-          <component :is="iconFor('alert-triangle')" :size="14" />
-          {{ err }}
-        </template>
-      </p>
+      <p class="fp-field-err"><template v-if="err">{{ err }}</template></p>
 
       <p v-if="!canRemote || tab === 'onsite'" class="ev-note">
         授权是给<b>这台电脑上的这个账号</b>的，不是替他登录。做事的人仍然是
@@ -318,12 +312,6 @@ async function submit() {
   /* 掩码点不能走自托管子集(iOS 上是一排黑竖条),见 tokens.css 的 --font-ui。
      这里是 type="text",选不中 base.css 那条 input[type="password"],得自己写。 */
   font-family: var(--font-ui);
-}
-.ev-err {
-  /* 常驻占位：min-height 恰好一行，空着时不可见但占着地方 */
-  margin: 0; min-height: 18px;
-  display: flex; align-items: center; gap: 6px;
-  font-size: var(--fs-label); line-height: 18px; color: var(--status-danger);
 }
 .ev-note { margin: 0; font-size: var(--fs-micro); line-height: 1.6; color: var(--text-muted); }
 .ev-note b { color: var(--text-primary); font-weight: var(--fw-semibold); }

@@ -19,7 +19,10 @@ const props = withDefaults(defineProps<{
   quietLabel?: string   // 无待处理时的文案,默认「无待处理」
   /** 筛选生效(画布 01-B「缺起止日期 133 ×」):实底 + ×,label 传生效的那一项 */
   active?: boolean
-}>(), { label: '待处理', quietLabel: '无待处理', active: false })
+  /** false = 「有」态不写总数(画布 01-B「待补档案 ▾」:几类各有件数,写在弹层每一行上,总数加起来没意义)。
+   *  只管「有」态;筛选生效态照旧写那一项的数 */
+  showCount?: boolean
+}>(), { label: '待处理', quietLabel: '无待处理', active: false, showCount: true })
 
 const emit = defineEmits<{ (e: 'open'): void; (e: 'clear'): void }>()
 </script>
@@ -36,7 +39,7 @@ const emit = defineEmits<{ (e: 'open'): void; (e: 'clear'): void }>()
   <button v-else class="fac" :class="{ quiet: props.count === 0 }" type="button" v-bind="$attrs"
           @click="emit('open')">
     <component :is="iconFor(props.count ? 'alert-triangle' : 'check-circle-2')" :size="13" />
-    <span v-if="props.count">{{ props.label }} <b class="n">{{ props.count }}</b></span>
+    <span v-if="props.count">{{ props.label }} <b v-if="props.showCount" class="n">{{ props.count }}</b></span>
     <span v-else>{{ props.quietLabel }}</span>
     <component v-if="props.count" :is="iconFor('chevron-down')" :size="12" class="dd" />
   </button>

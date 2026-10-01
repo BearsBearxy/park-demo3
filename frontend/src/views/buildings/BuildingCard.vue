@@ -81,7 +81,7 @@ const extraCount = computed(() => Math.max(0, props.building.tenantIds.length - 
     </div>
 
     <!-- Row 2: occ rate bar -->
-    <div :title="building.status !== 0 && building.occRate == null ? OCC_NULL_WHY : undefined">
+    <div v-tip="building.status !== 0 && building.occRate == null ? OCC_NULL_WHY : undefined">
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px">
         <span style="font-size:var(--fs-label);color:var(--text-muted)">出租率</span>
         <span style="font-size:15px;font-weight:var(--fw-semibold);font-family:var(--font-mono);color:var(--text-primary)">
@@ -96,8 +96,8 @@ const extraCount = computed(() => Math.max(0, props.building.tenantIds.length - 
 
     <!-- Row 3: stats grid -->
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-      <!-- 在租面积:单元面积Σ恒0时回落合同派生汇总(S15 服务刀字段);可租面积移入 tooltip -->
-      <div :title="`可租面积 ${building.rentableArea.toLocaleString('en-US')} ㎡`">
+      <!-- 在租面积:单元面积Σ恒0时回落合同派生汇总(S15 服务刀字段);可租面积移入悬停说明 -->
+      <div v-tip="`可租面积 ${building.rentableArea.toLocaleString('en-US')} ㎡`">
         <div style="font-size:10.5px;color:var(--text-muted)">在租面积</div>
         <div style="font-size:13px;font-weight:var(--fw-medium);font-family:var(--font-mono)">{{ leasedAreaShow(building).toLocaleString('en-US') }}</div>
       </div>

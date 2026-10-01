@@ -136,9 +136,9 @@ describe('月度台账列宽 · 数字不省略、名称列封顶 1/5', () => {
     expect(st(w, '本月应收合计').width).toBe('87px')   // 数最长 3,234.56 → 76;表头 6 字×11.5 → 69+2+16
   })
 
-  it('有未绑定行:租户列给圆点多留 8 + 间距 5', async () => {
+  it('有未绑定行:租户列给「● 未绑定」标记多留 间距 5 + 点 6 + 4 + 三个字 38 = 53', async () => {
     const w = await mountAt(3000, 600, { rows: [R1, { ...R2, tenantId: null }] })
-    expect(st(w, '租户').width).toBe('153px')
+    expect(st(w, '租户').width).toBe('193px')
   })
 
   it('名字省略后悬停看全称:停 500ms 出深色气泡,不用 title', async () => {

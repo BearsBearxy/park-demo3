@@ -7,6 +7,7 @@ import { computed } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
 import { useEnterPhase, useMorphHold } from '@/components/ana/anaMotion'
 import '@/components/ana/ana.css'   // @keyframes fp-wipe + ana-morph
+import FPNote from '@/components/fp/FPNote.vue'
 import { PV_COLORS } from './pvAnaColors'
 import type { PvLedgerScatterProps } from './pvAnaV4.logic'
 
@@ -98,7 +99,8 @@ const note = computed(() => {
       </svg>
     </div>
     <div class="pls-side">
-      <div v-if="note" class="pls-note">{{ note }}</div>
+      <!-- 块内提示(十件 ④):有栋没录 → 黄;一栋点都没有但也没有未录的 → 蓝 -->
+      <FPNote v-if="note" class="pls-note" :tone="data.unrecorded > 0 ? 'warn' : 'info'">{{ note }}</FPNote>
       <div class="pls-leg">
         <svg width="22" height="14" viewBox="0 0 22 14"><line x1="1" y1="13" x2="21" y2="1" :stroke="PV_COLORS.REF_DIAG" stroke-width="1" stroke-dasharray="4 3" /></svg>
         <span><b>虚线 = 两者相等</b>：台账上写的装机，正好等于 板数 × 单块标称 ÷ 1000。点落在线上就是对得上。</span>
@@ -132,7 +134,6 @@ const note = computed(() => {
 .pls-axl { stroke: var(--ink-300); stroke-opacity: .75; stroke-width: 1; }
 .pls-band { fill: var(--ink-050); }
 .pls-ax { font-size: var(--fs-micro); font-family: var(--font-mono); fill: var(--text-muted); font-variant-numeric: tabular-nums; }
-.pls-note { font-size: var(--fs-label); line-height: 1.55; padding: 8px 12px; border-radius: 8px; background: var(--surface-sunken); color: var(--text-primary); }
 .pls-leg { display: flex; align-items: flex-start; gap: 10px; font-size: var(--fs-label); line-height: 1.55; color: var(--text-secondary); }
 .pls-leg svg { flex: 0 0 22px; }
 .pls-leg b { font-weight: 600; color: var(--text-primary); }

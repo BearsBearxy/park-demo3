@@ -15,6 +15,8 @@ import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
  */
 
 const BOOK = {}   // 组件只读它的真假值,见 BookMonthMatrix 的 book prop 注释
+/** v-tip 把悬停说明挂在元素的 _tip 上(directives/tip.ts) */
+const tipOf = (el: Element) => (el as HTMLElement & { _tip?: { text: string } })._tip?.text
 
 function months(over: Partial<Record<number, Record<string, unknown>>> = {}) {
   return Array.from({ length: 12 }, (_, i) => ({
@@ -53,7 +55,7 @@ describe('选期矩阵 · 工序点', () => {
     const w = mk(months({ 3: { hasData: true, pips: [true, true, true, false], stale: true } }))
     const card = w.findAll('.bmm-card')[2]
     expect(card.classes()).toContain('stale')
-    expect(card.attributes('title'), '得说清楚橙的是什么意思').toContain('重算')
+    expect(tipOf(card.element), '得说清楚橙的是什么意思').toContain('重算')
   })
 
   it('不传 pips 时行为与改前逐字相同 —— 台账 / 附表10 / 三大报表这条路不许受影响', () => {
@@ -96,12 +98,12 @@ describe('选期矩阵 · 工序点', () => {
     ['submitted', 'rv-submitted', '待审核 · 在审核员手上', false],
     ['approved', 'rv-approved', '已审核 · 锁了', true],
     ['returned', 'rv-returned', '已退回 · 该你改了', false],
-  ] as const)('审核态 %s → 角标 .%s,title 说人话', (review, cls, title, isLock) => {
+  ] as const)('审核态 %s → 角标 .%s,悬停说明说人话', (review, cls, title, isLock) => {
     const w = mk(months({ 3: { hasData: true, rowCount: 12, review } }))
     const rv = w.findAll('.bmm-card')[2].find('.bmm-rv')
     expect(rv.exists()).toBe(true)
     expect(rv.classes(), '颜色靠这个类,换了名字四档就全成一个色').toContain(cls)
-    expect(rv.attributes('title'), '屏上只有一个点,除了 title 没第二处能讲它是什么意思').toBe(title)
+    expect(tipOf(rv.element), '屏上只有一个点,除了悬停说明没第二处能讲它是什么意思').toBe(title)
     // 已审核是「锁了」,画锁;另外三档是「还没完」,画点 —— 两者不能混
     expect(rv.find('svg').exists()).toBe(isLock)
     expect(rv.find('.bmm-rvdot').exists()).toBe(!isLock)

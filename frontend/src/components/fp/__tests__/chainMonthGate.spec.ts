@@ -66,6 +66,21 @@ describe('出账月矩阵', () => {
     vi.setSystemTime(new Date(`${NOW}-06-15T00:00:00`))
   })
 
+  // 破坏验证:ChainMonthGate 的 :sub 删掉 → 红;@retry 不接 period.reloadChain() → 红
+  it('❗矩阵读不到:一句 + 副句带原因,点「重试」重拉,拉到了落回矩阵', async () => {
+    wire({ meters: ['2025-01'] })
+    vi.mocked(metersApi.months).mockRejectedValueOnce(new Error('后端挂了'))
+    const w = await mk()
+    expect(w.findAll('.bmm-card'), '不给半张矩阵').toHaveLength(0)
+    const box = w.get('.fp-empty.error')
+    expect(box.get('.t').text()).toBe('各月进度没读到')
+    expect(box.get('.sub').text()).toBe('后端挂了 · 不是这些月都没做过')
+    await box.get('button').trigger('click')
+    await flushPromises()
+    expect(w.find('.fp-empty').exists()).toBe(false)
+    expect(w.findAll('.bmm-card')).toHaveLength(12)
+  })
+
   it('屏名进标题 —— 五屏共用一张矩阵，但你得知道自己点开的是哪一屏', async () => {
     wire({ meters: ['2025-01'] })
     expect((await mk()).text()).toContain('园区抄表')

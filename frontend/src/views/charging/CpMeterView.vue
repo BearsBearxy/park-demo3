@@ -34,6 +34,10 @@ import FPPhaseTabs from '@/components/fp/FPPhaseTabs.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import FPStateTag from '@/components/fp/FPStateTag.vue'
+import { ask } from '@/utils/ask'
+import { receipt } from '@/utils/receipt'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import { onReactivated } from '@/composables/onReactivated'
 import { usePresenceStore } from '@/stores/presence'
@@ -59,7 +63,11 @@ const fy = (n: number) => '¥' + n.toLocaleString('en-US', { minimumFractionDigi
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
         lockedBy, evictedBy, lockScope, onTaken } =
-  useEditMode(['meter-master:edit', 'meter-reading:edit', 'billing-run:edit'], { scope: () => S.cpMeter(props.vehicleType, year.value) })
+  useEditMode(['meter-master:edit', 'meter-reading:edit', 'billing-run:edit'], {
+    scope: () => S.cpMeter(props.vehicleType, year.value),
+    // 改动数(02-A 离开确认):桩名 / 电表值即时提交,没有草稿;抽屉里开着的记录行、新增桩 / 导入弹窗算一处
+    dirty: () => (adding.value || editId.value != null || stationDlg.value || importing.value ? 1 : 0),
+  })
 // RBAC v2:桩库档案(桩名/运营商/增删)= meter-master:edit;充电记录/电表用电量/导入 = meter-reading:edit;
 // 模拟填充在本屏是「读附表7/8 整年批量派生」,属出账运行 = billing-run:edit(RBAC-SPEC §5.3-⑥)。
 const canMaster = computed(() => auth.can('meter-master:edit'))
@@ -144,7 +152,7 @@ async function loadStations() {
     const data = await cpMeterApi.stations()
     if (my === stSeq) { stations.value = data; stationsErr.value = ''; openDeepStation() }
   } catch {
-    if (my === stSeq) stationsErr.value = '充电桩档案加载失败,请重试'
+    if (my === stSeq) stationsErr.value = '充电桩档案没读到'
   }
 }
 /** 失败条上的「重试」:只重来挂掉的那一份。 */
@@ -216,7 +224,8 @@ onReactivated(() => {
   loadMonths()
   if (picked.value) loadMonth()
 })
-watch(gateYm, () => { if (picked.value) loadMonth() })
+// 换期清掉行内格的报错:电表格的键不带月,不清的话上个月敲错的数会挂到这个月同一格上
+watch(gateYm, () => { cellErr.value = null; if (picked.value) loadMonth() })
 
 // 本屏桩集合(按路由类型过滤共享桩库)
 const myStations = computed(() => (stations.value ?? []).filter(s => s.vehicleType === props.vehicleType))
@@ -257,13 +266,24 @@ const rows = computed(() =>
     .map(s => ({ st: s, ...(aggByStation.value.get(s.id) ?? { charge: 0, fee: 0, revenue: 0, count: 0 }) })),
 )
 
-// ── 行内编辑桩名/运营商(编辑模式;乐观更新:即时改本地,失败回滚 alert;PUT 带全量) ──
+// ── 行内格的字段报错(十件 ⑤):红字贴在那一格输入框正下方,不走回执;同一格再交一次、过了校验才清 ──
+// raw 留住用户敲的原值 —— 不留的话一重绘格子被刷回旧值,红字对着一个看着没毛病的数。
+// ponytail: 全屏只记一格(新报错顶掉旧的);同时错几格成了常态再换成按格的 Map
+const cellErr = ref<{ k: string; msg: string; raw: string } | null>(null)
+const errOf = (k: string) => (cellErr.value?.k === k ? cellErr.value.msg : '')
+const rawOf = (k: string, v: string | number | null | undefined) => (cellErr.value?.k === k ? cellErr.value.raw : v ?? '')
+function badCell(k: string, msg: string, raw: string) { cellErr.value = { k, msg, raw } }
+function okCell(k: string) { if (cellErr.value?.k === k) cellErr.value = null }
+
+// ── 行内编辑桩名/运营商(编辑模式;乐观更新:即时改本地,失败回滚 + 回执;PUT 带全量) ──
 // ponytail: 类型(car/ebike)不做行内改——建桩时弹窗可选;错型桩无记录时删了重建,需要时再给桩弹窗加编辑档
 function commitStation(st: CpStationDTO, field: 'name' | 'operator', raw: string) {
   // 写口自守(照 BillNoticesView 口径):editMode 会就地转假,调用者各有各的 v-if,守发请求这层才不漏
   if (!editStation.value) return
+  const k = `${field}:${st.id}`
   const v = raw.trim()
-  if (!v) { alert(field === 'name' ? '桩名不能为空' : '运营商不能为空'); return }
+  if (!v) { badCell(k, field === 'name' ? '桩名不能为空' : '运营商不能为空', raw); return }
+  okCell(k)
   if (v === st[field]) return
   const prev = st[field]
   st[field] = v
@@ -271,7 +291,7 @@ function commitStation(st: CpStationDTO, field: 'name' | 'operator', raw: string
     .then(() => { if (field === 'operator') loadMonth() })   // 运营商改名 → 电表小节行键变,重取
     .catch((e) => {
       st[field] = prev
-      alert((e as { message?: string })?.message ?? '保存失败，请重试')   // 重名 409 中文文案直达
+      receipt.fail((e as { message?: string })?.message ?? '保存失败，请重试')   // 重名 409 中文文案直达
     })
 }
 
@@ -281,10 +301,12 @@ function commitMeter(u: CpPowerUsageDTO, raw: string) {
   // 在途自守:fp-stale 的 pointer-events 挡不住**已聚焦**输入框的回车/失焦提交 ——
   // 那一下按的是新 year/month,写的却是旧期语境下的数
   if (reloading.value) return
+  const k = `meter:${u.operator}`
   // ponytail: 后端无删除口(uk upsert),留空视为不动;录 0 表达"本月无用电"
-  if (raw.trim() === '') return
+  if (raw.trim() === '') { okCell(k); return }
   const v = Number(raw)
-  if (!isFinite(v) || v < 0) { alert('请输入非负数字'); return }
+  if (!isFinite(v) || v < 0) { badCell(k, '请输入非负数字', raw); return }
+  okCell(k)
   if (v === u.meterKwh) return
   const prev = { id: u.id, meterKwh: u.meterKwh, lossKwh: u.lossKwh, note: u.note }
   u.meterKwh = v
@@ -296,7 +318,7 @@ function commitMeter(u: CpPowerUsageDTO, raw: string) {
     .then(dto => Object.assign(u, dto))
     .catch((e) => {
       Object.assign(u, prev)
-      alert((e as { message?: string })?.message ?? '保存失败，请重试')
+      receipt.fail((e as { message?: string })?.message ?? '保存失败，请重试')
     })
 }
 
@@ -314,9 +336,10 @@ const drawerSub = computed(() => {
 const editId = ref<number | null>(null)     // 非空=行编辑中
 const adding = ref(false)                   // 新增行展开
 const form = ref({ readDate: '', chargeKwh: '', fee: '', revenue: '', note: '' })
+const formErr = ref('')                     // 记录行的字段报错(没选日期 / 填了负数),贴在抽屉表下面
 
 function startAdd() {
-  editId.value = null; adding.value = true
+  editId.value = null; adding.value = true; formErr.value = ''
   // 默认日期:当前月=今天(日记条顺手);历史月=月末。
   // today 就地取:期间块退场后没有模块级 today 了,这里本来也只用一次。
   const today = new Date()
@@ -325,10 +348,10 @@ function startAdd() {
   form.value = { readDate: d, chargeKwh: '', fee: '', revenue: '', note: '' }
 }
 function startEdit(r: (typeof drawerRows.value)[number]) {
-  adding.value = false; editId.value = r.id
+  adding.value = false; editId.value = r.id; formErr.value = ''
   form.value = { readDate: r.readDate, chargeKwh: String(r.chargeKwh), fee: String(r.fee), revenue: String(r.revenue), note: r.note ?? '' }
 }
-function cancelForm() { editId.value = null; adding.value = false }
+function cancelForm() { editId.value = null; adding.value = false; formErr.value = '' }
 watch(openSt, cancelForm)   // 换桩/关抽屉时收起编辑行
 // 退出编辑模式收起一切写入口(v2:浏览态零写入口)。
 // ⚠ 两个弹窗必须一起关:它们的 v-if 只判自己那个 ref,而 editMode 会**就地**转假
@@ -344,9 +367,9 @@ watch(editMode, v => {
 async function saveForm() {
   if (!editReading.value) return
   if (!openSt.value) return
-  if (!form.value.readDate) { alert('请选择日期'); return }
   const c = num(form.value.chargeKwh), f = num(form.value.fee), rv = num(form.value.revenue)
-  if (c < 0 || f < 0 || rv < 0) { alert('充电量/手续费/收益不能为负'); return }
+  formErr.value = !form.value.readDate ? '请选择日期' : c < 0 || f < 0 || rv < 0 ? '充电量 / 手续费 / 收益不能为负' : ''
+  if (formErr.value) return
   const req = { stationId: openSt.value.id, readDate: form.value.readDate, chargeKwh: c, fee: f, revenue: rv, note: form.value.note.trim() || null }
   try {
     if (editId.value != null) await cpMeterApi.updateReading(editId.value, req)
@@ -355,24 +378,26 @@ async function saveForm() {
     await reloadAfterWrite()   // 记录变动 → Σ充电量/损耗 + 矩阵着色一并刷新
   } catch (e) {
     // 同桩同日 409 等 → 后端中文 message 直达
-    alert((e as { message?: string })?.message ?? '保存失败')
+    receipt.fail((e as { message?: string })?.message ?? '保存失败')
   }
 }
 
 async function delRow(id: number, date: string) {
   if (!editReading.value) return
-  if (!confirm(`确认删除 ${date} 的充电记录?`)) return
+  const ok = await ask({ title: `删除 ${date} 的充电记录？`, body: '删除后不能撤销。', action: '删除这条记录', danger: true })
+  if (!ok || !editReading.value) return   // 问的途中被接管 / 授权到期:不写
   try { await cpMeterApi.deleteReading(id); await reloadAfterWrite() }
-  catch (e) { alert((e as { message?: string })?.message ?? '删除失败') }
+  catch (e) { receipt.fail((e as { message?: string })?.message ?? '删除失败') }
 }
 
 async function delStation() {
   if (!editStation.value) return
   const st = openSt.value
   if (!st) return
-  if (!confirm(`确认删除充电桩「${st.name}」?有充电记录的桩不可删除。`)) return
+  const ok = await ask({ title: `删除充电桩「${st.name}」？`, body: '有充电记录的桩删不掉。', action: '删除充电桩', danger: true })
+  if (!ok || !editStation.value) return   // 问的途中被接管 / 授权到期:不写
   try { await cpMeterApi.deleteStation(st.id); openSt.value = null; await loadStations(); await reloadAfterWrite() }
-  catch (e) { alert((e as { message?: string })?.message ?? '删除失败') }   // 有记录 409 → 中文守卫文案
+  catch (e) { receipt.fail((e as { message?: string })?.message ?? '删除失败') }   // 有记录 409 → 中文守卫文案
 }
 
 // ── 新增充电桩弹窗(名称/运营商/类型,类型默认当前屏) ──
@@ -413,11 +438,11 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
     importResult.value = await runImport('cpMeter', payload as never, importCtx, fileName)
     await reloadAfterWrite()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '导入失败')
+    receipt.fail((e as { message?: string })?.message ?? '导入失败')
   }
 }
 
-// ── 模拟填充(编辑态;照 ElecCostView:confirm→POST→alert→重载):按附表7/8 充电汇总推导当前年分桩月末记录与电表 ──
+// ── 模拟填充(编辑态;照 ElecCostView:确认弹窗→POST→结果回执→重载):按附表7/8 充电汇总推导当前年分桩月末记录与电表 ──
 const simulating = ref(false)
 const presence = usePresenceStore()
 async function onSimulate() {
@@ -428,30 +453,37 @@ async function onSimulate() {
   //   查在场表(presence 早就带回来了,同 watchScope 的判法),对面有人就不跑。
   const other = props.vehicleType === 'car' ? 'ebike' : 'car'
   const busyOn = () => presence.editorsUnder(S.cpMeter(other, year.value)).find(e => !e.self)
+  // 没跑成不是出错,是「得等」:警告回执不自收,带「重试」—— 对面退出后点一下就行
+  const again = { label: '重试', run: () => void onSimulate() }
   const otherEditor = busyOn()
   if (otherEditor) {
-    alert(`模拟填充会同时写${other === 'ebike' ? '电动车' : '汽车'}侧的记录,而 ${otherEditor.displayName} 正在编辑那一侧的 ${year.value} 年 —— 等他退出编辑模式再跑。`)
+    receipt.warn(`模拟填充会同时写${other === 'ebike' ? '电动车' : '汽车'}侧的记录,而 ${otherEditor.displayName} 正在编辑那一侧的 ${year.value} 年 —— 等他退出编辑模式再跑。`, again)
     return
   }
-  if (!confirm(`模拟填充 ${year.value} 全年：按附表7/8 充电汇总(万城万/小桔/叮叮充/电信)推导各桩月末充电记录与电表用电量(小桔按 60/40 拆快充1/慢充1,通道费=收益×5%,均为假设口径)。\n\n只填空位与既有「模拟」灰标记录，绝不覆盖手工录入/导入的数据。确认执行？`)) return
-  // ⚠ confirm() 同步阻塞事件循环 —— 对话框开着期间 ping 一拍都发不出,上面那次检查读的
-  //   名单冻结在弹框**前**,窗口宽度 = 用户读文案的时长(TOCTOU,复查坐实)。返回后强制
+  const ok = await ask({
+    title: `模拟填充 ${year.value} 全年？`,
+    body: '按附表7/8 充电汇总（万城万 / 小桔 / 叮叮充 / 电信）推导各桩月末充电记录与电表用电量（小桔按 60/40 拆快充1 / 慢充1，通道费 = 收益 × 5%，均为假设口径）。只填空位与既有「模拟」灰标记录，不覆盖手工录入和导入的数据。',
+    action: `模拟填充 ${year.value} 全年`,
+  })
+  if (!ok || !editMode.value || !canRun.value) return
+  // ⚠ 问的这段时间里对面可能进来 —— 上面那次检查读的
+  //   名单是弹框**前**的,窗口宽度 = 用户读文案的时长(TOCTOU,复查坐实)。答完强制
   //   刷一拍再复查,把窗口收窄到一个往返 + 3 秒传播。残余窗口如实说明:服务端对 /simulate
   //   不查锁(锁在本仓是协作信号,scope 对服务端不透明,明写的架构取向)—— 这道闸是唯一防线。
   await presence.ping()
   const late = busyOn()
   if (late) {
-    alert(`模拟填充会同时写${other === 'ebike' ? '电动车' : '汽车'}侧的记录,而 ${late.displayName} 正在编辑那一侧的 ${year.value} 年 —— 等他退出编辑模式再跑。`)
+    receipt.warn(`模拟填充会同时写${other === 'ebike' ? '电动车' : '汽车'}侧的记录,而 ${late.displayName} 正在编辑那一侧的 ${year.value} 年 —— 等他退出编辑模式再跑。`, again)
     return
   }
   simulating.value = true
   try {
     const r = await cpMeterApi.simulate(year.value)
-    alert(`模拟完成：填充 ${r.filled} 条，跳过 ${r.skipped} 条（手工/导入占位、值未变或缺桩）。`)
+    receipt.ok(`模拟完成：填充 ${r.filled} 条，跳过 ${r.skipped} 条（手工/导入占位、值未变或缺桩）。`)
     await Promise.all([loadStations(), loadMonth()])
     await loadMonths()   // 新写入的月要在选期矩阵上亮起来
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '模拟填充失败')
+    receipt.fail((e as { message?: string })?.message ?? '模拟填充失败')
   } finally {
     simulating.value = false
   }
@@ -463,12 +495,12 @@ async function onExport() {
   exporting.value = true
   // 导出只镜像本屏:本类型桩 + 本月记录(cpMeterExcel Lite 类型与 DTO 结构兼容)
   try { await exportCpMeterMonth(myReadings.value, myStations.value, year.value, month.value) }
-  catch (e) { alert((e as { message?: string })?.message ?? '导出失败') }
+  catch (e) { receipt.fail((e as { message?: string })?.message ?? '导出失败', { label: '重试', run: () => void onExport() }) }
   finally { exporting.value = false }
 }
 async function onTemplate() {
   try { await buildCpMeterTemplate() }
-  catch (e) { alert((e as { message?: string })?.message ?? '模板下载失败') }
+  catch (e) { receipt.fail((e as { message?: string })?.message ?? '模板下载失败', { label: '重试', run: () => void onTemplate() }) }
 }
 </script>
 
@@ -491,11 +523,9 @@ async function onTemplate() {
     @retry="loadMonths"
   />
 
-  <!-- 桩清单一次都没拿到:没有它连表都铺不出来,硬失败面(照 PvMeterView) -->
+  <!-- 桩清单一次都没拿到:没有它连表都铺不出来 —— 加载失败换掉整页内容(十件 ⑦,一律带重试) -->
   <div v-else-if="!stations && stationsErr" class="cm-gate-fail">
-    <component :is="iconFor('alert-triangle')" :size="18" />
-    <span>{{ stationsErr }}</span>
-    <Button variant="outline" size="sm" @click="loadStations">重试</Button>
+    <FPLoadError sub="表格按桩一行行铺,没有它这页显示不出来" @retry="loadStations">{{ stationsErr }}</FPLoadError>
   </div>
 
   <div v-else-if="!stations || !readings || !usageRows" class="page-loading"><span class="page-spin" /></div>
@@ -507,7 +537,11 @@ async function onTemplate() {
     <div class="cm-head">
       <div class="cm-headl">
         <div>
-          <h2 class="cm-title"><span class="ic"><component :is="iconFor('plug')" :size="18" /></span>分桩充电明细</h2>
+          <div class="cm-titlerow">
+            <h2 class="cm-title"><span class="ic"><component :is="iconFor('plug')" :size="18" /></span>分桩充电明细</h2>
+            <!-- 页面状态(十件 ⑥):本型本月一条记录都没有。没读到时不贴 —— 没读到就不知道有没有 -->
+            <FPStateTag v-if="!loadErr && myReadings.length === 0" tone="warn">本月还没有充电记录</FPStateTag>
+          </div>
           <p class="cm-sub">逐桩按日期记条,自动汇月 · 充电量/手续费/收益从平台对账单抄录 · 电量 kWh / 金额 元</p>
         </div>
       </div>
@@ -542,43 +576,44 @@ async function onTemplate() {
         </Button>
         <!-- 失败态/在途禁导出(照 PvMeterView):失败清成 [] 后导出的是全桩全零表,与真零月一致;
              换期在途时期标已是新期而数字是上一期的,文件离开系统后无从分辨 -->
-        <Button variant="filled" size="sm" :disabled="exporting || !!loadErr || reloading"
-                :title="loadErr ? '数据未加载成功,导出会得到一份全零的表 —— 先重试'
-                        : reloading ? '本期记录还在路上,现在导出拿到的是上一期的数' : undefined"
-                @click="onExport">
-          <template #leading><component :is="iconFor('download')" :size="14" /></template>
-          导出
-        </Button>
+        <!-- 悬停说明挂外面这层:钮禁用时自己收不到鼠标(同园区抄表) -->
+        <span v-tip="loadErr ? '本月数据没读到,导出会得到一份全零的表 —— 先重试'
+                    : reloading ? '本期记录还在路上,现在导出拿到的是上一期的数' : undefined" class="cm-ebtn">
+          <Button variant="filled" size="sm" :disabled="exporting || !!loadErr || reloading" @click="onExport">
+            <template #leading><component :is="iconFor('download')" :size="14" /></template>
+            导出
+          </Button>
+        </span>
         <!-- 编辑模式:本屏三把写权限任一有即可进(模拟填充只需 billing-run),进去后各按钮再各判各的 -->
         <!-- 失败态禁"进"不禁"出"(组件的 :disabled 不分编辑态,不带 !editMode 会把「完成」也禁掉 → 死锁) -->
-        <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
-                          :disabled="!editMode && !!loadErr"
-                          :title="!editMode && loadErr ? '数据未加载成功,先点失败条上的「重试」再进编辑' : undefined"
-                          @toggle="toggleEdit()" />
+        <span v-tip="!editMode && loadErr ? '本月数据没读到,先点「重试」再进编辑' : undefined" class="cm-ebtn">
+          <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
+                            :disabled="!editMode && !!loadErr"
+                            @toggle="toggleEdit()" />
+        </span>
       </div>
     </div>
 
-    <FPLoadError v-if="loadErr" @retry="retryLoad">
-      <div v-if="readErr">{{ year }}年{{ month }}月记录加载失败:{{ readErr }} —— 表内为空,不拿上一期的数顶替,编辑模式已锁。</div>
-      <div v-if="stationsErr">{{ stationsErr }} —— 桩档案停留在上次拉到的版本。</div>
+    <!-- 加载失败(十件 ⑦,LAYOUT-STABILITY §3):换掉下面两张卡本身,不是卡上方的流内条。
+         两份数据各自成行,别让一条盖掉另一条的原因;失败时 readings / usageRows 已清空,写入口与导出全关 -->
+    <FPLoadError v-if="loadErr" :sub="readErr ? `${readErr} · 屏上不显示上个月的数字` : undefined" @retry="retryLoad">
+      <div class="msg">
+        <div v-if="readErr">{{ year }} 年 {{ month }} 月的充电记录没读到</div>
+        <div v-if="stationsErr">{{ stationsErr }}</div>
+      </div>
     </FPLoadError>
 
-    <!-- 空态引导(spec §2:去导入或抽屉手录;导入入口受编辑模式管) -->
-    <!-- ⚠ 排除 loadErr:失败态下 readings 被清成 [],「暂无记录」会把失败说成「真的没有」 -->
-    <div v-if="!loadErr && myReadings.length === 0" class="cm-empty">
-      <component :is="iconFor('info')" :size="14" />
-      <span>
-        {{ year }}年{{ month }}月暂无充电记录 ——
-        <template v-if="editReading">可<button class="cm-link" @click="importing = true">导入</button>整月充电明细 Excel,或点击任意桩行进入抽屉手动录入。</template>
-        <template v-else-if="canReading">进入右上角「编辑模式」后可录入或导入。</template>
-        <template v-else>各桩显示零值。</template>
-      </span>
-    </div>
-
+    <template v-else>
     <!-- 主表:一行一桩;列宽铁律(fixed 布局,桩名=唯一弹性列)。fp-stale 带 pointer-events:none -->
     <Card surface="white" :padding="0" class="cm-card"
           :class="{ 'fp-stale': veil }" :aria-busy="veil">
-      <div class="cm-tablewrap">
+      <!-- 本型本月一条记录都没有、又不在能录的编辑态 → 空状态占住表格区(十件 ⑦)。
+           ⚠ 编辑态不换:点桩行开抽屉是逐条录入的入口(同园区抄表) -->
+      <FPEmpty v-if="myReadings.length === 0 && !editReading" class="cm-empty"
+               :sub="canReading ? '进入「编辑模式」后可以导入整月充电明细 Excel,或点桩行逐条录入。' : '这个月各桩的充电记录都还没录。'">
+        {{ year }} 年 {{ month }} 月还没有充电记录
+      </FPEmpty>
+      <div v-else class="cm-tablewrap">
         <table class="cm-table">
           <colgroup>
             <col /><!-- 桩名:唯一弹性列吸收余宽 -->
@@ -601,18 +636,26 @@ async function onTemplate() {
           <tbody>
             <tr v-for="r in rows" :key="r.st.id" @click="openSt = r.st">
               <!-- 桩名/运营商=站点常量:编辑模式行内改(点击不冒泡开抽屉),浏览态纯文本 -->
-              <td class="name" :title="r.st.name">
-                <input v-if="editStation" class="cm-edit l" type="text"
-                       :value="r.st.name" title="桩名,回车/失焦保存(需唯一)"
-                       @click.stop
-                       @change="commitStation(r.st, 'name', ($event.target as HTMLInputElement).value)" />
+              <td class="name" v-tip="r.st.name">
+                <span v-if="editStation" class="cm-fld">
+                  <input class="cm-edit l" :class="{ bad: errOf(`name:${r.st.id}`) }" type="text"
+                         :value="rawOf(`name:${r.st.id}`, r.st.name)" :aria-invalid="errOf(`name:${r.st.id}`) ? 'true' : undefined"
+                         v-tip="'桩名,回车/失焦保存(需唯一)'"
+                         @click.stop
+                         @change="commitStation(r.st, 'name', ($event.target as HTMLInputElement).value)" />
+                  <span class="fp-field-err cm-cellerr"><template v-if="errOf(`name:${r.st.id}`)">{{ errOf(`name:${r.st.id}`) }}</template></span>
+                </span>
                 <span v-else class="nm">{{ r.st.name }}</span>
               </td>
-              <td :title="r.st.operator">
-                <input v-if="editStation" class="cm-edit l" type="text"
-                       :value="r.st.operator" title="运营商,回车/失焦保存"
-                       @click.stop
-                       @change="commitStation(r.st, 'operator', ($event.target as HTMLInputElement).value)" />
+              <td v-tip="r.st.operator">
+                <span v-if="editStation" class="cm-fld">
+                  <input class="cm-edit l" :class="{ bad: errOf(`operator:${r.st.id}`) }" type="text"
+                         :value="rawOf(`operator:${r.st.id}`, r.st.operator)" :aria-invalid="errOf(`operator:${r.st.id}`) ? 'true' : undefined"
+                         v-tip="'运营商,回车/失焦保存'"
+                         @click.stop
+                         @change="commitStation(r.st, 'operator', ($event.target as HTMLInputElement).value)" />
+                  <span class="fp-field-err cm-cellerr"><template v-if="errOf(`operator:${r.st.id}`)">{{ errOf(`operator:${r.st.id}`) }}</template></span>
+                </span>
                 <span v-else>{{ r.st.operator }}</span>
               </td>
               <td class="num" :class="{ zero: r.charge === 0 }">{{ fq(r.charge) }}</td>
@@ -654,20 +697,25 @@ async function onTemplate() {
           <tr v-for="u in myUsage" :key="u.operator">
             <td>{{ u.operator }}</td>
             <td class="num">
-              <input v-if="editReading" class="cm-edit" type="number" min="0" step="0.01"
-                     :value="u.meterKwh ?? ''" placeholder="未录" title="电表用电量,回车/失焦保存"
-                     @change="commitMeter(u, ($event.target as HTMLInputElement).value)" />
+              <span v-if="editReading" class="cm-fld">
+                <input class="cm-edit" :class="{ bad: errOf(`meter:${u.operator}`) }" type="number" min="0" step="0.01"
+                       :value="rawOf(`meter:${u.operator}`, u.meterKwh)" placeholder="未录"
+                       :aria-invalid="errOf(`meter:${u.operator}`) ? 'true' : undefined" v-tip="'电表用电量,回车/失焦保存'"
+                       @change="commitMeter(u, ($event.target as HTMLInputElement).value)" />
+                <span class="fp-field-err cm-cellerr"><template v-if="errOf(`meter:${u.operator}`)">{{ errOf(`meter:${u.operator}`) }}</template></span>
+              </span>
               <span v-else>{{ u.meterKwh != null ? fq(u.meterKwh) : '—' }}</span>
             </td>
             <td class="num">{{ fq(u.sumChargeKwh) }}</td>
             <td class="num" :class="{ loss: u.lossKwh != null && u.lossKwh < 0 }"
-                :title="u.lossKwh != null && u.lossKwh < 0 ? '电表用电量小于充电量之和,请核对电表读数或充电记录' : undefined">
+                v-tip="u.lossKwh != null && u.lossKwh < 0 ? '电表用电量小于充电量之和,请核对电表读数或充电记录' : undefined">
               {{ u.lossKwh != null ? fq(u.lossKwh) : '—' }}
             </td>
           </tr>
         </tbody>
       </table>
     </Card>
+    </template>
 
     <!-- 抽屉:该桩该月逐条充电记录;增删改仅编辑态(EDIT-MODE-SPEC v2),浏览态=纯查看列表 -->
     <FPDrawer
@@ -680,10 +728,11 @@ async function onTemplate() {
       @close="openSt = null"
     >
       <!-- 只判 readErr 不判合并槽:桩档案挂掉时记录是好好的,拿 loadErr 拦会藏掉真实记录 -->
-      <div v-if="readErr" class="cm-dempty">本月记录未加载成功 —— 关掉抽屉点失败条上的「重试」,别在这里录。</div>
-      <div v-else-if="drawerRows.length === 0 && !adding" class="cm-dempty">
-        该桩本月暂无充电记录{{ editReading ? ',点下方「新增记录」手动录入,或在列表页「导入」整月 Excel。' : canReading ? ',进入编辑模式后可录入或导入。' : '。' }}
-      </div>
+      <FPLoadError v-if="readErr" :sub="`${readErr} · 屏上不显示上个月的数字`" @retry="retryLoad">{{ year }} 年 {{ month }} 月的充电记录没读到</FPLoadError>
+      <FPEmpty v-else-if="drawerRows.length === 0 && !adding" size="sm"
+               :sub="editReading ? '点下方「新增记录」手动录入,或在列表页「导入」整月 Excel。' : canReading ? '进入编辑模式后可录入或导入。' : undefined">
+        这个桩 {{ month }} 月还没有充电记录
+      </FPEmpty>
       <div v-else class="cm-dwrap">
         <table class="cm-dtable">
           <!-- 列宽预算(抽屉内容宽~672):日期96+三金额106×3=414,备注弹性;金额 12px mono「¥26,223.58」量级不截断 -->
@@ -715,8 +764,8 @@ async function onTemplate() {
                 <td><input v-model="form.revenue" class="cm-din num" type="number" min="0" step="0.01" /></td>
                 <td class="l"><input v-model="form.note" class="cm-din" type="text" placeholder="备注" /></td>
                 <td class="ops">
-                  <button class="cm-iop ok" title="保存" @click="saveForm"><component :is="iconFor('check')" :size="15" /></button>
-                  <button class="cm-iop" title="取消" @click="cancelForm"><component :is="iconFor('x')" :size="15" /></button>
+                  <button class="cm-iop ok" v-tip="'保存'" @click="saveForm"><component :is="iconFor('check')" :size="15" /></button>
+                  <button class="cm-iop" v-tip="'取消'" @click="cancelForm"><component :is="iconFor('x')" :size="15" /></button>
                 </td>
               </tr>
               <tr v-else>
@@ -725,10 +774,10 @@ async function onTemplate() {
                 <td>{{ fy(r.fee) }}</td>
                 <td>{{ fy(r.revenue) }}</td>
                 <!-- simulated 灰「模拟」徽标随备注列(挤日期列会撑爆列宽;模拟 note 本就以「模拟:」开头同列语义顺),录改后转 manual 自动消失 -->
-                <td class="l note" :title="r.note ?? undefined"><span v-if="r.source === 'simulated'" class="cm-sim" :title="r.note ?? '模拟数据'">模拟</span>{{ (r.source === 'simulated' ? (r.note ?? '').replace(/^模拟[:：]/, '') : r.note) || '—' }}</td>
+                <td class="l note" v-tip="r.note ?? undefined"><span v-if="r.source === 'simulated'" class="cm-sim" v-tip="r.note ?? '模拟数据'">模拟</span>{{ (r.source === 'simulated' ? (r.note ?? '').replace(/^模拟[:：]/, '') : r.note) || '—' }}</td>
                 <td v-if="editReading" class="ops">
-                  <button class="cm-iop" title="编辑" @click="startEdit(r)"><component :is="iconFor('pencil')" :size="14" /></button>
-                  <button class="cm-iop danger" title="删除" @click="delRow(r.id, r.readDate)"><component :is="iconFor('trash-2')" :size="14" /></button>
+                  <button class="cm-iop" v-tip="'编辑'" @click="startEdit(r)"><component :is="iconFor('pencil')" :size="14" /></button>
+                  <button class="cm-iop danger" v-tip="'删除'" @click="delRow(r.id, r.readDate)"><component :is="iconFor('trash-2')" :size="14" /></button>
                 </td>
               </tr>
             </template>
@@ -740,13 +789,15 @@ async function onTemplate() {
               <td><input v-model="form.revenue" class="cm-din num" type="number" min="0" step="0.01" /></td>
               <td class="l"><input v-model="form.note" class="cm-din" type="text" placeholder="备注" /></td>
               <td class="ops">
-                <button class="cm-iop ok" title="保存" @click="saveForm"><component :is="iconFor('check')" :size="15" /></button>
-                <button class="cm-iop" title="取消" @click="cancelForm"><component :is="iconFor('x')" :size="15" /></button>
+                <button class="cm-iop ok" v-tip="'保存'" @click="saveForm"><component :is="iconFor('check')" :size="15" /></button>
+                <button class="cm-iop" v-tip="'取消'" @click="cancelForm"><component :is="iconFor('x')" :size="15" /></button>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
+      <!-- 记录行的字段报错(十件 ⑤):行开着时常驻一行,贴在表下面(同园区抄表的读数行) -->
+      <template v-if="adding || editId != null"><p class="fp-field-err">{{ formErr }}</p></template>
 
       <template v-if="editStation || editReading" #footer>
         <!-- 一切修改仅编辑态(EDIT-MODE-SPEC v2):删除桩=桩库档案权,新增记录=读数权 -->
@@ -776,7 +827,7 @@ async function onTemplate() {
               <Select v-model="stForm.vehicleType" label="类型" :options="TYPE_OPTS" size="sm" />
             </div>
           </div>
-          <div class="cm-dlg-err">{{ stErr }}</div>
+          <p class="fp-field-err"><template v-if="stErr">{{ stErr }}</template></p>
         </div>
         <div class="cm-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="stationDlg = false">取消</Button>
@@ -818,25 +869,20 @@ async function onTemplate() {
 }
 .cm-permonth:hover { color: var(--hue-blue); border-color: var(--hue-blue); }
 .cm-per { flex: 0 0 auto; font-family: var(--font-mono); font-size: 13px; font-weight: var(--fw-bold); }
+.cm-ebtn { display: inline-flex; flex: 0 0 auto; }
 
-.cm-gate-fail {
-  display: flex; align-items: center; justify-content: center; gap: 10px;
-  height: 100%; color: var(--hue-red); font-size: 13px;
-}
+/* 加载失败换掉整页:FPEmpty 只长不缩,给它一根撑满的纵向 flex */
+.cm-gate-fail { display: flex; flex-direction: column; height: 100%; }
 /* position: relative —— FPLoadBar 是 absolute,宿主不给参照它会认 AppShell 的 .fp-main-card */
 .cm-page { position: relative; display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; box-sizing: border-box; max-width: 1600px; margin: 0 auto; width: 100%; }
 
 /* ── 标题行 ── */
 .cm-head { flex: 0 0 auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .cm-headl { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.cm-titlerow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .cm-title { margin: 0; display: flex; align-items: center; gap: 11px; font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .cm-title .ic { width: 34px; height: 34px; border-radius: 10px; background: var(--surface-sunken); display: grid; place-items: center; color: var(--text-secondary); flex: 0 0 auto; }
 .cm-sub { margin: 5px 0 0; font-size: var(--fs-label); color: var(--text-muted); }
-
-/* ── 空态引导条 ── */
-.cm-empty { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); }
-.cm-link { border: none; background: none; padding: 0; margin: 0 2px; font: inherit; color: var(--hue-blue); cursor: pointer; }
-.cm-link:hover { text-decoration: underline; }
 
 /* ── 主表卡片:桩数个位数不分页;短窗时卡片内滚动兜底(sticky 表头) ── */
 .cm-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--border-subtle); overflow: hidden; }
@@ -861,6 +907,16 @@ async function onTemplate() {
 .cm-edit::placeholder { color: var(--text-disabled); }
 .cm-edit.l { text-align: left; font-family: var(--font-sans); }
 
+/* ── 行内格的字段报错(十件 ⑤):红字贴在输入框正下方,浮在格子下沿 —— 不撑行高、不挪同行别的格。
+   只在出错时有字;最后一行翻到输入框上方,免得被卡片裁掉。框变红跟着。 ── */
+.cm-fld { position: relative; display: flex; min-width: 0; }
+.cm-table td:has(> .cm-fld), .cm-utable td:has(> .cm-fld) { overflow: visible; }
+.cm-cellerr { position: absolute; left: 0; top: 100%; z-index: 2; padding: 0 4px; border-radius: var(--radius-sm); background: var(--surface-white); white-space: nowrap; pointer-events: none; }
+td.num .cm-cellerr { left: auto; right: 0; }
+.cm-table tbody tr:last-child .cm-cellerr, .cm-utable tbody tr:last-child .cm-cellerr { top: auto; bottom: 100%; }
+.cm-cellerr:empty { display: none; }
+.cm-edit.bad, .cm-edit.bad:hover, .cm-edit.bad:focus { border-color: var(--delta-down-text); }
+
 /* ── 电表与损耗小节 ── */
 .cm-usage { flex: 0 0 auto; border: 1px solid var(--border-subtle); overflow: hidden; }
 .cm-usage-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; padding: 12px 16px 0; }
@@ -875,7 +931,6 @@ async function onTemplate() {
 .cm-utable td.loss { color: var(--hue-orange); font-weight: var(--fw-semibold); }
 
 /* ── 抽屉记录表 ── */
-.cm-dempty { padding: 40px 12px; text-align: center; color: var(--text-disabled); font-size: var(--fs-label); }
 .cm-dwrap { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; }
 .cm-dtable { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12.5px; white-space: nowrap; }
 .cm-dtable th { padding: 8px 10px; text-align: right; font-family: var(--font-sans); font-weight: var(--fw-medium); font-size: 11px; color: var(--text-muted); background: var(--surface-card); border-bottom: 1px solid var(--divider); }
@@ -905,6 +960,5 @@ async function onTemplate() {
 .cm-dlg-b { padding: 16px 22px 4px; display: flex; flex-direction: column; gap: 12px; }
 .cm-dlg-row { display: flex; gap: 12px; }
 .cm-dlg-row > * { flex: 1; min-width: 0; }
-.cm-dlg-err { font-size: 11.5px; color: var(--hue-red); min-height: 14px; }
 .cm-dlg-f { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 22px 20px; }
 </style>

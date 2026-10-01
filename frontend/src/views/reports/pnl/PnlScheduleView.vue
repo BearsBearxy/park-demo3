@@ -34,6 +34,10 @@ import SaveConfirmDialog from '@/components/import/SaveConfirmDialog.vue'
 import FpImportModal from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import PnlTable from './PnlTable.vue'
+import { receipt } from '@/utils/receipt'
+import { ask } from '@/utils/ask'
+
+const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
 
 // ── 路由 → config(一 View 五值) ──────────────────────────
 const route = useRoute()
@@ -233,20 +237,29 @@ function resetEdit() {
   edit.value = false
   draftM.value = {}; draftNote.value = {}
   added.value = []; removed.value = new Set()
-  selected.value = new Set(); delConfirm.value = false
+  selected.value = new Set()
   saveConfirm.value = false
 }
 
 // ── 批量删除(P2-G3 J7):行首复选多选 → PAGE-BEHAVIOR-SPEC §2 确认 → 循环既有单删(draft 移除,随保存落库) ──
 const selected = ref<Set<string>>(new Set())
-const delConfirm = ref(false)
 function onToggleSelect(rowKey: string) {
   const s = new Set(selected.value)
   if (s.has(rowKey)) s.delete(rowKey); else s.add(rowKey)
   selected.value = s
 }
+// 确认(十件 ⑨):标题问句、正文给数、主按钮写动作;删除类默认焦点在「取消」
+async function askRemoveSelected() {
+  const n = selected.value.size
+  if (await ask({
+    title: `删除所选 ${n} 行？`,
+    body: `已勾选的 ${n} 行将从 ${year.value} 年矩阵中删除,点「保存」后落库,「取消」编辑可放弃。注意:本表小计/损益/合计行也是存值行,若在所选中会一并删除,不会自动重算。`,
+    action: `删除 ${n} 行`,
+    danger: true,
+  })) removeSelected()
+}
 function removeSelected() {
-  delConfirm.value = false
+  if (!edit.value) return   // 确认期间退出了编辑(被接管 / 换年):草稿已清,不再动
   for (const key of [...selected.value]) onRemove(key)
 }
 
@@ -323,7 +336,7 @@ async function save() {
     resetEdit()
     await reloadOverview()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '保存失败')
+    receipt.fail(errMsg(e, '保存失败'), { label: '重试', run: () => void save() })
   } finally {
     saving.value = false
   }
@@ -350,7 +363,7 @@ async function onImport(recs: ImportRec[], fileName: string) {
     await loadYear(used)
     await reloadOverview()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '导入失败')
+    receipt.fail(errMsg(e, '导入失败'), { label: '重试', run: () => void onImport(recs, fileName) })
   }
 }
 
@@ -366,7 +379,7 @@ async function onExport() {
     await writeAoaWorkbook(`${config.title.replace(/\s*·\s*/, '-')}-${year.value}年.xlsx`,
       [{ name: `${year.value}年`, aoa: [header, ...body] }])
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '导出失败')
+    receipt.fail(errMsg(e, '导出失败'), { label: '重试', run: () => void onExport() })
   }
 }
 
@@ -427,7 +440,7 @@ const { note: deepNote } = useDeepPeriod({
          :show-import="true" @import="importing = true" :import-disabled="saving" :dirty="dirty"
          :copy-text="draftAsTsv">
           <template #edit-actions>
-            <Button v-if="selected.size" variant="danger" size="sm" :disabled="saving" @click="delConfirm = true">
+            <Button v-if="selected.size" variant="danger" size="sm" :disabled="saving" @click="askRemoveSelected">
               <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
               删除所选 ({{ selected.size }})
             </Button>
@@ -509,25 +522,11 @@ const { note: deepNote } = useDeepPeriod({
           placeholder="如:一期租金收入" @keydown.enter="submitAdd"
         />
         <div class="pnl-kind">识别为:<b>{{ KIND_TEXT[addKind] }}</b></div>
-        <div class="pnl-derr">{{ addErr }}</div>
+        <p class="fp-field-err"><template v-if="addErr">{{ addErr }}</template></p>
       </div>
       <div class="pnl-dlg-f">
         <button class="pnl-btn gray" @click="addDlg = false">取消</button>
         <button class="pnl-btn filled" @click="submitAdd"><component :is="iconFor('check')" :size="14" />新增</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 批量删除确认(PAGE-BEHAVIOR-SPEC §2 居中,基准本屏 .pnl-mask/.pnl-dlg) -->
-  <div v-if="delConfirm" class="pnl-mask" @mousedown="delConfirm = false">
-    <div class="pnl-dlg" role="dialog" aria-modal="true" @mousedown.stop>
-      <div class="pnl-dlg-h">
-        <h3>删除所选行</h3>
-        <p>已勾选的 {{ selected.size }} 行将从 {{ year }} 年矩阵中删除,点击「保存」后落库,「取消」编辑可放弃。注意:本表小计/损益/合计行也是存值行,若在所选中会一并删除,不会自动重算。</p>
-      </div>
-      <div class="pnl-dlg-f">
-        <button class="pnl-btn gray" @click="delConfirm = false">取消</button>
-        <button class="pnl-btn red" @click="removeSelected"><component :is="iconFor('trash-2')" :size="14" />删除 {{ selected.size }} 行</button>
       </div>
     </div>
   </div>
@@ -581,13 +580,10 @@ const { note: deepNote } = useDeepPeriod({
 .pnl-in.err { border-color:var(--hue-red); }
 .pnl-kind { font-size:12px; color:var(--text-muted); margin-top:2px; }
 .pnl-kind b { color:var(--text-secondary); font-weight:var(--fw-semibold); margin-left:2px; }
-.pnl-derr { font-size:11.5px; color:var(--hue-red); margin-top:6px; min-height:14px; }
 .pnl-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:14px 22px 20px; }
 .pnl-btn { height:34px; padding:0 16px; border-radius:var(--radius-full); border:none; cursor:pointer; font-family:var(--font-sans); font-size:13px; font-weight:var(--fw-medium); display:inline-flex; align-items:center; gap:6px; transition:background var(--dur-fast) var(--ease-standard); }
 .pnl-btn.gray { background:var(--surface-sunken); color:var(--text-secondary); }
 .pnl-btn.gray:hover { background:var(--ink-100); }
 .pnl-btn.filled { background:var(--ink-900); color:var(--control-solid-text); }
 .pnl-btn.filled:hover { background:var(--control-solid-hover); }
-.pnl-btn.red { background:var(--hue-red); color:var(--control-solid-text); }   /* 同 ds/Button danger */
-.pnl-btn.red:hover { background:var(--status-danger-hover); }
 </style>

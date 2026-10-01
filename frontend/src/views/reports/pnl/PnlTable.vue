@@ -7,8 +7,7 @@
 // 派生对照(P2-G G2/G3):行首徽标 已证√蓝/差异N月橙(hover 逐月差额)/编辑态灰「可填入」,无映射不显;
 // diff 月单元格橙底;编辑态行尾「填入」emit fill(rowKey),读态只显对照不显填入。
 import { computed, ref, watch, type CSSProperties } from 'vue'
-import { iconFor } from '@/components/ds/icon'
-import Button from '@/components/ds/Button.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
 import SchedNoteCell from '@/components/sched/SchedNoteCell.vue'
 import FPWideCards, { type WideCard } from '@/components/fp/FPWideCards.vue'
 import PnlRowDrawer from './PnlRowDrawer.vue'
@@ -146,16 +145,9 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
 
 <template>
   <div ref="wrap" class="pt-wrap" :style="wrapStyle">
-    <!-- 空年引导态 -->
-    <div v-if="rows.length === 0" class="pt-empty">
-      <div class="pt-empty-ic"><component :is="iconFor('trending-up')" :size="24" /></div>
-      <div class="pt-empty-t">{{ year }}年 暂无数据</div>
-      <div class="pt-empty-s">进入编辑模式可逐行新增科目细分;后续也可从母册导入本年明细。</div>
-      <Button v-if="edit" variant="filled" @click="emit('add')">
-        <template #leading><component :is="iconFor('plus')" :size="16" /></template>
-        新增行
-      </Button>
-    </div>
+    <!-- 空年引导态(十件 ⑦):占住表格区,编辑态带「新增行」 -->
+    <FPEmpty v-if="rows.length === 0" sub="进入编辑模式可逐行新增科目细分;后续也可从母册导入本年明细。"
+             :action="edit ? '新增行' : undefined" @action="emit('add')">{{ year }}年 暂无数据</FPEmpty>
 
     <!-- S 档读态:一行科目一张 64 紧凑卡,12 个月进抽屉(宽档 cardMode 恒 false,走下面原表) -->
     <FPWideCards
@@ -186,12 +178,12 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
               v-if="!mappedKeys?.has(r.rowKey)"
               class="pt-ck"
               type="checkbox"
-              title="选择该行(批量删除)"
+              v-tip="'选择该行(批量删除)'"
               :checked="selected?.has(r.rowKey)"
               @change="emit('toggleSelect', r.rowKey)"
             />
           </td>
-          <td class="pt-c-grp l" :class="fc('grp')" :style="st.grp" :title="r.groupLabel">{{ showGroup(i) ? r.groupLabel : '' }}</td>
+          <td class="pt-c-grp l" :class="fc('grp')" :style="st.grp" v-tip="r.groupLabel">{{ showGroup(i) ? r.groupLabel : '' }}</td>
           <td class="pt-c-sub l" :class="fc('sub')" :style="st.sub">
             <div class="pt-sub" :style="subBox">
               <span class="pt-sub-t" v-tip="subW[r.rowKey] > nameW ? r.label : null">{{ r.label }}</span>
@@ -199,7 +191,7 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
                 v-if="badges[r.rowKey]"
                 class="pt-badge"
                 :class="badges[r.rowKey].cls"
-                :title="badges[r.rowKey].title"
+                v-tip="badges[r.rowKey].title"
               >{{ badges[r.rowKey].text }}</span>
             </div>
           </td>
@@ -226,7 +218,7 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
             <button
               v-if="fillable(r)"
               class="pt-fillbtn"
-              title="从数据层派生值填入空格(不覆盖已录)"
+              v-tip="'从数据层派生值填入空格(不覆盖已录)'"
               @click="emit('fill', r.rowKey)"
             >填入</button>
           </td>
@@ -300,9 +292,6 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
 .pt-fillbtn { height:24px; padding:0 9px; border:1px solid var(--border-control); background:var(--surface-white); border-radius:var(--radius-full); font-family:var(--font-sans); font-size:11.5px; font-weight:var(--fw-medium); color:var(--hue-blue); cursor:pointer; transition:background var(--dur-fast) var(--ease-standard); }
 .pt-fillbtn:hover { background:var(--accent-blue); }
 
-/* 空态 */
-.pt-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; height:100%; min-height:240px; padding:40px; text-align:center; }
-.pt-empty-ic { width:52px; height:52px; border-radius:16px; background:var(--surface-card); display:grid; place-items:center; color:var(--text-muted); }
-.pt-empty-t { font-size:15px; font-weight:var(--fw-semibold); color:var(--text-primary); }
-.pt-empty-s { font-size:13px; color:var(--text-muted); max-width:400px; line-height:1.5; }
+/* 空态(FPEmpty):撑满表格区,和改前一样上下居中 */
+.pt-wrap > .fp-empty { height:100%; }
 </style>

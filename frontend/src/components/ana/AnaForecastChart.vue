@@ -95,13 +95,13 @@ const tipLines = computed(() => {
   return out
 })
 // 气泡宽度按最长那行算,不写死 —— 写死 132 时「身前不足 3 个月,算不出带」那行会被切掉。
-// 中日韩字按 12px 估宽,其余按 6.6px(11~12px 字号下够用,宁可略宽也不切字)。
+// 中日韩字按 12px 估宽,其余按 7.2px(气泡字 12px,等宽数字 0.6em;宁可略宽也不切字)。
 const CJK = /[　-鿿＀-￯]/
 const tipW = computed(() => {
   let w = 0
   for (const l of tipLines.value) {
     let px = 0
-    for (const ch of l) px += CJK.test(ch) ? 12 : 6.6
+    for (const ch of l) px += CJK.test(ch) ? 12 : 7.2
     w = Math.max(w, px)
   }
   return Math.ceil(w) + 20
@@ -114,7 +114,7 @@ const tipX = computed(() => {
   const wantRight = t.x + 12
   return wantRight + tipW.value <= right ? wantRight : Math.max(box.value.padL, t.x - 12 - tipW.value)
 })
-const tipH = computed(() => 12 + tipLines.value.length * 16)
+const tipH = computed(() => 12 + tipLines.value.length * 18)
 </script>
 
 <template>
@@ -163,8 +163,8 @@ const tipH = computed(() => 12 + tipLines.value.length * 16)
         <circle v-if="hoverRow?.actual != null" :cx="hoverTick.x"
           :cy="geo.dots.find((d) => d.month === hoverRow!.month)?.y ?? 0" r="5" class="afc-hdot" />
         <g :transform="`translate(${tipX}, ${box.padT + 4})`">
-          <rect :width="tipW" :height="tipH" rx="8" class="afc-tip" />
-          <text v-for="(l, i) in tipLines" :key="i" x="10" :y="20 + i * 16"
+          <rect :width="tipW" :height="tipH" rx="6" class="afc-tip" />
+          <text v-for="(l, i) in tipLines" :key="i" x="10" :y="19 + i * 18"
             :class="['afc-tiptext', i === 0 ? 'afc-tiptitle' : '']">{{ l }}</text>
         </g>
       </template>
@@ -173,7 +173,7 @@ const tipH = computed(() => 12 + tipLines.value.length * 16)
 </template>
 
 <style scoped>
-/* 取色自 Figma 稿(节点 2310:2628):主线 #4F46E5 / 浅带 #C7D2FE / 网格 #E5EAF0 / 轴标签 #94A3B8 / 气泡 #1E293B */
+/* 取色自 Figma 稿(节点 2310:2628):主线 #4F46E5 / 浅带 #C7D2FE / 网格 #E5EAF0 / 轴标签 #94A3B8;气泡与 ShellTip 同款(--tip-bg、12/18、圆角 6、内边距 6×10) */
 .afc-host { width: 100%; }
 .afc { display: block; }
 /* 擦入:数据组自左擦出(首进 / 切回页签);fp-wipe 在 ana.css,不能写进 scoped(名字会被加 hash) */
@@ -194,7 +194,7 @@ const tipH = computed(() => 12 + tipLines.value.length * 16)
 .afc-fnum-mid { fill: var(--sv-figure); font-weight: 600; }
 .afc-hair { stroke: var(--sv-hair); stroke-width: 1; }
 .afc-hdot { fill: var(--sv-fc-line); stroke: var(--surface-white); stroke-width: 2; }
-.afc-tip { fill: var(--sv-tip-bg); }
-.afc-tiptext { fill: var(--sv-tip-text); font-size: 11px; font-variant-numeric: tabular-nums; }
-.afc-tiptitle { fill: var(--text-on-solid); font-weight: 600; font-size: 12px; }
+.afc-tip { fill: var(--tip-bg); }
+.afc-tiptext { fill: var(--text-on-solid); font-size: 12px; font-variant-numeric: tabular-nums; }
+.afc-tiptitle { font-weight: 600; }
 </style>

@@ -93,7 +93,7 @@ const cards = computed(() => props.rows.map(r => ({ r, k: keyOf(r), f: props.fie
       @click="$emit('rowClick', c.r)"
     >
       <div class="r1">
-        <span class="nm" :title="c.f.name">{{ c.f.name }}</span>
+        <span class="nm">{{ c.f.name }}</span>
         <!-- 64 档没有第二行大字,金额贴在第一行右端(稿 §2 紧凑档) -->
         <span v-if="density === 64" class="amt sm">{{ c.f.amount }}</span>
         <span v-else-if="c.f.pill" class="pill" :class="c.f.pill.tone">

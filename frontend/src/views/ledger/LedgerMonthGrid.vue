@@ -38,7 +38,7 @@ const metaByMonth = computed<Record<number, MonthMeta>>(() => {
   <div class="lg-page">
     <div class="lg-head">
       <div class="lg-head-l">
-        <button class="lg-back" title="返回年份选择" @click="emit('back')"><component :is="iconFor('arrow-left')" :size="16" /></button>
+        <button class="lg-back" v-tip="'返回年份选择'" @click="emit('back')"><component :is="iconFor('arrow-left')" :size="16" /></button>
         <div>
           <h2 class="lg-title">月度台账</h2>
           <p class="lg-sub">{{ companyName }} · <span class="mono">{{ year }} 年</span> · 按月归集一行一租户的应收与收款明细</p>
@@ -47,9 +47,9 @@ const metaByMonth = computed<Record<number, MonthMeta>>(() => {
       <div class="lg-head-actions">
         <LedgerCompanyBadge :name="companyName" :short="companyShort" @switch="emit('switch-company')" />
         <span class="lg-ypill">
-          <button @click="emit('year', year - 1)" title="上一年"><component :is="iconFor('chevron-left')" :size="15" /></button>
+          <button @click="emit('year', year - 1)" v-tip="'上一年'"><component :is="iconFor('chevron-left')" :size="15" /></button>
           <span class="v">{{ year }}</span>
-          <button @click="emit('year', Math.min(year + 1, maxYear))" title="下一年" :disabled="year >= maxYear"><component :is="iconFor('chevron-right')" :size="15" /></button>
+          <button @click="emit('year', Math.min(year + 1, maxYear))" v-tip="'下一年'" :disabled="year >= maxYear"><component :is="iconFor('chevron-right')" :size="15" /></button>
         </span>
         <!-- 导入 Excel 改到月度宽表(LedgerWideTable):彼处公司+年+月皆已选,可定向 upsert -->
       </div>

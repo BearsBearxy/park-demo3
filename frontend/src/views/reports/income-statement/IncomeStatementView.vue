@@ -31,6 +31,9 @@ import IncomeStatementTable from './IncomeStatementTable.vue'
 import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
 import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import { receipt } from '@/utils/receipt'
+import { ask } from '@/utils/ask'
 
 const STMT = 'is'
 
@@ -47,7 +50,7 @@ const {
   pickCompany, pickCell, backToMatrix, addEarlier, addLater, removeYear,
   loadPeriod,
   enterEdit, onTaken, lockedBy, evictedBy, heldByOther, lockScope, requestCancel, saveConfirm, finishEdit, save, onDiscard,
-  onNewCompany, onEditCompany, onDeleteCompany, submitCompany, confirmDelete,
+  onNewCompany, onEditCompany, onDeleteCompany, submitCompany,
   importing, importResult, importSummary, onImport, requestImport,
 } = useFinStatementScreen({
   stmt: STMT,
@@ -178,6 +181,7 @@ function onAddChild(row: FinTableRow) {
 }
 const addParentKey = ref('')
 const addParentLevel = ref(0)
+const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
 async function submitRow(label: string) {
   if (companyId.value == null || isAll.value) return
   try {
@@ -188,7 +192,7 @@ async function submitRow(label: string) {
     await loadPeriod()
     if (!edit.value) enterEdit()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '添加子类失败')
+    receipt.fail(errMsg(e, '添加子类失败'), { label: '重试', run: () => void submitRow(label) })
   }
 }
 // 自定义行删除:row.key 是 rowKey(字符串) → customRows 里查 id → deleteCustomRow(级联后端处理)。
@@ -200,12 +204,11 @@ async function removeCustom(row: FinTableRow) {
     selected.value.delete(row.key)
     await loadPeriod()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '删除子类失败')
+    receipt.fail(errMsg(e, '删除子类失败'), { label: '重试', run: () => void removeCustom(row) })
   }
 }
 
 // ── 批量删除(P2-G3):编辑态多选 → 自定义行立即级联删、固定行清空本期值进 draft ──
-const bulkConfirm = ref(false)
 function onToggleSelect(row: FinTableRow) {
   if (selected.value.has(row.key)) selected.value.delete(row.key)
   else selected.value.add(row.key)
@@ -221,9 +224,19 @@ const selSplit = computed(() => {
   }
   return { custom, fixed }
 })
-async function bulkDelete() {
+// 确认(十件 ⑨):标题问句、正文给数、主按钮写动作;删除类默认焦点在「取消」
+async function askBulkDelete() {
   const { custom, fixed } = selSplit.value
-  bulkConfirm.value = false
+  const n = selected.value.size
+  const body = [
+    custom.length ? `自定义行 ${custom.length} 行将删除(含其下子类,立即生效)` : '',
+    fixed.length ? `固定行 ${fixed.length} 行将清空本期数值(点「保存」后生效)` : '',
+  ].filter(Boolean).join(';') + '。'
+  if (await ask({ title: `删除所选 ${n} 行？`, body, action: `删除 ${n} 行`, danger: true })) await bulkDelete()
+}
+async function bulkDelete() {
+  if (!edit.value || isAll.value) return   // 确认期间编辑权被接管 / 切到了汇总:不再写
+  const { custom, fixed } = selSplit.value
   try {
     // 自定义行:祖先也在选中集内的跳过(父删即级联),其余循环既有级联端点立即删除
     const chosen = new Set(custom.map(c => c.rowKey))
@@ -245,7 +258,8 @@ async function bulkDelete() {
     selected.value = new Set()
     if (custom.length) await loadPeriod()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '删除所选失败')
+    // 不带重试:自定义行是逐条删的,半途失败时前几条已删掉,原样再跑会对着删过的行再删一遍
+    receipt.fail(errMsg(e, '删除所选失败'))
   }
 }
 
@@ -270,7 +284,7 @@ async function onExport() {
       companyName.value ?? '全部汇总', year.value, month.value,
     )
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '导出失败')
+    receipt.fail(errMsg(e, '导出失败'), { label: '重试', run: () => void onExport() })
   }
 }
 </script>
@@ -317,11 +331,7 @@ async function onExport() {
       <div v-if="!companiesLoaded" class="page-loading"><span class="page-spin" /></div>
 
       <!-- 一家公司都没有:左栏「新增」是唯一出路,别给一屏空矩阵 -->
-      <div v-else-if="companyId === null" class="finw-empty">
-        <component :is="iconFor('bar-chart-3')" :size="28" />
-        <p class="t">还没有管理公司</p>
-        <p class="s">在左栏底部「新增」建一家,利润表 按公司 × 年月分期</p>
-      </div>
+      <FPEmpty v-else-if="companyId === null" sub="在左栏底部「新增」建一家,利润表 按公司 × 年月分期">还没有管理公司</FPEmpty>
 
       <!-- ⓪ 选期矩阵(年份门 + 月历合成一张,2026-08-24「选期矩阵 v3」推到报表层) -->
       <template v-else-if="month === null">
@@ -355,7 +365,7 @@ async function onExport() {
                    :query="stripQuery" back-label="换期" @back="backToMatrix" />
       <div class="fin-head">
         <div class="fin-head-l">
-          <button class="fin-back" title="返回选期矩阵" @click="backToMatrix"><component :is="iconFor('arrow-left')" :size="16" /></button>
+          <button class="fin-back" v-tip="'返回选期矩阵'" @click="backToMatrix"><component :is="iconFor('arrow-left')" :size="16" /></button>
           <div>
             <h2 class="fin-title">利润表</h2>
             <p class="fin-sub">{{ isAll ? '全部汇总' : company?.name }} · <span class="mono">{{ year }} 年 {{ month }} 月</span></p>
@@ -414,7 +424,7 @@ async function onExport() {
       <div class="fin-toolbar">
         <div class="fin-toolbar-l">
           <span class="fin-tag">{{ itemCount }} 项</span>
-          <Button v-if="edit && selected.size" variant="danger" size="sm" @click="bulkConfirm = true">
+          <Button v-if="edit && selected.size" variant="danger" size="sm" @click="askBulkDelete">
             <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
             删除所选 ({{ selected.size }})
           </Button>
@@ -508,7 +518,6 @@ async function onExport() {
     :companies="finCompanies"
     @close="dlg = null"
     @submit-company="submitCompany"
-    @confirm-delete="confirmDelete"
     @submit-row="submitRow"
   />
 
@@ -520,27 +529,6 @@ async function onExport() {
     @close="importResult = null; importSummary = ''"
   />
 
-  <!-- 批量删除确认(遵 PAGE-BEHAVIOR-SPEC §2:Teleport + backdrop 居中;样式 1:1 FinDialogs .fin-mask/.fin-dlg),放最后 -->
-  <Teleport to="body">
-    <div v-if="bulkConfirm" class="fin-mask" @mousedown="bulkConfirm = false">
-      <div class="fin-dlg" role="dialog" aria-modal="true" @mousedown.stop>
-        <div class="fin-dlg-h">
-          <h3>删除所选行</h3>
-          <p>
-            <template v-if="selSplit.custom.length">自定义行 {{ selSplit.custom.length }} 行将删除(含其下子类,立即生效);</template>
-            <template v-if="selSplit.fixed.length">固定行 {{ selSplit.fixed.length }} 行将清空本期数值(点「保存」后生效)。</template>
-          </p>
-        </div>
-        <div class="fin-dlg-f" style="padding-top:20px">
-          <Button variant="gray" size="sm" @click="bulkConfirm = false">取消</Button>
-          <Button variant="danger" size="sm" @click="bulkDelete">
-            <template #leading><component :is="iconFor('trash-2')" /></template>
-            确认删除
-          </Button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
   <FPTakeoverDrawer :holder="lockedBy" :scope="lockScope() ?? ''"
                     :what="`利润表 · ${companyName ?? ''} ${year}-${String(month ?? 1).padStart(2, '0')}`"
                     @close="lockedBy = null" @taken="onTaken" />
@@ -579,13 +567,11 @@ async function onExport() {
    .finw / .finw-rail 基础规则写在下面的「工作台外壳」段里,媒体块排在它们之前是**静默**失效
    ——同特异性按源序,`.finw-rail{display:none}` 会被后面的 `.finw-rail{display:flex}` 盖回去。
    两块的相对次序(960 在前、600 在后)与块内内容一字未动。 */
-/* 批量删除确认弹窗 — 1:1 FinDialogs .fin-mask/.fin-dlg(scoped 不跨组件,故本屏自带一份,遵 PAGE-BEHAVIOR-SPEC §2) */
+/* 管理公司面板(≤960 的「管理」chip 落点)— 1:1 FinDialogs .fin-mask/.fin-dlg(scoped 不跨组件,故本屏自带一份,遵 PAGE-BEHAVIOR-SPEC §2) */
 .fin-mask { position:fixed; inset:0; background:var(--scrim); z-index:300; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
 .fin-dlg { width:min(440px,92vw); max-height:88vh; overflow-y:auto; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:var(--shadow-dialog); animation:fp-rise-in var(--dur-base) var(--ease-standard) both; }
 .fin-dlg-h { padding:20px 22px 0; }
 .fin-dlg-h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
-.fin-dlg-h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
-.fin-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:16px 22px 20px; }
 
 /* ── 工作台外壳(2026-08-29,设计稿 §3.2a):左轨常驻 + 主区。与月度台账 .lgw 家族同形 ── */
 .finw { display: flex; gap: 16px; width: 100%; height: 100%; min-height: 0; box-sizing: border-box;
@@ -620,13 +606,6 @@ async function onExport() {
 }
 .finw-sub { margin: 4px 0 0; font-size: var(--fs-label); color: var(--text-muted); }
 .finw-matrix { flex: 0 0 auto; }
-
-.finw-empty {
-  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
-  color: var(--text-disabled);
-}
-.finw-empty .t { margin: 8px 0 0; font-size: 15px; font-weight: var(--fw-semibold); color: var(--text-muted); }
-.finw-empty .s { margin: 0; font-size: 12px; color: var(--text-disabled); }
 
 /* 顶部 chips:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前(§1) */
 /* 顶部 chips:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前(§1) */

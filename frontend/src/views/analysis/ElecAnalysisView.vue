@@ -4,7 +4,7 @@
 // + 图1 收益四指标月度趋势线 + 图2 总表电费结构堆叠柱(功率因数奖励/光伏上网收益作负向抵减段)
 // + 图3 购售价差双轴(公告价 vs 执行价双线 + 月损益柱)。
 // 数据源:/metrics-year 年度指标序列 + elec_cost_entry 逐月费项 + price_cfg 月度电价;
-// 含 simulated 行时页头常驻说明条(灰标口径)。年份选择照分析层 'year' 屏惯例(AnaShell periodMode='year')。
+// 含 simulated 行时期间选择旁常驻标签「本页含模拟数据」。年份选择照分析层 'year' 屏惯例(AnaShell periodMode='year')。
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
@@ -12,6 +12,8 @@ import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
+import FPStateTag from '@/components/fp/FPStateTag.vue'
 import { iconFor } from '@/components/ds/icon'
 import { fnum, hues, sgn, STATUS } from '@/components/ana/anaFmt'
 import { finWan } from '@/utils/finFmt'
@@ -39,7 +41,9 @@ const year = computed(() => period.sel.value.year)
 
 // ── 取数(年切重取;seq 守卫防快切乱序落表,同 ElecView loadYear) ──
 const loading = ref(true)
-const failed = ref(false)
+/** 没读到的那一年(null = 没失败)。只在成功分支清:点「重试」在途时失败卡留在原地,不先闪回旧年内容;
+ *  记年不记布尔:失败卡留着时换了年,卡上的字仍说失败的那一年 */
+const failed = ref<number | null>(null)
 // 换年在途(C5-02):旧内容留在原地退让,不卸载;过 200ms 门才亮、到数立刻灭
 const staleShown = useDeferredFlag(loading)
 /** 已画在屏上的那一年:year 立刻变(控件回显),这个等数据一起换 —— 页头 / 卡头 / 结论句跟它走,
@@ -55,7 +59,6 @@ async function load(y: number) {
   if (!y) return
   const s = ++seq
   loading.value = true
-  failed.value = false
   try {
     // ponytail: entries/price-cfg 无年端点,12 月并发拉(单月条目量小);后端若加 year 端点再收敛
     const ms = Array.from({ length: 12 }, (_, i) => i + 1)
@@ -71,8 +74,9 @@ async function load(y: number) {
     entryMonths.value = es
     priceMonths.value = ps
     loadedYear.value = y
+    failed.value = null
   } catch {
-    if (s === seq) failed.value = true
+    if (s === seq) failed.value = y
   } finally {
     if (s === seq) loading.value = false
   }
@@ -81,7 +85,7 @@ watch(year, (y) => { void load(y) }, { immediate: true })
 
 const MLABELS = Array.from({ length: 12 }, (_, i) => i + 1 + '月')
 const hasEntries = computed(() => entryMonths.value.some((rows) => rows.length > 0))
-// simulated 说明条:任一费项行 source='simulated' → 页头常驻(spec §1)
+// 模拟数据标签:任一费项行 source='simulated' → 期间选择旁常驻(spec §1;画布 06-B ⑥ 页面状态)
 const hasSim = computed(() => entryMonths.value.some((rows) => rows.some((r) => r.source === 'simulated')))
 
 // ── 指标月序列(元;缺源月 null,诚实断点不补 0) ──
@@ -367,18 +371,22 @@ const spreadRead = computed(() => {
 <template>
   <!-- §五:年敏感屏(指标为年度月序),只年控件 -->
   <AnaShell period-mode="year" :busy="staleShown">
+    <!-- simulated 常驻标签(spec §1):整页处在「含模拟数据」的状态 → 期间选择旁,不在正文里另起一行。
+         首进(还没有任何一年画过)按「有」隐形留位:库里现有电费数据全是模拟填充,不留的话数据一到
+         手机上工具条多折一行、整页下推;换成真实电费单后首进会上收这一行,届时把留位去掉。 -->
+    <template #period-note>
+      <FPStateTag v-if="!failed && (hasSim || loadedYear == null)" :class="{ 'ana-hole': loadedYear == null }" tone="muted">本页含模拟数据 · 真实电费单导入后自动替换</FPStateTag>
+    </template>
     <!-- 首进:版式已知就不转圈(C6-01)。块高逐块照真版式钉死 ——
          页头 44;结论条 .ea-concl 一行 20(与真版式同一批类,padding / margin-bottom 由 CSS 给);
          卡头 20 + ana.css .av2-card-h margin-bottom 8 = 28(行盒 20 = base.css body line-height var(--lh-snug) = tokens.css 20px);
          图块 = AnaSkelChart,高与各 AnaEChart 的 :height 同表降档(300 / 300 / 300,anaChartHeight.ts);
          每张图下的读数句 20(.ana-read 上距 8)+ 参照小字 20(.ana-ref 上距 2),三张卡各一对。
-         .ea-simbar 随 hasSim 出没,骨架不占它的位。数据到了原地硬切,不做淡入。
+         模拟数据说明在期间选择旁的标签里,正文不给它留位。数据到了原地硬切,不做淡入。
          只认首进(还没有任何一年画过):换年时旧内容留在原地退让(C5-02),不退回骨架、不卸载图。 -->
     <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <div v-if="loading && loadedYear == null" class="ak-page ak-skel">
-      <!-- 页头、结论条、卡头照抄真版式(手机上会折行,灰条顶不住);随数据变的字换成同长的隐形占位。
-           模拟数据说明条跟 hasSim 走,库里现有电费数据全是模拟填充,骨架按「有」留位 ——
-           换成真实电费单后首进会上收这一条的高(约 41px),届时把这条删掉。 -->
+      <!-- 页头、结论条、卡头照抄真版式(手机上会折行,灰条顶不住);随数据变的字换成同长的隐形占位。 -->
       <div class="ak-head">
         <div class="ak-h-l">
           <span class="ak-h-ic"><component :is="iconFor('zap')" :size="20" /></span>
@@ -387,10 +395,6 @@ const spreadRead = computed(() => {
             <p class="ak-sub">收益四指标趋势 · 总表电费结构 · 购售价差 · <span class="ana-hole">0000</span>年</p>
           </div>
         </div>
-      </div>
-      <div class="ea-simbar">
-        <component :is="iconFor('flask-conical')" :size="13" />
-        <span>本页含模拟数据(灰标口径),真实电费单导入后自动替换</span>
       </div>
       <div class="av2-card ea-concl">
         <!-- 真版式是 button:按钮的行高不继承,用 span 会差出行盒;visibility:hidden 的按钮不进 tab 序 -->
@@ -428,7 +432,8 @@ const spreadRead = computed(() => {
       </div>
     </div>
     <!-- skel:end -->
-    <AnaEmpty v-else-if="failed" label="数据加载失败" hint="请刷新重试" />
+    <!-- 加载失败(画布 06-D 右格):换掉内容区,带重试;重试走同一个 load(首进 / 换年共用) -->
+    <FPLoadError v-else-if="failed" sub="屏上不显示别的年份的数字" @retry="load(year)">{{ failed }} 年的电费成本数据没读到</FPLoadError>
     <!-- data-stale-host 常挂:类摘掉后仍有 transition-property,退场才是 200 而不是硬切 -->
     <div v-else class="ak-page" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown">
       <div class="ak-head">
@@ -439,12 +444,6 @@ const spreadRead = computed(() => {
             <p class="ak-sub">收益四指标趋势 · 总表电费结构 · 购售价差 · {{ loadedYear }}年</p>
           </div>
         </div>
-      </div>
-
-      <!-- simulated 常驻说明条(spec §1:灰标口径) -->
-      <div v-if="hasSim" class="ea-simbar">
-        <component :is="iconFor('flask-conical')" :size="13" />
-        <span>本页含模拟数据(灰标口径),真实电费单导入后自动替换</span>
       </div>
 
       <!-- 护栏:该年费项数据全空 → 空态引导成本总览,不画假图 -->
@@ -511,9 +510,6 @@ const spreadRead = computed(() => {
 </template>
 
 <style scoped>
-/* simulated 说明条(仿 ana-pbanner,灰标口径用中性色) */
-.ea-simbar { display: flex; align-items: center; gap: 6px; background: var(--surface-sunken); color: var(--text-secondary); border-radius: 8px; padding: 7px 12px; font-size: var(--fs-micro); line-height: 1.4; margin-bottom: 12px; }
-.ea-simbar svg { flex: 0 0 auto; }
 /* 结论条(仿驾驶舱 cv2-concl:分句圆点,整句可点深链) */
 .ea-concl { display: flex; flex-wrap: wrap; align-items: center; column-gap: 20px; row-gap: 6px; margin-bottom: 12px; }
 .ea-cs { display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent; padding: 0; font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-primary); cursor: pointer; }
@@ -523,12 +519,12 @@ const spreadRead = computed(() => {
 .ea-ar { display: none; }
 
 /* S 档(≤600)阅读序与排布。.ak-page 是 flex column,order 对它的直接子项生效 ——
-   ana.css 那块 order 只管 .av2-grid 的格子,结论条与模拟条是 .ak-page 的兄弟,得在这里排。
-   模拟数据说明条一个字都不删(数据诚实),只是让位:它不是结论,不该占第一眼。
+   ana.css 那块 order 只管 .av2-grid 的格子,结论条是 .ak-page 的直接子项,得在这里排。
+   (模拟数据说明 2026-10-01 起是期间选择旁的标签,不在正文里。)
    DOM 序不动,所以 >600 完全没有 order 声明,桌面零差异。 */
 @media (max-width: 600px) {
   .ak-head { order: -2; }
-  /* 结论条提到模拟条前面,并从 wrap 成行改成一句一行(390 上四句本来也各占一行,钉死它) */
+  /* 结论条紧跟页头,并从 wrap 成行改成一句一行(390 上四句本来也各占一行,钉死它) */
   .ea-concl { order: -1; flex-direction: column; align-items: stretch; }
   .ea-cs { width: 100%; text-align: left; }
   .ea-ar { display: inline-flex; margin-left: auto; padding-left: 8px; color: var(--text-link); }

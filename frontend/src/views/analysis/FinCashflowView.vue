@@ -26,6 +26,7 @@ import { fint, fnum } from '@/components/ana/anaFmt'
 import { waterfallOption, type WfItem } from './finPnl.logic'
 import { agingBuckets, arrearsOf, collectionRows, mergeFamilyRows, rcGroupOption } from './finCashflow.logic'
 import { exportCollectionList } from './collectionExcel'
+import { receipt } from '@/utils/receipt'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { CompanyDTO } from '@/types/ledger'
 import type { TenantDTO } from '@/types/tenant'
@@ -168,16 +169,19 @@ const aging = computed(() => agingBuckets(famSrc.value, cid.value))
 // 4 桶固定色阶,浅→深红(≤1月 → >6月);零额段不渲
 const AGING_COLORS = ['#F5D9D8', '#EFB7B5', '#E88E8B', '#E24B4A']
 
-// 催缴清单一键导出(审计建议#1):口径与账龄卡同源(famSrc+cid 同一 FIFO),含联系方式,金额为元
+// 催缴清单一键导出(审计建议#1):口径与账龄卡同源(famSrc+cid 同一 FIFO),含联系方式,金额为元。
+// 成败走结果回执(十件 ⑧):没得导是提醒,导失败带「重试」(重跑本函数,按点重试那一刻的口径)
 async function onExportCollection() {
   const rows = collectionRows(famSrc.value, cid.value)
-  if (!rows.length) { alert('当前口径下无欠费,无需催缴'); return }
+  if (!rows.length) { receipt.warn('当前口径下无欠费,无需催缴'); return }
   try {
     await exportCollectionList(rows, tenants.value, {
       latestYm: allLedgerYms.value[allLedgerYms.value.length - 1] ?? '',
       familyMode: famOn.value, companyLabel: companyLabel.value,
     })
-  } catch (e) { alert((e as { message?: string })?.message ?? '导出失败') }
+  } catch (e) {
+    receipt.fail((e as { message?: string })?.message ?? '催缴清单导出失败', { label: '重试', run: () => void onExportCollection() })
+  }
 }
 
 // 深链走 openFresh({pin:true})(页签语义,spec §4.1);发链 periodLink(§4.2):p + extra.company/tenant。台账屏切回也认 query(P0b)。
@@ -263,13 +267,13 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
                 <button :class="{ on: !famOn }" @click="famOn = false">按户</button>
                 <button :class="{ on: famOn }" @click="famOn = true">按家族</button>
               </div>
-              <button class="fin-link" title="逐户账龄明细+联系方式,金额为元" @click="onExportCollection">导出催缴清单</button>
+              <button v-tip="'逐户账龄明细+联系方式,金额为元'" class="fin-link" @click="onExportCollection">导出催缴清单</button>
             </span>
           </div>
           <div class="fin-age-bar">
             <template v-for="(b, i) in aging.buckets" :key="b.label">
-              <div v-if="b.amount > 0" class="seg" :style="{ flex: b.amount, background: AGING_COLORS[i] }"
-                :title="b.label + ' ¥' + fnum(b.amount / 1e4, 1) + '万'"></div>
+              <div v-if="b.amount > 0" v-tip="b.label + ' ¥' + fnum(b.amount / 1e4, 1) + '万'" class="seg"
+                :style="{ flex: b.amount, background: AGING_COLORS[i] }"></div>
             </template>
           </div>
           <div class="fin-age-legend">

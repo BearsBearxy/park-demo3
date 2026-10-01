@@ -2,13 +2,15 @@
 // 共用的年度台账状态机。抽取自 6 屏逐字相同的那部分:
 //   year/edit/drawer/importing/importResult/selectedIds 六个 ref、
 //   勾选三件套(toggleSelect / selectAll / onBatchDelete)、清空本期导入、进出年份门、
-//   以及「后端 message 优先、否则兜底文案」的 alert 报错口径。
+//   以及「后端 message 优先、否则兜底文案」的报错口径(走结果回执,不再 alert)。
 // 各屏差异一律留成参数(子筛选重置、全选口径、可勾选门、批删/清空 API、清空文案、切槽是否保留勾选)——
 // 抽取的前提是行为零变化,哪怕只有一屏不一样也留钩子,不为了「统一」把某屏改成别人的样子。
 import { ref, computed, watch } from 'vue'
 import type { ImportResultDTO } from '@/types/import'
 import { useReviewStore } from '@/stores/review'
 import { rowLocked } from '@/components/sched/reviewLock'
+import { receipt } from '@/utils/receipt'
+import { ask } from '@/utils/ask'
 
 /** 台账行的共同形状:id 用于勾选/批删,source 用于「本期导入」计数,acctMonth 用于按月上锁(D18) */
 export interface SchedRow {
@@ -17,12 +19,12 @@ export interface SchedRow {
   acctMonth?: string
 }
 
-/** 标准「清空本期导入」确认流程:无导入行先提示,有则二次确认。unit = 本年 / 本月 / 本期。
+/** 标准「清空本期导入」确认流程:无导入行回执一句,有则确认弹窗(删除类,02-B 右)。unit = 本年 / 本月 / 本期。
  *  附表11 例外(无空行守卫 + 固定文案),自己传 confirm。 */
 export function clearConfirm(unit: string, note: string) {
-  return (n: number): boolean => {
-    if (n === 0) { alert(`${unit}没有导入的行。`); return false }
-    return confirm(`确认清空${unit} ${n} 条导入数据?${note}`)
+  return async (n: number): Promise<boolean> => {
+    if (n === 0) { receipt.warn(`${unit}没有导入的行`); return false }
+    return ask({ title: `清空${unit} ${n} 条导入数据？`, body: note, action: `清空 ${n} 条`, danger: true })
   }
 }
 
@@ -37,8 +39,8 @@ export function useSchedScreen<R extends SchedRow>(opts: {
   clearData: () => void
   /** 批量删除 API(各屏签名不同:附表7/8 带附表号) */
   batchDelete: (ids: number[]) => Promise<unknown>
-  /** 清空本期导入:call = API,confirm = 确认流程(标准口径用 clearConfirm 生成) */
-  clear: { call: (y: number) => Promise<unknown>; confirm: (n: number) => boolean }
+  /** 清空本期导入:call = API,confirm = 确认流程(标准口径用 clearConfirm 生成;可同步可异步) */
+  clear: { call: (y: number) => Promise<unknown>; confirm: (n: number) => boolean | Promise<boolean> }
   /** 进年时同步重置的子筛选(期 / 运营商 / 费用类型 / 月份);在 load 之前执行 */
   onPickYear?: (y: number) => void
   /** 「全选」口径:附表6 按期、附表7/8 按运营商、附表10 排除 seed 行;省略 = 全部行 */
@@ -124,12 +126,12 @@ export function useSchedScreen<R extends SchedRow>(opts: {
     return months.flatMap(m => kinds.map(k => (scope ? `${k}:${scope}:${m}` : `${k}:${m}`)))
   })
 
-  /** 统一报错口径:后端 message 优先,否则用兜底文案 */
+  /** 统一报错口径:后端 message 优先,否则用兜底文案。失败回执不带「重试」—— 包进来的多是写,重放可能写两遍 */
   async function guard(fallback: string, fn: () => Promise<void>) {
     try {
       await fn()
     } catch (e) {
-      alert((e as { message?: string })?.message ?? fallback)
+      receipt.fail((e as { message?: string })?.message ?? fallback)
     }
   }
 
@@ -193,8 +195,10 @@ export function useSchedScreen<R extends SchedRow>(opts: {
   async function onClearImported() {
     if (!edit.value) return
     if (year.value == null) return
-    if (!opts.clear.confirm(importedCount.value)) return
     const y = year.value
+    if (!(await opts.clear.confirm(importedCount.value))) return
+    // 确认框开着的时候编辑态可能被接管、期可能被换走 —— 答完再守一次,不然是浏览态清空
+    if (!edit.value || year.value !== y) return
     await guard('清空失败', async () => {
       await opts.clear.call(y)
       selectedIds.value = new Set()

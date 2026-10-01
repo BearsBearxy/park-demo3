@@ -134,7 +134,7 @@ function pick(s: Step) {
       >
         <component :is="iconFor('chevron-left')" :size="16" />
       </button>
-      <button class="fss-cur" :title="cur.title" @click="sheet = true">
+      <button class="fss-cur" v-tip="cur.title" @click="sheet = true">
         <i v-if="cur.state" class="fss-pip" :class="cur.state" />
         <span class="fss-cur-label">{{ cur.label }}</span>
         <span class="fss-nn">{{ nn }}</span>
@@ -157,7 +157,7 @@ function pick(s: Step) {
           class="fss-step"
           :class="[s.state, { on: s.value === current }]"
           :aria-current="s.value === current ? 'page' : undefined"
-          :title="s.title"
+          v-tip="s.title"
           @click="go(s)"
         >
           <i v-if="s.state" class="fss-pip" :class="s.state" />{{ s.label }}

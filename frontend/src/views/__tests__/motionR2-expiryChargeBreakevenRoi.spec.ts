@@ -16,6 +16,7 @@ import type { ContractDTO } from '@/types/contract'
 import type { PnlSummary } from '@/analysis/anaData'
 import type { PvPhaseDTO, PvRecordDTO } from '@/types/pv'
 import type { CpReadingDTO } from '@/api/cpMeter'
+import type { AnalysisS10Row } from '@/api/analysis'
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -45,7 +46,7 @@ import ExpiryView from '@/views/analysis/ExpiryView.vue'
 import ChargingAnalysisView from '@/views/analysis/ChargingAnalysisView.vue'
 import BreakevenView from '@/views/analysis/BreakevenView.vue'
 import PvRoiView from '@/views/analysis/PvRoiView.vue'
-import { fetchContracts, fetchPnlSummary, fetchPvAll, fetchPvPhases } from '@/analysis/anaData'
+import { fetchContracts, fetchPnlSummary, fetchPvAll, fetchPvPhases, fetchS10Rows } from '@/analysis/anaData'
 import { cpMeterApi } from '@/api/cpMeter'
 import { usePeriod } from '@/analysis/usePeriod'
 import { anaSettings, saveAnaSettings } from '@/analysis/anaSettings'
@@ -227,7 +228,7 @@ describe('盈亏平衡与敏感性', () => {
     w.unmount()
   })
 
-  it('❗换年:图与 KPI 不卸载;口径月与横幅停在旧期,200ms 后退让,数据到了原地换新', async () => {
+  it('❗换年:图与 KPI 不卸载;口径月与回退标签停在旧期,200ms 后退让,数据到了原地换新', async () => {
     const w = mount(BreakevenView, { ...STUBS, attachTo: document.body })
     await flushPromises()
     const p = usePeriod()
@@ -247,9 +248,9 @@ describe('盈亏平衡与敏感性', () => {
     expect(w.find('.ana-skel').exists(), '换年退回了骨架').toBe(false)
     charts(w).forEach((el, i) => expect(el, `第 ${i} 张图被卸载重挂了`).toBe(before[i]))
     expect(w.findAll('.anx-kpis .av2-kpi'), 'KPI 瓦在途被清空了').toHaveLength(6)
-    // 旧年数据还在屏上:口径月不许被新年的选择拽到旧年的另一个月,也不许冒出「选 2025-06 用 2026-02」的横幅
+    // 旧年数据还在屏上:口径月不许被新年的选择拽到旧年的另一个月,也不许冒出「选 2025-06 用 2026-02」的回退标签
     expect(w.find('.ak-sub').text(), '旧图跳到了另一个口径月').toContain('口径月 2026-02')
-    expect(w.find('.ana-pbanner').exists(), '新年的选择配旧年的口径月,冒出了横幅').toBe(false)
+    expect(w.find('.anx-period .fp-state').exists(), '新年的选择配旧年的口径月,冒出了回退标签').toBe(false)
     expect(host.classes(), '没到 200ms 就退让').not.toContain('fp-stale')
 
     await tick(260); await flushPromises()
@@ -287,6 +288,35 @@ describe('盈亏平衡与敏感性', () => {
     expect(w.find('.ak-sub').text()).toContain('口径月 2026-03')
     expect(upd(), '换月被当成拖滑杆,瞬跳').toEqual([undefined, undefined, undefined])
     saveAnaSettings({ breakevenFixedRatio: fr })
+    w.unmount()
+  })
+
+  // 画布 06-D 中格:整页回退贴期间选择旁,只有某张图回退的贴那张图的卡头,都不用满宽横条
+  it('❗所选月无损益 → 期间旁「显示 2026-03 · 2 月无数据」;口径月无附表10 → 龙卷风卡头「显示 2025-12」', async () => {
+    vi.mocked(fetchPnlSummary).mockImplementation(async (y: number) => {
+      const s = summaryOf(y)
+      return y === 2026 ? { ...s, months: [1, 3] } : s
+    })
+    const S10: AnalysisS10Row[] = [1, 2].map((i) => ({
+      acctMonth: '2025-12', phase: i, tenantId: i, tenantName: '租户' + i, elec: 3000 * i, water: 400 * i, total: 3600 * i,
+    }))
+    vi.mocked(fetchS10Rows).mockResolvedValueOnce(S10)
+    const w = mount(BreakevenView, STUBS)
+    await flushPromises()
+    const p = usePeriod()
+    p.setYear(2026); p.setMonth(2)
+    await flushPromises()
+    // 口径月退到最近一个收入为正的覆盖月(breakeven.logic anchorMonth)= 3 月
+    expect(w.find('.ak-sub').text()).toContain('口径月 2026-03')
+    expect(w.findAll('.anx-period .fp-state').map((e) => e.text())).toEqual(['显示 2026-03 · 2 月无数据'])
+    const tor = w.findAll('.av2-card-h').find((h) => h.find('.t').text().startsWith('哪个因素对利润影响最大'))!
+    expect(tor.find('.t .fp-state').text(), '附表10 回退没贴在龙卷风卡头').toBe('显示 2025-12')
+    expect(w.findAll('.av2-grid .fp-state'), '回退标签贴到别的卡上了').toHaveLength(1)
+    // 换到有损益的 3 月:整页标签撤;附表10 仍只到 2025-12,卡头标签留着(两处各管各的)
+    p.setMonth(3)
+    await flushPromises()
+    expect(w.find('.anx-period .fp-state').exists()).toBe(false)
+    expect(tor.find('.t .fp-state').text()).toBe('显示 2025-12')
     w.unmount()
   })
 })

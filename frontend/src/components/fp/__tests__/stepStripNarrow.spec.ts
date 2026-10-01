@@ -128,6 +128,9 @@ describe('§5.9 S 档 n/N 写成字', () => {
     const fifth = mk(REPORT9, 'elec-pnl')
     expect(fifth.find('.fss-nn').text()).toBe('5/9')
     expect(fifth.find('.fss-cur-label').text()).toBe('附表2')
+    // 破坏验证:FPStepStrip .fss-cur 上的 v-tip="cur.title" 删掉 → 红
+    expect((fifth.find('.fss-cur').element as HTMLElement & { _tip?: { text: string } })._tip?.text,
+      'S 档条上只剩短名,全名在悬停说明里').toBe('附表2 电费损益')
 
     expect(fifth.find('.fss-nn').text()).not.toBe(first.find('.fss-nn').text())
     expect(fifth.find('.fss-cur-label').text()).not.toBe(first.find('.fss-cur-label').text())

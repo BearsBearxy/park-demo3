@@ -14,6 +14,8 @@ import { useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import { receipt } from '@/utils/receipt'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
 import { dataHomeApi } from '@/api/dataHome'
@@ -51,7 +53,7 @@ const presence = usePresenceStore()
 const review = useReviewStore()
 const CHAIN_VALUES = new Set(CHAIN.map(c => c.value))
 
-/** **本标签页**正握着的出账链 / 抄表锁里的期,用来给确认框写出「你在编辑哪个月」。 */
+/** **本标签页**正握着的出账链 / 抄表锁里的期。只用来判「要不要问」;问的时候写哪一页、几处改动由页签条给(titleOf / dirtyOf)。 */
 function myChainLockPeriods(): string[] {
   const me = presence.users.find(u => u.sid === presence.sid)
   return (me?.editScopes ?? [])
@@ -86,8 +88,8 @@ const editors = computed(() => {
 // 锁串本身带着「台账的公司 / 附10 的期区 / 三大报表的公司 / 附13-14 是哪一张」,不带过去就会
 // 落到目标屏的默认子视图,而那里恰恰没有人在编辑。⚠ co 照实传字符串,别转 number:
 // 转一道只会给非数字期区制造 NaN。
-function goEditor(t: ReturnType<typeof scopeTarget>) {
-  if (!t || !confirmRebuild(t.v)) return
+async function goEditor(t: ReturnType<typeof scopeTarget>) {
+  if (!t || !(await confirmRebuild(t.v))) return
   // 页面里的链接 = 新页签紧挨本页右边(TAB-BAR-SPEC §2),本月出账不被换掉
   tabsStore.openDeep(t.v)
   router.push(t.p ? periodLink(t.v, { p: t.p, co: t.co, extra: t.tab ? { tab: t.tab } : undefined }) : '/' + t.v)
@@ -126,7 +128,6 @@ watch(pickedYm, load)
 // 链屏与收入核对带 ?p(目标屏的 parsePeriod / parsePeriodQuery 都认);附表行也带(P0b,形状见 scheduleLink)。
 // 前置条「去重算」的 go 也是 params,同样走这条 pick 分支 —— 它指向的正是首页显示月的参数屏,不 pick 反而落回矩阵(评审裁定 2026-09-03)。
 // 本人锁的判断读 presence.users(3 秒一拍,PING_MS):刚进首页那一拍之前看不到自己别处的锁,确认框是尽力而为不是保证。
-// ponytail: window.confirm —— 与 ParamCenterView / BillNoticesView 现有 200+ 处同款,P0 之后若换 FPDrawer 一起换。
 const MONTH_ROWS = new Set(['ledger', 'sales-income', 'salary'])
 const YEAR_ROWS = new Set(['pv-income', 'car-charging', 'ebike-charging', 'elec-cost'])
 /** 附表行的深链形状(SIDEBAR-UX-REDESIGN §5.1):月表带 p=YYYY-MM;年表屏 p 只取年 + mode=summary(盖过本机记住的运营账);
@@ -151,23 +152,22 @@ function scheduleLink(v: string, tag: string, p: { year: number; month: number }
 // 进编辑态 3 秒内(下一拍 ping 之前)点回来不弹确认,草稿照丢;② 改前只盖出账链五屏,
 // 附10 / 台账 / 附表屏的草稿(sched:s10:* 之类)一律不问,而清单上 15 行大半是它们。
 // 两个真源取或:`holdsEditUnder` 读本地 editCallbacks(即时,补上进编辑态 3 秒内还没回声的空窗),
-// `myChainLockPeriods` 读服务端回声(它另外还提供「在编辑哪个月」的文案,且只对出账链行有意义)。
+// `myChainLockPeriods` 读服务端回声(只对出账链行有意义)。
 /** openFresh 会重建目标屏、丢掉未保存草稿 —— 本标签页在那把锁底下持锁时先问一句。
- *  go()(清单行)与主管条 chip 两处共用:两者都走 openFresh,风险一模一样。 */
-function confirmRebuild(v: string): boolean {
+ *  go()(清单行)与主管条 chip 两处共用:两者都走 openFresh,风险一模一样。
+ *  问法是离开确认(画布 02-A,EDIT-MODE-SPEC §6.1):「重新打开「月度台账」？」「这页有 3 处改动还没保存。」,
+ *  **0 处改动不弹**。出账链行问链上五屏:pick 换的是五屏共读的期,握锁的未必是点的那一屏(一把 billing-chain 锁三屏)。 */
+function confirmRebuild(v: string): Promise<boolean> {
   const heldHere = presence.holdsEditUnder(NAV_SCOPE_PREFIX[v])
-  const held = myChainLockPeriods()
-  if (heldHere || (CHAIN_VALUES.has(v) && held.length > 0)) {
-    const where = held.length ? `（${held.join('、')}）` : ''
-    if (!window.confirm(`你正在编辑${where}。从首页重新打开会丢失未保存的改动，继续？`)) return false
-  }
-  return true
+  const chainHeld = CHAIN_VALUES.has(v) && myChainLockPeriods().length > 0
+  if (!heldHere && !chainHeld) return Promise.resolve(true)
+  return tabsStore.leaveOk(CHAIN_VALUES.has(v) ? [...CHAIN_VALUES] : [v], '重新打开')
 }
-function go(v: string, tag = '', co?: number | 'all') {
+async function go(v: string, tag = '', co?: number | 'all') {
   // 用户刚在下拉里选的月优先于服务端回包(回包在途时也按他选的走);没选过才用锚定月
   const ym = shownYm.value
   const p = ym ? { year: +ym.slice(0, 4), month: +ym.slice(5, 7) } : null
-  if (!confirmRebuild(v)) return
+  if (!(await confirmRebuild(v))) return
   if (p && CHAIN_VALUES.has(v)) {
     period.pick(p.year, p.month)
     // 门被前置跳过 → ChainMonthGate 不再挂载,而它是 loadChain 的唯一调用方;不补这一句,
@@ -304,7 +304,7 @@ const REVIEW_TEXT: Record<string, string> = {
 }
 const reviewText = (s: string) => REVIEW_TEXT[s] ?? '—'
 
-/** 审核态列的悬停文案:谁在什么时候做的 / 退回理由。查不到就不给 title(别挂个空串)。 */
+/** 审核态列的悬停说明:谁在什么时候做的 / 退回理由。查不到就不给(v-tip 收到 undefined 不出气泡)。 */
 function reviewTip(key: string | undefined, status: string): string | undefined {
   const r = key ? reviewRows.value?.find(x => x.key === key) : null
   if (!r) return undefined
@@ -382,6 +382,9 @@ const dialog = ref<{ keys: string[]; label: string; action: 'return' | 'withdraw
  *   403 = 你没有这张表的权限 → 去找有权限的人
  *   其余(含 423)= 后端已经写好了准话,原样弹
  * 合成一句的话,用户分不出该找谁。
+ * 走失败回执(画布 02-C)。不带「重试」:多键行逐把写、中途失败时前几把已经写进去了,
+ * 拿点击那一刻的键再跑一遍,头一把就吃 409「当前是待审核,不能交审」;batch 失败后已重取清单,
+ * 行上那颗按钮按新状态重算过,再点它就是重试。
  */
 async function runAction(key: string, fn: () => Promise<unknown>) {
   if (acting.value) return
@@ -391,7 +394,7 @@ async function runAction(key: string, fn: () => Promise<unknown>) {
   } catch (e) {
     const err = e as { code?: number; message?: string }
     const msg = err?.message ?? '操作失败'
-    alert(err?.code === 409 ? `上游还没审完：${msg}`
+    receipt.fail(err?.code === 409 ? `上游还没审完：${msg}`
         : err?.code === 403 ? `你没有这张表的权限：${msg}`
         : msg)
   } finally {
@@ -561,11 +564,7 @@ const bookingRows = computed(() => shown('booking'))
     </div>
 
     <!-- 全新库:一条数据都没有,只给一句引导,不摆空架子 -->
-    <Card v-if="!ov.period" surface="white" class="dh-empty">
-      <component :is="iconFor('gauge')" :size="16" />
-      <span>还没开始出账</span>
-      <Button data-primary-cta variant="filled" size="sm" @click="go('meters')">从园区抄表开始 →</Button>
-    </Card>
+    <FPEmpty v-if="!ov.period" action="从园区抄表开始 →" @action="go('meters')">还没开始出账</FPEmpty>
 
     <template v-else>
       <!-- 前置条:blockers 为空则整条不渲染。没问题的东西不该占版面 —— 这是「有主次」的关键,
@@ -592,19 +591,19 @@ const bookingRows = computed(() => shown('booking'))
               <span v-if="r.detail" class="dh-rdetail">{{ r.detail }}</span>
               <!-- 出账列的行从不带 chips(rowsOf 只给记账行发 chips)——评审修补 T3 fix-brief #4 删掉
                    这条恒不可达的死分支,别留着骗人。 -->
-              <span v-if="r.locked" class="dh-rlock" :title="r.locked"><component :is="iconFor('lock')" :size="12" /></span>
-              <span class="dh-rreview" :data-review="r.review" :title="reviewTip(r.reviewKey, r.review)">{{ reviewText(r.review) }}</span>
+              <span v-if="r.locked" class="dh-rlock" v-tip="r.locked"><component :is="iconFor('lock')" :size="12" /></span>
+              <span class="dh-rreview" :data-review="r.review" v-tip="reviewTip(r.reviewKey, r.review)">{{ reviewText(r.review) }}</span>
               <span class="dh-racts" @click.stop>
                 <template v-for="a in [actionsOf(r)]" :key="r.key">
                   <!-- 交审:有资格但还没录完时**画出来但按不动** —— 直接不画会让人以为界面坏了。
                        多键行只交已录完的那几把(只录了 A 公司就只交 A 公司)。 -->
                   <button v-if="a.submitPending.length" class="dh-abtn"
                           :disabled="!a.submit.length || !!acting"
-                          :title="a.submit.length ? `交给审核员（${a.submit.length} 项）` : '还没录完,做完才能交审'"
+                          v-tip="a.submit.length ? `交给审核员（${a.submit.length} 项）` : '还没录完,做完才能交审'"
                           @click="onSubmit(a.submit)">交审</button>
                   <button v-if="a.approve.length" class="dh-abtn ok"
                           :disabled="blockedBy(a.approve).length > 0 || !!acting"
-                          :title="blockedBy(a.approve).length ? `先通过 ${blockedBy(a.approve).join(' / ')} 的审核` : '通过'"
+                          v-tip="blockedBy(a.approve).length ? `先通过 ${blockedBy(a.approve).join(' / ')} 的审核` : '通过'"
                           @click="onApprove(a.approve)">通过</button>
                   <button v-if="a.back.length" class="dh-abtn" :disabled="!!acting"
                           @click="openDialog(a.back, `${shownYm} ${r.label}`, 'return')">退回</button>
@@ -647,23 +646,23 @@ const bookingRows = computed(() => shown('booking'))
                      两件事各自一维,合成一个属性就分不出「已录未交审」和「已交审待审核」。 -->
                 <span v-for="c in r.chips" :key="c.label" class="dh-chip"
                       :data-done="c.done" :data-review="c.review ?? 'na'"
-                      :title="reviewTip(c.reviewKey, c.review ?? 'na')"
+                      v-tip="reviewTip(c.reviewKey, c.review ?? 'na')"
                       @click.stop="goChip(r, c)">{{ c.label }}</span>
               </span>
               <!-- 记账行从不设 locked(只有本月锁账才有,那是出账列的行)——评审修补 T3 fix-brief #4
                    删掉这条恒不可达的死分支。 -->
-              <span class="dh-rreview" :data-review="r.review" :title="reviewTip(r.reviewKey, r.review)">{{ reviewText(r.review) }}</span>
+              <span class="dh-rreview" :data-review="r.review" v-tip="reviewTip(r.reviewKey, r.review)">{{ reviewText(r.review) }}</span>
               <span class="dh-racts" @click.stop>
                 <template v-for="a in [actionsOf(r)]" :key="r.key">
                   <!-- 交审:有资格但还没录完时**画出来但按不动** —— 直接不画会让人以为界面坏了。
                        多键行只交已录完的那几把(只录了 A 公司就只交 A 公司)。 -->
                   <button v-if="a.submitPending.length" class="dh-abtn"
                           :disabled="!a.submit.length || !!acting"
-                          :title="a.submit.length ? `交给审核员（${a.submit.length} 项）` : '还没录完,做完才能交审'"
+                          v-tip="a.submit.length ? `交给审核员（${a.submit.length} 项）` : '还没录完,做完才能交审'"
                           @click="onSubmit(a.submit)">交审</button>
                   <button v-if="a.approve.length" class="dh-abtn ok"
                           :disabled="blockedBy(a.approve).length > 0 || !!acting"
-                          :title="blockedBy(a.approve).length ? `先通过 ${blockedBy(a.approve).join(' / ')} 的审核` : '通过'"
+                          v-tip="blockedBy(a.approve).length ? `先通过 ${blockedBy(a.approve).join(' / ')} 的审核` : '通过'"
                           @click="onApprove(a.approve)">通过</button>
                   <button v-if="a.back.length" class="dh-abtn" :disabled="!!acting"
                           @click="openDialog(a.back, `${shownYm} ${r.label}`, 'return')">退回</button>
@@ -710,7 +709,6 @@ const bookingRows = computed(() => shown('booking'))
 .dh-counts { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text-secondary); }
 .dh-ystrip { margin-bottom: 4px; }
 
-.dh-empty { display: flex; align-items: center; gap: 12px; padding: 24px; color: var(--text-secondary); }
 
 .dh-blocker {
   display: flex; align-items: center; gap: 10px; padding: 10px 14px;
@@ -804,6 +802,6 @@ const bookingRows = computed(() => shown('booking'))
    - empty 空态:文案 + CTA 同题。
    换行由视口宽度决定、同一视口内确定不变——不违反同视口交互零位移(§7)。 */
 @media (max-width: 600px) {
-  .dh-head, .dh-cur, .dh-empty { flex-wrap: wrap; }
+  .dh-head, .dh-cur { flex-wrap: wrap; }
 }
 </style>

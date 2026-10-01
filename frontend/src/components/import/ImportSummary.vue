@@ -6,6 +6,7 @@ import { reactive, computed } from 'vue'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import { iconFor } from '@/components/ds/icon'
+import FPNote from '@/components/fp/FPNote.vue'
 import type { Section } from '@/utils/importSections'
 import type { ImportRec } from '@/utils/importHeaderMatch'
 
@@ -85,7 +86,7 @@ function toggle(r: Row) {
   r.checked = !r.checked
 }
 
-function confirm() {
+function confirmAll() {
   const picks = rows
     .filter(r => r.checked && rowValid(r))
     .map(r => ({ year: r.year!, month: r.month!, phase: r.phase!, records: r.records }))
@@ -96,10 +97,7 @@ function confirm() {
 <template>
   <!-- 纯标签段模式:只显示 段标签 + N条 + 勾选 -->
   <div v-if="labelOnly" class="isum">
-    <div class="isum-head">
-      <component :is="iconFor('layers')" :size="15" />
-      <span>识别到 <b>{{ labelRows.length }}</b> 段，请勾选导入</span>
-    </div>
+    <FPNote class="isum-note" tone="info">识别到 <b>{{ labelRows.length }}</b> 段，请勾选导入</FPNote>
 
     <div class="isum-table">
       <div class="isum-hr label-only">
@@ -125,10 +123,7 @@ function confirm() {
   </div>
 
   <div v-else class="isum">
-    <div class="isum-head">
-      <component :is="iconFor('layers')" :size="15" />
-      <span>识别到 <b>{{ (sections ?? []).length }}</b> 段，请核对{{ hidePhase ? '年/月' : '年/月/期' }}后勾选导入</span>
-    </div>
+    <FPNote class="isum-note" tone="info">识别到 <b>{{ (sections ?? []).length }}</b> 段，请核对{{ hidePhase ? '年/月' : '年/月/期' }}后勾选导入</FPNote>
 
     <div class="isum-table">
       <div class="isum-hr" :class="{ 'no-phase': hidePhase }">
@@ -184,7 +179,7 @@ function confirm() {
     </div>
 
     <div class="isum-foot">
-      <Button variant="filled" :disabled="!anyPick" @click="confirm">
+      <Button variant="filled" :disabled="!anyPick" @click="confirmAll">
         <template #leading><component :is="iconFor('download')" :size="16" /></template>
         全部导入
       </Button>
@@ -194,8 +189,7 @@ function confirm() {
 
 <style scoped>
 .isum { display:flex; flex-direction:column; gap:14px; }
-.isum-head { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text-secondary); background:var(--surface-card); padding:10px 12px; border-radius:var(--radius-md); }
-.isum-head b { font-family:var(--font-mono); color:var(--text-primary); margin:0 2px; }
+.isum-note b { font-family:var(--font-mono); margin:0 2px; }
 
 .isum-table { border:1px solid var(--border-subtle); border-radius:var(--radius-md); overflow:hidden; }
 .isum-hr, .isum-row { display:grid; grid-template-columns:44px 1fr 72px 96px 88px; align-items:center; gap:8px; padding:8px 12px; }

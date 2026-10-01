@@ -4,7 +4,8 @@
 //   ② 编辑态**只有**备注可写 —— 真的去数别的格有没有输入框,不是只测备注那一格
 //   ③ 浏览态直呼 commitNote 一定打不出去(按钮的 :disabled / v-if 只是 UI 补丁)
 //   ④ 编辑态就地转假(接管 / 提权到期)→ 备注输入框当场从 DOM 消失
-// 外加 D 组文案:对账行名由后端的 supplyLabel/sumLabel 拼、告警组叫「改过参数还没重算」。
+// 外加 D 组文案:对账行名由后端的 supplyLabel/sumLabel 拼、告警组叫「待重算」(与公共电核算同名)。
+// E 组(S4 T16b 提示件替换):页面状态 + 空状态 / 加载失败换掉表格、问题面板组头、确认弹窗、回执、改动数。
 //
 // ⚠ 浏览态直呼写函数的用例,前置状态必须做足(本仓栽过四次):先在编辑态真写一次证明通路是活的,
 //   再退出来打 —— 否则函数在自己原有的早退分支(值没变 / loss 为 null)就 return 了,
@@ -17,6 +18,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import type { AllocLossDTO, AllocLossUnitDTO } from '@/api/alloc'
+import { askQueue, answer } from '@/utils/ask'
+import { receipts } from '@/utils/receipt'
 
 const push = vi.fn()
 vi.mock('vue-router', () => ({
@@ -67,6 +70,7 @@ vi.mock('@/api/alloc', () => ({
   allocApi: {
     loss: vi.fn(),
     saveLossNote: vi.fn(() => Promise.resolve()),
+    generate: vi.fn(() => Promise.resolve({ warnings: [] })),
     poolMonths: vi.fn(() => Promise.resolve([])),
     lossMonths: vi.fn(() => Promise.resolve([])),
   },
@@ -106,6 +110,9 @@ beforeEach(() => {
   vi.mocked(allocApi.saveLossNote).mockClear()
   vi.mocked(allocApi.saveLossNote).mockResolvedValue(undefined)
   vi.mocked(paramsApi.status).mockResolvedValue({ ...STATUS })
+  vi.mocked(allocApi.generate).mockClear()
+  askQueue.splice(0)
+  receipts.splice(0)
 })
 
 async function open() {
@@ -230,7 +237,7 @@ describe('楼栋损耗 · 屏上的字', () => {
     w.unmount()
   })
 
-  it('告警组叫「改过参数还没重算」,不再叫「快照过期」', async () => {
+  it('告警组叫「待重算」(LAYOUT-STABILITY §4,与公共电核算同名),不再叫「快照过期」', async () => {
     vi.mocked(paramsApi.status).mockResolvedValue({
       ...STATUS, stale: true, pendingChanges: 3, lastChangeAt: '2025-03-11T10:20:00',
     })
@@ -238,16 +245,16 @@ describe('楼栋损耗 · 屏上的字', () => {
     await w.find('button.fac').trigger('click')   // 常驻告警 chip → 右侧抽屉
     await flushPromises()
     const panel = document.body.textContent ?? ''
-    expect(panel, '组名没上屏').toContain('改过参数还没重算')
+    expect(panel, '组名没上屏').toContain('待重算')
     // 「快照」是引擎内部的说法,屏上不许出现(与公共电核算屏同名同口吻)
     expect(panel).not.toContain('快照过期')
     expect(panel, 'staleText 去行话后的新句子').toContain('本屏数字还是改之前算的')
     w.unmount()
   })
 
-  // METER-TIMELINE-SPEC §5:需重算的第二个来源 = 抄表。只有抄表改过时,组名 / 主语 / 明细都说抄表。
-  // 破坏验证:把 LossLedgerView 的 title 换回写死的 '改过参数还没重算' → 本条红。
-  it('❗只有抄表改过 → 组名「改过抄表还没重算」,主语不说计费参数', async () => {
+  // METER-TIMELINE-SPEC §5:需重算的第二个来源 = 抄表。只有抄表改过时,主语 / 明细都说抄表(组名统一叫「待重算」)。
+  // 破坏验证:把 desc 里的 staleWho(status.value) 换成写死的 '计费参数' → 本条红。
+  it('❗只有抄表改过 → 主语说抄表,不说计费参数', async () => {
     vi.mocked(paramsApi.status).mockResolvedValue({
       ...STATUS, stale: true, pendingChanges: 0, lastChangeAt: '2025-03-11T10:20:00',
       lastChangeSource: 'meter', staleSources: ['meter'],
@@ -256,10 +263,177 @@ describe('楼栋损耗 · 屏上的字', () => {
     await w.find('button.fac').trigger('click')
     await flushPromises()
     const panel = document.body.textContent ?? ''
-    expect(panel).toContain('改过抄表还没重算')
     expect(panel).toContain('抄表数据（读数或表档案）在本月算出损耗之后又改过')
     expect(panel).toContain('抄表于 03-11 10:20 更新')
-    expect(panel).not.toContain('改过参数还没重算')
+    expect(panel).not.toContain('计费参数在本月算出损耗之后')
     w.unmount()
+  })
+})
+
+describe('楼栋损耗 · 提示件(页面状态 / 空状态 / 加载失败 / 问题面板 / 回执 / 改动数)', () => {
+  const STALE = { ...STATUS, stale: true, pendingChanges: 1, lastChangeAt: '2025-03-11T10:20:00' }
+  /** 问题面板组头上的动作钮(不含点组头收起的那颗) */
+  const acts = () => [...document.querySelectorAll('.fap-gh button:not(.fap-tg)')] as HTMLButtonElement[]
+  const openChip = async (w: Awaited<ReturnType<typeof open>>) => {
+    await w.find('button.fac').trigger('click')
+    await flushPromises()
+  }
+
+  // 破坏验证:FPEmpty 的 v-else-if 条件改成 false(表格照出)→ 红;FPStateTag 的 v-if 改成 false → 红
+  it('❗本月没算过:标题旁贴「本月未生成」,表格区换成空状态(不再是表上方的灰虚线条)', async () => {
+    vi.mocked(allocApi.loss).mockResolvedValue({ generated: false, units: [], recon: [] })
+    const w = await open()
+    try {
+      expect(w.find('.ll-head .fp-state').text()).toBe('本月未生成')
+      expect(w.find('.fp-empty').text()).toContain('2025 年 3 月的楼栋损耗还没算')
+      expect(w.find('.ll-table').exists(), '空状态和表格互斥').toBe(false)
+    } finally { w.unmount() }
+  })
+
+  // 破坏验证:FPLoadError 那支删掉 v-if 互斥(表格 v-else 改回无条件)→ .ll-table 断言红
+  it('❗本月没读到:失败件换掉表格区,点「重试」重拉', async () => {
+    vi.mocked(allocApi.loss).mockRejectedValueOnce(new Error('后端挂了'))
+    const w = await open()
+    try {
+      expect(w.find('.fp-empty.error').text()).toContain('2025 年 3 月的楼栋损耗没读到')
+      expect(w.find('.ll-table').exists(), '失败件和表格互斥').toBe(false)
+      expect(w.find('.ll-head .fp-state').exists(), '没读到就不知道算没算,不贴「本月未生成」').toBe(false)
+      const n = vi.mocked(allocApi.loss).mock.calls.length
+      await w.findAll('button').find(b => b.text().includes('重试'))!.trigger('click')
+      await flushPromises()
+      expect(vi.mocked(allocApi.loss).mock.calls.length).toBe(n + 1)
+      expect(w.find('.ll-table').exists(), '重试成功表格回来').toBe(true)
+    } finally { w.unmount() }
+  })
+
+  // 破坏验证:alertGroups 浏览态那支改成恒走「去计费参数页重算」→ 第一条红;onRecalc 里 allocApi.generate 换成别的 → generate 断言红
+  it('❗待重算组头:浏览态「进入编辑模式」,编辑态「重算本月」→ 确认后重算并重拉', async () => {
+    vi.mocked(paramsApi.status).mockResolvedValue({ ...STALE })
+    const w = await open()
+    try {
+      await openChip(w)
+      expect(document.querySelector('.fp-sdw-mask'), '面板不是变暗的右侧抽屉').toBeNull()
+      expect(acts().map(b => b.textContent?.trim())).toEqual(['进入编辑模式'])
+      acts()[0].click()
+      await flushPromises()
+      expect(w.findAll('button').some(b => b.text() === '完成'), '组头那一下进了编辑态').toBe(true)
+      await openChip(w)
+      expect(acts().map(b => b.textContent?.trim())).toEqual(['重算本月'])
+      const n = vi.mocked(allocApi.loss).mock.calls.length
+      acts()[0].click()
+      await flushPromises()
+      expect(askQueue.map(a => a.title)).toEqual(['重算 2025-03？'])
+      answer(true)
+      await flushPromises()
+      expect(allocApi.generate).toHaveBeenCalledWith('2025-03')
+      expect(vi.mocked(allocApi.loss).mock.calls.length, '重算后整月重拉').toBe(n + 1)
+    } finally { w.unmount() }
+  })
+
+  // 前置做足:编辑态真重算一次证明通路是活的,再退出来直呼 —— 守卫删掉才会红
+  // 破坏验证:onRecalc 第一行去掉 !editMode.value → 弹窗断言红;ask 之后那一句也去掉 → generate 断言红
+  it('❗浏览态直呼 onRecalc 打不出去(组头按钮的显隐只是 UI)', async () => {
+    const w = await open()
+    try {
+      const vm = w.vm as unknown as Vm & { onRecalc: () => Promise<void> }
+      await enterEdit(w)
+      const p1 = vm.onRecalc()
+      await flushPromises()
+      answer(true)
+      await p1
+      await flushPromises()
+      expect(allocApi.generate, '前置:编辑态这条通路是活的').toHaveBeenCalledTimes(1)
+      await w.findAll('button').find(b => b.text() === '完成')!.trigger('click')
+      await flushPromises()
+      const p2 = vm.onRecalc()
+      await flushPromises()
+      expect(askQueue, '浏览态连确认弹窗都不该出').toHaveLength(0)
+      while (askQueue.length) { answer(true); await flushPromises() }
+      await p2
+      expect(allocApi.generate).toHaveBeenCalledTimes(1)
+    } finally { w.unmount() }
+  })
+
+  // 破坏验证:ask 之后那一句再守去掉 !editMode.value → 红
+  it('❗确认弹窗开着时被退出编辑态(接管 / 点完成),再答「重算本月」也打不出去', async () => {
+    const w = await open()
+    try {
+      const vm = w.vm as unknown as Vm & { onRecalc: () => Promise<void> }
+      await enterEdit(w)
+      const p = vm.onRecalc()
+      await flushPromises()
+      expect(askQueue, '前置:弹窗出来了').toHaveLength(1)
+      vm.editMode = false
+      await flushPromises()
+      answer(true)
+      await p
+      expect(allocApi.generate).not.toHaveBeenCalled()
+    } finally { w.unmount() }
+  })
+
+  // 破坏验证:commitNote 的 receipt.fail 去掉 action → 红
+  it('备注保存失败 → 底部失败回执带「重试」,点了再发一次', async () => {
+    vi.mocked(allocApi.saveLossNote).mockRejectedValueOnce(new Error('网络断了'))
+    const w = await open()
+    try {
+      const vm = w.vm as unknown as Vm
+      await enterEdit(w)
+      vm.commitNote(vm.units[0], '新备注')
+      await flushPromises()
+      const r = receipts.at(-1)
+      expect([r?.tone, r?.text, r?.action?.label]).toEqual(['fail', '网络断了', '重试'])
+      r!.action!.run()
+      await flushPromises()
+      expect(allocApi.saveLossNote).toHaveBeenCalledTimes(2)
+    } finally { w.unmount() }
+  })
+
+  // 本月还没算:空状态给「生成本月」(LAYOUT-STABILITY §4 第 1 行,画布 06-B ⑦)。写入口 → 只在编辑态出;
+  // 没生成过就没有能盖掉的数,点了直接生成(与公共电核算 onGenerate 同口径),不问。
+  // 破坏验证:FPEmpty 的 :action 去掉 → 按钮断言红;onRecalc 的 `generated.value &&` 去掉 → 弹了确认 → 红
+  it('❗本月没算过 + 编辑态:空状态给「生成本月」,点了不问直接生成并重拉;浏览态不给按钮', async () => {
+    vi.mocked(allocApi.loss).mockResolvedValue({ generated: false, units: [], recon: [] })
+    const w = await open()
+    try {
+      expect(w.find('.fp-empty button').exists(), '浏览态不出写入口').toBe(false)
+      await enterEdit(w)
+      const btn = w.find('.fp-empty button')
+      expect(btn.text()).toBe('生成本月')
+      const n = vi.mocked(allocApi.loss).mock.calls.length
+      await btn.trigger('click')
+      await flushPromises()
+      expect(askQueue, '没有可盖掉的数,不问').toHaveLength(0)
+      expect(allocApi.generate).toHaveBeenCalledWith('2025-03')
+      expect(vi.mocked(allocApi.loss).mock.calls.length, '生成后整月重拉').toBe(n + 1)
+    } finally { w.unmount() }
+  })
+
+  // 等回答的途中换了月(又进了新月的编辑态):不拿这次「确认」去重算问话时那个月
+  // 破坏验证:onRecalc 答完后的 `ym.value !== at` 去掉 → generate('2025-03') 被打出去 → 红
+  it('❗确认弹窗开着时换了月,再答「重算本月」也打不出去', async () => {
+    const w = await open()
+    try {
+      const vm = w.vm as unknown as Vm & { onRecalc: () => Promise<void> }
+      await enterEdit(w)
+      const p = vm.onRecalc()
+      await flushPromises()
+      expect(askQueue.map(a => a.title), '前置:问的是 3 月').toEqual(['重算 2025-03？'])
+      useBillingPeriodStore().pick(2025, 4)
+      await flushPromises()
+      if (!vm.editMode) await enterEdit(w)   // 换月会按锁作用域退出编辑;再进 4 月的编辑态,只剩「换了月」这一道能拦
+      expect(vm.editMode, '前置:人在新月的编辑态里').toBe(true)
+      answer(true)
+      await p
+      expect(allocApi.generate).not.toHaveBeenCalled()
+    } finally { w.unmount() }
+  })
+
+  // 破坏验证:useEditMode 的 dirty: () => 0 删掉(缺省按 1)→ 红
+  it('改动数恒 0:备注即时写库,关页签不问', async () => {
+    const w = await open()
+    try {
+      await enterEdit(w)
+      expect(useAuthStore().dirtyTotal).toBe(0)
+    } finally { w.unmount() }
   })
 })

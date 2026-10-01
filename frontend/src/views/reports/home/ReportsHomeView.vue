@@ -76,11 +76,11 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
       </div>
       <div class="rh-actions">
         <!-- F7 禁用占位(import-center 先例) -->
-        <Button variant="outline" size="sm" disabled title="打印即将上线">
+        <Button variant="outline" size="sm" disabled v-tip="'打印即将上线'">
           <template #leading><component :is="iconFor('printer')" :size="14" /></template>
           打印
         </Button>
-        <Button variant="filled" size="sm" disabled title="导出即将上线">
+        <Button variant="filled" size="sm" disabled v-tip="'导出即将上线'">
           <template #leading><component :is="iconFor('download')" :size="14" /></template>
           导出 Excel
         </Button>

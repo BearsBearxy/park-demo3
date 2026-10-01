@@ -30,7 +30,7 @@ export function atPeriod(arr: (number | null)[] | undefined, isMonth: boolean, m
 }
 
 /** §五策略2 月锚回退:covered = pnl.months(1-12 升序);所选月已覆盖/无覆盖 → 原月;
- *  否则 ≤所选的最近覆盖月,更早无 → 最早覆盖月。回退时调用方必须渲染 AnaPeriodBanner(禁静默)。 */
+ *  否则 ≤所选的最近覆盖月,更早无 → 最早覆盖月。回退时调用方必须在期间选择旁标出(FPStateTag,禁静默)。 */
 export function anchorMonth(covered: number[], want: number): number {
   if (!covered.length || covered.includes(want)) return want
   const le = covered.filter((m) => m <= want)

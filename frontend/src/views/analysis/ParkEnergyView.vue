@@ -9,6 +9,8 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
+import FPStateTag from '@/components/fp/FPStateTag.vue'
 import { fnum, hues, inkA, mean, sgn } from '@/components/ana/anaFmt'
 import {
   buildEnergyMonths, fetchBudgetAll, fetchChargingYear, fetchElecYear, fetchPvAll, fetchS10Rows, fetchUtilitiesYear,
@@ -19,7 +21,6 @@ import {
   anchorS10Ym, BOARD_ZH, boardOfSankeyClick, boardSeries, buildAmtMonths, buildSankey, buildSankeyReading, comboSeries,
   HUB, type AmtMonth, type BoardKey,
 } from './parkEnergy.logic'
-import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
 import { usePeriod, ymOf, type PeriodSel } from '@/analysis/usePeriod'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
@@ -42,7 +43,9 @@ const budgetElec = computed(() => {
 
 const period = usePeriod()
 const loading = ref(true)
-const failed = ref(false)
+/** 这一年没读到时失败件的那句话(空串 = 没失败)。只在成功分支清:重试在途时失败件留在原地,
+ *  不先闪回旧年内容 / 骨架;句子记的是**失败的那一年**,换年在途不跟着选择先改字。 */
+const failed = ref('')
 // 换年在途(C5-02):旧内容留在原地退让,不卸载;过 200ms 门才亮、到数立刻灭
 const staleShown = useDeferredFlag(loading)
 /** 已画在屏上的期间。sel 立刻变(控件回显),年要等数据一起换 —— 否则换年那一趟会拿新年月份去索引旧年数据
@@ -58,7 +61,6 @@ async function load(year: number) {
   if (!year) return
   const t = ++token
   loading.value = true
-  failed.value = false
   try {
     const [elec, chg7, chg8, off13, off14, pv, s10] = await Promise.all([
       fetchElecYear(year), fetchChargingYear(7, year), fetchChargingYear(8, year),
@@ -68,10 +70,11 @@ async function load(year: number) {
     months.value = buildEnergyMonths(year, elec, pv, [chg7, chg8], [off13, off14], s10)
     amt.value = buildAmtMonths(year, elec, pv, [chg7, chg8], [off13, off14], s10)
     shown.value = { ...period.sel.value, year }
+    failed.value = ''
     const buds = await fetchBudgetAll().catch(() => [])   // 预算对比基准(无预算不阻塞)
     if (t === token) budgetRows.value = buds
   } catch {
-    if (t === token) failed.value = true
+    if (t === token) failed.value = `${year} 年的园区能耗数据没读到`
   } finally {
     if (t === token) loading.value = false
   }
@@ -151,7 +154,7 @@ const nodeColor = (h: ReturnType<typeof hues>): Record<string, string> => ({
   购电: h.blue, 光伏消纳: h.teal, [HUB]: h.mid, '售电(转供)': h.deep,
   办公: h.pale, 充电桩: h.coral, 损耗差额: h.red, 转供毛差: h.amber,
 })
-// §五策略2 桑基月锚:所选月无 s10 → 回退 ≤所选的最近 s10 月并横幅显式(年粒度沿用覆盖月同口径)。
+// §五策略2 桑基月锚:所选月无 s10 → 回退 ≤所选的最近 s10 月并在桑基卡头标出(年粒度沿用覆盖月同口径)。
 // 板块损益/KPI 仍锚所选月(各自空态/「附表10缺本月」已显式,不混月)。
 const s10Yms = computed(() => amt.value.filter((m) => m.s10Elec != null).map((m) => m.ym))
 const sankeyUsedYm = computed(() => (isMonth.value ? anchorS10Ym(s10Yms.value, curYm.value) : null))
@@ -265,7 +268,7 @@ const segsOption = computed(() => ({
 </script>
 
 <template>
-  <!-- §五:月敏感屏(full);桑基月锚回退以横幅显式 -->
+  <!-- §五:月敏感屏(full);桑基月锚回退以卡头标签显式 -->
   <AnaShell :compare="CMP" period-mode="full" :busy="staleShown">
     <template #kpis>
       <AnaKpiTile v-for="k in kpis" :key="k.label" v-bind="k" />
@@ -321,7 +324,8 @@ const segsOption = computed(() => ({
       </div>
     </div>
     <!-- skel:end -->
-    <AnaEmpty v-else-if="failed" label="数据加载失败" hint="请刷新重试" />
+    <!-- 加载失败(画布 06-D 右格):换掉内容区,带重试;重试走同一个 load(首载 / 换年共用) -->
+    <FPLoadError v-else-if="failed" sub="屏上不显示别的年份的数字" @retry="load(period.sel.value.year)">{{ failed }}</FPLoadError>
     <!-- data-stale-host 常挂:类摘掉后仍有 transition-property,退场才是 200 而不是硬切 -->
     <div v-else class="ak-page" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown">
       <div class="ak-head">
@@ -338,12 +342,10 @@ const segsOption = computed(() => ({
         <!-- av2-core:本屏无 s8,人工指定核心图——桑基是全屏信息密度最高的主图(四源金额流+守恒口径),且驱动下方板块趋势联动 -->
         <div class="av2-card av2-s12 av2-core">
           <div class="av2-card-h">
-            <span class="t">能量流桑基 · {{ isMonth ? '本月' : 's10 覆盖月同口径(' + coveredYms.length + ' 期)' }}</span>
+            <!-- §五策略2:所选月无售电 → 桑基锚定最近 s10 覆盖月,卡头标签(画布 06-D,禁静默) -->
+            <span class="t">能量流桑基 · {{ isMonth ? '本月' : 's10 覆盖月同口径(' + coveredYms.length + ' 期)' }}<FPStateTag v-if="sankeyUsedYm && sankeyUsedYm !== curYm" tone="muted" style="margin-left: 8px">显示 {{ sankeyUsedYm }}</FPStateTag></span>
             <span class="hint">金额(元)<span class="hint-desk">· 点边/节点切换下方板块趋势</span></span>
           </div>
-          <!-- §五策略2:所选月无售电 → 桑基锚定最近 s10 覆盖月,卡顶横幅(禁静默) -->
-          <AnaPeriodBanner v-if="sankeyUsedYm && sankeyUsedYm !== curYm" :selected="curYm" :used="sankeyUsedYm"
-            source="售电(附表10)" style="margin-bottom: 8px" />
           <AnaEChart v-if="sankeyOption" :option="sankeyOption" :height="300" @chart-click="onSankeyClick" />
           <!-- 该期间售电(附表10)未录 → 空态引导深链,不画假图 -->
           <AnaEmpty v-else label="该期间售电(附表10)未录入" hint="s10 为稀疏月度表,金额口径能量流暂不可算" to="/sales-income" to-text="去录入销售收入" />

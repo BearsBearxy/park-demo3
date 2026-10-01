@@ -13,6 +13,8 @@ import { filterEntities, segCounts, statusColor, type ReconSeg } from '@/reports
 import { finMoney } from '@/utils/finFmt'
 import { leavesOf, PHASES } from '@/views/sales-income/layout'
 import { iconFor } from '@/components/ds/icon'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import { receipt } from '@/utils/receipt'
 
 const props = defineProps<{
   year: number
@@ -128,9 +130,10 @@ function jumpS10() {
   tabs.openFresh('sales-income', { pin: true })
   router.push(periodLink('sales-income', { p: periodOf(props.year, props.month), co: e.s10Cards[0]?.phase, extra: { tenant: e.tenantName } }))
 }
-// 标记已核实(upsert 备注)/已核实则取消核实;成功后 emit patch 局部更新
-async function confirmMark() {
-  const e = selected.value
+// 标记已核实(upsert 备注)/已核实则取消核实;成功后 emit patch 局部更新。
+// 户与备注在点下去那一刻定住:失败回执上的「重试」可能在弹窗关掉、换了一户之后才点,得还是那一户那句备注;
+// 期间条换了月(同一个实例换 props)再点重试就不动 —— 标到别的月上是错数
+async function confirmMark(e = selected.value, n = note.value.trim() || null) {
   if (!e || busy.value) return
   busy.value = true
   try {
@@ -138,13 +141,16 @@ async function confirmMark() {
       await reconApi.unmark(props.year, props.month, e.tenantName)
       emit('patch', e.tenantName, false, null)
     } else {
-      const n = note.value.trim() || null
       await reconApi.mark(props.year, props.month, { tenantName: e.tenantName, tenantId: e.tenantId, note: n })
       emit('patch', e.tenantName, true, n)
     }
     dlg.value = null
   } catch (err) {
-    alert((err as { message?: string })?.message ?? '操作失败')
+    const [y, m] = [props.year, props.month]
+    receipt.fail((err as { message?: string })?.message ?? '操作失败', {
+      label: '重试',
+      run: () => { if (props.year === y && props.month === m) void confirmMark(e, n) },
+    })
   } finally {
     busy.value = false
   }
@@ -158,7 +164,7 @@ async function confirmMark() {
     <!-- 顶栏 -->
     <div class="rc-top">
       <div class="rc-top-row">
-        <button class="rc-back" title="返回月份" @click="emit('back')"><component :is="iconFor('chevron-left')" :size="16" /></button>
+        <button class="rc-back" v-tip="'返回月份'" @click="emit('back')"><component :is="iconFor('chevron-left')" :size="16" /></button>
         <div>
           <div class="rc-title">{{ year }} 年 {{ month }} 月 · 收入核对</div>
           <div class="rc-sub">
@@ -201,7 +207,7 @@ async function confirmMark() {
               <div v-else class="rc-li-diff num" :style="{ color: colorOf(e) }">{{ signed(e.diff) }}</div>
             </div>
           </div>
-          <div v-if="!list.length" class="rc-empty">无匹配租户</div>
+          <FPEmpty v-if="!list.length" size="sm">无匹配租户</FPEmpty>
         </div>
       </div>
 
@@ -320,7 +326,7 @@ async function confirmMark() {
           </div>
         </div>
       </div>
-      <div v-else class="rc-detail"><div class="rc-empty" style="margin:auto">该月无核对实体</div></div>
+      <div v-else class="rc-detail"><FPEmpty>该月无核对实体</FPEmpty></div>
     </div>
 
     <!-- 处置浮层(居中弹窗 PAGE-BEHAVIOR-SPEC §2:Teleport + backdrop 居中 + Esc 关闭) -->
@@ -338,7 +344,7 @@ async function confirmMark() {
             <button class="rc-pop-btn" @click="jumpS10"><component :is="iconFor('arrow-right')" :size="12" />去改附表10</button>
           </div>
           <textarea v-model="note" :disabled="selected.marked" placeholder="核对备注(可选):说明差异原因与处理方式…"></textarea>
-          <button class="rc-pop-confirm" :class="{ undo: selected.marked }" :disabled="busy" @click="confirmMark">
+          <button class="rc-pop-confirm" :class="{ undo: selected.marked }" :disabled="busy" @click="confirmMark()">
             <component v-if="!selected.marked" :is="iconFor('check')" :size="14" />
             {{ selected.marked ? '取消核实' : '标记已核实' }}
           </button>
@@ -401,7 +407,6 @@ async function confirmMark() {
 .rc-li-diff { font-size: var(--fs-label); font-weight: var(--fw-semibold); }
 .rc-li-tag { font-size: var(--fs-micro); display: inline-flex; align-items: center; gap: 5px; justify-content: flex-end; }
 .rc-li-tag.mk { color: var(--text-muted); }
-.rc-empty { padding: 34px 18px; text-align: center; color: var(--text-muted); font-size: var(--fs-label); }
 
 /* 右:对账详情 */
 .rc-detail { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); background: var(--surface-white); overflow: hidden; }

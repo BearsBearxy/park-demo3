@@ -331,18 +331,19 @@ describe('资产负债分析(不上骨架):首进落地 + 换年退让', () => {
     expect(same(charts(w), before), '图被卸掉重挂了').toBe(true)
   })
 
-  it('❗回退横幅跟已画那份走:同年换月不打接口时跟选择;换期在途冻结(不先拔、不与卡头矛盾),到数同一拍换', async () => {
+  it('❗期间旁回退标签跟已画那份走:同年换月不打接口时跟选择;换期在途冻结(不先拔、不与卡头矛盾),到数同一拍换', async () => {
     const w = mountView(FinBalanceView)
     await flushPromises()
     await flushPromises()
-    const banner = () => (w.find('.ana-pbanner').exists() ? w.find('.ana-pbanner').text() : null)
-    expect(banner(), '2026-08 是报表月,不该有横幅').toBeNull()
-    // 2026-07 不是报表月,快照月仍是 2026-08 —— 不打接口,横幅直接跟选择
+    // 画布 06-D:整页回退贴在期间选择旁(AnaShell #period-note),不再是正文顶上的横条
+    const banner = () => (w.find('.anx-period .fp-state').exists() ? w.find('.anx-period .fp-state').text() : null)
+    expect(banner(), '2026-08 是报表月,不该有回退标签').toBeNull()
+    // 2026-07 不是报表月,快照月仍是 2026-08 —— 不打接口,标签直接跟选择
     const calls = vi.mocked(ana.fetchReportAll).mock.calls.length
     usePeriod().setMonth(7)
     await flushPromises()
     expect(vi.mocked(ana.fetchReportAll).mock.calls.length).toBe(calls)
-    expect(banner()).toBe('所选 2026-07 无报表数据,当前显示 2026-08')
+    expect(banner()).toBe('显示 2026-08 · 7 月无数据')
     // 换到 2025-12(报表月):要打接口。在途期间屏上还是 2026-08 那份,横幅与卡头都不许先换
     let release: () => void = () => {}
     vi.mocked(ana.fetchReportAll).mockImplementation((stmt, y) =>
@@ -351,7 +352,7 @@ describe('资产负债分析(不上骨架):首进落地 + 换年退让', () => {
     await flushPromises()
     expect(usePeriod().ym.value).toBe('2025-12')
     expect(w.find('.fin-head .sub').text()).toContain('2026-08')
-    expect(banner(), '在途就拔了横幅(旧内容被往上拽,到数再换一次)').toBe('所选 2026-07 无报表数据,当前显示 2026-08')
+    expect(banner(), '在途就拔了标签(到数再换一次)').toBe('显示 2026-08 · 7 月无数据')
     release()
     await flushPromises()
     expect(w.find('.fin-head .sub').text()).toContain('2025-12')
@@ -365,5 +366,74 @@ describe('资产负债分析(不上骨架):首进落地 + 换年退让', () => {
     await flushPromises()
     expect(w.find('.fin-head .sub').text()).toContain('2026-08')
     expect(banner()).toBeNull()
+  })
+})
+
+// 画布 06-D:整屏「本期」回退贴期间选择旁,只有台账回退贴应收实收卡头;加载失败换掉内容区、带重试;
+// 手写的空状态换成 FPEmpty 一种样子(06-B ⑦)。
+describe('租户用能:回退标签 · 加载失败 · 空状态', () => {
+  const payHead = (w: VueWrapper) => w.findAll('.av2-card-h').find((h) => h.find('.t').text().includes('应收 vs 实收'))!
+
+  it('❗所选 2026-08 无 s10(最近 7 月)→ 期间旁「显示 2026-07 · 8 月无数据」;台账 8 月有数,卡头不挂', async () => {
+    vi.mocked(ana.fetchS10TenantMap).mockResolvedValue(new Map([...S10_MAP].map(([k, rs]) => [k, rs.filter((r) => r.acctMonth !== '2026-08')])))
+    const w = mountView(TenantEnergyView)
+    await flushPromises()
+    expect(w.findAll('.anx-period .fp-state').map((e) => e.text())).toEqual(['显示 2026-07 · 8 月无数据'])
+    expect(payHead(w).find('.fp-state').exists()).toBe(false)
+  })
+
+  it('❗所选 2025-12 无台账(台账从 2026-07 起)→ 应收实收卡头「显示 2026-07」,期间旁不挂', async () => {
+    usePeriod().setYear(2025)
+    const w = mountView(TenantEnergyView)
+    await flushPromises()
+    expect(usePeriod().ym.value).toBe('2025-12')
+    expect(payHead(w).find('.t .fp-state').text()).toBe('显示 2026-07')
+    expect(w.find('.anx-period .fp-state').exists(), '单卡回退跑到期间旁了').toBe(false)
+  })
+
+  it('❗没读到 → 失败件换掉内容区(带重试);重试在途失败件不撤、不先闪「s10 未录入」;成功后出正文', async () => {
+    vi.mocked(ana.fetchS10TenantMap).mockRejectedValueOnce(new Error('500'))
+    const w = mountView(TenantEnergyView)
+    await flushPromises()
+    const err = () => w.find('.fp-empty.error')
+    expect(err().text()).toContain('租户用能数据没读到')
+    let release = () => {}
+    vi.mocked(ana.fetchS10TenantMap).mockImplementation(() => new Promise((res) => { release = () => res(S10_MAP) }))
+    await err().find('button').trigger('click')
+    await flushPromises()
+    expect(vi.mocked(ana.fetchS10TenantMap), '点重试没重新取数').toHaveBeenCalledTimes(2)
+    expect(err().exists(), '重试在途失败件先撤了(错误只在成功分支清)').toBe(true)
+    expect(w.find('.ana-empty').exists(), '重试在途闪出了「未录入」空态').toBe(false)
+    release()
+    await flushPromises()
+    expect(err().exists()).toBe(false)
+    expect(w.findAll('.te2-item').length).toBe(3)
+  })
+
+  it('❗切回重读叠着发:先发的那趟晚到,不覆盖后发那趟的数(seq 守卫)', async () => {
+    const { w, toggle } = mountKept(TenantEnergyView)
+    await flushPromises()
+    const onlyJia = new Map([...S10_MAP].filter(([k]) => k === '甲租户'))
+    let releaseOld = () => {}
+    vi.mocked(ana.fetchS10TenantMap)
+      .mockImplementationOnce(() => new Promise((res) => { releaseOld = () => res(onlyJia) }))
+      .mockResolvedValueOnce(S10_MAP)
+    await toggle()   // 第一趟挂住(旧数)
+    await toggle()   // 第二趟立刻到(新数)
+    expect(w.findAll('.te2-item').length).toBe(3)
+    releaseOld()
+    await flushPromises()
+    expect(w.findAll('.te2-item').length, '晚到的旧一趟把新数盖掉了').toBe(3)
+  })
+
+  it('❗搜不到租户、选中租户台账没记录 → 都是 FPEmpty 空状态件,不是一行灰字', async () => {
+    // 榜首是丙(费额最高),台账只留甲 → 默认选中的丙在台账里没有记录
+    vi.mocked(ana.fetchLedgerRows).mockResolvedValue(LEDGER.filter((r) => r.tenantName === '甲租户'))
+    const w = mountView(TenantEnergyView)
+    await flushPromises()
+    expect(w.find('.te2-item.on').text()).toContain('丙租户')
+    expect(payHead(w).element.parentElement!.querySelector('.fp-empty')?.textContent).toContain('该租户台账无应收/实收记录')
+    await w.find('.te2-search').setValue('不存在的租户')
+    expect(w.find('.te2-list .fp-empty').text()).toContain('无匹配租户')
   })
 })

@@ -28,7 +28,8 @@
 
 /* ── ana-charts.jsx ChartStyles(cz-*) ── */
 .cz-grid { display:grid; gap:16px; }
-.cz-tip { position:absolute; pointer-events:none; background:var(--tip-bg); color:var(--text-on-solid); border-radius:9px; padding:8px 11px; box-shadow:var(--shadow-tooltip); z-index:5; font-size: var(--fs-micro); }
+/* 图上读数气泡:外观与 ShellTip 同款(--tip-bg 底、12px / 18px、圆角 6、内边距 6×10);零延迟跟鼠标、位置由各图算,不走 v-tip */
+.cz-tip { position:absolute; pointer-events:none; background:var(--tip-bg); color:var(--text-on-solid); border-radius:6px; padding:6px 10px; box-shadow:var(--shadow-tooltip); z-index:5; font-size:12px; line-height:18px; }
 .cz-tip .h { opacity:.62; font-size:var(--fs-micro); margin-bottom:5px; }
 .cz-tip .r { display:flex; align-items:center; gap:8px; margin-top:3px; white-space:nowrap; }
 .cz-tip .r .nm { opacity:.82; }

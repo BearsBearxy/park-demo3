@@ -9,6 +9,7 @@ import { useScreen } from '@/composables/useTabShells'
 import { useEditLock } from '@/composables/useEditLock'
 import { useReviewStore } from '@/stores/review'
 import { periodOfKey } from '@/types/review'
+import { ask } from '@/utils/ask'
 
 import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
@@ -29,8 +30,9 @@ const props = withDefaults(defineProps<{
   showImport?: boolean
   /** 导入按钮禁用(母册附表保存中) */
   importDisabled?: boolean
-  /** 未保存的草稿处数。>0 时导入前二次确认 —— 导入落库后要重拉数据,会静默冲掉草稿。
-   *  只有附表10 与母册附表有草稿(其余 5 屏是抽屉即时落库),它们传,别的屏不用管。 */
+  /** 未保存的草稿处数。>0 时导入前二次确认 —— 导入落库后要重拉数据,会静默冲掉草稿;
+   *  同一个数登记给 auth,关页签 / 退出登录 / 关浏览器按它问(0 处不问)。
+   *  附表10 与母册附表传草稿处数;其余 5 屏即时落库,唯一的草稿是开着的新增抽屉 / 导入窗,开着传 1。 */
   dirty?: number
   /** 本期的编辑锁作用域(CONCURRENCY-SPEC §3.1),如 `sched:pv:2025`。
    *  **不传 = 这一屏不上锁**,行为与加锁之前一个字不差。 */
@@ -74,7 +76,10 @@ const canAsk = computed(() => auth.can(props.perm) || auth.can('elevate:request'
 //   把本屏正用着的授权一起结束掉;而本屏退出时又会被别的页面挡住结束不了。
 const meId = Symbol('sched-header')
 const screen = useScreen()
-watch(() => props.edit, (on) => { if (on) auth.openEditor(meId, screen); else auth.closeEditor(meId) })
+// 改动数(EDIT-MODE §6.1):关页签 / 退出登录 / 关浏览器按它问,0 处不弹。
+// 页头与下面的锁各登记一条,**必须是同一个函数** —— auth 按函数去重,两个函数就算成 2 倍。
+const dirtyCount = () => props.dirty
+watch(() => props.edit, (on) => { if (on) auth.openEditor(meId, screen, dirtyCount); else auth.closeEditor(meId) })
 onUnmounted(() => auth.closeEditor(meId))
 
 // ── 编辑锁(CONCURRENCY-SPEC §4) ──
@@ -84,7 +89,7 @@ onUnmounted(() => auth.closeEditor(meId))
 // 绑 `edit = !edit` 的屏照常翻假;做脏检查的屏(附表10/损益表)必须放弃「先问要不要保存」——
 // 那道确认在锁没了之后只剩一个无锁写的入口(收口复查坐实:dirty>0 时 emit 被吞,edit 恒真)。
 const lock = useEditLock(() => { if (props.edit) emit('toggle-edit', true) },
-                          () => auth.can(props.perm))
+                          () => auth.can(props.perm), dirtyCount)
 const { lockedBy, evictedBy } = lock
 
 /**
@@ -234,9 +239,15 @@ async function onTaken() {
   if (!props.edit) emit('toggle-edit')
 }
 
-function onImport() {
-  if (props.dirty > 0 &&
-      !confirm(`当前有 ${props.dirty} 处修改尚未保存。\n导入会重新载入本期数据,这些修改将丢失。\n\n仍要导入?`)) return
+/** 导入前确认(02-B 左):有草稿才问,导入落库后重拉会冲掉草稿。确认框开着时可能被接管,答完再守一次。 */
+async function onImport() {
+  const n = props.dirty
+  if (n > 0 && !(await ask({
+    title: '导入会整期替换本期数据',
+    body: `本期有 ${n} 处改动还没保存，导入后会丢失。`,
+    action: '仍要导入',
+  }))) return
+  if (!props.edit) return
   emit('import')
 }
 </script>
@@ -244,7 +255,7 @@ function onImport() {
 <template>
   <div class="lc-head">
     <div class="lc-head-l">
-      <button class="lc-back" @click="emit('back')" title="返回年份选择">
+      <button class="lc-back" @click="emit('back')" v-tip="'返回年份选择'">
         <component :is="iconFor('arrow-left')" :size="17" />
       </button>
       <div>
@@ -284,7 +295,7 @@ function onImport() {
       <!-- 锁位就长在编辑模式按钮上(设计稿 §05):不另加 chip —— 那是你的手本来就要去的地方。
            min-width 定死,三态换文案不换宽度,工具条不挪一个像素(LAYOUT-STABILITY)。 -->
       <!-- 审核闸(§7.5):已审核 / 待审核时按钮位换成同尺寸禁用药丸(与 .lc-lockbtn 同 min-width)。 -->
-      <span v-if="canAsk && reviewNote" class="lc-lockbtn lc-reviewpill" :title="reviewBlock?.tip ?? undefined">
+      <span v-if="canAsk && reviewNote" class="lc-lockbtn lc-reviewpill" v-tip="reviewBlock?.tip">
         <component :is="iconFor('lock')" :size="14" />{{ reviewNote }}
       </span>
       <Button v-else-if="canAsk" :variant="edit ? 'filled' : 'outline'" size="sm"

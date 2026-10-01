@@ -57,7 +57,7 @@ function pick(it: MoreItem) {
       {{ props.label }}
       <template #trailing><component :is="iconFor('chevron-down')" :size="12" class="dd" /></template>
     </Button>
-    <button v-else class="fp-more-btn" :class="{ on: open }" type="button" title="更多操作"
+    <button v-else class="fp-more-btn" :class="{ on: open }" type="button" v-tip="'更多操作'"
             @click="open = !open">
       <MoreHorizontal :size="16" />
     </button>

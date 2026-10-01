@@ -159,4 +159,49 @@ describe('SystemLogsView', () => {
     expect(logs).toHaveBeenCalledTimes(3)
     expect(logs.mock.calls[2][0]).toMatchObject({ from: undefined, to: undefined })
   })
+
+  it('❗加载失败换掉整条时间线(FPLoadError,和行互斥);点重试重拉,成功后行回来', async () => {
+    logs.mockImplementationOnce(() => Promise.reject({ message: '网关超时' }))
+    const w = mountView()
+    await flushPromises()
+    const err = w.find('.lg-wrap .fp-empty.error')
+    expect(err.text()).toContain('操作日志没读到')
+    expect(err.text()).toContain('网关超时')
+    expect(w.findAll('.lg-row')).toHaveLength(0)
+    await err.find('button').trigger('click')
+    await flushPromises()
+    expect(logs).toHaveBeenCalledTimes(2)
+    expect(w.find('.fp-empty.error').exists()).toBe(false)
+    expect(w.findAll('.lg-row')).toHaveLength(ROWS.length)
+  })
+
+  it('❗先发后到的旧页不盖新页(seq 守卫)', async () => {
+    let first!: (v: unknown) => void
+    logs.mockImplementationOnce(() => new Promise((r) => { first = r }))
+    const w = mountView()
+    await w.findAllComponents(Select)[0].setValue('auth')               // 第二次请求,立刻回整页
+    await flushPromises()
+    first({ rows: ROWS.slice(0, 1), total: 1, page: 1, size: 10, actors: [] })   // 旧的第一次这时才到
+    await flushPromises()
+    expect(w.findAll('.lg-row')).toHaveLength(ROWS.length)
+  })
+
+  it('❗空了是 FPEmpty:无筛选说「还没有」,有筛选说「这个筛选条件下没有」并给换法', async () => {
+    logs.mockImplementation(() => page({ rows: [], total: 0 }))
+    const w = mountView()
+    await flushPromises()
+    expect(w.find('.lg-wrap .fp-empty').text()).toBe('还没有任何操作记录')
+    await w.findAllComponents(Select)[0].setValue('auth')
+    await flushPromises()
+    expect(w.find('.lg-wrap .fp-empty').text()).toContain('这个筛选条件下没有操作记录')
+    expect(w.find('.lg-wrap .fp-empty').text()).toContain('换个来源、操作人或日期范围试试')
+  })
+
+  it('❗一行的全文走悬停说明(含授权人)', async () => {
+    const w = mountView()
+    await flushPromises()
+    const row = w.get('[data-src="auth"]').element as HTMLElement & { _tip?: { text: string } }
+    expect(row._tip?.text).toContain('由 李主管 授权')
+    expect(row.hasAttribute('title')).toBe(false)
+  })
 })

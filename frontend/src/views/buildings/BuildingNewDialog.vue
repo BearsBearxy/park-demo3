@@ -80,7 +80,7 @@ function submit() {
             </div>
             <div>
               <Select v-model="zone" label="期区" :options="zoneOpts" size="sm"
-                      title="期区决定这栋楼的电表、公摊池、损耗归到哪一期。与「期数」不是一回事——宿舍楼期数是 1 但期区是宿舍" />
+                      v-tip="'期区决定这栋楼的电表、公摊池、损耗归到哪一期。与「期数」不是一回事——宿舍楼期数是 1 但期区是宿舍'" />
             </div>
             <div>
               <div class="lg-dlg-lab">层数</div>
@@ -112,7 +112,7 @@ function submit() {
                      @input="err = ''" @keydown.enter="submit" />
             </div>
           </div>
-          <div class="lg-dlg-erm">{{ err }}</div>
+          <p class="fp-field-err"><template v-if="err">{{ err }}</template></p>
         </div>
         <div class="lg-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="emit('close')">取消</Button>
@@ -146,7 +146,7 @@ function submit() {
   font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
 .lg-dlg-in:focus { border-color:var(--hue-blue); }
 .lg-dlg-in.err { border-color:var(--hue-red); }
-.lg-dlg-erm { font-size:11.5px; color:var(--hue-red); margin-top:6px; min-height:14px; }
+.lg-dlg-b > .fp-field-err { margin-top:6px; }
 .lg-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:16px 22px 20px; }
 .bnd-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-top:12px; }
 </style>

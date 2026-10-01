@@ -11,7 +11,7 @@ import { onReactivated } from '@/composables/onReactivated'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
-import AnaShell from './AnaShell.vue'
+import AnaShell, { periodNote } from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
@@ -20,7 +20,8 @@ import { rollingForecastRows, prevYearUsable } from './forecastChart.logic'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import { isSViewport } from '@/components/ana/anaChartHeight'
 import { iconFor } from '@/components/ds/icon'
-import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
+import FPStateTag from '@/components/fp/FPStateTag.vue'
+import FPNote from '@/components/fp/FPNote.vue'
 import { STATUS, fint, fnum, hues, inkA, sgn } from '@/components/ana/anaFmt'
 import { anaPalette } from '@/components/ana/anaTheme'
 import { usePeriod, ymOf } from '@/analysis/usePeriod'
@@ -127,12 +128,12 @@ const isMonth = computed(() => period.sel.value.gran === 'month')
 const money = (v: number | null): string => (v == null ? '—' : (v < 0 ? '−¥' : '¥') + fnum(Math.abs(v) / 10000) + '万')
 
 // 已画那一期(C5-02):换年在途 pnl 还是旧年,选择已是新年新月 —— 拿新月去对旧年的覆盖月,
-// 横幅会凭空插进来(文案还是假的),数据到了再拔掉,整片 grid 被推下又弹回。
+// 期间旁的回退标签会凭空冒出来(文案还是假的),数据到了再拔掉。
 // 同年换月 / 换粒度不打接口,直接跟选择;跨年在途冻结在 pnl 那一年最后被选中的那一期,与数据同一拍换。
 const drawnSel = ref(period.sel.value)
 watch([pnl, period.sel], ([p, s]) => { if (!p || p.year === s.year) drawnSel.value = s }, { immediate: true })
 const drawnMi = computed(() => drawnSel.value.month - 1)
-// §五策略2 月锚:所选月无损益 → KPI/构成环锚定最近覆盖月 + 顶部横幅显式(取值公式不变)
+// §五策略2 月锚:所选月无损益 → KPI/构成环锚定最近覆盖月 + 期间旁标签显式(取值公式不变)
 const usedMi = computed(() => (isMonth.value ? anchorMonth(pnl.value?.months ?? [], drawnMi.value + 1) - 1 : drawnMi.value))
 const pnlUsedYm = computed(() => (isMonth.value && usedMi.value !== drawnMi.value ? ymOf(drawnSel.value.year, usedMi.value + 1) : null))
 // §五策略3:所选年无损益附表 → 主区整体空态(禁止沿用旧年图表)
@@ -186,18 +187,12 @@ const backSum = computed(() => backtestSummary(backRows.value))
 const backRead = computed(() => backtestReadout(backSum.value))
 const backRef = computed(() => backtestRefText(backRows.value))
 // 主图离群月提示(不写「已闭月」—— closed-months 端点语义是审核状态,不是会计封账,分析层零引用)
-const outlierBannerText = computed(() => {
+const outlierNoteText = computed(() => {
   const m = mc.value?.outlierMonths[0]
   // 用户 2026-09-12:不许替他判断那个数是什么,也不许替他把它摘出去。
   // 改前这句写死「为年末冲回」(库里只有「收入为负」这一个事实,「冲回」是解读),
   // 而且声称「已排除」。两处都改:只陈述实测到的事实,并说明它**在**年度口径里。
   return m ? `${drawnSel.value.year}-${String(m).padStart(2, '0')} 收入为负,已计入年度营收/成本/利润与达成率` : ''
-})
-// AnaPeriodBanner selected/used 必填(五个既有屏共享该契约);插槽覆盖了文案,这两个值不上屏,
-// 但仍按实际的离群月/达成率覆盖区间传——都是上面已算出来的值。
-const outlierYm = computed(() => {
-  const m = mc.value?.outlierMonths[0]
-  return m ? ymOf(drawnSel.value.year, m) : ''
 })
 // 未闭月护栏(FORECAST §2.7):y 轴量程(d.yMin)由 mainChart 用 usableMonths 算好,这里只消费;
 // 离群月本身仍画(数据点/tooltip 值不变),bar 标红 + markPoint 钉在柱头,readable 为「带外」。
@@ -371,7 +366,7 @@ const conclusion = computed(() => buildConclusion(
 </script>
 
 <template>
-  <!-- §五:月敏感屏(full);月锚回退横幅 + 年空态见主区 -->
+  <!-- §五:月敏感屏(full);月锚回退标签在期间选择旁(#period-note),年空态见主区 -->
   <AnaShell :compare="['mom', 'budget']" period-mode="full" :busy="busy">
     <template #tools>
       <span class="cv2-name"><component :is="iconFor('gauge')" :size="15" />经营驾驶舱</span>
@@ -409,23 +404,29 @@ const conclusion = computed(() => buildConclusion(
       <!-- 前后对照瓦(故意留着):护栏修复前的口径,12 月冲回无条件计入年度收入 -->
     </template>
 
+    <!-- §五策略2 期间回退(画布 06-D):所选月无损益 → KPI/构成环锚定最近覆盖月;收缴率取期回退同样标出
+         (复审:原仅 KPI 小字披露)。贴在期间选择旁,不另起一行,数据到了也不推正文。 -->
+    <template #period-note>
+      <FPStateTag v-if="pnlUsedYm" tone="muted">{{ periodNote(ymOf(drawnSel.year, drawnSel.month), pnlUsedYm) }}</FPStateTag>
+      <FPStateTag v-if="cp && period.ym.value && cp.ym !== period.ym.value" tone="muted">收缴率显示 {{ cp.ym }}</FPStateTag>
+    </template>
+
     <!-- 首进:版式已知就不转圈(C6-01)。每块骨架的高 = 它顶替的那张图的 :height 字面值
          (主图 300 · 构成环 300 · 预测带 280 · 第二排三张 250),卡头 20 + .av2-card-h 的 8 下边距;
          KPI 行由 .anx-kpis 的 min-height 94 兜位。数据到了原地硬切,不做淡入、卡片不错峰。
-         结论条与取期横幅按库里现有数据留位(见下一段注释)。
+         结论条与离群月提示按库里现有数据留位(见下一段注释)。
          主图 / 构成环 / 预测带 / 分期堆叠 四张卡的读数句是常驻的(.ana-read/.ana-ref 行盒 20 由 --lh-snug 定,与字号无关),
          骨架照 8+20 / 2+20 钉上,不钉的话数据到了下面整片下沉。
          **门只认首进**(!pnl):换年那一路旧年内容留在原地退让(C5-02),不许整片塌回骨架 —— 那是
          「一次交互两个动的东西」(§1.7):正文整片消失 + 工具条进度线。
          顶替 AnaEChart 的四块(主图 / 构成环 / 分期堆叠 / 收缴率)走 AnaSkelChart(≤600 与图同一张降档表);
          预测带是自绘 SVG(不降档)、异常速览是 DOM 列表,两块照旧写死。 -->
-    <!-- 2026-09-16 起骨架照抄真版式:顶部台账取期横幅、结论条、各卡卡头与读数句、异常清单、回测表都按
-         库里现有数据的样子留位(默认期 = 最近有损益的月,台账比它早一个月,所以横幅在;结论三句;
-         回测六行;异常速览四条)—— 手机上这些字都会折行,灰条顶不住。随数据变的字换成同长的隐形占位。
+    <!-- 2026-09-16 起骨架照抄真版式:结论条、各卡卡头与读数句、异常清单、回测表都按
+         库里现有数据的样子留位(结论三句;回测六行;异常速览四条)—— 手机上这些字都会折行,灰条顶不住。
+         随数据变的字换成同长的隐形占位。台账取期回退 2026-10-01 起是期间选择旁的标签,正文不再给它留位。
          数据换了形状(台账补齐、回测变成七行)时,首进会差出那一段,届时照新数据改这里。 -->
     <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <template v-if="!ready || (pnlLoading && !pnl)">
-      <AnaPeriodBanner class="ana-hole" selected="0000-00" used="0000-00" source="台账" style="margin-bottom: 12px" />
       <div class="av2-card cv2-concl av2-lead cv2-skel">
         <span class="cv2-cs ana-hole"><span class="dot"></span>0000年00月收入 ¥000万,园区利润 ¥000万(利润率 00.0%)</span>
         <span class="cv2-cs ana-hole"><span class="dot"></span>收缴率 00.0% 低于目标 00%,期末欠费 ¥0,000万</span>
@@ -437,7 +438,7 @@ const conclusion = computed(() => buildConclusion(
             <span class="t">月度收入 · 预测护栏</span>
             <span class="hint">覆盖 <span class="ana-hole">00</span> 期(万元)<span class="hint-desk">· 点击月柱切换期间 · 拖选缩放</span><span class="hint-touch">· 点月柱切期间</span> · 紫虚线=预算月均</span>
           </div>
-          <AnaPeriodBanner class="ana-hole" selected="0000-00" used="0000-00" style="margin-bottom: 8px">0000-00 收入为负,已计入年度营收/成本/利润与达成率</AnaPeriodBanner>
+          <FPNote class="ana-hole" tone="warn" style="margin-bottom: 8px">0000-00 收入为负,已计入年度营收/成本/利润与达成率</FPNote>
           <AnaSkelChart :height="300" />
           <p class="ana-read hold"><span class="ana-hole">00月收入 −00万，离0-00月的正常波动 0倍残差</span></p>
           <p class="ana-ref hold"><span class="ana-hole">参照0-00月拟合 · 残差000万</span></p>
@@ -517,12 +518,6 @@ const conclusion = computed(() => buildConclusion(
       hint="驾驶舱主区依赖损益附表 1~5;切换年份或先录入该年数据(在租租户等主数据 KPI 不受影响)"
       to="/rent-pnl" to-text="去录入损益附表" />
     <template v-else>
-      <!-- §五策略2:所选月无损益 → KPI/构成环锚定最近覆盖月,顶部横幅显式(禁静默) -->
-      <AnaPeriodBanner v-if="pnlUsedYm" :selected="ymOf(drawnSel.year, drawnSel.month)" :used="pnlUsedYm"
-        source="损益" style="margin-bottom: 12px" />
-      <!-- 收缴率取期回退同样横幅显式(复审:原仅 KPI 小字披露,与其他屏不一致) -->
-      <AnaPeriodBanner v-if="cp && period.ym.value && cp.ym !== period.ym.value" :selected="period.ym.value" :used="cp.ym"
-        source="台账" style="margin-bottom: 12px" />
       <!-- §A 经营结论条(spec 2026-07-11):数据模板分句,缺数据省句;句前圆点按 tone,异常句可点击深链;av2-lead=S 档排最前(结论先行) -->
       <div v-if="conclusion.length" class="av2-card cv2-concl av2-lead">
         <template v-for="(c, i) in conclusion" :key="i">
@@ -544,8 +539,8 @@ const conclusion = computed(() => buildConclusion(
           <span class="t">月度收入 · 预测护栏</span>
           <span class="hint">覆盖 {{ mc?.covered ?? 0 }} 期(万元)<span class="hint-desk">· 点击月柱切换期间 · 拖选缩放</span><span class="hint-touch">· 点月柱切期间</span> · 紫虚线=预算月均</span>
         </div>
-        <!-- 未闭月护栏(FORECAST §2.7):该年含离群月(收入<0)时提示,不写「已闭月」 -->
-        <AnaPeriodBanner v-if="outlierBannerText" :selected="outlierYm" :used="pnlRange" style="margin-bottom: 8px">{{ outlierBannerText }}</AnaPeriodBanner>
+        <!-- 未闭月护栏(FORECAST §2.7):该年含离群月(收入<0)时卡内一行提示(实现规范 §2 第 8 条),不写「已闭月」 -->
+        <FPNote v-if="outlierNoteText" tone="warn" style="margin-bottom: 8px">{{ outlierNoteText }}</FPNote>
         <AnaEChart v-if="mainOption" :option="mainOption" :height="300" @chart-click="onMainClick" />
         <AnaEmpty v-else :label="year + ' 年无损益附表数据'" hint="收入/利润来自损益附表 1~5 园区总计带" to="/rent-pnl" to-text="去录入损益附表" />
         <!-- T2(design-boards 2026-09-11):读数句+参照系小字,纯函数返回值见 outlierReadout/outlierRefText -->
@@ -751,7 +746,7 @@ const conclusion = computed(() => buildConclusion(
 <style scoped>
 /* 工具条屏名(order:-1 置于期间控件前,不改 AnaShell) */
 .cv2-name { order: -1; display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-body); font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; }
-/* §A 经营结论条(av2-card 观感,单行 flex wrap;位于回退横幅后、grid 前) */
+/* §A 经营结论条(av2-card 观感,单行 flex wrap;位于 grid 前) */
 .cv2-concl { display: flex; flex-wrap: wrap; align-items: center; column-gap: 20px; row-gap: 6px; margin-bottom: 12px; }
 .cv2-cs { display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent; padding: 0; font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-primary); }
 .cv2-cs .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }

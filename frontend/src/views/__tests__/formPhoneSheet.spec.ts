@@ -198,12 +198,10 @@ describe('名单 · 带输入的居中弹卡', () => {
   })
 
   it('❗同一个遮罩下的无输入态排除掉:FinDialogs 的 delco、SystemUsersView 的停用确认', () => {
-    expect(read('components', 'fin', 'FinDialogs.vue'))
-      .toContain("'fp-fsheet': sheet && dlg.type !== 'delco'")
-    const su = read('views', 'system', 'SystemUsersView.vue')
-    // 停用/启用确认那个遮罩(tgTarget)整条不带 fp-fsheet
-    const tg = su.match(/<div v-if="tgTarget" class="fin-mask"[^>]*>/)![0]
-    expect(tg).not.toContain('fp-fsheet')
+    // 2026-10-01:FinDialogs 的删除公司确认改走 ask(居中卡,不在这个遮罩里),遮罩下只剩两张带输入的卡
+    expect(read('components', 'fin', 'FinDialogs.vue')).not.toContain("'delco'")
+    // 2026-10-01:SystemUsersView 的停用 / 启用确认改走 ask(FPConfirmHost),本屏不再有那个遮罩
+    expect(read('views', 'system', 'SystemUsersView.vue')).not.toContain('tgTarget')
   })
 
   it('❗已有 S 档全屏分支的三个标准件不重复做', () => {
@@ -222,13 +220,21 @@ describe('反向断言 · 错误位仍然常驻(LAYOUT-STABILITY-SPEC §4.2)', (
   // 正是贴底那一颗,ds/Input.vue:104 那条注释写的就是这个场景。现状全都有 min-height = 零改动。
   it.each([
     ['components/ds/Input.vue', ['components', 'ds', 'Input.vue'], '.ds-in-msg'],
-    ['views/buildings/BuildingNewDialog.vue', ['views', 'buildings', 'BuildingNewDialog.vue'], '.lg-dlg-erm'],
-    ['views/contracts/ContractNewDialog.vue', ['views', 'contracts', 'ContractNewDialog.vue'], '.ct-erm'],
-    ['views/buildings/BuildingDrawer.vue', ['views', 'buildings', 'BuildingDrawer.vue'], '.bd-erm'],
+    // BuildingNewDialog / BuildingDrawer 的自写错误行 2026-10-01 收进 .fp-field-err(十件 ⑤),占位高在 base.css
+    ['styles/base.css', ['styles', 'base.css'], '.fp-field-err'],
   ])('❗%s 的 %s 仍有 min-height', (_label, p, sel) => {
     const src = read(...(p as string[]))
     const rule = src.match(new RegExp('\\' + sel + '\\s*\\{[^}]*\\}'))
     expect(rule, `${sel} 规则不见了`).not.toBeNull()
     expect(rule![0]).toMatch(/min-height:\s*\d/)
+  })
+
+  it.each([
+    ['views/buildings/BuildingNewDialog.vue', ['views', 'buildings', 'BuildingNewDialog.vue']],
+    ['views/buildings/BuildingDrawer.vue', ['views', 'buildings', 'BuildingDrawer.vue']],
+    // ContractNewDialog 的 .ct-erm 同日收进 .fp-field-err
+    ['views/contracts/ContractNewDialog.vue', ['views', 'contracts', 'ContractNewDialog.vue']],
+  ])('❗%s 的错误行是 .fp-field-err 且元素本身常驻(v-if 只在字上)', (_label, p) => {
+    expect(read(...(p as string[]))).toMatch(/<p class="fp-field-err"><template v-if="\w+">/)
   })
 })

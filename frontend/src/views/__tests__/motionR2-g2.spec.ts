@@ -12,6 +12,7 @@ import { defineComponent, h, KeepAlive, ref, type Component } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import type { AnalysisS10Row } from '@/api/analysis'
 
 // AnaEChart 整个桩掉(同 expiryScreen / tenantPeerScreen 的写法)。没用 anaEChart.spec 那种只桩 ./echartsBundle 的办法:
 // 一屏多张图同时 import('./echartsBundle') 时 vi.mock 只接住一张(本机实测 3 张图 init 只被调 1 次),其余加载真 echarts,
@@ -314,5 +315,62 @@ describe('首进骨架 · 顶替 AnaEChart 的块逐张对上图高(源码坐标
     const charts = [...tpl.matchAll(/<AnaEChart [^>]*:height="(\d+)"/g)].map((x) => Number(x[1]))
     expect(charts, '图高变了').toEqual([...heights])
     expect(skel, '骨架没跟图高 / 还有顶替图的块没换成 AnaSkelChart').toEqual([...heights])
+  })
+})
+
+// 画布 06-D:只有桑基回退 → 贴桑基卡头(不进期间旁);加载失败换掉内容区、一律带重试(实现规范 §1.4、§1.5)
+describe('园区能耗:桑基回退贴卡头 · 加载失败带重试', () => {
+  const elecFx = (y: number) =>
+    ({ energy: { rows: [5, 6].map((mo) => ({ acctMonth: `${y}-0${mo}`, qty: 1000 * mo, total: 9000 * mo })) }, basic: { rows: [] } }) as never
+  const s10 = (ym: string): AnalysisS10Row[] => [1, 2].map((i) => ({
+    acctMonth: ym, phase: i, tenantId: i, tenantName: '租户' + i, elec: 20000 * i, water: 300 * i, total: 21000 * i,
+  }))
+  beforeEach(() => {
+    providePeriodMonths(['2025-06', '2026-05', '2026-06'], ['2025-06', '2026-05', '2026-06'])
+    const p = usePeriod()
+    p.setGran('month'); p.setYear(2026); p.setMonth(6)
+  })
+
+  it('❗所选 6 月无售电、最近 s10 在 5 月 → 桑基卡头「显示 2026-05」,期间旁不挂;换到 5 月标签撤', async () => {
+    m(ana.fetchElecYear).mockImplementation(async (y: number) => elecFx(y))
+    m(ana.fetchS10Rows).mockResolvedValueOnce(s10('2026-05'))
+    // 外壳挂载时会按接口回来的月份重注一次期间单例:5 月得在里面,下面才切得过去
+    m(ana.fetchAvailableMonths).mockResolvedValueOnce({ months: ['2025-06', '2026-05', '2026-06'], sources: { pnl: ['2025-06', '2026-05', '2026-06'] } })
+    const w = mountPlain(ParkEnergyView)
+    await flushPromises()
+    const tag = () => w.find('.av2-core .av2-card-h .t .fp-state')
+    expect(tag().text()).toBe('显示 2026-05')
+    expect(w.find('.anx-period .fp-state').exists(), '单图回退跑到期间旁了').toBe(false)
+    usePeriod().setMonth(5)
+    await flushPromises()
+    expect(tag().exists(), '所选月有售电还挂着回退标签').toBe(false)
+  })
+
+  it('❗换年没读到 → 失败件换掉内容区(写失败的那一年 + 重试);重试在途失败件不撤、不闪回旧年;成功后出正文', async () => {
+    m(ana.fetchElecYear).mockImplementation(async (y: number) => elecFx(y))
+    const w = mountPlain(ParkEnergyView)
+    await flushPromises()
+    expect(w.find('.ak-page[data-stale-host]').exists()).toBe(true)
+    m(ana.fetchElecYear).mockRejectedValueOnce(new Error('500'))
+    usePeriod().setYear(2025)
+    await flushPromises()
+    const err = () => w.find('.fp-empty.error')
+    expect(err().exists(), '没读到却没出失败件').toBe(true)
+    expect(err().text()).toContain('2025 年的园区能耗数据没读到')
+    expect(w.find('.ak-page').exists(), '失败件和旧年正文同时在').toBe(false)
+
+    let release = () => {}
+    m(ana.fetchElecYear).mockImplementation((y: number) => new Promise((res) => { release = () => res(elecFx(y)) }))
+    const calls = m(ana.fetchElecYear).mock.calls.length
+    await err().find('button').trigger('click')
+    await flushPromises()
+    expect(m(ana.fetchElecYear).mock.calls.length, '点重试没重新取数').toBe(calls + 1)
+    expect(m(ana.fetchElecYear).mock.calls.at(-1)?.[0], '重试取的不是所选那一年').toBe(2025)
+    expect(err().exists(), '重试在途失败件先撤了(错误只在成功分支清)').toBe(true)
+    expect(w.find('.ak-page').exists(), '重试在途闪回了旧年正文').toBe(false)
+    release()
+    await flushPromises()
+    expect(err().exists()).toBe(false)
+    expect(w.find('.ak-sub').text()).toContain('期间 2025年6月')
   })
 })

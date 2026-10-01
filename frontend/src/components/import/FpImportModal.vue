@@ -19,6 +19,7 @@ import { matchByHeader, type ColumnMapEntry } from '@/utils/importHeaderMatch'
 import { splitSections, type PhaseLayouts, type Section } from '@/utils/importSections'
 import { splitSalarySections } from '@/utils/importSalarySections'
 import ImportSummary from './ImportSummary.vue'
+import FPNote from '@/components/fp/FPNote.vue'
 import Select from '@/components/ds/Select.vue'
 import DatePicker from '@/components/ds/DatePicker.vue'
 
@@ -201,7 +202,7 @@ function onDrop(e: DragEvent) {
   handleFile(e.dataTransfer?.files[0])
 }
 
-function confirm() {
+function doImport() {
   if (!records.value) return
   emit('import', records.value.map(r => { const { __preview, ...rest } = r; void __preview; return rest }), fileName.value || '（粘贴）')
 }
@@ -276,7 +277,7 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
 
         <!-- 补录条(仅 fallbackPicker 存在 且 本次解析真用上了补录值):改任一项即用新值重解析 -->
         <div v-if="fallbackPicker && notice" class="fpimp-fb">
-          <div class="fpimp-fb-t"><component :is="iconFor('alert-triangle')" :size="15" />{{ notice }}</div>
+          <FPNote tone="warn">{{ notice }}</FPNote>
           <div class="fpimp-fb-r">
             <label>账期<DatePicker v-model="fb.ym" mode="month" size="sm" aria-label="账期" /></label>
             <label>分区<Select size="sm" :options="fallbackPicker.zones" v-model="fb.zone" /></label>
@@ -286,8 +287,8 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
 
         <!-- 错误/告警位常驻(LAYOUT-STABILITY-SPEC §4.2):槽恒占一条消息高,解析失败时不把下面的汇总/预览顶走 -->
         <div class="fpimp-msgs">
-          <div v-if="err" class="fpimp-msg err"><component :is="iconFor('alert-triangle')" :size="15" />{{ err }}</div>
-          <div v-if="warn" class="fpimp-msg warn"><component :is="iconFor('alert-triangle')" :size="15" />{{ warn }}</div>
+          <FPNote v-if="err" tone="danger">{{ err }}</FPNote>
+          <FPNote v-if="warn" tone="warn">{{ warn }}</FPNote>
         </div>
 
         <!-- 智能整表/工资分段:汇总确认屏(替代模板列/预览区);工资模式隐期列与期选择 -->
@@ -310,10 +311,7 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
         />
 
         <template v-if="!summaryMode && records">
-          <div class="fpimp-msg ok">
-            <component :is="iconFor('check-circle-2')" :size="15" />
-            已识别 <b>{{ records.length }}</b> 条有效记录,确认后写入。
-          </div>
+          <FPNote class="fpimp-ok" tone="info">已识别 <b>{{ records.length }}</b> 条有效记录,确认后写入。</FPNote>
           <div class="fpimp-preview">
             <div class="fpimp-preview-h">
               <span>预览</span>
@@ -335,7 +333,7 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
 
       <div class="fpimp-f">
         <Button variant="gray" full-width @click="emit('close')">{{ summaryMode ? '关闭' : '取消' }}</Button>
-        <Button v-if="!summaryMode" variant="filled" :disabled="!records" @click="confirm">
+        <Button v-if="!summaryMode" variant="filled" :disabled="!records" @click="doImport">
           <template #leading><component :is="iconFor('download')" :size="16" /></template>
           导入 {{ records ? records.length + ' 条' : '' }}
         </Button>
@@ -380,15 +378,10 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
 
 /* 常驻消息槽:min-height = 一条消息的整高(line-height 18 + 上下 padding 10) */
 .fpimp-msgs { display:flex; flex-direction:column; gap:8px; min-height:18px; }
-.fpimp-msg { display:flex; align-items:center; gap:8px; font-size:12.5px; line-height:18px; padding:10px 12px; border-radius:8px; }
-.fpimp-msg.ok { background:var(--accent-sky); color:var(--hue-blue); }
-.fpimp-msg.ok b { margin:0 3px; font-family:var(--font-mono); }
-.fpimp-msg.err { background:var(--danger-soft); color:var(--hue-red); }
-.fpimp-msg.warn { background:var(--warn-bg); color:var(--hue-orange); }
+.fpimp-ok b { margin:0 3px; font-family:var(--font-mono); }
 
-/* 补录条:醒目(橙)提示 + 账期/分区/类别选择器 */
-.fpimp-fb { border:1px solid var(--hue-orange); border-radius:8px; background:var(--warn-bg); padding:10px 12px; display:flex; flex-direction:column; gap:9px; }
-.fpimp-fb-t { display:flex; align-items:flex-start; gap:8px; font-size:12.5px; line-height:1.5; color:var(--hue-orange); }
+/* 补录条:块内提示(十件 ④)+ 账期/分区/类别选择器 */
+.fpimp-fb { display:flex; flex-direction:column; gap:9px; }
 .fpimp-fb-r { display:flex; gap:10px; }
 .fpimp-fb-r label { flex:1; display:flex; flex-direction:column; gap:4px; font-size:11.5px; color:var(--text-secondary); }
 

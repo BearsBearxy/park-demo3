@@ -9,14 +9,15 @@
 // 编辑态(EDIT-MODE-SPEC v3)只为备注这一个格开:占的是出账链那把 billing-chain 月锁(与计费参数 /
 // 公共电核算 / 催缴单同一把,CONCURRENCY-SPEC §3.2),审核键 alloc-loss:{ym}(与公共电核算屏同一把)。
 // 屏级告警(LAYOUT-STABILITY-SPEC §6,2026-08-25):「改过参数还没重算」原为头部流内橙条(顶动表格且清不掉),
-// 改为工具条上的常驻 chip + 右侧抽屉;判定逻辑不变,仍是 staleText(status,'pool')。
+// 改为工具条上的常驻 chip + 贴着它的问题面板「待重算」组(2026-10-01);判定逻辑不变,仍是 staleText(status,'pool')。
+// 组头动作照公共电核算:编辑态「重算本月」(allocApi.generate,池与损耗同批),浏览态「进入编辑模式」。
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { allocApi, type AllocLossDTO, type AllocLossUnitDTO } from '@/api/alloc'
 import { paramsApi, type ParamRowDTO, type ParamStatusDTO } from '@/api/params'
 import { buildLossReconRows, lossFooter } from '@/utils/poolLedgerLogic'
 import { zoneLabel } from '@/utils/zoneLabel'
-import { rangeBadge, staleText, staleTitle, staleWho } from '@/utils/paramCenterLogic'
+import { rangeBadge, staleText, staleWho } from '@/utils/paramCenterLogic'
 import { S } from '@/utils/lockScopes'
 import { onReactivated } from '@/composables/onReactivated'
 import { useChainDeepPeriod } from '@/composables/useDeepPeriod'
@@ -35,6 +36,10 @@ import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
 import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import FPStateTag from '@/components/fp/FPStateTag.vue'
+import { ask } from '@/utils/ask'
+import { receipt } from '@/utils/receipt'
 import Button from '@/components/ds/Button.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 
@@ -78,6 +83,8 @@ const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, h
     // 本屏只写 alloc_loss_note(楼栋损耗这个月的一部分),不碰 alloc_pool_result,所以只认这一把
     // —— 与后端 saveLossNote 只守 ReviewKind.ALLOC_LOSS 一致。
     reviewKey: () => (ym.value ? `alloc-loss:${ym.value}` : null),
+    // 改动数(EDIT-MODE §6.1):备注逐格 @change 即时写库,没有草稿 —— 恒 0,关页签不问(不传会按 1 算)
+    dirty: () => 0,
   })
 // 告警面板是 FPAlertPanel(Teleport to body):子树随 KeepAlive 停用消失,它不消失,会盖在下一个屏上。
 onDeactivated(() => { alertOpen.value = false })
@@ -150,7 +157,7 @@ function commitNote(u: AllocLossUnitDTO, raw: string) {
       // 回包前已换月/换期(seq 变了)就不回滚 —— 那份 prev 是上一个月的表
       if (my !== seq) return
       loss.value = prev
-      alert(errMsg(e, '备注保存失败,请重试'))
+      receipt.fail(errMsg(e, '备注保存失败'), { label: '重试', run: () => commitNote(u, note) })
     })
 }
 
@@ -217,17 +224,57 @@ function gotoParams(section: 'monthly' | 'constant' | 'rule', edit = false) {
   router.push({ path: '/params', query: { ym: ym.value, zone: zone.value, section, ...(edit ? { edit: '1' } : {}) } })
 }
 
-// ── 屏级告警(§6):本屏只有这一类;chip 两态常驻,详情与动作都在抽屉里 ──
-// ⚠ 组名与 desc 的口吻**逐字对齐公共电核算屏**(PoolLedgerView 同名那一组):两屏说的是同一件事,
-//   两个名字会让人以为是两回事(本屏原名「快照过期」,2026-09-23 改)。
-const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
-  key: 'stale',
-  title: staleTitle(status.value),   // 参数 / 抄表两个来源(METER-TIMELINE-SPEC §5)
-  desc: `${staleWho(status.value)}在本月算出损耗之后又改过 —— 屏上的损耗量、损耗率还是改之前算的。`
-      + '不重算的话,按这些率出的催缴单会一直沿用旧数字。去计费参数页「重算本月」即可清除。',
-  items: [{ text: staleMsg.value, hint: `${year.value}年${month.value}月`, onClick: () => gotoParams('monthly', true) }],
-  action: { label: '去计费参数页重算', icon: 'refresh-cw', run: () => gotoParams('monthly', true) },
-}] : [])
+// ── 重算本月(问题面板「待重算」组头,只在编辑态出) / 生成本月(空状态按钮,本月还没算、编辑态出):
+//    与公共电核算「生成本月 / 重新生成」同一个 allocApi.generate ——
+//    楼栋损耗与池核算是同一批算出来的,共占同一把月锁。备注落独立表,重算不丢。
+const generating = ref(false)
+async function onRecalc() {
+  // 写口自守,在一切早退分支之前:浏览态 / 没读到本月现状(蒙着眼覆盖)/ 在途 一律打不出去。组头按钮的 busy 只是视觉
+  if (!editMode.value || generating.value || loadErr.value) return
+  const at = ym.value
+  // 没生成过就没有可盖掉的数字,不问(与公共电核算 onGenerate 同口径)
+  if (generated.value && !(await ask({
+    title: `重算 ${at}？`,
+    body: '这个月的公共电核算和楼栋损耗会整个按现在的参数和读数重算一遍，原来的数字会被盖掉；备注不受影响。',
+    action: '重算本月',
+  }))) return
+  // 等回答的这段时间里可能被接管、换了月 —— 再守一遍,不拿这次「确认」去盖别的月
+  if (!editMode.value || generating.value || loadErr.value || ym.value !== at) return
+  generating.value = true
+  try {
+    await allocApi.generate(at)
+    await loadMonth()
+    // 生成改的正是矩阵格子上的点(池/损耗亮起、stale 清掉)—— 换出账月时要立刻看得见
+    void period.reloadChain().catch(() => { /* 矩阵刷新失败不阻断本屏 */ })
+  } catch (e) {
+    receipt.fail(errMsg(e, '重算失败'), { label: '重试', run: () => void onRecalc() })
+  } finally { generating.value = false }
+}
+
+// ── 屏级告警(§6):本屏只有「待重算」这一组(LAYOUT-STABILITY §4:stale 归「待重算」,与公共电核算同名);
+//    chip 两态常驻,详情与动作都在问题面板里 ──
+// 重算是写操作(EDIT-MODE:写入口只在编辑态):编辑态组头「重算本月」;浏览态「进入编辑模式」,拿到锁后组头换成「重算本月」
+// (不自动帮点:拿锁可能要先过提权弹窗)。进不了编辑模式(或本月没读到)的人退回去计费参数页那条路。
+const alertGroups = computed<AlertGroup[]>(() => {
+  if (!staleMsg.value) return []
+  const action = editMode.value
+    ? { label: '重算本月', icon: 'refresh-cw', busy: generating.value || !!loadErr.value,
+        busyLabel: loadErr.value ? '本月数据没加载出来，不能重算' : '重算中…',
+        run: () => { alertOpen.value = false; void onRecalc() } }
+    : canEnter.value && !loadErr.value
+      ? { label: '进入编辑模式', icon: 'pencil', run: () => { alertOpen.value = false; toggleEdit() } }
+      : { label: '去计费参数页重算', icon: 'refresh-cw', run: () => gotoParams('monthly', true) }
+  return [{
+    key: 'stale',
+    title: '待重算',
+    // 主语分参数 / 抄表两个来源(METER-TIMELINE-SPEC §5)
+    desc: `${staleWho(status.value)}在本月算出损耗之后又改过 —— 屏上的损耗量、损耗率还是改之前算的。`
+        + '不重算的话,按这些率出的催缴单会一直沿用旧数字。',
+    // 明细点了去问题的源头:改过的参数在计费参数页(重算已在组头,这里不再带 edit=1)
+    items: [{ text: staleMsg.value, hint: `${year.value}年${month.value}月`, onClick: () => gotoParams('monthly') }],
+    action,
+  }]
+})
 </script>
 
 <template>
@@ -248,6 +295,8 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
     <div class="ll-head">
       <div class="ll-head-l">
         <h2 class="ll-title"><span class="ic"><component :is="iconFor('trending-down')" :size="18" /></span>楼栋损耗</h2>
+        <!-- 页面状态(LAYOUT-STABILITY §4):读到了、本月没算过。加载失败时不贴 —— 没读到就不知道算没算 -->
+        <FPStateTag v-if="!generated && !loadErr" tone="warn">本月未生成</FPStateTag>
         <Segmented :options="ZONE_OPTS" v-model="zone" size="sm" />
       </div>
       <div class="ll-actions">
@@ -257,7 +306,7 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
              手工指定率全在计费参数页 ③ 计算方式。
              ⚠ 按钮上的「计算方式」四个字**不能单独改** —— 它是参数页第 ③ 张卡的名字(ParamCenterView:701),
                 两屏必须同名。要去行话就两屏一起改,不是只改这一头。 -->
-        <Button variant="outline" size="sm" title="本月这个期区按什么方式算损耗,以及人工填进去的那几个数 —— 去计费参数页看 / 改" @click="gotoParams('rule')">
+        <Button variant="outline" size="sm" v-tip="'本月这个期区按什么方式算损耗,以及人工填进去的那几个数 —— 去计费参数页看 / 改'" @click="gotoParams('rule')">
           <template #leading><component :is="iconFor('sliders-horizontal')" :size="14" /></template>
           计算方式设置
         </Button>
@@ -267,42 +316,38 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
         <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
                           :review-note="reviewNote" :review-tip="reviewTip"
                           :disabled="!editMode && !!loadErr"
-                          :title="!editMode && loadErr ? '本月数据没读到,先点失败条上的「重试」再进编辑' : undefined"
                           @toggle="toggleEdit()" />
       </div>
     </div>
 
-    <!-- 加载失败(LAYOUT-STABILITY §6 允许的流内条:没读到本就该打断)。与下面那条灰条分属两态:
-         那条是「读到了,本月还没算过」,这条是「压根没读到」 -->
-    <FPLoadError v-if="loadErr" @retry="loadMonth()">
-      <span>{{ year }}年{{ month }}月的楼栋损耗没读到:{{ loadErr }}
-        —— 表里已清空(不显示上个月的数字),重试成功前不能改备注。</span>
+    <!-- 加载失败(LAYOUT-STABILITY §3):换掉表格区本身,一律带重试。失败时 loss 已清空 —— 不留上个月的数字,备注写不进 -->
+    <FPLoadError v-if="loadErr" :sub="`${loadErr} · 屏上不显示上个月的数字，重试成功前不能改备注`" @retry="loadMonth()">
+      {{ year }} 年 {{ month }} 月的楼栋损耗没读到
     </FPLoadError>
-
-    <!-- 提示条:只剩「本月还没算过」(首屏加载期,§3 允许);「改过参数还没重算」已改走 chip + 抽屉。
-         ⚠ 排除 loadErr:失败态下 loss 被清成 null,「还没算过」会把「没读到」说成「真的没有」 -->
-    <div v-if="!generated && !loadErr" class="ll-bar">
-      <component :is="iconFor('info')" :size="14" />
-      <span>{{ year }}年{{ month }}月还没算过 —— 表里没有数;在「公共电核算」屏点「生成本月」或在「计费参数」页「重算本月」后此处落数。</span>
-    </div>
+    <!-- 空状态(十件 ⑦):本月还没算过 / 本期区没有要核算的楼栋。对账行只跟着单元行出(后端按单元分期区),没单元就没有表可看 -->
+    <FPEmpty v-else-if="!units.length"
+             :sub="generated ? undefined : editMode ? '公共电核算和楼栋损耗一起生成' : '在「公共电核算」点「生成本月」后，这里出数'"
+             :action="!generated && editMode ? (generating ? '生成中…' : '生成本月') : undefined" @action="onRecalc">
+      {{ generated ? `${zoneLabel(zone)}本月没有要核算损耗的楼栋` : `${year} 年 ${month} 月的楼栋损耗还没算` }}
+    </FPEmpty>
 
     <!-- 台账式宽表:单元行 + 对账区两行(供电局总表 vs 各栋总表合计 / 各栋分表合计) + tfoot 合计 -->
-    <div class="ll-wrap" ref="wrapEl" :style="wrapSt">
+    <div v-else class="ll-wrap" ref="wrapEl" :style="wrapSt">
       <table class="ll-table" :class="{ 'hs-foot': hStage >= 2 }">
         <thead>
           <tr>
             <th class="ll-th ll-fix-th ll-fix" :style="fixLbl">位置</th>
             <th class="ll-th" :style="w(108)">总表用电量</th>
-            <th class="ll-th" :style="w(104)" title="仅列示,不计入总表 / 分表合计(仅二期有铝缆表,一期显'–')">铝缆用电量</th>
+            <th class="ll-th" :style="w(104)" v-tip="`仅列示,不计入总表 / 分表合计(仅二期有铝缆表,一期显'–')`">铝缆用电量</th>
             <th class="ll-th" :style="w(108)">分表用电量</th>
             <!-- 符号方向要在表头说清:负数是常态。2026-09-23 之前这一列给负数标红,
                  而引擎的定义就是「负=分表比总表少=正常有损耗」,等于把七行里正常的五行全标成了错 -->
-            <th class="ll-th" :style="w(100)" title="损耗量 = 分表用电量 − 总表用电量。负数=分表比总表少，也就是正常有损耗；正数=分表反而比总表多">损耗量</th>
-            <th class="ll-th" :style="w(92)" title="原损耗率 = 损耗量 ÷ 总表用电量，所以正常有损耗时它是负的。右边「收取损耗率」多数楼栋是按这个数反过来算出要向租户收多少，符号相反是对的；标着「仅按公摊分摊度数」的楼栋不走这条算法，看那一行名字旁边的说明">原损耗率</th>
-            <th class="ll-th" :style="w(116)" title="一期:各个园区公共用电池本月的用电量加起来 ÷ 均摊栋数（四舍五入到 2 位），各栋同值；悬停格子看分解式。二期不适用,显'–'">公摊分摊度数</th>
-            <th class="ll-th" :style="w(116)" title="损耗调整度数（正数多收 / 负数少收），按楼栋按月；在计费参数页 ① 本月参数改">损耗调整度数</th>
-            <th class="ll-th" :style="w(104)" title="损耗率加点（如 0.3%），按楼栋长期；在计费参数页 ② 长期常数改">损耗率加点</th>
-            <th class="ll-th" :style="w(160)" title="按损耗核算方式算出的率；填了「损耗率（手工指定）」则以它为准并并排显示公式算出的率">收取损耗率</th>
+            <th class="ll-th" :style="w(100)" v-tip="'损耗量 = 分表用电量 − 总表用电量。负数=分表比总表少，也就是正常有损耗；正数=分表反而比总表多'">损耗量</th>
+            <th class="ll-th" :style="w(92)" v-tip="'原损耗率 = 损耗量 ÷ 总表用电量，所以正常有损耗时它是负的。右边「收取损耗率」多数楼栋是按这个数反过来算出要向租户收多少，符号相反是对的；标着「仅按公摊分摊度数」的楼栋不走这条算法，看那一行名字旁边的说明'">原损耗率</th>
+            <th class="ll-th" :style="w(116)" v-tip="`一期:各个园区公共用电池本月的用电量加起来 ÷ 均摊栋数（四舍五入到 2 位），各栋同值；悬停格子看分解式。二期不适用,显'–'`">公摊分摊度数</th>
+            <th class="ll-th" :style="w(116)" v-tip="'损耗调整度数（正数多收 / 负数少收），按楼栋按月；在计费参数页 ① 本月参数改'">损耗调整度数</th>
+            <th class="ll-th" :style="w(104)" v-tip="'损耗率加点（如 0.3%），按楼栋长期；在计费参数页 ② 长期常数改'">损耗率加点</th>
+            <th class="ll-th" :style="w(160)" v-tip="'按损耗核算方式算出的率；填了「损耗率（手工指定）」则以它为准并并排显示公式算出的率'">收取损耗率</th>
             <th class="ll-th" :style="w(170)">备注</th>
           </tr>
         </thead>
@@ -311,8 +356,8 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
             <td class="ll-fix" :style="fixLbl">
               <span class="ll-lbl">
                 <span class="ll-lbl-t" v-tip="u.label">{{ u.label }}</span>
-                <span v-if="u.variant === 'share_only'" class="ll-var" title="仅按公摊分摊度数核算：率 = 公摊分摊度数 ÷ 分摊基数 + 加点">仅按公摊分摊度数</span>
-                <span v-else-if="u.variant === 'none'" class="ll-var dim" title="不核算（组内无分表或设为只列示用量）">不核算</span>
+                <span v-if="u.variant === 'share_only'" class="ll-var" v-tip="'仅按公摊分摊度数核算：率 = 公摊分摊度数 ÷ 分摊基数 + 加点'">仅按公摊分摊度数</span>
+                <span v-else-if="u.variant === 'none'" class="ll-var dim" v-tip="'不核算（组内无分表或设为只列示用量）'">不核算</span>
               </span>
             </td>
             <td><span class="ll-nv" :class="{ empty: u.cQty == null }">{{ fmt(u.cQty) }}</span></td>
@@ -325,29 +370,29 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
             <!-- G:只读派生值,悬浮给分解式(池名+净量逐项 ÷ 均摊栋数);分栋差异不再走 G调整,走「调整度数」。
                  二期 gQty 恒 null(该指标只在一期核算,见 gTitle),显'–'同其它空值 -->
             <td>
-              <span class="ll-nv help" :class="{ empty: u.gQty == null }" :title="gTitle(u)">{{ fmt(u.gQty) }}</span>
+              <span class="ll-nv help" :class="{ empty: u.gQty == null }" v-tip="gTitle(u)">{{ fmt(u.gQty) }}</span>
             </td>
             <!-- 损耗调整度数 / 损耗率加点:格里是快照值,徽标是当前生效参数的生效方式;点击去参数页改 -->
             <td>
-              <span class="ll-nv ll-pv" :class="{ empty: u.adjQty == null }" title="点击去计费参数页改（① 本月参数 · 损耗调整度数）"
+              <span class="ll-nv ll-pv" :class="{ empty: u.adjQty == null }" v-tip="'点击去计费参数页改（① 本月参数 · 损耗调整度数）'"
                     role="button" tabindex="0" @click="gotoParams('monthly')" @keydown.enter.prevent="gotoParams('monthly')">
                 {{ fmt(u.adjQty) }}
                 <span v-if="badgeOf(u.headBuildingId, 'loss_adj_qty')" class="ll-badge"
-                      :class="badgeOf(u.headBuildingId, 'loss_adj_qty')!.tone" :title="badgeOf(u.headBuildingId, 'loss_adj_qty')!.title">
+                      :class="badgeOf(u.headBuildingId, 'loss_adj_qty')!.tone" v-tip="badgeOf(u.headBuildingId, 'loss_adj_qty')!.title">
                   {{ badgeOf(u.headBuildingId, 'loss_adj_qty')!.text }}</span>
               </span>
             </td>
             <td>
-              <span class="ll-nv ll-pv" :class="{ empty: u.adjRate == null }" title="点击去计费参数页改（② 长期常数 · 损耗率加点）"
+              <span class="ll-nv ll-pv" :class="{ empty: u.adjRate == null }" v-tip="'点击去计费参数页改（② 长期常数 · 损耗率加点）'"
                     role="button" tabindex="0" @click="gotoParams('constant')" @keydown.enter.prevent="gotoParams('constant')">
                 {{ fpct(u.adjRate) }}
                 <span v-if="badgeOf(u.headBuildingId, 'loss_adj_rate')" class="ll-badge"
-                      :class="badgeOf(u.headBuildingId, 'loss_adj_rate')!.tone" :title="badgeOf(u.headBuildingId, 'loss_adj_rate')!.title">
+                      :class="badgeOf(u.headBuildingId, 'loss_adj_rate')!.tone" v-tip="badgeOf(u.headBuildingId, 'loss_adj_rate')!.title">
                   {{ badgeOf(u.headBuildingId, 'loss_adj_rate')!.text }}</span>
               </span>
             </td>
             <td>
-              <span class="ll-rate" :class="{ empty: u.tenantRate == null }" :title="rateTitle(u)">
+              <span class="ll-rate" :class="{ empty: u.tenantRate == null }" v-tip="rateTitle(u)">
                 <template v-if="u.manualRate != null"><span class="ll-manual">手工指定</span>{{ fpct(u.tenantRate) }}<span class="ll-formula">（公式 {{ fpct(u.formulaRate) }}）</span></template>
                 <template v-else>{{ fpct(u.tenantRate) }}</template>
               </span>
@@ -356,21 +401,18 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
                  列宽由表头 w(170) 定死,input 宽 100% + border-box,进出编辑态整张表不抽动 -->
             <td>
               <input v-if="editN" class="ll-in" type="text" maxlength="255"
-                     :value="u.note ?? ''" placeholder="—" title="备注,回车/失焦保存;清空=删掉备注"
+                     :value="u.note ?? ''" placeholder="—" v-tip="'备注,回车/失焦保存;清空=删掉备注'"
                      @change="commitNote(u, ($event.target as HTMLInputElement).value)" />
-              <span v-else class="ll-txt" :title="u.note ?? undefined">{{ u.note ?? '–' }}</span>
+              <span v-else class="ll-txt" v-tip="u.note">{{ u.note ?? '–' }}</span>
             </td>
-          </tr>
-          <tr v-if="units.length === 0">
-            <td class="ll-noro" :colspan="colCount">{{ zoneLabel(zone) }}本月没有要核算损耗的楼栋（先去「公共电核算」屏点「生成本月」）</td>
           </tr>
           <!-- 对账区(读时派生,见 buildLossReconRows):供电侧读数落「总表用电量」列,被比的合计落「分表用电量」列。
                前两行只管那块供电局表带的几栋;后两行(有栋被单独剔掉时才出)是把它们加回来的全部楼栋 -->
           <tr v-for="(r, i) in reconRows" :key="'rc' + i" class="ll-recon" :class="{ 'll-recon-all': r.newGroup }">
             <td class="ll-fix" :style="fixLbl"><span class="ll-lbl"><span class="ll-lbl-t" v-tip="r.label">{{ r.label }}</span></span></td>
-            <td><span class="ll-nv" :class="{ empty: r.supplyQty == null }" :title="r.supplyTitle">{{ fmt(r.supplyQty) }}</span></td>
+            <td><span class="ll-nv" :class="{ empty: r.supplyQty == null }" v-tip="r.supplyTitle">{{ fmt(r.supplyQty) }}</span></td>
             <td></td>
-            <td><span class="ll-nv" :class="{ empty: r.sumQty == null }" :title="r.sumTitle">{{ fmt(r.sumQty) }}</span></td>
+            <td><span class="ll-nv" :class="{ empty: r.sumQty == null }" v-tip="r.sumTitle">{{ fmt(r.sumQty) }}</span></td>
             <!-- 同单元行:不给损耗量上颜色 -->
             <td><span class="ll-nv" :class="{ empty: r.loss == null }">{{ fmt(r.loss) }}</span></td>
             <td><span class="ll-nv" :class="{ empty: r.rate == null }">{{ fpct(r.rate) }}</span></td>
@@ -410,8 +452,6 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
 .ll-title .ic { width: 34px; height: 34px; border-radius: 10px; background: var(--surface-sunken); display: grid; place-items: center; color: var(--text-secondary); flex: 0 0 auto; }
 /* flex-wrap:M/S 档工具行收纳成两行(§2 修订,宽档单行不受影响——不溢出就不换行) */
 .ll-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-
-.ll-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); }
 
 /* ── 宽表(FPLedgerTable 手法) ── */
 .ll-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface-white); }
@@ -458,8 +498,6 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
 /* 「全部楼栋」那一组与上面那组是两件事,给一条虚线分开 —— 四行同底同边框会糊成一块。
    ⚠ 选择器必须压过上一条的 `border-top: none`(它带两个 .ll-recon,权重更高) */
 .ll-table tbody tr.ll-recon + tr.ll-recon.ll-recon-all td { border-top: 1px dashed var(--border-strong); }
-
-.ll-noro { text-align: center; padding: 40px 16px; color: var(--text-disabled); font-size: var(--fs-label); }
 
 .ll-table tfoot th { position: sticky; bottom: 0; z-index: 5; height: 40px; font-weight: var(--fw-semibold); background: var(--surface-white); border-top: 2px solid var(--border-strong); font-family: var(--font-mono); color: var(--text-primary); }
 .ll-table tfoot th.ll-fix { z-index: 7; }

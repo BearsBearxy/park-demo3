@@ -47,8 +47,8 @@ const emit = defineEmits<{
       </div>
     </div>
 
-    <FPLoadError v-if="error" @retry="emit('retry')">
-      <span>{{ error }} —— 矩阵没显示出来，不是这些月都没数据。</span>
+    <FPLoadError v-if="error" :sub="`${error} · 不是这些月都没数据`" @retry="emit('retry')">
+      月份清单没读到
     </FPLoadError>
 
     <div v-else-if="loading" class="page-loading"><span class="page-spin" /></div>

@@ -304,11 +304,11 @@ describe('S10Table · 固定列按表格可见宽度退,租户封顶 1/5,高度�
     expect(st(w, 'th.s10-h-name').width).toBe('175px')
   })
 
-  it('可见 3000:未绑定的种子行最长 —— 6 个字 105 + 圆点 16 = 121(比「合计 · 1 户」105 长)', async () => {
+  it('可见 3000:未绑定的种子行最长 —— 6 个字 105 + 「● 未绑定」标记 56(间距 8 + 点 6 + 4 + 三个字 38) = 161(比「合计 · 1 户」105 长)', async () => {
     const rows = [makeRow('factory', {}, { id: 1, tenantName: '嘉华新材料厂', tenantId: null, source: 'seed', total: 1 })]
     const w = mnt({ ...props, rows })
     await fire(3000, 800)
-    expect(st(w, 'th.s10-h-name').width).toBe('121px')
+    expect(st(w, 'th.s10-h-name').width).toBe('161px')
   })
 
   it('进编辑态再退出(不重新拉数据):租户列缩回浏览态的宽', async () => {

@@ -128,7 +128,7 @@ const ellipsisStyle = {
         :value="String(pageSize)"
         :options="PAGE_SIZES"
         :style="{ width: '80px', flex: '0 0 auto' }"
-        title="每页显示多少条"
+        v-tip="'每页显示多少条'"
         @change="(_e, v) => handlePageSizeChange(v)"
       />
       <span

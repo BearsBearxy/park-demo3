@@ -17,6 +17,7 @@ import Button from '@/components/ds/Button.vue'
 import FPReviewDialog from '@/components/fp/FPReviewDialog.vue'
 import { iconFor } from '@/components/ds/icon'
 import { useAuthStore } from '@/stores/auth'
+import { receipt } from '@/utils/receipt'
 import { useReviewStore } from '@/stores/review'
 import { periodOfKey, type ReviewRow, type ReviewStatus } from '@/types/review'
 
@@ -172,7 +173,9 @@ const acting = ref(false)          // 在途,防连点
  * 报错分流。**423 / 409 / 403 不许合成一句** —— 三者要用户去做的事完全不同:
  *   409 = 上游没审完(或还没录完) → 去催上游 / 先把表录完
  *   403 = 你没有这张表的权限 → 去找有权限的人
- *   其余(含 423)= 后端已经写好了准话,原样弹
+ *   其余(含 423)= 后端已经写好了准话,原样报
+ * 报在底部回执(receipt.fail)。不带「重试」:按钮就在原处,再点一次即可;挂在回执上的重试
+ * 会在本簇已不许动的时刻(进了编辑态、年数据换了)绕过上面的显隐判据发出去。
  * 这份口径与 DataHomeView.runAction 同源,照抄不新写 —— 两处给出两套说法,用户分不出该找谁。
  */
 async function run(fn: () => Promise<unknown>) {
@@ -183,7 +186,7 @@ async function run(fn: () => Promise<unknown>) {
   } catch (e) {
     const err = e as { code?: number; message?: string }
     const msg = err?.message ?? '操作失败'
-    alert(err?.code === 409 ? `上游还没审完：${msg}`
+    receipt.fail(err?.code === 409 ? `上游还没审完：${msg}`
         : err?.code === 403 ? `你没有这张表的权限：${msg}`
         : msg)
   } finally {
@@ -271,7 +274,7 @@ onBeforeUnmount(() => {
         <template #leading><component :is="iconFor('rotate-ccw')" :size="14" /></template>
         {{ actText('撤回', toRecall) }}
       </Button>
-      <!-- 「通过」同样不预判上游前置:上游没审完时后端 409,弹「上游还没审完：计费参数」。 -->
+      <!-- 「通过」同样不预判上游前置:上游没审完时后端 409,回执报「上游还没审完：计费参数」。 -->
       <Button v-if="toApprove.length" variant="filled" size="sm" :disabled="acting" @click="onApprove">
         <template #leading><component :is="iconFor('check')" :size="14" /></template>
         {{ actText('通过', toApprove) }}

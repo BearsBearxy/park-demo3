@@ -98,6 +98,8 @@ describe('远程授权 · 请求端', () => {
     await w.vm.$nextTick()
 
     expect(w.emitted('elevated')).toBeFalsy()
+    // 拒绝的原因落在常驻的字段报错位(十件 ⑤ .fp-field-err),不是自写的报错行
+    expect(w.find('.fp-field-err').text()).toBe('周明 拒绝了这次请求。')
   })
 
   it('别人那次请求的结果，本弹窗不认领', async () => {

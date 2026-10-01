@@ -75,14 +75,14 @@ const floors = computed(() => {
             <span class="u-nm">
               {{ u.companyName ?? UNIT_STATUS[u.status]?.label }}
             </span>
-            <span class="u-ar" :title="!u.area && u.derivedArea ? '合同派生面积(单元未录面积,取占用合同计费行面积)' : undefined">
+            <span class="u-ar" v-tip="!u.area && u.derivedArea ? '合同派生面积(单元未录面积,取占用合同计费行面积)' : undefined">
               {{ u.area ? Number(u.area).toLocaleString('zh-CN') + ' ㎡'
                  : u.derivedArea ? '≈' + Number(u.derivedArea).toLocaleString('zh-CN') + ' ㎡'
                  : u.area != null ? '0 ㎡' : '' }}
             </span>
           </div>
           <div v-if="!byFloor[f]?.length" class="fp-flr-empty">本层暂无单元</div>
-          <button v-if="canAdd !== false" class="fp-add" type="button" :title="`在 ${f}F 添加单元`" @click="emit('add-unit', f)">
+          <button v-if="canAdd !== false" class="fp-add" type="button" v-tip="`在 ${f}F 添加单元`" @click="emit('add-unit', f)">
             <Plus :size="14" />
           </button>
         </div>

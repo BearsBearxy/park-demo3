@@ -90,11 +90,9 @@ describe('自绘图 · 切外观', () => {
   it.each(CHARTS.slice(0, 4))('❗$name:根上挂 --sv-* 两套色,浅色是原来的 Figma 取色,切深色当场换', async ({ mk }) => {
     const w = mk()
     const host = () => (w.element as HTMLElement).style
-    expect(host().getPropertyValue('--sv-tip-bg')).toBe('#1E293B')
     expect(host().getPropertyValue('--sv-label')).toBe('#94A3B8')
     resolvedTheme.value = 'dark'
     await nextTick()
-    expect(host().getPropertyValue('--sv-tip-bg'), '暗色提示框底 = 暗色 --tip-bg').toBe('rgb(62,77,95)')
     expect(host().getPropertyValue('--sv-label')).toBe('rgba(236,236,238,.62)')
     w.unmount()
   })

@@ -46,7 +46,7 @@ export function anchorMonth(months: number[], revenue: (number | null)[], select
 
 /** §C4 人话结论行(数据模板,spec 定稿):保本有解给保本线+口径月达成度;无解(bePct=null)给替代句。 */
 export function conclusionText(be: BeModel, ym: string): string {
-  if (be.bePct == null || be.beRev == null) return '当前口径月收入为负,保本点不适用——见期间横幅'
+  if (be.bePct == null || be.beRev == null) return '当前口径月收入为负,保本点不适用'
   return `按当前成本结构,月收入 ≥ ¥${fnum(be.beRev / 10000)}万 即保本;口径月(${ym})收入 ¥${fnum(be.rev / 10000)}万,达成 ${(be.rev / be.beRev * 100).toFixed(0)}%`
 }
 

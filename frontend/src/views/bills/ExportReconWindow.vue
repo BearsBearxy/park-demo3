@@ -54,7 +54,7 @@ function onExport() {
       </colgroup>
       <thead>
         <tr>
-          <th class="ct"><input type="checkbox" :checked="allChecked" title="全选/全不选(总表除外)" @change="toggleAll" /></th>
+          <th class="ct"><input v-tip="'全选/全不选(总表除外)'" type="checkbox" :checked="allChecked" @change="toggleAll" /></th>
           <th class="l">Sheet</th>
           <th>户数</th>
           <th>金额</th>
@@ -65,9 +65,8 @@ function onExport() {
         <tr v-for="s in sheets" :key="s.id"
             :class="{ sel: s.kind === 'total' || picked.has(s.id), none: s.kind === 'none' }"
             @click="s.kind !== 'total' && toggle(s.id)">
-          <td class="ct">
+          <td v-tip="s.kind === 'total' ? '总表恒出,不可取消' : undefined" class="ct">
             <input type="checkbox" :checked="s.kind === 'total' || picked.has(s.id)" :disabled="s.kind === 'total'"
-                   :title="s.kind === 'total' ? '总表恒出,不可取消' : undefined"
                    @click.stop @change="toggle(s.id)" />
           </td>
           <td class="l"><span class="er-name">{{ s.label }}</span></td>

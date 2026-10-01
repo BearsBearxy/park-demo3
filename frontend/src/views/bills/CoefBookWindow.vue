@@ -33,6 +33,10 @@ import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
 import { useEditLock } from '@/composables/useEditLock'
 import { S } from '@/utils/lockScopes'
 import FPToast from '@/components/fp/FPToast.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import { ask, askLeave } from '@/utils/ask'
+import { receipt } from '@/utils/receipt'
 
 const props = defineProps<{
   open: boolean
@@ -71,13 +75,16 @@ const editMode = ref(false)
 // ⚠ 键取**生效月 effYm**,不是催缴单页当前的 ym —— 生效月由本窗口内独立选择,两者可以不同。
 //   取错了会锁住一个没人在改的月,而真正在改的那个月毫无保护(§3.1 E 段点名的坑)。
 // 这把锁与计费参数 / 公共电核算 / 催缴单三屏**共占同一把**:它们打的是同一批快照表。
-const lock = useEditLock(() => { editMode.value = false }, () => canEdit.value)
+// 改动数 = 暂存条数(EDIT-MODE-SPEC §6.1):关页签 / 关浏览器按它问,0 条不拦。锁与 openEditor 递同一个函数,auth 按函数去重
+const dirtyN = () => stash.value.size
+const lock = useEditLock(() => { editMode.value = false }, () => canEdit.value, dirtyN)
 const { lockedBy, evictedBy } = lock
 /** 这一期(按生效月)此刻被谁占着 —— 取自在场表，不用点按钮撞门。 */
 const heldByOther = lock.watchScope(() => S.coefBook(effYear.value, effMonth.value))
 watch(editMode, (on) => { if (!on) lock.release() })
 
 async function onEditBtn() {
+  if (loadErr.value) return   // 没读到就不进编辑(授权窗批下来走的也是这里)
   if (!canEdit.value) { asking.value = ['param-policy:edit']; return }
   if (await lock.acquire(S.coefBook(effYear.value, effMonth.value))) editMode.value = true
 }
@@ -90,7 +97,7 @@ async function onTaken() {
 //   而本窗口退出时又会被别的页面挡住结束不了。
 const meId = Symbol('coef-book')
 const screen = useScreen()
-watch(editMode, (on) => { if (on) auth.openEditor(meId, screen); else auth.closeEditor(meId) })
+watch(editMode, (on) => { if (on) auth.openEditor(meId, screen, dirtyN); else auth.closeEditor(meId) })
 onUnmounted(() => auth.closeEditor(meId))
 const stash = ref<CoefStash>(new Map())
 
@@ -107,6 +114,8 @@ function stashAsTsv(): string {
 const selected = ref(new Set<number>())
 const uni = ref('')
 const clearMode = ref(false)
+const uniErr = ref('')
+watch([uni, coefId, clearMode], () => { uniErr.value = '' })
 
 const curMeta = computed(() => coefMeta(coefId.value))
 // 层份键仅二期开放:一期/三期页签下禁用编辑并提示(表格让位提示条)
@@ -130,6 +139,7 @@ const loading = ref(false)
 const priceRows = ref<ParamRowDTO[]>([])
 const pools = ref<AllocPoolRowDTO[]>([])
 const rules = ref<AllocRuleDTO[]>([])
+const loadErr = ref('')
 let seq = 0
 async function load() {
   const my = ++seq
@@ -145,10 +155,10 @@ async function load() {
     priceRows.value = ps
     pools.value = pl.rows
     rules.value = rs
+    loadErr.value = ''
   } catch (e) {
     if (my !== seq) return
-    alert(errMsg(e, '系数簿数据加载失败'))
-    emit('close')
+    loadErr.value = errMsg(e, '系数簿数据加载失败')
   } finally { if (my === seq) loading.value = false }
 }
 watch(() => props.open, o => {
@@ -261,34 +271,39 @@ function applyUni() {
     const t = uni.value.trim()
     const n = Number(t)
     if (curMeta.value.enumOptions) {
-      if (!(n in curMeta.value.enumOptions)) { alert(`请选择${curMeta.value.label}`); return }
-    } else if (t === '' || !isFinite(n)) { alert(`请输入数字(${curMeta.value.unit})`); return }
+      if (!(n in curMeta.value.enumOptions)) { uniErr.value = `请选择${curMeta.value.label}`; return }
+    } else if (t === '' || !isFinite(n)) { uniErr.value = `请输入数字(${curMeta.value.unit})`; return }
     v = n
   }
+  uniErr.value = ''
   for (const id of selected.value) stash.value.set(id, v)
 }
 function unstash(id: number) { stash.value.delete(id) }
 
 // 切期页签/系数/生效月:有暂存先确认放弃(暂存绑定在当前系数+生效月上)
-function guardDrop(): boolean {
-  if (stash.value.size === 0) return true
-  if (!confirm(`有 ${stash.value.size} 条未保存暂存,切换将放弃这些改动。继续?`)) return false
+async function guardDrop(to: string): Promise<boolean> {
+  const n = stash.value.size
+  if (n === 0) return true
+  if (!(await ask({
+    title: `切换到「${to}」？`, body: `这页有 ${n} 处改动还没保存。`,
+    action: '放弃改动并切换', cancel: '继续编辑', danger: true,
+  }))) return false
   stash.value.clear()
   return true
 }
-function setPhase(v: string) {
-  if (v === phase.value || !guardDrop()) return
+async function setPhase(v: string) {
+  if (v === phase.value || !(await guardDrop(PHASE_OPTS.find(o => o.value === v)?.label ?? v))) return
   phase.value = v
   selected.value.clear()
 }
-function setCoef(v: string) {
-  if (v === coefId.value || !guardDrop()) return
+async function setCoef(v: string) {
+  if (v === coefId.value || !(await guardDrop(coefMeta(v).label))) return
   coefId.value = v
   selected.value.clear()
 }
 // 年月合成一个月份字段(改前年下拉、月下拉各走一遍同样的 guardDrop + load)
-function setEffYm(v: string) {
-  if (v === effYm.value || !guardDrop()) return
+async function setEffYm(v: string) {
+  if (v === effYm.value || !(await guardDrop(v))) return
   effYear.value = +v.slice(0, 4)
   effMonth.value = +v.slice(5, 7)
   load()
@@ -301,14 +316,15 @@ const okMsg = ref('')
 // 自动消失与关闭按钮由 FPToast 内部管（LAYOUT-STABILITY-SPEC §2 优先级 2：浮层，不进文档流）
 function flashOk(msg: string) { okMsg.value = msg }
 async function onSave() {
-  if (saving.value || stash.value.size === 0) return
+  // 自守:失败回执上的「重试」点下去时可能已退出编辑 / 换了月且没读到
+  if (saving.value || stash.value.size === 0 || !editMode.value || loadErr.value) return
   const meta = curMeta.value
   saving.value = true
   try {
     if (meta.floorShare) {
       const items = buildFloorPlan(pools.value, rules.value, meta.feeKey!, stash.value, effYm.value)
       if (items.length === 0) {
-        alert(`暂存租户都不在任何${meta.label}池成员名单,无可提交项(名单增删请去 公共电核算→编辑池)`)
+        receipt.warn(`暂存租户都不在任何${meta.label}池成员名单,无可提交项(名单增删请去 公共电核算→编辑池)`)
         stash.value.clear()
         return
       }
@@ -317,7 +333,8 @@ async function onSave() {
         try { await allocApi.updateRule(it.ruleId, it.req) }
         catch (e) {
           stash.value = floorStashAfter(items, done, stash.value)
-          alert(errMsg(e, `池「${it.poolName}」保存失败`) + `;之前 ${done.length} 个池已提交生效,窗口数据已刷新`)
+          receipt.fail(errMsg(e, `池「${it.poolName}」保存失败`) + `;之前 ${done.length} 个池已提交生效,窗口数据已刷新`,
+            { label: '重试', run: () => void onSave() })
           await load()
           return
         }
@@ -332,7 +349,8 @@ async function onSave() {
       for (const it of items) {
         try { for (const req of it.reqs) await paramsApi.put(req, effYm.value) }
         catch (e) {
-          alert(errMsg(e, `「${nameOf(it.tenantId)}」保存失败`) + `;之前 ${ok} 户已提交生效,窗口数据已刷新`)
+          receipt.fail(errMsg(e, `「${nameOf(it.tenantId)}」保存失败`) + `;之前 ${ok} 户已提交生效,窗口数据已刷新`,
+            { label: '重试', run: () => void onSave() })
           await load()
           return
         }
@@ -347,13 +365,14 @@ async function onSave() {
   } finally { saving.value = false }
 }
 
-// ── 退出编辑(有暂存先 confirm 保存/放弃)与关闭 ──
+// ── 退出编辑(有暂存先问存不存;不存再问放弃)与关闭 ──
 async function exitEdit() {
-  if (stash.value.size > 0) {
-    if (confirm(`有 ${stash.value.size} 条暂存未保存。「确定」=先保存再退出;「取消」=下一步选择放弃`)) {
+  const n = stash.value.size
+  if (n > 0) {
+    if (await ask({ title: `退出编辑前保存 ${n} 条暂存？`, action: `保存 ${n} 条并退出`, cancel: '不保存' })) {
       await onSave()
       if (stash.value.size > 0) return   // 保存失败/部分提交:留在编辑态处理余下
-    } else if (confirm(`放弃这 ${stash.value.size} 条暂存改动?`)) {
+    } else if (await askLeave({ page: '系数簿', count: n, verb: '退出编辑' })) {
       stash.value.clear()
     } else return
   }
@@ -362,10 +381,9 @@ async function exitEdit() {
   auth.closeEditor(meId)        // 显式出集合:watch 是 pre flush,下一行同步就要用到结果
   void auth.endElevation()      // 退出编辑 = 结束授权(ELEVATION-SPEC)
 }
-function onClose() {
+async function onClose() {
   if (saving.value) return
-  if (stash.value.size > 0
-    && !confirm(`有 ${stash.value.size} 条未保存暂存,关闭将放弃。确认关闭?`)) return
+  if (!(await askLeave({ page: '系数簿', count: stash.value.size }))) return
   stash.value.clear()
   emit('close')
 }
@@ -375,7 +393,8 @@ function onClose() {
   <FPDrawer :open="open" title="系数簿" icon="sliders-horizontal" :width="1080" :fixed-height="true"
             :subtitle="`批量修改租户系数 · 版本语义与计费参数页一致:自生效月起前滚,历史账期不动`"
             @close="onClose">
-    <div v-if="loading" class="cb-empty">加载中…</div>
+    <!-- 已失败时不换成「加载中…」:重试在途失败件留在原地,到数才退场 -->
+    <div v-if="loading && !loadErr" class="cb-empty">加载中…</div>
     <template v-else>
       <!-- 成功提示(5s 自消)。page 模式贴屏幕底部:弹窗 body 是 overflow:auto 滚动容器,
            absolute 贴底会跟着内容滚走;且 --z-toast(400) > --z-modal-2(320),不被弹窗遮住 -->
@@ -400,11 +419,10 @@ function onClose() {
       <!-- 位置常驻(LAYOUT-STABILITY-SPEC §4.2):切系数时提示有无都占一行,不许把下面的表格顶走 -->
       <div class="cb-hint"><template v-if="curMeta.hint">{{ curMeta.hint }}</template></div>
 
-      <!-- 层份键在一期/三期页签禁用:提示条让位表格 -->
-      <div v-if="floorLocked" class="cb-bar">
-        <component :is="iconFor('info')" :size="14" />
-        <span>层份类系数(电梯/消防)仅二期开放 —— 请切到「二期」页签查看与编辑。</span>
-      </div>
+      <!-- 加载失败换掉表格(不再弹窗关窗):期页签 / 系数 / 生效月照常可切,重试接上 load -->
+      <FPLoadError v-if="loadErr" :sub="loadErr" @retry="load">{{ effYear }} 年 {{ effMonth }} 月的系数没读到</FPLoadError>
+      <!-- 层份键在一期/三期页签禁用:空状态换掉表格 -->
+      <FPEmpty v-else-if="floorLocked" sub="请切到「二期」页签查看与编辑。">层份类系数(电梯 / 消防)只在二期开放</FPEmpty>
 
       <template v-else>
         <!-- 统一修改条(v3 唯一改值入口):勾选租户→输一个值→应用到选中;清除模式=应用空值回退 -->
@@ -420,11 +438,12 @@ function onClose() {
           <input v-else v-model="uni" class="cb-uni-in" :disabled="clearMode"
                  :placeholder="clearMode ? '清除(空值)' : curMeta.unit" @keydown.enter.prevent="applyUni" />
           <Button variant="outline" size="sm" :disabled="selected.size === 0" @click="applyUni">应用到选中</Button>
-          <label class="cb-chk"
-                 title="清除模式:应用空值=删除该生效月版本,回退上一版本/默认(层份=回按楼层自动分)">
+          <label v-tip="'清除模式:应用空值=删除该生效月版本,回退上一版本/默认(层份=回按楼层自动分)'" class="cb-chk">
             <input type="checkbox" v-model="clearMode" />
             清除模式
           </label>
+          <!-- 字段报错常驻占位一行(LAYOUT-STABILITY §4.2):字才是条件的 -->
+          <p class="fp-field-err cb-uni-err"><template v-if="uniErr">{{ uniErr }}</template></p>
         </div>
 
         <!-- 租户表:楼栋分组;列=☑|租户|楼栋|当前生效值·生效自(例外徽标)|暂存新值(只读+撤销,无逐行输入框) -->
@@ -440,12 +459,12 @@ function onClose() {
             <thead>
               <tr>
                 <th v-if="editMode" class="ct">
-                  <input type="checkbox" :checked="allChecked" title="全选=当前筛选可见行" @change="toggleAll" />
+                  <input v-tip="'全选=当前筛选可见行'" type="checkbox" :checked="allChecked" @change="toggleAll" />
                 </th>
                 <th class="l">租户</th>
                 <th class="l">楼栋</th>
-                <th title="版本链解析(与派生引擎同口径);「例外」=户级行命中,灰体=继承分区/全园默认">当前生效值 · 生效自</th>
-                <th v-if="editMode" :title="`暂存新值(自 ${effYm} 起生效);×=单行撤销`">暂存新值</th>
+                <th v-tip="'版本链解析(与派生引擎同口径);「例外」=户级行命中,灰体=继承分区/全园默认'">当前生效值 · 生效自</th>
+                <th v-if="editMode" v-tip="`暂存新值(自 ${effYm} 起生效);×=单行撤销`">暂存新值</th>
               </tr>
             </thead>
             <tbody>
@@ -461,21 +480,21 @@ function onClose() {
                   <td v-if="editMode" class="ct">
                     <input type="checkbox" :checked="selected.has(r.tenantId)" @click.stop @change="toggleRow(r.tenantId)" />
                   </td>
-                  <td class="l"><span class="cb-tname" :title="r.tenantName">{{ r.tenantName }}</span></td>
+                  <td class="l"><span v-tip="r.tenantName" class="cb-tname">{{ r.tenantName }}</span></td>
                   <td class="l">
-                    <span class="cb-txt dim"
-                          :title="r.bld.all.length > 1 ? r.bld.all.map(b => b.name).join('、') : undefined">
+                    <span v-tip="r.bld.all.length > 1 ? r.bld.all.map(b => b.name).join('、') : undefined"
+                          class="cb-txt dim">
                       {{ r.bld.main?.name ?? '–' }}<em v-if="r.bld.all.length > 1" class="cb-xb">+{{ r.bld.all.length - 1 }}栋</em>
                     </span>
                   </td>
                   <td>
-                    <span class="cb-val" :class="{ dim: !curMap.get(r.tenantId)?.exception && !curMeta.floorShare }"
-                          :title="curMap.get(r.tenantId)?.title">
+                    <span v-tip="curMap.get(r.tenantId)?.title" class="cb-val"
+                          :class="{ dim: !curMap.get(r.tenantId)?.exception && !curMeta.floorShare }">
                       {{ curMap.get(r.tenantId)?.text ?? '—' }}
                       <em v-if="curMap.get(r.tenantId)?.eff" class="cb-eff">{{ curMap.get(r.tenantId)?.eff }}</em>
                       <em v-if="curMap.get(r.tenantId)?.exception" class="cb-ex">例外</em>
-                      <em v-if="curMap.get(r.tenantId)?.zoneUnset" class="cb-zwarn"
-                          title="该楼期区未标注,以上是全园价,不是本期专属价">未标注期区</em>
+                      <em v-if="curMap.get(r.tenantId)?.zoneUnset" v-tip="'该楼期区未标注,以上是全园价,不是本期专属价'"
+                          class="cb-zwarn">未标注期区</em>
                     </span>
                   </td>
                   <td v-if="editMode">
@@ -483,7 +502,7 @@ function onClose() {
                       <b :class="{ del: stash.get(r.tenantId) == null }">
                         {{ stash.get(r.tenantId) == null ? '清除(回退)' : curMeta.enumOptions ? enumText(stash.get(r.tenantId)!) : stash.get(r.tenantId) }}
                       </b>
-                      <button class="cb-undo" title="撤销该行暂存" @click.stop="unstash(r.tenantId)">
+                      <button v-tip="'撤销该行暂存'" class="cb-undo" @click.stop="unstash(r.tenantId)">
                         <component :is="iconFor('x')" :size="12" />
                       </button>
                     </span>
@@ -510,7 +529,7 @@ function onClose() {
       </template>
       <!-- 编辑态走上面的 [退出编辑][保存]，这里只负责浏览态那三态。
            作用域取**生效月** effYm，与计费参数/公共电核算/催缴单共占同一把 billing-chain 月锁。 -->
-      <FPEditModeButton v-else-if="!floorLocked && !loading" :edit="false"
+      <FPEditModeButton v-else-if="!floorLocked && !loading" :edit="false" :disabled="!!loadErr"
                         :held-by-other="heldByOther" :can-enter="canAsk" @toggle="onEditBtn" />
       <Button variant="outline" size="sm" @click="onClose">关闭</Button>
     </template>
@@ -529,9 +548,6 @@ function onClose() {
 <style scoped>
 .cb-empty { padding: 40px 12px; text-align: center; color: var(--text-disabled); font-size: var(--fs-label); }
 
-/* 提示/成功条(bn-bar 家族) */
-.cb-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); }
-
 /* 控制行 */
 .cb-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .cb-lbl { font-size: 12px; color: var(--text-muted); }
@@ -543,6 +559,7 @@ function onClose() {
 .cb-unibar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-card); font-size: 12.5px; color: var(--text-secondary); flex-wrap: wrap; }
 .cb-unibar b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .cb-sep { color: var(--text-disabled); }
+.cb-uni-err { flex: 0 0 100%; margin-top: -4px; }
 .cb-uni-in { width: 120px; height: 30px; padding: 0 10px; box-sizing: border-box; border: 1px solid var(--border-control); border-radius: var(--radius-sm); text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); }
 .cb-uni-in:focus { outline: none; border-color: var(--hue-blue); }
 .cb-uni-in:disabled { background: var(--surface-sunken); color: var(--text-disabled); }

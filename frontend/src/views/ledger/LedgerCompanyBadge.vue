@@ -7,7 +7,7 @@ const emit = defineEmits<{ switch: [] }>()
 </script>
 
 <template>
-  <button class="lg-cobadge" @click="emit('switch')" title="切换记账公司">
+  <button class="lg-cobadge" @click="emit('switch')" v-tip="'切换记账公司'">
     <span class="av">{{ (short || name).slice(0, 2) }}</span>
     <span class="nm">{{ name }}</span>
     <span class="sw"><component :is="iconFor('repeat')" :size="12" />切换</span>

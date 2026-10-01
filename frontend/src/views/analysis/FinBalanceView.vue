@@ -4,12 +4,12 @@
 // 排版=AnaShell v2(#kpis=AnaKpiTile 条)+ av2-grid。取数/比率计算与 v1 完全一致(bsValOf/T/R 未动);
 // 双环/gauge option 纯函数见 finBalance.logic.ts。法人口径公司选择器保留。
 import { computed, ref, watch } from 'vue'
-import AnaShell from './AnaShell.vue'
+import AnaShell, { periodNote } from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaPill from '@/components/ana/AnaPill.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
-import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
+import FPStateTag from '@/components/fp/FPStateTag.vue'
 import DsSelect from '@/components/ds/Select.vue'
 import { iconFor } from '@/components/ds/icon'
 import { usePeriod } from '@/analysis/usePeriod'
@@ -50,9 +50,9 @@ const reportYm = computed(() => {
   return pool[pool.length - 1]
 })
 
-// §五策略2「快照月回退」显式:所选期 ≠ 报表月 → 横幅(月粒度比月;年粒度比年;相等不渲染)
-// 横幅的所选期与快照月都跟已画那份走(同卡头):在途(已画的快照月还不是该取的那一期)冻结在上次的选择,
-// 数据落地同一拍再换 —— 否则点击那一刻横幅先插进来,把正在退让的旧内容往下推,到数再换一次,还与卡头自相矛盾。
+// §五策略2「快照月回退」显式:所选期 ≠ 报表月 → 期间旁标签(月粒度比月;年粒度比年;相等不渲染)
+// 标签的所选期与快照月都跟已画那份走(同卡头):在途(已画的快照月还不是该取的那一期)冻结在上次的选择,
+// 数据落地同一拍再换 —— 否则点击那一刻标签先变,到数再换一次,还与卡头自相矛盾。
 // 不在途(换的月不改快照月,不打接口)直接跟选择。
 const drawnPick = ref({ ym: period.ym.value, year: period.sel.value.year })
 watch([() => shown.value.ym, reportYm, period.ym, () => period.sel.value.year], () => {
@@ -234,7 +234,7 @@ const bsTable = computed<BsTblRow[]>(() => {
 </script>
 
 <template>
-  <!-- §五:月敏感屏(full);快照月回退以横幅显式 -->
+  <!-- §五:月敏感屏(full);快照月回退以期间选择旁的标签显式(#period-note) -->
   <AnaShell period-mode="full" :busy="staleShown">
     <template #tools>
       <span class="fin-name"><component :is="iconFor('scale')" :size="14" />资产负债分析</span>
@@ -246,6 +246,10 @@ const bsTable = computed<BsTblRow[]>(() => {
     <template #kpis>
       <AnaKpiTile v-for="k in kpis" :key="k.label" :label="k.label" :value="k.value" :note="k.note" />
     </template>
+    <!-- §五策略2:所选期无报表 → 快照月回退,期间选择旁标签(画布 06-D,禁静默) -->
+    <template #period-note>
+      <FPStateTag v-if="reportFallback && shown.ym" tone="muted">{{ periodNote(selPeriodLabel, shown.ym) }}</FPStateTag>
+    </template>
 
     <!-- 换期 / 换公司在途:旧内容留在原地退让(C5-02),不卸载。data-stale-host 常挂 —— 类摘掉后仍有
          transition-property,退场才是 200。进度线在外壳 sticky 工具条上(:busy),不放进这里。 -->
@@ -254,9 +258,6 @@ const bsTable = computed<BsTblRow[]>(() => {
         <span class="sub">法人口径 · 结构占比、偿债与营运比率、杜邦 ROE 拆解 · 单位 万元 · {{ shown.ym ?? '—' }} 期末快照(单期口径)</span>
         <AnaPill tone="legal" icon="scale">法人口径 · {{ companyLabel }}</AnaPill>
       </div>
-
-      <!-- §五策略2:所选期无报表 → 快照月回退横幅(禁静默) -->
-      <AnaPeriodBanner v-if="reportFallback && shown.ym" :selected="selPeriodLabel" :used="shown.ym" source="报表" />
 
       <div v-if="hasBs && T && R" class="av2-grid">
         <!-- 双环 s4×2 -->

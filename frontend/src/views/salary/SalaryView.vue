@@ -25,6 +25,8 @@ import { S } from '@/utils/lockScopes'
 import { salaryApi } from '@/api/salary'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
+import { receipt } from '@/utils/receipt'
 import { exportSalaryMonth } from '@/utils/salaryExcel'
 import { useSchedScreen, clearConfirm } from '@/composables/useSchedScreen'
 import { useReviewStore } from '@/stores/review'
@@ -92,7 +94,7 @@ const overviewErr = ref('')
 /** 总览。裸 await 一挂 overview 恒 null → 模板整屏转圈永不停,矩阵是唯一入口 —— 整本账不可达。 */
 async function reloadOverview() {
   try { overview.value = await salaryApi.overview(); overviewErr.value = '' }
-  catch { overviewErr.value = '工资总览加载失败,请重试' }
+  catch (e) { overviewErr.value = (e as { message?: string })?.message || '工资总览加载失败' }   // || :空串会把失败面藏回转圈
 }
 
 const {
@@ -259,7 +261,7 @@ const onCreate = async (req: SalaryRecordReq) => {
   // ⚠ 写与刷新分开兜:包在同一个 catch 里时,create 已成功、refresh 失败会 alert
   //   「新增工资失败」且表里看不到新行 —— 写成功被谎报为写失败,用户会重录出重复行。
   try { await salaryApi.create(req) }
-  catch (e) { alert((e as { message?: string })?.message ?? '新增工资失败'); return }
+  catch (e) { receipt.fail((e as { message?: string })?.message ?? '新增工资失败'); return }
   drawer.value = false
   // 提交后归入对应年月(可能与当前选中不同);跳期必须清勾选 —— 残留的 id 会喂给
   // 「删除选中」批删另一个月的行
@@ -268,7 +270,7 @@ const onCreate = async (req: SalaryRecordReq) => {
   month.value = parseInt(m, 10)
   selectedIds.value = new Set()
   try { await refresh() }
-  catch { alert('已保存成功,但刷新失败 —— 表内暂时看不到新行,点失败条上的「重试」即可。') }
+  catch { receipt.warn('已保存,但表没刷新出来,暂时看不到新行', { label: '重试', run: retryMonth }) }
 }
 
 const onDelete = (row: SalaryRecordDTO) => guard('删除失败', async () => {
@@ -334,7 +336,7 @@ const onExport = () => guard('导出失败', async () => {
           perm="entry:edit"
           @back="backToMonths"
           @toggle-edit="edit = !edit"
-         :show-import="true" @import="importing = true">
+         :show-import="true" @import="importing = true" :dirty="drawer || importing ? 1 : 0">
           <template #edit-actions>
             <Button variant="outline" size="sm" @click="drawer = true">
               <template #leading><component :is="iconFor('plus')" :size="14" /></template>
@@ -417,13 +419,11 @@ const onExport = () => guard('导出失败', async () => {
       />
     </template>
 
-    <!-- 取数失败:说出来 + 重试 + 回矩阵的口。改前失败落进下面的转圈 —— 永久转、无重试、
-         无返回口,用户被锁死(pickCell 先 clearData,monthData 恒 null)。
+    <!-- 取数失败(十件 ⑦):换掉表格区,一句 + 原因 + 重试;下面留回矩阵的口。改前失败落进下面的转圈 ——
+         永久转、无重试、无返回口,用户被锁死(pickCell 先 clearData,monthData 恒 null;页头随宽表一起卸载)。
          fp-fluid:失败面/转圈也是屏根首元素形态,同挂(§8) -->
     <div v-else-if="readErr" class="s12-fail fp-fluid">
-      <component :is="iconFor('alert-triangle')" :size="18" />
-      <span>{{ year }}年{{ month }}月工资加载失败:{{ readErr }}</span>
-      <Button variant="outline" size="sm" @click="retryMonth">重试</Button>
+      <FPLoadError :sub="`${readErr} · 屏上不显示别的月的数字`" @retry="retryMonth">{{ year }} 年 {{ month }} 月的工资没读到</FPLoadError>
       <Button variant="ghost" size="sm" @click="backToMonths">返回选月</Button>
     </div>
 
@@ -435,9 +435,7 @@ const onExport = () => guard('导出失败', async () => {
 
   <!-- overview 一次都没拿到:硬失败面 —— 矩阵是唯一入口,转圈死等 = 整本账不可达(fp-fluid 同挂) -->
   <div v-else-if="overviewErr" class="s12-fail fp-fluid">
-    <component :is="iconFor('alert-triangle')" :size="18" />
-    <span>{{ overviewErr }}</span>
-    <Button variant="outline" size="sm" @click="reloadOverview">重试</Button>
+    <FPLoadError :sub="`${overviewErr} · 读到之前选不了月`" @retry="reloadOverview">工资各月的录入情况没读到</FPLoadError>
   </div>
 
   <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
@@ -445,10 +443,9 @@ const onExport = () => guard('导出失败', async () => {
 
 <style scoped>
 /* 1:1 from screen-schedule12.jsx WStyles(.w12-page / .w12-toolbar 段) */
-.s12-fail {
-  display: flex; align-items: center; justify-content: center; gap: 10px;
-  height: 100%; color: var(--hue-red); font-size: 13px;
-}
+/* 失败面:FPLoadError 居中,「返回选月」紧贴在它下面(不让它被 flex 撑到底) */
+.s12-fail { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; }
+.s12-fail > .fp-empty { flex: 0 0 auto; }
 .s12-page { position:relative; display:flex; flex-direction:column; gap:14px; height:100%; min-height:0; box-sizing:border-box; }
 .s12-toolbar { flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 .s12-toolbar-l { display:flex; align-items:center; gap:12px; flex-wrap:wrap; min-width:0; flex:1 1 auto; }

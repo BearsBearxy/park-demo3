@@ -13,8 +13,11 @@ import Avatar from '@/components/ds/Avatar.vue'
 import Button from '@/components/ds/Button.vue'
 import DatePicker from '@/components/ds/DatePicker.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
+import FPNote from '@/components/fp/FPNote.vue'
 import { iconFor } from '@/components/ds/icon'
 import { useAuthStore } from '@/stores/auth'
+import { ask } from '@/utils/ask'
+import { receipt } from '@/utils/receipt'
 
 const auth = useAuthStore()
 
@@ -28,16 +31,17 @@ const emit = defineEmits<{ edit: [ContractDTO]; renew: [ContractDTO]; terminated
 
 const detail = ref<ContractDetailDTO | null>(null)
 
-// ─── 操作:终止 / 删除(确认弹窗) ──────────────────────────
+// ─── 操作:终止(带解约日与表清单的弹窗) / 删除(ask 确认,画布 02-B 右) ──────────────────────────
 const askTerminate = ref(false)
 // 解约日,默认今天。收进合同的到期日 —— 出账判「这个月算不算数」只看起止日期重叠,
 // 不收的话终止等于没发生(后面每个月照出满月租金)。时间轴那行「已终止 · X · 提前解约」印的也是它。
 const todayStr = () => new Date().toLocaleDateString('sv-SE')   // sv-SE = YYYY-MM-DD,按本机时区
 const termOn = ref(todayStr())
-const askDelete = ref(false)
+// 加载失败那句用(「2024 年 5 月挂在这户名下的表没读到」)
+const termYm = computed(() => { const [y, m] = termOn.value.split('-'); return `${+y} 年 ${+m} 月` })
 const busy = ref(false)
-// 两个确认框都 Teleport 到 body:页签切走(KeepAlive 停用)时子树不在了,框还会盖在别的屏上
-onDeactivated(() => { askTerminate.value = false; askDelete.value = false })
+// 终止框 Teleport 到 body:页签切走(KeepAlive 停用)时子树不在了,框还会盖在别的屏上
+onDeactivated(() => { askTerminate.value = false })
 
 const canTerminate = computed(() =>
   ['active', 'expiring', 'draft'].includes(props.contract?.status ?? ''))
@@ -88,21 +92,30 @@ async function doTerminate() {
     askTerminate.value = false
     emit('terminated', dto)
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '操作失败')
+    const msg = (e as { message?: string })?.message
+    receipt.fail(msg ? `终止失败：${msg}` : '终止失败', { label: '重试', run: () => void doTerminate() })
   } finally {
     busy.value = false
   }
 }
 
-async function doDelete() {
-  if (!props.contract || busy.value) return
+// 删除类:标题问句、按钮写动作、主按钮红、焦点在「取消」(UI-OVERLAY §7)
+async function onDelete() {
+  const c = props.contract
+  if (!c || busy.value) return
+  const ok = await ask({ title: `删除合同「${c.contractNo}」？`, body: '删除后不能撤销，一般只用于误录。', action: '删除合同', danger: true })
+  if (!ok || props.contract !== c) return   // 问的时候换了一份:不删别的那份
+  await doDelete(c)
+}
+async function doDelete(c: ContractDTO) {
+  if (busy.value) return
   busy.value = true
   try {
-    await contractApi.remove(props.contract.id)
-    askDelete.value = false
+    await contractApi.remove(c.id)
     emit('deleted')
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '操作失败')
+    const msg = (e as { message?: string })?.message
+    receipt.fail(msg ? `删除失败：${msg}` : '删除失败', { label: '重试', run: () => void doDelete(c) })
   } finally {
     busy.value = false
   }
@@ -114,7 +127,6 @@ watch(() => props.contract, async (c) => {
   detail.value = null
   askTerminate.value = false
   termOn.value = todayStr()   // 换合同要重置:上一户改过的解约日不该跟着带到下一户
-  askDelete.value = false
   pvSeq++; preview.value = null; previewErr.value = ''   // 上一户的表清单不许带到下一户的终止框里
   if (!c) return
   const d = await contractApi.detail(c.id)
@@ -252,7 +264,7 @@ const contactLine = computed(() =>
           <template #leading><component :is="iconFor('x-circle')" :size="14" /></template>
           终止
         </Button>
-        <Button variant="borderless" size="sm" @click="askDelete = true">
+        <Button variant="borderless" size="sm" @click="onDelete">
           <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
           删除
         </Button>
@@ -292,8 +304,8 @@ const contactLine = computed(() =>
         <div class="fp-field"><span class="k">楼栋</span><span class="v">{{ contract.buildingName }}</span></div>
         <div class="fp-field"><span class="k">楼层 / 房号</span><span class="v mono">{{ contract.floorInfo || '—' }}</span></div>
         <div class="fp-field"><span class="k">建筑面积</span><span class="v mono">{{ contract.buildingArea != null ? contract.buildingArea.toLocaleString('en-US') + ' ㎡' : '—' }}</span></div>
-        <div class="fp-field"><span class="k">租赁面积(非宿舍)</span><span class="v mono" title="各标的段建筑类租金面积之和(宿舍段除外);公摊面积基数同口径">{{ rentAreaShow != null ? rentAreaShow.toLocaleString('en-US') + ' ㎡' : '—' }}</span></div>
-        <div v-if="dormAreaSum != null" class="fp-field"><span class="k">宿舍面积</span><span class="v mono" title="各宿舍段租金行面积之和,不计入租赁面积(非宿舍)">{{ dormAreaSum.toLocaleString('en-US') }} ㎡</span></div>
+        <div class="fp-field"><span class="k">租赁面积(非宿舍)</span><span class="v mono" v-tip="'各标的段建筑类租金面积之和(宿舍段除外);公摊面积基数同口径'">{{ rentAreaShow != null ? rentAreaShow.toLocaleString('en-US') + ' ㎡' : '—' }}</span></div>
+        <div v-if="dormAreaSum != null" class="fp-field"><span class="k">宿舍面积</span><span class="v mono" v-tip="'各宿舍段租金行面积之和,不计入租赁面积(非宿舍)'">{{ dormAreaSum.toLocaleString('en-US') }} ㎡</span></div>
         <div v-if="landAreaSum != null" class="fp-field"><span class="k">空地面积</span><span class="v mono">{{ landAreaSum.toLocaleString('en-US') }} ㎡</span></div>
         <div class="fp-field"><span class="k">押金</span><span class="v mono">{{ fpMoney(contract.deposit) }}</span></div>
         <!-- 电费签约要素(裁定④):KVA 仅大工业行显示 -->
@@ -334,6 +346,11 @@ const contactLine = computed(() =>
       <!-- 4. 标的段列表(§6.1:每段=类型徽标+位置+段面积 + 该类型钉死费用行只读;条件项有才显) -->
       <div>
         <FPSectionLabel icon="list">标的段与费用</FPSectionLabel>
+        <!-- 块内提示(画布 01-A 卡3):只和这块有关,放在块里;「去绑定」= 编辑弹窗里每段的「面积落在」 -->
+        <FPNote v-if="(contract.unboundTermCount ?? 0) > 0" tone="warn" class="cd-note" @action="emit('edit', contract)">
+          租金行还没绑单元
+          <template v-if="auth.can('contract:edit')" #action>去绑定</template>
+        </FPNote>
         <!-- 连续费用网格:表头一次,按段分组(段带+费用行+小计),底部合同合计;字体/列沿 demo3 原生 -->
         <div v-if="segGroups.length" class="cd-ch">
           <div class="cd-ch-head">
@@ -402,8 +419,8 @@ const contactLine = computed(() =>
             <div class="cd-vac-h">
               这户在解约月挂着的表<template v-if="preview && preview.meters.length"> · 勾上的自 {{ preview.vacateFrom }} 起空置</template>
             </div>
-            <FPLoadError v-if="previewErr" @retry="loadPreview">
-              <span class="cd-vac-err">表清单没加载出来:{{ previewErr }} —— 加载出来之前不能终止。</span>
+            <FPLoadError v-if="previewErr" size="sm" :sub="`读到之前不能终止 · ${previewErr}`" @retry="loadPreview">
+              {{ termYm }}挂在这户名下的表没读到
             </FPLoadError>
             <div v-else-if="!preview" class="cd-vac-empty">加载中…</div>
             <div v-else-if="!preview.meters.length" class="cd-vac-empty">解约月没有挂在这户名下的表。</div>
@@ -427,24 +444,6 @@ const contactLine = computed(() =>
     </div>
   </Teleport>
 
-  <!-- 删除确认 -->
-  <Teleport to="body">
-    <div v-if="askDelete && contract" class="cd-mask" @mousedown="askDelete = false">
-      <div class="cd-dlg" role="dialog" aria-modal="true" @mousedown.stop>
-        <div class="cd-dlg-h">
-          <h3>删除合同</h3>
-          <p>删除合同为不可逆操作,一般仅用于误录。确认删除合同「{{ contract.contractNo }}」?</p>
-        </div>
-        <div class="cd-dlg-f">
-          <Button variant="gray" size="sm" @click="askDelete = false">取消</Button>
-          <Button variant="danger" size="sm" :disabled="busy" @click="doDelete">
-            <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
-            确认删除
-          </Button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
 </template>
 
 <style scoped>
@@ -457,6 +456,7 @@ const contactLine = computed(() =>
 .cd-inline-actions { display:flex; gap:6px; flex:0 0 auto; }
 .cd-inline-body { flex:1 1 auto; overflow-y:auto; padding:16px 20px; display:flex; flex-direction:column; gap:18px; }
 /* 宽屏两栏(lease abstract):左=合同信息+生命周期,右=标的段与费用;填满主区宽度,窄屏自动单列 */
+.cd-note { margin-top:8px; }
 .cd-cols { display:grid; grid-template-columns:minmax(0,0.9fr) minmax(0,1.1fr); gap:24px; align-items:start; }
 .cd-col-l, .cd-col-r { display:flex; flex-direction:column; gap:18px; min-width:0; }
 @media (max-width:880px) { .cd-cols { grid-template-columns:1fr; } }
@@ -530,7 +530,6 @@ const contactLine = computed(() =>
 .cd-vac { margin-top:14px; }
 .cd-vac-h { margin-bottom:6px; font-size:12px; color:var(--text-secondary); }
 .cd-vac-empty { padding:8px 0; font-size:12px; color:var(--text-muted); }
-.cd-vac-err { flex:1 1 160px; min-width:0; overflow-wrap:anywhere; }
 .cd-vac-list { max-height:180px; overflow-y:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:4px; }
 .cd-vac-row { display:flex; align-items:center; gap:8px; min-width:0; padding:5px 6px; font-size:12px; cursor:pointer; border-radius:var(--radius-sm); }
 .cd-vac-row:hover { background:var(--bg-hover); }

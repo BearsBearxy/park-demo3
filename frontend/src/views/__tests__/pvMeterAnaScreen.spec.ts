@@ -267,7 +267,7 @@ describe('光伏分栋分析 · 四个状态各自渲染什么', () => {
     expect(grid.findComponent(PvLabTable).element).toBe(kids[4])
     const stack = kids[3]
     expect([...stack.children]).toEqual([grid.findComponent(PvAcfBars).element, grid.findComponent(PvNullHist).element])
-    expect(w.findAll('.pma-sec .pma-note')).toHaveLength(0)
+    expect(w.findAll('.pma-sec .fp-empty')).toHaveLength(0)   // 「画不出这张图」2026-10-01 起是 FPEmpty(十件 ⑦)
     expect(w.findComponent(PvConsumption).exists()).toBe(false)
     expect(w.findComponent(PvYieldBand).exists()).toBe(false)
     // ❗各块写明自己吃的期间(§6.5b):整年的写整年 / 年份,跟着段走的写这一段
@@ -799,6 +799,16 @@ describe('光伏分栋分析 · 护栏', () => {
     expect(w.findAll('.av2-kpi')).toHaveLength(0)
     expect(w.findComponent(PvChips).exists()).toBe(false)
     expect(w.findComponent(PvDayChart).exists()).toBe(false)
+  })
+
+  it('❗这一段一栋都没投产 → 大图那块换成空状态件 FPEmpty(十件 ⑦),高度仍钉在大图那块', async () => {
+    const late = Object.fromEntries(Array.from({ length: N }, (_, i) => [i, '2026-09-01']))
+    const w = await mountScreen({ late })
+    expect(w.find('.pma-body').exists(), '夹具没走到有快照的分支').toBe(true)
+    expect(w.findComponent(PvDayChart).exists()).toBe(false)
+    const box = w.find('.pma-main .pma-nochart')
+    expect(box.attributes('style')).toContain('height: 260px')
+    expect(box.find('.fp-empty .t').text()).toBe('这一段没有已投产的楼栋，画不出逐刻度比值。')
   })
 
   it('没进绝对水平档时,不打上一年的接口', async () => {

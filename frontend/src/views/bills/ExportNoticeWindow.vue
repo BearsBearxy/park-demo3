@@ -17,6 +17,9 @@ import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
+import FPMark from '@/components/fp/FPMark.vue'
+import FPNote from '@/components/fp/FPNote.vue'
+import { ask } from '@/utils/ask'
 
 const props = defineProps<{
   open: boolean
@@ -111,12 +114,20 @@ const sheetTotal = computed(() => picked.value.reduce((s, r) => s + r.sheetCount
 const gapCount = computed(() => picked.value.filter(r => r.gap).length)
 const notConfirmed = computed(() => picked.value.filter(r => r.status === 'draft' || r.status === 'partial'))
 
-function onExport() {
+async function onExport() {
   if (props.busy || picked.value.length === 0) return
-  if (notConfirmed.value.length
-    && !confirm(`选中的 ${notConfirmed.value.length} 户还没核对确认(${notConfirmed.value.slice(0, 3).map(r => r.tenantName).join('、')}${notConfirmed.value.length > 3 ? '…' : ''})。仍然导出?`)) return
-  if (gapCount.value
-    && !confirm(`其中 ${gapWord(gapCount.value)},这部分通知单不会印收款账户信息,租户可能不知道往哪付款。仍然导出?`)) return
+  const nc = notConfirmed.value
+  if (nc.length && !(await ask({
+    title: `${nc.length} 户还没核对确认，仍然导出？`,
+    body: `${nc.slice(0, 3).map(r => r.tenantName).join('、')}${nc.length > 3 ? ` 等 ${nc.length} 户` : ''}还没核对确认。`,
+    action: '仍然导出',
+  }))) return
+  if (gapCount.value && !(await ask({
+    title: `${gapWord(gapCount.value)}，仍然导出？`,
+    body: '这部分通知单不会印收款账户信息,租户可能不知道往哪付款。',
+    action: '仍然导出',
+  }))) return
+  if (props.busy || !props.open) return   // 问的时候宿主可能已在导出 / 窗已关
   const accountByCompany: Record<number, number | null> = {}
   for (const id of selectedCoIds.value) accountByCompany[id] = acctByCo.value[id] ? +acctByCo.value[id] : null
   emit('export', { ym: props.ym, tenantIds: picked.value.map(r => r.tenantId), accountByCompany })
@@ -151,10 +162,7 @@ const statusOf = (r: PayTenantRow) => STATUS_LABEL[r.status]
         </div>
       </div>
     </div>
-    <div v-if="noAcctCos.length" class="ex-warn">
-      <component :is="iconFor('info')" :size="14" />
-      <span>{{ noAcctCos.length }} 家公司这次不印账户块(没录账户或选了「不印」)—— 通知单出简化版,不阻断。</span>
-    </div>
+    <FPNote v-if="noAcctCos.length" tone="info">{{ noAcctCos.length }} 家公司这次不印账户块(没录账户或选了「不印」)—— 通知单出简化版,不阻断。</FPNote>
 
     <div class="ex-wrap">
       <table class="ex-table">
@@ -164,12 +172,12 @@ const statusOf = (r: PayTenantRow) => STATUS_LABEL[r.status]
         </colgroup>
         <thead>
           <tr>
-            <th class="ct"><input type="checkbox" :checked="allChecked" title="全选=当前筛选可见行" @change="toggleAll" /></th>
+            <th class="ct"><input v-tip="'全选=当前筛选可见行'" type="checkbox" :checked="allChecked" @change="toggleAll" /></th>
             <th class="l">租户</th>
             <th class="l">楼栋</th>
             <th>状态</th>
             <th>本期合计</th>
-            <th title="一户一个文件;文件内按收款公司分 sheet(同户跨两家公司=两个 sheet),未设公司那部分也占一个(无账户块)">将出几张单</th>
+            <th v-tip="'一户一个文件;文件内按收款公司分 sheet(同户跨两家公司=两个 sheet),未设公司那部分也占一个(无账户块)'">将出几张单</th>
           </tr>
         </thead>
         <tbody>
@@ -185,9 +193,9 @@ const statusOf = (r: PayTenantRow) => STATUS_LABEL[r.status]
                 <input type="checkbox" :checked="selected.has(r.tenantId)" @click.stop @change="toggleRow(r.tenantId)" />
               </td>
               <td class="l">
-                <span class="ex-tname" :title="r.tenantName">
-                  {{ r.tenantName }}
-                  <em v-if="r.gap" class="ex-dot" :title="`${GAP_TIP};这部分单不印收款账户`">●</em>
+                <span class="ex-tn">
+                  <span v-tip="r.tenantName" class="ex-tname">{{ r.tenantName }}</span>
+                  <FPMark v-if="r.gap" v-tip="`${GAP_TIP};这部分单不印收款账户`" tone="warn" class="ex-mark">缺收款公司</FPMark>
                 </span>
               </td>
               <td class="l"><span class="ex-txt dim">{{ r.bld.main?.name ?? '–' }}</span></td>
@@ -215,8 +223,6 @@ const statusOf = (r: PayTenantRow) => STATUS_LABEL[r.status]
 </template>
 
 <style scoped>
-.ex-warn { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); font-size: 11.5px; color: var(--text-secondary); }
-
 .ex-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ex-search { width: 170px; height: 32px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: var(--radius-full); font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); }
 .ex-search:focus { outline: none; border-color: var(--hue-blue); }
@@ -244,8 +250,10 @@ const statusOf = (r: PayTenantRow) => STATUS_LABEL[r.status]
 .ex-band-lbl { font-size: 12px; font-weight: var(--fw-semibold); color: var(--text-primary); }
 .ex-band-sub { margin-left: 8px; font-size: 11.5px; color: var(--text-muted); }
 .ex-noro { text-align: center !important; padding: 40px 16px !important; color: var(--text-disabled); font-size: var(--fs-label); }
-.ex-tname { display: block; font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ex-dot { font-style: normal; margin-left: 5px; font-size: 9px; color: rgb(255, 149, 0); cursor: help; }
+/* 名字可省略、悬停看全称;标记不缩,永远看得见 */
+.ex-tn { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ex-tname { display: block; min-width: 0; font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ex-mark { flex: none; }
 .ex-txt { display: block; text-align: left; font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ex-txt.dim { color: var(--text-muted); }
 .ex-num { display: block; text-align: right; font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }

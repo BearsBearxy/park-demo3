@@ -7,6 +7,8 @@ import type { ParamRowDTO, ParamStatusDTO } from '@/api/params'
 import { forbiddenText } from '@/utils/paramCenterLogic'
 import { useAuthStore } from '@/stores/auth'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
+import { askQueue, answer } from '@/utils/ask'
+import { receipts } from '@/utils/receipt'
 
 // RBAC:本屏三扇门(① param-monthly / ②③④ param-policy / 重算 billing-run),空权限进来是浏览态没有写入口
 beforeEach(() => {
@@ -15,6 +17,8 @@ beforeEach(() => {
   // 每条用例从同一份深链起步:adopt= 那两条会删掉 ym,不还原就污染后面的用例
   query.ym = '2024-02'
   delete query.adopt
+  askQueue.splice(0)
+  receipts.splice(0)
 })
 
 const push = vi.fn()
@@ -131,6 +135,7 @@ vi.mock('@/api/zones', () => ({ zonesApi: { list: () => Promise.resolve([
 
 import ParamCenterView from '../ParamCenterView.vue'
 import ParamEditPopover from '../ParamEditPopover.vue'
+import ParamChangesDrawer from '../ParamChangesDrawer.vue'
 
 async function mountPage() {
   const w = mount(ParamCenterView, { attachTo: document.body })
@@ -140,13 +145,14 @@ async function mountPage() {
 }
 
 describe('ParamCenterView 计费参数页', () => {
-  it('首载加载门 → 四区 + 固定规则 + 状态条;深链 ?ym=2024-02 落到该账期', async () => {
+  it('首载加载门 → 四区 + 固定规则 + 标题旁页面状态;深链 ?ym=2024-02 落到该账期', async () => {
     const w = await mountPage()
     expect(w.find('.page-loading').exists()).toBe(false)
     const t = w.text()
     for (const h of ['① 本月参数', '② 长期常数', '③ 计算方式', '④ 户级例外', '⑤ 固定规则']) expect(t).toContain(h)
-    expect(t).toContain('本月电价 6/6 ✓')
-    expect(t).toContain('改过的参数和抄表都已重算')
+    // 原来单独一行的状态条拆成标题旁的标签(LAYOUT-STABILITY §2 第 4 级),不另起一行
+    expect(w.find('.pm-bar').exists(), '状态条该拆掉了').toBe(false)
+    expect(w.findAll('.pm-head .fp-state').map(e => e.text())).toEqual(['本月电价 6/6', '改动都已重算 · 生成于 08-16 16:37'])
     // 人话行:A座 损耗调整度数 −1,500 仅 2024-02;B座 仅按公摊分摊度数 2023-11 起长期;户级例外覆盖全园
     expect(t).toContain('-1,500 度')
     expect(t).toContain('仅 2024-02')
@@ -217,7 +223,7 @@ describe('ParamCenterView 计费参数页', () => {
     w.unmount()
   })
 
-  it('浏览态零写入口:编辑模式后才出 [修改] / [新增例外] / [复制上月电价] / [重算本月];按钮文字不再是「改…」', async () => {
+  it('浏览态零写入口:编辑模式后才出 [修改] / [新增例外] / [复制上月电价];按钮文字不再是「改…」', async () => {
     const w = await mountPage()
     const texts = () => w.findAll('button').map(b => b.text())
     expect(texts().some(s => s === '修改')).toBe(false)
@@ -228,16 +234,16 @@ describe('ParamCenterView 计费参数页', () => {
     expect(texts().some(s => s.includes('改…') || s.includes('剔出'))).toBe(false)
     expect(texts().some(s => s.includes('新增例外'))).toBe(true)
     expect(texts().some(s => s.includes('复制上月电价'))).toBe(true)
-    expect(texts().some(s => s.includes('重算本月'))).toBe(true)
+    // 重算本月并进问题面板「待重算」组头(本月没过期 → 不出),屏上不再单放一颗
+    expect(texts().some(s => s.includes('重算本月'))).toBe(false)
     w.unmount()
   })
 
-  it('深链 edit=1(三屏 [去重算])直接进编辑态:重算本月可点', async () => {
+  it('深链 edit=1(三屏 [去重算])直接进编辑态', async () => {
     query.edit = '1'
     acquired.length = 0
     try {
       const w = await mountPage()
-      expect(w.findAll('button').some(b => b.text().includes('重算本月'))).toBe(true)
       expect(w.findAll('button').some(b => b.text() === '完成')).toBe(true)
       // ❗锁的必须是**真的那个月**。改前是先 toggleEdit() 再 adoptYm():
       //   占的是 `param-center:0-00`(期还没认领,year/month 都是 `?? 0`),
@@ -341,22 +347,19 @@ describe('ParamCenterView 告警 chip + 抽屉', () => {
     await flushPromises()
   }
 
-  it('状态条只留中性事实;过期 + 其他月份受影响进 chip(3)与抽屉分组', async () => {
+  it('页面状态只留中性事实;过期 + 其他月份受影响进 chip(3)与面板分组(组名「待重算」)', async () => {
     const { paramsApi } = await import('@/api/params')
     ;(paramsApi.status as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ...STALE })
     const w = await mountPage()
-    // 状态条:电价事实 + 无橙字(旧文案「参数已改 N 项…请切到该月重算」全部移走)
-    const bar = w.find('.pm-bar.status').text()
-    expect(bar).toContain('本月电价 6/6')
-    expect(bar).not.toContain('旧快照')
-    expect(bar).not.toContain('请切到该月重算')
-    expect(w.find('.pm-bar.warn').exists()).toBe(false)
+    // 页面状态:电价事实;过期时不贴「都已重算」,也不在标题旁说过期(那归 chip)
+    expect(w.findAll('.pm-head .fp-state').map(e => e.text())).toEqual(['本月电价 6/6'])
     // chip 常驻,计数 = 本月过期 1 + 其他月份 2
     expect(w.find('button.fac').text()).toContain('待处理 3')
     expect(drawer()).toBeNull()
     await openChip(w)
     const t = drawer()!.textContent ?? ''
-    expect(t).toContain('本月快照过期')
+    expect(t).toContain('待重算')
+    expect(t).not.toContain('本月快照过期')
     expect(t).toContain('自上次重算起改了 2 项参数')
     expect(t).toContain('其他月份受影响')
     expect(t).toContain('2023-08')
@@ -403,8 +406,10 @@ describe('ParamCenterView 告警 chip + 抽屉', () => {
     await openChip(w)
     const btn = [...drawer()!.querySelectorAll('button')].find(b => b.textContent?.includes('一键重算这 2 个月'))!
     expect(btn, '跨月告警必须给一键批量,不许只写「请切到该月重算」').toBeTruthy()
-    vi.spyOn(window, 'confirm').mockReturnValueOnce(true)
     btn.click()
+    await flushPromises()
+    expect(askQueue.map(a => a.title)).toEqual(['重算这 2 个月？'])
+    answer(true)
     await flushPromises()
     expect(recalc.mock.calls.map(c => c[0])).toEqual(['2023-08', '2023-10'])
     // 重算后重拉的 status 不再 stale → chip 归零,抽屉留开显空态
@@ -474,10 +479,11 @@ describe('ParamEditPopover 修改弹窗', () => {
   it('有本月专属行 → 出「删除本月专属值」;点它 emit value=null 的 month 行删除', async () => {
     const w = mount(ParamEditPopover, { props: { open: true, row: aRow, ym: '2024-02' }, attachTo: document.body })
     await flushPromises()
-    vi.spyOn(window, 'confirm').mockReturnValueOnce(true)
     const del = [...document.querySelectorAll('.fp-dwr button')].find(b => b.textContent?.includes('删除 2024-02 专属值')) as HTMLButtonElement
     expect(del).toBeTruthy()
     del.click()
+    await flushPromises()
+    answer(true)   // 确认弹窗(ask)答「删除」
     await flushPromises()
     expect(w.emitted('save')![0][0]).toEqual(expect.objectContaining({ key: 'loss_adj_qty', scope: 'building:13', acctMonth: '2024-02', mode: 'month', value: null }))
     w.unmount()
@@ -524,7 +530,6 @@ describe('ParamCenterView 编辑态守卫', () => {
 
   it('❗浏览态下 重算/批量重算/复制上月电价 一个 API 都不许打出去', async () => {
     const { paramsApi } = await import('@/api/params')
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const w = await mountPage()
     vi.mocked(paramsApi.recalc).mockClear()
     vi.mocked(paramsApi.copyPrev).mockClear()
@@ -535,9 +540,12 @@ describe('ParamCenterView 编辑态守卫', () => {
     // ⚠ 前置做足:otherMonths 为空时 onRecalcOthers 在自己的早退分支就 return,
     //   守卫删掉照样绿(破坏验证抓到的,本仓第三次栽同一个坑)。
     if (vm.status) vm.status.otherMonthsAffected = ['2024-01', '2023-12']
-    await vm.onRecalc()
-    await vm.onRecalcOthers()
-    await vm.onCopy()
+    // 不先 await:守卫被删时三个函数都会停在确认弹窗上 —— 一律答「是」,再看 API 打没打出去
+    const runs = [vm.onRecalc(), vm.onRecalcOthers(), vm.onCopy()]
+    await flushPromises()
+    expect(askQueue, '浏览态连确认弹窗都不该出').toHaveLength(0)
+    while (askQueue.length) { answer(true); await flushPromises() }
+    await Promise.all(runs)
     expect(paramsApi.recalc, '浏览态下重算被打出去了').not.toHaveBeenCalled()
     expect(paramsApi.copyPrev, '浏览态下复制电价被打出去了').not.toHaveBeenCalled()
     w.unmount()
@@ -556,5 +564,277 @@ describe('ParamCenterView 编辑态守卫', () => {
     await vm.put({ key: 'price_p1', scope: 'zone:p1', acctMonth: '2024-02', mode: 'month', value: 1.1 })
     expect(put).toHaveBeenCalledTimes(1)
     w.unmount()
+  })
+})
+
+// ── 提示件替换(S4 T16b):问题面板组头 · 确认弹窗 · 回执 · 字段报错 · 加载失败 · 页面状态 · 改动数 ──
+describe('ParamCenterView 提示件', () => {
+  const STALE2: ParamStatusDTO = {
+    ...STATUS, stale: true, pendingChanges: 2, lastChangeAt: '2026-08-18T09:20:00', otherMonthsAffected: ['2023-08', '2023-10'],
+  }
+  /** 问题面板组头上的动作钮(不含点组头收起的那颗) */
+  const acts = () => [...document.querySelectorAll('.fap-gh button:not(.fap-tg)')] as HTMLButtonElement[]
+  const openChip = async (w: Awaited<ReturnType<typeof mountPage>>) => {
+    await w.find('button.fac').trigger('click')
+    await flushPromises()
+  }
+  const enterEdit = async (w: Awaited<ReturnType<typeof mountPage>>) => {
+    await w.findAll('button').find(b => b.text().includes('编辑模式'))!.trigger('click')
+    await flushPromises()
+    expect(w.findAll('button').some(b => b.text() === '完成'), '前置:进了编辑态').toBe(true)
+  }
+
+  // 破坏验证:groupAction 浏览态那支改回 return undefined → 第一条 toEqual 红;重算的 receipt.fail 换回别的 → 末条红
+  it('❗组头:浏览态给「进入编辑模式」,进了编辑态换成「重算本月」;重算走确认弹窗,失败出带「重试」的回执', async () => {
+    const { paramsApi } = await import('@/api/params')
+    vi.mocked(paramsApi.status).mockResolvedValueOnce({ ...STALE2 })
+    const recalc = vi.mocked(paramsApi.recalc)
+    recalc.mockReset()
+    recalc.mockRejectedValueOnce(new Error('重算挂了'))
+    const w = await mountPage()
+    try {
+      await openChip(w)
+      expect(document.querySelector('.fp-sdw-mask'), '面板不是变暗的右侧抽屉').toBeNull()
+      expect(acts().map(b => b.textContent?.trim())).toEqual(['进入编辑模式', '进入编辑模式'])
+      acts()[0].click()
+      await flushPromises()
+      expect(w.findAll('button').some(b => b.text() === '完成'), '组头那一下进了编辑态').toBe(true)
+      await openChip(w)
+      expect(acts().map(b => b.textContent?.trim())).toEqual(['重算本月', '一键重算这 2 个月'])
+      acts()[0].click()
+      await flushPromises()
+      expect(askQueue.map(a => a.title)).toEqual(['重算 2024-02？'])
+      answer(true)
+      await flushPromises()
+      expect(recalc).toHaveBeenCalledWith('2024-02')
+      const r = receipts.at(-1)
+      expect([r?.tone, r?.text, r?.action?.label]).toEqual(['fail', '重算挂了', '重试'])
+    } finally { recalc.mockReset(); w.unmount() }
+  })
+
+  // 破坏验证:onRecalc 里 ask 之后那一句再守去掉 !canRecalc.value → 红
+  it('❗确认弹窗开着时被退出编辑态,再答「重算本月」也打不出去', async () => {
+    const { paramsApi } = await import('@/api/params')
+    const recalc = vi.mocked(paramsApi.recalc)
+    recalc.mockReset()
+    const w = await mountPage()
+    try {
+      await enterEdit(w)
+      const vm = w.vm as unknown as { editMode: boolean; onRecalc: () => Promise<void> }
+      const p = vm.onRecalc()
+      await flushPromises()
+      expect(askQueue, '前置:弹窗出来了').toHaveLength(1)
+      vm.editMode = false
+      await flushPromises()
+      answer(true)
+      await p
+      expect(recalc).not.toHaveBeenCalled()
+    } finally { w.unmount() }
+  })
+
+  // 答完再守(换月那一支):问的是 2 月,答之前换到 3 月并进了 3 月的编辑态 —— 不拿这次「确认」去重算别的月
+  // 破坏验证:onRecalc 答完后的 `ym.value !== at` 去掉 → recalc 被打出去 → 红
+  it('❗重算本月:确认弹窗开着时换了月,答「重算本月」也打不出去', async () => {
+    const { paramsApi } = await import('@/api/params')
+    const recalc = vi.mocked(paramsApi.recalc)
+    recalc.mockReset()
+    const w = await mountPage()
+    try {
+      await enterEdit(w)
+      const vm = w.vm as unknown as { editMode: boolean; onRecalc: () => Promise<void> }
+      const p = vm.onRecalc()
+      await flushPromises()
+      expect(askQueue.map(a => a.title), '前置:问的是 2 月').toEqual(['重算 2024-02？'])
+      useBillingPeriodStore().pick(2024, 3)
+      await flushPromises()
+      if (!vm.editMode) await enterEdit(w)   // 换月按锁作用域退出编辑;再进 3 月的,只剩「换了月」这一道能拦
+      expect(vm.editMode, '前置:人在新月的编辑态里').toBe(true)
+      answer(true)
+      await p
+      expect(recalc).not.toHaveBeenCalled()
+    } finally { w.unmount() }
+  })
+
+  // 破坏验证:onRecalcOthers 答完后的 `!canRecalc.value` 去掉 → 红
+  it('❗一键重算其余月:确认弹窗开着时被退出编辑态,答了也一个月都不重算', async () => {
+    const { paramsApi } = await import('@/api/params')
+    vi.mocked(paramsApi.status).mockResolvedValueOnce({ ...STALE2 })
+    const recalc = vi.mocked(paramsApi.recalc)
+    recalc.mockReset()
+    const w = await mountPage()
+    try {
+      await enterEdit(w)
+      const vm = w.vm as unknown as { editMode: boolean; onRecalcOthers: () => Promise<void> }
+      const p = vm.onRecalcOthers()
+      await flushPromises()
+      expect(askQueue.map(a => a.title), '前置:弹窗出来了').toEqual(['重算这 2 个月？'])
+      vm.editMode = false
+      await flushPromises()
+      answer(true)
+      await p
+      expect(recalc).not.toHaveBeenCalled()
+    } finally { w.unmount() }
+  })
+
+  // 破坏验证:onCopy 答完后的 `!editMode.value` 去掉 → 红
+  it('❗复制上月电价:确认弹窗开着时被退出编辑态,答了也不复制', async () => {
+    const { paramsApi } = await import('@/api/params')
+    const copyPrev = vi.mocked(paramsApi.copyPrev)
+    copyPrev.mockReset()
+    const w = await mountPage()
+    try {
+      await enterEdit(w)
+      const vm = w.vm as unknown as { editMode: boolean; onCopy: () => Promise<void> }
+      const p = vm.onCopy()
+      await flushPromises()
+      expect(askQueue.map(a => a.title)).toEqual(['复制上月电价到 2024-02？'])
+      vm.editMode = false
+      await flushPromises()
+      answer(true)
+      await p
+      expect(copyPrev).not.toHaveBeenCalled()
+    } finally { w.unmount() }
+  })
+
+  // 破坏验证:onCopy 答完后的 `ym.value !== at` 去掉 → copyPrev('2024-02') 被打出去 → 红
+  it('❗复制上月电价:确认弹窗开着时换了月,答了也不复制(问的是哪个月,写的就只能是哪个月)', async () => {
+    const { paramsApi } = await import('@/api/params')
+    const copyPrev = vi.mocked(paramsApi.copyPrev)
+    copyPrev.mockReset()
+    const w = await mountPage()
+    try {
+      await enterEdit(w)
+      const vm = w.vm as unknown as { editMode: boolean; onCopy: () => Promise<void> }
+      const p = vm.onCopy()
+      await flushPromises()
+      useBillingPeriodStore().pick(2024, 3)
+      await flushPromises()
+      if (!vm.editMode) await enterEdit(w)
+      expect(vm.editMode, '前置:人在新月的编辑态里').toBe(true)
+      answer(true)
+      await p
+      expect(copyPrev).not.toHaveBeenCalled()
+    } finally { w.unmount() }
+  })
+
+  // 破坏验证:srcItems 参数那一条去掉 onClick → 红
+  it('「改了 N 项参数」那一条点开变更记录(问题所在处)', async () => {
+    const { paramsApi } = await import('@/api/params')
+    vi.mocked(paramsApi.status).mockResolvedValueOnce({ ...STALE2 })
+    const w = await mountPage()
+    try {
+      await openChip(w)
+      const item = [...document.querySelectorAll('.fap-item')].find(b => b.textContent?.includes('改了 2 项参数')) as HTMLButtonElement
+      item.click()
+      await flushPromises()
+      expect(w.findComponent(ParamChangesDrawer).props('open')).toBe(true)
+    } finally { w.unmount() }
+  })
+
+  // 破坏验证:exErr 的 tenant 判断恒 '' → 红
+  it('❗新增例外缺字段:红字贴在字段下面,不弹窗、不走回执、不发请求', async () => {
+    const w = await mountPage()
+    try {
+      await enterEdit(w)
+      await w.findAll('button').find(b => b.text().includes('新增例外'))!.trigger('click')
+      await flushPromises()
+      const errs = () => [...document.querySelectorAll('.fp-dwr .fp-field-err')].map(e => e.textContent?.trim() ?? '')
+      expect(errs().length, '前置:报错位常驻').toBeGreaterThan(1)
+      expect(errs().filter(Boolean), '没点保存前不报').toEqual([])
+      put.mockClear()
+      const save = [...document.querySelectorAll('.fp-dwr button')].find(b => b.textContent?.trim() === '保存') as HTMLButtonElement
+      save.click()
+      await flushPromises()
+      expect(errs()).toContain('请选择租户')
+      expect(errs()).toContain('请输入值')
+      expect(receipts).toHaveLength(0)
+      expect(put).not.toHaveBeenCalled()
+      // 框也变红(06-B ⑤):租户选择器、值输入框
+      // 破坏验证:FPTenantPicker 的 :invalid 去掉 → 红;.pm-exin 的 :class bad 去掉 → 红
+      expect(document.querySelector('.fp-dwr .fp-tp-trigger')!.classList.contains('invalid'), '租户框没变红').toBe(true)
+      expect(document.querySelector('.fp-dwr input.pm-exin[type="number"]')!.classList.contains('bad'), '值框没变红').toBe(true)
+    } finally { w.unmount() }
+  })
+
+  // 破坏验证:put 的 receipt.fail 换成 console.warn → 红
+  it('保存失败 → 底部失败回执(不再 alert)', async () => {
+    const w = await mountPage()
+    try {
+      const vm = w.vm as unknown as { editMode: boolean; put: (req: object) => Promise<boolean> }
+      vm.editMode = true
+      await nextTick()
+      put.mockRejectedValueOnce(new Error('网络断了'))
+      expect(await vm.put({ key: 'price_p1', scope: 'zone:p1', acctMonth: '2024-02', mode: 'month', value: 1.1 })).toBe(false)
+      expect(receipts.map(r => [r.tone, r.text])).toEqual([['fail', '网络断了']])
+    } finally { w.unmount() }
+  })
+
+  // 破坏验证:模板 <template v-else> 去掉 v-else → 卡片断言红;FPEditModeButton 的 :disabled 删掉 → 禁用断言红
+  it('❗参数没读到:失败件换掉五张卡、编辑按钮禁「进」;点重试重拉,成功后卡回来', async () => {
+    const { paramsApi } = await import('@/api/params')
+    const list = vi.mocked(paramsApi.list)
+    list.mockRejectedValueOnce(new Error('后端挂了'))
+    const w = await mountPage()
+    try {
+      expect(w.find('.fp-empty.error').text()).toContain('2024 年 2 月的计费参数没读到')
+      expect(w.find('#sec-monthly').exists(), '失败时卡片该被换掉').toBe(false)
+      expect(w.findAll('button').find(b => b.text().includes('编辑模式'))!.attributes('disabled'), '没读到时不该进得了编辑').toBeDefined()
+      const n = list.mock.calls.length
+      await w.findAll('button').find(b => b.text().includes('重试'))!.trigger('click')
+      await flushPromises()
+      expect(list.mock.calls.length).toBe(n + 1)
+      expect(w.find('#sec-monthly').exists()).toBe(true)
+      expect(w.find('.fp-empty.error').exists()).toBe(false)
+    } finally { w.unmount() }
+  })
+
+  // 破坏验证:stateTags 的 warn/muted 判断写反 → 红
+  it('页面状态:电价缺项、池核算未生成 → 标题旁两个黄标签', async () => {
+    const { paramsApi } = await import('@/api/params')
+    vi.mocked(paramsApi.status).mockResolvedValueOnce({ ...STATUS, priceOk: 5, poolSnapshotAt: null })
+    const w = await mountPage()
+    try {
+      expect(w.findAll('.pm-head .fp-state').map(e => [e.text(), e.classes('warn')]))
+        .toEqual([['本月电价 5/6 · 缺 1 项', true], ['本月池核算未生成', true]])
+    } finally { w.unmount() }
+  })
+
+  // 破坏验证:delTenantRow 的 danger: true 删掉 → 红;ask 换成直接 putAll → put 断言红
+  it('删户级例外走确认弹窗(删除类:主按钮红);取消就什么都不发', async () => {
+    const w = await mountPage()
+    try {
+      await enterEdit(w)
+      put.mockClear()
+      await w.find('#sec-tenant button.pm-ib.danger').trigger('click')
+      await flushPromises()
+      expect(askQueue.map(a => [a.title, a.danger])).toEqual([['删除「力灏（户） · 电力管理费」例外（长期）？', true]])
+      answer(false)
+      await flushPromises()
+      expect(put).not.toHaveBeenCalled()
+    } finally { w.unmount() }
+  })
+
+  // 破坏验证:④ 的 FPEmpty v-if 改成 false(表照出)→ 红
+  it('手写空行换成空状态:④ 没有户级例外 → 卡里是空状态件,不出空表', async () => {
+    const { paramsApi } = await import('@/api/params')
+    vi.mocked(paramsApi.list).mockResolvedValueOnce(ROWS.filter(r => !r.scope.startsWith('tenant:')).map(r => ({ ...r })))
+    const w = await mountPage()
+    try {
+      expect(w.find('#sec-tenant .fp-empty').text()).toContain('暂无户级例外')
+      expect(w.find('#sec-tenant table').exists(), '空状态和表互斥').toBe(false)
+    } finally { w.unmount() }
+  })
+
+  // 破坏验证:useEditMode 的 dirty 选项删掉(缺省按 1)→ 第一条红
+  it('改动数:没开浮层是 0,开着修改浮层算 1 处(关页签按它问)', async () => {
+    const w = await mountPage()
+    try {
+      await enterEdit(w)
+      const auth = useAuthStore()
+      expect(auth.dirtyTotal).toBe(0)
+      ;(w.vm as unknown as { editRow: object | null }).editRow = ROWS[2]
+      await nextTick()
+      expect(auth.dirtyTotal).toBe(1)
+    } finally { w.unmount() }
   })
 })

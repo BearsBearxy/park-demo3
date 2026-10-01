@@ -5,7 +5,7 @@
 import { computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Segmented from '@/components/ds/Segmented.vue'
-import Button from '@/components/ds/Button.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
 import SchedNoteCell from '@/components/sched/SchedNoteCell.vue'
 import { rowLocked, ROW_LOCK_TIP } from '@/components/sched/reviewLock'
 import { phaseTint } from '@/components/sched/tints'
@@ -111,16 +111,12 @@ const k = computed(() => {
     </div>
 
     <div class="s6-tablewrap">
-      <!-- 空年 / 空期引导态(jsx 346-357) -->
-      <div v-if="period.length === 0" class="s6-empty">
-        <div class="s6-empty-ic"><component :is="iconFor('sun')" :size="24" /></div>
-        <div class="s6-empty-t">{{ year }} 年<template v-if="phase !== 'all'">（{{ phaseById[phase]?.short }}）</template>暂无记账记录</div>
-        <div class="s6-empty-s">进入编辑模式可手动新增各期光伏的自消纳与余电上网电量、金额;记录自动归入对应年份。</div>
-        <Button v-if="edit" variant="filled" @click="emit('add')">
-          <template #leading><component :is="iconFor('plus')" :size="16" /></template>
-          新增记账
-        </Button>
-      </div>
+      <!-- 空年 / 空期(十件 ⑦ 空状态):占住表格区,图标 + 一句 + 副句 + 编辑态才有的「新增记账」 -->
+      <FPEmpty v-if="period.length === 0" class="s6-empty" :action="edit ? '新增记账' : undefined"
+               sub="进入编辑模式可手动新增各期光伏的自消纳与余电上网电量、金额;记录自动归入对应年份。"
+               @action="emit('add')">
+        {{ year }} 年<template v-if="phase !== 'all'">（{{ phaseById[phase]?.short }}）</template>还没有记账记录
+      </FPEmpty>
 
       <table v-else class="s6-table">
         <thead>
@@ -133,7 +129,7 @@ const k = computed(() => {
                   class="s6-cb"
                   :checked="allSelected"
                   :disabled="period.length === 0"
-                  title="全选"
+                  v-tip="'全选'"
                   @change="emit('selectAll', ($event.target as HTMLInputElement).checked)"
                 />
                 <span class="s6-th-name">记账月份</span>
@@ -177,7 +173,7 @@ const k = computed(() => {
                     type="checkbox"
                     class="s6-cb"
                     :checked="selectedIds?.has(r.id) ?? false"
-                    title="选中以批量删除"
+                    v-tip="'选中以批量删除'"
                     :disabled="rowLocked(lockedMonths, r.acctMonth)"
                     @change="emit('toggleSelect', r)"
                   />
@@ -198,8 +194,8 @@ const k = computed(() => {
               </td>
               <td v-if="edit">
                 <span class="s6-acts">
-                  <span v-if="rowLocked(lockedMonths, r.acctMonth)" class="s6-actlock" :title="ROW_LOCK_TIP"><component :is="iconFor('lock')" :size="14" /></span>
-                  <button v-else class="s6-actbtn del" title="删除" @click="emit('delete', r)">
+                  <span v-if="rowLocked(lockedMonths, r.acctMonth)" class="s6-actlock" v-tip="ROW_LOCK_TIP"><component :is="iconFor('lock')" :size="14" /></span>
+                  <button v-else class="s6-actbtn del" v-tip="'删除'" @click="emit('delete', r)">
                     <component :is="iconFor('trash-2')" :size="15" />
                   </button>
                 </span>
@@ -284,11 +280,8 @@ const k = computed(() => {
 .s6-table tfoot .s6-c-num { color:var(--brand-deep); font-size:12.5px; font-weight:var(--fw-semibold); }
 .s6-foot-lbl { text-align:left; font-size:13px; color:var(--text-primary); }
 
-/* 空 / 未来年份引导态 */
-.s6-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; height:100%; min-height:240px; padding:40px; text-align:center; }
-.s6-empty-ic { width:52px; height:52px; border-radius:16px; background:var(--surface-card); display:grid; place-items:center; color:var(--text-muted); }
-.s6-empty-t { font-size:15px; font-weight:var(--fw-semibold); color:var(--text-primary); }
-.s6-empty-s { font-size:13px; color:var(--text-muted); max-width:380px; line-height:1.5; }
+/* 空 / 未来年份(FPEmpty):表格区不是 flex 列,高度给满才能居中 */
+.s6-empty { height:100%; }
 
 /* ── 响应式(RESPONSIVE-LAYOUT-SPEC §5.4 定宽表):列/min-width 一根不动,
    窄了在 .s6-tablewrap(overflow:auto,现成)内横滚;查看态迁移只动工具行与触屏可达性 ── */

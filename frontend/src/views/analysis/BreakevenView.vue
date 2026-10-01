@@ -4,12 +4,12 @@
 // + 敏感性龙卷风横条 + 固定/变动逐月堆叠。口径与 v1 一致(CVP 计算抽至 breakeven.logic.ts,数值不变)。
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { onReactivated } from '@/composables/onReactivated'
-import AnaShell from './AnaShell.vue'
+import AnaShell, { periodNote } from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
-import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
+import FPStateTag from '@/components/fp/FPStateTag.vue'
 import AnaPill from '@/components/ana/AnaPill.vue'
 import { iconFor } from '@/components/ds/icon'
 import { STATUS, fnum } from '@/components/ana/anaFmt'
@@ -117,6 +117,10 @@ function onFr(e: Event) {
           :note="s10Used ? '口径月 ' + s10Used.ym : '附表10 未录入'" />
       </template>
     </template>
+    <!-- §五策略2:所选月无 pnl 覆盖回退口径月 → 期间选择旁标签(画布 06-D;相等不渲染;按年粒度无所选月不适用) -->
+    <template #period-note>
+      <FPStateTag v-if="drawnYm && ymUsed && drawnYm !== ymUsed" tone="muted">{{ periodNote(drawnYm, ymUsed) }}</FPStateTag>
+    </template>
 
     <!-- 首进:版式已知就不转圈(C6-01)。块高逐块照它顶替的那块 —— 页头 44(.ak-h-ic 40 /
          标题行 20 + 4 + 副标行 20)、结论条一行 20、卡头 20(.av2-card-h 下距 8 合 28)、
@@ -165,9 +169,6 @@ function onFr(e: Event) {
     </div>
 
     <div v-else class="ak-page" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown">
-      <!-- §五策略2:所选月无 pnl 覆盖回退口径月 → 显式横幅(相等不渲染;按年粒度无所选月不适用) -->
-      <AnaPeriodBanner v-if="drawnYm && ymUsed && drawnYm !== ymUsed"
-        :selected="drawnYm" :used="ymUsed" source="损益附表" />
       <div class="ak-head">
         <div class="ak-h-l"><span class="ak-h-ic"><component :is="iconFor('scale-3d')" :size="20" /></span>
           <div>
@@ -202,10 +203,8 @@ function onFr(e: Event) {
         </div>
 
         <div class="av2-card av2-s4">
-          <div class="av2-card-h"><span class="t">哪个因素对利润影响最大</span><span class="hint">各驱动 ±10% · 龙卷风图</span></div>
-          <!-- §五策略2:口径月无 s10 数据回退最新 s10 月 → 卡顶横幅(相等不渲染) -->
-          <AnaPeriodBanner v-if="s10Used && ymUsed && s10Used.ym !== ymUsed"
-            :selected="ymUsed" :used="s10Used.ym" source="附表10 " style="margin-bottom: 8px" />
+          <!-- §五策略2:口径月无 s10 数据回退最新 s10 月 → 卡头标签(画布 06-D;相等不渲染) -->
+          <div class="av2-card-h"><span class="t">哪个因素对利润影响最大<FPStateTag v-if="s10Used && ymUsed && s10Used.ym !== ymUsed" tone="muted" style="margin-left: 8px">显示 {{ s10Used.ym }}</FPStateTag></span><span class="hint">各驱动 ±10% · 龙卷风图</span></div>
           <AnaEChart :option="torOpt" :height="300" />
         </div>
 

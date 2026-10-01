@@ -17,6 +17,10 @@ import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPToast from '@/components/fp/FPToast.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import { ask, askLeave } from '@/utils/ask'
+import { receipt } from '@/utils/receipt'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
@@ -36,6 +40,7 @@ const stepped = computed(() => vp.tier.value === 's')
 const loading = ref(false)
 const saving = ref(false)
 const companies = ref<CompanyFullDTO[]>([])
+const loadErr = ref('')
 const selId = ref<number | null>(null)        // null + creating=false → 未选中
 const creating = ref(false)
 const okMsg = ref('')
@@ -63,17 +68,22 @@ function fillForm(c: CompanyFullDTO | null) {
 const showPane = computed(() => creating.value || !!cur.value)
 const showList = computed(() => !stepped.value || !showPane.value)
 
-function backToList() {
-  if (!guardDirty()) return
+async function backToList() {
+  if (!(await guardDirty())) return
   selId.value = null
   creating.value = false
   acctEdit.value = null
 }
 
+// seq:开窗 / 重试 / 写后重拉会叠着发,只认最后一趟(同系数簿 / 收款簿);错误只在成功分支清
+let seq = 0
 async function load(keepId?: number | null) {
+  const my = ++seq
   loading.value = true
   try {
-    companies.value = await companyBookApi.list()
+    const list = await companyBookApi.list()
+    if (my !== seq) return
+    companies.value = list
     const id = keepId ?? selId.value
     // S 档停在第一级:不自动选中第一家(自动选等于跳过一级)。keepId(保存后回填)仍然认——
     // 那是「留在刚才那家」,不是自动选。
@@ -82,10 +92,11 @@ async function load(keepId?: number | null) {
         : companies.value[0]?.id ?? null
     creating.value = false
     fillForm(cur.value)
+    loadErr.value = ''
   } catch (e) {
-    alert(errMsg(e, '公司数据加载失败'))
-    emit('close')
-  } finally { loading.value = false }
+    if (my !== seq) return
+    loadErr.value = errMsg(e, '公司数据加载失败')
+  } finally { if (my === seq) loading.value = false }
 }
 watch(() => props.open, o => {
   if (!o) return
@@ -96,28 +107,30 @@ watch(() => props.open, o => {
   load()
 })
 
-function guardDirty(): boolean {
-  if (!dirty.value && !acctEdit.value) return true
-  return confirm('有未保存的改动,继续将放弃。确认?')
+function guardDirty(): Promise<boolean> {
+  return askLeave({ page: creating.value ? '新增公司' : cur.value?.name ?? '收款公司', count: dirtyN(), verb: '离开' })
 }
-function pick(id: number) {
+async function pick(id: number) {
   if (id === selId.value && !creating.value) return
-  if (!guardDirty()) return
+  if (!(await guardDirty())) return
   selId.value = id
   creating.value = false
   acctEdit.value = null
   fillForm(cur.value)
 }
-function startCreate() {
-  if (!guardDirty()) return
+async function startCreate() {
+  if (!(await guardDirty())) return
   creating.value = true
   acctEdit.value = null
   fillForm(null)
 }
 
+const nameErr = ref('')
+watch(() => form.value.name, () => { nameErr.value = '' })
 async function saveCompany() {
+  if (!dirty.value) return   // 失败回执上的「重试」:那时可能已换了公司 / 已存过
   const name = form.value.name.trim()
-  if (!name) { alert('公司名必填'); return }
+  if (!name) { nameErr.value = '公司名必填'; return }
   if (saving.value) return
   saving.value = true
   try {
@@ -132,7 +145,7 @@ async function saveCompany() {
     flashOk(creating.value ? `已新增公司「${saved.name}」` : `已保存「${saved.name}」`)
     await load(saved.id)
     emit('saved')
-  } catch (e) { alert(errMsg(e, '保存失败')) } finally { saving.value = false }
+  } catch (e) { receipt.fail(errMsg(e, '保存失败'), { label: '重试', run: () => void saveCompany() }) } finally { saving.value = false }
 }
 
 // ── 收款账户 ──
@@ -143,7 +156,8 @@ const acctEdit = ref<number | 'new' | null>(null)
 const meId = Symbol('company-book')
 const screen = useScreen()
 function unregister() { auth.closeEditor(meId); void auth.endElevation() }
-watch(() => dirty.value || acctEdit.value != null, (on) => { if (on) auth.openEditor(meId, screen); else unregister() })
+const dirtyN = () => (dirty.value ? 1 : 0) + (acctEdit.value != null ? 1 : 0)
+watch(() => dirty.value || acctEdit.value != null, (on) => { if (on) auth.openEditor(meId, screen, dirtyN); else unregister() })
 onUnmounted(unregister)
 const acctForm = ref<{ kind: AccountKind; accountName: string; accountNo: string; bankName: string; isDefault: boolean; remark: string }>(
   { kind: 'bank', accountName: '', accountNo: '', bankName: '', isDefault: false, remark: '' })
@@ -178,17 +192,21 @@ async function saveAcct() {
     acctEdit.value = null
     await load(selId.value)
     emit('saved')
-  } catch (e) { alert(errMsg(e, '账户保存失败')) } finally { saving.value = false }
+  } catch (e) { receipt.fail(errMsg(e, '账户保存失败'), { label: '重试', run: () => void saveAcct() }) } finally { saving.value = false }
 }
 async function delAcct(a: CompanyAccountDTO) {
   if (saving.value) return
-  if (!confirm(`删除账户「${a.accountName || ACCOUNT_KIND_LABEL[a.kind]}${a.accountNo ? ' ' + a.accountNo : ''}」?导出时选过它的历史文件不受影响。`)) return
+  if (!(await ask({
+    title: `删除账户「${a.accountName || ACCOUNT_KIND_LABEL[a.kind]}${a.accountNo ? ' ' + a.accountNo : ''}」？`,
+    body: '导出时选过它的历史文件不受影响。', action: '删除账户', danger: true,
+  }))) return
+  if (saving.value) return
   saving.value = true
   try {
     await companyBookApi.deleteAccount(a.id)
     await load(selId.value)
     emit('saved')
-  } catch (e) { alert(errMsg(e, '删除失败')) } finally { saving.value = false }
+  } catch (e) { receipt.fail(errMsg(e, '删除失败'), { label: '重试', run: () => void delAcct(a) }) } finally { saving.value = false }
 }
 async function setDefault(a: CompanyAccountDTO) {
   if (saving.value || a.isDefault) return
@@ -200,12 +218,12 @@ async function setDefault(a: CompanyAccountDTO) {
     })
     await load(selId.value)
     emit('saved')
-  } catch (e) { alert(errMsg(e, '设默认失败')) } finally { saving.value = false }
+  } catch (e) { receipt.fail(errMsg(e, '设默认失败'), { label: '重试', run: () => void setDefault(a) }) } finally { saving.value = false }
 }
 
-function onClose() {
+async function onClose() {
   if (saving.value) return
-  if ((dirty.value || acctEdit.value) && !confirm('有未保存的改动,关闭将放弃。确认关闭?')) return
+  if (!(await askLeave({ page: '收款公司', count: dirtyN() }))) return
   emit('close')
 }
 </script>
@@ -218,7 +236,10 @@ function onClose() {
     <template #badge>
       <button v-if="stepped && showPane" type="button" class="cw-back" @click="backToList">← 公司列表</button>
     </template>
-    <div v-if="loading" class="cw-empty">加载中…</div>
+    <!-- 已失败时不换成「加载中…」:重试在途失败件留在原地,到数才退场 -->
+    <div v-if="loading && !loadErr" class="cw-empty">加载中…</div>
+    <!-- 加载失败换掉整个窗体内容(不再弹窗关窗),重试接上 load -->
+    <FPLoadError v-else-if="loadErr" :sub="loadErr" @retry="load()">收款公司没读到</FPLoadError>
     <template v-else>
       <!-- 成功提示(4s 自消)。page 模式贴屏幕底部:弹窗 body 是 overflow:auto 滚动容器,
            absolute 贴底会跟着内容滚走;且 --z-toast(400) > --z-modal-2(320),不被弹窗遮住 -->
@@ -245,7 +266,8 @@ function onClose() {
           <div class="cw-form">
             <label class="cw-f">
               <span>显示名 <em>*</em></span>
-              <input v-model="form.name" :disabled="!canEdit" placeholder="如:一泽" />
+              <input v-model="form.name" :class="{ bad: nameErr }" :disabled="!canEdit" placeholder="如:一泽" />
+              <span class="fp-field-err"><template v-if="nameErr">{{ nameErr }}</template></span>
             </label>
             <label class="cw-f">
               <span>短名</span>
@@ -278,7 +300,9 @@ function onClose() {
               </Button>
             </div>
 
-            <table class="cw-table">
+            <FPEmpty v-if="(cur?.accounts?.length ?? 0) === 0 && acctEdit === null" size="sm"
+                     sub="没有账户的公司,通知单上整块账户信息省略(源册本来也有这种简化版)">还没有收款账户</FPEmpty>
+            <table v-else class="cw-table">
               <colgroup>
                 <col style="width:82px" /><col style="width:150px" /><col />
                 <col style="width:170px" /><col style="width:130px" /><col style="width:104px" />
@@ -298,17 +322,14 @@ function onClose() {
                   <td class="l"><span class="cw-txt dim">{{ a.remark || '–' }}</span></td>
                   <td class="ct">
                     <button class="cw-mini" :class="{ on: a.isDefault }" :disabled="!canEdit"
-                            :title="a.isDefault ? '当前默认账户' : '设为默认'" @click="setDefault(a)">默认</button>
-                    <button v-if="canEdit" class="cw-mini" title="编辑" @click="startAcct(a)">
+                            v-tip="a.isDefault ? '当前默认账户' : '设为默认'" @click="setDefault(a)">默认</button>
+                    <button v-if="canEdit" v-tip="'编辑'" class="cw-mini" @click="startAcct(a)">
                       <component :is="iconFor('pencil')" :size="12" />
                     </button>
-                    <button v-if="canEdit" class="cw-mini del" title="删除" @click="delAcct(a)">
+                    <button v-if="canEdit" v-tip="'删除'" class="cw-mini del" @click="delAcct(a)">
                       <component :is="iconFor('trash-2')" :size="12" />
                     </button>
                   </td>
-                </tr>
-                <tr v-if="(cur?.accounts?.length ?? 0) === 0 && acctEdit === null">
-                  <td class="cw-noro" colspan="6">还没有收款账户 —— 没有账户的公司,通知单上整块账户信息省略(源册本来也有这种简化版)</td>
                 </tr>
               </tbody>
             </table>
@@ -355,7 +376,7 @@ function onClose() {
         </div>
 
         <!-- S 档第一级整屏都是列表,没有「左栏」可指,这句占位不画 -->
-        <div v-else-if="!stepped" class="cw-pane empty">左栏选一家公司,或点「新增公司」</div>
+        <div v-else-if="!stepped" class="cw-pane"><FPEmpty sub="在左栏选一家,或点「新增公司」">还没选公司</FPEmpty></div>
       </div>
     </template>
 
@@ -380,7 +401,6 @@ function onClose() {
 .cw-item.add { flex-direction: row; align-items: center; gap: 6px; justify-content: center; border-style: dashed; color: var(--text-secondary); font-size: 12px; }
 
 .cw-pane { min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface-white); padding: 14px; }
-.cw-pane.empty { align-items: center; justify-content: center; color: var(--text-disabled); font-size: var(--fs-label); }
 
 .cw-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
 .cw-f { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--text-muted); }
@@ -391,6 +411,7 @@ function onClose() {
 .cw-f input { height: 32px; padding: 0 10px; box-sizing: border-box; border: 1px solid var(--border-control); border-radius: var(--radius-sm); font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); font-family: var(--font-sans); }
 .cw-f input:focus { outline: none; border-color: var(--hue-blue); }
 .cw-f input:disabled { background: var(--surface-sunken); color: var(--text-muted); }
+.cw-f input.bad { border-color: var(--hue-red); }
 .cw-f-act { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
 
 .cw-sec { display: flex; align-items: center; gap: 8px; padding-top: 6px; border-top: 1px solid var(--divider); font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--text-primary); }
@@ -401,7 +422,6 @@ function onClose() {
 .cw-table thead th { height: 30px; color: var(--text-muted); font-size: 11.5px; font-weight: var(--fw-semibold); text-align: left; white-space: nowrap; }
 .cw-table th.ct, .cw-table td.ct { text-align: center; }
 .cw-table tbody td { height: 34px; vertical-align: middle; }
-.cw-noro { text-align: center !important; padding: 22px 12px !important; color: var(--text-muted); font-size: 11.5px; }
 .cw-txt { display: block; font-size: 12px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cw-txt.dim { color: var(--text-muted); }
 .cw-txt.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }

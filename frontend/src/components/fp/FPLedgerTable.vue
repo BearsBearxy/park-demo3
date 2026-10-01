@@ -3,6 +3,7 @@
 // body cell 532-558, footer 646-661). Pure presentation; all CSS in this file's scoped block.
 import { computed, ref } from 'vue'
 import { iconFor } from '@/components/ds/icon'
+import FPMark from '@/components/fp/FPMark.vue'
 import { minTableH, numW, textW, useWideTable, type HeightDims, type WideCol } from '@/composables/useWideTable'
 import type { ColumnModel, LeafColumn, ColumnKey } from '@/utils/ledgerColumns'
 import type { LedgerRowDTO } from '@/types/ledger'
@@ -47,10 +48,10 @@ const LG_DIMS: HeightDims = { grpH: 34, leafH: 38, rowH: 34, footH: 40 }
 
 // 列宽不量 DOM(§4 列宽铁律):固定数字列按整列全部行 + 合计里最长的数定宽,不省略;
 // 表头字比数宽时按表头(整列是 0 的列不至于窄成一条)。
-// 租户按最长的名字:.lg-tname 内边距 20 + 间距 5 + 箭头 13;有未绑定行再加圆点 8 + 间距 5。
+// 租户按最长的名字:.lg-tname 内边距 20 + 间距 5 + 箭头 13;有未绑定行再加「● 未绑定」标记(间距 5 + FPMark 点 6、间距 4、三个字)。
 function colW(c: LeafColumn): number {
   if (c.kind === 'text') {
-    const dot = props.rows.some(r => r.tenantId == null) ? 13 : 0
+    const dot = props.rows.some(r => r.tenantId == null) ? 5 + textW(['未绑定'], 12, 10) : 0
     return textW([...props.rows.map(r => r.tenantName), '合　计'], 12.5, 38) + dot
   }
   const vals = props.rows.map(r => lgFmt((r as any)[c.key]))
@@ -120,7 +121,7 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
       <thead>
         <tr>
           <th v-if="selectable" rowspan="2" class="lg-grp-th lg-fix-th lg-fix lg-selc" :style="{ left: '0px' }">
-            <input type="checkbox" class="lg-cb" :checked="allChecked" title="全选/清空" @change="emit('toggle-select-all')" />
+            <input type="checkbox" class="lg-cb" :checked="allChecked" v-tip="'全选/清空'" @change="emit('toggle-select-all')" />
           </th>
           <!-- lg-fix 系 class 跟 fixedKeys 走(退掉的列若保留会以高 z-index 盖住还固定着的列) -->
           <th v-for="c in columns.fixedLeft" :key="c.key" rowspan="2"
@@ -149,20 +150,20 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
                   v-tip="{ text: row.tenantName, sub: row.carried ? '上月结转,本月未记账' : '点击查看明细/绑定' }"
                   @click="emit('tenant-click', row)">
               <span class="lg-tname-txt" :class="{ carried: row.carried }">{{ row.tenantName }}</span>
-              <!-- 未绑定:紧凑圆点(文字胶囊会把长租户名挤到看不见,用户 2026-08-24 拍板);语义进 title -->
-              <span v-if="row.tenantId == null" class="lg-unbound-dot" title="未绑定租户档案 · 点击行名处理"></span>
+              <!-- 未绑定:就地标记 点 + 字(十件 ①;原来只有圆点、意思全靠 title)。名字超宽时省略的是名字,标记不缩 -->
+              <FPMark v-if="row.tenantId == null" tone="warn">未绑定</FPMark>
               <component :is="ChevronRight" :size="13" class="ch" />
             </span>
             <!-- 应收合计 (sum, 派生只读) -->
-            <span v-else-if="c.kind === 'sum'" class="lg-sumc" :title="lgFmt(row.totalReceivable)">{{ lgFmt(row.totalReceivable) }}</span>
+            <span v-else-if="c.kind === 'sum'" class="lg-sumc">{{ lgFmt(row.totalReceivable) }}</span>
             <!-- 本月结余 (bal, 派生只读, 正橙负红) -->
             <span v-else-if="c.kind === 'bal'"
-                  class="lg-sumc" :class="{ neg: row.balanceEnd < 0, pos: row.balanceEnd > 0 }" :title="lgFmt(row.balanceEnd)">{{ lgFmt(row.balanceEnd) }}</span>
+                  class="lg-sumc" :class="{ neg: row.balanceEnd < 0, pos: row.balanceEnd > 0 }">{{ lgFmt(row.balanceEnd) }}</span>
             <!-- 备注 (note) -->
             <template v-else-if="c.kind === 'note'">
               <input v-if="edit" class="lg-ni l" type="text" :value="row.note ?? ''" placeholder="—"
                      @input="onInput(ledgerRowKey(row), 'note', $event)" />
-              <span v-else class="lg-note" :title="row.note ?? ''">{{ row.note || '' }}</span>
+              <span v-else class="lg-note" v-tip="row.note">{{ row.note || '' }}</span>
             </template>
             <!-- balancePrev:结余链派生位只读(=上月期末);首次出现月=期初,编辑态可录(全链唯一人工位) -->
             <template v-else-if="c.key === 'balancePrev'">
@@ -170,7 +171,7 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
                      :value="row.balancePrev === 0 ? '' : row.balancePrev" placeholder="期初"
                      @input="onInput(ledgerRowKey(row), 'balancePrev', $event)" />
               <span v-else class="lg-nv" :class="{ empty: !row.balancePrev }"
-                    :title="lgFmt(row.balancePrev) + (row.balancePrevDerived ? ' · 自动=上月期末' : '')">{{ row.balancePrev ? lgFmt(row.balancePrev) : '–' }}</span>
+                    v-tip="row.balancePrevDerived ? '自动 = 上月期末' : undefined">{{ row.balancePrev ? lgFmt(row.balancePrev) : '–' }}</span>
             </template>
             <!-- totalCollected + 21 费用列 (number, 编辑态可输入);
                  归档列(readonly)只显示已发生的钱,不接受新录入——同 balancePrevDerived 那套写法 -->
@@ -178,7 +179,7 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
               <input v-if="edit && !c.readonly" class="lg-ni" type="number"
                      :value="(row as any)[c.key] === 0 ? '' : (row as any)[c.key]"
                      @input="onInput(ledgerRowKey(row), c.key, $event)" />
-              <span v-else class="lg-nv" :class="{ empty: !(row as any)[c.key] }" :title="lgFmt((row as any)[c.key])">{{ (row as any)[c.key] ? lgFmt((row as any)[c.key]) : '–' }}</span>
+              <span v-else class="lg-nv" :class="{ empty: !(row as any)[c.key] }">{{ (row as any)[c.key] ? lgFmt((row as any)[c.key]) : '–' }}</span>
             </template>
           </td>
         </tr>
@@ -229,11 +230,6 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
 .lg-selc { width:32px; min-width:32px; max-width:32px; text-align:center; padding:0 !important; }
 .lg-cb { width:14px; height:14px; accent-color:var(--hue-blue); cursor:pointer; vertical-align:middle; }
 .lg-tname:hover { color:var(--hue-blue); }
-/* 未绑定:紧凑圆点(琥珀描边,warning 语义);完整提示走 title */
-.lg-unbound-dot {
-  flex:0 0 auto; width:8px; height:8px; border-radius:50%;
-  border:2px solid var(--status-warning); background:transparent; box-sizing:border-box;
-}
 .lg-tname-txt { overflow:hidden; text-overflow:ellipsis; }
 /* 结转虚行:名字弱化提示「未记账」(结余列仍正常显示,费用列本就留空) */
 .lg-tname-txt.carried { color:var(--text-muted); font-style:normal; }
