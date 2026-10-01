@@ -229,6 +229,9 @@ export const poolMethodLabel = (r: { method: string }) =>
 export const hasTouQty = (x: Pick<AllocPoolLineDTO, 'qtySharp' | 'qtyPeak' | 'qtyFlat' | 'qtyValley'>) =>
   x.qtySharp != null || x.qtyPeak != null || x.qtyFlat != null || x.qtyValley != null
 
+// ── 03-A 组头写组名:原册块名带着「合计：」尾巴(那一行原来就是小计行),组头本身就是小计,不再重复
+export const bandTitle = (label: string) => label.replace(/合计[:：]?$/, '')
+
 // ── 03-C 读数、金额一律两位小数(千分位;null 显 '–')
 export const fmtFixed2 = (v: number | null | undefined) =>
   v == null ? '–' : v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })

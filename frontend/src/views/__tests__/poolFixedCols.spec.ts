@@ -111,13 +111,14 @@ describe('公共电核算 · 固定列(用途 → 位置)', () => {
     expect(th(w, '用途').element.style.left).toBe('0px')
   })
 
-  // 破坏验证:grpLblSt 恒取「跨两列」那一份(宽 = 位置 + 用途)→ 红
-  it('可见 500:分组标签格只贴用途那一格,贴住的宽不超过用途列', async () => {
+  // 破坏验证:grpLblSt 位置退了仍贴左 → 红;colspan 退回 1 → 红
+  it('可见 500:位置退了,分组标签格照旧跨两列但不贴左(组名不被挤成一两个字,横滚时也不盖小计)', async () => {
     const w = await open()
     await ro.fire(500, 800)
-    const lbl = w.find('tr.pl-grp td.pl-glbl').element as HTMLElement
-    expect([lbl.style.position, lbl.style.left]).toEqual(['sticky', '0px'])
-    expect(px(lbl.style.width)).toBeLessThanOrEqual(px(th(w, '用途').element.style.width))
+    const lbl = w.find('tr.pl-grp td.pl-glbl')
+    expect(lbl.attributes('colspan')).toBe('2')
+    expect((lbl.element as HTMLElement).style.position).toBe('')
+    expect(lbl.classes()).not.toContain('pl-fix')
   })
 
   // 破坏验证:useSt 不并 fix.style.use(只给宽)→ 用途 left 不是 115px → 红

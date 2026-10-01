@@ -4,7 +4,7 @@ import {
   bandFooter, buildLossReconRows, buildPoolExportAoa, costPerLine, foldQtySrcIds,
   groupPoolsByBookBlock, lineFloor, lineLabel, lineShortLabel, lineUseName, lossFooter, meterDiffGroup, netSummary, POOL_LOC_HINT,
   poolAutoName, poolFeeLabel, poolFloor, poolFooter, poolLocKind, poolNote, poolSemantics,
-  poolSpan, poolSubtitle, poolSubtotal, stdDisplay, poolMethodLabel, hasTouQty, fmtFixed2,
+  poolSpan, poolSubtitle, poolSubtotal, stdDisplay, poolMethodLabel, hasTouQty, fmtFixed2, bandTitle,
 } from './poolLedgerLogic'
 import type {
   AllocLossReconDTO, AllocLossUnitDTO, AllocMeterDiffDTO, AllocMethod, AllocPoolLineDTO, AllocPoolRowDTO,
@@ -632,6 +632,16 @@ describe('hasTouQty 有没有分时读数', () => {
     expect(hasTouQty(line({}))).toBe(false)
     expect(hasTouQty(line({ qtyFlat: 0 }))).toBe(true)
     expect(hasTouQty(pool({ qtyValley: 12.5 }))).toBe(true)
+  })
+})
+
+describe('03-A 组头组名 bandTitle', () => {
+  it('去掉原册块名尾巴上的「合计：」「合计:」「合计」,别处的「合计」不动', () => {
+    expect(bandTitle('A座及园区公共表合计：')).toBe('A座及园区公共表')
+    expect(bandTitle('A座电梯及楼层公共电合计')).toBe('A座电梯及楼层公共电')
+    expect(bandTitle('园区合计:')).toBe('园区')
+    expect(bandTitle('合计表一期')).toBe('合计表一期')
+    expect(bandTitle('园区级')).toBe('园区级')
   })
 })
 

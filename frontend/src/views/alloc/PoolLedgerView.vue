@@ -54,7 +54,7 @@ import { useTabsStore } from '@/stores/tabs'
 import { useZonesStore } from '@/stores/zones'
 import {
   FROZEN_CFG_KEY, POOL_LOC_HINT, POOL_LOC_UNSET, bandFooter, buildPoolExportAoa,
-  costPerLine, fmtFixed2, groupPoolsByBookBlock, hasTouQty, lineArea, lineFloor, lineLabel, lineShortLabel, lineUseName,
+  bandTitle, costPerLine, fmtFixed2, groupPoolsByBookBlock, hasTouQty, lineArea, lineFloor, lineLabel, lineShortLabel, lineUseName,
   meterDiffGroup, netSummary, poolArea, poolAutoName, poolFeeLabel, poolFloor, poolFooter, poolLocKind, poolMethodLabel,
   poolNote, stdDisplay,
 } from '@/utils/poolLedgerLogic'
@@ -386,11 +386,11 @@ const w = (px: number) => ({ width: px + 'px', minWidth: px + 'px', maxWidth: px
 const locFixed = computed(() => !!fix.value.style.loc)
 const locSt = computed(() => ({ ...w(fix.value.w.loc), ...fix.value.style.loc }))
 const useSt = computed(() => ({ ...w(fix.value.w.use), ...fix.value.style.use }))
-// 分组标签格:两根都固定时跨两列一起贴左;位置退了就只占用途那一格贴左 —— 贴住的宽不许超过仍固定的列,
-// 不然横滚时它会盖住滚到它底下的小计数字
+// 分组标签格恒跨位置 + 用途两列。两根都固定时一起贴左;位置退了就不贴 —— 贴在用途一格里组名只剩一两个字
+// (702 宽实测被挤到 24px),贴得比仍固定的列宽又会在横滚时盖住小计数字,所以干脆跟着表滚
 const grpLblSt = computed(() => (locFixed.value
   ? { ...w(fix.value.w.loc + fix.value.w.use), position: 'sticky' as const, left: '0px', boxShadow: fix.value.style.use?.boxShadow }
-  : useSt.value))
+  : undefined))
 // 3 级:min-height 挂在表格区 .pl-tablearea 上(卡 = 工具条 44 + 卡边框 2 + .pl-wrap 上边线 1 + 列名与 8 行),
 // 整页往下滚。不能挂在 .pl-wrap 上 —— 卡片是 min-height:0 + overflow:hidden,卡不跟着长,超出的行和横向滚动条被裁掉
 const areaSt = computed(() => (hStage.value === 3 ? { minHeight: 44 + 2 + 1 + minTableH(POOL_H) + sbH.value + 'px' } : undefined))
@@ -1142,11 +1142,10 @@ async function delPool() {
               <template v-for="b in bands" :key="b.label">
                 <!-- 分组行兼小计(03-A):组名 + N 个池 + 用量 / 应分摊小计(口径同原册块合计,见 bandFooter),点它收起 -->
                 <tr class="pl-grp" @click="toggleBand(b.label)">
-                  <td v-if="!locFixed" :style="locSt"></td>
-                  <td :colspan="locFixed ? 2 : 1" class="pl-fix pl-glbl" :style="grpLblSt">
+                  <td colspan="2" class="pl-glbl" :class="{ 'pl-fix': locFixed }" :style="grpLblSt">
                     <button type="button" class="pl-gbtn" :aria-expanded="!collapsed.has(b.label)">
                       <component :is="iconFor(collapsed.has(b.label) ? 'chevron-right' : 'chevron-down')" :size="14" class="cv" />
-                      <span class="t" v-tip="b.label">{{ b.label }}</span>
+                      <span class="t" v-tip="bandTitle(b.label)">{{ bandTitle(b.label) }}</span>
                       <span class="n">{{ b.rows.length }} 个池</span>
                     </button>
                   </td>
