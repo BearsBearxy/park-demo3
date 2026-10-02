@@ -6,7 +6,6 @@ import { reactive, computed } from 'vue'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import { iconFor } from '@/components/ds/icon'
-import FPNote from '@/components/fp/FPNote.vue'
 import type { Section } from '@/utils/importSections'
 import type { ImportRec } from '@/utils/importHeaderMatch'
 
@@ -97,9 +96,9 @@ function confirmAll() {
 <template>
   <!-- 纯标签段模式:只显示 段标签 + N条 + 勾选 -->
   <div v-if="labelOnly" class="isum">
-    <FPNote class="isum-note" tone="info">识别到 <b>{{ labelRows.length }}</b> 段，请勾选导入</FPNote>
-
     <div class="isum-table">
+      <!-- 段数并进表头(原来是表上方一条满宽蓝条) -->
+      <div class="isum-cap"><span>识别到 <b>{{ labelRows.length }}</b> 段</span><span>勾选后导入</span></div>
       <div class="isum-hr label-only">
         <span class="isum-col-pick"></span>
         <span class="isum-col-label">分段</span>
@@ -123,9 +122,8 @@ function confirmAll() {
   </div>
 
   <div v-else class="isum">
-    <FPNote class="isum-note" tone="info">识别到 <b>{{ (sections ?? []).length }}</b> 段，请核对{{ hidePhase ? '年/月' : '年/月/期' }}后勾选导入</FPNote>
-
     <div class="isum-table">
+      <div class="isum-cap"><span>识别到 <b>{{ (sections ?? []).length }}</b> 段</span><span>核对{{ hidePhase ? '年/月' : '年/月/期' }}后勾选导入</span></div>
       <div class="isum-hr" :class="{ 'no-phase': hidePhase }">
         <span class="isum-col-pick"></span>
         <span class="isum-col-y">年</span>
@@ -189,7 +187,9 @@ function confirmAll() {
 
 <style scoped>
 .isum { display:flex; flex-direction:column; gap:14px; }
-.isum-note b { font-family:var(--font-mono); margin:0 2px; }
+/* 表头上的一行:段数 + 该做什么(视觉同 FpImportModal .fpimp-preview-h) */
+.isum-cap { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 12px; border-bottom:1px solid var(--divider); font-size:var(--fs-label); color:var(--text-muted); }
+.isum-cap b { font-family:var(--font-mono); color:var(--text-primary); margin:0 2px; }
 
 .isum-table { border:1px solid var(--border-subtle); border-radius:var(--radius-md); overflow:hidden; }
 .isum-hr, .isum-row { display:grid; grid-template-columns:44px 1fr 72px 96px 88px; align-items:center; gap:8px; padding:8px 12px; }

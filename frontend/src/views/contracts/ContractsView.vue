@@ -24,15 +24,13 @@ import Popover from '@/components/ds/Popover.vue'
 import FPAlertChip from '@/components/fp/FPAlertChip.vue'
 import FPMark from '@/components/fp/FPMark.vue'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
-import { receipt } from '@/utils/receipt'
 import ContractDrawer from './ContractDrawer.vue'
 import ContractNewDialog from './ContractNewDialog.vue'
 import { displayIds, chainOf } from './chain'
 import FpImportModal from '@/components/import/FpImportModal.vue'
-import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
-import type { ImportResultDTO } from '@/types/import'
-import type { ImportRec } from '@/components/import/FpImportModal.vue'
+import type { ImportPayload } from '@/components/import/FpImportModal.vue'
+import { settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
 import { useViewport } from '@/composables/useViewport'
@@ -316,17 +314,11 @@ watch([statusFilter, phase, q, sort, activeOn, showHistory, gap], () => { page.v
 // ─── 计费字段导入(BILL-FORWARD 刀1 二次返工,registry key 'billingTerms';按钮状态机遵9屏统一规范) ──
 const auth = useAuthStore()
 const importing = ref(false)
-const importResult = ref<ImportResultDTO | null>(null)
 const importCtx: ImportCtx = {}
-async function onImport(payload: ImportRec[] | { label?: string; records: ImportRec[] }[], fileName: string) {
-  importing.value = false
-  try {
-    importResult.value = await runImport('billingTerms', payload as never, importCtx, fileName)
-  } catch (e) {
-    const msg = (e as { message?: string })?.message
-    receipt.fail(msg ? `导入失败：${msg}` : '导入失败', { label: '重试', run: () => void onImport(payload, fileName) })
-  }
-  await reload()   // 条款不改列表行,但重拉保证抽屉再开时读到最新
+// 导入弹窗的 runner(UI-OVERLAY-SPEC §8):弹窗不关,写 + 记 import_log → 刷新;失败交给弹窗的失败卡(不走回执)。
+// 条款不改列表行,但重拉保证抽屉再开时读到最新
+async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome> {
+  return settle(await runImport('billingTerms', payload as never, { ...importCtx, _run: p }, fileName), p, reload)
 }
 </script>
 
@@ -455,11 +447,9 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
       title="导入 合同计费字段 · 月度租金工作簿"
       sub="上传月度租金工作簿(每租户一 sheet,含通知单块),自动提取五费项(租金/管理费/基础维护/电梯/变压器)按 sheet 名落到生效合同固定字段;多合同户请勾选归属合同;流水账等 sheet 须手录;导入后自动下载到户报告"
       v-bind="parserProps('billingTerms', importCtx)"
+      :runner="onImport"
       @close="importing = false"
-      @import="onImport"
-      @import-sections="onImport"
     />
-    <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
 
     <!-- 6. 新增合同弹窗 -->
     <ContractNewDialog v-if="showNew" @close="showNew = false" @created="onCreated" />

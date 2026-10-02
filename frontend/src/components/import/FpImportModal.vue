@@ -11,7 +11,7 @@ export function pickSheet(names: string[], re?: RegExp): string {
 //        ② 从 Excel 粘贴(textarea,TSV/CSV)。两者都先解析成二维数组,再交各屏 parseRow 映射。
 // .xls 旧格式(BIFF)读不了:适配层底层是 exceljs,只认 xlsx/csv —— 给「另存为」指引,不静默失败。
 // 解析结果进预览表(前 6 行)+ 条数 + 错误/成功提示,确认后 onImport(剥 __preview)。
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, reactive, onBeforeUnmount } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import { cell, parsePaste, parseCSV } from '@/utils/importParse'
@@ -19,11 +19,18 @@ import { matchByHeader, type ColumnMapEntry } from '@/utils/importHeaderMatch'
 import { splitSections, type PhaseLayouts, type Section } from '@/utils/importSections'
 import { splitSalarySections } from '@/utils/importSalarySections'
 import ImportSummary from './ImportSummary.vue'
+import ImportProgressCard from './ImportProgressCard.vue'
+import ImportResultCard from './ImportResultCard.vue'
+import { addResult, failKind, failReason, importBusy, n0, type ImportDescribe, type ImportOutcome, type ImportRunProgress, type RunState } from './importRun'
+import type { ImportResultDTO } from '@/types/import'
 import FPNote from '@/components/fp/FPNote.vue'
 import Select from '@/components/ds/Select.vue'
 import DatePicker from '@/components/ds/DatePicker.vue'
 
 export interface ImportRec { __preview?: unknown[]; [k: string]: unknown }
+// 段(期×月 / 工资月 / 纯标签段)与平铺行两种上抛形态
+export type SectionPick = { label?: string; year?: number; month?: number; phase?: number; records: ImportRec[] }
+export type ImportPayload = ImportRec[] | SectionPick[]
 
 const props = withDefaults(defineProps<{
   title: string
@@ -56,10 +63,19 @@ const props = withDefaults(defineProps<{
   defaultYear?: number
   defaultMonth?: number
   defaultPhase?: number
+  // ── 点导入之后(UI-OVERLAY-SPEC §8;协议全文见 ./importRun.ts 头注释)──
+  // 给了 runner:点导入后弹窗不关,内容区换进度卡,跑完原地出结果卡 / 失败卡;不给 = 照旧 emit,各屏自己关窗出结果
+  runner?: (payload: ImportPayload, fileName: string, p: ImportRunProgress) => Promise<ImportOutcome | null>
+  segmented?: boolean   // 逐段(附表10):每段一次请求,画真进度;断了可从断的那段接着导
+  confirm?: (payload: ImportPayload, fileName: string) => Promise<boolean>
+  describe?: (payload: ImportPayload, fileName: string) => ImportDescribe
+  go?: string           // 结果卡多一颗按钮(导入中心「去查看」),点了 emit go
+  doneNote?: string     // 结果卡右上「用时 m:ss · 」后那句;缺省按 runner 回报的 refreshed 写「本页已刷新 / 本页没刷新上」
 }>(), { skipHeader: true })
 
 const emit = defineEmits<{
   close: []
+  go: []
   // 第二实参 fileName 供导入中心记录 import_log(粘贴导入为 '（粘贴）')
   import: [recs: ImportRec[], fileName: string]
   // 期×月段(S10/工资)用 year/month/phase;自定义纯标签段用 label。放宽为可选并集。
@@ -202,40 +218,161 @@ function onDrop(e: DragEvent) {
   handleFile(e.dataTransfer?.files[0])
 }
 
+const strip = (rs: ImportRec[]) => rs.map(r => { const { __preview, ...rest } = r; void __preview; return rest })
+
 function doImport() {
   if (!records.value) return
-  emit('import', records.value.map(r => { const { __preview, ...rest } = r; void __preview; return rest }), fileName.value || '（粘贴）')
+  const recs = strip(records.value), fn = fileName.value || '（粘贴）'
+  if (props.runner) void start(recs, fn)
+  else emit('import', recs, fn)
 }
 
 // 智能整表/工资分段确认:剥 __preview 后逐段上抛(工资模式 phase 缺省)
 function onSectionsConfirm(picks: { year: number; month: number; phase?: number; records: ImportRec[] }[]) {
-  emit('importSections', picks.map(p => ({
-    ...p,
-    records: p.records.map(r => { const { __preview, ...rest } = r; void __preview; return rest }),
-  })), fileName.value || '（粘贴）')
+  const ps = picks.map(p => ({ ...p, records: strip(p.records) })), fn = fileName.value || '（粘贴）'
+  if (props.runner) void start(ps, fn)
+  else emit('importSections', ps, fn)
 }
 
 // 自定义纯标签段确认:剥 __preview 后按 label 上抛
 function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
-  emit('importSections', picks.map(p => ({
-    label: p.label,
-    records: p.records.map(r => { const { __preview, ...rest } = r; void __preview; return rest }),
-  })), fileName.value || '（粘贴）')
+  const ps = picks.map(p => ({ label: p.label, records: strip(p.records) })), fn = fileName.value || '（粘贴）'
+  if (props.runner) void start(ps, fn)
+  else emit('importSections', ps, fn)
 }
+
+// ── 点导入之后(D13/D14):弹窗不关,pick → run → done | fail;fail 可「接着导」回 run 或「返回修改」回 pick ──
+const ZH_PHASE: Record<number, string> = { 1: '一期', 2: '二期', 3: '三期', 4: '宿舍' }
+const segLabel = (p: SectionPick) => p.label ?? [
+  p.year != null && p.month != null ? `${p.year} 年 ${p.month} 月` : '',
+  p.phase != null ? ZH_PHASE[p.phase] ?? '' : '',
+].filter(Boolean).join(' · ')
+
+const phase = ref<'pick' | 'run' | 'done' | 'fail'>('pick')
+const busy = computed(() => phase.value === 'run')
+const showCard = ref(false)   // 200ms 内跑完不出进度卡,直接出结果(一闪而过的卡比不出更吵)
+const run = reactive<RunState>({ seg: false, count: 0, unit: '条', meta: '', steps: [], stage: 0, elapsed: 0, segs: [], done: 0, fail: null, kept: '', wrote: 0 })
+const outcome = ref<ImportOutcome | null>(null)
+// 刷了什么跟最后一步的名字走(「刷新本页」→ 本页已刷新;科目余额表的「刷新本期」→ 本期已刷新)
+const doneNoteText = computed(() => {
+  const r = outcome.value?.refreshed
+  const what = run.steps[run.steps.length - 1]?.label.replace(/^刷新/, '') || '本页'
+  return props.doneNote ?? (r == null ? '' : r ? `${what}已刷新` : `${what}没刷新上`)
+})
+let job: { payload: ImportPayload; fileName: string; segRes: ImportResultDTO[] } | null = null
+let gate: ReturnType<typeof setTimeout> | undefined
+let tick: ReturnType<typeof setInterval> | undefined
+const stopTimers = () => { clearTimeout(gate); clearInterval(tick) }
+
+let starting = false
+async function start(payload: ImportPayload, fn: string) {
+  // 防连点:200ms 门内内容区还在,按钮还点得到;confirm 在等(台账覆盖预检先发请求)时 phase 还是 pick,另用 starting 挡
+  if (phase.value !== 'pick' || starting) return
+  starting = true
+  try {
+    if (props.confirm && !(await props.confirm(payload, fn))) return
+  } finally { starting = false }
+  const picks = payload as SectionPick[]
+  const isSec = Array.isArray(picks[0]?.records)
+  const seg = !!props.segmented && isSec
+  const d = props.describe?.(payload, fn) ?? {}
+  const unit = d.unit ?? '条'
+  const count = d.count ?? (isSec ? picks.reduce((a, p) => a + p.records.length, 0) : payload.length)
+  Object.assign(run, {
+    seg, count, unit, done: 0, elapsed: 0, kept: '', wrote: 0, fail: null,
+    segs: seg ? picks.map(p => ({ label: segLabel(p), n: p.records.length, ok: 0 })) : [],
+    meta: d.meta ?? [fn, seg ? `${picks.length} 段` : ''].filter(Boolean).join(' · '),
+    steps: (d.steps ?? (seg
+      ? ['读取文件', '逐段写入', '记下这次导入', '刷新本页']
+      : ['读取文件', `写入 ${n0(count)} ${unit}`, '记下这次导入', '刷新本页'])).map(label => ({ label, note: '' })),
+  })
+  if (seg) run.steps[0].note = `${picks.length} 段`
+  job = { payload, fileName: fn, segRes: [] }
+  await runFrom(0)
+}
+
+// from:逐段从第几段发(接着导 = 断的那段;前面的段不重发)
+async function runFrom(from: number) {
+  const j = job!
+  phase.value = 'run'
+  run.fail = null
+  run.stage = 1
+  showCard.value = from > 0   // 接着导:卡本来就在,不再等
+  gate = setTimeout(() => { showCard.value = true }, 200)
+  const t0 = Date.now() - run.elapsed * 1000
+  tick = setInterval(() => { run.elapsed = (Date.now() - t0) / 1000 }, 250)
+  const p: ImportRunProgress = {
+    from,
+    base: j.segRes.slice(0, from).reduce(addResult, { imported: 0, skipped: 0, errors: [] }),
+    segDone: (k, res) => { j.segRes[k] = res; run.segs[k].ok = res.imported; run.done = k + 1; if (run.done === run.segs.length) p.recording() },
+    stage: (i) => { const k = stepAt(i); if (k >= 0) run.stage = k },
+    recording: () => { run.stage = run.steps.length - 2 },
+    refreshing: () => { run.stage = run.steps.length - 1 },
+    note: (i, text) => { const k = stepAt(i); if (run.steps[k]) run.steps[k].note = text },
+    kept: (text) => { run.kept = text },
+    wrote: (n) => { run.wrote = n },
+  }
+  try {
+    const res = await props.runner!(j.payload, j.fileName, p)
+    if (!res) { phase.value = 'pick'; return }   // 屏自己没跑(如已退出编辑)
+    outcome.value = res
+    phase.value = 'done'
+  } catch (e) {
+    run.fail = { kind: failKind(e), reason: failReason(e) }
+    phase.value = 'fail'
+  } finally {
+    stopTimers()
+    run.elapsed = (Date.now() - t0) / 1000
+  }
+}
+
+// 步骤按下标或按名字前缀找(registry 不知道屏给的步骤表长什么样,按「核对公司」「写入」认)
+function stepAt(i: number | string) { return typeof i === 'number' ? i : run.steps.findIndex(s => s.label.startsWith(i)) }
+
+/** 逐段且断在网络 / 5xx:从断的那段接着导 */
+const canResume = computed(() => run.seg && run.fail != null && run.fail.kind !== 'reject')
+const resume = () => { void runFrom(run.done) }
+const backToPick = () => { phase.value = 'pick'; run.fail = null }
+
+// 导入中关不掉(D14):×、遮罩、Esc 都不响应;关浏览器标签走浏览器自己的确认(UI-OVERLAY §7 02-D);
+// 屏那边编辑态转假 / 页签停用收写浮层时看 importBusy,在跑的这一个不收
+function tryClose() { if (!busy.value) emit('close') }
+function onUnload(e: BeforeUnloadEvent) { e.preventDefault(); e.returnValue = '' }
+// Ctrl+K 命令面板在遮罩下面(--z-palette < --z-modal-2)却能聚焦、回车跳页 —— 导入中在捕获阶段先截掉。
+// 只截看得见的那一个:浏览器后退让本页签停用时,屏把在跑的导入窗留在停用的页里(importBusy),别处的 Ctrl+K 照常
+const scrimEl = ref<HTMLElement | null>(null)
+function onPaletteKey(e: KeyboardEvent) {
+  if (scrimEl.value?.isConnected && (e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); e.stopImmediatePropagation() }
+}
+const unhook = () => { window.removeEventListener('beforeunload', onUnload); window.removeEventListener('keydown', onPaletteKey, true) }
+// sync:importBusy 要在 phase 变的当下就记上 —— 屏的 watch(edit) 是父组件的,同一拍里比子组件的 pre 回调先跑
+watch(busy, b => {
+  importBusy.value += b ? 1 : -1
+  if (!b) return unhook()
+  window.addEventListener('beforeunload', onUnload)
+  window.addEventListener('keydown', onPaletteKey, true)
+}, { flush: 'sync' })
+onBeforeUnmount(() => { stopTimers(); unhook(); if (busy.value) importBusy.value-- })
 </script>
 
 <template>
-  <div class="fpimp-scrim" @mousedown="emit('close')">
+  <!-- 导入中(busy)遮罩、×、Esc 都不关;遮罩 z 在 --z-modal-2,盖住页签条,导完前切不了页签 -->
+  <div ref="scrimEl" class="fpimp-scrim" @mousedown="tryClose">
     <div class="fpimp" @mousedown.stop>
       <div class="fpimp-h">
         <div>
           <h3>{{ title }}</h3>
           <p>{{ sub || '从 Excel 文件或粘贴导入,系统按模板列校验后入库' }}</p>
         </div>
-        <button class="fpimp-x" @click="emit('close')"><component :is="iconFor('x')" :size="18" /></button>
+        <button class="fpimp-x" :class="{ busy }" aria-label="关闭" :aria-disabled="busy || undefined"
+                v-tip="busy ? '导入完成前不能关闭' : null" @click="tryClose"><component :is="iconFor('x')" :size="18" /></button>
       </div>
 
       <div class="fpimp-b">
+        <!-- 点导入之后:内容区原地换卡(进度 → 结果 / 失败);选文件那一屏 v-show 留着,「返回修改」回去时勾选与年月不丢 -->
+        <ImportProgressCard v-if="phase === 'fail' || (phase === 'run' && showCard)" :run="run" />
+        <ImportResultCard v-else-if="phase === 'done' && outcome" :result="outcome" :unit="run.unit" :elapsed="run.elapsed" :note="doneNoteText" />
+        <div v-show="phase === 'pick' || (phase === 'run' && !showCard)" class="fpimp-pick">
         <div class="fpimp-tabs">
           <button :class="['fpimp-tab', { on: mode === 'file' }]" @click="mode = 'file'; err = ''">
             <component :is="iconFor('file-spreadsheet')" :size="15" />上传文件
@@ -285,7 +422,7 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
           </div>
         </div>
 
-        <!-- 错误/告警位常驻(LAYOUT-STABILITY-SPEC §4.2):槽恒占一条消息高,解析失败时不把下面的汇总/预览顶走 -->
+        <!-- 错误/告警位常驻(LAYOUT-STABILITY-SPEC §4.2):槽恒占一条 FPNote 的高(32),出一条时不把下面的汇总/预览顶走 -->
         <div class="fpimp-msgs">
           <FPNote v-if="err" tone="danger">{{ err }}</FPNote>
           <FPNote v-if="warn" tone="warn">{{ warn }}</FPNote>
@@ -311,10 +448,9 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
         />
 
         <template v-if="!summaryMode && records">
-          <FPNote class="fpimp-ok" tone="info">已识别 <b>{{ records.length }}</b> 条有效记录,确认后写入。</FPNote>
           <div class="fpimp-preview">
             <div class="fpimp-preview-h">
-              <span>预览</span>
+              <span>预览 · 已识别 <b>{{ records.length }}</b> 条有效记录</span>
               <span>前 <b>{{ Math.min(6, records.length) }}</b> / {{ records.length }} 条</span>
             </div>
             <div class="fpimp-pvtable-wrap">
@@ -329,14 +465,33 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
             </div>
           </div>
         </template>
+        </div>
       </div>
 
       <div class="fpimp-f">
-        <Button variant="gray" full-width @click="emit('close')">{{ summaryMode ? '关闭' : '取消' }}</Button>
-        <Button v-if="!summaryMode" variant="filled" :disabled="!records" @click="doImport">
-          <template #leading><component :is="iconFor('download')" :size="16" /></template>
-          导入 {{ records ? records.length + ' 条' : '' }}
-        </Button>
+        <template v-if="phase === 'run'">
+          <Button variant="gray" full-width disabled>取消</Button>
+          <Button variant="gray" full-width disabled>导入中…</Button>
+        </template>
+        <template v-else-if="phase === 'done'">
+          <Button v-if="go" variant="outline" full-width @click="emit('go')">{{ go }}</Button>
+          <Button variant="filled" full-width @click="emit('close')">知道了</Button>
+        </template>
+        <template v-else-if="phase === 'fail'">
+          <Button variant="gray" full-width @click="emit('close')">关闭</Button>
+          <Button v-if="canResume" variant="filled" full-width @click="resume">
+            <template #leading><component :is="iconFor('refresh-cw')" :size="14" /></template>
+            从第 {{ run.done + 1 }} 段接着导
+          </Button>
+          <Button v-else variant="filled" full-width @click="backToPick">返回修改</Button>
+        </template>
+        <template v-else>
+          <Button variant="gray" full-width @click="emit('close')">{{ summaryMode ? '关闭' : '取消' }}</Button>
+          <Button v-if="!summaryMode" variant="filled" :disabled="!records" @click="doImport">
+            <template #leading><component :is="iconFor('download')" :size="16" /></template>
+            导入 {{ records ? records.length + ' 条' : '' }}
+          </Button>
+        </template>
       </div>
     </div>
   </div>
@@ -353,7 +508,11 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
 .fpimp-h p { margin:3px 0 0; font-size:12.5px; color:var(--text-muted); }
 .fpimp-x { width:30px; height:30px; border:none; background:transparent; border-radius:8px; color:var(--text-muted); cursor:pointer; display:grid; place-items:center; flex:0 0 auto; }
 .fpimp-x:hover { background:var(--bg-hover); color:var(--text-primary); }
+/* 导入中:× 不响应,悬停描一圈边 + 悬停说明「导入完成前不能关闭」(画布 ImportBusyClose) */
+.fpimp-x.busy { cursor:not-allowed; color:var(--text-disabled); }
+.fpimp-x.busy:hover { background:transparent; color:var(--text-disabled); box-shadow:inset 0 0 0 1px var(--border-subtle); }
 .fpimp-b { flex:1; overflow-y:auto; padding:18px 22px; display:flex; flex-direction:column; gap:16px; }
+.fpimp-pick { display:contents; }
 
 .fpimp-tabs { display:flex; gap:6px; }
 .fpimp-tab { flex:1; height:36px; border:1px solid var(--border-subtle); background:var(--surface-white); border-radius:8px; cursor:pointer; font-family:var(--font-sans); font-size:13px; color:var(--text-secondary); display:flex; align-items:center; justify-content:center; gap:7px; transition:all var(--dur-fast); }
@@ -376,9 +535,8 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
 .fpimp-col { font-size:11px; font-family:var(--font-mono); color:var(--text-muted); background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:var(--radius-full); padding:2px 9px; white-space:nowrap; }
 .fpimp-col b { color:var(--text-secondary); font-weight:var(--fw-semibold); margin-right:3px; }
 
-/* 常驻消息槽:min-height = 一条消息的整高(line-height 18 + 上下 padding 10) */
-.fpimp-msgs { display:flex; flex-direction:column; gap:8px; min-height:18px; }
-.fpimp-ok b { margin:0 3px; font-family:var(--font-mono); }
+/* 常驻消息槽:min-height = 一条 FPNote 的整高(FPNote 自身 min-height 32) */
+.fpimp-msgs { display:flex; flex-direction:column; gap:8px; min-height:32px; }
 
 /* 补录条:块内提示(十件 ④)+ 账期/分区/类别选择器 */
 .fpimp-fb { display:flex; flex-direction:column; gap:9px; }

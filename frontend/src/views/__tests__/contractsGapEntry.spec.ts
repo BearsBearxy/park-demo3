@@ -214,20 +214,14 @@ describe('合同管理 · 机械替换(T13)', () => {
     w.unmount()
   })
 
-  // 破坏验证:receipt.fail 去掉 action → 没有「重试」→ 红;run 不再调 onImport → 第二次 runImport 不发生 → 红
-  it('❗导入失败:底部回执写原因并带「重试」,点了再导一遍', async () => {
+  // 2026-10-03 起导入失败在导入弹窗原地出失败卡(「返回修改」再导),onImport 是弹窗的 runner,错误要抛给弹窗
+  // 破坏验证:onImport 改回 try/catch + 回执(吞掉错误)→ rejects 那句红
+  it('❗导入失败:错误交给导入弹窗的失败卡,不再出底部回执', async () => {
     vi.mocked(runImport).mockRejectedValueOnce(new Error('第 3 页表头对不上'))
     const w = await mountView()
-    const vm = w.vm as unknown as { onImport: (p: unknown[], f: string) => Promise<void> }
-    await vm.onImport([], '租金.xlsx')
-    expect(receipts).toHaveLength(1)
-    expect(receipts[0]).toMatchObject({ tone: 'fail', text: '导入失败：第 3 页表头对不上' })
-    expect(receipts[0].action?.label).toBe('重试')
-    vi.mocked(runImport).mockResolvedValueOnce({} as never)
-    receipts[0].action!.run()
-    await flushPromises()
-    expect(runImport).toHaveBeenCalledTimes(2)
-    expect(vi.mocked(runImport).mock.calls[1][3]).toBe('租金.xlsx')
+    const vm = w.vm as unknown as { onImport: (p: unknown[], f: string) => Promise<unknown> }
+    await expect(vm.onImport([], '租金.xlsx')).rejects.toThrow('第 3 页表头对不上')
+    expect(receipts).toHaveLength(0)
     w.unmount()
   })
 

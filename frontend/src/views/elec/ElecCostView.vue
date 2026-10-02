@@ -16,8 +16,8 @@ import {
   elecCostApi,
   type ElecMeterDTO, type ElecMeterKind, type ElecCostEntryDTO, type ElecPriceCfgDTO, type ElecMetricDTO,
 } from '@/api/elecCost'
-import type { ImportResultDTO } from '@/types/import'
-import type { ImportRec } from '@/components/import/FpImportModal.vue'
+import type { ImportPayload } from '@/components/import/FpImportModal.vue'
+import { importBusy, settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
 import { useAuthStore, approxDirty } from '@/stores/auth'
 import { useFormSheet } from '@/composables/useFormSheet'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
@@ -41,7 +41,6 @@ import Card from '@/components/ds/Card.vue'
 import Select from '@/components/ds/Select.vue'
 import Input from '@/components/ds/Input.vue'
 import FpImportModal from '@/components/import/FpImportModal.vue'
-import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 import { ELEC_FEE_LABEL, ELEC_SUB_LABEL, elecFeeLabel } from '@/utils/elecCostExcel'
 
@@ -77,12 +76,12 @@ const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, h
 //   表里逐格是「—」的假底数,放行录入 = 对着假底数写真数据。
 const editE = computed(() => editMode.value && !loadErr.value && canEntry.value)
 const editC = computed(() => editMode.value && !loadErr.value && canPrice.value)
-onDeactivated(() => { meterDlg.value = false; importing.value = false })
+onDeactivated(() => { meterDlg.value = false; if (!importBusy.value) importing.value = false })   // 在跑的导入窗不收(D14)
 // 编辑态**就地**转假(被接管 / 30 分钟提权到期)也要关写弹窗 —— 它们的 v-if 只判自己的 ref
 watch(editMode, v => {
   if (v) return
   meterDlg.value = false
-  importing.value = false
+  if (!importBusy.value) importing.value = false   // 在跑的导入窗不收(D14)
   cellErr.value = null
 })
 
@@ -583,7 +582,6 @@ async function onSimulate() {
 
 // ── 导入(编辑态;registry key='elecCost' 闭环:解析→预览→确认→入库→import_log) ──
 const importing = ref(false)
-const importResult = ref<ImportResultDTO | null>(null)
 const importCtx: ImportCtx = {}
 // registry 'elecCost' 为并行刀契约(同 pvMeter Wave2-B 模式):解析配置与 run 落在 importRegistry;
 // 未合入时按钮降级提示,不在渲染期抛错炸屏
@@ -593,15 +591,10 @@ function openImport() {
   if (!elecCostParser) { receipt.fail('电费成本的导入还没接上,暂时只能逐格录入'); return }
   importing.value = true
 }
-async function onImport(payload: ImportRec[] | { label?: string; records: ImportRec[] }[], fileName: string) {
-  importing.value = false
-  if (!editE.value) return
-  try {
-    importResult.value = await runImport('elecCost', payload as never, importCtx, fileName)
-    await Promise.all([loadMonth(), loadYears()])
-  } catch (e) {
-    receipt.fail((e as { message?: string })?.message ?? '导入失败')
-  }
+// 导入弹窗的 runner(UI-OVERLAY-SPEC §8):弹窗不关,写 + 记 import_log → 刷新;失败交给弹窗的失败卡(不走回执)。
+async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
+  if (!editE.value) return null
+  return settle(await runImport('elecCost', payload as never, { ...importCtx, _run: p }, fileName), p, () => Promise.all([loadMonth(), loadYears()]))
 }
 
 // ── 指标格式:pvLoss 电量口径 kWh,其余金额 元(后端契约) ──
@@ -899,11 +892,9 @@ function fmtMetric(mt: ElecMetricDTO): string {
       title="导入 电费成本"
       sub="上传/粘贴长表(电表|费项|拆分|月份|金额|电量|备注);费项/拆分收中文名,(表,月,费项,拆分)重复导入自动覆盖"
       v-bind="elecCostParser"
+      :runner="onImport"
       @close="importing = false"
-      @import="onImport"
-      @import-sections="onImport"
     />
-    <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
     <FPElevateDialog
       :page="`电费成本总览 · ${year}-${String(month).padStart(2, '0')}`" :action="'录入费项金额 / 改电价口径'" :perms="asking" what="修改电价口径" @close="cancelAsk" @elevated="onElevated" />
     <FPLockDialogs :locked-by="lockedBy" :evicted-by="evictedBy" :scope="lockScope()"

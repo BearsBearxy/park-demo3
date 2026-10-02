@@ -34,6 +34,7 @@ vi.mock('@/api/locks', () => ({
 }))
 
 import ImportCenterView from '@/views/import-center/ImportCenterView.vue'
+import FpImportModal from '@/components/import/FpImportModal.vue'
 import ElecView from '@/views/elec/ElecView.vue'
 import { importLogApi } from '@/api/importLog'
 import { ledgerApi } from '@/api/ledger'
@@ -67,9 +68,9 @@ afterEach(() => {
 interface ImVm {
   activeKey: string | null
   ctx: ImportCtx
-  doRun: (payload: unknown[], fileName: string) => Promise<void>
-  handleImport: (recs: Record<string, unknown>[], fileName: string) => Promise<void>
+  importing: boolean
 }
+// 2026-10-03 起导入走弹窗自己的「点导入」:开跑前的两问是弹窗 confirm,失败在弹窗原地出失败卡(UI-OVERLAY-SPEC §8)
 async function openImport() {
   const w = mount(ImportCenterView, { global: { stubs: { Teleport: true } } })
   mounted.push(w)
@@ -77,14 +78,17 @@ async function openImport() {
   const vm = w.vm as unknown as ImVm
   vm.activeKey = 'ledger'
   vm.ctx = { companyId: 9, companyName: '甲公司', year: 2025, month: 6 }
-  return { w, vm }
+  vm.importing = true
+  await flushPromises()
+  const modal = w.findComponent(FpImportModal).vm as unknown as { start: (p: unknown[], f: string) => Promise<void> }
+  return { w, vm, start: modal.start }
 }
 const RECS = [{ tenantName: '甲科技', rent: 100 }, { tenantName: '丁新户', rent: 50 }]
 
 describe('导入中心', () => {
   it('❗台账目标月已有数据:导入前问「会覆盖」(02-B 左),取消就不导', async () => {
-    const { vm } = await openImport()
-    const p = vm.doRun(RECS, '台账.xlsx')
+    const { start } = await openImport()
+    const p = start(RECS, '台账.xlsx')
     await flushPromises()
     expect(askQueue[0]).toMatchObject({
       title: '导入会覆盖 2025 年 6 月 1 家租户的台账', body: '这 1 家已有台账数据,文件里提供的列会被覆盖。', action: '仍要导入',
@@ -95,8 +99,8 @@ describe('导入中心', () => {
   })
 
   it('❗文件标题的年月和目标不一致:先问,取消就不导', async () => {
-    const { vm } = await openImport()
-    const p = vm.handleImport([{ ...RECS[0], __ymDetected: { year: 2025, month: 5 } }], '台账五月.xlsx')
+    const { start } = await openImport()
+    const p = start([{ ...RECS[0], __ymDetected: { year: 2025, month: 5 } }], '台账五月.xlsx')
     await flushPromises()
     expect(askQueue[0]?.title).toBe('仍导入到 2025 年 6 月？')
     expect(askQueue[0]?.body).toContain('文件标题识别为 2025 年 5 月')
@@ -106,14 +110,17 @@ describe('导入中心', () => {
     expect(ledgerApi.month, '第一问就退了,不去做覆盖预检').not.toHaveBeenCalled()
   })
 
-  it('❗导入失败走失败回执,不弹浏览器框', async () => {
+  it('❗导入失败:弹窗原地出失败卡写原因,不弹浏览器框,也不再另出底部回执', async () => {
     vi.mocked(runImport).mockRejectedValueOnce(new Error('模板列对不上:缺「租户」'))
-    const { vm } = await openImport()
-    const p = vm.doRun(RECS, '台账.xlsx')
+    const { w, start } = await openImport()
+    const p = start(RECS, '台账.xlsx')
     await flushPromises()
     answer(true)
     await p
-    expect(receipts.at(-1)).toMatchObject({ tone: 'fail', text: '模板列对不上:缺「租户」' })
+    await flushPromises()
+    expect(w.find('.ipf-h h4').text()).toBe('导入失败，这次一条都没写进去')
+    expect(w.find('.ipf-box').text()).toContain('模板列对不上:缺「租户」')
+    expect(receipts).toHaveLength(0)
   })
 
   it('❗没有任何导入权限:格子那块是 FPEmpty', async () => {

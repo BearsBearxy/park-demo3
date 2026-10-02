@@ -12,11 +12,10 @@ import Select from '@/components/ds/Select.vue'
 import DatePicker from '@/components/ds/DatePicker.vue'
 import FPSortableTable, { type SortableColumn } from '@/components/fp/FPSortableTable.vue'
 import type { SortState } from '@/components/fp/fpSort'
-import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
-import ImportResultToast from '@/components/import/ImportResultToast.vue'
+import FpImportModal, { type ImportRec, type ImportPayload } from '@/components/import/FpImportModal.vue'
+import { settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
 import { ask } from '@/utils/ask'
-import { receipt } from '@/utils/receipt'
 import { IMPORT_TYPES, runImport, type ImportCtx, type ImportTypeEntry } from '@/utils/importRegistry'
 import { useAuthStore } from '@/stores/auth'
 import { useZonesStore } from '@/stores/zones'
@@ -26,7 +25,6 @@ import { booksApi } from '@/api/books'
 import type { Book } from '@/types/book'
 import { chargingApi } from '@/api/charging'
 import type { ImportLogOverviewDTO, ImportLogDTO } from '@/types/importLog'
-import type { ImportResultDTO } from '@/types/import'
 import type { CompanyDTO } from '@/types/ledger'
 
 // 权限挂在 import kind 上而非本屏(RBAC §5.6):无该模块写权限的磁贴不显示。
@@ -39,7 +37,6 @@ const overview = ref<ImportLogOverviewDTO | null>(null)   // §6 加载信号
 const importing = ref(false)
 const activeKey = ref<string | null>(null)
 const ctx = ref<ImportCtx>({})
-const importResult = ref<ImportResultDTO | null>(null)
 const sort = ref<SortState | null>({ key: 'createdAt', dir: 'desc' })
 
 // ledger 上下文表单
@@ -141,26 +138,21 @@ async function confirmLedger() {
   importing.value = true
 }
 
-// ── 导入回调 → runImport(执行+记录) → 刷新 + toast ──────────
-async function handleImport(recs: ImportRec[], fileName: string) {
-  importing.value = false
-  // 台账两道核对与预检(与 LedgerView.onImport 同款编排):①文件标题年月≠目标年月先确认
-  if (activeKey.value === 'ledger') {
-    const ym = recs[0]?.__ymDetected as { year: number; month: number } | undefined
-    if (ym && (ym.year !== ctx.value.year || ym.month !== ctx.value.month) && !(await ask({
-      title: `仍导入到 ${ctx.value.year} 年 ${ctx.value.month} 月？`,
-      body: `文件标题识别为 ${ym.year} 年 ${ym.month} 月,当前导入目标是 ${ctx.value.year} 年 ${ctx.value.month} 月。`,
-      action: '仍要导入',
-    }))) return
-  }
-  await doRun(recs, fileName)
-}
-
+// ── 点导入 → 开跑前的确认(弹窗 confirm)→ runImport(执行+记录,弹窗 runner)→ 刷新记录表 → 弹窗原地出结果卡 ──
+// 台账两道核对与预检(与 LedgerView.onImport 同款编排):①文件标题年月≠目标年月先确认 ②目标月已有数据先确认覆盖。
+// 段模式(元素带 .records)不做这两问(规范 v1 边界)。
 // V105:台账未登记租户不再预检拦截/自动建档 —— 配不上的名字照常入库为未绑定行,
 // 到「月度台账」页的问题抽屉里绑定/改名/建档(与页内导入同一套语义)。
-async function handleSections(picks: unknown[], fileName: string) {
-  importing.value = false
-  await doRun(picks as Parameters<typeof runImport>[1], fileName)
+async function confirmRun(payload: ImportPayload): Promise<boolean> {
+  if (activeKey.value !== 'ledger' || (payload as { records?: unknown }[])[0]?.records) return true
+  const recs = payload as ImportRec[]
+  const ym = recs[0]?.__ymDetected as { year: number; month: number } | undefined
+  if (ym && (ym.year !== ctx.value.year || ym.month !== ctx.value.month) && !(await ask({
+    title: `仍导入到 ${ctx.value.year} 年 ${ctx.value.month} 月？`,
+    body: `文件标题识别为 ${ym.year} 年 ${ym.month} 月,当前导入目标是 ${ctx.value.year} 年 ${ctx.value.month} 月。`,
+    action: '仍要导入',
+  }))) return false
+  return confirmLedgerOverwrite(recs)
 }
 // 台账②覆盖预检:目标月已有 N 家重叠租户行 → 确认后才导(拉不到本月数据则不拦,同租户表预检策略)
 async function confirmLedgerOverwrite(recs: ImportRec[]): Promise<boolean> {
@@ -194,23 +186,19 @@ function viewLink(key: string, c: ImportCtx, payload: unknown[]): typeof viewTo.
 // 页面里的链接 = 新页签紧挨本页右边(TAB-BAR-SPEC §2),导入中心不被换掉。
 function goView() {
   const to = viewTo.value
-  importResult.value = null
+  importing.value = false
   if (!to) return
   tabs.open(to.path.slice(1), { pin: true })   // viewTo 的 path 恒为 '/' + 屏 value(periodLink)
   router.push(to)
 }
-async function doRun(payload: Parameters<typeof runImport>[1], fileName: string) {
-  if (!activeKey.value) return
-  // 覆盖预检仅平铺台账做;段模式(元素带 .records)不做覆盖确认(规范 v1 边界)
-  const isSections = !!(payload as { records?: unknown }[])[0]?.records
-  if (activeKey.value === 'ledger' && !isSections && !(await confirmLedgerOverwrite(payload as ImportRec[]))) return
-  try {
-    importResult.value = await runImport(activeKey.value, payload, ctx.value, fileName)
-    viewTo.value = viewLink(activeKey.value, ctx.value, payload as unknown[])
-    await reload()
-  } catch (e) {
-    receipt.fail((e as { message?: string })?.message ?? '导入失败')
-  }
+// 导入弹窗的 runner(UI-OVERLAY-SPEC §8):弹窗不关,写 + 记 import_log → 刷新导入记录;失败交给弹窗的失败卡。
+// ctx 带上 _run:附表10 逐段画真进度、断了从断的那段接着导(其余类型不认它)。
+async function runEntry(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
+  if (!activeKey.value) return null
+  viewTo.value = null
+  const res = await runImport(activeKey.value, payload, { ...ctx.value, _run: p }, fileName)
+  viewTo.value = viewLink(activeKey.value, ctx.value, payload as unknown[])
+  return settle(res, p, reload)
 }
 
 // ── 导入记录表列 ────────────────────────────────────────────
@@ -247,18 +235,10 @@ const cols: SortableColumn<ImportLogDTO>[] = [
       </div>
     </div>
 
-    <!-- 顶部区:选类型再导(不做自动识别文件类型) -->
-    <div class="im-drop" @click="($event.currentTarget as HTMLElement).nextElementSibling?.scrollIntoView({ behavior: 'smooth' })">
-      <span class="im-drop-icon"><component :is="iconFor('upload-cloud')" :size="26" /></span>
-      <div class="im-drop-main">
-        <div class="im-drop-t">按数据类型上传 Excel</div>
-        <div class="im-drop-d">在下方选择数据类型 → 就地上传/粘贴 → 系统按模板列校验后入库(暂不支持拖拽自动识别类型)</div>
-      </div>
-    </div>
-
+    <!-- 原顶部「按数据类型上传 Excel」虚线块长得像拖放区却不收拖放,删掉;那句说明并进下面的副句 -->
     <div>
       <h3 class="im-section-t">按数据类型导入</h3>
-      <p class="im-sub" style="margin:0 0 14px">每类数据对应一张模板,卡片显示最近导入状态</p>
+      <p class="im-sub" style="margin:0 0 14px">每类数据对应一张模板,卡片显示最近导入状态;点卡片「上传」就地上传或粘贴,系统按模板列校验后入库</p>
       <FPEmpty v-if="!visibleTypes.length" size="sm" sub="下方仍可查看全部导入记录。">当前账号没有任何导入权限</FPEmpty>
       <div v-else class="im-grid">
         <div v-for="t in visibleTypes" :key="t.key" class="im-tile">
@@ -315,15 +295,18 @@ const cols: SortableColumn<ImportLogDTO>[] = [
     </div>
   </div>
 
+  <!-- 「去查看」(SIDEBAR-UX-REDESIGN §9 P0b)只在导入中心有:结果卡多一颗按钮 -->
   <FpImportModal
     v-if="importing && activeEntry"
     v-bind="modalProps"
+    :runner="runEntry"
+    :confirm="confirmRun"
+    :segmented="activeKey === 's10'"
+    :go="viewTo ? '去查看' : undefined"
+    done-note="从导入中心导入"
+    @go="goView"
     @close="importing = false"
-    @import="handleImport"
-    @import-sections="handleSections"
   />
-  <!-- 台账未登记租户预检(自管显隐,放最后不打断状态链) -->
-  <ImportResultToast v-if="importResult" :result="importResult" :go="viewTo ? '去查看' : undefined" @go="goView" @close="importResult = null" />
 </template>
 
 <style scoped>
@@ -333,13 +316,6 @@ const cols: SortableColumn<ImportLogDTO>[] = [
 .im-title { margin:0; font-size:var(--fs-h2); font-weight:var(--fw-semibold); color:var(--text-primary); }
 .im-sub { margin:5px 0 0; font-size:var(--fs-label); color:var(--text-muted); }
 .im-actions { display:flex; gap:8px; }
-
-.im-drop { display:flex; align-items:center; gap:18px; padding:24px; border:1.5px dashed var(--border-strong); border-radius:var(--radius-lg); background:var(--surface-card); cursor:pointer; transition:background var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard); }
-.im-drop:hover { background:var(--accent-slate); border-color:var(--hue-blue); }
-.im-drop-icon { width:52px; height:52px; border-radius:var(--radius-md); background:var(--surface-white); display:grid; place-items:center; color:var(--hue-blue); flex:0 0 auto; border:1px solid var(--border-subtle); }
-.im-drop-main { flex:1; min-width:0; }
-.im-drop-t { font-size:var(--fs-h4); font-weight:var(--fw-semibold); color:var(--text-primary); }
-.im-drop-d { font-size:var(--fs-label); color:var(--text-muted); margin-top:2px; }
 
 .im-section-t { font-size:var(--fs-h4); font-weight:var(--fw-semibold); color:var(--text-primary); margin:0 0 4px; }
 .im-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(248px,1fr)); gap:14px; }

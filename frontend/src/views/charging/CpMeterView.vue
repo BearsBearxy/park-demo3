@@ -14,8 +14,8 @@ import { textW } from '@/composables/useWideTable'
 import { useRoute } from 'vue-router'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { cpMeterApi, type CpStationDTO, type CpPowerUsageDTO } from '@/api/cpMeter'
-import type { ImportResultDTO } from '@/types/import'
-import type { ImportRec } from '@/components/import/FpImportModal.vue'
+import type { ImportPayload } from '@/components/import/FpImportModal.vue'
+import { importBusy, settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
 import { useAuthStore, approxDirty } from '@/stores/auth'
 import { useFormSheet } from '@/composables/useFormSheet'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
@@ -43,7 +43,6 @@ import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import { onReactivated } from '@/composables/onReactivated'
 import { usePresenceStore } from '@/stores/presence'
 import FpImportModal from '@/components/import/FpImportModal.vue'
-import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 // W2-B 契约:registry key 'cpMeter' + 模板/月度导出(buildCpMeterTemplate/exportCpMeterMonth)
 import { buildCpMeterTemplate, exportCpMeterMonth } from '@/utils/cpMeterExcel'
@@ -80,7 +79,7 @@ const editStation = computed(() => editMode.value && !loadErr.value && canMaster
 const editReading = computed(() => editMode.value && !loadErr.value && canReading.value)
 // 切页签复位浮层,防浏览态残留写入口(同 ElecCostView)。
 // ⚠ openSt 必须一起收:FPDrawer 是 Teleport to body,子树随 KeepAlive 消失时它留在 body 上飘着。
-onDeactivated(() => { stationDlg.value = false; importing.value = false; openSt.value = null })
+onDeactivated(() => { stationDlg.value = false; if (!importBusy.value) importing.value = false; openSt.value = null })   // 在跑的导入窗不收(D14)
 
 // ── 期间:选期矩阵门(2026-08-29「两本账」设计稿 §③,同 PvMeterView) ──
 // 顶栏那对年月 Select 已撤 —— 改前系统按 latestPeriodOf 自己 snap 到最后一个有数据的月,
@@ -366,7 +365,7 @@ watch(editMode, v => {
   if (v) return
   cancelForm()
   stationDlg.value = false
-  importing.value = false
+  if (!importBusy.value) importing.value = false   // 在跑的导入窗不收(D14)
 })
 
 async function saveForm() {
@@ -432,19 +431,13 @@ async function submitStation() {
 
 // ── 导入(registry 闭环:解析→预览→确认→入库→import_log)/模板/导出 ──
 const importing = ref(false)
-const importResult = ref<ImportResultDTO | null>(null)
 // pvMeter 同款接线:解析期行级错误暂存 ctx._parseErrors,run 时并入结果——
 // parserProps 与 runImport 必须同一 ctx 引用;每次解析整体覆写,无陈旧残留
 const importCtx: ImportCtx = {}
-async function onImport(payload: ImportRec[] | { label?: string; records: ImportRec[] }[], fileName: string) {
-  importing.value = false
-  if (!editReading.value) return
-  try {
-    importResult.value = await runImport('cpMeter', payload as never, importCtx, fileName)
-    await reloadAfterWrite()
-  } catch (e) {
-    receipt.fail((e as { message?: string })?.message ?? '导入失败')
-  }
+// 导入弹窗的 runner(UI-OVERLAY-SPEC §8):弹窗不关,写 + 记 import_log → 刷新;失败交给弹窗的失败卡(不走回执)。
+async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
+  if (!editReading.value) return null
+  return settle(await runImport('cpMeter', payload as never, { ...importCtx, _run: p }, fileName), p, reloadAfterWrite)
 }
 
 // ── 模拟填充(编辑态;照 ElecCostView:确认弹窗→POST→结果回执→重载):按附表7/8 充电汇总推导当前年分桩月末记录与电表 ──
@@ -856,11 +849,9 @@ async function onTemplate() {
       :title="`导入 充电桩分桩明细`"
       sub="上传/粘贴分桩充电长表(运营商|桩名|日期|充电量|手续费|收益|备注);桩名精确匹配,(桩,日期)重复导入自动覆盖"
       v-bind="parserProps('cpMeter', importCtx)"
+      :runner="onImport"
       @close="importing = false"
-      @import="onImport"
-      @import-sections="onImport"
     />
-    <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
     <FPElevateDialog
       :page="`充电桩分桩明细 · ${year} 年`" :action="'修改桩库档案 / 抄表记录'" :perms="asking" what="维护充电桩表档案" @close="cancelAsk" @elevated="onElevated" />
     <FPLockDialogs :locked-by="lockedBy" :evicted-by="evictedBy" :scope="lockScope()"

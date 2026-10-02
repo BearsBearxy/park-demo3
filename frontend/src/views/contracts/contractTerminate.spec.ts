@@ -4,6 +4,8 @@
 // ③ 表清单没拿到,确认钮不放行(不然等于「一块都不空置」而用户以为处理过了);失败后重试成功才清错;
 // ④ 框里写明「解约当月水电按月抄表，整月仍算原租户」。
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import type { ContractDTO, ContractDetailDTO, ContractTerminatePreviewDTO } from '@/types/contract'
@@ -228,7 +230,7 @@ describe('标的段与费用 · 租金行未绑单元', () => {
     expect(note.exists()).toBe(true)
     expect(note.classes()).toContain('warn')
     expect(note.text()).toContain('租金行还没绑单元')
-    expect(note.element.parentElement!.textContent, '要在「标的段与费用」那块里').toContain('标的段与费用')
+    expect(note.element.closest('.cd-note')!.parentElement!.textContent, '要在「标的段与费用」那块里').toContain('标的段与费用')
     expect(note.find('button').text()).toBe('去绑定')
     await note.find('button').trigger('click')
     expect(w.emitted('edit')).toEqual([[c]])
@@ -240,6 +242,12 @@ describe('标的段与费用 · 租金行未绑单元', () => {
     mounted.push(ok)
     await flushPromises()
     expect(ok.find('.fp-note').exists()).toBe(false)
+    // 全绑了提示位也在(常驻 32px 预留,2026-10-03 横条收尾),只是空的 —— 下面的费用网格不跟着跳
+    expect(ok.find('.cd-note').exists()).toBe(true)
+    expect(ok.find('.cd-note').text()).toBe('')
+    // 预留位的高:常驻 32(= FPNote 的 min-height),有没有提示下面的费用网格都在同一处。破坏验证:min-height 删掉 → 红
+    const src = readFileSync(join(__dirname, 'ContractDrawer.vue'), 'utf8')
+    expect(src).toMatch(/\.cd-note \{ margin-top:8px; min-height:32px; \}/)
     useAuthStore().permissions = []
     const ro = mount(ContractDrawer, { props: { contract: { ...CONTRACT, unboundTermCount: 1 } } })
     mounted.push(ro)

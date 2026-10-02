@@ -426,36 +426,37 @@ describe('月度台账宽表 · 导入 / 从上月复制 / 取消先问', () => 
 })
 
 describe('月度台账 · 导入文件的两道确认', () => {
-  type ImportVm = { onImport: (recs: Array<Record<string, unknown>>, fileName: string) => Promise<void> }
+  // 两道预检 0.26.0 起挪进导入弹窗的 confirm(开跑前问,LedgerView.confirmImport);答 false 弹窗就不跑 runner
+  type ImportVm = { confirmImport: (recs: Array<Record<string, unknown>>) => Promise<boolean> }
   beforeEach(() => { vi.mocked(runImport).mockReset() })
 
-  // 破坏验证:LedgerView.onImport 的年月确认删掉 → 答 false 也导 → 红
+  // 破坏验证:LedgerView.confirmImport 的年月确认删掉 → 不问、放行 → 红
   it('❗文件年月与目标不一致:问「导入到 2026 年 9 月？」;答取消不导', async () => {
     const w = mountLedger()
     await flushPromises()
-    const done = (w.vm as unknown as ImportVm).onImport(
-      [{ tenantName: '新户', factoryRent: 100, __ymDetected: { year: 2026, month: 8 } }], '台账.xlsx')
+    const done = (w.vm as unknown as ImportVm).confirmImport(
+      [{ tenantName: '新户', factoryRent: 100, __ymDetected: { year: 2026, month: 8 } }])
     await flushPromises()
     expect(askQueue.map(a => [a.title, a.body, a.action])).toEqual([[
       '导入到 2026 年 9 月？', '文件标题识别为 2026 年 8 月，当前导入目标是 2026 年 9 月。', '仍导入到本月',
     ]])
     answer(false)
-    await done
+    expect(await done, '答取消:弹窗不跑').toBe(false)
     expect(runImport).not.toHaveBeenCalled()
   })
 
-  // 破坏验证:runLedgerImport 的覆盖确认删掉 → 红
+  // 破坏验证:LedgerView.confirmImport 的覆盖确认删掉 → 红
   it('❗文件里有本月已有台账的租户:问「导入会覆盖已有的台账数据」给 1 家;答取消不导', async () => {
     const w = mountLedger()
     await flushPromises()
-    const done = (w.vm as unknown as ImportVm).onImport(
-      [{ tenantName: '甲户', factoryRent: 100, __ymDetected: { year: 2026, month: 9 } }], '台账.xlsx')
+    const done = (w.vm as unknown as ImportVm).confirmImport(
+      [{ tenantName: '甲户', factoryRent: 100, __ymDetected: { year: 2026, month: 9 } }])
     await flushPromises()
     expect(askQueue.map(a => [a.title, a.body])).toEqual([[
       '导入会覆盖已有的台账数据', '本月已有 1 家租户的台账数据，文件里提供的列会被覆盖。',
     ]])
     answer(false)
-    await done
+    expect(await done, '答取消:弹窗不跑').toBe(false)
     expect(runImport).not.toHaveBeenCalled()
   })
 })

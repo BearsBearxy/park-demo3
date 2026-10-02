@@ -41,8 +41,8 @@ import BookRail from '@/components/fp/BookRail.vue'
 import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
 import TemplateEditorPanel from '@/components/fp/TemplateEditorPanel.vue'
 import SchedHeader from '@/components/sched/SchedHeader.vue'
-import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
-import ImportResultToast from '@/components/import/ImportResultToast.vue'
+import FpImportModal, { type ImportPayload, type SectionPick } from '@/components/import/FpImportModal.vue'
+import { importBusy, n0, settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
 import SaveConfirmDialog from '@/components/import/SaveConfirmDialog.vue'
 import S10Table from './S10Table.vue'
 import S10RecordDrawer from './S10RecordDrawer.vue'
@@ -95,7 +95,7 @@ async function reloadOverview() {
 }
 
 const {
-  year, edit, drawer, importing, importResult, selectedIds, importedCount,
+  year, edit, drawer, importing, selectedIds, importedCount,
   guard, refresh, pickYear, goGate, toggleSelect, selectAll, onBatchDelete, onClearImported,
 } = useSchedScreen({
   load: loadMonth,
@@ -460,7 +460,6 @@ async function onTplPin(ver: number) {
 }
 
 // ── 智能整表导入 Excel:词典 = 四册现行版模板(§4,office=1∪4/factory=2∪3 并集在 registry) ──
-const importSummary = ref('')   // 各段年月期·导入/跳过/错误 文本
 const bookDefs = computed<Partial<Record<number, BookDef>>>(() => {
   const m: Partial<Record<number, BookDef>> = {}
   for (const b of books.value) if (b.phase != null) m[b.phase] = b.definition
@@ -469,30 +468,39 @@ const bookDefs = computed<Partial<Record<number, BookDef>>>(() => {
 
 const ZH_PHASE: Record<number, string> = { 1: '一期', 2: '二期', 3: '三期', 4: '宿舍' }
 
-// 经 runImport(共享 registry 逐段 upsert + 记录 import_log),重建每段摘要,跳转第一段槽
-// emit 签名的 year/month/phase 为可选并集(兼容纯标签段);s10 走 phaseLayouts 智能整表,段必带年/月/期
-async function onSmartImport(
-  picks: { label?: string; year?: number; month?: number; phase?: number; records: ImportRec[] }[],
-  fileName: string,
-) {
+// 导入弹窗的 runner(UI-OVERLAY-SPEC §8):弹窗不关,逐段写(registry s10 run 认 ctx._run,每段一次请求、画真进度,
+// 断在网络 / 5xx 时从断的那段接着导)→ 记 import_log → 刷新本期;结果卡上分段列每段条数。
+// 失败交给弹窗的失败卡(不走回执)。s10 走 phaseLayouts 智能整表,段必带年/月/期。
+// 锁按月(S.s10):一换期 SchedHeader 就退出编辑、收掉导入窗 —— 跳到第一段的槽挪到看完结果、关窗之后(closeImport,同附表12)
+let importJump: SectionPick | null = null
+async function onSmartImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
+  importJump = null
+  if (!edit.value) return null   // 写口自守:失锁后弹窗留着(在跑的那次不收),再点导入 / 接着导不许无锁写
+  const picks = payload as SectionPick[]
+  // 断在第 k 段时前面的段已经写进库:本页先照实刷一次再把错误交给失败卡
+  const res = await runImport('s10', picks, { bookDefs: bookDefs.value, _run: p, _alive: () => edit.value }, fileName)
+    .catch(async (e: unknown) => { await refresh().catch(() => {}); throw e })
+  importJump = picks[0] ?? null
+  return {
+    ...(await settle(res, p, refresh)),
+    detail: picks.map(x => [`${x.year} 年 ${x.month} 月 · ${ZH_PHASE[x.phase!]}`, `${n0(x.records.length)} 条`] as [string, string]),
+  }
+}
+/** 关导入窗:导入过就跳到第一段的册 / 年月再拉(同改前,只是挪到看完结果之后);那一期有未绑定的租户就打开问题面板 */
+async function closeImport() {
   importing.value = false
-  await guard('导入失败', async () => {
-    importResult.value = await runImport('s10', picks, { bookDefs: bookDefs.value }, fileName)
-    importSummary.value = picks
-      .map(p => `${p.year}年${p.month}月·${ZH_PHASE[p.phase!]}:${p.records.length} 条`)
-      .join('\n')
-    const first = picks[0]
-    if (first) {
-      const b = books.value.find(x => x.phase === first.phase)
-      if (b) activeBookId.value = b.id
-      year.value = first.year!
-      month.value = first.month!
-      await reloadOverview()
-      await loadMonth(first.year!)
-    }
-    ensureTenantsLoaded()
-    if ((monthData.value?.rows ?? []).some(r => r.tenantId == null)) issuesOpen.value = true
-  })
+  const j = importJump
+  importJump = null
+  if (!j) return
+  if (j.year !== year.value || j.month !== month.value || j.phase !== phase.value) {
+    const b = books.value.find(x => x.phase === j.phase)
+    if (b) activeBookId.value = b.id
+    year.value = j.year!
+    month.value = j.month!
+    await guard('导入后刷新失败', async () => { await reloadOverview(); await loadMonth(j.year!) })
+  }
+  ensureTenantsLoaded()
+  if ((monthData.value?.rows ?? []).some(r => r.tenantId == null)) issuesOpen.value = true
 }
 
 // ── 未绑定问题抽屉(V105):附表10 与台账同一套语义 ─────────────
@@ -504,7 +512,9 @@ const allTenants = ref<TenantDTO[]>([])
 // KeepAlive 停用时关掉 Teleport 浮层(绑定弹窗/问题抽屉/模板编辑器),防浮到别的页签(审计 VUE-03 范式)
 onDeactivated(() => {
   bindRowId.value = null; issuesOpen.value = false; tplOpen.value = false
-  drawer.value = false; importing.value = false   // Teleport 到 body 的弹层不随页签 DOM 摘除(审查#16)
+  drawer.value = false   // Teleport 到 body 的弹层不随页签 DOM 摘除(审查#16)
+  // 导入窗不 Teleport,随页签停用一起藏起来;在跑的不收(D14),回到本页签结果卡还在
+  if (!importBusy.value) importing.value = false
 })
 let tenantsInflight: Promise<void> | null = null
 function ensureTenantsLoaded() {
@@ -721,22 +731,17 @@ async function onImportClick() {
                     :groups="issueGroups"
                     :tenants="allTenants"
                     :can-act="edit && auth.can('entry:edit')"
-                    act-hint="进入「编辑」模式后可在此绑定;浏览态仅查看。"
+                    act-hint="编辑模式下可绑定"
                     :on-bind="onBindIssue"
                     @goto-tenants="gotoTenants"
                   />
                 </FPAlertPanel>
+                <!-- ≤600 的「小屏可录入,建议在桌面端操作」并进这枚签(原来是表格上方单独一行) -->
                 <span v-if="edit" class="s10-editflag">
-                  <component :is="iconFor('pencil')" :size="13" />已修改 <b>{{ dirty.size }}</b> 处
+                  <component :is="iconFor('pencil')" :size="13" />已修改 <b>{{ dirty.size }}</b> 处<span class="s10-editflag-s"> · 建议在桌面端操作</span>
                 </span>
                 <span v-else class="s10-count">{{ activeBook?.name }} · 本月 <b>{{ tenantCount }}</b> 户</span>
               </div>
-            </div>
-
-            <!-- ≤600 重编辑提示(§5.3/§11.2):预留位——行常驻定高,文案仅编辑态显,显隐不挪表格
-                 (LAYOUT-STABILITY §2-3;条件挂在行内 span 上,不进流内块门禁)。填报不拦不藏 -->
-            <div class="s10-s-hint">
-              <span v-if="edit">编辑模式 · 小屏可录入,建议在桌面端操作</span>
             </div>
 
             <!-- ② 宽表:版面由现行版模板驱动 -->
@@ -780,8 +785,9 @@ async function onImportClick() {
             :default-year="year"
             :default-month="month"
             :default-phase="phase"
-            @close="importing = false"
-            @import-sections="onSmartImport"
+            :runner="onSmartImport"
+            segmented
+            @close="closeImport"
           />
 
           <SaveConfirmDialog
@@ -798,7 +804,6 @@ async function onImportClick() {
       </div>
     </div>
 
-    <ImportResultToast v-if="importResult" :result="importResult" :summary="importSummary" @close="importResult = null; importSummary = ''" />
     <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
 
     <!-- 行级绑定弹窗(点行名/未绑定标签打开) -->
@@ -868,12 +873,12 @@ async function onImportClick() {
 .s10-count b { color:var(--text-secondary); font-weight:var(--fw-semibold); font-family:var(--font-mono); }
 .s10-editflag { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--hue-orange); background:var(--warn-bg); padding:5px 11px; border-radius:var(--radius-full); }
 .s10-editflag b { font-family:var(--font-mono); margin:0 2px; }
+.s10-editflag-s { display:none; }
 
 /* 矩阵块:桌面无横滚(占位类,窄档媒体块内加 overflow) */
 .s10-matrix { flex:0 0 auto; }
-/* 顶部 chips 与 S 档提示行:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前 */
+/* 顶部 chips:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前 */
 .s10-chips { display:none; }
-.s10-s-hint { display:none; }
 
 /* ── M/S 档(≤960):左轨收成顶部横向 chips(RESPONSIVE-LAYOUT-SPEC §5.6,照台账屏范式) ── */
 @media (max-width: 960px) {
@@ -894,8 +899,8 @@ async function onImportClick() {
   .s10-matrix { overflow-x:auto; }
 }
 
-/* ── S 档(≤600):填报不拦不藏,常驻预留提示行(§5.3/§11.2;LAYOUT-STABILITY §2-3 预留位) ── */
+/* ── S 档(≤600):填报不拦不藏,「建议在桌面端操作」并进编辑签(§5.3/§11.2),不另占一行 ── */
 @media (max-width: 600px) {
-  .s10-s-hint { display:flex; align-items:center; flex:0 0 20px; height:20px; font-size:12px; color:var(--hue-orange); }
+  .s10-editflag-s { display:inline; }
 }
 </style>

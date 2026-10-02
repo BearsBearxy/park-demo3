@@ -5,6 +5,7 @@ import { defineComponent, h, ref, KeepAlive } from 'vue'
 
 import MeterView from '@/views/meters/MeterView.vue'
 import MeterDetailDrawer from '@/views/meters/MeterDetailDrawer.vue'
+import FpImportModal from '@/components/import/FpImportModal.vue'
 import {
   metersApi,
   type MeterDTO, type MeterReadingDTO, type MeterBindingDTO,
@@ -538,23 +539,37 @@ describe('园区抄表 · 缺底数与自愈(SPEC §3.4)', () => {
 })
 
 describe('园区抄表 · 导入结果与批删预览报档案改动(SPEC §3.2 / §3.5)', () => {
-  it('❗导入结果逐条列「表 · 字段 · 旧 → 新 · 影响哪几个月」', async () => {
+  // 2026-10-03 起导入点下去弹窗不关(画布 11;UI-OVERLAY-SPEC §8):结果在弹窗里原地出结果卡(ImportResultCard 照搬了「表档案改动」块)。
+  // 破坏验证:FpImportModal 换回 @import / @import-sections(不给 :runner)→ 弹窗当场关、结果卡找不到 → 红;
+  //          settle 的刷新不走 reloadAll → 「写完重读本月」红;onImport 里留着 importing = false → 「导入中弹窗不关」红
+  it('❗导入:弹窗不关,写完重读本月,结果卡逐条列「表 · 字段 · 旧 → 新 · 影响哪几个月」', async () => {
     const w = await open()
     const vm = vmOf(w)
-    vi.spyOn(api, 'post').mockResolvedValue({
+    let done!: (v: unknown) => void
+    vi.spyOn(api, 'post').mockReturnValue(new Promise(r => { done = r }) as never)
+    vm.editMode = true
+    await flushPromises()
+    vm.importing = true
+    await flushPromises()
+    ;(w.findComponent(FpImportModal).vm as unknown as { onSectionsConfirm: (p: unknown[]) => void })
+      .onSectionsConfirm([{ year: 2025, month: 3, records: IMPORT_ROWS }])
+    await flushPromises()
+    expect(w.find('.fpimp-scrim').exists(), '导入中弹窗不关').toBe(true)
+    const before = vi.mocked(metersApi.readings).mock.calls.length
+    done({
       imported: 1, skipped: 0, errors: [], batchId: 'b-1',
       changes: [
         { meterId: 1, label: '一车间总电', field: 'tenant', before: '力灏电子', after: '锂朋科技', from: YM, until: null },
         { meterId: 1, label: '一车间总电', field: 'status', before: null, after: 'retired', from: YM, until: '2025-05' },
       ],
-    } as never)
-    vm.editMode = true
+    })
     await flushPromises()
-    await vm.onImport(IMPORT_ROWS as never, 'meters-2025-03.xlsx' as never)
-    await flushPromises()
-    const box = w.find('.ir-chg')
+    expect(vi.mocked(metersApi.readings).mock.calls.length, '写完重读本月').toBeGreaterThan(before)
+    const card = w.find('.irc')
+    expect(card.find('.irc-meta').text()).toContain('本页已刷新')
+    const box = card.findAll('.irc-fold').find(f => f.text().includes('处表档案改动'))!
     expect(box.text()).toContain('2 处表档案改动')
-    await box.find('.ir-errs-toggle').trigger('click')
+    await box.find('.irc-toggle').trigger('click')
     const lines = box.findAll('li').map(li => li.text())
     expect(lines[0]).toContain(`企业名称 力灏电子 → 锂朋科技 · 影响 ${YM} 起`)
     expect(lines[1]).toContain(`状态 不在册 → 停用 · 影响 ${YM} ~ 2025-05`)
