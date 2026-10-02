@@ -14,6 +14,7 @@ import { finMoney } from '@/utils/finFmt'
 import { leavesOf, PHASES } from '@/views/sales-income/layout'
 import { iconFor } from '@/components/ds/icon'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
+import FPStateTag from '@/components/fp/FPStateTag.vue'
 import { receipt } from '@/utils/receipt'
 
 const props = defineProps<{
@@ -214,32 +215,20 @@ async function confirmMark(e = selected.value, n = note.value.trim() || null) {
       <!-- 右:单户对照 -->
       <div v-if="selected" class="rc-detail">
         <div class="rc-dhead">
+          <!-- 状态是标题旁那颗页面状态签(横条盘点 ReconWorkbench:233,2026-10-03,第 4 级):
+               原来是 .rc-dhead 里横贯对照面板的一条 .rc-banner,文案长短不一,换户时 1↔2 行把下面的对照顶来顶去。
+               处置按钮挪到标题行右端;那句说明和底部配平条 .rc-balance 说的是同一件事,删掉。 -->
           <div class="rc-dtitle">
             <h2>{{ selected.tenantName }}</h2>
             <span v-for="c in selected.ledgerCards" :key="c.companyName" class="rc-chip">{{ c.companyName }}</span>
-            <span v-if="selected.marked" class="rc-chip mk"><component :is="iconFor('check')" :size="11" />已核实</span>
+            <FPStateTag v-if="selected.status === 'ok'" tone="muted">两本账配平</FPStateTag>
+            <FPStateTag v-else-if="selected.marked" tone="muted" class="rc-st" v-tip="selected.markNote">差异已核实{{ selected.markNote ? ' · ' + selected.markNote : '' }}</FPStateTag>
+            <FPStateTag v-else tone="warn" class="rc-st" :class="selected.status">两本账未配平 · 差额 {{ signed(selected.diff) }}</FPStateTag>
+            <button v-if="selected.status !== 'ok'" class="bbtn" @click="openDlg(null)">
+              <component :is="iconFor('check')" v-if="!selected.marked" :size="13" />{{ selected.marked ? '取消核实' : '标记已核实' }}
+            </button>
           </div>
           <div class="rc-dmeta">左 月度台账 · {{ selected.ledgerCards.length }} 家管理公司 ⇄ 右 附表10 · {{ selected.s10Cards.length }} 个期区</div>
-
-          <div v-if="selected.status === 'ok'" class="rc-banner ok">
-            <span class="dot" style="background:var(--hue-blue)"></span>
-            <div class="bx"><b>两本账配平</b> · 各管理公司台账之和 = 附表10 申报,同名科目全部对齐。</div>
-          </div>
-          <div v-else-if="selected.marked" class="rc-banner ok">
-            <span class="dot" style="background:var(--hue-blue)"></span>
-            <div class="bx"><b>差异已核实</b>{{ selected.markNote ? ' · ' + selected.markNote : '' }}</div>
-            <button class="bbtn" @click="openDlg(null)">取消核实</button>
-          </div>
-          <div v-else class="rc-banner" :class="selected.status">
-            <component :is="iconFor('alert-triangle')" :size="15" />
-            <div class="bx">
-              <b>两本账未配平 · 差额 {{ signed(selected.diff) }}</b> ·
-              {{ selected.status === 'miss'
-                ? (selected.ledgerCards.length === 0 ? '台账缺记:附表10 有申报,台账无对应记账。' : '附表10 缺申报:台账已记账,附表10 无该户。')
-                : '橙色科目为两侧金额不符,点击差异行或配平条处置。' }}
-            </div>
-            <button class="bbtn" @click="openDlg(null)"><component :is="iconFor('check')" :size="13" />标记已核实</button>
-          </div>
         </div>
 
         <div class="rc-dscroll">
@@ -414,16 +403,12 @@ async function confirmMark(e = selected.value, n = note.value.trim() || null) {
 .rc-dtitle { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .rc-dtitle h2 { font-size: var(--fs-h3); font-weight: var(--fw-bold); letter-spacing: -.01em; margin: 0; white-space: nowrap; }
 .rc-chip { font-size: var(--fs-micro); font-weight: var(--fw-medium); color: var(--text-secondary); background: var(--surface-sunken); padding: 3px 9px; border-radius: var(--radius-full); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
-.rc-chip.mk { background: var(--accent-blue); color: var(--hue-blue); }
+/* 状态签:备注可能很长,封宽省略、悬停看全句;缺记那档换红(FPStateTag 没有红档,在这里换色) */
+.rc-st { max-width: 420px; overflow: hidden; text-overflow: ellipsis; }
+.fp-state.rc-st.miss { background: var(--danger-soft); color: var(--delta-down-text); }
 .rc-dmeta { font-size: var(--fs-label); color: var(--text-muted); margin-top: 7px; }
-.rc-banner { display: flex; align-items: center; gap: 11px; margin-top: 13px; padding: 11px 14px; border-radius: 11px; font-size: var(--fs-label); flex-wrap: wrap; }
-.rc-banner.ok { background: var(--accent-blue); }
-.rc-banner.diff { background: var(--warn-bg); }
-.rc-banner.miss { background: var(--danger-bg); }
-.rc-banner .bx { flex: 1; min-width: 220px; line-height: 1.5; }
-.rc-banner b { font-weight: var(--fw-semibold); }
-.rc-banner .bbtn { height: 28px; padding: 0 12px; border: 1px solid var(--border-control-strong); background: var(--surface-white); cursor: pointer; border-radius: var(--radius-sm); font: inherit; font-size: var(--fs-micro); font-weight: var(--fw-medium); color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px; }
-.rc-banner .bbtn:hover { background: var(--surface-card); }
+.rc-dtitle .bbtn { margin-left: auto; height: 28px; padding: 0 12px; border: 1px solid var(--border-control-strong); background: var(--surface-white); cursor: pointer; border-radius: var(--radius-sm); font: inherit; font-size: var(--fs-micro); font-weight: var(--fw-medium); color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px; }
+.rc-dtitle .bbtn:hover { background: var(--surface-card); }
 .rc-dscroll { flex: 1; min-height: 0; overflow-y: auto; }
 
 .rc-cwrap { display: grid; grid-template-columns: 1fr 60px 1fr; padding: 18px 22px 22px; align-items: start; }

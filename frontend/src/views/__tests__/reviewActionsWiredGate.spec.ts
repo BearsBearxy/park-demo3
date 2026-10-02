@@ -49,7 +49,8 @@ const declares = (s: string) => DECLARES.some((re) => re.test(s))
 const RENDERS = /<FPReviewActions\b/
 
 /**
- * 宿主 = **接**审核键的组件(prop 签名上有 reviewKey),今天是 SchedHeader 与 LedgerWideTable。
+ * 宿主 = **接**审核键的组件(prop 签名上有 reviewKey),今天是 SchedHeader、LedgerWideTable 与 FinHead
+ * (三大报表标题行,2026-10-03 画布 09 起三屏的按钮集收进它)。
  * 它们各自罩着一族屏:屏自己不画动作簇,把键交给宿主,宿主画那一颗。
  *
  * ⚠ 从 prop 签名认,不从「谁渲染了动作簇」认。后者在宿主那颗被删掉的那一刻会连宿主身份
@@ -88,8 +89,8 @@ describe('审核动作簇的接线门禁(§9.2)', () => {
       .toBeGreaterThan(60)
     // 宿主认丢了不会让下面哪条直接红,而是让「屏交给宿主画」这一支静悄悄失效 —— 必须单独断。
     expect(HOSTS.map(rel), `没认出接审核键的宿主(prop 签名 \`reviewKey?: string\` 变了?)——` +
-      '认丢了的话,SchedHeader / LedgerWideTable 罩着的那 8 个屏会被误判成漏接')
-      .toHaveLength(2)
+      '认丢了的话,SchedHeader / LedgerWideTable / FinHead 罩着的那 11 个屏会被误判成漏接')
+      .toHaveLength(3)
   })
 
   // ❗破坏验证:删掉任一屏模板里的 <FPReviewActions> → 红并点名那一屏。
@@ -159,9 +160,10 @@ describe('审核动作簇的接线门禁(§9.2)', () => {
   it('❗渲染了动作簇的地方,keys 与 label 一个都不能少', () => {
     const tags: { f: string; text: string }[] = []
     for (const f of FILES) for (const m of textOf(f).matchAll(/<FPReviewActions\b[^>]*>/g)) tags.push({ f, text: m[0] })
-    // 下限贴着现值 10(5 工具行屏 + SchedHeader + LedgerWideTable + 三大报表),没留余量:
+    // 下限贴着现值 8(5 工具行屏 + SchedHeader + LedgerWideTable + FinHead),没留余量:
     // 少一颗就该有人来读这份门禁,而不是把数字往下调。真要减屏,连同这里一起改。
-    expect(tags.length, '动作簇的使用点少于现值 10 —— 组件改名/某一屏的那颗被删了?').toBeGreaterThanOrEqual(10)
+    // 2026-10-03:三大报表三屏各自那颗收进 FinHead 一颗(10 → 8)。
+    expect(tags.length, '动作簇的使用点少于现值 8 —— 组件改名/某一屏的那颗被删了?').toBeGreaterThanOrEqual(8)
 
     for (const t of tags) {
       // 解析不出来一律 fail,不许 continue:属性值里真出现 `>` 会把标签在那里截断,

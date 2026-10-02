@@ -173,8 +173,11 @@ describe('科目余额表 · S 档行→卡片', () => {
     expect(w.find('table.tb-table').exists(), '编辑态被换成了卡片 = 手机上没法录入').toBe(true)
     expect(w.findAll('.fpwc-c')).toHaveLength(0)
     expect(w.findAll('table.tb-table input.fin-ni').length, '行内录入格没了').toBeGreaterThan(0)
-    // 荐桌面那行提示随编辑态出文案(位置常驻,见 TrialBalanceView .tb-s-hint)
-    expect(w.find('.tb-s-hint').text()).toBe('编辑模式 · 小屏可录入,建议在桌面端操作')
+    // 荐桌面那句 2026-10-03 并进标题旁的编辑签(横条盘点 TrialBalanceView:462):S 档签上挂悬停说明,不再单占一行
+    expect(w.find('.tb-s-hint').exists(), '那一行横条该撤了').toBe(false)
+    const tag = w.find('.fh-l .fp-state.edit')
+    expect(tag.text()).toBe('编辑中 · 0 处改动')
+    expect((tag.element as HTMLElement & { _tip?: { text: string } })._tip?.text).toBe('小屏可录入,建议在桌面端操作')
   })
 
   it('❗宽档零差异:tier 不是 s 时照旧渲 <table>,一张卡都不出', async () => {
@@ -182,7 +185,7 @@ describe('科目余额表 · S 档行→卡片', () => {
     const w = await openBody()
     expect(w.find('table.tb-table').exists()).toBe(true)
     expect(w.findAll('.fpwc-c')).toHaveLength(0)
-    // 8 根数值列 + 代码 + 名称,一根不少(colgroup 根数任何档位都不变)
-    expect(w.findAll('table.tb-table colgroup col')).toHaveLength(10)
+    // 8 根数值列 + 代码 + 名称 + 最右空列,一根不少
+    expect(w.findAll('table.tb-table tbody tr')[0].findAll('td')).toHaveLength(11)
   })
 })

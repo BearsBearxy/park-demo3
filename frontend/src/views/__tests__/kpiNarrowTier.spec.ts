@@ -1,9 +1,8 @@
 /**
  * KpiNarrow 板 —— 三个指标卡组件在窄档的落点(响应式稿 KpiNarrow 板 §1/§2/§3)。
  *
- * 钉四件事:
- *   ① 三个报表屏各自那份 .fin-kpis 的「降两列」写在 ≤960(M 档)块里,不是原来的 ≤600;
- *      同时断言它**不再**留在 ≤600 块里 —— 两处都写等于没改档,而视觉上看不出来。
+ * 钉三件事(原来的 ① 三个报表屏 .fin-kpis 降两列:2026-10-03 画布 09 D6 三大报表撤掉 KPI 卡,
+ *   对象没了,整段删掉;「卡没了」钉在 kpiCallSites.spec):
  *   ② ana.css 的 .av2-kpis 在 ≤960 定 4 列,且这个块夹在 1100 块之后、600 块之前。
  *      层叠顺序是这条规则唯一的正确性判据:插到 600 之后会把 S 档的两列盖回 4 列,
  *      而层叠覆盖不报错、不告警,是静默的 —— 所以位置必须进断言,不能只断言"存在"。
@@ -22,53 +21,6 @@ import { join } from 'node:path'
 import { mediaBlock } from '@/test-utils/mediaBlock'
 
 const read = (rel: string) => readFileSync(join(__dirname, '..', '..', rel), 'utf8').replace(/\r\n/g, '\n')
-
-/** 三个报表屏各自那份 .fin-kpis(scoped,故有三份副本) */
-const REPORTS: ReadonlyArray<readonly [string, string]> = [
-  ['IncomeStatementView', 'views/reports/income-statement/IncomeStatementView.vue'],
-  ['BalanceSheetView', 'views/reports/balance-sheet/BalanceSheetView.vue'],
-  ['TrialBalanceView', 'views/reports/trial-balance/TrialBalanceView.vue'],
-]
-
-const TWO_COL = '.fin-kpis { grid-template-columns:repeat(2, minmax(0,1fr)); }'
-
-describe('KpiNarrow §1 — 三个报表屏的 .fin-kpis 在 M 档(≤960)降两列', () => {
-  it.each(REPORTS)('%s:降两列写在 960 块里', (_name, rel) => {
-    const css = read(rel)
-    expect(mediaBlock(css, '@media (max-width: 960px)')).toContain(TWO_COL)
-  })
-
-  it.each(REPORTS)('%s:降两列在 960 块、§5.7 横滑在 600 块,两条各就各位', (_name, rel) => {
-    const css = read(rel)
-    const sBlock = mediaBlock(css, '@media (max-width: 600px)')
-    // ⚠ 「取不到块」和「取到了但里面没有」不是一回事:mediaBlock 找不到就返回空串,
-    //   空串里当然没有 .fin-kpis —— 这条对 BalanceSheetView(本轮 600 块被整段删了)是空转,
-    //   2026-09-20 对抗复查抓到的。所以先断该屏该不该有 600 块,再断块内内容。
-    // 2026-09-21 收窄(不是放宽):§5.7 要在 600 块里给 .fin-kpis 放一条**不同**的规则
-    // (3–4 张 → 横滑胶囊)。本条禁的一直是「降两列留在 600 块」,不是「.fin-kpis 不许出现」——
-    // 原写法用整类名判,把合法的横滑规则也一起禁了。改成只禁 repeat(2,,判据更准不是更松:
-    // 「降两列退回 600 块」这个退步照样会红。
-    expect(sBlock, `${rel} 的 600 块不见了 —— §5.7 的横滑规则该在那儿`).not.toBe('')
-    expect(sBlock, '降两列退回了 600 块 —— 它该在 960 块里').not.toMatch(/\.fin-kpis[^}]*repeat\(2,/)
-    // 正向:600 块里确实有 §5.7 那条横滑(否则上面那条 not.toMatch 在空规则上也成立)
-    expect(sBlock, `${rel} 的 600 块里没有 §5.7 的 KPI 横滑`).toMatch(/\.fin-kpis[^}]*overflow-x:\s*auto/)
-    expect(sBlock).toMatch(/\.fin-kpis > \*[^}]*flex:\s*0 0 140px/)
-    // 三屏的媒体条件都必须是「960 在前、600 在后」——宽档在前窄档在后
-    expect(css.match(/@media \(max-width: (\d+)px\)/g))
-      .toEqual(['@media (max-width: 960px)', '@media (max-width: 600px)'])
-  })
-
-  it.each(REPORTS)('%s:桌面档仍是 repeat(4)(XL 零差异,RESPONSIVE-LAYOUT-SPEC §9)', (_name, rel) => {
-    const css = read(rel)
-    // 媒体块外的基础规则:整份 CSS 去掉所有 @media 块后仍须留着 4 列那条
-    const outside = css.replace(/@media[^{]*\{(?:[^{}]|\{[^{}]*\})*\}/g, '')
-    expect(outside).toContain('.fin-kpis { flex:0 0 auto; display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; }')
-  })
-
-  it('三处都断到了(副本数不是 2 也不是 4)', () => {
-    expect(REPORTS).toHaveLength(3)
-  })
-})
 
 describe('KpiNarrow §2 — ana.css 的 .av2-kpis 在 M 档定 4 列', () => {
   const css = read('components/ana/ana.css')

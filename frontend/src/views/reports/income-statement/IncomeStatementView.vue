@@ -1,75 +1,67 @@
 <script setup lang="ts">
 // 利润表屏 — 两层状态机(useFinStatementScreen 三屏共用) + PAGE-BEHAVIOR-SPEC §1 加载门。
-// 动线(2026-08-29 改,设计稿 §3.2a):左栏常驻管理公司 → 选期矩阵(全部年份纵排×12月格)→ 正文。
-// 改前是四层串行(整屏选公司 → 年份门 → 月历 → 正文),换个公司看要退回第一屏重走三道门。
+// 动线(画布 09,2026-10-03):公司下拉(期间条 / 矩阵标题)→ 选期矩阵(全部年份纵排×12月格)→ 正文。
 //   · 单公司 = 可编辑(本月 cur / 本年累计 ytd 两列);companyId==='all' = 跨公司只读求和(无编辑/导入)。
-//   · 常驻行(IS_ROWS)无数据留空;明细行下可加自定义子类(父项自动汇总);小计行(21/30/32)按公式算。
-// 本屏只留利润表特有部分:双列取值、行树、公式/KPI、保存载荷、自定义子类与批量删除、导出。
+//   · 常驻行(IS_ROWS)无数据写「–」;带「其中」明细的父项是可收起的分组行(默认收起);
+//     明细行下可加自定义子类(父项自动汇总,「N 个子类 · 自动合计」);小计行(21/30)按公式算,净利润(32)贴底。
+// 本屏只留利润表特有部分:双列取值、行树、公式、保存载荷、自定义子类与批量删除、导出。
 import { ref, computed } from 'vue'
-import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { reportApi } from '@/api/report'
 import type { ReportCell, ReportCustomRowDTO } from '@/types/report'
 import { IS_ROWS, computeRow } from '@/reports/incomeStatement'
 import { parserProps } from '@/utils/importRegistry'
-import { finMoney } from '@/utils/finFmt'
+import { periodOf } from '@/nav/deepLink'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
-import KpiCard from '@/components/ds/KpiCard.vue'
-import BookRail from '@/components/fp/BookRail.vue'
 import FPStepStrip from '@/components/fp/FPStepStrip.vue'
 import FPToast from '@/components/fp/FPToast.vue'
 import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
-import { useAuthStore } from '@/stores/auth'
 import { useFinStatementScreen } from '@/components/fin/useFinStatementScreen'
-import { useFormSheet } from '@/composables/useFormSheet'
 import FinDialogs from '@/components/fin/FinDialogs.vue'
+import FinCompanyMenu from '@/components/fin/FinCompanyMenu.vue'
+import FinPeriodBar from '@/components/fin/FinPeriodBar.vue'
+import FinHead from '@/components/fin/FinHead.vue'
+import FinCard from '@/components/fin/FinCard.vue'
 import type { FinTableRow } from '@/components/fin/FinReportTable.vue'
 import FpImportModal from '@/components/import/FpImportModal.vue'
-import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import SaveConfirmDialog from '@/components/import/SaveConfirmDialog.vue'
 import IncomeStatementTable from './IncomeStatementTable.vue'
 import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
-import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
+import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import { receipt } from '@/utils/receipt'
 import { ask } from '@/utils/ask'
 
 const STMT = 'is'
+/** 净利润:贴底那一行,不进表体 */
+const NET = 32
+/** 口径(D10):原页底「ⓘ 单位:元 · 口径…」说明行删掉,挂到净利润行名称的悬停上 */
+const NET_TIP = '营业利润 = 营业收入 − 营业成本 − 税金及附加 − 销售 / 管理 / 财务费用 + 投资收益;'
+  + '利润总额 = 营业利润 + 营业外收入 − 营业外支出;净利润 = 利润总额 − 所得税费用。'
 
 // 批量删除选集(屏内私有;进出编辑/切月由 resetLocal 清空)
 const selected = ref(new Set<string | number>())
 
 const {
-  canEdit, reviewKey, reviewNote, reviewTip, reviewLabelOf,
+  canEdit, canManageCo, reviewKey, reviewNote, reviewTip, reviewLabelOf,
   companyId, year, month, edit, saving,
-  companiesLoaded, period, draft, dirty, dlg,
-  isAll, company, companyName, finCompanies,
-  railItems, matrixYears, matrixBook, gateYears,
+  companies, companiesLoaded, period, periodErr, entered, draft, dirty, dlg,
+  isAll, companyName, finCompanies,
+  matrixYears, matrixBook, gateYears,
   periodSteps, stripLabel, stripQuery, deepNote,
   pickCompany, pickCell, backToMatrix, addEarlier, addLater, removeYear,
-  loadPeriod,
+  loadPeriod, veil,
   enterEdit, onTaken, lockedBy, evictedBy, heldByOther, lockScope, requestCancel, saveConfirm, finishEdit, save, onDiscard,
   onNewCompany, onEditCompany, onDeleteCompany, submitCompany,
-  importing, importResult, importSummary, onImport, requestImport,
+  importing, onImport, describeImport, requestImport,
 } = useFinStatementScreen({
   stmt: STMT,
-  // 审核键(2026-09-08):一张表 × 一家公司 × 一个月。已审核 / 待审核的月进不了编辑态;
-  // 交审动作在「本月出账」清单上(各屏自己的入口等设计稿)。
+  // 审核键(2026-09-08):一张表 × 一家公司 × 一个月。已审核 / 待审核的月进不了编辑态。
   reviewKind: 'report-is',
   resetLocal: () => { selected.value = new Set() },
 })
-
-
-// 新增/重命名/删除公司写的是 management_company,归 master 不归 report(RBAC §5.6:
-// 删公司同事务级联删该公司 monthly_ledger + report_*)。这条判定原先长在 FinCompanyPicker 里,
-// 那个整屏选择器随四层动线退场,门跟着搬到左栏管理区。
-const canManageCo = computed(() => useAuthStore().can('master:edit'))
-
-// ≤960 左轨收成顶部 chips 后,轨底那三颗管理钮收成一颗虚线 chip → 点开这个面板再选动作
-// (§5.6「S:选择器点开为全屏列表 sheet」)。壳复用 styles/form-sheet.css 的 .fp-fsheet,不新造组件。
-const manageOpen = ref(false)
-const sheet = useFormSheet()
 
 // ── 计算(客户端):叶子 = 录入/持久值;自定义父项 = 子类求和;小计 = IS_FORMULA ──
 const customRows = computed<ReportCustomRowDTO[]>(() => period.value?.customRows ?? [])
@@ -107,32 +99,47 @@ const liveOf = (rowKey: string | number, field: string): number | string => {
   const cell = period.value?.amounts[String(rowKey)]
   return cell ? (Number(cell[field as 'cur' | 'ytd']) || 0) : 0
 }
+/** 改过且有值的格:浅蓝底(清空的格和没动的一样,稿 ReportStates) */
+const changedOf = (rowKey: string | number, field: string) => !!draft.value[`${String(rowKey)}|${field}`]
 
 // ── 展平行树:常驻行 + 自定义子类递归 ──────────────────────
+// 「其中：」那条信息行不再单画 —— 父项本身就是「xx 其中 N 项」的分组行(画布 09 ReportIS)。
 const flatRows = computed<FinTableRow[]>(() => {
   const out: FinTableRow[] = []
-  const pushChildren = (parentKey: string, baseLevel: number) => {
+  const pushChildren = (parentKey: string, parent: string | number, baseLevel: number) => {
     for (const c of childrenOf(parentKey)) {
       const kids = childrenOf(c.rowKey)
       out.push({
-        key: c.rowKey, label: c.label, level: Math.min(baseLevel + 1, 3), type: 'normal',
+        key: c.rowKey, label: c.label, level: Math.min(baseLevel + 1, 3), type: 'normal', parent,
         custom: true, parentAuto: kids.length > 0, childCount: kids.length,
-        canAddChild: baseLevel + 1 < 2,
+        canAddChild: baseLevel + 1 < 2, group: kids.length ? 'open' : undefined,
       })
-      pushChildren(c.rowKey, baseLevel + 1)
+      pushChildren(c.rowKey, c.rowKey, baseLevel + 1)
     }
   }
-  for (const r of IS_ROWS) {
+  let top: number | null = null   // 当前「其中」组的父项行次
+  IS_ROWS.forEach((r, i) => {
+    if (r.type === 'label' || r.no === NET) return
+    if (r.level === 0) top = r.no
     const kids = r.type === 'normal' ? childrenOf(String(r.no)) : []
+    // 「其中」明细:紧跟在这一行后面、直到下一个顶层行之前的 level-1 常驻行
+    let of = 0
+    if (r.level === 0) for (let j = i + 1; j < IS_ROWS.length && IS_ROWS[j].level > 0; j++) if (IS_ROWS[j].type === 'normal') of++
     out.push({
       key: r.no, no: r.no, label: r.label, level: r.level, type: r.type,
-      strong: r.type === 'subtotal',
+      strong: r.type === 'subtotal', parent: r.level > 0 && top != null ? top : undefined,
       parentAuto: kids.length > 0, childCount: kids.length,
       canAddChild: r.type === 'normal' && r.level < 2,
+      group: of ? 'fold' : kids.length ? 'open' : undefined,
+      tag: of ? `其中 ${of} 项` : undefined,
     })
-    pushChildren(String(r.no), r.level)
-  }
+    pushChildren(String(r.no), r.no, r.level)
+  })
   return out
+})
+const footRows = computed<FinTableRow[]>(() => {
+  const r = IS_ROWS.find(x => x.no === NET)!
+  return [{ key: r.no, no: r.no, label: r.label, level: 0, type: 'subtotal' }]
 })
 
 // ── 编辑流(进出编辑/保存外壳在 useFinStatementScreen;此处只给本表的录入与保存载荷) ──
@@ -170,11 +177,12 @@ function mergedLeafValues(): Map<string, number> {
 }
 
 // ── 自定义子类增删 ────────────────────────────────────────
+// 「可继续在子类下添加下一级」只在新子类自己还能再挂一级时才成立(新子类 level < 2 ⇔ 父项是顶层)
 function onAddChild(row: FinTableRow) {
   dlg.value = {
     type: 'addrow', parentLabel: row.label, heading: '添加利润表子类',
     placeholder: '如:厂房租金收入',
-    hint: '子类金额逐期录入,父项自动按子类合计;可继续在子类下添加下一级。',
+    hint: row.level === 0 ? '可继续在子类下添加下一级。' : undefined,
   }
   addParentKey.value = String(row.key)
   addParentLevel.value = row.level
@@ -210,8 +218,10 @@ async function removeCustom(row: FinTableRow) {
 
 // ── 批量删除(P2-G3):编辑态多选 → 自定义行立即级联删、固定行清空本期值进 draft ──
 function onToggleSelect(row: FinTableRow) {
-  if (selected.value.has(row.key)) selected.value.delete(row.key)
-  else selected.value.add(row.key)
+  const next = new Set(selected.value)
+  if (next.has(row.key)) next.delete(row.key)
+  else next.add(row.key)
+  selected.value = next
 }
 // 选集拆分:自定义行(有 customRow 记录) / 固定行(其余普通叶子行)
 const selSplit = computed(() => {
@@ -263,12 +273,6 @@ async function bulkDelete() {
   }
 }
 
-// ── KPI(营业收入/营业利润/利润总额/净利润 本月)────────────
-const kpiRevenue = computed(() => nodeValue(1, 'cur'))
-const kpiOp = computed(() => nodeValue(21, 'cur'))
-const kpiTotal = computed(() => nodeValue(30, 'cur'))
-const kpiNet = computed(() => nodeValue(32, 'cur'))
-
 const itemCount = computed(() =>
   IS_ROWS.filter(r => r.type === 'normal').length + customRows.value.length,
 )
@@ -279,10 +283,19 @@ async function onExport() {
   try {
     const { exportIncomeStatement } = await import('@/utils/incomeStatementExcel')
     // 必须 await:出流改 exceljs 后写文件是异步的,裸调用的 rejection 会逃出这个 try/catch 变 unhandled
-    await exportIncomeStatement(
-      flatRows.value, valueOf,
-      companyName.value ?? '全部汇总', year.value, month.value,
-    )
+    // 导出按文件行次全量(含净利润、「其中：」信息行与自定义子类),不跟屏上收起走
+    const all: FinTableRow[] = []
+    const push = (pk: string, lvl: number) => {
+      for (const c of childrenOf(pk)) {
+        all.push({ key: c.rowKey, label: c.label, level: Math.min(lvl + 1, 3), type: 'normal', custom: true })
+        push(c.rowKey, lvl + 1)
+      }
+    }
+    for (const r of IS_ROWS) {
+      all.push({ key: r.no, no: r.no, label: r.label, level: r.level, type: r.type })
+      push(String(r.no), r.level)
+    }
+    await exportIncomeStatement(all, valueOf, companyName.value ?? '全部汇总', year.value, month.value)
   } catch (e) {
     receipt.fail(errMsg(e, '导出失败'), { label: '重试', run: () => void onExport() })
   }
@@ -290,227 +303,118 @@ async function onExport() {
 </script>
 
 <template>
-  <!-- fp-fluid:摘 base.css 的 800px 屏级地板(RESPONSIVE-LAYOUT-SPEC §8)。
-       挂在左栏壳根上一次即可 —— 地板规则只查 .fp-content 首子,内层状态(矩阵/正文/转圈)
-       不再逐挂;照台账 .lgw 同族先例(LedgerView:655)。master 侧原对旧四层结构
-       (FinCompanyPicker/FinMonthGrid,本分支已退场)逐状态挂标,意图随新结构收敛到这一处。 -->
+  <!-- fp-fluid:摘 base.css 的 800px 屏级地板(RESPONSIVE-LAYOUT-SPEC §8),挂在屏根一次即可 -->
   <div class="finw fp-fluid">
-    <!-- 左轨常驻:管理公司一键切换(BOOK-WORKBENCH-SPEC §7-2 实体切换在左栏)。
-         改前这是一整屏的公司选择器,换个公司看要退回第一屏再走年份门与月历两道门。 -->
-    <aside class="finw-rail">
-      <div class="finw-rail-t">管理公司</div>
-      <BookRail :books="railItems" :active-id="companyId" :can-manage="canManageCo" @select="pickCompany">
-        <template #manage>
-          <div class="finw-manage">
-            <button class="finw-mbtn" @click="onNewCompany">
-              <component :is="iconFor('plus')" :size="13" />新增
-            </button>
-            <button class="finw-mbtn" :disabled="isAll || !company" @click="onEditCompany()">
-              <component :is="iconFor('pencil')" :size="13" />重命名
-            </button>
-            <button class="finw-mbtn del" :disabled="isAll || !company" @click="onDeleteCompany()">
-              <component :is="iconFor('trash-2')" :size="13" />删除
-            </button>
-          </div>
-        </template>
-      </BookRail>
-    </aside>
+    <!-- 公司清单未到位 -->
+    <div v-if="!companiesLoaded" class="page-loading"><span class="page-spin" /></div>
 
-    <!-- ≤960 左轨收成顶部横向 chips(RESPONSIVE-LAYOUT-SPEC §5.6,照台账屏 LedgerView 范式):
-         选择语义与轨内点击同源 pickCompany;≥961 整行 display:none,桌面零变化(§9)。
-         轨底三颗管理钮收成最后一颗虚线 chip,点开面板再选动作——收轨不等于收权限,
-         同一道 master:edit 门不因收轨消失。 -->
-    <div class="finw-chips">
-      <button v-for="b in railItems" :key="b.id" class="finw-chip" :class="{ on: b.id === companyId }"
-              @click="pickCompany(b.id)">{{ b.name }}</button>
-      <button v-if="canManageCo" class="finw-chip mng" @click="manageOpen = true">管理</button>
+    <!-- 一家公司都没有(画布 09 ReportPickEmpty 下半):「新增公司」进空态,有 master:edit 才出 -->
+    <template v-else-if="companyId === null">
+      <h2 class="finw-h2">利润表</h2>
+      <div class="finw-empty">
+        <FPEmpty sub="利润表 按公司 × 年月分期">还没有管理公司
+          <template v-if="canManageCo" #action>
+            <Button variant="outline" size="md" @click="onNewCompany">
+              <template #leading><component :is="iconFor('plus')" :size="16" /></template>
+              新增公司
+            </Button>
+          </template>
+        </FPEmpty>
+      </div>
+    </template>
+
+    <!-- ⓪ 选期矩阵:标题里的公司就是下拉(和正文期间条里同一个) -->
+    <div v-else-if="month === null" class="finw-pick">
+      <div class="finw-head">
+        <h2 class="finw-title">
+          <span class="ic"><component :is="iconFor('trending-up')" :size="18" /></span>利润表<i class="finw-dot" aria-hidden="true">•</i>
+          <FinCompanyMenu size="lg" :companies="finCompanies" :current="companyId" :can-manage="canManageCo"
+                          @pick="pickCompany" @add="onNewCompany" @rename="onEditCompany()" @remove="onDeleteCompany()" />
+        </h2>
+        <p class="finw-sub">选择月份进入该期报表 · 每个年月是一期独立报表</p>
+      </div>
+      <BookMonthMatrix
+        v-if="gateYears"
+        :book="matrixBook"
+        :years="matrixYears"
+        blank="–"
+        @pick="pickCell"
+        @add-earlier="addEarlier"
+        @add-later="addLater"
+        @remove-year="removeYear"
+      />
+      <div v-else class="page-loading"><span class="page-spin" /></div>
     </div>
 
-    <div class="finw-main">
-      <!-- 公司清单未到位 -->
-      <div v-if="!companiesLoaded" class="page-loading"><span class="page-spin" /></div>
+    <!-- 正文态(读到了,或没读到 → FPLoadError 换掉表) -->
+    <template v-else-if="period || periodErr">
+      <div class="fin-page">
+        <!-- 本期在途(换公司不换期 / 重试 / 子类增删后重读)的唯一信号;旧内容原地退让(.fp-stale 带 pointer-events:none) -->
+        <FPLoadBar :on="veil" />
+        <FinPeriodBar :period="periodOf(year, month)" :edit="edit" :companies="finCompanies" :company-id="companyId"
+                      :can-manage="canManageCo" @back="backToMatrix" @pick="pickCompany($event, true)"
+                      @add="onNewCompany" @rename="onEditCompany()" @remove="onDeleteCompany()">
+          <FPStepStrip :steps="periodSteps" current="income-statement" :period="stripLabel" :query="stripQuery" hide-back />
+        </FinPeriodBar>
+        <FinHead :class="{ 'fp-stale': veil }" title="利润表" :edit="edit" :dirty="dirty" :saving="saving" :is-all="isAll" :company-count="companies.length"
+                 :load-err="periodErr" :entered="entered" :can-edit="canEdit" :held-by-other="heldByOther"
+                 :review-note="reviewNote" :review-tip="reviewTip" :review-key="reviewKey"
+                 :review-label="reviewLabelOf('利润表')" :month-text="`${month} 月`"
+                 @export="onExport" @import="requestImport" @cancel="requestCancel" @save="finishEdit" @enter="enterEdit" />
 
-      <!-- 一家公司都没有:左栏「新增」是唯一出路,别给一屏空矩阵 -->
-      <FPEmpty v-else-if="companyId === null" sub="在左栏底部「新增」建一家,利润表 按公司 × 年月分期">还没有管理公司</FPEmpty>
-
-      <!-- ⓪ 选期矩阵(年份门 + 月历合成一张,2026-08-24「选期矩阵 v3」推到报表层) -->
-      <template v-else-if="month === null">
-        <div class="finw-head">
-          <div>
-            <h2 class="finw-title">
-              <span class="ic"><component :is="iconFor('bar-chart-3')" :size="18" /></span>利润表 · {{ companyName ?? '全部汇总' }}
-            </h2>
-            <p class="finw-sub">选择月份进入该期报表 · 每个年月是一期独立报表</p>
-          </div>
+        <div v-if="periodErr" class="finw-empty" :class="{ 'fp-stale': veil }">
+          <FPLoadError sub="屏上不显示上一次读到的数字" @retry="loadPeriod">{{ year }} 年 {{ month }} 月的利润表没读到</FPLoadError>
         </div>
-        <div v-if="gateYears" class="finw-matrix">
-          <BookMonthMatrix
-            :book="matrixBook"
-            :years="matrixYears"
-            @pick="pickCell"
-            @add-earlier="addEarlier"
-            @add-later="addLater"
-            @remove-year="removeYear"
-          />
-        </div>
-        <div v-else class="page-loading"><span class="page-spin" /></div>
-      </template>
-
-
-  <!-- 正文态(下面这一块整体位于 .finw-main 内,缩进保持原样以免冲淡 diff) -->
-  <template v-else-if="period">
-    <div class="fin-page">
-      <!-- 期间条(设计稿 §3.2c):九张报表横跳不换期。与出账链链路条同一个组件 -->
-      <FPStepStrip :steps="periodSteps" current="income-statement" :period="stripLabel"
-                   :query="stripQuery" back-label="换期" @back="backToMatrix" />
-      <div class="fin-head">
-        <div class="fin-head-l">
-          <button class="fin-back" v-tip="'返回选期矩阵'" @click="backToMatrix"><component :is="iconFor('arrow-left')" :size="16" /></button>
-          <div>
-            <h2 class="fin-title">利润表</h2>
-            <p class="fin-sub">{{ isAll ? '全部汇总' : company?.name }} · <span class="mono">{{ year }} 年 {{ month }} 月</span></p>
-          </div>
-        </div>
-        <div class="fin-actions">
-          <span v-if="isAll" class="fin-tag ro"><component :is="iconFor('lock')" :size="13" />汇总只读</span>
-          <!-- 三段(EDIT-MODE-SPEC v2):写操作仅编辑态 / 只读操作两态常驻 / 右端主控件。
-               改前导入在**两态都有**(浏览态也能点,违反 v2「浏览态一切写入口隐藏」),
-               而导出被关在浏览态分支里 —— 一进编辑模式导出就消失,可导出恰恰是 v2 明列的只读操作。 -->
-          <template v-else>
-            <span v-if="edit" class="fin-tag edit">编辑中 · {{ company?.name }}</span>
-            <Button v-if="edit" variant="outline" size="sm" :disabled="saving" @click="requestImport">
-              <template #leading><component :is="iconFor('upload')" :size="14" /></template>
-              导入
+        <FinCard v-else :class="{ 'fp-stale': veil }">
+          <template #bar>
+            <span class="fin-count">{{ itemCount }} 项</span>
+            <Button v-if="edit && selected.size" variant="danger" size="sm" @click="askBulkDelete">
+              <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
+              删除所选 ({{ selected.size }})
             </Button>
-            <Button variant="outline" size="sm" @click="onExport">
-              <template #leading><component :is="iconFor('download')" :size="14" /></template>
-              导出 Excel
-            </Button>
-            <!-- 交审动作簇:紧贴编辑按钮**左边**,同高同圆角(per-screen-review §01)。编辑按钮位一个像素不动。
-                 一张表 × 一家公司 × 一个月 = 一把键 —— 左栏换公司就换键,「全部汇总」拼不出键(reviewKey 为 null)整簇不画。
-                 「一次交全部公司」是本月出账清单的活,不是这里的(§03-B3)。
-                 ⚠ 编辑态不再整簇藏掉，改成把 `:edit` 交给组件：动作按钮一颗不画（交审交的是**库里那一份**，
-                   而这一屏编辑态手上是 draft），但「已退回」那颗 chip 留着 —— 人正是照着那句理由在改。
-                   判据只在组件里一份，宿主不再挂第二份 v-if。 -->
-            <FPReviewActions :edit="edit" :keys="reviewKey ? [reviewKey] : null"
-                             :label="reviewLabelOf('利润表')" :can-edit="canEdit" />
-            <!-- 草稿型屏:编辑态走下面的 [取消][保存]，所以这里只负责浏览态那三态
-                 (编辑模式 / 张三 编辑中 / 张三 空闲 23 分) —— 设计稿 §05 -->
-            <!-- 审核药丸(§7.5):已审核 / 待审核时这一位换成同尺寸禁用药丸 —— 不接的话按钮还写着
-                 「编辑模式」,点下去 enterEdit 被 reviewBlock 挡住无声返回,看起来像坏了。 -->
-            <FPEditModeButton v-if="!edit" :edit="false" :held-by-other="heldByOther"
-                              :can-enter="canEdit" :review-note="reviewNote" :review-tip="reviewTip"
-                              @toggle="enterEdit" />
-            <!-- ⚠ 必须 v-if="edit"，不能 v-else：上面是「!edit && canEdit」，
-                 v-else 会把「没权限」也算进去，无权账号将看到「保存/取消」。 -->
-            <template v-if="edit">
-              <Button variant="gray" size="sm" :disabled="saving" @click="requestCancel">取消</Button>
-              <Button variant="filled" size="sm" :disabled="saving" @click="finishEdit">
-                <template #leading><component :is="iconFor('check')" :size="14" /></template>
-                保存
-              </Button>
-            </template>
           </template>
-        </div>
+          <IncomeStatementTable
+            :rows="flatRows"
+            :foot="footRows"
+            :foot-tip="NET_TIP"
+            :value-of="valueOf"
+            :editable="edit && !isAll"
+            :live-of="liveOf"
+            :changed-of="changedOf"
+            :selectable="edit && !isAll"
+            :selected="selected"
+            @input="onInput"
+            @add-child="onAddChild"
+            @remove-child="removeCustom"
+            @toggle-select="onToggleSelect"
+          />
+        </FinCard>
       </div>
 
-      <div class="fin-kpis">
-        <KpiCard tint="slate" label="营业收入(本月)" :value="finMoney(kpiRevenue)"><template #icon><component :is="iconFor('trending-up')" :size="18" /></template></KpiCard>
-        <KpiCard tint="blue" label="营业利润(本月)" :value="finMoney(kpiOp)" profit><template #icon><component :is="iconFor('bar-chart-3')" :size="18" /></template></KpiCard>
-        <KpiCard tint="sky" label="利润总额(本月)" :value="finMoney(kpiTotal)" profit><template #icon><component :is="iconFor('sigma')" :size="18" /></template></KpiCard>
-        <KpiCard tint="cyan" label="净利润(本月)" :value="finMoney(kpiNet)" profit><template #icon><component :is="iconFor('wallet')" :size="18" /></template></KpiCard>
-      </div>
-
-      <div class="fin-toolbar">
-        <div class="fin-toolbar-l">
-          <span class="fin-tag">{{ itemCount }} 项</span>
-          <Button v-if="edit && selected.size" variant="danger" size="sm" @click="askBulkDelete">
-            <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
-            删除所选 ({{ selected.size }})
-          </Button>
-        </div>
-        <span class="fin-toolbar-note">{{ isAll ? '全部汇总为跨公司只读求和,如需录入请在公司选择页进入单家公司' : edit ? '点击单元格录入金额;悬停明细行可「+」添加子类,父项自动汇总;空项留空即可' : canEdit ? '只读 · 点击「编辑」录入 · 深色行为公式自动计算' : '只读 · 深色行为公式自动计算' }}</span>
-      </div>
-
-      <!-- ≤600 行内录入提示(稿 ReportPhone §1 右栏 box4 条3;§5.3/§11.2 裁定:
-           录入不禁止、不隐藏、不优化,只荐桌面):编辑按钮留在上面那行工具行不拦不藏,
-           这一行**常驻定高 20px**,只在编辑态换文案 —— 出错才出现会把下面整张表顶下去
-           (撞 LAYOUT-STABILITY-SPEC §4.2)。几何/文案 1:1 抄 TrialBalanceView .tb-s-hint。 -->
-      <div class="is-s-hint">
-        <span v-if="edit">编辑模式 · 小屏可录入,建议在桌面端操作</span>
-      </div>
-      <IncomeStatementTable
-        :rows="flatRows"
-        :value-of="valueOf"
-        :editable="edit && !isAll"
-        :live-of="liveOf"
-        :selectable="edit && !isAll"
-        :selected="selected"
-        @input="onInput"
-        @add-child="onAddChild"
-        @remove-child="removeCustom"
-        @toggle-select="onToggleSelect"
+      <FpImportModal
+        v-if="importing"
+        :title="'导入 利润表'"
+        :sub="'上传/粘贴合并多公司的利润表(两行表头,每公司本月/本年累计两列),按公司拆段、未匹配公司自动新建,导入到当前所选年月'"
+        v-bind="parserProps('report_is')"
+        @close="importing = false"
+        :runner="onImport"
+        :describe="describeImport"
       />
 
-      <p class="fin-foot"><component :is="iconFor('info')" :size="13" />单位:元 · 营业利润 = 营业收入 − 营业成本 − 税金及附加 − 销售/管理/财务费用 + 投资收益;利润总额 = 营业利润 + 营业外收入 − 营业外支出;净利润 = 利润总额 − 所得税费用。</p>
-    </div>
+      <SaveConfirmDialog
+        v-if="saveConfirm"
+        :count="dirty"
+        @save="save(saveBody)"
+        @discard="onDiscard"
+        @close="saveConfirm = false"
+      />
+    </template>
 
-    <FpImportModal
-      v-if="importing"
-      :title="'导入 利润表'"
-      :sub="'上传/粘贴合并多公司的利润表(两行表头,每公司本月/本年累计两列),按公司拆段、未匹配公司自动新建,导入到当前所选年月'"
-      v-bind="parserProps('report_is')"
-      @close="importing = false"
-      @import-sections="onImport"
-    />
-
-    <SaveConfirmDialog
-      v-if="saveConfirm"
-      :count="dirty"
-      @save="save(saveBody)"
-      @discard="onDiscard"
-      @close="saveConfirm = false"
-    />
-  </template>
-
-      <!-- 过渡中(切公司 / 点月格,数据加载)兜底转圈,不闪空白。
-           ⚠️ v-else 必须紧邻上方「矩阵态 / 正文态」状态链;不可被自带 v-if 的弹窗隔在中间
-              (见 PAGE-BEHAVIOR-SPEC §1.2)。 -->
-  <div v-else class="page-loading"><span class="page-spin" /></div>
-    </div>
+    <!-- 过渡中(切公司 / 点月格,数据加载)兜底转圈,不闪空白。
+         ⚠️ v-else 必须紧邻上方「矩阵态 / 正文态」状态链;不可被自带 v-if 的弹窗隔在中间
+            (见 PAGE-BEHAVIOR-SPEC §1.2)。 -->
+    <div v-else class="page-loading"><span class="page-spin" /></div>
   </div>
-
-  <!-- ≤960 管理面板(§5.6:S 档选择器点开为全屏 sheet):虚线「管理」chip 的落点,
-       轨底三颗管理钮原样搬进来 —— 点 chip 只开面板,删除仍要在面板里再点一次、再过 FinDialogs 的确认。
-       壳复用 styles/form-sheet.css 那一套(S 档 .fp-fsheet 全屏、其余档居中卡),不新造面板组件。 -->
-  <Teleport to="body">
-    <div v-if="manageOpen" class="fin-mask" :class="{ 'fp-fsheet': sheet }" @mousedown="manageOpen = false">
-      <div class="fin-dlg" role="dialog" aria-modal="true" aria-label="管理公司" @mousedown.stop>
-        <!-- ⚠ ✕ 不是装饰:S 档挂上 .fp-fsheet 之后弹卡全屏,遮罩被它 100% 盖满,
-             「点外面关」没有「外面」可点;全文件也没有 Esc 处理。没这颗就只能靠
-             「点新增再取消」绕出去(2026-09-21 对抗复查抓到)。 -->
-        <div class="fin-dlg-h">
-          <h3>管理公司</h3>
-          <button type="button" class="finw-sheet-x" aria-label="关闭" @click="manageOpen = false">
-            <component :is="iconFor('x')" :size="18" />
-          </button>
-        </div>
-        <div class="finw-sheet-b fp-fsheet-bd">
-          <div class="finw-manage">
-            <button class="finw-mbtn" @click="manageOpen = false; onNewCompany()">
-              <component :is="iconFor('plus')" :size="13" />新增
-            </button>
-            <button class="finw-mbtn" :disabled="isAll || !company" @click="manageOpen = false; onEditCompany()">
-              <component :is="iconFor('pencil')" :size="13" />重命名
-            </button>
-            <button class="finw-mbtn del" :disabled="isAll || !company" @click="manageOpen = false; onDeleteCompany()">
-              <component :is="iconFor('trash-2')" :size="13" />删除
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </Teleport>
 
   <!-- 公司/子类弹窗(居中,自管 v-if),放最后 -->
   <FinDialogs
@@ -521,13 +425,6 @@ async function onExport() {
     @submit-row="submitRow"
   />
 
-  <!-- 导入结果(自管 v-if),放最后:不打断上方 v-if/v-else 状态链(PAGE-BEHAVIOR-SPEC §1.2) -->
-  <ImportResultToast
-    v-if="importResult"
-    :result="importResult"
-    :summary="importSummary"
-    @close="importResult = null; importSummary = ''"
-  />
 
   <FPTakeoverDrawer :holder="lockedBy" :scope="lockScope() ?? ''"
                     :what="`利润表 · ${companyName ?? ''} ${year}-${String(month ?? 1).padStart(2, '0')}`"
@@ -540,123 +437,22 @@ async function onExport() {
 </template>
 
 <style scoped>
-/* L3 chrome — 1:1 from fin-common.jsx FinStyles(.fin-head/.fin-kpis/.fin-toolbar/.fin-tag 段)。
-   L1/L2 chrome 已随各 fin 组件 scoped 携带;此处仅补 L3 独有部分。 */
-.fin-page { display:flex; flex-direction:column; gap:16px; width:100%; height:100%; min-height:0; box-sizing:border-box; font-family:var(--font-sans); color:var(--text-primary); }
-.fin-head { flex:0 0 auto; display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; }
-.fin-head-l { display:flex; align-items:center; gap:12px; min-width:0; }
-.fin-back { width:34px; height:34px; flex:0 0 auto; border:1px solid var(--border-control); background:var(--surface-white); border-radius:var(--radius-md); cursor:pointer; display:grid; place-items:center; color:var(--text-secondary); transition:background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
-.fin-back:hover { background:var(--bg-hover); color:var(--text-primary); }
-.fin-title { margin:0; font:var(--type-h2); font-size:var(--fs-h2); font-weight:var(--fw-semibold); color:var(--text-primary); }
-.fin-sub { margin:4px 0 0; font-size:var(--fs-label); color:var(--text-muted); }
-.fin-sub .mono { font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
-.fin-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-.fin-tag { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:var(--radius-full); background:var(--surface-sunken); color:var(--text-secondary); font-size:12.5px; font-weight:var(--fw-medium); }
-.fin-tag.edit { background:var(--warn-bg); color:var(--hue-orange); }
-.fin-tag.ro { background:var(--accent-sky); color:var(--hue-blue); }
-.fin-kpis { flex:0 0 auto; display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; }
-.fin-toolbar { flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
-.fin-toolbar-l { display:flex; align-items:center; gap:8px; }
-.fin-toolbar-note { font-size:12px; color:var(--text-muted); }
-.fin-foot { flex:0 0 auto; margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
+/* 外壳:左栏撤掉(画布 09),屏根就是一列 */
+.finw { display:flex; flex-direction:column; gap:16px; width:100%; height:100%; min-height:0; box-sizing:border-box; font-family:var(--font-sans); color:var(--text-primary); overflow-y:auto; }
+/* position:relative —— FPLoadBar 是 absolute,宿主不给参照它会认 AppShell 的外壳 */
+.fin-page { position:relative; flex:1 1 auto; display:flex; flex-direction:column; gap:16px; min-height:0; }
+.fin-count { font-size:var(--fs-label); color:var(--text-muted); white-space:nowrap; }
 
-/* S 档提示行:桌面档整行不存在(display:none,不占位不留 gap),窄档媒体块内再显——宽档规则在前(§1) */
-.is-s-hint { display:none; }
+/* 选期矩阵:标题行「图标 利润表 • [公司 ▾]」;「补更早年份」与标题同一行(矩阵自己那一行挪上来) */
+.finw-pick { position:relative; display:flex; flex-direction:column; gap:16px; }
+.finw-pick :deep(.bmm-top) { position:absolute; top:0; right:0; }
+.finw-head { flex:0 0 auto; padding-right:140px; }
+.finw-title { margin:0; font:var(--type-h2); display:flex; align-items:center; gap:var(--space-2); }
+.finw-title .ic { width:26px; height:26px; border-radius:var(--radius-sm); background:var(--accent-blue); color:var(--hue-blue); display:grid; place-items:center; flex:none; }
+.finw-dot { font-style:normal; color:var(--text-primary); }
+.finw-sub { margin:4px 0 0; font-size:var(--fs-label); color:var(--text-muted); }
 
-/* ⚠ 本屏两个媒体块(960/600)挪到了**本文件末尾**(2026-09-21,§5.6 收左轨):窄档要盖的
-   .finw / .finw-rail 基础规则写在下面的「工作台外壳」段里,媒体块排在它们之前是**静默**失效
-   ——同特异性按源序,`.finw-rail{display:none}` 会被后面的 `.finw-rail{display:flex}` 盖回去。
-   两块的相对次序(960 在前、600 在后)与块内内容一字未动。 */
-/* 管理公司面板(≤960 的「管理」chip 落点)— 1:1 FinDialogs .fin-mask/.fin-dlg(scoped 不跨组件,故本屏自带一份,遵 PAGE-BEHAVIOR-SPEC §2) */
-.fin-mask { position:fixed; inset:0; background:var(--scrim); z-index:300; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
-.fin-dlg { width:min(440px,92vw); max-height:88vh; overflow-y:auto; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:var(--shadow-dialog); animation:fp-rise-in var(--dur-base) var(--ease-standard) both; }
-.fin-dlg-h { padding:20px 22px 0; }
-.fin-dlg-h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
-
-/* ── 工作台外壳(2026-08-29,设计稿 §3.2a):左轨常驻 + 主区。与月度台账 .lgw 家族同形 ── */
-.finw { display: flex; gap: 16px; width: 100%; height: 100%; min-height: 0; box-sizing: border-box;
-        font-family: var(--font-sans); color: var(--text-primary); }
-.finw-rail {
-  flex: 0 0 208px; min-height: 0; display: flex; flex-direction: column; gap: 8px;
-  padding: 14px 12px; box-sizing: border-box;
-  background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
-}
-.finw-rail-t { font-size: 12px; font-weight: var(--fw-medium); color: var(--text-muted); padding: 0 4px; }
-.finw-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
-
-/* 左轨底部管理区:三个动作(新增/重命名/删除),作用于当前选中那一家 */
-.finw-manage { display: flex; gap: 4px; margin-top: var(--space-2); }
-.finw-mbtn {
-  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 3px;
-  padding: 8px 4px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm);
-  background: transparent; cursor: pointer;
-  font-family: var(--font-sans); font-size: var(--fs-micro); color: var(--text-muted);
-  transition: color var(--dur-fast), border-color var(--dur-fast);
-}
-.finw-mbtn:hover:not(:disabled) { color: var(--hue-blue); border-color: var(--hue-blue); }
-.finw-mbtn.del:hover:not(:disabled) { color: var(--hue-red); border-color: var(--hue-red); }
-/* 停在「全部汇总」时无对象可改 —— 置灰不挪位(LAYOUT-STABILITY:入口常驻) */
-.finw-mbtn:disabled { color: var(--text-disabled); border-color: var(--border-subtle); cursor: default; }
-
-.finw-head { flex: 0 0 auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.finw-title { margin: 0; font: var(--type-h2); display: flex; align-items: center; gap: var(--space-2); }
-.finw-title .ic {
-  width: 26px; height: 26px; border-radius: var(--radius-sm);
-  background: var(--accent-blue); color: var(--hue-blue); display: grid; place-items: center; flex: none;
-}
-.finw-sub { margin: 4px 0 0; font-size: var(--fs-label); color: var(--text-muted); }
-.finw-matrix { flex: 0 0 auto; }
-
-/* 顶部 chips:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前(§1) */
-/* 顶部 chips:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前(§1) */
-.finw-chips { display:none; }
-/* 管理面板体(壳走 styles/form-sheet.css 的 .fp-fsheet,S 档全屏 sheet;此处只补内边距与触达高) */
-.finw-sheet-b { padding: 18px 22px 22px; }
-.fin-dlg-h:has(.finw-sheet-x) { display: flex; align-items: center; justify-content: space-between; }
-.finw-sheet-x { flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; }
-.finw-sheet-b .finw-mbtn { min-height: 44px; }
-
-/* ── M 档(≤960,RESPONSIVE-LAYOUT-SPEC §5.3):KPI 定两列。坏的是**标签**不是金额——
-   768 上 repeat(4) 每格 151,扣 .kc 的 padding 40 只剩 111 内容宽;
-   「营业收入(本月)」≈98 + 图标 18 + 缝 8 = 124 > 111,被 .kc-l 的 ellipsis 截成「营业收入…」。
-   而 ds/KpiCard 的 .kc-l 没有 :title(useFitDown 只管数值不管标签),悬停也看不全——
-   所以这是补缺陷,不是偏好。降两列后每格 314、内容宽 274,标签放得下。
-   (挂载即终态,不随内容抖;宽档规则在前 §1。) ── */
-@media (max-width: 960px) {
-  .fin-kpis { grid-template-columns:repeat(2, minmax(0,1fr)); }
-
-  /* 左轨收成顶部横向 chips(§5.6):几何 1:1 抄台账屏 LedgerView .lgw-chips 那一份 ——
-     chip 36 高 / radius-full / 行内横滚;选中态只换色不改尺寸(布局稳定铁律)。
-     208px 定宽轨在 390 视口占掉 208/390 = 53% 的宽,主区剩不下一张表。 */
-  .finw { flex-direction:column; gap:12px; }
-  .finw-rail { display:none; }
-  .finw-chips { flex:0 0 auto; display:flex; gap:8px; overflow-x:auto; padding:2px; }
-  .finw-chip {
-    flex:0 0 auto; display:inline-flex; align-items:center;
-    height:36px; padding:0 14px; border-radius:var(--radius-full);
-    border:1px solid var(--border-control); background:var(--surface-white);
-    color:var(--text-secondary); font-family:var(--font-sans);
-    font-size:var(--fs-label); font-weight:var(--fw-medium);
-    cursor:pointer; white-space:nowrap;
-  }
-  .finw-chip.on { border-color:var(--hue-blue); background:var(--accent-blue); color:var(--text-primary); }
-  .finw-chip.mng { border-style:dashed; color:var(--text-muted); }
-}
-/* ── S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5.3):表格窄了走 .fin-wrap 内横滚,
-   列宽不动,首列 sticky 在 FinReportTable 自己那份 ≤600 块里 ── */
-@media (max-width: 600px) {
-  /* §5.7「3–4 张 → 横滑胶囊」:本屏 4 张 KpiCard。S 档从 2 列网格(2 行 = 216px)
-     换成一行横滑(≈108px),省下的 108 直接变成表格能露的行数 ——
-     §5.7 的验收标准原话:「不是卡片好不好看,而是收完之后主内容能不能进首屏」。
-     几何照 mx-list.css 的 .mx-kpirail:定宽 140、不换行、隐滚动条但留触屏拖动。
-     ⚠ M 档(960 块)仍是 2 列,那是 KpiNarrow 板实测的结论(768 上 4 列标签被截),两档各管各的。 */
-  .fin-kpis {
-    display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 12px;
-    -webkit-overflow-scrolling: touch; scrollbar-width: none;
-  }
-  .fin-kpis::-webkit-scrollbar { display: none; }
-  .fin-kpis > * { flex: 0 0 140px; }
-  /* 宽表编辑荐桌面提示(§11.2 预留位):行常驻定高 20px,进出编辑只换文案不挪版 */
-  .is-s-hint { display:flex; align-items:center; flex:0 0 20px; height:20px; font-size:12px; color:var(--hue-orange); }
-}
+/* 一家公司都没有 / 本期没读到:空态卡占住内容区 */
+.finw-h2 { margin:0; font:var(--type-h2); font-size:var(--fs-h2); font-weight:var(--fw-semibold); }
+.finw-empty { flex:1 1 auto; display:flex; flex-direction:column; min-height:0; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--surface-white); }
 </style>

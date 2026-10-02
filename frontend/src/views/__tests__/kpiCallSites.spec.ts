@@ -4,7 +4,7 @@
 //   · 迷你趋势线没了,调用方不许再传 trend;
 //   · 利润类(园区利润、净利润…)传 profit,收入类不传 —— 标不标红是调用处决定的;
 //   · 列表大卡上「2 栋停用」「待招商」不是涨跌,走说明行(sub),不走 delta;
-//   · 三张报表顶部不再随窗口缩放(.fin-kval 去掉),走 KpiCard 的 24 / 20;
+//   · 三张报表顶部不再有 KPI 卡(2026-10-03 画布 09 D6);
 //   · 利润公式条 / 杜邦 / 收入核对平衡条照 §4。
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
@@ -86,31 +86,13 @@ describe('列表大卡调用处', () => {
     expect(tagWith(read('tenants/TenantsView.vue'), 'KpiCard', 'label="合同将到期"')).toContain('sub="户需续签"')
   })
 
-  it('❗三张报表顶部:.fin-kval 缩放去掉,数走 :value(KpiCard 的 24 / 20);利润类传 profit,收入不传', () => {
+  // 2026-10-03 画布 09(D6):三大报表撤掉顶部四张 KPI 卡 —— 卡头左「N 项」、右「单位：元」,不再有一排数卡。
+  // 原来钉在这里的三条(.fin-kval 去掉 / 四张卡 slate→cyan / 平衡差卡写字色)对象没了;平衡差改成标题旁红签 +
+  // 贴底行就地标(components/fin/__tests__/finReportScreens.spec.ts)。
+  // 破坏验证:任一屏把 <KpiCard 加回 → 红
+  it('❗三张报表顶部不再有 KpiCard,也没有 .fin-kpis 那一行(D6)', () => {
     for (const f of ['reports/income-statement/IncomeStatementView.vue', 'reports/balance-sheet/BalanceSheetView.vue', 'reports/trial-balance/TrialBalanceView.vue']) {
-      expect(read(f), f).not.toMatch(/fin-kval|clamp\(14px/)
-    }
-    const is = read('reports/income-statement/IncomeStatementView.vue')
-    for (const l of ['营业利润(本月)', '利润总额(本月)', '净利润(本月)']) {
-      expect(tagWith(is, 'KpiCard', `label="${l}"`)).toMatch(/:value="finMoney\(\w+\)" profit\b/)
-    }
-    expect(tagWith(is, 'KpiCard', 'label="营业收入(本月)"')).not.toMatch(/\bprofit\b/)
-  })
-
-  it('❗三张报表顶部四张卡按位置 slate → blue → sky → cyan(K2)', () => {
-    for (const f of ['reports/income-statement/IncomeStatementView.vue', 'reports/balance-sheet/BalanceSheetView.vue', 'reports/trial-balance/TrialBalanceView.vue']) {
-      const src = read(f)
-      const block = src.slice(src.indexOf('<div class="fin-kpis">'), src.indexOf('</div>', src.indexOf('<div class="fin-kpis">')))
-      expect(tags(block, 'KpiCard').map((t) => /\btint="(\w+)"/.exec(t)?.[1]), f).toEqual(['slate', 'blue', 'sky', 'cyan'])
-    }
-  })
-
-  it('❗「平衡差」卡的数字色用浅底上的写字色(--delta-*-text ≥4.5),不用只够图形 3:1 的 --hue-red / --hue-green', () => {
-    for (const f of ['reports/balance-sheet/BalanceSheetView.vue', 'reports/trial-balance/TrialBalanceView.vue']) {
-      const card = read(f).match(/<KpiCard[^>]*label="[^"]*平衡差[^"]*"[^>]*>[\s\S]*?<\/KpiCard>/)
-      expect(card, f).not.toBeNull()
-      expect(card![0], f).toContain("'var(--delta-down-text)'")
-      expect(card![0], f).not.toMatch(/--hue-(red|green)/)
+      expect(read(f), f).not.toMatch(/<KpiCard\b|KpiCard\.vue|fin-kpis|fin-kval/)
     }
   })
 })

@@ -14,11 +14,12 @@ import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import type { ReviewRow, ReviewStatus } from '@/types/review'
 
 /**
- * 三大报表：四层 → 两层（2026-08-29 设计稿 §3.2a）。
+ * 三大报表：四层 → 两层（2026-08-29 设计稿 §3.2a）→ 公司下拉（2026-10-03 画布 09）。
  *
- * 改前：整屏选公司 → 年份门 → 月历 → 正文。**换个公司看要退回第一屏，三道门重走一遍**
- * —— BOOK-WORKBENCH-SPEC §7-2 白纸黑字要求「多主体用左栏一键切换」，这屏是全站最违背它的一处。
- * 改后与月度台账、附表10 同形：左栏常驻公司 → 点月格 → 正文。
+ * 改前：整屏选公司 → 年份门 → 月历 → 正文。**换个公司看要退回第一屏，三道门重走一遍**。
+ * 08-29 收成「左栏常驻公司 → 点月格 → 正文」;10-03 左栏撤掉(BOOK-WORKBENCH-SPEC §7-2 三大报表例外),
+ * 公司选择收进选期矩阵标题「利润表 • [公司 ▾]」与正文期间条「‹ 换期 年-月 [公司 ▾]」那一颗下拉。
+ * 换公司仍是一步,不回头重走门。
  *
  * 挑利润表做样本：三屏共用 `useFinStatementScreen`，接法逐字相同。
  */
@@ -71,10 +72,19 @@ function wire() {
         netPreview: 1000 * (i + 1),
       })),
     }) as never)
+  // 本期录了一格:交审动作簇只在「本月有数」时画(画布 09:本月未录入只剩导出 + 编辑)
   vi.mocked(reportApi.period).mockResolvedValue({
-    year: 2025, month: 2, rows: [], customRows: [], amounts: {},
+    year: 2025, month: 2, rows: [], customRows: [], amounts: { '1': { cur: 1000, ytd: 1000 } },
   } as never)
 }
+
+/** 公司下拉(矩阵标题或期间条那一颗,屏上同一时刻只有一颗)点开 → 点名字那一项 */
+async function pickCo(w: ReturnType<typeof mount>, name: string) {
+  await w.find('.fcm-btn').trigger('click')
+  await w.findAll('.fcm-it').find(i => i.text().includes(name))!.trigger('click')
+  await flushPromises()
+}
+const coNow = (w: ReturnType<typeof mount>) => w.find('.fcm-btn .fcm-cur').text()
 
 async function open() {
   const w = mount(IncomeStatementView, {
@@ -97,7 +107,7 @@ async function keptAlive() {
 describe('三大报表工作台 · 利润表', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    // 公司增删改归 master 不归 report(RBAC §5.6);左栏管理区那三个按钮吃这个点
+    // 公司增删改归 master 不归 report(RBAC §5.6);公司下拉底部那三个按钮吃这个点
     useAuthStore().permissions = ['master:edit', 'report:edit']
     vi.clearAllMocks()
     localStorage.clear()
@@ -106,19 +116,23 @@ describe('三大报表工作台 · 利润表', () => {
     wire()
   })
 
-  it('进屏 = 左栏 + 矩阵，没有整屏公司选择器那一层了', async () => {
+  it('进屏 = 矩阵，标题里是公司下拉；没有左栏、没有整屏公司选择器', async () => {
     const w = await open()
-    expect(w.find('.finw-rail').exists(), '左栏该常驻').toBe(true)
+    expect(w.find('.finw-rail').exists(), '左栏撤了(画布 09)').toBe(false)
     expect(w.findAll('.bmm-card').length, '矩阵该在').toBeGreaterThan(0)
     expect(w.find('.fin-pick').exists(), '整屏公司选择器已退场').toBe(false)
+    expect(w.find('.finw-title .fcm-btn').exists(), '公司下拉在矩阵标题里').toBe(true)
   })
 
-  it('左栏第一项是「全部汇总」，其余是各公司；默认选中第一家而非汇总', async () => {
+  it('下拉第一项是「全部汇总 N 家」，其余是各公司；默认选中第一家而非汇总', async () => {
     const w = await open()
-    const items = w.findAll('.br-item')
+    expect(coNow(w)).toBe('物业公司')
+    await w.find('.fcm-btn').trigger('click')
+    const items = w.findAll('.fcm-it')
     expect(items.map(i => i.text().replace(/\s+/g, ''))).toEqual(['全部汇总2家', '物业公司', '资产公司'])
     // 「全部汇总」要按公司数发 N 倍请求，不该当默认落点
     expect(items[1].classes()).toContain('on')
+    expect(items[1].find('.fcm-ck').exists(), '当前那家打勾').toBe(true)
     expect(items[0].classes()).not.toContain('on')
   })
 
@@ -130,17 +144,21 @@ describe('三大报表工作台 · 利润表', () => {
     expect(cards[3].classes()).toContain('blank')
   })
 
-  it('月格徽标显本期净额，不是「N 行」', async () => {
+  // 画布 09 ReportPickAmount 用户选 A:格子只说有没有数、审到哪(右下角点),不放金额,悬停也不出
+  // 破坏验证:useFinStatementScreen 的月格把 badge 加回 → 红
+  it('❗月卡不放金额:有数的卡没有徽标,空卡写「–」', async () => {
     const w = await open()
-    expect(w.findAll('.bmm-card')[0].find('.bmm-count').text()).not.toContain('行')
+    const cards = w.findAll('.bmm-card')
+    expect(cards[0].classes()).toContain('has')
+    expect(w.findAll('.bmm-count'), '一格金额都不该有').toHaveLength(0)
+    expect(cards[3].find('.bmm-none').text()).toBe('–')
   })
 
-  it('❗切公司只动左栏 —— 不退回第一屏、不重走年份门与月历', async () => {
+  it('❗切公司走矩阵标题那颗下拉 —— 不退回第一屏、不重走年份门与月历', async () => {
     const w = await open()
-    await w.findAll('.br-item')[2].trigger('click')   // 资产公司
-    await flushPromises()
+    await pickCo(w, '资产公司')
 
-    expect(w.find('.finw-rail').exists(), '左栏还在').toBe(true)
+    expect(coNow(w)).toBe('资产公司')
     expect(w.findAll('.bmm-card').length, '直接就是新公司的矩阵').toBeGreaterThan(0)
     expect(w.text()).toContain('资产公司')
     // 资产公司的数据年是 2024，年份范围补到当前年 2025 → 两行
@@ -155,35 +173,45 @@ describe('三大报表工作台 · 利润表', () => {
     expect(w.findAll('.bmm-card').length, '矩阵让位给正文').toBe(0)
   })
 
-  it('正文态「换期」回矩阵，左栏一直在', async () => {
+  it('正文态期间条「‹ 换期」回矩阵', async () => {
     const w = await open()
     await w.findAll('.bmm-card')[1].trigger('click')
     await flushPromises()
-    await w.find('.fin-back').trigger('click')
+    await w.find('.fpb-back').trigger('click')
     await flushPromises()
     expect(w.findAll('.bmm-card').length).toBeGreaterThan(0)
-    expect(w.find('.finw-rail').exists()).toBe(true)
   })
 
-  it('公司增删改还在 —— 搬到左栏管理区，作用于当前选中那一家', async () => {
+  it('公司增删改在下拉底部(新增公司 / 重命名 / 删除红字),作用于打勾那一家', async () => {
     const w = await open()
-    const btns = w.findAll('.finw-mbtn')
-    expect(btns.map(b => b.text())).toEqual(['新增', '重命名', '删除'])
+    await w.find('.fcm-btn').trigger('click')
+    const btns = w.findAll('.fcm-foot button')
+    expect(btns.map(b => b.text())).toEqual(['新增公司', '重命名', '删除'])
+    expect(btns[2].classes()).toContain('del')
     await btns[1].trigger('click')
     await flushPromises()
-    // FinDialogs 打开重命名，带的是左栏高亮那家
-    expect(w.text()).toContain('物业公司')
+    // FinDialogs 打开重命名，带的是打勾那家
+    expect((w.vm as unknown as { dlg: unknown }).dlg).toMatchObject({ type: 'company', mode: 'edit', company: { id: 1, name: '物业公司' } })
+  })
+
+  // 破坏验证:FinCompanyMenu 的 v-if="canManage" 去掉 → 第二条红
+  it('❗没有 master:edit:下拉只能选,底部三颗一颗不出', async () => {
+    useAuthStore().permissions = ['report:edit']
+    const w = await open()
+    await w.find('.fcm-btn').trigger('click')
+    expect(w.findAll('.fcm-it')).toHaveLength(3)
+    expect(w.find('.fcm-foot').exists()).toBe(false)
   })
 
   it('停在「全部汇总」时重命名/删除置灰但不挪位（入口常驻）', async () => {
     const w = await open()
-    await w.findAll('.br-item')[0].trigger('click')   // 全部汇总
-    await flushPromises()
-    const btns = w.findAll('.finw-mbtn')
+    await pickCo(w, '全部汇总')
+    await w.find('.fcm-btn').trigger('click')
+    const btns = w.findAll('.fcm-foot button')
     expect(btns).toHaveLength(3)
     expect(btns[1].attributes('disabled')).toBeDefined()
     expect(btns[2].attributes('disabled')).toBeDefined()
-    expect(btns[0].attributes('disabled'), '「新增」与选中项无关,照常可点').toBeUndefined()
+    expect(btns[0].attributes('disabled'), '「新增公司」与选中项无关,照常可点').toBeUndefined()
   })
 
   // ── P3:报表中心带期跳转 + 期间条(设计稿 §3.2b/c) ──
@@ -199,7 +227,7 @@ describe('三大报表工作台 · 利润表', () => {
       Object.assign(query, { y: '2024', m: '1', co: '2' })
       const w = await open()
       expect(reportApi.period).toHaveBeenCalledWith('is', 2, 2024, 1)
-      expect(w.findAll('.br-item')[2].classes(), '左栏高亮资产公司').toContain('on')
+      expect(coNow(w), '下拉写着资产公司').toBe('资产公司')
     })
 
     it('只有年没有月(从损益附表跳回来)→ 停在矩阵,年份照它说的', async () => {
@@ -213,7 +241,7 @@ describe('三大报表工作台 · 利润表', () => {
       Object.assign(query, { y: '1999', m: '99' })
       const w = await open()
       expect(reportApi.period).not.toHaveBeenCalled()
-      expect(w.findAll('.br-item')[1].classes(), '退回默认第一家').toContain('on')
+      expect(coNow(w), '退回默认第一家').toBe('物业公司')
     })
   })
 
@@ -294,7 +322,7 @@ describe('三大报表工作台 · 利润表', () => {
       query.p = '2025-03'; query.co = '999'
       const w = await open()
       expect(reportApi.period).not.toHaveBeenCalled()
-      expect(w.findAll('.br-item')[1].classes(), '首家公司照常选中').toContain('on')
+      expect(coNow(w), '首家公司照常选中').toBe('物业公司')
       expect(w.findAll('.bmm-card').length, '矩阵').toBeGreaterThan(0)
     })
 
@@ -323,18 +351,18 @@ describe('三大报表工作台 · 利润表', () => {
     })
 
     // 破坏验证:把 reviewKeyOf 里的 companyId 换成写死 1(冒充「全部公司一起交」)→ 换到资产公司那条断言红
-    it('❗一张表 × 一家公司 × 一个月 = 一把键,换公司就换键', async () => {
+    it('❗一张表 × 一家公司 × 一个月 = 一把键,换公司就换键(期间条那颗下拉:换公司不换期)', async () => {
       const w = await open()
       await w.findAll('.bmm-card')[1].trigger('click')          // 物业公司 2025-02
       await flushPromises()
       expect(w.findComponent(FPReviewActions).props('keys')).toEqual(['report-is:1:2025-02'])
       expect(w.findComponent(FPReviewActions).props('label')).toBe('利润表 · 物业公司 · 2025-02')
+      expect(w.findComponent(FPReviewActions).props('monthText')).toBe('2 月')
 
-      await w.findAll('.br-item')[2].trigger('click')           // 换资产公司 → 回矩阵
-      await flushPromises()
-      await w.findAll('.bmm-card')[0].trigger('click')          // 2024-01
-      await flushPromises()
-      expect(w.findComponent(FPReviewActions).props('keys')).toEqual(['report-is:2:2024-01'])
+      await pickCo(w, '资产公司')                                 // 期间条换资产公司 → 同一期
+      expect(reportApi.period).toHaveBeenLastCalledWith('is', 2, 2025, 2)
+      expect(w.findAll('.bmm-card'), '还在正文,没回矩阵').toHaveLength(0)
+      expect(w.findComponent(FPReviewActions).props('keys')).toEqual(['report-is:2:2025-02'])
     })
 
     // 破坏验证:把 reviewKeyOf 的 `typeof companyId.value !== 'number'` 去掉 → 键拼成
@@ -344,11 +372,10 @@ describe('三大报表工作台 · 利润表', () => {
         year: 2025, month: 2, rows: [], customRows: [], amounts: {},
       } as never)
       const w = await open()
-      await w.findAll('.br-item')[0].trigger('click')           // 全部汇总
-      await flushPromises()
+      await pickCo(w, '全部汇总')
       await w.findAll('.bmm-card')[1].trigger('click')
       await flushPromises()
-      expect(w.text(), '先确认真的进了正文态').toContain('汇总只读')
+      expect(w.text(), '先确认真的进了正文态').toContain('2 家合计 · 只读')
       // 钉在**键**上而不只钉「簇没渲染」:模板里那一层 v-else(非 isAll)本来就把这一簇关在外面,
       // 只断 exists() 的话,把 reviewKeyOf 的公司维判据放宽成 `== null` 也照样绿。
       expect((w.vm as unknown as { reviewKey: string | null }).reviewKey,

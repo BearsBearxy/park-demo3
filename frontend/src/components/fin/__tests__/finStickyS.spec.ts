@@ -44,8 +44,9 @@ describe('FinReportTable · S 档首列 sticky', () => {
     expect(S_BLOCK, '≤600 块整个没了').not.toBe('')
     // 体内 sticky 列有且仅有一根:多一根就是 390 上又少一块可读宽度
     expect(S_BLOCK.match(/position:\s*sticky/g) ?? [], 'S 档粘住的列不是一根').toHaveLength(1)
-    expect(S_BLOCK).toMatch(/\.fin-table\s+tbody\s+td\.fin-c1\s*\{[^}]*position:\s*sticky/)
-    expect(S_BLOCK).toMatch(/\.fin-table\s+tbody\s+td\.fin-c1\s*\{[^}]*left:\s*0/)
+    // 成对表(资产负债表)只粘左半边那根名称列:选择器带 :not(.fin-side2)
+    expect(S_BLOCK).toMatch(/\.fin-table\s+tbody\s+td\.fin-c1:not\(\.fin-side2\)\s*\{[^}]*position:\s*sticky/)
+    expect(S_BLOCK).toMatch(/\.fin-table\s+tbody\s+td\.fin-c1:not\(\.fin-side2\)\s*\{[^}]*left:\s*0/)
     // 复选列 / 行次列 / 数值列一根都不许粘
     expect(S_BLOCK).not.toMatch(/fin-ckcell|fin-no|fin-nv/)
   })
@@ -53,16 +54,18 @@ describe('FinReportTable · S 档首列 sticky', () => {
   it('❗编辑态那根 34px 复选列的偏移与 colgroup 同源(两处分叉 = 项目列压在复选框上)', () => {
     const colWidth = SRC.match(/<col v-if="selectable" style="width:(\d+)px"/)?.[1]
     expect(colWidth, '复选列的 colgroup 宽没了').toBe('34')
-    const offsets = [...S_BLOCK.matchAll(/\.fin-table\.has-ck\s+\w+\s+\w+\.fin-c1\s*\{[^}]*left:\s*(\d+)px/g)].map(m => m[1])
+    const offsets = [...S_BLOCK.matchAll(/\.fin-table\.has-ck\s+\w+\s+\w+\.fin-c1:not\(\.fin-side2\)\s*\{[^}]*left:\s*(\d+)px/g)].map(m => m[1])
     // 表头一条 + 表体一条,都等于复选列宽
     expect(offsets).toEqual([colWidth, colWidth])
   })
 
   it('❗宽档零差异:.fin-c1 / .has-ck 在 ≤600 块外没有任何一条规则', () => {
     expect(OUTSIDE, '窄档规则漏在了媒体块外面').not.toMatch(/fin-c1|has-ck/)
-    // 块外原有的 sticky 只剩表头那一条(thead th 顶部吸附,是改前就有的)
-    expect(OUTSIDE.match(/position:\s*sticky/g) ?? []).toHaveLength(1)
+    // 块外的 sticky 只有表头吸顶与贴底行吸底两条(2026-10-03 画布 09:净利润 / 两边总计贴底),没有任何一根竖向粘列
+    expect(OUTSIDE.match(/position:\s*sticky/g) ?? []).toHaveLength(2)
     expect(OUTSIDE).toMatch(/\.fin-table\s+thead\s+th\s*\{[^}]*position:\s*sticky;\s*top:\s*0/)
+    expect(OUTSIDE).toMatch(/\.fin-table\s+tfoot\s+td\s*\{[^}]*position:\s*sticky;\s*bottom:\s*0/)
+    expect(OUTSIDE).not.toMatch(/position:\s*sticky;\s*left/)
     // 断点只许 600(§1 唯一事实源);本文件另一个媒体块是 hover:none,不是宽度档
     expect([...STYLE.matchAll(/@media\s*\(max-width:\s*(\d+)px\)/g)].map(m => m[1])).toEqual(['600'])
   })
