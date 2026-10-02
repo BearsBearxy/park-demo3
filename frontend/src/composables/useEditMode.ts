@@ -93,8 +93,9 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
   const editMode = ref(false)
   // 用 watch 而不是在 toggle() 里加减：深链(?edit=1 / gotoDiff)会直接写 editMode.value = true，
   // 只在 toggle 里记的话那些路径进了编辑态却没登记，最后一个关掉时算不准。
+  // 带上本屏的权限点:全是自己角色给的 → 「结束授权」它不退,结束前那一问不列它(auth.dirtyScreens)。
   watch(editMode, (on) => {
-    if (on) auth.openEditor(meId, screen, opts.dirty)
+    if (on) auth.openEditor(meId, screen, opts.dirty, perms)
     else auth.closeEditor(meId)
   })
   /** 提权弹窗要补的权限点。非空即打开弹窗。 */

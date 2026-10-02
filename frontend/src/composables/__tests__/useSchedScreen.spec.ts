@@ -3,6 +3,7 @@ import { defineComponent, nextTick } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { useSchedScreen } from '@/composables/useSchedScreen'
+import { importBusy } from '@/components/import/importRun'
 
 vi.mock('@/api', () => ({
   default: {
@@ -80,6 +81,22 @@ describe('useSchedScreen 共用守卫', () => {
     await nextTick()
     expect(s.drawer.value, '新增抽屉没关').toBe(false)
     expect(s.importing.value, '导入窗没关').toBe(false)
+  })
+
+  // 破坏验证:watch(edit) 去掉 importBusy 判断 → 导入窗被收 → 红
+  it('❗导入正在跑时编辑态转假:导入窗不收(D14),抽屉照关 —— runner 不会因为弹窗卸了就停', async () => {
+    const s = host()
+    s.edit.value = true
+    s.drawer.value = true
+    s.importing.value = true
+    await nextTick()
+    importBusy.value = 1         // FpImportModal 在跑
+    try {
+      s.edit.value = false
+      await nextTick()
+      expect(s.drawer.value).toBe(false)
+      expect(s.importing.value, '在跑的导入窗被收走,结果卡 / 失败卡都出不来').toBe(true)
+    } finally { importBusy.value = 0 }
   })
 })
 

@@ -1,15 +1,19 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import api, { bindSession, sessionDrifted } from '@/api'
 import { landingPath } from '@/nav/navAccess'
 
-/** 一次授权:哪个权限点、谁授权的、什么时候到期(毫秒时间戳)。与后端 ElevationDtos.GrantDTO 对齐。 */
+/** 一次授权:哪个权限点、谁授权的、什么时候授权 / 到期(毫秒时间戳)、当场还是远程。与后端 ElevationDtos.GrantDTO 对齐。 */
 export interface Grant {
   perm: string
   permLabel: string
   authorizer: string
   authorizerName: string
   expiresAt: number
+  /** 授权(远程:批准)时刻。旧后端不带 → 卡片按到期 − 30 分钟推(utils/elevation grantBatches) */
+  grantedAt?: number
+  /** onsite = 主管在这台电脑上当场输密码;remote = 主管在自己电脑上批准(卡片写「远程批准」「hh:mm 批准」) */
+  source?: 'onsite' | 'remote'
 }
 
 /** 还没接改动数的编辑器按 1 处算。全站共用这一个引用,去重时它们只算一次(见 sumDirty)。 */
@@ -79,7 +83,7 @@ export const useAuthStore = defineStore('auth', () => {
   // 授权是**服务端**的状态(内存,30 分钟)。这里不落 localStorage —— 落了就等于给了一个
   // 前端改改就能续期的权限,而权限的真身在后端。刷新页面靠 GET 重新取回。
   const grants = ref<Grant[]>([])
-  // 到点自动失效不能只靠后端:横幅倒计时归零时,界面上的写入口必须同时消失,
+  // 到点自动失效不能只靠后端:顶栏胶囊倒计时归零时,界面上的写入口必须同时消失,
   // 否则用户点下去才发现 403。ticker 只在有授权时跑,平时零开销。
   const nowMs = ref(Date.now())
   let tick: ReturnType<typeof setInterval> | null = null
@@ -89,8 +93,12 @@ export const useAuthStore = defineStore('auth', () => {
     if (!need && tick) { clearInterval(tick); tick = null }
   }
   const liveGrants = computed(() => grants.value.filter((g) => g.expiresAt > nowMs.value))
+  // 到期的那份在 grants 里多留一拍:同一拍里因它退出编辑的屏调 endElevation() 时,据此认出「是到期把它踢出来的」,
+  // 只摘到期的,没到期的几份照留(卡片「哪一份到期,用到它的页面就退出编辑」)。各屏守卫(pre)跑完,这里(post)再摘;
+  // 不摘的话之后点「完成」也会被当成到期踢出来的,剩下那份结束不了。全摘光了 ticker 跟着停。
+  watch(liveGrants, (live) => { if (live.length < grants.value.length) { grants.value = live; retick() } }, { flush: 'post' })
   const elevatedSet = computed(() => new Set(liveGrants.value.map((g) => g.perm)))
-  /** 最早到期的那个 —— 横幅显示剩余多少秒。没有授权时为 0。 */
+  /** 最早到期的那个 —— 顶栏授权胶囊显示剩余多少秒。没有授权时为 0。 */
   const elevationLeftMs = computed(() =>
     liveGrants.value.length ? Math.max(0, Math.min(...liveGrants.value.map((g) => g.expiresAt)) - nowMs.value) : 0)
 
@@ -111,7 +119,7 @@ export const useAuthStore = defineStore('auth', () => {
   function hasOwn(key: string): boolean {
     return permSet.value.has(key)
   }
-  /** 这项权限是谁授权的?没有授权(或本来就有)返回 null —— 横幅与提示文案用。 */
+  /** 这项权限是谁授权的?没有授权(或本来就有)返回 null —— 提示文案用。 */
   function authorizerOf(key: string): string | null {
     return liveGrants.value.find((g) => g.perm === key)?.authorizerName ?? null
   }
@@ -208,8 +216,11 @@ export const useAuthStore = defineStore('auth', () => {
   //
   // 第三参 dirty = 这个编辑器此刻有几处没保存的改动(EDIT-MODE-SPEC §6.1:0 处不弹、不拦)。
   // 缺省按 1 —— 还没接改动数的编辑器宁可多问一句。
-  const editors = ref(new Map<symbol, { screen: string; dirty: () => number }>())
-  function openEditor(id: symbol, screen = '', dirty: () => number = ONE) { editors.value.set(id, { screen, dirty }) }
+  // 第四参 perms = 它编辑要的权限点(缺一项守卫就退出编辑)。「结束授权」前先问只列靠授权编辑的屏(dirtyScreens);
+  // 没带的按「靠授权」算,宁可多问一句。
+  type Editor = { screen: string; dirty: () => number; perms?: string[] }
+  const editors = ref(new Map<symbol, Editor>())
+  function openEditor(id: symbol, screen = '', dirty: () => number = ONE, perms?: string[]) { editors.value.set(id, { screen, dirty, perms }) }
   function closeEditor(id: symbol) { editors.value.delete(id) }
   /** 此刻有没有屏在编辑模式。editors 是全站唯一的编辑态登记表,别处要判断「能不能打断他」都读这个
    *  (版本更新弹窗:编辑态不弹,VERSION-UPDATE-SPEC §3)。 */
@@ -225,15 +236,15 @@ export const useAuthStore = defineStore('auth', () => {
    * 改动数合计。**同一个 dirty 函数只算一次**:useEditMode 与它底下的锁各登记一条、
    * 带的是同一个 dirty,不去重就成了 2 倍;缺省的都是同一个 ONE,没接改动数的屏也只算 1。
    */
-  function sumDirty(match: (screen: string) => boolean): number {
+  function sumDirty(match: (e: Editor) => boolean): number {
     const fns = new Set<() => number>()
-    for (const e of editors.value.values()) if (match(e.screen)) fns.add(e.dirty)
+    for (const e of editors.value.values()) if (match(e)) fns.add(e.dirty)
     let n = 0
     for (const f of fns) n += f()
     return n
   }
   /** 这一屏(页签 value)有几处没保存的改动。关页签 / 退出登录的离开确认按它问(0 不弹)。 */
-  function dirtyOn(screen: string): number { return sumDirty((s) => s === screen) }
+  function dirtyOn(screen: string): number { return sumDirty((e) => e.screen === screen) }
   /** 这一屏没保存的改动里有没有「数不准」的(见 approxDirty):有就不报处数。 */
   function dirtyApproxOn(screen: string): boolean {
     for (const e of editors.value.values()) if (e.screen === screen && APPROX.has(e.dirty) && e.dirty() > 0) return true
@@ -241,6 +252,21 @@ export const useAuthStore = defineStore('auth', () => {
   }
   /** 全站没保存的改动合计。关浏览器 / 刷新只在 > 0 时拦。 */
   const dirtyTotal = computed(() => sumDirty(() => true))
+  /**
+   * 结束授权会让它退出编辑、又有没保存改动的屏(页签 value)、几处、数不数得准。点「结束授权」前按它先问(ELEVATION-SPEC §4.5)。
+   * 登记的权限点全是自己角色给的 → 结束授权它不退,改动也不丢,不列。没带权限点的按「靠授权」算;
+   * 但同一屏同一个改动数函数另有一条带了的(useEditMode 与它底下的锁各登记一条),听带了的那条。
+   */
+  function dirtyScreens(): { screen: string; count: number; approx: boolean }[] {
+    const all = [...editors.value.values()]
+    const relies = new Set(all.filter((e) => (e.perms
+      ? e.perms.some((p) => !hasOwn(p))
+      : !all.some((k) => k.perms && k.screen === e.screen && k.dirty === e.dirty))))
+    const on = (s: string) => (e: Editor) => e.screen === s && relies.has(e)
+    return [...new Set(all.map((e) => e.screen))]
+      .map((s) => ({ screen: s, count: sumDirty(on(s)), approx: [...relies].some((e) => on(s)(e) && APPROX.has(e.dirty) && e.dirty() > 0) }))
+      .filter((d) => d.count > 0)
+  }
 
   /**
    * 关页面前的二次确认(用户拍板 2026-08-26:「和所有别的网页一样,开着编辑模式没保存
@@ -268,17 +294,19 @@ export const useAuthStore = defineStore('auth', () => {
 
   /**
    * 结束授权。退出编辑模式 / 主动点「结束授权」/ 登出都走这里。
-   * force=true 跳过「还有别的编辑页开着」的判断 —— 用户在横幅上主动点的那一下就是 force。
+   * force=true 跳过「还有别的编辑页开着」的判断 —— 用户在授权卡片上主动点「结束授权」那一下就是 force。
    */
   async function endElevation(force = false) {
     if (!grants.value.length) return
     if (!force && editors.value.size > 0) return
+    // 是到期把最后这一屏踢出了编辑(到期那份还没摘,见 liveGrants 下那条 watch):只摘到期的,没到期的几份不收回
+    if (!force && liveGrants.value.length && liveGrants.value.length < grants.value.length) { grants.value = liveGrants.value; return }
     grants.value = []
     retick()
     try { await api.delete('/auth/elevate') } catch { /* 服务端 30 分钟后自然过期,兜得住 */ }
   }
 
-  /** 刷新页面后恢复(授权在服务端还活着,横幅要跟着回来)。 */
+  /** 刷新页面后恢复(授权在服务端还活着,顶栏胶囊要跟着回来)。 */
   async function refreshElevation() {
     if (!isAuthed.value) return
     try {
@@ -362,7 +390,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   return { token, me, drifted, displayName, role, permissions, navLayers, roleNames, mustChangePassword,
            isAuthed, isReadonly, roleLabel, landing, roleHome,
-           can, hasOwn, authorizerOf, grants: liveGrants, elevationLeftMs, requestElevation, endElevation, refreshElevation, refreshMe,
-           openEditor, closeEditor, editing, editorCount, editingOn, dirtyOn, dirtyApproxOn, dirtyTotal, loginSeq,
+           can, hasOwn, authorizerOf, grants: liveGrants, elevationLeftMs, nowMs, requestElevation, endElevation, refreshElevation, refreshMe,
+           openEditor, closeEditor, editing, editorCount, editingOn, dirtyOn, dirtyApproxOn, dirtyTotal, dirtyScreens, loginSeq,
            login, logout, clearMustChangePassword, setToken }
 })

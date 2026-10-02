@@ -15,7 +15,10 @@ import { useScreen } from '@/composables/useTabShells'
  * 谁进得来的判定全在服务端（PresenceStore，有单测钉死）。这里只负责：
  * 把答案接住、按 20 秒续、被接管时当场喊停。
  */
-export function useEditLock(onExit?: () => void, canEdit?: () => boolean, dirty?: () => number) {
+/** perms = 这一屏编辑要的权限点,原样登记进 auth.editors:「结束授权」前先问只列靠授权编辑的屏(auth.dirtyScreens)。
+ *  只在锁上登记的宿主(三大报表 / 账册模板 / 台账宽表)要传;自己另登记一条且带了权限点的(useEditMode / SchedHeader /
+ *  系数簿)不必 —— 两条递的是同一个 dirty 函数,auth 听带了的那条 */
+export function useEditLock(onExit?: () => void, canEdit?: () => boolean, dirty?: () => number, perms?: string[]) {
   /** 这一期被谁占着。非空 = 刚才想进但被挡下了，页面据此开接管抽屉。 */
   const lockedBy = ref<LockHolder | null>(null)
   /** 被谁接管了。非空 = 当场弹提示。 */
@@ -109,7 +112,7 @@ export function useEditLock(onExit?: () => void, canEdit?: () => boolean, dirty?
     held.value = scope
     heldToken = r.acquiredAt ?? null
     start()
-    auth.openEditor(editorId, screen, dirty)
+    auth.openEditor(editorId, screen, dirty, perms)
     editorOpen = true
     return true
   }

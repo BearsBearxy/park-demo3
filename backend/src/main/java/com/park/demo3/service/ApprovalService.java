@@ -159,7 +159,7 @@ public void decide(String id, DecideReq req) {
             bell.add(p.requester(), NoticeService.Kind.approval_rejected, name + "拒绝了你的授权", whatOf(p), null);
             return;
         }
-        elevations.grant(p.requester(), p.perms(), me());
+        elevations.grant(p.requester(), p.perms(), me(), ElevationStore.REMOTE);
         store.settle(p, true, me(), name);
         audit.logAuthorized("elevate.grant", "perm:" + String.join(",", p.perms()), me(),
             "远程授权 " + (ElevationStore.TTL_SECONDS / 60) + " 分钟给 " + p.requesterName()

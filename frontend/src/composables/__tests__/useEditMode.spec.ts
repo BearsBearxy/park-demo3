@@ -233,6 +233,19 @@ describe('编辑模式 × 提权', () => {
     expect(editMode.value).toBe(false)
     expect(api.delete).toHaveBeenCalledWith('/auth/elevate')
   })
+
+  // ELEVATION-SPEC §4.5「结束前先问」只问靠这份授权编辑的屏
+  // 破坏验证:useEditMode 登记时不带 perms → 全是自己权限的那屏也算进去 → [7] 红
+  it('❗登记带上本屏权限点:「结束授权」前那一问只数靠授权编辑的那一屏', async () => {
+    const auth = asRole(['billing-run:edit', 'elevate:request'])
+    await grant('param-policy:edit')
+    const a = useEditMode(POOL, { dirty: () => 2 })                  // 计费口径那一档是授权来的
+    const b = useEditMode(['billing-run:edit'], { dirty: () => 5 })  // 全是自己角色给的
+    await a.toggle(); await b.toggle()
+    await nextTick()
+    expect([a.editMode.value, b.editMode.value]).toEqual([true, true])
+    expect(auth.dirtyScreens().map((d) => d.count)).toEqual([2])
+  })
 })
 
 describe('system 权限永远不进 can() 的提权那一侧', () => {

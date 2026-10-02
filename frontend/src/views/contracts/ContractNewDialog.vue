@@ -138,7 +138,7 @@ const auth = useAuthStore()
 const sheet = useFormSheet()
 const meId = Symbol('contract-dialog')
 const screen = useScreen()
-watch(() => dirtyCount() > 0, (on) => { if (on) auth.openEditor(meId, screen, dirtyCount); else auth.closeEditor(meId) })
+watch(() => dirtyCount() > 0, (on) => { if (on) auth.openEditor(meId, screen, dirtyCount, ['contract:edit']); else auth.closeEditor(meId) })
 
 // ─── 标的段(CONTRACT-CARD-SPEC §1/§6.2):段=物业类型+位置;段内费用行由类型钉死组决定 ──────
 type SegRow = { id: number | null; feeKey: FeeKey; area: number | null; areaShared: number | null; unitPrice: number | null; coeff: number | null; roomCount: number | null; amountOverride: number | null; autoArea?: boolean }

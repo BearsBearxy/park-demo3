@@ -28,6 +28,7 @@ import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import FPMark from '@/components/fp/FPMark.vue'
+import FPElevChip from '@/components/fp/FPElevChip.vue'
 import { ask, askLeave } from '@/utils/ask'
 import { receipt } from '@/utils/receipt'
 
@@ -64,7 +65,7 @@ const editMode = ref(false)
 const meId = Symbol('pay-book')
 const screen = useScreen()
 // 改动数 = 暂存条数(EDIT-MODE-SPEC §6.1):关页签 / 关浏览器按它问,0 条不拦
-watch(editMode, (on) => { if (on) auth.openEditor(meId, screen, () => stash.value.size); else auth.closeEditor(meId) })
+watch(editMode, (on) => { if (on) auth.openEditor(meId, screen, () => stash.value.size, ['billing-issue:edit']); else auth.closeEditor(meId) })
 // 铁律①(EDIT-MODE-SPEC v4):授权到期 / 点了「结束授权」→ 当场退回浏览态。
 // 本窗口不走 useEditMode,也没有编辑锁(收款簿改的是 bill_pay_company,不进出账链快照),
 // 所以那道守卫既不在 useEditMode 里、也不在 useEditLock 里 —— 只能在这儿补一条。
@@ -260,11 +261,34 @@ async function onClose() {
   <FPDrawer :open="open" title="收款簿" icon="wallet" :width="1080" :fixed-height="true"
             :subtitle="`批量指定「租户 × 费用项」的收款公司 · ${ym} 在册 ${rowsAll.length} 户 · 映射与账期无关,改了即刻对以后生成的单生效`"
             @close="onClose">
+    <!-- 遮罩盖住了顶栏:临时授权的胶囊挂一枚在弹窗头(画布 08 ElevStates) -->
+    <template #badge><FPElevChip variant="dialog" /></template>
     <!-- 已失败时不换成「加载中…」:重试在途失败件留在原地,到数才退场 -->
     <div v-if="loading && !loadErr" class="pb-empty">加载中…</div>
     <template v-else>
-      <!-- 控制行:期页签+搜索+只看未设置 | 收款槽下拉 -->
-      <div class="pb-controls">
+      <!-- 工具条一行两态,不另起一行、表格不往下挪(横条盘点 2026-10-03):
+           浏览态 = 期页签+搜索+只看未设置 | 收款槽下拉;编辑态右半换成统一修改条(唯一改值入口),左半留着挑户。
+           编辑中收款槽不换 —— 暂存绑在槽上;写在下面那行说明里,要换先退出编辑。 -->
+      <div v-if="editMode" class="pb-controls pb-unibar">
+        <Segmented :options="PHASE_OPTS" :model-value="phase" size="sm" @update:model-value="setPhase" />
+        <input v-model="q" class="pb-search" type="text" placeholder="搜租户名" />
+        <label v-tip="'只列该槽当前解析不出收款公司的户(含继承后仍为空)'" class="pb-chk">
+          <input type="checkbox" v-model="unsetOnly" />
+          只看未设置
+        </label>
+        <span style="flex:1"></span>
+        <span>已选 <b>{{ selected.size }}</b> 户</span>
+        <span class="pb-sep">·</span>
+        <span>统一指定为</span>
+        <div style="width:170px">
+          <Select :options="coOpts" :model-value="uniCo" size="sm" placeholder="选择公司"
+                  @update:model-value="uniCo = $event" />
+        </div>
+        <Button variant="outline" size="sm" :disabled="selected.size === 0 || !uniCo" @click="applyUni">
+          应用到选中
+        </Button>
+      </div>
+      <div v-else class="pb-controls">
         <Segmented :options="PHASE_OPTS" :model-value="phase" size="sm" @update:model-value="setPhase" />
         <input v-model="q" class="pb-search" type="text" placeholder="搜租户名" />
         <label v-tip="'只列该槽当前解析不出收款公司的户(含继承后仍为空)'" class="pb-chk">
@@ -277,26 +301,11 @@ async function onClose() {
           <Select :options="slotOpts" :model-value="colId" size="sm" @update:model-value="setSlot" />
         </div>
       </div>
-      <div class="pb-hint">{{ slotHint }}</div>
+      <div class="pb-hint"><template v-if="editMode">改的是「{{ slotLabel(curSlot.colId) }}」· </template>{{ slotHint }}</div>
 
       <!-- 加载失败换掉表格(不再弹窗关窗):期页签 / 收款槽照常可切,重试接上 load -->
       <FPLoadError v-if="loadErr" :sub="loadErr" @retry="load">收款公司和收款映射没读到</FPLoadError>
       <template v-else>
-
-      <!-- 统一修改条:勾选租户→选公司→应用到选中 -->
-      <div v-if="editMode" class="pb-unibar">
-        <span>已选 <b>{{ selected.size }}</b> 户</span>
-        <span class="pb-sep">·</span>
-        <span>统一指定为</span>
-        <div style="width:170px">
-          <Select :options="coOpts" :model-value="uniCo" size="sm" placeholder="选择公司"
-                  @update:model-value="uniCo = $event" />
-        </div>
-        <Button variant="outline" size="sm" :disabled="selected.size === 0 || !uniCo" @click="applyUni">
-          应用到选中
-        </Button>
-      </div>
-
       <div class="pb-wrap">
         <table class="pb-table">
           <colgroup>
@@ -404,7 +413,8 @@ async function onClose() {
 .pb-empty { padding: 40px 12px; text-align: center; color: var(--text-disabled); font-size: var(--fs-label); }
 .pb-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); }
 
-.pb-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* 工具条:浏览 / 编辑两态同一行同高 */
+.pb-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 32px; }
 .pb-lbl { font-size: 12px; color: var(--text-muted); }
 .pb-search { width: 170px; height: 32px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--border-control); border-radius: var(--radius-full); font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); }
 .pb-search:focus { outline: none; border-color: var(--hue-blue); }
@@ -412,7 +422,8 @@ async function onClose() {
 .pb-chk input { accent-color: var(--hue-blue); cursor: pointer; }
 .pb-hint { flex: 0 0 auto; margin-top: -14px; font-size: 11.5px; color: var(--text-muted); }
 
-.pb-unibar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-card); font-size: 12.5px; color: var(--text-secondary); flex-wrap: wrap; }
+/* 统一修改条(编辑态的工具条):右半换成批量指定 */
+.pb-unibar { font-size: 12.5px; color: var(--text-secondary); }
 .pb-unibar b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .pb-sep { color: var(--text-disabled); }
 

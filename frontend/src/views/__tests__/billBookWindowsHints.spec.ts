@@ -719,16 +719,25 @@ describe('导出通知单', () => {
     expect(w.find('.ex-dot').exists()).toBe(false)
   })
 
-  it('❗选中的公司有不印账户块的:块内提示 FPNote,没有虚线条', async () => {
+  // 2026-10-03 横条收尾:账户区下面那条满宽 FPNote 撤掉,改在那家公司的下拉旁就地标「不印」(位置常驻,选了账户只是看不见)。
+  // 破坏验证:FPNote 加回来 / .off 判据写反 → 红
+  it('❗选中的公司不印账户块:那家公司的下拉旁就地标「不印」,没有满宽提示,也没有虚线条', async () => {
     const w = await openExport()
-    // 默认勾已确认的甲(一泽)。一泽选了账户 → 不出提示;改成「不印账户块」→ 出
+    // 默认勾已确认的甲(一泽)。一泽选了账户 → 标记看不见(位置还在);改成「不印账户块」→ 看得见
     const vm = w.vm as unknown as { acctByCo: Record<number, string> }
     vm.acctByCo = { 7: '1' }
     await settle()
-    expect(w.find('.fp-note').exists()).toBe(false)
+    const mark = () => w.find('.ex-acct .ex-noacct')
+    expect(mark().exists(), '位置常驻').toBe(true)
+    expect(mark().classes()).toContain('off')
     vm.acctByCo = { 7: '' }
     await settle()
-    expect(w.find('.fp-note').text()).toContain('1 家公司这次不印账户块')
+    expect(mark().classes()).not.toContain('off')
+    expect(mark().text()).toBe('不印')
+    expect((mark().element as HTMLElement & { _tip?: { text: string } })._tip?.text)
+      .toBe('这家公司这次不印收款账户块(没录账户或选了「不印账户块」),通知单出简化版,不阻断导出')
+    expect(w.find('.fp-note').exists(), '满宽说明不许回来').toBe(false)
+    expect(w.text()).not.toContain('家公司这次不印账户块')
     expect(w.find('.ex-warn').exists()).toBe(false)
   })
 
