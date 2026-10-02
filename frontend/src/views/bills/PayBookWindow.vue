@@ -7,6 +7,7 @@
 // 收款槽=附表10 colId(不是催缴单 fee_key):一个槽承接多个费项,注册表与继承口径在 payBookLogic。
 // 写=PUT /bills/paymap 单格 upsert 序列(与账单屏徽标同一张表);viewer 只读查看。
 import { computed, ref, watch, onUnmounted } from 'vue'
+import { textW } from '@/composables/useWideTable'
 import { billsApi } from '@/api/bills'
 import { companyBookApi, type CompanyFullDTO } from '@/api/billDelivery'
 import type { S10ColId } from '@/types/s10'
@@ -125,6 +126,10 @@ const filtered = computed(() => phaseRows.value.filter(r =>
   // dormRent 只对有宿舍单的户有意义,别让其余户在这个槽下白占屏
   && (!curSlot.value.wholeNotice || r.dorm)))
 const groups = computed(() => groupByBuilding(filtered.value, r => r.bld.main))
+// 租户列(列宽铁律,2026-10-02):按全部户名定宽(12.5px 粗体 + 内边距 16),带「缺收款公司」标记的户
+// 加上标记宽(间距 6 + 圆点 6 + 4 + 12px 五字);余宽落进行末空列,不再是唯一弹性列。按 rowsAll 算:换页签、搜索列不挪位。
+const tenantW = computed(() => Math.max(textW(['租户'], 11.5, 16),
+  ...rowsAll.value.map(r => textW([r.tenantName], 12.5, 16) + (r.gap ? 16 + textW(['缺收款公司'], 12, 0) : 0))))
 const nameOf = (id: number) => rowsAll.value.find(r => r.tenantId === id)?.tenantName ?? `#${id}`
 watch([q, unsetOnly], () => {
   const vis = new Set(filtered.value.map(r => r.tenantId))
@@ -296,11 +301,12 @@ async function onClose() {
         <table class="pb-table">
           <colgroup>
             <col v-if="editMode" style="width:36px" />
-            <col /><!-- 租户:唯一弹性列 -->
+            <col :style="{ width: tenantW + 'px' }" /><!-- 租户:按内容定宽 -->
             <col style="width:150px" />
             <col style="width:100px" />
             <col style="width:220px" />
             <col v-if="editMode" style="width:170px" />
+            <col /><!-- 行末空列 .fp-fill:余宽落这里 -->
           </colgroup>
           <thead>
             <tr>
@@ -312,14 +318,16 @@ async function onClose() {
               <th v-tip="'该户本月催缴单本期合计(参考,判断这户值不值得单独设)'">本期合计</th>
               <th v-tip="'当前收款公司;灰体=继承自上游槽,不是这一格自己设的'">当前收款公司</th>
               <th v-if="editMode" v-tip="'暂存新值(保存后写 bill_pay_company);×=单行撤销'">暂存新值</th>
+              <th class="fp-fill" aria-hidden="true"></th>
             </tr>
           </thead>
           <tbody>
             <template v-for="g in groups" :key="g.id ?? 'none'">
               <tr class="pb-band">
-                <td class="l" :colspan="editMode ? 6 : 5">
+                <td class="l" :colspan="editMode ? 6 : 4">
                   <span class="pb-band-lbl">{{ g.name }}</span><span class="pb-band-sub">{{ g.count }} 户</span>
                 </td>
+                <td class="fp-fill" aria-hidden="true"></td>
               </tr>
               <tr v-for="r in g.rows" :key="r.tenantId"
                   :class="{ sel: selected.has(r.tenantId) }"
@@ -358,10 +366,11 @@ async function onClose() {
                   </span>
                   <span v-else class="pb-txt dim ct-r">–</span>
                 </td>
+                <td class="fp-fill" aria-hidden="true"></td>
               </tr>
             </template>
             <tr v-if="filtered.length === 0">
-              <td class="pb-noro" :colspan="editMode ? 6 : 5">
+              <td class="pb-noro" :colspan="editMode ? 7 : 5">
                 无匹配租户 —— 换期页签/收款槽,或取消「只看未设置」
               </td>
             </tr>

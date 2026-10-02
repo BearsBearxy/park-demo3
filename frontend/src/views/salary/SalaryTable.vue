@@ -147,6 +147,8 @@ const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: px(minTableH(S1
           <th class="c" rowspan="2"><span style="font-size:11px">签收</span></th>
           <th class="l" rowspan="2" style="min-width:150px"><span style="font-size:11px">备注</span></th>
           <th v-if="edit" rowspan="2"></th>
+          <!-- 最右空列 .fp-fill(base.css;LIST-PAGE §4 列宽铁律):表格比内容宽出来的余宽全落在这一列,不摊进金额列 -->
+          <th class="fp-fill" rowspan="2" aria-hidden="true"></th>
         </tr>
         <!-- 第二级:子列(jsx 416-434) -->
         <tr class="s">
@@ -237,6 +239,7 @@ const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: px(minTableH(S1
               </button>
             </span>
           </td>
+          <td class="fp-fill" aria-hidden="true"></td>
         </tr>
         <tr class="s12-filler" aria-hidden="true"><td :colspan="99"></td></tr>
       </tbody>
@@ -268,6 +271,7 @@ const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: px(minTableH(S1
           <th></th>
           <th class="l"></th>
           <th v-if="edit"></th>
+          <th class="fp-fill" aria-hidden="true"></th>
         </tr>
       </tfoot>
     </table>
@@ -315,12 +319,16 @@ const wrapSt = computed(() => (hStage.value === 3 ? { minHeight: px(minTableH(S1
 .s12-c-red { color:var(--hue-red); }
 .s12-c-net { font-weight:var(--fw-semibold); color:var(--text-primary); }
 .s12-c-note { color:var(--text-muted); font-size:11.5px; max-width:160px; overflow:hidden; text-overflow:ellipsis; text-align:left; }
+/* 编辑态备注框按自身默认宽撑列:width:100% 的输入框不撑列,有了最右空列(.fp-fill)备注列就会缩到表头的保底 150 */
+.s12-c-note :deep(.lc-note-in) { width:auto; min-width:100%; }
 
 .s12-row td { background:var(--surface-white); }
 .s12-row:hover td { background:var(--surface-card); }
 .s12-row:hover .s12-sticky1, .s12-row:hover .s12-sticky2 { background:var(--surface-card); }
 .s12-userbadge { display:inline-flex; align-items:center; height:16px; padding:0 5px; margin-left:6px; border-radius:var(--radius-full); background:var(--accent-sky); color:var(--hue-blue); font-size:9.5px; font-weight:var(--fw-semibold); }
 .s12-sign { display:inline-flex; align-items:center; gap:4px; font-size:11.5px; }
+/* base.css 给 svg 的 max-width:100% 让图标在算列宽时按 0 计:有了最右空列(.fp-fill)签收列会比内容窄一个图标宽(Chrome 实测 62 → 49) */
+.s12-sign svg { max-width:none; }
 .s12-sign.yes { color:var(--hue-blue); }
 .s12-sign.no { color:var(--text-disabled); }
 .s12-fa { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; }

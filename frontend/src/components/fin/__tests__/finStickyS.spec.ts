@@ -70,8 +70,8 @@ describe('FinReportTable · S 档首列 sticky', () => {
   it('❗浏览态:每行恰好一格 .fin-c1,就是「项目」那格(首格),表上不挂 has-ck', () => {
     const w = open(false)
     expect(w.find('table.fin-table').classes()).not.toContain('has-ck')
-    const heads = w.findAll('thead th')
-    expect(heads).toHaveLength(2 + COLUMNS.length)          // 项目 + 行次 + 两根数值列
+    const heads = w.findAll('thead th:not(.fp-fill)')
+    expect(heads).toHaveLength(2 + COLUMNS.length)          // 项目 + 行次 + 两根数值列(另有行末空列)
     expect(w.findAll('thead th.fin-c1')).toHaveLength(1)
     expect(heads[0].classes()).toContain('fin-c1')
     expect(heads[0].text()).toBe('项　目')
@@ -79,7 +79,7 @@ describe('FinReportTable · S 档首列 sticky', () => {
     const rows = w.findAll('tbody tr')
     expect(rows).toHaveLength(ROWS.length)
     for (const [i, tr] of rows.entries()) {
-      const tds = tr.findAll('td')
+      const tds = tr.findAll('td:not(.fp-fill)')
       expect(tds, '列数变了(colgroup 根数任何档位都不许变)').toHaveLength(2 + COLUMNS.length)
       expect(tr.findAll('td.fin-c1'), '一行粘两格').toHaveLength(1)
       expect(tds[0].classes()).toContain('fin-c1')
@@ -93,11 +93,11 @@ describe('FinReportTable · S 档首列 sticky', () => {
   it('❗编辑态:首格是复选列,.fin-c1 退到第二格,表上挂 has-ck(左偏移靠它)', () => {
     const w = open(true)
     expect(w.find('table.fin-table').classes()).toContain('has-ck')
-    const heads = w.findAll('thead th')
+    const heads = w.findAll('thead th:not(.fp-fill)')
     expect(heads).toHaveLength(3 + COLUMNS.length)
     expect(heads[1].classes()).toContain('fin-c1')
     for (const tr of w.findAll('tbody tr')) {
-      const tds = tr.findAll('td')
+      const tds = tr.findAll('td:not(.fp-fill)')
       expect(tds).toHaveLength(3 + COLUMNS.length)
       expect(tds[0].classes()).toContain('fin-ckcell')
       expect(tds[1].classes()).toContain('fin-c1')

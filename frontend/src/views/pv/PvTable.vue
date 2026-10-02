@@ -144,6 +144,7 @@ const k = computed(() => {
             <th><span class="s6-th"><span class="s6-th-name">上网收益</span><span class="s6-th-unit">元</span></span></th>
             <th class="l" style="min-width:150px"><span class="s6-th-name">备注</span></th>
             <th v-if="edit" class="s6-h-act"></th>
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </thead>
         <tbody>
@@ -163,6 +164,7 @@ const k = computed(() => {
               <td class="s6-c-num s6-grp-tot">{{ yuan(g.gridAmt) }}</td>
               <td class="l"></td>
               <td v-if="edit"></td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
             <!-- 明细行(jsx 394-409) -->
             <tr v-for="r in g.rows" :key="r.id" class="s6-row">
@@ -200,6 +202,7 @@ const k = computed(() => {
                   </button>
                 </span>
               </td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
           </template>
           <tr class="s6-filler" aria-hidden="true"><td :colspan="99"></td></tr>
@@ -215,6 +218,7 @@ const k = computed(() => {
             <th class="s6-c-num">{{ yuan(k.gridAmt) }}</th>
             <th class="l"></th>
             <th v-if="edit"></th>
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </tfoot>
       </table>
@@ -234,7 +238,10 @@ const k = computed(() => {
 
 /* 表:卡片内单滚动,thead/tfoot 粘性 */
 .s6-tablewrap { flex:1 1 auto; min-height:0; overflow:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--surface-white); }
-.s6-table { border-collapse:separate; border-spacing:0; width:100%; min-width:900px; height:100%; font-family:var(--font-sans); font-size:13px; color:var(--text-primary); }
+/* 不给表格 px 保底宽(2026-10-02):列都 nowrap、按内容撑,窄了照样横滚;保底宽比内容宽时多出来的全落进行末空列,横滚看到的是空白。
+   编辑态备注框按自身默认宽撑列:width:100% 的输入框不撑列,有了行末空列(.fp-fill)备注列会缩回表头的保底 150 */
+.s6-table { border-collapse:separate; border-spacing:0; width:100%; height:100%; font-family:var(--font-sans); font-size:13px; color:var(--text-primary); }
+.s6-table :deep(.lc-note-in) { width:auto; min-width:100%; }
 .s6-table tbody tr.s6-filler td { height:0; padding:0; line-height:0; font-size:0; border:none; background:var(--surface-white); }
 .s6-filler { height:100%; }
 .s6-table th, .s6-table td { padding:0 14px; box-sizing:border-box; white-space:nowrap; text-align:right; }

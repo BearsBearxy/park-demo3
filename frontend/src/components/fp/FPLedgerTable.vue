@@ -130,6 +130,8 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
               class="lg-grp-th">{{ g.name }}</th>
           <th v-for="c in columns.fixedRight" :key="c.key" rowspan="2"
               class="lg-grp-th" :class="fixedKeys.has(c.key) && 'lg-fix-th lg-fix'" :style="cellStyles[c.key]">{{ c.label }}</th>
+          <!-- 最右空列 .fp-fill(base.css;LIST-PAGE §4 列宽铁律):表格比内容宽出来的余宽全落在这一列,不摊进费用列 -->
+          <th class="lg-grp-th fp-fill" rowspan="2" aria-hidden="true"></th>
         </tr>
         <tr>
           <th v-for="c in leaves" :key="c.key" class="lg-leaf-th" :style="cellStyles[c.key]">{{ c.label }}</th>
@@ -176,14 +178,15 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
             <!-- totalCollected + 21 费用列 (number, 编辑态可输入);
                  归档列(readonly)只显示已发生的钱,不接受新录入——同 balancePrevDerived 那套写法 -->
             <template v-else>
-              <input v-if="edit && !c.readonly" class="lg-ni" type="number"
+              <input v-if="edit && !c.readonly" class="lg-ni" :class="{ nat: !c.kind }" type="number"
                      :value="(row as any)[c.key] === 0 ? '' : (row as any)[c.key]"
                      @input="onInput(ledgerRowKey(row), c.key, $event)" />
               <span v-else class="lg-nv" :class="{ empty: !(row as any)[c.key] }">{{ (row as any)[c.key] ? lgFmt((row as any)[c.key]) : '–' }}</span>
             </template>
           </td>
+          <td class="fp-fill" aria-hidden="true"></td>
         </tr>
-        <tr class="lg-filler" aria-hidden="true"><td :colspan="allCols.length + (selectable ? 1 : 0)"></td></tr>
+        <tr class="lg-filler" aria-hidden="true"><td :colspan="allCols.length + (selectable ? 1 : 0) + 1"></td></tr>
       </tbody>
       <tfoot>
         <tr>
@@ -202,6 +205,7 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
                         : c.key === 'balanceEnd' ? { color: sumEnd < 0 ? 'var(--hue-red)' : 'var(--hue-orange)' }
                         : undefined">{{ lgFmt(sums[c.key]) }}</span>
           </th>
+          <th class="fp-fill" aria-hidden="true"></th>
         </tr>
       </tfoot>
     </table>
@@ -217,7 +221,10 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
 .lg-table th, .lg-table td { border-bottom:1px solid var(--divider); box-sizing:border-box; padding:0; }
 .lg-table thead th { position:sticky; background:var(--surface-card); color:var(--text-muted); font-size:11.5px; font-weight:var(--fw-semibold); text-align:center; padding:0 8px; z-index:4; }
 .lg-grp-th { top:0; height:34px; }
-.lg-leaf-th { top:34px; height:38px; line-height:1.25; white-space:normal; }
+/* 费用列的列名与分组名不折行:费用列不给宽(只保底),列宽 = 整列最长的内容;
+   折行会让列缩到最窄、余宽跑进最右空列(.fp-fill),和改前「按内容撑开」不一样 */
+.lg-leaf-th { top:34px; height:38px; line-height:1.25; white-space:nowrap; }
+.lg-table thead th[colspan] { white-space:nowrap; }
 .lg-fix-th { top:0; z-index:6; vertical-align:middle; }
 /* 固定表头单元格须盖过横向滚动的分组/子列表头(否则 .lg-fix 的低 z-index 会让其被遮住) */
 .lg-table thead th.lg-fix-th { z-index:8; }
@@ -244,6 +251,8 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
 .lg-sumc.pos { color:var(--hue-orange); }
 .lg-ni { width:100%; box-sizing:border-box; border:1px solid transparent; background:transparent; text-align:right; font-size:12px; padding:3px 6px; outline:none; color:var(--text-primary); font-family:var(--font-mono); border-radius:var(--radius-sm); }
 .lg-ni.l { text-align:left; }
+/* 费用列(不给宽)里的输入框按自身默认宽撑列:width:100% 的输入框不撑列,有了最右空列费用列就会缩到只剩保底宽 */
+.lg-ni.nat { width:auto; min-width:100%; }
 .lg-ni:focus { background:var(--accent-blue); border-color:var(--hue-blue); }
 .lg-ni::-webkit-outer-spin-button, .lg-ni::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
 

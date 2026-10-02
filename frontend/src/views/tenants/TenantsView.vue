@@ -27,6 +27,7 @@ import TenantDrawer from './TenantDrawer.vue'
 import TenantNewDialog from './TenantNewDialog.vue'
 import { iconFor } from '@/components/ds/icon'
 import { useAuthStore } from '@/stores/auth'
+import { textW } from '@/composables/useWideTable'
 
 const auth = useAuthStore()
 
@@ -110,9 +111,23 @@ const childCount = computed(() => {
   return m
 })
 
+// 企业名称列宽(列宽铁律 §4,2026-10-02):按全部租户估(不按当前页、不随筛选),翻页 / 搜索 / 切期别列不挪位;
+// 余宽落进行末空列。一格 = (子租户:缩进 16 + └ + 10)+ 头像 30 + 10 + max(名 14px [+ 6 + 「+N」签], 副行 11px),
+// 外包的 240 封顶照旧;左右内边距 32。数据没到(骨架)时给封顶宽。
+const nameColW = computed(() => {
+  let w = 0
+  for (const t of tenants.value) {
+    const kids = childCount.value.get(t.id) ?? 0
+    const line1 = textW([t.companyName], 14, 0) + (kids > 0 ? 6 + textW([`+${kids}`], 11, 12) : 0)
+    const line2 = textW([t.parentName ? `关联:${t.parentName}` : `FP-T-${1000 + t.id}`], 11, 0)
+    w = Math.max(w, (t.parentName != null ? 16 + textW(['└'], 14, 0) + 10 : 0) + 40 + Math.max(line1, line2))
+  }
+  return Math.min(240, w || 240) + 32
+})
+
 const TABLE_COLUMNS = computed(() => [
   {
-    key: 'companyName', header: '企业名称',
+    key: 'companyName', header: '企业名称', width: `${nameColW.value}px`,
     sortValue: (r: TenantDTO) => r.companyName,
     render: (r: TenantDTO) => {
       const isChild = r.parentName != null

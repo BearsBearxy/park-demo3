@@ -1137,6 +1137,9 @@ async function delPool() {
                 <th v-tip="'加减度数（进分摊标准的分子，不进应分摊）站在本月的生效值；点格子去计费参数页改'">加减度数</th>
                 <th v-if="showPaid" v-tip="'租户实际缴回的公摊额 —— 待账单模块落地后从账单侧回填'">实收</th>
                 <th v-if="showPl" v-tip="'实收 − 应分摊 —— 待账单模块落地后从账单侧回填'">盈亏</th>
+                <!-- 最右空列 .fp-fill(base.css;LIST-PAGE §4 列宽铁律):表格比内容宽出来的余宽全落在这一列,不再按比例摊到各列。
+                     分组行、逐表行、段行、合计行末尾各一格 -->
+                <th class="fp-fill" aria-hidden="true"></th>
               </tr>
             </thead>
             <tbody>
@@ -1155,6 +1158,7 @@ async function delPool() {
                   <td v-for="s in segCols" :key="s.k"></td>
                   <td class="pl-money"><span class="pl-sumc" :class="{ empty: bandSums.get(b.label)?.cost == null }">{{ fmtFixed2(bandSums.get(b.label)?.cost) }}</span></td>
                   <td :colspan="tailN"></td>
+                  <td class="fp-fill" aria-hidden="true"></td>
                 </tr>
                 <template v-if="!collapsed.has(b.label)">
                   <template v-for="r in b.rows" :key="r.ruleId">
@@ -1227,6 +1231,7 @@ async function delPool() {
                           <td v-if="showPaid" :rowspan="spanOf(r)"><span class="pl-nv empty">–</span></td>
                           <td v-if="showPl" :rowspan="spanOf(r)"><span class="pl-nv empty">–</span></td>
                         </template>
+                        <td class="fp-fill" aria-hidden="true"></td>
                       </tr>
                       <!-- 段行(row 模式点 › 出):池级格已被上面的 rowspan 盖住,这里只出前面几格 -->
                       <tr v-for="sg in segsOf(r, ln)" :key="sg.lab" class="pl-seg">
@@ -1235,6 +1240,7 @@ async function delPool() {
                         <td colspan="4" class="sep"></td>
                         <td class="sep"><span class="pl-nv" :class="{ empty: sg.v == null }">{{ fmtFixed2(sg.v) }}</span></td>
                         <td v-if="costPerLine(r)" class="pl-money"></td>
+                        <td class="fp-fill" aria-hidden="true"></td>
                       </tr>
                     </template>
                   </template>
@@ -1251,6 +1257,7 @@ async function delPool() {
                 <th v-for="s in segCols" :key="s.k"></th>
                 <th class="pl-money"><span class="pl-foot-v">{{ fmtFixed2(foot.cost) }}</span></th>
                 <th :colspan="tailN"></th>
+                <th class="fp-fill" aria-hidden="true"></th>
               </tr>
             </tfoot>
           </table>

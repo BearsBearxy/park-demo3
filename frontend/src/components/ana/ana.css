@@ -87,6 +87,13 @@
 .ak-tbl td { padding:0 12px; height:38px; font-size:var(--fs-label); border-bottom:1px solid var(--divider); text-align:right; white-space:nowrap; }
 .ak-tbl td:first-child { text-align:left; color:var(--text-primary); }
 .ak-tbl tbody tr:hover td { background:var(--surface-card); }
+/* 行末空列(LIST-PAGE-SPEC §4 列宽铁律,2026-10-02):各列按内容定宽、挨在一起,表格比内容宽出来的
+   余宽落进每行末尾这一格,不再按比例摊进各列;表格放不下要横滚时它宽 0。
+   ::after 生成、不进 DOM(读屏读不到,等于 aria-hidden),这一族表的模板一个字不用动;行线、悬停底色照 td 补上。
+   表头吸顶、行态底色是各屏自己写的 —— 有就在那屏给 tr::after 补同一条(ChurnView / ExpiryView);
+   窄档把行改成 display:grid / block 的,要 content:none 撤掉(ExpiryView .exp-rc)。 */
+.ak-tbl tr::after { content:''; display:table-cell; width:100%; border-bottom:1px solid var(--divider); }
+.ak-tbl tbody tr:hover::after { background:var(--surface-card); }
 .ak-tbl .mono { font-family:var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-primary); }
 .ak-tbl .mut { color:var(--text-muted); }
 .ak-tbl .nm2 { display:flex; align-items:center; gap:9px; }

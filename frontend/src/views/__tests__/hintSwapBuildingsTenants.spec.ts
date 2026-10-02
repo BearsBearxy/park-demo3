@@ -243,3 +243,41 @@ describe('租户管理屏', () => {
     expect(w.find('.mx-tablewrap .fp-empty').text()).toBe('没有匹配的租户')
   })
 })
+
+// 列宽铁律(LIST-PAGE §4 / §7,2026-10-02):名称列按整列全部数据定宽(余宽归行末空列)。
+// 屏只把当前页(paged)交给 FPSortableTable,auto 布局按可见行排 —— 名称列不给宽的话翻页 / 搜索时宽跟着变,
+// 右边一排定宽列左右平移。jsdom 每页 10 行(useFitRows 的兜底),长名放第 11 条 = 第 2 页。
+describe('名称列按全部数据定宽(不按当前页)', () => {
+  const thStyle = (v: VueWrapper) => (v.find('.mx-tablewrap thead th').element as HTMLElement).style
+
+  // 破坏验证:nameColW 改成按 paged 算 → 第 1 页只有短名,72 + 39 = 111px,红;width 去掉 → '',红
+  it('❗楼栋:名称列 = 图标 40 + 最长名(含第 2 页)+ 内边距 32', async () => {
+    localStorage.setItem('fp-bd-layout', '台账列表')
+    const LONG = '三期西区十二号综合厂房'
+    const list = Array.from({ length: 11 }, (_, i) => ({ ...B, id: i + 1, name: i === 10 ? LONG : `${i + 1}号楼` }))
+    vi.mocked(buildingApi.list).mockResolvedValue(list)
+    vi.mocked(buildingApi.summary).mockResolvedValue(BS)
+    w = mount(BuildingsView, { attachTo: document.body })
+    await flushPromises()
+    expect(w.find('.mx-tablewrap tbody').text(), '前置:长名在第 2 页').not.toContain(LONG)
+    // 11 字 × 14 = 154 + 2 = 156(类型副行「厂房」11px 只有 24);32 + 40 + 156
+    expect(thStyle(w).width).toBe('228px')
+    expect(thStyle(w).minWidth).toBe('228px')
+  })
+
+  // 破坏验证:nameColW 改成按 paged / filtered 算 → 第 1 页只有「阿01」这类短名,40 + 编号副行 62 + 32 = 134px,红
+  it('❗租户:企业名称列 = 头像 40 + 最长名(含第 2 页)+ 内边距 32,封顶 240 照旧', async () => {
+    const LONG = '苏州某某精密机械有限公司'
+    const list: TenantDTO[] = Array.from({ length: 11 }, (_, i) => ({
+      ...T, id: i + 1, parentId: null, parentName: null, companyName: i === 10 ? LONG : `阿${String(i + 1).padStart(2, '0')}`,   // 族间按 zh 序:阿(a)在苏(s)前
+    }))
+    vi.mocked(tenantApi.list).mockResolvedValue(list)
+    vi.mocked(tenantApi.summary).mockResolvedValue(TS)
+    w = mount(TenantsView, { attachTo: document.body })
+    await flushPromises()
+    expect(w.find('.mx-tablewrap tbody').text(), '前置:长名在第 2 页').not.toContain(LONG)
+    // 12 字 × 14 = 168 + 2 = 170;40 + 170 = 210 < 240 不封顶;+ 32
+    expect(thStyle(w).width).toBe('242px')
+    expect(thStyle(w).minWidth).toBe('242px')
+  })
+})

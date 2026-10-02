@@ -7,6 +7,7 @@
 // 编辑模式(EDIT-MODE-SPEC v2):浏览态=完全只读,一切纯文本(DOM 无输入框);金额/备注行内输入、
 // 电表增删改、电价参数小节、导入、模拟填充全部收编辑态。viewer 永远浏览态。年月选择 years 数据驱动(同 PvMeterView)。
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
+import { textW } from '@/composables/useWideTable'
 import { onReactivated } from '@/composables/onReactivated'
 import { useDeepPeriod } from '@/composables/useDeepPeriod'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
@@ -327,12 +328,40 @@ const rows = computed<FlatRow[]>(() => {
           out.push({ t: 'split', key: `s${m.id}|${f.key}|${s.key}`, m, label: s.label, feeKey: f.key, subKey: s.key, e: entryOf(m.id, f.key, s.key) })
         }
         // 并存脏数据的合计行:展开后单列出,编辑态清空即删(否则黄警无处消除)
-        if (dirty) out.push({ t: 'dirty', key: `d${m.id}|${f.key}`, m, label: '合计行(与拆分并存,清空可删)', feeKey: f.key, subKey: '', e: entryOf(m.id, f.key) })
+        if (dirty) out.push({ t: 'dirty', key: `d${m.id}|${f.key}`, m, label: DIRTY_LABEL, feeKey: f.key, subKey: '', e: entryOf(m.id, f.key) })
       }
     }
   }
   return out
 })
+const DIRTY_LABEL = '合计行(与拆分并存,清空可删)'
+
+// ── 三张表的文字列宽(列宽铁律,2026-10-02):按内容定宽,余宽落进行末空列 .fp-fill。按字数估(textW),不量 DOM。
+// 「项目」按本月全部电表 × 全部费项 × 全部拆分子项算 —— 不只算展开着的那几行,展开 / 收起拆分时列不挪位。
+//   电表行 = 名(编辑态换成 ≤220 的输入框 + 删除钮 6+26)+ 6 + 类型签(11px 字 + 内边距 16 + 边框 2);
+//     有录入权的人浏览态也按输入框那一档预留(取两者大的)—— 进出编辑态列不挪位(LIST-PAGE §7);
+//   费项行 = 缩进 28(拆分 / 并存行 56)+ 箭头位 20 + 6 +(拆分 / 并存行图标 12 + 6)+ 字 + 6 + 「并存⚠」签(按有算,行间不跳);
+//   右侧 16 是格子右内边距。
+const itemW = computed(() => {
+  const ws = [textW(['项目'], 12, 32)]
+  for (const m of orderedMeters.value) {
+    ws.push(Math.max(canEntry.value ? 220 + 32 : 0, textW([m.name], 12.5, 0)) + 6 + textW([KIND_LABEL[m.kind]], 11, 18) + 32)
+    for (const f of FEE_ROWS_BY_KIND[m.kind]) {
+      ws.push(28 + 26 + textW([f.label], 12.5, 0) + 6 + textW(['并存⚠'], 11, 14) + 16)
+      for (const s of f.subs ?? []) ws.push(56 + 26 + 18 + textW([s.label], 12.5, 0) + 16)
+      if (f.subs) ws.push(56 + 26 + 18 + textW([DIRTY_LABEL], 12.5, 0) + 16)
+    }
+  }
+  return Math.max(...ws)
+})
+// 「备注」:本月全部备注里最长的一条;编辑态是输入框,有录入权的人浏览态也至少给 200(进出编辑态列不挪位)
+const noteW = computed(() => Math.max(textW(['备注', ...(entries.value ?? []).map(e => e.note ?? '')], 12.5, 32), canEntry.value ? 200 : 0))
+// 派生指标「公式」:全部公式里最长的一条
+const formulaW = computed(() => textW(['公式', ...(metrics.value ?? []).map(m => m.formulaText)], 12, 32))
+// 电价参数「参数」:缩进 28 + 占位 20 + 6 + 名 + 6 + 单位(11px)+ 右内边距 16
+const cfgW = computed(() => Math.max(textW(['参数'], 12, 32),
+  ...(cfgs.value ?? []).map(c => 28 + 26 + textW([CFG_META[c.cfgKey]?.label ?? c.cfgKey], 12.5, 0) + 6 + textW([CFG_META[c.cfgKey]?.unit ?? ''], 11, 0) + 16)))
+
 const fmtQty = (r: DataRow) => {
   const q = r.derived ? r.dQty : r.e?.qty
   return q == null ? '—' : fq(q)
@@ -692,9 +721,9 @@ function fmtMetric(mt: ElecMetricDTO): string {
         {{ year }} 年 {{ month }} 月还没有费项
       </FPEmpty>
       <table v-else class="ec-table">
-        <colgroup><col /><col style="width:130px" /><col style="width:110px" /><col style="width:90px" /><col /></colgroup>
+        <colgroup><col :style="{ width: itemW + 'px' }" /><col style="width:130px" /><col style="width:110px" /><col style="width:90px" /><col :style="{ width: noteW + 'px' }" /><col /></colgroup>
         <thead>
-          <tr><th>项目</th><th class="num">金额(元)</th><th class="num">电量(kWh)</th><th>来源</th><th>备注</th></tr>
+          <tr><th>项目</th><th class="num">金额(元)</th><th class="num">电量(kWh)</th><th>来源</th><th>备注</th><th class="fp-fill" aria-hidden="true"></th></tr>
         </thead>
         <tbody>
           <tr v-for="r in rows" :key="r.key"
@@ -758,6 +787,7 @@ function fmtMetric(mt: ElecMetricDTO): string {
                 <span v-else-if="r.e?.note" class="ec-notetxt" v-tip="r.e.note">{{ r.e.note }}</span>
               </td>
             </template>
+            <td class="fp-fill" aria-hidden="true"></td>
           </tr>
         </tbody>
       </table>
@@ -774,9 +804,9 @@ function fmtMetric(mt: ElecMetricDTO): string {
         </div>
       </div>
       <table class="ec-table">
-        <colgroup><col style="width:200px" /><col style="width:150px" /><col /><col style="width:240px" /></colgroup>
+        <colgroup><col style="width:200px" /><col style="width:150px" /><col :style="{ width: formulaW + 'px' }" /><col style="width:240px" /><col /></colgroup>
         <thead>
-          <tr><th>指标</th><th class="num">本月值</th><th>公式</th><th>缺失数据源</th></tr>
+          <tr><th>指标</th><th class="num">本月值</th><th>公式</th><th>缺失数据源</th><th class="fp-fill" aria-hidden="true"></th></tr>
         </thead>
         <tbody>
           <tr v-for="mt in metrics" :key="mt.key" :class="{ miss: mt.missing.length > 0 }">
@@ -784,6 +814,7 @@ function fmtMetric(mt: ElecMetricDTO): string {
             <td class="num mval" :class="{ neg: (mt.value ?? 0) < 0, zero: mt.value == null }">{{ fmtMetric(mt) }}</td>
             <td class="formula" v-tip="mt.formulaText">{{ mt.formulaText }}</td>
             <td class="missing" v-tip="mt.missing.join('；') || undefined">{{ mt.missing.join('；') }}</td>
+            <td class="fp-fill" aria-hidden="true"></td>
           </tr>
         </tbody>
       </table>
@@ -800,9 +831,9 @@ function fmtMetric(mt: ElecMetricDTO): string {
         </div>
       </div>
       <table class="ec-table">
-        <colgroup><col /><col style="width:170px" /><col style="width:170px" /><col style="width:190px" /></colgroup>
+        <colgroup><col :style="{ width: cfgW + 'px' }" /><col style="width:170px" /><col style="width:170px" /><col style="width:190px" /><col /></colgroup>
         <thead>
-          <tr><th>参数</th><th class="num">{{ month }}月值</th><th class="num">长期默认值</th><th class="num">生效值</th></tr>
+          <tr><th>参数</th><th class="num">{{ month }}月值</th><th class="num">长期默认值</th><th class="num">生效值</th><th class="fp-fill" aria-hidden="true"></th></tr>
         </thead>
         <tbody>
           <tr v-for="c in cfgs" :key="c.cfgKey">
@@ -833,6 +864,7 @@ function fmtMetric(mt: ElecMetricDTO): string {
               {{ c.value != null ? c.value : '未配置' }}
               <span v-if="c.source" class="ec-cfgsrc">{{ c.source === 'month' ? '当月' : '默认' }}</span>
             </td>
+            <td class="fp-fill" aria-hidden="true"></td>
           </tr>
         </tbody>
       </table>
@@ -916,7 +948,7 @@ function fmtMetric(mt: ElecMetricDTO): string {
 .ec-cardtitle { font-size: 14.5px; font-weight: var(--fw-semibold); color: var(--text-primary); }
 .ec-cardsub { font-size: var(--fs-label); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* ── 表格:定宽列律(colgroup+fixed,至多弹性列吸收余宽)+行高等高铁律(46px,内容 ellipsis 不撑行) ── */
+/* ── 表格:定宽列律(colgroup+fixed,各列按内容定宽,余宽落进行末空列 .fp-fill,LIST-PAGE §4 2026-10-02)+行高等高铁律(46px,内容 ellipsis 不撑行) ── */
 .ec-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-family: var(--font-sans); }
 .ec-table th { position: sticky; top: 0; background: var(--surface-white); padding: 8px 16px; text-align: left; font: var(--type-label); font-weight: var(--fw-regular); color: var(--text-muted); white-space: nowrap; border-bottom: 1px solid var(--divider); }
 .ec-table th.num { text-align: right; }

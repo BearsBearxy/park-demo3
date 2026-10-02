@@ -8,6 +8,7 @@
 // 失败中断报错并刷新已提交部分)。层份键仅二期页签开放;viewer 只读查看(编辑模式按钮走 canEdit)。
 // S21:价目键源=计费参数注册表(coefBookLogic.COEF_KEYS),读 GET /params?ym&key= 写 PUT /params;值控件按 valueKind(enum→Select)。
 import { computed, ref, watch, onUnmounted } from 'vue'
+import { textW } from '@/composables/useWideTable'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { paramsApi, type ParamRowDTO } from '@/api/params'
 import { allocApi, type AllocPoolRowDTO, type AllocRuleDTO } from '@/api/alloc'
@@ -187,6 +188,9 @@ const filtered = computed(() => rowsAll.value.filter(r =>
   r.phase === +phase.value
   && (q.value.trim() === '' || r.tenantName.includes(q.value.trim()))))
 const groups = computed(() => groupByBuilding(filtered.value, r => r.bld.main))
+// 租户列(列宽铁律,2026-10-02):按全部户名定宽(12.5px 粗体 + 内边距 16),余宽落进行末空列,不再是唯一弹性列。
+// 按 rowsAll 算:换期页签、搜索列不挪位。
+const tenantW = computed(() => Math.max(textW(['租户'], 11.5, 16), ...rowsAll.value.map(r => textW([r.tenantName], 12.5, 16))))
 const nameOf = (id: number) => rowsAll.value.find(r => r.tenantId === id)?.tenantName ?? `#${id}`
 // 搜索缩小可见集时同步剪掉隐藏选中(全选/应用都只作用当前筛选可见行)
 watch(q, () => {
@@ -442,10 +446,11 @@ async function onClose() {
           <table class="cb-table">
             <colgroup>
               <col v-if="editMode" style="width:36px" />
-              <col /><!-- 租户:唯一弹性列 -->
+              <col :style="{ width: tenantW + 'px' }" /><!-- 租户:按内容定宽 -->
               <col style="width:150px" />
               <col :style="{ width: curMeta.enumOptions ? '320px' : '230px' }" /><!-- 枚举字典文字长 -->
               <col v-if="editMode" :style="{ width: curMeta.enumOptions ? '260px' : '170px' }" />
+              <col /><!-- 行末空列 .fp-fill:余宽落这里 -->
             </colgroup>
             <thead>
               <tr>
@@ -456,6 +461,7 @@ async function onClose() {
                 <th class="l">楼栋</th>
                 <th v-tip="'版本链解析(与派生引擎同口径);「例外」=户级行命中,灰体=继承分区/全园默认'">当前生效值 · 生效自</th>
                 <th v-if="editMode" v-tip="`暂存新值(自 ${effYm} 起生效);×=单行撤销`">暂存新值</th>
+                <th class="fp-fill" aria-hidden="true"></th>
               </tr>
             </thead>
             <tbody>
@@ -464,6 +470,7 @@ async function onClose() {
                   <td class="l" :colspan="editMode ? 5 : 3">
                     <span class="cb-band-lbl">{{ g.name }}</span><span class="cb-band-sub">{{ g.count }} 户</span>
                   </td>
+                  <td class="fp-fill" aria-hidden="true"></td>
                 </tr>
                 <tr v-for="r in g.rows" :key="r.tenantId"
                     :class="{ sel: selected.has(r.tenantId) }"
@@ -499,10 +506,11 @@ async function onClose() {
                     </span>
                     <span v-else class="cb-txt dim ct-r">–</span>
                   </td>
+                  <td class="fp-fill" aria-hidden="true"></td>
                 </tr>
               </template>
               <tr v-if="filtered.length === 0">
-                <td class="cb-noro" :colspan="editMode ? 5 : 3">本期无匹配租户 —— 换期页签或搜索条件试试</td>
+                <td class="cb-noro" :colspan="editMode ? 6 : 4">本期无匹配租户 —— 换期页签或搜索条件试试</td>
               </tr>
             </tbody>
           </table>

@@ -369,7 +369,8 @@ const bsTable = computed<BsTblRow[]>(() => {
 
 <style scoped>
 /* 点环扇区定位行:2s 高亮渐隐(样式同深链 row-flash 观感) */
-.fb-flash td { animation: fbflash var(--dur-highlight) var(--ease-standard); }
+/* ::after = .ak-tbl 的行末空列(ana.css):跟着行一起闪,高亮才铺满整行 */
+.fb-flash td, .fb-flash::after { animation: fbflash var(--dur-highlight) var(--ease-standard); }
 @keyframes fbflash { 0% { background: var(--accent-blue); } 100% { background: transparent; } }
 
 /* 工具条标签 + v2 紧凑页头/图例(复刻 AnaShell .anx-lbl 观感) */

@@ -6,9 +6,10 @@
 // 容量/单价行内乐观更新(BillsView setPayCo 模式:即时更新,失败回滚 + 失败回执);
 // 收益口径=self_use × price_snap(录入时快照,调站价不漂移历史)。viewer 全只读。
 // 编辑模式遵 EDIT-MODE-SPEC v2:浏览态完全只读——常量(容量/单价)行内改、电站增删、导入、抽屉抄表记录增删改全部收编辑态。
-// 布局遵 LIST-PAGE-SPEC 列宽铁律(定宽列+唯一弹性列,fixed 布局);
+// 布局遵 LIST-PAGE-SPEC 列宽铁律(fixed 布局,各列按内容定宽,余宽落进行末空列 .fp-fill,2026-10-02);
 // ponytail: 13 站固定量级,不上 useFitRows/FPPager 分页机(短窗时卡片内滚动兜底),站数破 30 再上。
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
+import { textW } from '@/composables/useWideTable'
 import { onReactivated } from '@/composables/onReactivated'
 import { useDeepPeriod } from '@/composables/useDeepPeriod'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
@@ -258,6 +259,13 @@ const rows = computed(() =>
     .filter(s => phase.value === 'all' || s.phase === Number(phase.value))
     .map(s => ({ st: s, ...(aggByStation.value.get(s.id) ?? { gen: 0, self: 0, grid: 0, revenue: 0, count: 0 }) })),
 )
+// 电站名列(列宽铁律,2026-10-02):按全部电站定宽(不按期别页签筛),余宽落进行末空列 —— 换页签列不挪位。
+// 一格 = 名(14px)+ 期签(只在「全部」页签画,宽一律算上)/「未装表」签(各 8 + 11px 字 + 14);左右内边距 32。
+// 编辑态是输入框,至少给 200;有档案编辑权的人浏览态也按 200 预留 —— 进出编辑态列不挪位(LIST-PAGE §7)。
+const stNameW = computed(() => Math.max(textW(['电站(楼栋)'], 12, 32), canMaster.value ? 200 : 0,
+  ...(stations.value ?? []).map(st => textW([st.name], 14, 32)
+    + 8 + textW([PHASE_LABEL[st.phase] ?? ''], 11, 14)
+    + (st.metered ? 0 : 8 + textW(['未装表'], 11, 14)))))
 
 // PUT 需要全量字段:漏一个就等于把它写成 null。收口成一个函数,加字段只改这里 ——
 // 之前两处各自内联拼 payload,改容量会把板数清空,而且是静默的。
@@ -605,7 +613,7 @@ async function onTemplate() {
             改前 loadReadings 连 try/catch 都没有,失败后旧数据顶着新期标继续显示(对抗复查坐实);
             失败态下 readings 被清成 [],所以空状态必须排在它后面,不然「没读到」会被说成「真的没有」。
          ② 本月一条读数都没有、又不在能写的编辑态 → 空状态(编辑态要留着表格:点电站行进抽屉录入、行内改档案)。
-         ③ 主表:一行一电站;列宽铁律(fixed 布局,电站名=唯一弹性列) -->
+         ③ 主表:一行一电站;列宽铁律(fixed 布局,各列按内容定宽,余宽落进行末空列 .fp-fill,LIST-PAGE §4 2026-10-02) -->
     <FPLoadError v-if="loadErr" :sub="loadErrSub" @retry="retryLoad">
       <div class="msg">
         <div v-if="readErr">{{ year }} 年 {{ month }} 月的读数没读到</div>
@@ -620,7 +628,7 @@ async function onTemplate() {
       <div class="pm-tablewrap">
         <table class="pm-table">
           <colgroup>
-            <col /><!-- 电站名:唯一弹性列吸收余宽 -->
+            <col :style="{ width: stNameW + 'px' }" /><!-- 电站名:按内容定宽 -->
             <col style="width:110px" />
             <col style="width:78px" /><!-- 板数 -->
             <col style="width:88px" /><!-- 单块 W -->
@@ -630,6 +638,7 @@ async function onTemplate() {
             <col style="width:120px" />
             <col style="width:120px" />
             <col style="width:84px" />
+            <col /><!-- 行末空列 .fp-fill:余宽落这里 -->
           </colgroup>
           <thead>
             <tr>
@@ -643,6 +652,7 @@ async function onTemplate() {
               <th class="num">上网</th>
               <th class="num">消纳收益</th>
               <th class="num">抄表条数</th>
+              <th class="fp-fill" aria-hidden="true"></th>
             </tr>
           </thead>
           <tbody>
@@ -711,6 +721,7 @@ async function onTemplate() {
               <td class="num" :class="{ zero: r.grid === 0 }">{{ fq(r.grid) }}</td>
               <td class="num rev" :class="{ zero: r.revenue === 0 }">{{ fy(r.revenue) }}</td>
               <td class="num" :class="{ zero: r.count === 0 }">{{ r.count }}</td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
           </tbody>
         </table>

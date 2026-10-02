@@ -27,6 +27,7 @@ import FPSortableTable, { type SortableColumn } from '@/components/fp/FPSortable
 import { useFitRows } from '@/components/fp/useFitRows'
 import FPPager from '@/components/fp/FPPager.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
+import { textW } from '@/composables/useWideTable'
 import { iconFor } from '@/components/ds/icon'
 import { useAuthStore } from '@/stores/auth'
 import { useFormSheet } from '@/composables/useFormSheet'
@@ -121,6 +122,16 @@ const fmtTime = (s: string) => (s ? s.replace('T', ' ').slice(0, 16) : '—')
 // S 档行卡次级字段:角色拼一串,口径与角色列的悬停说明一致(不另造格式)
 const roleText = (u: UserDTO) => (u.roles.length ? u.roles.map(r => r.name).join(' · ') : '未分配角色')
 
+// 角色列宽(列宽铁律 §4,2026-10-02):按全部账号里最宽的一组角色签估(不按当前页、不随筛选),翻页 / 筛选列不挪位。
+// 签 = 内边距 2×2 + 圆点 6 + 6 + 12px 字;签间 6;没角色写「未分配角色」(14px);左右内边距 32。数据没到时不给宽。
+const roleColW = computed(() => {
+  const all = users.value ?? []
+  if (!all.length) return undefined
+  return `${32 + Math.max(...all.map(u => (u.roles.length
+    ? u.roles.reduce((s, r) => s + textW([r.name], 12, 16), 0) + 6 * (u.roles.length - 1)
+    : textW(['未分配角色'], 14, 0))))}px`
+})
+
 const columns = computed<SortableColumn<UserDTO>[]>(() => {
   const cols: SortableColumn<UserDTO>[] = [
     {
@@ -151,8 +162,8 @@ const columns = computed<SortableColumn<UserDTO>[]>(() => {
       ]),
     },
     {
-      // 唯一的弹性列(列宽铁律:至多一列不定宽,吸收余宽)
-      key: 'roles', header: '角色',
+      // 按全部账号里最宽的一组角色签定宽(roleColW);余宽归表格最右的空列(列宽铁律,2026-10-02)
+      key: 'roles', header: '角色', width: roleColW.value,
       sortValue: (u: UserDTO) => u.roles.map(r => r.name).join(','),
       render: (u: UserDTO) => u.roles.length
         ? withDirectives(h('span', {

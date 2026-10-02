@@ -7,7 +7,7 @@
 // 改造三:维护费块公摊按纸单合并成一行(五项,多池加总,构成进费项名悬浮),金额一分不改。
 // 列表照 PoolLedgerView 手法(sticky 表头/40px 行(M↓ 34)/tfoot 钉底/zone Segmented)+LIST-PAGE-SPEC 列宽铁律;
 // 账外户(offbook)整行降淡。写操作 admin(viewer 隐藏),GET 全员。
-import { computed, h, nextTick, onDeactivated, onMounted, ref, watch } from 'vue'
+import { computed, h, nextTick, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -52,6 +52,7 @@ import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPStat from '@/components/fp/FPStat.vue'
 import FPMoreMenu from '@/components/fp/FPMoreMenu.vue'
 import { useViewport } from '@/composables/useViewport'
+import { textW } from '@/composables/useWideTable'
 import { useTopBarAction } from '@/composables/useTopBarAction'
 import FPAlertPanel, { type AlertGroup } from '@/components/fp/FPAlertPanel.vue'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
@@ -468,6 +469,22 @@ const ST_LABEL: Record<TenantStatus, string> = {
 
 const bulk = computed(() => canIssue.value && bulkMode.value)
 function exitBulk() { bulkMode.value = false; selected.value = new Set() }
+
+// 主表「位置」列(列宽铁律,2026-10-02):放得下时按本月全部位置串定宽,余宽落进行末空列;
+// 放不下时(定宽列 + 位置最长串 > 表格区宽)回到原排法 —— 位置吸收剩余、省略号 + 悬停看全文,空列 0 宽,
+// 窄档照旧由 M↓ 的 min-width:980 兜底横滚。按 tenantRows(整月全部户)算:换页签、搜索列不挪位。
+const BN_FIXED = 220 + 130 * 3 + 210   // 与下方 colgroup 同源:租户 + 合计/月租/状态 + 警告(勾选列另算 36)
+const locWant = computed(() => textW(['位置', ...tenantRows.value.map(r => r.premiseText || '–')], 14, 16))
+const wrapW = ref(0)
+let wrapRo: ResizeObserver | null = null
+watch(wrapEl, el => {
+  wrapRo?.disconnect(); wrapRo = null
+  if (!el || typeof ResizeObserver === 'undefined') return
+  wrapRo = new ResizeObserver(() => { wrapW.value = el.clientWidth })
+  wrapRo.observe(el)
+})
+onBeforeUnmount(() => wrapRo?.disconnect())
+const locTight = computed(() => wrapW.value > 0 && wrapW.value - BN_FIXED - (bulk.value ? 36 : 0) < locWant.value)
 // 换期/换月自动退出:选中集是 tenantId,切走后残留项不可见但仍在集里,再点「确认选中」会误伤
 // 退出编辑态同理:选择态是编辑态的产物,留着回浏览态会有"看不见的选中"
 watch([phase, year, month], exitBulk)
@@ -889,6 +906,32 @@ function archText(l: BillNoticeLineDTO | null | undefined): string | null {
   if (n == null) return null
   return n === '' ? `档案 ${month.value} 月为空置` : `档案现归 ${n}`   // 比的是水电那个月的档案
 }
+// 宿舍子表「房号」列(列宽铁律,2026-10-02):按本单全部房号定宽,余宽落进行末空列,不再是唯一弹性列。
+// 一格 = 房号(电表带分时段后缀)+ 档案标记(圆点 6 + 间距 4 + 12px 字,与房号隔 4);兜底行写的是费项名。
+function roomColW(sub: { rooms: { room: string; main: BillNoticeLineDTO }[]; extras: BillNoticeLineDTO[] }, seg: boolean): number {
+  const rooms = sub.rooms.map(r => {
+    const a = archText(r.main)
+    return textW([r.room + (seg && r.main.seg ? '·' + segLabel(r.main.seg) : '')], 12, 16) + (a ? textW([a], 12, 0) + 14 : 0)
+  })
+  return Math.max(textW(['房号'], 11, 16), ...rooms, ...sub.extras.map(l => textW([billFeeLabel(l.feeKey)], 12, 16)))
+}
+const dormElecRoomW = computed(() => roomColW(dorm.value.elec, true))
+// 水电费明细「备注」列(列宽铁律,2026-10-02):按本单全部备注定宽,余宽落进行末空列 —— 取价审计那根 30 跟着贴在备注后面,
+// 不再被推到抽屉右沿。一格 = 档案标记(圆点 6 + 4 + 12px 字,再隔 4)+ 备注字(12px)+ 手写圆点 7 + 4 + 编辑钮 20 + 4;
+// 正在改的那一行是输入框(给 240)+ 两颗 20 的钮。编辑钮与编辑行按「有没有权限」(mayRun)预留,不看眼下在不在编辑态、
+// 有没有哪行正在改 —— 点铅笔 / 进出编辑态时备注列和后面的取价审计列不挪位(LIST-PAGE §7)。
+const utilNoteW = computed(() => {
+  const ws = [textW(['备注'], 11, 16)]
+  for (const r0 of utilRows.value) {
+    if (r0.t !== 'line' && r0.t !== 'merge') continue
+    const c = noteCell(r0.nk, r0.t === 'line' ? r0.l.note : r0.m.note)
+    const arch = r0.t === 'line' ? archText(r0.l) : null
+    ws.push(textW([c.text], 12, 16) + (arch ? textW([arch], 12, 0) + 14 : 0) + (c.overridden ? 11 : 0) + (mayRun.value ? 24 : 0))
+  }
+  if (mayRun.value) ws.push(16 + 240 + 2 * 24)
+  return Math.max(...ws)
+})
+const dormWaterRoomW = computed(() => roomColW(dorm.value.water, false))
 // 路灯/绿化水公摊格悬浮:面积×分摊单价=金额(与主表同一套判定,该格只有金额没法心算)
 function shareTitle(l: BillNoticeLineDTO | null): string | undefined {
   if (!l) return undefined
@@ -1107,16 +1150,17 @@ function onMore(key: string) {
 
         <div ref="wrapEl" class="bn-wrap" :aria-busy="veil">
           <!-- .bulk 挂到表上:S 档首列 sticky 的 left 偏移随勾选列进出而不同(0 / 36px),CSS 要认得出模式 -->
-          <table class="bn-table" :class="{ bulk }">
+          <table class="bn-table" :class="{ bulk, 'bn-tight': locTight }">
             <!-- table-layout:fixed ⇒ col 必须与列数逐一对齐,缺一个后面全体串位。 -->
             <colgroup>
               <col v-if="bulk" style="width:36px" />
               <col style="width:220px" />
-              <col /><!-- 位置:唯一弹性列 -->
+              <col :style="locTight ? undefined : { width: locWant + 'px' }" /><!-- 位置:按内容定宽;放不下时吸收剩余(locTight) -->
               <col style="width:130px" />
               <col style="width:130px" />
               <col style="width:130px" /><!-- 状态:签 + 编辑态悬停出的「确认」 -->
               <col style="width:210px" /><!-- 警告:「首类 +N」+ 行尾 ›。最长类名「表绑的合同上个月用不上」11 字 -->
+              <col :style="locTight ? { width: '0px' } : undefined" /><!-- 行末空列 .fp-fill:余宽落这里 -->
             </colgroup>
             <thead>
               <tr>
@@ -1130,6 +1174,7 @@ function onMore(key: string) {
                 <!-- 格里的类名逐字抄 WARN_COPY 的 title:写成别的说法,用户按列头的词去屏上找就对不上号
                      (对抗复查 2026-09-23)。 -->
                 <th class="l" v-tip="'生成本月催缴单时查出的(表没挂上合同 / 房号两边对不上 / 上个月缺价…)和收款缺口;写第一类 +其余几类,悬停那一格看全部'">警告</th>
+                <th class="fp-fill" aria-hidden="true"></th>
               </tr>
             </thead>
             <tbody>
@@ -1146,6 +1191,7 @@ function onMore(key: string) {
                   <td class="bn-mc"><span class="bn-sumc">{{ fmt2(g.total) }}</span></td>
                   <td><span class="bn-nv">{{ fmt2(groupRent(g)) }}</span></td>
                   <td :colspan="2"></td>
+                  <td class="fp-fill" aria-hidden="true"></td>
                 </tr>
                 <!-- 批量模式下整行点击=切勾选(已进入选择语境,再弹抽屉会打架);常态点击=开明细 -->
                 <template v-if="!collapsed.has(gKey(g))">
@@ -1180,11 +1226,12 @@ function onMore(key: string) {
                         <component :is="iconFor('chevron-right')" :size="14" class="bn-go" />
                       </span>
                     </td>
+                    <td class="fp-fill" aria-hidden="true"></td>
                   </tr>
                 </template>
               </template>
               <tr v-if="filtered.length === 0">
-                <td class="bn-noro" :colspan="bulk ? 7 : 6">本期无匹配租户 —— 换期、页签或搜索词试试</td>
+                <td class="bn-noro" :colspan="bulk ? 8 : 7">本期无匹配租户 —— 换期、页签或搜索词试试</td>
               </tr>
             </tbody>
             <tfoot>
@@ -1196,6 +1243,7 @@ function onMore(key: string) {
                 <th><span class="bn-foot-v">{{ fmt2(footRent) }}</span></th>
                 <th></th>
                 <th></th>
+                <th class="fp-fill" aria-hidden="true"></th>
               </tr>
             </tfoot>
           </table>
@@ -1350,7 +1398,7 @@ function onMore(key: string) {
                        合并行 电梯用电(4)/线路损耗(4)/路灯公摊(4)/绿化水公摊(5)/楼层公共、消防照明(9,「、」也是全角)
                      最长者=「楼层公共、消防照明」9 全角字。计算依据:font-size 12px、CJK 进距 1em ⇒ 9×12=108px,
                      加 td padding 0 8px 共 16px = 124px,取 128px 留 4px 字体余量。
-                     备注(唯一弹性列)因此少 30px,1920 视口下仍不截:抽屉 min(1720px,96vw)=1720 − body padding 44 − 竖滚动条≈15
+                     (2026-10-02 起备注按内容定宽、余宽归行末空列,下面这笔账只留作当时的依据)备注当时因此少 30px,1920 视口下仍不截:抽屉 min(1720px,96vw)=1720 − body padding 44 − 竖滚动条≈15
                      = 1661,减 bn-dwrap 边框 2 ⇒ 表宽 1659;定宽列合计 856 ⇒ 备注 803px。
                      主表最长备注「管理费基数=Σ段 18920.0000(总示数 18921.0000)」35 字 ≤ 35×12+16=436px,余量充足。 -->
                 <col style="width:120px" />
@@ -1361,8 +1409,9 @@ function onMore(key: string) {
                 <col style="width:96px" /><!-- 用量:刀D 后带单位后缀「3,200 ㎡」「1,867.89 元」,84px 会截 -->
                 <col style="width:92px" /><!-- 单价:最少可验算位数,大额行要显到 8 位「0.63586875」 -->
                 <col style="width:94px" />
-                <col /><!-- 备注:唯一弹性列 -->
+                <col :style="{ width: utilNoteW + 'px' }" /><!-- 备注:按内容定宽 -->
                 <col style="width:30px" />
+                <col /><!-- 行末空列 .fp-fill:余宽落这里 -->
               </colgroup>
               <thead>
                 <tr>
@@ -1380,12 +1429,14 @@ function onMore(key: string) {
                   <th>金额(元)</th>
                   <th class="l">备注</th>
                   <th v-tip="'取价审计链:price_key/作用域/价目月/判定分支'"></th>
+                  <th class="fp-fill" aria-hidden="true"></th>
                 </tr>
               </thead>
               <tbody>
                 <template v-for="(r0, i) in utilRows" :key="i">
                   <tr v-if="r0.t === 'band'" class="bn-band">
                     <td :colspan="12" class="l"><span class="bn-band-lbl">{{ r0.label }}</span></td>
+                    <td class="fp-fill" aria-hidden="true"></td>
                   </tr>
                   <tr v-else-if="r0.t === 'line'">
                     <td><span class="bn-nv dim">{{ r0.no }}</span></td>
@@ -1424,6 +1475,7 @@ function onMore(key: string) {
                         <component :is="iconFor('info')" :size="13" />
                       </span>
                     </td>
+                    <td class="fp-fill" aria-hidden="true"></td>
                   </tr>
                   <!-- 合并行(纸单口径:一项一行,多池/多表加总);表/段留 –,构成逐条在悬浮里(表格也挂,
                        用户找「哪几块表相加」时手会落在表列上) -->
@@ -1458,6 +1510,7 @@ function onMore(key: string) {
                       </div>
                     </td>
                     <td></td>
+                    <td class="fp-fill" aria-hidden="true"></td>
                   </tr>
                   <tr v-else :class="r0.t === 'part' ? 'bn-part' : 'bn-sub'">
                     <td :colspan="9" class="l">
@@ -1465,6 +1518,7 @@ function onMore(key: string) {
                     </td>
                     <td><span class="bn-sumc">{{ fmt2(r0.amount) }}</span></td>
                     <td :colspan="2"></td>
+                    <td class="fp-fill" aria-hidden="true"></td>
                   </tr>
                 </template>
               </tbody>
@@ -1478,7 +1532,7 @@ function onMore(key: string) {
               <table class="bn-dtable">
                 <colgroup>
                   <col style="width:38px" />
-                  <col /><!-- 房号:唯一弹性列 -->
+                  <col :style="{ width: dormElecRoomW + 'px' }" /><!-- 房号:按内容定宽 -->
                   <col style="width:76px" />
                   <col style="width:90px" />
                   <col style="width:90px" />
@@ -1487,6 +1541,7 @@ function onMore(key: string) {
                   <col style="width:74px" />
                   <col style="width:94px" />
                   <col style="width:84px" />
+                  <col /><!-- 行末空列 .fp-fill:余宽落这里 -->
                 </colgroup>
                 <thead>
                   <tr>
@@ -1501,6 +1556,7 @@ function onMore(key: string) {
                     <th v-tip="`金额=用量×基准电价 + 用量×管理费,两段各自四舍五入到分后相加(引擎逐行落库口径,
 不是用量×两价之和——合并会差 1 分)`">金额(元)</th>
                     <th v-tip="'面积×公摊单价,悬浮该格看算式'">路灯分摊</th>
+                    <th class="fp-fill" aria-hidden="true"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1518,6 +1574,7 @@ function onMore(key: string) {
                     <td><span class="bn-nv" :class="{ empty: r1.mgmt == null }" v-tip="r1.mgmt ? `落库原值 ${r1.mgmt.priceSnap};管理费段 ${fmt2(r1.mgmt.amount)} 元` : undefined">{{ c.mgmt }}</span></td>
                     <td><span class="bn-sumc" :class="{ neg: r1.amount < 0 }">{{ fmt2(r1.amount) }}</span></td>
                     <td><span class="bn-nv" :class="{ empty: r1.share == null }" v-tip="shareTitle(r1.share)">{{ r1.share ? fmt2(r1.share.amount) : '–' }}</span></td>
+                    <td class="fp-fill" aria-hidden="true"></td>
                   </tr>
                   <!-- 配不上间的公摊/损耗行平铺兜底(现状:路灯一行整段/损耗行);乘数与单价照铺,同样逐行可验 -->
                   <tr v-for="({ l, q }, i) in dormElecExtras" :key="'x' + i">
@@ -1533,10 +1590,12 @@ function onMore(key: string) {
                     <td></td>
                     <td><span class="bn-sumc">{{ fmt2(l.amount) }}</span></td>
                     <td></td>
+                    <td class="fp-fill" aria-hidden="true"></td>
                   </tr>
                   <tr class="bn-sub">
                     <td :colspan="9" class="l"><span class="bn-txt dim">宿舍电费小计</span></td>
                     <td><span class="bn-sumc">{{ fmt2(dorm.elec.total) }}</span></td>
+                    <td class="fp-fill" aria-hidden="true"></td>
                   </tr>
                 </tbody>
               </table>
@@ -1545,13 +1604,14 @@ function onMore(key: string) {
               <table class="bn-dtable">
                 <colgroup>
                   <col style="width:38px" />
-                  <col /><!-- 房号:唯一弹性列 -->
+                  <col :style="{ width: dormWaterRoomW + 'px' }" /><!-- 房号:按内容定宽 -->
                   <col style="width:90px" />
                   <col style="width:90px" />
                   <col style="width:92px" /><!-- 用量:extras 行带单位后缀「5,214.64 ㎡」,76px 会截 -->
                   <col style="width:90px" />
                   <col style="width:94px" />
                   <col style="width:94px" />
+                  <col /><!-- 行末空列 .fp-fill:余宽落这里 -->
                 </colgroup>
                 <thead>
                   <tr>
@@ -1563,6 +1623,7 @@ function onMore(key: string) {
                     <th v-tip="'按能验算的最少位数显示;悬浮看落库原值'">单价</th>
                     <th v-tip="'金额=用量×单价(四舍五入到分)'">金额(元)</th>
                     <th v-tip="'面积×公摊单价,悬浮该格看算式'">绿化水公摊</th>
+                    <th class="fp-fill" aria-hidden="true"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1578,6 +1639,7 @@ function onMore(key: string) {
                     <td><span class="bn-nv" :class="{ empty: r1.main.priceSnap == null }" v-tip="r1.main.priceSnap != null ? String(r1.main.priceSnap) : undefined">{{ c.price }}</span></td>
                     <td><span class="bn-sumc" :class="{ neg: r1.amount < 0 }">{{ fmt2(r1.amount) }}</span></td>
                     <td><span class="bn-nv" :class="{ empty: r1.share == null }" v-tip="shareTitle(r1.share)">{{ r1.share ? fmt2(r1.share.amount) : '–' }}</span></td>
+                    <td class="fp-fill" aria-hidden="true"></td>
                   </tr>
                   <tr v-for="({ l, q }, i) in dormWaterExtras" :key="'x' + i">
                     <td></td>
@@ -1591,10 +1653,12 @@ function onMore(key: string) {
                     <td><span class="bn-nv" :class="{ empty: l.priceSnap == null }" v-tip="l.priceSnap != null ? String(l.priceSnap) : undefined">{{ q.price }}</span></td>
                     <td><span class="bn-sumc">{{ fmt2(l.amount) }}</span></td>
                     <td></td>
+                    <td class="fp-fill" aria-hidden="true"></td>
                   </tr>
                   <tr class="bn-sub">
                     <td :colspan="7" class="l"><span class="bn-txt dim">宿舍水费小计</span></td>
                     <td><span class="bn-sumc">{{ fmt2(dorm.water.total) }}</span></td>
+                    <td class="fp-fill" aria-hidden="true"></td>
                   </tr>
                 </tbody>
               </table>
@@ -1993,11 +2057,12 @@ tbody tr:hover .bn-cfm { visibility: visible; }
      字号不在这一档动 —— 16px 是 §6.5 的 iOS 聚焦不缩放门槛,只写在 S 块。 */
   .bn-search { height: 44px; }
   /* 主表保底:table-layout:fixed + width:100% 下,容器窄于定宽列合计(820,批量态+36=856)时
-     唯一弹性的「位置」列会被压到 0px。给表 980px 兜底,位置列至少 124–160px,
+     「位置」列(放不下时它回到吸收剩余,见 locTight)会被压到 0px。给表 980px 兜底,位置列至少 124–160px,
+     只挂在放不下(.bn-tight)时:放得下时位置按内容定宽,保底宽多出来的会全落进行末空列,横滚看到的是空白(2026-10-02)。
      多出的宽度由 .bn-wrap(overflow:auto)横滚消化。限 M↓:961–1100 视口的 L 档
      今天就不横滚,无条件写会造出 §8 点名的那种 L 档回归。
      (2026-10-01 画布 05-A 删「行数」列、警告列写类名 210 宽,定宽合计 770 → 820,兜底 920 → 980) */
-  .bn-table { min-width: 980px; }
+  .bn-table.bn-tight { min-width: 980px; }
   /* 03-C 的 40 行高只到桌面:三屏的 S/M 分支这次不动(规范 §2-21),下面屏顶算术的 34 是它 */
   .bn-table thead th, .bn-table tbody td, .bn-table tr.bn-band td, .bn-table tbody tr.bn-band:hover td { height: 34px; }
   .bn-table tfoot th { height: 40px; }

@@ -14,14 +14,26 @@ const ROWS: LabTableRow[] = [
   { ...base, id: 20, name: '创业大厦', phase: 3, alphaPct: null, rank: null, ciLo: null, ciHi: null, validMonths: null, unborn: true },
 ]
 const mountIt = (rows = ROWS) => mount(PvLabTable, { props: { rows, year: 2025 } })
-const tds = (w: ReturnType<typeof mountIt>, id: number) => w.find(`tr[data-id="${id}"]`).findAll('td')
+// 行末空列 .fp-fill(余宽落那里)不算格子,另有一条单独钉它
+const tds = (w: ReturnType<typeof mountIt>, id: number) => w.find(`tr[data-id="${id}"]`).findAll('td:not(.fp-fill)')
 
 describe('PvLabTable', () => {
-  it('❗表头 7 列逐字、列宽照画板', () => {
-    const ths = mountIt().findAll('th')
+  // 破坏验证:min-width 改回 width → 第一条红(auto 布局里有行末空列时 width 不起作用);删掉表头或行里的 .fp-fill → 第二条红
+  it('❗表头 7 列逐字、列宽照画板(写成 min-width)', () => {
+    const ths = mountIt().findAll('th:not(.fp-fill)')
     expect(ths.map(t => t.text())).toEqual(['楼栋', '期别', '常年水平', '名次', '区间', '哪天起变了', '有效月数'])
     expect(ths.map(t => t.attributes('style'))).toEqual(
-      ['width: 96px;', 'width: 64px;', 'width: 104px;', 'width: 64px;', 'width: 168px;', 'width: 120px;', 'width: 96px;'])
+      ['min-width: 96px;', 'min-width: 64px;', 'min-width: 104px;', 'min-width: 64px;', 'min-width: 168px;', 'min-width: 120px;', 'min-width: 96px;'])
+  })
+
+  it('❗余宽落进行末空列:表头、每一行(含合并格的行)最后一格都是 aria-hidden 的 .fp-fill', () => {
+    const w = mountIt()
+    for (const tr of [w.find('thead tr'), ...w.findAll('tbody tr')]) {
+      const last = tr.findAll('th, td').at(-1)!
+      expect(last.classes()).toContain('fp-fill')
+      expect(last.attributes('aria-hidden')).toBe('true')
+      expect(last.text()).toBe('')
+    }
   })
 
   it('❗一行 7 格:期别名、带符号的常年水平、名次、区间、没变点写 —、有效月数 = 有效 / 截至月', () => {

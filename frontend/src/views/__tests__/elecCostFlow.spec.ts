@@ -4,6 +4,7 @@ import { defineComponent, h, KeepAlive, nextTick, ref } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
 import ElecCostView from '@/views/elec/ElecCostView.vue'
+import { rowsNotEndingInFill } from '@/composables/__tests__/wideTableStub'
 import { elecCostApi } from '@/api/elecCost'
 import type {
   ElecMeterDTO, ElecCostEntryDTO, ElecPriceCfgDTO, ElecMetricDTO,
@@ -924,5 +925,28 @@ describe('电费成本总览 · 禁用钮的悬停说明', () => {
     expect(document.body.querySelector('.fp-vtip')?.textContent).toBe('本月数据没读到,先点「重试」再进编辑')
     await host.trigger('mouseleave')
     w.unmount()
+  })
+})
+
+// 列宽铁律(LIST-PAGE §4 / §7,2026-10-02):项目是主表 colgroup 第一根,宽要是随编辑态变,金额 / 电量 / 来源 / 备注整排平移
+describe('电费成本 · 列宽不随编辑态变', () => {
+  // 破坏验证:itemW 电表行的 canEntry 改回 editE → 浏览态项目列按表名算,第一段红;
+  //   noteW 的 canEntry 改回 editE → 浏览态备注列按「旧备注」算,第二段红
+  it('❗有录入权的人浏览态就按编辑态的宽预留:项目列、备注列进出编辑态同宽', async () => {
+    vi.mocked(elecCostApi.entries).mockResolvedValue(ENTRIES as never)
+    const w = await toTable()
+    const cols = () => w.find('.ec-table colgroup').findAll('col').map(c => c.attributes('style') ?? '')
+    // 项目 = 电表行:输入框 220 + 删除钮 32,+ 6 + 类型签(11px 两字 22 + 2 + 18)+ 内边距 32 = 332
+    expect(cols()[0]).toBe('width: 332px;')
+    expect(cols()[4]).toBe('width: 200px;')
+    ;(w.vm as unknown as { editMode: boolean }).editMode = true
+    await flushPromises()
+    expect(w.find('.ec-table tbody input').exists(), '前置:编辑态行内出了输入框').toBe(true)
+    expect(cols()[0]).toBe('width: 332px;')
+    expect(cols()[4]).toBe('width: 200px;')
+    // 三张表(费项 / 派生指标 / 电价参数)每一行末尾都是空列
+    const tables = w.findAll('.ec-table')
+    expect(tables).toHaveLength(3)
+    for (const t of tables) expect(rowsNotEndingInFill(t.element)).toEqual([])
   })
 })

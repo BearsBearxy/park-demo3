@@ -26,7 +26,8 @@ describe('FinReportTable', () => {
     const w = mount(FinReportTable, { props: { rows, columns, valueOf, editable: false } })
     // 表头 = 项目 + 行次 + 2 金额列
     const ths = w.findAll('thead th').map((t) => t.text())
-    expect(ths).toEqual(['项　目', '行次', '本月金额', '本年累计金额'])
+    // 末尾空格 = 行末空列 .fp-fill(余宽落在那里,不归项目列)
+    expect(ths).toEqual(['项　目', '行次', '本月金额', '本年累计金额', ''])
     // 3 行渲染,小计行带 sub.strong,自定义行 custom(行次列空)
     const trs = w.findAll('tbody tr')
     expect(trs.length).toBe(3)

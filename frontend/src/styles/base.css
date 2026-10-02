@@ -154,7 +154,7 @@ img, svg {
 
   /* ── 报表三大表(fin 屏,P3⑤)──:表格完整分页,工具行/操作钮不进纸面。
      sticky 还原 static:分页时 sticky 表头/合计尾行在部分引擎会重复叠印或悬空。
-     TbTable min-width:1240 在 A4 纵向必超宽属已知——值宽表走横向纸打印,
+     TbTable 内容宽(代码 96 + 名称 + 8×128 金额列)在 A4 纵向必超宽属已知——值宽表走横向纸打印,
      不硬缩:缩列即缩放,违反「分级重排绝不缩放」(spec §2)。 */
   .fin-wrap { overflow: visible !important; }
   .fin-table thead th, .fin-table tfoot td { position: static !important; }
@@ -171,6 +171,15 @@ img, svg {
    ⚠ type="text" + -webkit-text-security 遮罩的那几个框(FPElevateDialog / FPTakeoverDrawer /
    FPApprovalDrawer,为躲开浏览器密码管理器)选不中,它们在各自的遮罩规则里单独写了同一行。 */
 input[type="password"] { font-family: var(--font-ui) !important; }
+
+/* ── 表格最右空列(2026-10-02 用户拍板,画布 09/10;LIST-PAGE-SPEC §4 列宽铁律)──
+   各列按内容定宽、挨在一起;表格比内容宽出来的余宽统一落进最右这一列空列:
+   每行末尾一个空格 <td class="fp-fill" aria-hidden="true">(表头 <th>)。width:100% 吃掉
+   全部余宽,表格溢出要横滚时它宽 0。表头底色、行线、悬停底色走各表自己的 td/th 规则照样铺满。
+   padding / min-width 带 !important:各表 td/th 的内边距、最小宽写在 scoped 样式里,特异度比这条高。
+   ⚠ auto 布局里有这一列时,别的列的 width(含 <col> 的 px 宽)会被压回内容宽 ——
+   要锁宽的列写 min-width。 */
+.fp-fill { width: 100%; padding: 0 !important; min-width: 0 !important; }
 
 /* ── 字段报错(十件 ⑤,画布 06-B ⑤;LAYOUT-STABILITY §4.2)──
    12px 红字,18px 常驻占位:元素本身不带 v-if,字才是条件的 ——

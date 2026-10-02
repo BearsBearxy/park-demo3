@@ -28,13 +28,15 @@ const cpText = (from: string, to: string) => (from === to ? md(from) : `${md(fro
       <table class="plt-tbl">
         <thead>
           <tr>
-            <th style="width: 96px">楼栋</th>
-            <th class="lft" style="width: 64px">期别</th>
-            <th style="width: 104px">常年水平</th>
-            <th style="width: 64px">名次</th>
-            <th style="width: 168px">区间</th>
-            <th class="lft" style="width: 120px">哪天起变了</th>
-            <th style="width: 96px">有效月数</th>
+            <!-- 列宽写 min-width:余宽落进行末空列 .fp-fill(列宽铁律,2026-10-02),auto 布局里有它 width 会被压回内容宽 -->
+            <th style="min-width: 96px">楼栋</th>
+            <th class="lft" style="min-width: 64px">期别</th>
+            <th style="min-width: 104px">常年水平</th>
+            <th style="min-width: 64px">名次</th>
+            <th style="min-width: 168px">区间</th>
+            <th class="lft" style="min-width: 120px">哪天起变了</th>
+            <th style="min-width: 96px">有效月数</th>
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </thead>
         <tbody>
@@ -53,6 +55,7 @@ const cpText = (from: string, to: string) => (from === to ? md(from) : `${md(fro
               <td v-else class="lft sub">—</td>
               <td class="mono">{{ r.validMonths == null ? '—' : `${r.validMonths} / ${r.monthsSoFar}` }}</td>
             </template>
+            <td class="fp-fill" aria-hidden="true"></td>
           </tr>
         </tbody>
       </table>

@@ -10,6 +10,7 @@
 // 实现骨架与 PvMeterView 同构对齐(乐观更新/竞态守卫/抽屉行式编辑同款)。
 // ponytail: 桩数个位数,不上分页机;短窗时卡片内滚动兜底,桩数破 30 再上
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
+import { textW } from '@/composables/useWideTable'
 import { useRoute } from 'vue-router'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { cpMeterApi, type CpStationDTO, type CpPowerUsageDTO } from '@/api/cpMeter'
@@ -233,6 +234,10 @@ const myIds = computed(() => new Set(myStations.value.map(s => s.id)))
 const myReadings = computed(() => (readings.value ?? []).filter(r => myIds.value.has(r.stationId)))
 // 「电表与损耗」小节:本屏类型的运营商行(桩库 ∪ 已录电表行,后端已并好)
 const myUsage = computed(() => (usageRows.value ?? []).filter(u => u.vehicleType === props.vehicleType))
+// 列宽铁律(2026-10-02):桩名、运营商两根文字列按本型全部值定宽(14px 字 + 左右内边距 32),余宽落进行末空列。
+// 编辑态桩名是输入框,至少给 200 好录;有档案编辑权的人浏览态也按 200 预留 —— 进出编辑态列不挪位(LIST-PAGE §7)。
+const stNameW = computed(() => Math.max(textW(['充电桩', ...myStations.value.map(s => s.name)], 14, 32), canMaster.value ? 200 : 0))
+const usageOpW = computed(() => textW(['运营商', ...myUsage.value.map(u => u.operator)], 14, 32))
 
 // ── 运营商 tabs(全部 + 桩库 operator 去重动态生成,保持桩 sort 序) ──
 const opTab = ref<string | number>('all')
@@ -604,7 +609,7 @@ async function onTemplate() {
     </FPLoadError>
 
     <template v-else>
-    <!-- 主表:一行一桩;列宽铁律(fixed 布局,桩名=唯一弹性列)。fp-stale 带 pointer-events:none -->
+    <!-- 主表:一行一桩;列宽铁律(fixed 布局,各列按内容定宽,余宽落进行末空列 .fp-fill,LIST-PAGE §4 2026-10-02)。fp-stale 带 pointer-events:none -->
     <Card surface="white" :padding="0" class="cm-card"
           :class="{ 'fp-stale': veil }" :aria-busy="veil">
       <!-- 本型本月一条记录都没有、又不在能录的编辑态 → 空状态占住表格区(十件 ⑦)。
@@ -616,12 +621,13 @@ async function onTemplate() {
       <div v-else class="cm-tablewrap">
         <table class="cm-table">
           <colgroup>
-            <col /><!-- 桩名:唯一弹性列吸收余宽 -->
+            <col :style="{ width: stNameW + 'px' }" /><!-- 桩名:按内容定宽 -->
             <col style="width:110px" />
             <col style="width:120px" />
             <col style="width:120px" />
             <col style="width:120px" />
             <col style="width:84px" />
+            <col /><!-- 行末空列 .fp-fill:余宽落这里 -->
           </colgroup>
           <thead>
             <tr>
@@ -631,6 +637,7 @@ async function onTemplate() {
               <th class="num">手续费 (元)</th>
               <th class="num">收益 (元)</th>
               <th class="num">记录条数</th>
+              <th class="fp-fill" aria-hidden="true"></th>
             </tr>
           </thead>
           <tbody>
@@ -662,6 +669,7 @@ async function onTemplate() {
               <td class="num" :class="{ zero: r.fee === 0 }">{{ fy(r.fee) }}</td>
               <td class="num rev" :class="{ zero: r.revenue === 0 }">{{ fy(r.revenue) }}</td>
               <td class="num" :class="{ zero: r.count === 0 }">{{ r.count }}</td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
           </tbody>
         </table>
@@ -680,10 +688,11 @@ async function onTemplate() {
       </div>
       <table class="cm-utable">
         <colgroup>
-          <col /><!-- 运营商:弹性列 -->
+          <col :style="{ width: usageOpW + 'px' }" /><!-- 运营商:按内容定宽 -->
           <col style="width:160px" />
           <col style="width:160px" />
           <col style="width:160px" />
+          <col /><!-- 行末空列 .fp-fill:余宽落这里 -->
         </colgroup>
         <thead>
           <tr>
@@ -691,6 +700,7 @@ async function onTemplate() {
             <th class="num">电表用电量 kWh</th>
             <th class="num">Σ充电量 kWh</th>
             <th class="num">损耗 kWh</th>
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </thead>
         <tbody>
@@ -711,6 +721,7 @@ async function onTemplate() {
                 v-tip="u.lossKwh != null && u.lossKwh < 0 ? '电表用电量小于充电量之和,请核对电表读数或充电记录' : undefined">
               {{ u.lossKwh != null ? fq(u.lossKwh) : '—' }}
             </td>
+            <td class="fp-fill" aria-hidden="true"></td>
           </tr>
         </tbody>
       </table>

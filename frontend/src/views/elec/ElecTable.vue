@@ -170,6 +170,7 @@ function card(r: ElecRecordDTO): WideCard {
             <th><span class="e11-th"><span class="e11-th-name">价税合计</span><span class="e11-th-unit">元</span></span></th>
             <th class="l" style="min-width:150px"><span class="e11-th-name">备注</span></th>
             <th v-if="edit" class="e11-h-act"></th>
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </thead>
         <tbody>
@@ -191,6 +192,7 @@ function card(r: ElecRecordDTO): WideCard {
               <td class="e11-c-num e11-grp-tot e11-c-total">{{ num(g.total) }}</td>
               <td class="l"></td>
               <td v-if="edit"></td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
             <!-- 明细行(jsx 481-498) -->
             <tr v-for="r in g.rows" :key="r.id" class="e11-row">
@@ -230,6 +232,7 @@ function card(r: ElecRecordDTO): WideCard {
                   </button>
                 </span>
               </td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
           </template>
           <tr class="e11-filler" aria-hidden="true"><td :colspan="99"></td></tr>
@@ -245,6 +248,7 @@ function card(r: ElecRecordDTO): WideCard {
             <th class="e11-c-num">{{ num(total.total) }}</th>
             <th class="l"></th>
             <th v-if="edit"></th>
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </tfoot>
       </table>
@@ -276,6 +280,7 @@ function card(r: ElecRecordDTO): WideCard {
             <th><span class="e11-th"><span class="e11-th-name">价税合计-基本用电</span><span class="e11-th-unit">元</span></span></th>
             <th class="l" style="min-width:150px"><span class="e11-th-name">备注</span></th>
             <th v-if="edit" class="e11-h-act"></th>
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </thead>
         <tbody>
@@ -296,6 +301,7 @@ function card(r: ElecRecordDTO): WideCard {
               <td class="e11-c-num e11-grp-tot e11-c-total">{{ num(g.total) }}</td>
               <td class="l"></td>
               <td v-if="edit"></td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
             <tr v-for="r in g.rows" :key="r.id" class="e11-row">
               <td class="l e11-c-acct">
@@ -332,6 +338,7 @@ function card(r: ElecRecordDTO): WideCard {
                   </button>
                 </span>
               </td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
           </template>
           <tr class="e11-filler" aria-hidden="true"><td :colspan="99"></td></tr>
@@ -347,6 +354,7 @@ function card(r: ElecRecordDTO): WideCard {
             <th class="e11-c-num">{{ num(total.total) }}</th>
             <th class="l"></th>
             <th v-if="edit"></th>
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </tfoot>
       </table>
@@ -365,7 +373,10 @@ function card(r: ElecRecordDTO): WideCard {
 .e11-count b { color:var(--text-secondary); font-weight:var(--fw-semibold); font-family:var(--font-mono); }
 
 .e11-tablewrap { flex:1 1 auto; min-height:0; overflow:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--surface-white); }
-.e11-table { border-collapse:separate; border-spacing:0; width:100%; min-width:1040px; height:100%; font-family:var(--font-sans); font-size:13px; color:var(--text-primary); }
+/* 不给表格 px 保底宽(2026-10-02):列都 nowrap、按内容撑,窄了照样横滚;保底宽比内容宽时多出来的全落进行末空列,横滚看到的是空白。
+   编辑态备注框按自身默认宽撑列:width:100% 的输入框不撑列,有了行末空列(.fp-fill)备注列会缩回表头的保底 150 */
+.e11-table { border-collapse:separate; border-spacing:0; width:100%; height:100%; font-family:var(--font-sans); font-size:13px; color:var(--text-primary); }
+.e11-table :deep(.lc-note-in) { width:auto; min-width:100%; }
 .e11-table tbody tr.e11-filler td { height:0; padding:0; line-height:0; font-size:0; border:none; background:var(--surface-white); }
 .e11-filler { height:100%; }
 .e11-table th, .e11-table td { padding:0 12px; box-sizing:border-box; white-space:nowrap; text-align:right; }

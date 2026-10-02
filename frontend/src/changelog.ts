@@ -21,6 +21,8 @@ import type { ReleaseNote } from '@/types/changelog'
 export const CHANGELOG: ReleaseNote[] = [
   // 功能更新(RELEASE-NOTES-SPEC §2.1 第 1、2 问是):通知统一进顶栏铃铛(新增,顶栏用法变了 → 写进 headline),
   // 全站确认 / 提示收成十件标准件,宽表固定列按表格宽度退,公共电核算 / 园区抄表 / 催缴单三屏改版(画布 2026-09-29 第 26 版)。
+  // 「表格列宽」一条管两件:宽表固定列按表格宽度退;全站表格余宽放进行末空列(2026-10-02 用户拍板,画布 09/10,LIST-PAGE §4)——
+  // 不只宽表,楼栋 / 租户 / 附表 / 三大报表 / 分析层都改了,所以标题不写屏名、不给 to。
   // 金额不变:三屏只改版式,取数与算法没动。
   // 修复一行核实(对照 master):① useEditMode 的 scope 变了直接 exit(),FPStepStrip 返回钮不问 —— 编辑中换出账月改动直接丢;
   // ② ds/Select 挂载即在 document 上常驻 keydown 捕获,收着也 stopPropagation 所有 Esc —— 页面上有下拉框时弹窗、抽屉按 Esc 关不掉。
@@ -37,7 +39,7 @@ export const CHANGELOG: ReleaseNote[] = [
     added: [],
     improved: [
       { icon: 'message-square', title: '确认和提示', desc: '原来用浏览器自带的确认框和提示框，现在换成软件里的弹窗和底部回执。' },
-      { icon: 'table', title: '宽表固定列', desc: '原来屏小时左右固定列占满屏，现在最多占表格宽的四成，至少露 8 行。', to: 'ledger' },
+      { icon: 'table', title: '表格列宽', desc: '原来固定列能占满屏，现在最多占表格宽的四成、至少露 8 行；宽屏时名称和数字挨着，空白留右边。' },
       { icon: 'share-2', title: '公共电核算', desc: '原来列多、一格挤两行，现在一行一个读数，尖峰平谷按需展开。', to: 'alloc' },
       { icon: 'gauge', title: '园区抄表', desc: '原来顶上六张统计卡，现在并进状态页签，停用的表收在组尾。', to: 'meters' },
       { icon: 'file-check-2', title: '催缴单', desc: '原来四张统计卡、八个按钮，现在并进状态页签，警告直接写是哪一类。', to: 'bill-notices' },

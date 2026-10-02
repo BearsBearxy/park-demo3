@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import PnlTable from '../PnlTable.vue'
-import { stubWideTable } from '@/composables/__tests__/wideTableStub'
+import { rowsNotEndingInFill, stubWideTable } from '@/composables/__tests__/wideTableStub'
 import { compareRow } from '@/reports/pnlDerive'
 import type { PnlRowDTO } from '@/types/pnl'
 
@@ -148,6 +148,20 @@ describe('损益附表 · 固定列按表格可见宽度退(07-C)', () => {
     await label(2).trigger('mouseenter')   // r3「租金损益小计」+ 徽标 170 > 131,截了
     vi.advanceTimersByTime(500)
     expect(document.querySelector('.fp-vtip')?.textContent).toBe('租金损益小计')
+    wr.unmount()
+  })
+})
+
+// 最右空列(LIST-PAGE §4 列宽铁律,2026-10-02 用户拍板):表格区比各列合计宽时,余宽全落在每行末尾那一格空列,
+// 不再按比例摊进科目细分和 12 个月;右固定的本年合计 / 填入跟着内容排,不必贴右沿
+describe('损益附表 · 最右空列', () => {
+  // 破坏验证:tbody 行末那格 fp-fill 删掉 → 红(4 行都列出来)
+  it('可见 3000 编辑态(带填入列):表头、每一行的最右一格都是空列,排在右固定列之后;科目细分按估宽 170 不封顶', async () => {
+    const { wr, td } = await mountAt(3000, 800, true)
+    expect(rowsNotEndingInFill(wr.get('table.pt-table').element)).toEqual([])
+    // 右固定列的 right 只按真列累加:空列不进 planFixed,溢出时它宽 0,贴右沿的仍是填入
+    expect([td('fill').right, td('ann').right]).toEqual(['0px', '56px'])
+    expect(subBoxW(wr)).toBe('')   // 170 < 3000/5:名字框不定宽,按内容撑开
     wr.unmount()
   })
 })

@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { setActivePinia, createPinia } from 'pinia'
 
 import PvMeterView from '@/views/pv/PvMeterView.vue'
+import { rowsNotEndingInFill } from '@/composables/__tests__/wideTableStub'
 import { pvMeterApi } from '@/api/pvMeter'
 import type { PvReadingDTO } from '@/api/pvMeter'
 import { useAuthStore } from '@/stores/auth'
@@ -1029,5 +1030,45 @@ describe('光伏分栋抄表 · 提示件(确认 / 回执 / 字段报错 / 空�
     answer(true)
     await p
     expect(pvMeterApi.deleteStation).not.toHaveBeenCalled()
+  })
+})
+
+// 列宽铁律(LIST-PAGE §4 / §7,2026-10-02):电站名是主表 colgroup 第一根,后面 10 根数字列紧跟 ——
+// 它的宽随编辑态或期别页签变,整排数字列就左右平移
+describe('光伏分栋抄表 · 电站名列宽不随交互变', () => {
+  async function toTable() {
+    const w = await open()
+    await w.findAll('.bmm-card')[2].trigger('click')
+    await flushPromises()
+    return w
+  }
+  const nameCol = (w: Awaited<ReturnType<typeof open>>) => w.find('.pm-table colgroup col').attributes('style')
+
+  // 破坏验证:stNameW 的 canMaster 改回 editStation → 浏览态按最长的「C、D 座」+ 期签 134px,红
+  it('❗有档案编辑权的人浏览态就按输入框的 200 预留,进出编辑态同宽', async () => {
+    vi.mocked(pvMeterApi.readings).mockResolvedValue(MAR as never)
+    const w = await toTable()
+    expect(nameCol(w)).toBe('width: 200px;')
+    ;(w.vm as unknown as { editMode: boolean }).editMode = true
+    await flushPromises()
+    expect(w.find('.pm-table tbody input').exists(), '前置:编辑态行内出了输入框').toBe(true)
+    expect(nameCol(w)).toBe('width: 200px;')
+    expect(rowsNotEndingInFill(w.get('.pm-table').element), '每一行末尾都是空列').toEqual([])
+  })
+
+  // 破坏验证:stNameW 改回按 rows(期别页签筛过)算,或期签宽只在「全部」页签算 → 切到一期变 200px,红
+  it('❗切期别页签同宽:按全部电站算、期签宽一律算上', async () => {
+    // 二期一座长名站:名 11 字 × 14 → 154 + 2 + 32 = 188,再加期签 8 +「二期」(22 + 2 + 14)= 234
+    vi.mocked(pvMeterApi.stations).mockResolvedValue([...STATIONS, {
+      id: 4, name: '二期十二号厂房屋顶电站', phase: 2, metered: 1, capacityKwp: 100,
+      panelCount: null, panelWatt: null, priceYuan: 0.62, sortNo: 4,
+    }] as never)
+    vi.mocked(pvMeterApi.readings).mockResolvedValue(MAR as never)
+    const w = await toTable()
+    expect(nameCol(w)).toBe('width: 234px;')
+    ;(w.vm as unknown as { phase: string }).phase = '1'
+    await flushPromises()
+    expect(w.find('.pm-table tbody').text(), '前置:一期页签里没有那座二期站').not.toContain('二期十二号')
+    expect(nameCol(w)).toBe('width: 234px;')
   })
 })

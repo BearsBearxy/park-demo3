@@ -65,7 +65,7 @@ async function mountGrid(rows: WorkbenchRow[], o: Opts = {}) {
 beforeEach(() => { localStorage.clear() })
 afterEach(() => { mounted.splice(0).forEach(w => w.unmount()) })
 
-const heads = (w: VueWrapper) => w.findAll('thead th').map(th => th.text())
+const heads = (w: VueWrapper) => w.findAll('thead th:not([aria-hidden])').map(th => th.text())   // 行末最右空列不算
 const dataRows = (w: VueWrapper) => w.findAll('tbody tr').filter(tr =>
   !tr.classes().some(c => ['mlg-ghead', 'mlg-segr', 'mlg-retr', 'mlg-spacer'].includes(c)))
 /** 某一行某一列的格(列名按表头找) */

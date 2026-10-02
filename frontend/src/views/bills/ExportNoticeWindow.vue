@@ -5,6 +5,7 @@
 // 分文件夹等于把同一户的单据拆到几处);同户跨两家公司=文件内两个 sheet。
 // 本组件只负责「选什么、用哪个账户」,真正写文件与 mark-exported 由宿主处理:emit('export', req)。
 import { computed, ref, watch } from 'vue'
+import { textW } from '@/composables/useWideTable'
 import { companyBookApi, type CompanyFullDTO } from '@/api/billDelivery'
 import type { BuildingDTO } from '@/types/building'
 import { groupByBuilding } from '@/utils/billNoticeLogic'
@@ -48,6 +49,10 @@ const filtered = computed(() => phaseRows.value.filter(r =>
   (q.value.trim() === '' || r.tenantName.includes(q.value.trim()))
   && (!confirmedOnly.value || r.status === 'confirmed' || r.status === 'exported')))
 const groups = computed(() => groupByBuilding(filtered.value, r => r.bld.main))
+// 租户列(列宽铁律,2026-10-02):按全部户名定宽(12.5px 粗体 + 内边距 16),带「缺收款公司」标记的户
+// 加上标记宽(间距 6 + 圆点 6 + 4 + 12px 五字);余宽落进行末空列,不再是唯一弹性列。按 rowsAll 算:换页签、搜索列不挪位。
+const tenantW = computed(() => Math.max(textW(['租户'], 11.5, 16),
+  ...rowsAll.value.map(r => textW([r.tenantName], 12.5, 16) + (r.gap ? 16 + textW(['缺收款公司'], 12, 0) : 0))))
 
 // 默认勾选=已确认未导出的户(spec §5.1);换期页签重算一次
 function preselect() {
@@ -167,8 +172,9 @@ const statusOf = (r: PayTenantRow) => STATUS_LABEL[r.status]
     <div class="ex-wrap">
       <table class="ex-table">
         <colgroup>
-          <col style="width:36px" /><col /><col style="width:150px" />
+          <col style="width:36px" /><col :style="{ width: tenantW + 'px' }" /><!-- 租户:按内容定宽 --><col style="width:150px" />
           <col style="width:96px" /><col style="width:130px" /><col style="width:96px" />
+          <col /><!-- 行末空列 .fp-fill:余宽落这里 -->
         </colgroup>
         <thead>
           <tr>
@@ -178,6 +184,7 @@ const statusOf = (r: PayTenantRow) => STATUS_LABEL[r.status]
             <th>状态</th>
             <th>本期合计</th>
             <th v-tip="'一户一个文件;文件内按收款公司分 sheet(同户跨两家公司=两个 sheet),未设公司那部分也占一个(无账户块)'">将出几张单</th>
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </thead>
         <tbody>
@@ -186,6 +193,7 @@ const statusOf = (r: PayTenantRow) => STATUS_LABEL[r.status]
               <td class="l" colspan="6">
                 <span class="ex-band-lbl">{{ g.name }}</span><span class="ex-band-sub">{{ g.count }} 户</span>
               </td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
             <tr v-for="r in g.rows" :key="r.tenantId" :class="{ sel: selected.has(r.tenantId) }"
                 @click="toggleRow(r.tenantId)">
@@ -202,10 +210,11 @@ const statusOf = (r: PayTenantRow) => STATUS_LABEL[r.status]
               <td><span class="ex-st" :class="r.status">{{ statusOf(r) }}</span></td>
               <td><span class="ex-num">{{ r.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span></td>
               <td><span class="ex-num">{{ r.sheetCount }}</span></td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
           </template>
           <tr v-if="filtered.length === 0">
-            <td class="ex-noro" colspan="6">无匹配租户 —— 换期页签或取消「只看已确认」</td>
+            <td class="ex-noro" colspan="7">无匹配租户 —— 换期页签或取消「只看已确认」</td>
           </tr>
         </tbody>
       </table>

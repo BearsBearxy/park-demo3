@@ -5,7 +5,7 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { stubWideTable } from '@/composables/__tests__/wideTableStub'
+import { rowsNotEndingInFill, stubWideTable } from '@/composables/__tests__/wideTableStub'
 import { useAuthStore } from '@/stores/auth'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import type { AllocLossDTO, AllocLossUnitDTO } from '@/api/alloc'
@@ -154,6 +154,20 @@ describe('楼栋损耗 · 位置列', () => {
     await fire(1000, 800)
     const cs = getComputedStyle(w.get('tbody td.ll-fix .ll-lbl-t').element)
     expect([cs.overflow, cs.textOverflow, parseFloat(cs.minWidth)]).toEqual(['hidden', 'ellipsis', 0])
+    w.unmount()
+  })
+})
+
+// 最右空列(LIST-PAGE §4 列宽铁律,2026-10-02 用户拍板):表格区比各列合计宽时,余宽全落在每行末尾那一格空列,
+// 位置列和 10 根定宽列都不再按比例摊。jsdom 不排版,钉结构和宽度样式
+describe('楼栋损耗 · 最右空列', () => {
+  // 破坏验证:对账行 :colspan="colCount - 6" 后面那格 fp-fill 删掉 → 红(列出 4 行对账行)
+  it('可见 3000:表头、单元行、对账行、合计行的最右一格都是空列;位置列 = 最长名估宽 280,不吃余宽', async () => {
+    const w = await open([unit({}), unit({ headBuildingId: 13, label: '一期 A座' })])
+    await fire(3000, 800)
+    expect(w.findAll('tbody tr.ll-recon').length, '前提:对账行出来了').toBeGreaterThan(0)
+    expect(rowsNotEndingInFill(w.get('table.ll-table').element)).toEqual([])
+    expect(lblTh(w).width).toBe('280px')
     w.unmount()
   })
 })

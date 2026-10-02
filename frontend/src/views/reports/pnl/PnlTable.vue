@@ -169,6 +169,8 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
           <th class="pt-c-ann pt-h-ann" :class="fc('ann')" :style="[st.ann, { minWidth: fix.w.ann + 'px' }]">本年合计</th>
           <th v-if="edit" class="pt-c-note l">备注</th>
           <th v-if="showFill" class="pt-c-fill" :class="fc('fill')" :style="st.fill">填入</th>
+          <!-- 最右空列 .fp-fill(base.css;LIST-PAGE §4 列宽铁律):表格比内容宽出来的余宽全落在这一列,不摊进月份列 -->
+          <th class="fp-fill" aria-hidden="true"></th>
         </tr>
       </thead>
       <tbody>
@@ -222,6 +224,7 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
               @click="emit('fill', r.rowKey)"
             >填入</button>
           </td>
+          <td class="fp-fill" aria-hidden="true"></td>
         </tr>
       </tbody>
     </table>

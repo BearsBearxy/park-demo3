@@ -28,6 +28,7 @@ import BuildingNewDialog from './BuildingNewDialog.vue'
 import { iconFor } from '@/components/ds/icon'
 import { useAuthStore } from '@/stores/auth'
 import { useViewport } from '@/composables/useViewport'
+import { textW } from '@/composables/useWideTable'
 
 const auth = useAuthStore()
 // M 档(601–960)只压列宽/表头写法,一列都不删(TabletContent §① 黄框)
@@ -136,16 +137,23 @@ function OccBar(rate: number | null, h_px = 6) {
     ])
 }
 
+// 楼栋名列宽(列宽铁律 §4,2026-10-02):按全部楼栋估(不按当前页、不随筛选),翻页 / 搜索列不挪位;余宽落进行末空列。
+// 一格 = 图标 30 + 10 + max(名 14px, 类型副行 11px);左右内边距 32。数据没到时不给宽(按表头)。
+const nameColW = computed(() => (buildings.value.length
+  ? `${32 + 40 + Math.max(textW(buildings.value.map(b => b.name), 14, 0), textW(buildings.value.map(b => b.kind ?? ''), 11, 0))}px`
+  : undefined))
+
 const TABLE_COLUMNS = computed(() => [
   {
-    key: 'name', header: '楼栋',
+    key: 'name', header: '楼栋', width: nameColW.value,
     render: (b: BuildingDTO) => h('span', { style: { display: 'flex', alignItems: 'center', gap: '10px' } }, [
       h('span', { style: { width: '30px', height: '30px', borderRadius: '9px', background: 'var(--surface-card)', display: 'grid', placeItems: 'center', color: 'var(--text-secondary)', flex: '0 0 auto' } }, [
         h(iconFor(b.phase === 4 ? 'bed-double' : 'building-2'), { size: 16 }),
       ]),
       h('span', { style: { display: 'flex', flexDirection: 'column' } }, [
         h('span', { style: { fontWeight: 'var(--fw-medium)', color: 'var(--text-primary)', whiteSpace: 'nowrap' } }, b.name),
-        h('span', { style: { fontSize: 'var(--fs-micro)', color: 'var(--text-muted)' } }, b.kind),
+        // nowrap:名称列按内容定宽(余宽归最右空列),不压它就按最窄内容排,副行会折成竖排
+        h('span', { style: { fontSize: 'var(--fs-micro)', color: 'var(--text-muted)', whiteSpace: 'nowrap' } }, b.kind),
       ]),
     ]),
   },

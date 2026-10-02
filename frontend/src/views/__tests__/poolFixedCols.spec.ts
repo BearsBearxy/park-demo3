@@ -5,7 +5,7 @@
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { stubWideTable } from '@/composables/__tests__/wideTableStub'
+import { rowsNotEndingInFill, stubWideTable } from '@/composables/__tests__/wideTableStub'
 import { useAuthStore } from '@/stores/auth'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import type { AllocPoolLineDTO, AllocPoolRowDTO } from '@/api/alloc'
@@ -139,6 +139,19 @@ describe('公共电核算 · 固定列(用途 → 位置)', () => {
     expect(th(w, '用途').element.style.width).toBe('200px')
     const nm = w.findAll('tr.pl-row .nm').find(n => n.text() === LONG)!
     expect((nm.element as HTMLElement & { _tip?: { text: string } })._tip?.text).toBe(LONG)
+  })
+})
+
+// 最右空列(LIST-PAGE §4 列宽铁律,2026-10-02 用户拍板):表格区比各列合计宽时,余宽全落在每行末尾那一格空列,
+// 不再按比例摊进电表、用量、应分摊这些列。段行 / 放出实收盈亏后每行列数一致,由 poolLedgerLayout 的 asserts-4 钉
+describe('公共电核算 · 最右空列', () => {
+  // 破坏验证:分组行 :colspan="tailN" 后面那格 fp-fill 删掉 → 红(列出两行 pl-grp)
+  it('可见 3000:表头、分组行、逐表行、合计行的最右一格都是空列;位置 115、用途 160 = 估宽,不吃余宽', async () => {
+    const w = await open()
+    await ro.fire(3000, 800)
+    expect(rowsNotEndingInFill(w.get('table.pl-table').element)).toEqual([])
+    expect(th(w, '位置').element.style.width).toBe('115px')
+    expect(th(w, '用途').element.style.width).toBe('160px')
   })
 })
 

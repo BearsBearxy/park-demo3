@@ -349,6 +349,8 @@ const alertGroups = computed<AlertGroup[]>(() => {
             <th class="ll-th" :style="w(104)" v-tip="'损耗率加点（如 0.3%），按楼栋长期；在计费参数页 ② 长期常数改'">损耗率加点</th>
             <th class="ll-th" :style="w(160)" v-tip="'按损耗核算方式算出的率；填了「损耗率（手工指定）」则以它为准并并排显示公式算出的率'">收取损耗率</th>
             <th class="ll-th" :style="w(170)">备注</th>
+            <!-- 最右空列 .fp-fill(base.css;LIST-PAGE §4 列宽铁律):表格比内容宽出来的余宽全落在这一列,不再按比例摊到各列 -->
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </thead>
         <tbody>
@@ -405,6 +407,7 @@ const alertGroups = computed<AlertGroup[]>(() => {
                      @change="commitNote(u, ($event.target as HTMLInputElement).value)" />
               <span v-else class="ll-txt" v-tip="u.note">{{ u.note ?? '–' }}</span>
             </td>
+            <td class="fp-fill" aria-hidden="true"></td>
           </tr>
           <!-- 对账区(读时派生,见 buildLossReconRows):供电侧读数落「总表用电量」列,被比的合计落「分表用电量」列。
                前两行只管那块供电局表带的几栋;后两行(有栋被单独剔掉时才出)是把它们加回来的全部楼栋 -->
@@ -418,6 +421,7 @@ const alertGroups = computed<AlertGroup[]>(() => {
             <td><span class="ll-nv" :class="{ empty: r.rate == null }">{{ fpct(r.rate) }}</span></td>
             <!-- 已占 6(位置/总表/铝缆占位/分表/损耗量/原损耗率),铝缆列常驻两期,不再按 isP2 加减 -->
             <td :colspan="colCount - 6"></td>
+            <td class="fp-fill" aria-hidden="true"></td>
           </tr>
         </tbody>
         <!-- tfoot 合计:总表/铝缆/分表/损耗量 合计(率不合计) -->
@@ -430,6 +434,7 @@ const alertGroups = computed<AlertGroup[]>(() => {
             <th><span class="ll-foot-v">{{ fmt(foot.eQty) }}</span></th>
             <!-- 已占 5(位置/总表/铝缆/分表/损耗量),铝缆列常驻两期,不再按 isP2 加减 -->
             <th :colspan="colCount - 5"></th>
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </tfoot>
       </table>

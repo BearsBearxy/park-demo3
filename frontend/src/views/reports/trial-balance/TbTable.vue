@@ -47,9 +47,10 @@ function inputVal(r: TbAccount, field: TbFieldKey): string {
       </colgroup>
       <thead>
         <tr>
-          <th class="h1" rowspan="2" style="text-align:left;padding-left:12px">科目代码</th>
+          <th class="h1 tb-codeh" rowspan="2" style="text-align:left;padding-left:12px">科目代码</th>
           <th class="h1" rowspan="2" style="text-align:left;padding-left:12px">科目名称</th>
           <th class="h1" v-for="g in GROUPS" :key="g" colspan="2">{{ g }}</th>
+          <th class="h1 fp-fill" rowspan="2" aria-hidden="true"></th>
         </tr>
         <tr>
           <th class="h2" v-for="f in TB_FIELDS" :key="f.key">{{ f.side }}</th>
@@ -81,6 +82,7 @@ function inputVal(r: TbAccount, field: TbFieldKey): string {
             <input v-if="editable" class="fin-ni" type="number" :value="inputVal(r, f.key)" @input="emit('input', r.rowKey, f.key, ($event.target as HTMLInputElement).value)" />
             <span v-else class="fin-nv" :class="{ empty: !cellVal(r.rowKey, f.key), neg: cellVal(r.rowKey, f.key) < 0 }">{{ cellVal(r.rowKey, f.key) ? finSigned(cellVal(r.rowKey, f.key)) : '–' }}</span>
           </td>
+          <td class="fp-fill" aria-hidden="true"></td>
         </tr>
       </tbody>
       <tfoot>
@@ -90,6 +92,7 @@ function inputVal(r: TbAccount, field: TbFieldKey): string {
           <td v-for="f in TB_FIELDS" :key="f.key">
             <span class="fin-nv calc" :class="{ neg: totals[f.key] < 0 }">{{ finSigned(totals[f.key]) || '–' }}</span>
           </td>
+          <td class="fp-fill" aria-hidden="true"></td>
         </tr>
       </tfoot>
     </table>
@@ -99,7 +102,12 @@ function inputVal(r: TbAccount, field: TbFieldKey): string {
 <style scoped>
 /* 基底 1:1 参考 components/fin/FinReportTable.vue 的 .fin-wrap/.fin-table/.fin-nv/.fin-ni 系列 */
 .fin-wrap { flex:1 1 auto; min-height:0; overflow:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--surface-white); }
-.fin-table { border-collapse:separate; border-spacing:0; width:100%; min-width:1240px; font-family:var(--font-sans); }
+/* 列宽(LIST-PAGE-SPEC §4,2026-10-02):科目名称按最长的名字定宽,余宽落进行末空列 .fp-fill;
+   不再给 min-width:1240 —— 表比内容宽出来的部分会落进空列,窄屏要横滚时空列就不该还有宽。
+   auto 布局里有空列时 <col> 的 px 宽被压回内容宽,定宽列靠表头格 min-width 撑住(数值与 colgroup 同源)。 */
+.fin-table { border-collapse:separate; border-spacing:0; width:100%; font-family:var(--font-sans); }
+.fin-table thead th.tb-codeh { min-width:96px; }
+.fin-table thead th.h2 { min-width:128px; }
 .fin-table th, .fin-table td { border-bottom:1px solid var(--divider); box-sizing:border-box; padding:0; text-align:left; }
 .fin-table thead th { position:sticky; z-index:3; background:var(--surface-card); color:var(--text-muted); font-size:11.5px; font-weight:var(--fw-semibold); text-align:center; padding:0 8px; vertical-align:middle; }
 /* sticky 两行表头:h1 顶行 30px,h2 借/贷行紧贴其下 */
@@ -120,8 +128,9 @@ function inputVal(r: TbAccount, field: TbFieldKey): string {
 .tb-caret:hover { background:var(--bg-hover); color:var(--text-primary); }
 .tb-caret.open { transform:rotate(90deg); }
 .tb-caret-ph { width:20px; flex:0 0 auto; }
-.tb-x { width:20px; height:20px; flex:0 0 auto; border:none; background:transparent; border-radius:var(--radius-sm); color:var(--text-disabled); cursor:pointer; display:none; place-items:center; margin-left:auto; }
-.fin-table tbody tr:hover .tb-x { display:grid; }
+/* 平时 visibility:hidden 而不是 display:none:名称列按内容定宽,display 切换会让悬停那一行把列撑宽 */
+.tb-x { width:20px; height:20px; flex:0 0 auto; border:none; background:transparent; border-radius:var(--radius-sm); color:var(--text-disabled); cursor:pointer; display:grid; visibility:hidden; place-items:center; margin-left:auto; }
+.fin-table tbody tr:hover .tb-x { visibility:visible; }
 .tb-x:hover { background:var(--danger-soft); color:var(--hue-red); }
 .fin-nv { display:block; text-align:right; font-size:12px; padding:0 12px; color:var(--text-secondary); font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .fin-nv.empty { color:var(--text-disabled); }
@@ -133,7 +142,7 @@ function inputVal(r: TbAccount, field: TbFieldKey): string {
 
 /* 触屏无 hover(RESPONSIVE-LAYOUT-SPEC §6.1):行 hover 显形的删科目 × 常显,半透明弱化 */
 @media (hover: none) {
-  .tb-x { display:grid; opacity:.6; }
+  .tb-x { visibility:visible; opacity:.6; }
 }
 
 /* ── S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5.3):查看优先,sticky 只留一根首列当锚 ──

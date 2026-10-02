@@ -75,10 +75,11 @@ function inputVal(r: FinTableRow, field: string): string {
       </colgroup>
       <thead>
         <tr>
-          <th v-if="selectable"></th>
+          <th v-if="selectable" class="fin-ckcell"></th>
           <th class="fin-c1" style="text-align:left;padding-left:12px">项　目</th>
-          <th>行次</th>
-          <th v-for="c in columns" :key="c.key">{{ c.label }}</th>
+          <th class="fin-noh">行次</th>
+          <th v-for="c in columns" :key="c.key" class="fin-amt">{{ c.label }}</th>
+          <th class="fp-fill" aria-hidden="true"></th>
         </tr>
       </thead>
       <tbody>
@@ -101,6 +102,7 @@ function inputVal(r: FinTableRow, field: string): string {
             <input v-else-if="editable" class="fin-ni" type="number" :value="inputVal(r, c.key)" @input="emit('input', r.key, c.key, ($event.target as HTMLInputElement).value)" />
             <span v-else class="fin-nv" :class="{ empty: !cellVal(r.key, c.key), neg: cellVal(r.key, c.key) < 0 }">{{ cellVal(r.key, c.key) ? finSigned(cellVal(r.key, c.key)) : '–' }}</span>
           </td>
+          <td class="fp-fill" aria-hidden="true"></td>
         </tr>
       </tbody>
     </table>
@@ -119,6 +121,11 @@ function inputVal(r: FinTableRow, field: string): string {
 .fin-table tbody tr.sub td { background:var(--accent-slate); }
 .fin-table tbody tr.sub:hover td { background:var(--accent-slate); }
 .fin-table tbody tr.sub.strong td { background:var(--accent-blue); }
+/* 列宽(LIST-PAGE-SPEC §4,2026-10-02):项目列按最长的行名定宽,余宽落进行末空列 .fp-fill。
+   auto 布局里有那一列时 <col> 的 px 宽会被压回内容宽,定宽列靠表头格 min-width 撑住(数值与 colgroup 同源)。 */
+.fin-table thead th.fin-ckcell { min-width:34px; }
+.fin-table thead th.fin-noh { min-width:48px; }
+.fin-table thead th.fin-amt { min-width:168px; }
 .fin-rowlabel { display:flex; align-items:center; gap:6px; padding:0 12px; font-size:12.5px; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .fin-rowlabel.lv0 { font-weight:var(--fw-semibold); }
 .fin-rowlabel.lv1 { padding-left:26px; color:var(--text-secondary); }
@@ -126,11 +133,12 @@ function inputVal(r: FinTableRow, field: string): string {
 .fin-rowlabel.lv3 { padding-left:58px; color:var(--text-muted); font-size:12px; }
 .fin-rowlabel.label { color:var(--text-muted); font-size:11.5px; font-weight:var(--fw-medium); }
 .fin-rowlabel.subtotal { font-weight:var(--fw-semibold); color:var(--text-primary); }
-.fin-rowlabel .custom-x { width:20px; height:20px; flex:0 0 auto; border:none; background:transparent; border-radius:var(--radius-sm); color:var(--text-disabled); cursor:pointer; display:none; place-items:center; }
-.fin-table tbody tr:hover .fin-rowlabel .custom-x { display:grid; }
+/* +/× 平时 visibility:hidden 而不是 display:none:项目列按内容定宽,display 切换会让悬停那一行把列撑宽、整表右移 */
+.fin-rowlabel .custom-x { width:20px; height:20px; flex:0 0 auto; border:none; background:transparent; border-radius:var(--radius-sm); color:var(--text-disabled); cursor:pointer; display:grid; visibility:hidden; place-items:center; }
+.fin-table tbody tr:hover .fin-rowlabel .custom-x { visibility:visible; }
 .fin-rowlabel .custom-x:hover { background:var(--danger-soft); color:var(--hue-red); }
-.fin-rowlabel .addchild { width:20px; height:20px; flex:0 0 auto; border:none; background:transparent; border-radius:var(--radius-sm); color:var(--text-disabled); cursor:pointer; display:none; place-items:center; margin-left:auto; }
-.fin-table tbody tr:hover .fin-rowlabel .addchild { display:grid; }
+.fin-rowlabel .addchild { width:20px; height:20px; flex:0 0 auto; border:none; background:transparent; border-radius:var(--radius-sm); color:var(--text-disabled); cursor:pointer; display:grid; visibility:hidden; place-items:center; margin-left:auto; }
+.fin-table tbody tr:hover .fin-rowlabel .addchild { visibility:visible; }
 .fin-rowlabel .addchild:hover { background:var(--accent-blue); color:var(--hue-blue); }
 .fin-rowlabel .chip { flex:0 0 auto; font-size:10px; font-weight:var(--fw-medium); color:var(--hue-blue); background:var(--accent-blue); border-radius:var(--radius-full); padding:1px 7px; }
 .fin-no { display:block; text-align:center; font-size:11px; color:var(--text-muted); font-family:var(--font-mono); }
@@ -147,7 +155,7 @@ function inputVal(r: FinTableRow, field: string): string {
 /* 触屏无 hover(RESPONSIVE-LAYOUT-SPEC §6.1):行 hover 显形的 +/× 按钮常显,
    半透明弱化不抢视线——hover 显形在触屏等于不可达,编辑入口不得只藏在 hover 里。 */
 @media (hover: none) {
-  .fin-rowlabel .custom-x, .fin-rowlabel .addchild { display:grid; opacity:.6; }
+  .fin-rowlabel .custom-x, .fin-rowlabel .addchild { visibility:visible; opacity:.6; }
 }
 
 /* ── S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5.3):查看优先,sticky 只留一根首列 + 表头 ──

@@ -195,3 +195,21 @@ describe('SystemUsersView', () => {
     expect(w.find('.mx-tablewrap').text()).toBe(fresh)
   })
 })
+
+// 列宽铁律(LIST-PAGE §4 / §7,2026-10-02):角色列按全部账号里最宽的一组角色签定宽(余宽归行末空列)。
+// 屏只把当前页交给 FPSortableTable;不给宽的话翻页 / 筛选时宽跟着变,右边状态 / 创建时间 / 操作整排平移。
+describe('SystemUsersView · 角色列按全部账号定宽', () => {
+  // 破坏验证:roleColW 改成按 paged 算 → 第 1 页只有单签「系统管理员」,32 + 78 = 110px,红;width 去掉 → '',红
+  it('❗两个签的账号在第 2 页:角色列 = 两签(78 + 66)+ 签间 6 + 内边距 32', async () => {
+    const many = Array.from({ length: 10 }, (_, i) => ({ ...USERS[0], id: 100 + i, username: `u${i}` }))
+    const both = { ...USERS[1], id: 200, username: 'both.roles', roles: [ROLES[0], ROLES[1]] }
+    users.mockImplementation(() => Promise.resolve([...many, both]))
+    const w = mountWith(['system:view'])
+    await flushPromises()
+    expect(w.find('.mx-tablewrap tbody').text(), '前置:两签账号在第 2 页').not.toContain('both.roles')
+    const th = w.findAll('.mx-tablewrap thead th').find(t => t.text().includes('角色'))!.element as HTMLElement
+    // 签 = 12px 字 + 2 + 内边距 4 + 圆点 6 + 间距 6:「系统管理员」60 + 18 = 78,「财务专员」48 + 18 = 66
+    expect(th.style.width).toBe('182px')
+    expect(th.style.minWidth).toBe('182px')
+  })
+})

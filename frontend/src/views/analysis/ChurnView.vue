@@ -201,5 +201,6 @@ function onScatterClick(p: unknown) {
 .churn-link:hover { color: var(--text-link); text-decoration: underline; }
 .churn-scroll { max-height: 330px; overflow: auto; }
 .churn-scroll.tall { max-height: 420px; }
-.churn-scroll thead th { position: sticky; top: 0; background: var(--surface-white); z-index: 1; }
+/* tr::after = .ak-tbl 行末空列(ana.css),表头那一格跟着吸顶,否则滚动时表头右段露出底下的行 */
+.churn-scroll thead th, .churn-scroll thead tr::after { position: sticky; top: 0; background: var(--surface-white); z-index: 1; }
 </style>

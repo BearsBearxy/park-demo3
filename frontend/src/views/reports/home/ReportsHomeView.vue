@@ -167,7 +167,8 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
               <th></th>
               <th>来源 B</th>
               <th style="text-align:right">金额</th>
-              <th style="width:90px;text-align:right">结果</th>
+              <th style="min-width:90px;text-align:right">结果</th>
+              <th class="fp-fill" aria-hidden="true"></th>
             </tr>
           </thead>
           <tbody>
@@ -181,6 +182,7 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
                 <span v-if="t.ok" class="rh-tie-ok"><component :is="iconFor('check-circle-2')" :size="14" />已平</span>
                 <span v-else class="rh-tie-bad"><component :is="iconFor('alert-triangle')" :size="14" />待查</span>
               </td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
           </tbody>
         </table>
@@ -244,7 +246,8 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
 .rh-tie-wrap { overflow-x:auto; }
 .rh-tie-table { width:100%; border-collapse:separate; border-spacing:0; font-family:var(--font-sans); font-size:13px; }
 .rh-tie-table th { text-align:left; font-size:12px; font-weight:var(--fw-semibold); color:var(--text-muted); padding:10px 14px; border-bottom:1px solid var(--border-subtle); }
-.rh-tie-table td { padding:12px 14px; border-bottom:1px solid var(--divider); color:var(--text-secondary); }
+/* nowrap:各列按内容定宽、余宽落进行末空列 .fp-fill(列宽铁律,2026-10-02);不压住的话勾稽项会按最窄内容竖排 */
+.rh-tie-table td { padding:12px 14px; border-bottom:1px solid var(--divider); color:var(--text-secondary); white-space:nowrap; }
 .rh-tie-table tr:last-child td { border-bottom:none; }
 .rh-tie-flow { display:inline-flex; align-items:center; gap:7px; color:var(--text-muted); font-size:12.5px; }
 .rh-tie-chip { padding:1px 8px; border-radius:var(--radius-full); background:var(--surface-sunken); color:var(--text-secondary); white-space:nowrap; }

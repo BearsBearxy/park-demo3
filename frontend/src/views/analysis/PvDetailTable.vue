@@ -1,10 +1,12 @@
 <script setup lang="ts">
 // 抽屉 B12 · 逐刻度明细(PV-ANALYSIS-SCREEN-V4 §3.20;画布 v2/Drawer.dc.html)。
-// 五列 108 / 104 / 84 / 96 / 余宽;行高 32;表头 24 吸顶,可见 8 行、表内上下滚,打开时停在最后 8 行。
+// 五列 108 / 104 / 84 / 96 / 备注按最长一条定宽,余宽落进行末空列 .fp-fill(LIST-PAGE-SPEC §4,2026-10-02);
+// 行高 32;表头 24 吸顶,可见 8 行、表内上下滚,打开时停在最后 8 行。
 // 出范围行左侧 2px 色条(低于红 / 高于琥珀)+ 数值与状态同色;缺抄行整行淡底、数值「—」、备注「没抄表」。
 // 行由 pvAnaV4.logic.ts 的 detailRows 给好:未到的刻度不出现,漏抄的出现。
 import { computed, nextTick, ref, watch } from 'vue'
 import '@/components/ana/ana.css'
+import { textW } from '@/composables/useWideTable'
 import { PV_COLORS as C } from './pvAnaColors'
 import type { DetailRow, PvDetailTableProps } from './pvAnaV4.logic'
 
@@ -38,6 +40,9 @@ const view = computed(() => props.rows.map((r: DetailRow) => {
     note: miss ? '没抄表' : noRatio ? '有抄表，发电不为正，不算比值' : r.runDay != null ? `连续第 ${r.runDay} ${unit.value}` : '',
   }
 }))
+
+// 备注列:本段全部备注里最长的一条(12px 字 + 左右内边距 16)
+const noteW = computed(() => textW(['备注', ...view.value.map(r => r.note)], 12, 16))
 
 // ── 滚动:打开 / 换数据时停在最后 8 行;表脚跟着写停在哪几行 ──
 const box = ref<HTMLElement | null>(null)
@@ -75,7 +80,8 @@ const foot = computed(() => {
             <th style="width: 104px;">{{ gran === 'month' ? '当日' : '当月' }}发电 度</th>
             <th style="width: 84px;">比值</th>
             <th style="width: 96px;">在不在范围内</th>
-            <th class="note">备注</th>
+            <th class="note" :style="{ width: noteW + 'px' }">备注</th>
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </thead>
         <tbody>
@@ -85,6 +91,7 @@ const foot = computed(() => {
             <td class="mono" :style="{ color: r.ink ?? undefined }">{{ r.ratio }}</td>
             <td class="state" :style="{ color: r.ink ?? undefined }">{{ r.state }}</td>
             <td class="note">{{ r.note }}</td>
+            <td class="fp-fill" aria-hidden="true"></td>
           </tr>
         </tbody>
       </table>

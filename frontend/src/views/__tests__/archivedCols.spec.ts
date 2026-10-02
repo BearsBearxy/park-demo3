@@ -57,7 +57,7 @@ function ledgerCell(w: ReturnType<typeof mountLedger>, label: string) {
   const leaf = w.findAll('thead tr')[1].findAll('th').map(t => t.text())
   const i = leaf.indexOf(label)
   expect(i, `叶子表头里没有「${label}」列`).toBeGreaterThanOrEqual(0)
-  const tds = w.findAll('tbody tr')[0].findAll('td')
+  const tds = w.findAll('tbody tr')[0].findAll('td:not([aria-hidden])')   // 行末的最右空列 .fp-fill 不算
   return tds[tds.length - 4 - leaf.length + i]
 }
 

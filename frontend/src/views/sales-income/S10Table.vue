@@ -253,6 +253,8 @@ function s10Card(r: S10RecordDTO): WideCard {
           </template>
           <th class="s10-h-note" rowspan="2">备注</th>
           <th class="s10-h-total" :class="{ 's10-fix': fix.style.total }" rowspan="2" :style="totalSt">合计</th>
+          <!-- 最右空列 .fp-fill(base.css;LIST-PAGE §4 列宽铁律):表格比内容宽出来的余宽全落在这一列,不摊进金额列 -->
+          <th class="fp-fill" rowspan="2" aria-hidden="true"></th>
         </tr>
         <!-- 第二行:多叶子组的子列 -->
         <tr>
@@ -325,6 +327,7 @@ function s10Card(r: S10RecordDTO): WideCard {
           </td>
 
           <td class="s10-c-total" :class="{ 's10-fix': fix.style.total }" :style="totalSt">{{ fmt(totals.byRow.get(r.id) ?? 0) }}</td>
+          <td class="fp-fill" aria-hidden="true"></td>
         </tr>
 
         <!-- 撑高行:把合计顶到卡底 -->
@@ -332,6 +335,7 @@ function s10Card(r: S10RecordDTO): WideCard {
           <td class="s10-c-name" :style="nameSt"></td>
           <td :colspan="leaves.length + 1"></td>
           <td class="s10-c-total" :class="{ 's10-fix': fix.style.total }" :style="totalSt"></td>
+          <td class="fp-fill" aria-hidden="true"></td>
         </tr>
       </tbody>
 
@@ -341,6 +345,7 @@ function s10Card(r: S10RecordDTO): WideCard {
           <th v-for="l in leaves" :key="l.colId" class="s10-c-num">{{ fmt(totals.byCol[l.colId]) }}</th>
           <th class="s10-foot-note"></th>
           <th class="s10-foot-total" :class="{ 's10-fix': fix.style.total }" :style="totalSt">{{ fmt(totals.grand) }}</th>
+          <th class="fp-fill" aria-hidden="true"></th>
         </tr>
       </tfoot>
     </table>
@@ -369,6 +374,7 @@ function s10Card(r: S10RecordDTO): WideCard {
 .s10-h-note { padding:0 12px; text-align:left; font-size:11.5px; min-width:140px; border-bottom:1px solid var(--border-subtle); }
 .s10-h-total { text-align:right; padding:0 14px; border-bottom:1px solid var(--border-subtle); color:var(--text-primary); }
 .s10-h-total.s10-fix { z-index:6 !important; }
+.s10-table thead th.fp-fill { border-bottom:1px solid var(--border-subtle); }   /* 表头底线铺到最右 */
 
 /* 单元格 */
 .s10-table tbody td { height:38px; padding:0 12px; border-bottom:1px solid var(--divider); text-align:right; }
@@ -395,8 +401,9 @@ function s10Card(r: S10RecordDTO): WideCard {
 .s10-row:hover .s10-del { opacity:1; }
 .s10-del:hover { background:rgba(255,59,48,.1); color:var(--hue-red); }
 
-/* 编辑输入 */
-.s10-input { width:100%; box-sizing:border-box; height:28px; border:1px solid var(--border-control); border-radius:6px; padding:0 8px; font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:12.5px; text-align:right; color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
+/* 编辑输入。width:auto + min-width:100%:按输入框自身默认宽撑列 —— width:100% 的输入框不撑列,
+   有了最右空列(.fp-fill)金额列就会缩到只剩表头的保底宽,长数字在框里显示不全 */
+.s10-input { width:auto; min-width:100%; box-sizing:border-box; height:28px; border:1px solid var(--border-control); border-radius:6px; padding:0 8px; font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:12.5px; text-align:right; color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
 .s10-input:focus { border-color:var(--hue-blue); }
 .s10-input.note { font-family:var(--font-sans); text-align:left; }
 .s10-input.name { font-family:var(--font-sans); height:30px; font-weight:var(--fw-medium); }

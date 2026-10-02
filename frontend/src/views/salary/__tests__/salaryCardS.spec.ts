@@ -130,7 +130,7 @@ describe('附表12 · 宽档零差异', () => {
     expect(w.findAll('.fpwc-c')).toHaveLength(0)
     expect(w.findAll('table.s12-table')).toHaveLength(1)
     // 两级表头:g 行 12 个 th(含 rowspan 的序号/姓名/职务/招商提成/应发/实发/签收/备注)+ s 行 17 个子列
-    expect(w.findAll('thead tr.g th')).toHaveLength(12)
+    expect(w.findAll('thead tr.g th:not([aria-hidden])')).toHaveLength(12)   // 跨两行的最右空列 .fp-fill 不算
     expect(w.findAll('thead tr.s th')).toHaveLength(17)
     // 左 sticky 两根(序号 + 姓名)仍在,S 档的收敛只写在 CSS 媒体块里,不改 DOM
     expect(w.findAll('tbody .s12-sticky1')).toHaveLength(2)

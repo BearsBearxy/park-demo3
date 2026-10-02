@@ -32,6 +32,7 @@ import type { BuildingDTO } from '@/types/building'
 import BillNoticesView from '@/views/bills/BillNoticesView.vue'
 import { useViewport, _resetViewportForTest } from '@/composables/useViewport'
 import { defineComponent, h, KeepAlive, ref } from 'vue'
+import { rowsNotEndingInFill, stubWideTable } from '@/composables/__tests__/wideTableStub'
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -217,8 +218,27 @@ describe('P4-D3 表格列、警告写类别、分组行(画布 05-A)', () => {
   // 破坏验证:把「行数」那一列加回 thead → 红
   it('表头六列,无行数', async () => {
     const v = await open()
-    expect(v.findAll('.bn-table thead th').map(t => t.text()))
+    expect(v.findAll('.bn-table thead th:not(.fp-fill)').map(t => t.text()))
       .toEqual(['租户', '位置', '本期合计（元）', '月租金参考（元）', '状态', '警告'])
+  })
+
+  // 列宽铁律(2026-10-02):位置按内容定宽,余宽落进行末空列,不再由位置列吸收。
+  // 破坏验证:位置那根 <col> 改回无宽 `<col />` → 第一段红;删掉表头 / 分组行 / 户行 / 合计行任一处的 .fp-fill → 第二段红
+  it('位置列按最长位置串定宽(189px),余宽归行末空列;每种行末尾都是一格空列', async () => {
+    const v = await open()
+    const cols = v.findAll('.bn-table colgroup col')
+    expect(cols).toHaveLength(7)
+    // 最长「孵化器A102室、宿舍545室」= 12.2em × 14px → 171 + 余量 2 + 内边距 16
+    expect(cols[1].attributes('style')).toBe('width: 189px;')
+    expect(cols[6].attributes('style'), '空列不给宽,吃余宽').toBeUndefined()
+    const lastCells = [
+      v.find('.bn-table thead tr'), bands(v)[0], tenantRows(v)[0], v.find('.bn-table tfoot tr'),
+    ].map(tr => tr.findAll('th, td').at(-1)!)
+    for (const c of lastCells) {
+      expect(c.classes()).toContain('fp-fill')
+      expect(c.attributes('aria-hidden')).toBe('true')
+      expect(c.text()).toBe('')
+    }
   })
 
   // 破坏验证:warnCell 的 more 不加收款缺口 / warnHead 的 more 写成 0 → 红
@@ -261,7 +281,7 @@ describe('P4-D3 表格列、警告写类别、分组行(画布 05-A)', () => {
 
   it('合计行只写「合计」和两列数,不写户数 / 行数', async () => {
     const v = await open()
-    const cells = v.findAll('.bn-table tfoot th').map(t => t.text())
+    const cells = v.findAll('.bn-table tfoot th:not(.fp-fill)').map(t => t.text())
     expect(cells).toEqual(['合计', '', '148,710.14', '143,360.02', '', ''])
   })
 })
@@ -713,5 +733,63 @@ describe('对抗复查 · 问着的时候编辑权没了,答「是」也不写(a
     reply(true)
     await flushPromises()
     expect(billNoticesApi.deleteNote).not.toHaveBeenCalled()
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// 列宽铁律(LIST-PAGE §4 / §7,2026-10-02):主表位置列放得下 / 放不下两档;明细水电费的备注列不随交互变宽
+describe('列宽:位置列两档、水电费备注列不随交互变', () => {
+  let ro: ReturnType<typeof stubWideTable> | null = null
+  afterEach(() => { ro?.restore(); ro = null })
+
+  // 定宽列合计 820(租户 220 + 三列 130 + 警告 210),最长位置串 189
+  // 破坏验证:locTight 改成恒假 → 第二段位置列仍 189px,红;table 上的 'bn-tight' 绑定删掉 → 第二段红
+  //   (M↓ 的 980 保底只挂 .bn-tight:放得下时也挂的话,保底宽多出来的全落进空列,横滚看到空白)
+  it('❗放得下 → 位置 189px、空列吃余宽、不挂 .bn-tight;放不下 → 位置吃剩余、空列 0 宽、挂 .bn-tight', async () => {
+    ro = stubWideTable('bn-wrap')
+    const v = await open()
+    await ro.fire(1200, 600)            // 1200 − 820 = 380 ≥ 189
+    let cols = v.findAll('.bn-table colgroup col')
+    expect(cols[1].attributes('style')).toBe('width: 189px;')
+    expect(cols[6].attributes('style')).toBeUndefined()
+    expect(v.find('.bn-table').classes()).not.toContain('bn-tight')
+    await ro.fire(1000, 600)            // 1000 − 820 = 180 < 189
+    cols = v.findAll('.bn-table colgroup col')
+    expect(cols[1].attributes('style')).toBeUndefined()
+    expect(cols[6].attributes('style')).toBe('width: 0px;')
+    expect(v.find('.bn-table').classes()).toContain('bn-tight')
+  })
+
+  // 备注后面紧跟 30 宽的取价审计列:备注宽一变,审计列跟着跳。编辑钮与编辑行按「有没有权限」预留。
+  // 破坏验证:utilNoteW 的编辑行改回 `if (noteEditKey.value)` → 浏览态 / 编辑态窄、点铅笔变 304,红;
+  //   铅笔位改回 canRun 同时编辑行也改回 → 浏览态比编辑态窄,红
+  it('❗水电费明细的备注列:浏览态、编辑态、点铅笔展开编辑行,都是同一个宽(编辑行 16 + 240 + 2×24 = 304)', async () => {
+    const LINE: BillNoticeLineDTO = {
+      lineNo: 1, feeKey: 'elec', premise: '二楼201室', meterId: 9, meterLabel: '广联电', contractId: 703, seg: 'flat',
+      prevRead: 0, currRead: 100, factorSnap: 1, qty: 100, priceSnap: 0.6, priceKey: null, priceScope: null,
+      priceMonth: null, ruleBranch: null, poolRuleId: null, poolName: null, shareSrc: null, baseSnap: null,
+      amount: 60, note: '抄表日顺延', feeGroup: 'elec',
+    }
+    vi.mocked(billNoticesApi.detail).mockImplementation(async (id: number) => {
+      const n = mkNotices().find(x => x.id === id)!
+      return { id: n.id, ym: n.ym, tenantId: n.tenantId, tenantName: n.tenantName, payCompanyId: n.payCompanyId,
+        payCompanyName: n.payCompanyName, noticeKind: n.noticeKind, premiseText: n.premiseText,
+        totalAmount: n.totalAmount, prevDue: n.prevDue, status: n.status, warns: n.warns, lines: [LINE] }
+    })
+    const v = await open()
+    await rowOf(v, '广联').trigger('click')
+    await flushPromises()
+    await v.findAll('[role="tab"]').find(t => t.text() === '水电费')!.trigger('click')
+    await flushPromises()
+    // colgroup 末三根 = 备注 / 取价审计 30 / 行末空列
+    const noteCol = () => v.find('.bn-dtable colgroup').findAll('col').at(-3)!.attributes('style')
+    expect(noteCol()).toBe('width: 304px;')
+    await enterEdit(v)
+    expect(noteCol()).toBe('width: 304px;')
+    await v.find('.bn-dtable .bn-npen').trigger('click')
+    await flushPromises()
+    expect(v.find('.bn-dtable .bn-nin').exists(), '前置:编辑行已展开').toBe(true)
+    expect(noteCol()).toBe('width: 304px;')
+    expect(rowsNotEndingInFill(v.get('.bn-dtable').element), '水电费明细每一行末尾都是空列').toEqual([])
   })
 })

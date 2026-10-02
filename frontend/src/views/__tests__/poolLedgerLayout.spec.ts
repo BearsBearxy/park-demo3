@@ -161,9 +161,10 @@ async function enterEdit(w: VueWrapper) {
   await w.findAll('button').find(b => b.text().includes('编辑模式'))!.trigger('click')
   await flushPromises()
 }
-const ths = (w: VueWrapper) => w.findAll('thead th').map(t => t.text())
+// 行末的最右空列 .fp-fill(aria-hidden)不是数据列,表头 / 格子都不算它
+const ths = (w: VueWrapper) => w.findAll('thead th:not([aria-hidden])').map(t => t.text())
 const rowOf = (w: VueWrapper, name: string) => w.findAll('tr.pl-row').find(tr => tr.find('.nm').text() === name)!
-const cellsOf = (w: VueWrapper, name: string) => rowOf(w, name).findAll('td').map(td => td.text())
+const cellsOf = (w: VueWrapper, name: string) => rowOf(w, name).findAll('td:not([aria-hidden])').map(td => td.text())
 const COLS = ['位置', '用途', '电表', '倍率', '上月行至', '本月行至', '用量', '应分摊（元）', '分摊方式', '分摊标准', '分摊基数', '加减度数']
 
 describe('P4-B1 页面三态(03-B)', () => {
@@ -494,7 +495,7 @@ describe('对抗复查 · 每一行都占满表头那么多列(asserts-4)', () =
   it('点开段行 / 放出实收盈亏 / 开分时列三种状态下,逐行展开的列数都等于表头列数', async () => {
     const w = await open([...ROWS, MULTI])
     const check = (what: string) => {
-      const n = ths(w).length
+      const n = w.findAll('thead th').length   // 含最右空列:分组 / 逐表 / 段 / 合计每一种行末尾也都得有它那一格
       expect(widths(w).filter(x => x !== n), `${what}:有行不是 ${n} 列`).toEqual([])
     }
     await rowOf(w, '招商中心电1').find('button.pl-segtg').trigger('click')

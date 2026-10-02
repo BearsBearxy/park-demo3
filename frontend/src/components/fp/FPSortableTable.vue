@@ -26,8 +26,9 @@ const props = withDefaults(defineProps<{
   rowKey?: string
   sort?: SortState | null
   rowHover?: boolean
-  // 列宽铁律(LIST-PAGE-SPEC §4):true 时 table-layout:fixed——定宽列锁死,唯一无宽列吸收余宽,
-  // 列位置不随单元格内容长短或翻页漂移。默认 false 向后兼容既有使用方。
+  // 列宽铁律(LIST-PAGE-SPEC §4,2026-10-02 改):各列按内容定宽、挨在一起,余宽统一落进
+  // 每行末尾的空列 .fp-fill(base.css),不再交给某一列无宽的文字列吸收。
+  // true 时 table-layout:fixed——定宽列锁死,列位置不随单元格内容长短或翻页漂移。默认 false。
   fixedLayout?: boolean
   // master-detail 选中高亮:命中行(rowKey===selectedKey)加背景色;null=无选中(向后兼容)。
   selectedKey?: string | number | null
@@ -180,7 +181,9 @@ function renderSortHeader(col: SortableColumn) {
             v-for="c in columns"
             :key="c.key"
             :style="{
+              /* 有 .fp-fill 空列时 auto 布局会把 width 压回内容宽,定宽靠 minWidth 锁住 */
               width: c.width,
+              minWidth: c.width,
               /* 与 td 同档收窄,否则 M 档表头与表体列不对齐 */
               padding: `0 ${cellPadX} 10px`,
               textAlign: c.align || 'left',
@@ -192,6 +195,7 @@ function renderSortHeader(col: SortableColumn) {
           >
             <component :is="() => renderSortHeader(c)" />
           </th>
+          <th class="fp-fill" aria-hidden="true"></th>
         </tr>
       </thead>
       <tbody>
@@ -207,6 +211,7 @@ function renderSortHeader(col: SortableColumn) {
                   :style="{ display: 'inline-block', height: '11px', borderRadius: '3px',
                             width: [62, 44, 54, 38, 48, 58][(ci + i) % 6] + '%' }"></span>
           </td>
+          <td class="fp-fill" aria-hidden="true"></td>
         </tr>
         <tr
           v-for="r in sortedRows"
@@ -236,7 +241,7 @@ function renderSortHeader(col: SortableColumn) {
               color: 'var(--text-primary)',
               whiteSpace: c.wrap ? 'normal' : 'nowrap',
               /* 超长内容截断而不是把列撑宽(LIST-PAGE-SPEC §4):table-layout 保持 auto,
-                 列宽被 width:100% 压缩时才生效;全文靠上面的 v-tip 悬停看 */
+                 内容比列定宽(width / minWidth)长时才生效;全文靠上面的 v-tip 悬停看 */
               overflow: c.wrap ? undefined : 'hidden',
               textOverflow: c.wrap ? undefined : 'ellipsis',
               fontVariantNumeric: c.mono ? 'tabular-nums' : 'normal',
@@ -245,6 +250,7 @@ function renderSortHeader(col: SortableColumn) {
           >
             <Cell :node="c.render ? c.render(r) : (r as any)[c.key]" />
           </td>
+          <td class="fp-fill" aria-hidden="true"></td>
         </tr>
       </tbody>
     </table>

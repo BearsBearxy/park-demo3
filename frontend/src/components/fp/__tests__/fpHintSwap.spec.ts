@@ -53,7 +53,7 @@ describe('T21 · 原生 title 换成悬停说明', () => {
     ]
     const rows: TenantRow[] = [{ id: 7, name: '苏州恒拓精密机械有限公司', area: '1,234.50', status: '在租' }]
     const w = mount(FPSortableTable, { props: { columns: cols, rows } })
-    const tds = w.findAll('tbody td')
+    const tds = w.findAll('tbody td:not(.fp-fill)')
     expect(tds.map(td => tipOf(td.element))).toEqual(['苏州恒拓精密机械有限公司', '1,234.50', undefined])
     expect(tds.every(td => td.attributes('title') === undefined)).toBe(true)
   })

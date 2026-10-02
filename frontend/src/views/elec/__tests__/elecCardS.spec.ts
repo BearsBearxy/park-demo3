@@ -2,7 +2,8 @@
 // (响应式稿 WideCardVariants 板 §3 行5 + RESPONSIVE-LAYOUT-SPEC §5.3 卡片名单「电量」)。
 //
 // 这一组断言要钉住三件事:
-//  ① 宽档(tier !== 's')渲染的还是那张 <table>,列数与 min-width 一根不动(§9「1440 与现状零差异」);
+//  ① 宽档(tier !== 's')渲染的还是那张 <table>,列数一根不动(§9「1440 与现状零差异」);
+//     表格本身不给 px 保底宽(2026-10-02:保底宽比内容宽时多出来的全落进行末空列,横滚看到空白);
 //  ② S 档查看态换成卡列,卡面三行逐字是什么 —— 名字带行身份、金额是价税合计、次级句只写测量;
 //  ③ 稿画的那根 96 档损耗条**故意没有**:ElecRecordDTO 取不到供电侧电量,算不出损耗率,
 //     所以降 88 不画条。这条写成断言而不是注释 —— 将来谁想「顺手补一根条」,得先解释数据从哪来。
@@ -12,6 +13,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import ElecTable from '../ElecTable.vue'
 import ElecRowDrawer from '../ElecRowDrawer.vue'
+import { rowsNotEndingInFill } from '@/composables/__tests__/wideTableStub'
 import { _resetViewportForTest } from '@/composables/useViewport'
 import type { ElecPhaseDTO, ElecRecordDTO, ElecTotal } from '@/types/elec'
 
@@ -77,15 +79,19 @@ describe('附表11 · 宽档(现状零差异)', () => {
     expect(w.findAll('.fpwc-c')).toHaveLength(0)
   })
 
-  it('❗列数与 min-width 一根不动(§5.4 定宽表:窄了横滚,不改列)', () => {
+  // 破坏验证:.e11-table 加回 min-width:1040px → 最后一段红
+  it('❗列数一根不动(§5.4 定宽表:窄了横滚,不改列);表格不给 px 保底宽,每行末尾是空列', () => {
     // energy 查看态 11 根:记账月份/开票日期/时段/用电类别/电量/不含税单价/不含税金额/税率/税额/价税合计/备注
-    expect(mountTable().findAll('thead th')).toHaveLength(11)
+    // (另有行末空列 .fp-fill 吃余宽,不算列)
+    expect(mountTable().findAll('thead th:not(.fp-fill)')).toHaveLength(11)
     // 编辑态多一根操作列
-    expect(mountTable({ edit: true }).findAll('thead th')).toHaveLength(12)
+    expect(mountTable({ edit: true }).findAll('thead th:not(.fp-fill)')).toHaveLength(12)
     // basic 查看态 9 根
-    expect(mountTable({ type: 'basic', rows: BASIC_ROWS }).findAll('thead th')).toHaveLength(9)
+    expect(mountTable({ type: 'basic', rows: BASIC_ROWS }).findAll('thead th:not(.fp-fill)')).toHaveLength(9)
     const src = readFileSync(join(__dirname, '../ElecTable.vue'), 'utf8')
-    expect(src).toMatch(/\.e11-table\s*\{[^}]*min-width:\s*1040px/)
+    expect(rowsNotEndingInFill(mountTable().get('table.e11-table').element)).toEqual([])
+    expect(src).toMatch(/\.e11-table \{ border-collapse:separate;[^}]*\}/)
+    expect(src).not.toMatch(/\.e11-table\s*\{[^}]*min-width/)
   })
 })
 
@@ -154,7 +160,7 @@ describe('附表11 · S 档行→卡片', () => {
     expect(w.findAll('table.e11-table')).toHaveLength(1)
     // §5.4:同一张表在 S 档也是 12 根列,一根不许按档位增删(上面那条 11/12/9 跑在 xl 档,
     // 拦不住「S 档少画一列」这种写法,所以这里补一次同表跨档的对照)
-    expect(w.findAll('thead th')).toHaveLength(12)
+    expect(w.findAll('thead th:not(.fp-fill)')).toHaveLength(12)
     expect(w.findAll('.e11-cb').length).toBeGreaterThan(0)          // 全选 + 逐行勾选
     expect(w.findAll('.e11-actbtn.del')).toHaveLength(ROWS.length)  // 每行一个删除钮
   })

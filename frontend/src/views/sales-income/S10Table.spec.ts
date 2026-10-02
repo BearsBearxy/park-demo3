@@ -2,7 +2,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { reactive } from 'vue'
 import S10Table from './S10Table.vue'
-import { stubWideTable } from '@/composables/__tests__/wideTableStub'
+import { rowsNotEndingInFill, stubWideTable } from '@/composables/__tests__/wideTableStub'
 import { LAYOUTS, leavesOf, type Group } from './layout'
 import { _resetViewportForTest } from '@/composables/useViewport'
 import type { S10RecordDTO, S10ColId } from '@/types/s10'
@@ -330,6 +330,28 @@ describe('S10Table · 固定列按表格可见宽度退,租户封顶 1/5,高度�
     expect(st(w, 'td.s10-c-name').width).toBe('255px')
     await w.setProps({ rows: [ROWS[1]] })
     expect(st(w, 'td.s10-c-name').width).toBe('120px')   // 瑞通物流 80 + 手动签 40
+  })
+
+  // 最右空列(LIST-PAGE §4 列宽铁律,2026-10-02 用户拍板):表格区比各列合计宽时,余宽全落在每行末尾那一格空列,
+  // 不再按比例摊进 20 / 25 根金额列和备注。
+  // 破坏验证:tbody 行末那格 fp-fill 删掉 → 红(两行数据行)。撑高行整行 aria-hidden,不查
+  it('可见 3000:表头(跨两行)、每一行、合计行的最右一格都是空列;租户列 = 长名估宽 255,不吃余宽', async () => {
+    const w = mnt(props)
+    await fire(3000, 800)
+    expect(rowsNotEndingInFill(w.get('table.s10-table').element)).toEqual([])
+    expect(st(w, 'td.s10-c-name').width).toBe('255px')
+  })
+
+  // 有了空列,auto 布局只给不定宽的列「最窄能放下」的宽:width:100% 的输入框按 0 算,编辑态金额列会缩回表头的保底 104,
+  // 长数字在框里显示不全。破坏验证:.s10-input 改回 width:100% → 红
+  it('编辑态金额 / 备注输入框按自身宽撑列(width:auto + min-width:100%)', async () => {
+    css()
+    const w = mnt({ ...props, edit: true })
+    await fire(3000, 800)
+    const ins = w.findAll('tbody input.s10-input')
+    expect(ins.length, '前提:金额格和备注格都有输入框').toBeGreaterThan(2)
+    expect(ins.map(i => { const c = getComputedStyle(i.element); return c.width + ' ' + c.minWidth }))
+      .toEqual(Array(ins.length).fill('auto 100%'))
   })
 
   it('名字悬停看全称走 v-tip,不走 title', async () => {

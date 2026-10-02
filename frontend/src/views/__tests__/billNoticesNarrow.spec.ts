@@ -570,8 +570,9 @@ describe('§G 屏顶块高逐条钉死(算术见文件头,收完 0 行 → 9 行
 
   // ⚠ 兜底宽 920 → 980(2026-10-01):画布 05-A 删「行数」列、警告列改写类名(210 宽),定宽合计 770 → 820;
   //   兜底要让唯一弹性的「位置」列在批量态(+36)仍有 124px,算法同原来那条注释。
+  //   2026-10-02 起只挂在位置列放不下(.bn-tight)时:放得下时位置按内容定宽,保底宽多出来的全落进行末空列。
   it('§5.4 没被顺手改掉:colgroup 定宽,窄了照旧在 .bn-wrap 内横滚', () => {
-    expect(mediaBlock(VIEW_CSS, Q960)).toContain('.bn-table { min-width: 980px; }')
+    expect(mediaBlock(VIEW_CSS, Q960)).toContain('.bn-table.bn-tight { min-width: 980px; }')
     expect(VIEW_CSS).toContain('.bn-wrap { flex: 1 1 auto; min-height: 0; overflow: auto;')
   })
 })

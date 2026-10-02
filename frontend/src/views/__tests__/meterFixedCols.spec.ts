@@ -6,8 +6,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
-import { stubWideTable } from '@/composables/__tests__/wideTableStub'
-import { numW } from '@/composables/useWideTable'
+import { rowsNotEndingInFill, stubWideTable } from '@/composables/__tests__/wideTableStub'
+import { numW, textW } from '@/composables/useWideTable'
 import MeterLedgerGrid from '@/views/meters/MeterLedgerGrid.vue'
 import { buildRows, type WorkbenchRow } from '@/composables/useMeterWorkbench'
 import type { MeterDTO, MeterReadingDTO } from '@/api/meters'
@@ -133,6 +133,29 @@ describe('园区抄表 · 读数列宽按全量算,不省略', () => {
     await flushPromises()
     expect(first(), '前提:窗口真的换了').not.toBe(top)
     expect(colWidths(w)).toEqual(before)
+  })
+})
+
+// 最右空列(LIST-PAGE §4 列宽铁律,2026-10-02 用户拍板):table-layout:fixed + colgroup,最后一根 <col> 不给宽,
+// 表格区比各列合计宽时余宽全落在它身上;原来 min-width:100% 把余宽按比例摊到全部列
+describe('园区抄表 · 最右空列', () => {
+  // 破坏验证:colgroup 末尾那根 <col /> 删掉 → toHaveLength 那条红(12 根表头只剩 11 根 col)
+  it('可见 3000:表头、组头、数据行、合计行的最右一格都是空列,colgroup 末尾一根不给宽;用途列 = 最长用途名估宽,不吃余宽', async () => {
+    const w = await open(rowsA(), 3000, 800)
+    expect(rowsNotEndingInFill(w.get('table.mlg-table').element)).toEqual([])
+    const cols = colWidths(w)
+    expect(cols).toHaveLength(w.findAll('thead th').length)
+    expect(cols[cols.length - 1]).toBe('')
+    expect(cols[1]).toBe(textW(['地下车库东侧照明'], 14, 20) + 'px')   // 8 个字 → 134
+  })
+
+  // 破坏验证:colCount 改回 6 + nMid + 尖峰平谷(不算空列)→ spacer 少跨一格 → 红
+  it('窗口化的 spacer 行跨满整行(含最右空列)', async () => {
+    const ms = Array.from({ length: 200 }, () => mkM())
+    const w = await open(buildRows(ms, ms.map((m, i) => mkR(m, 100, 100 + i, i)), [], null), 3000, 400)
+    const sp = w.find('tr.mlg-spacer td')
+    expect(sp.exists(), '前提:200 行只渲染一窗,底下有 spacer').toBe(true)
+    expect(Number(sp.attributes('colspan'))).toBe(w.findAll('thead th').length)
   })
 })
 

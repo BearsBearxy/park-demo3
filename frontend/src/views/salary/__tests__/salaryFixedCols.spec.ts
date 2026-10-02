@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { reactive } from 'vue'
 import { mount } from '@vue/test-utils'
 import SalaryTable from '../SalaryTable.vue'
-import { stubWideTable } from '@/composables/__tests__/wideTableStub'
+import { rowsNotEndingInFill, stubWideTable } from '@/composables/__tests__/wideTableStub'
 import type { SalaryRecordDTO, SalaryTotal } from '@/types/salary'
 
 function row(over: Partial<SalaryRecordDTO>): SalaryRecordDTO {
@@ -123,6 +123,32 @@ describe('附表12 · 固定列', () => {
     expect(st(w, 'tbody td.s12-sticky2').width).toBe('124px')
     await w.setProps({ rows: [ROWS[0]] })
     expect(st(w, 'tbody td.s12-sticky2').width).toBe('102px')   // 最长的成了「合计 · 1 人」
+  })
+})
+
+// 最右空列(LIST-PAGE §4 列宽铁律,2026-10-02 用户拍板):表格区比各列合计宽时,余宽全落在每行末尾那一格空列,
+// 不再按比例摊进 20 多根金额列
+describe('附表12 · 最右空列', () => {
+  // 破坏验证:表头那格(跨两行)fp-fill 删掉 → 红(表头两行列出来)
+  it('可见 3000:表头(跨两行)、每一行、合计行的最右一格都是空列;姓名列 = 最长名字估宽 124,不吃余宽', async () => {
+    const w = mnt(props)
+    await fire(3000, 800)
+    expect(rowsNotEndingInFill(w.get('table.s12-table').element)).toEqual([])
+    expect(st(w, 'tbody td.s12-sticky2').width).toBe('124px')
+  })
+
+  // 有了空列,auto 布局只给不定宽的列「最窄能放下」的宽:base.css 给 svg 的 max-width:100%、width:100% 的输入框
+  // 在这一步都按 0 算,签收列会窄一个图标宽,编辑态备注列缩回表头的保底 150。
+  // 破坏验证:删掉 .s12-sign svg { max-width:none } → 第一条红;删掉 .s12-c-note :deep(.lc-note-in) 那条 → 第二条红
+  it('签收列的图标、编辑态备注框按自身宽撑列', async () => {
+    ro.injectCss('styles/base.css')
+    ro.injectCss('components/sched/SchedNoteCell.vue')
+    css()
+    const w = mnt({ ...props, edit: true })
+    await fire(3000, 800)
+    expect(getComputedStyle(w.get('.s12-sign svg').element).maxWidth).toBe('none')
+    const note = getComputedStyle(w.get('td.s12-c-note input.lc-note-in').element)
+    expect([note.width, note.minWidth]).toEqual(['auto', '100%'])
   })
 })
 

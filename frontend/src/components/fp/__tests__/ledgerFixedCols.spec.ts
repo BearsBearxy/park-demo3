@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import FPLedgerTable from '../FPLedgerTable.vue'
-import { stubWideTable } from '@/composables/__tests__/wideTableStub'
+import { rowsNotEndingInFill, stubWideTable } from '@/composables/__tests__/wideTableStub'
 import { FEE_KEYS, lgColumns } from '@/utils/ledgerColumns'
 import type { LedgerFees, LedgerRowDTO } from '@/types/ledger'
 
@@ -158,6 +158,34 @@ describe('月度台账列宽 · 数字不省略、名称列封顶 1/5', () => {
     expect(st(w, '本月结余').width).toBe('112px')
     await w.setProps({ columns: lgColumns(9), rows: [R2] })
     expect(st(w, '本月结余').width).toBe('83px')   // -5,000.00 → ceil(9×0.6×12)+2+16
+  })
+})
+
+// 最右空列(LIST-PAGE §4 列宽铁律,2026-10-02 用户拍板,画布 09/10):表格区比各列合计宽时,余宽全落在每行末尾
+// 那一格空列 .fp-fill,租户列、费用列都不吃余宽。jsdom 不排版,这里钉结构和宽度样式;
+// 真浏览器的列宽在 Chrome 里拿改前 / 改后两版组件同屏量过:溢出时每根列与改前一个像素不差;不溢出时各列仍是内容宽,多出来的只进空列
+describe('月度台账 · 最右空列', () => {
+  // 破坏验证:tbody 行末那格 fp-fill 删掉 → 红(两行数据行都列出来)
+  it('可见 3000(表格区比内容宽):表头、每一行、合计行的最右一格都是空列;租户列 = 最长名字估宽 140,不是余宽', async () => {
+    const w = await mountAt(3000, 600)
+    expect(rowsNotEndingInFill(w.get('table').element)).toEqual([])
+    expect(w.findAll('tbody td.fp-fill')).toHaveLength(2)
+    expect(st(w, '租户').width).toBe('140px')
+  })
+
+  // 有了空列,auto 布局只给不定宽的列「最窄能放下」的宽:能折行的字、width:100% 的输入框都会把费用列压窄。
+  // 破坏验证:去掉输入框上的 :class="{ nat: !c.kind }" → 第一条红;.lg-leaf-th 改回 white-space:normal → 列名那条红
+  it('编辑态:费用列输入框按自身宽撑列(width:auto + min-width:100%),定宽列的输入框不撑;费用列名、分组名不折行', async () => {
+    injectCss()
+    const w = await mountAt(3000, 600, { edit: true, selected: new Set() })
+    const cs = (el: { element: Element }) => getComputedStyle(el.element)
+    const nat = w.findAll('input.lg-ni.nat')
+    expect(nat).toHaveLength(2 * 21)   // 2 行 × 21 根费用列
+    expect([cs(nat[0]).width, cs(nat[0]).minWidth]).toEqual(['auto', '100%'])
+    // 上月结余 / 本月收款(定宽 sticky 列)/ 备注:照旧 width:100%,撑宽会把 sticky 偏移撑歪
+    expect(w.findAll('input.lg-ni:not(.nat)').map(i => cs(i).width)).toEqual(Array(6).fill('100%'))
+    expect(cs(w.get('thead tr:nth-child(2) th')).whiteSpace).toBe('nowrap')
+    expect(cs(w.get('thead th[colspan]')).whiteSpace).toBe('nowrap')
   })
 })
 

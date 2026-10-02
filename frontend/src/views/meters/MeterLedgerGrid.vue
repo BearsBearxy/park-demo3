@@ -80,7 +80,8 @@ const toolCols = computed(() => MID.filter(c => c.key !== 'ten')
 const show = computed(() =>
   Object.fromEntries(MID.map(c => [c.key, c.key === 'ten' || !hidden.value.includes(c.key)])) as Record<MidKey, boolean>)
 const nMid = computed(() => MID.filter(c => show.value[c.key]).length)
-const colCount = computed(() => 6 + nMid.value + touCols.value.length)
+/** 位置 用途 上月 本月 用量 状态 = 6,+ 中间列 + 尖峰平谷 + 最右空列 1(spacer / 空态行跨满整行) */
+const colCount = computed(() => 7 + nMid.value + touCols.value.length)
 
 // ── 楼栋分组(§7.6):首现序稳定分组;组头小计随 draft 实时(敲键只重算这一层,不重分组) ──
 const groups = computed(() => groupByBuilding(props.rows, props.buildingNameById))
@@ -376,13 +377,14 @@ function onEnter(e: KeyboardEvent) {
     <div ref="wrapEl" class="mlg-scroll" @scroll.passive="onScroll">
       <table class="mlg-table" :class="{ 'hs-foot': hStage >= 2 }" :style="{ width: tableW + 'px' }">
         <!-- 交互稳定性(LIST-PAGE-SPEC §零布局位移):colgroup 钉死每列宽,配合 table-layout:fixed,
-             滚动换行时浏览器不再按可见单元格内容重算列宽 -->
+             滚动换行时浏览器不再按可见单元格内容重算列宽。
+             最后一根 <col> 不给宽 = 最右空列(LIST-PAGE §4 列宽铁律):表格区比各列合计宽时,余宽全落在它身上 -->
         <colgroup>
           <col :style="w(W.loc)" /><col :style="w(W.use)" />
           <template v-for="c in MID" :key="c.key"><col v-if="show[c.key]" :style="w(W[c.key])" /></template>
           <col :style="w(W.prev)" /><col :style="w(W.curr)" />
           <col v-for="s in touCols" :key="s.c" :style="w(W[s.c])" />
-          <col :style="w(W.usage)" /><col :style="w(W.st)" />
+          <col :style="w(W.usage)" /><col :style="w(W.st)" /><col />
         </colgroup>
         <thead>
           <tr>
@@ -398,6 +400,7 @@ function onEnter(e: KeyboardEvent) {
             <th v-for="s in touCols" :key="s.c" class="r">{{ s.lab }}</th>
             <th class="r mlg-money" :class="[fixCls('usage'), { vl: !S.usage }]" :style="S.usage">用量</th>
             <th :class="fixCls('st')" :style="S.st">状态</th>
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </thead>
         <tbody>
@@ -421,6 +424,7 @@ function onEnter(e: KeyboardEvent) {
                 <span class="mlg-sumc" v-tip="grpSegTip(v.g!)">{{ f2(usageOf(v.g!).total) }}</span>
               </td>
               <td :class="fixCls('st')" :style="S.st"></td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
             <!-- 存疑行(V75 §E3/§F1 两级):shadow=疑似重复建档,整行浅红底,不计入楼栋分表Σ;
                  incomplete=档案不全但配不到重复对手,浅黄底,**照常计入Σ** —— 只是催人补档案 -->
@@ -511,6 +515,7 @@ function onEnter(e: KeyboardEvent) {
                   v-tip="drv.get(v.x!.m.id)!.st!.neg ? undefined : statusDims(v.x!)"
                 >{{ drv.get(v.x!.m.id)!.st!.text }}</span>
               </td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
             <!-- 分时段行(04-A A座总电 ⌄ 峰段/平段/谷段):编辑态出本月段输入格(04-B),回车 总→峰→平→谷 -->
             <tr v-else-if="v.t === 'seg'" class="mlg-segr">
@@ -538,6 +543,7 @@ function onEnter(e: KeyboardEvent) {
                 <span class="mlg-sumc">{{ f2(segUse(v.x!, v.seg!)) }}</span>
               </td>
               <td :class="fixCls('st')" :style="S.st"></td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
             <!-- 组尾(METER-TIMELINE-SPEC §6,画布 04-A):停用的表收在这一行,点「显示」才进列表 -->
             <tr v-else class="mlg-retr">
@@ -553,6 +559,7 @@ function onEnter(e: KeyboardEvent) {
               <td v-for="s in touCols" :key="s.c"></td>
               <td class="mlg-money" :class="[fixCls('usage'), { vl: !S.usage }]" :style="S.usage"></td>
               <td :class="fixCls('st')" :style="S.st"></td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
           </template>
           <tr v-if="win.bottomPad > 0" class="mlg-spacer" aria-hidden="true">
@@ -572,6 +579,7 @@ function onEnter(e: KeyboardEvent) {
             <th v-for="s in touCols" :key="s.c"></th>
             <th class="mlg-money" :class="[fixCls('usage'), { vl: !S.usage }]" :style="S.usage"><span class="mlg-foot-v">{{ f2(foot.usageSum) }}</span></th>
             <th :class="fixCls('st')" :style="S.st"></th>
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </tfoot>
       </table>
@@ -585,7 +593,7 @@ function onEnter(e: KeyboardEvent) {
 .mlg-tools { flex:0 0 auto; }
 .mlg-scroll { flex:1 1 auto; min-height:0; overflow:auto; }
 /* table-layout:fixed(零布局位移):列宽只由 colgroup 决定,窗口化换行不触发列宽重算;
-   min-width:100% 容器更宽时按比例摊余量,与数据内容无关,同样稳定。
+   min-width:100%:容器更宽时余量全落进最后那根不给宽的 <col>(最右空列 .fp-fill),各列宽一个像素不动。
    表格样式(03-C / 04):正文 14、表头 12、行高 40、字左数右、无字距 */
 /* 钱那一列的两种底(03-A / 04-A / 05-A 同形,三屏同一组式子,moneyCol.spec 钉三份一致):
    数据格与合计格 = 浅蓝 60% 叠白 ≈ 画布 (241,247,254);组头那一格再叠 60% 卡片灰 ≈ (246,248,252) */

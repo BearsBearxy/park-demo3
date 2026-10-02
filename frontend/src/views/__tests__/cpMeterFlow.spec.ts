@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { setActivePinia, createPinia } from 'pinia'
 
 import CpMeterView from '@/views/charging/CpMeterView.vue'
+import { rowsNotEndingInFill } from '@/composables/__tests__/wideTableStub'
 import { cpMeterApi } from '@/api/cpMeter'
 import type { CpStationDTO, CpReadingDTO, CpPowerUsageDTO } from '@/api/cpMeter'
 import { useAuthStore } from '@/stores/auth'
@@ -1198,5 +1199,24 @@ describe('分桩充电明细 · 禁用钮的悬停说明', () => {
     expect(document.body.querySelector('.fp-vtip')?.textContent).toBe('本月数据没读到,导出会得到一份全零的表 —— 先重试')
     await host.trigger('mouseleave')
     w.unmount()
+  })
+})
+
+// 列宽铁律(LIST-PAGE §4 / §7,2026-10-02):桩名是主表 colgroup 第一根,宽要是随编辑态变,后面 5 根数字列整排平移
+describe('分桩充电明细 · 桩名列宽不随编辑态变', () => {
+  // 破坏验证:stNameW 的 canMaster 改回 editStation → 浏览态按「充电桩」表头 76px,红
+  it('❗有档案编辑权的人浏览态就按输入框的 200 预留,进出编辑态同宽', async () => {
+    vi.mocked(cpMeterApi.readings).mockResolvedValue(MAR as never)
+    const w = await open()
+    await w.findAll('.bmm-card')[2].trigger('click')
+    await flushPromises()
+    const nameCol = () => w.find('.cm-table colgroup col').attributes('style')
+    expect(nameCol()).toBe('width: 200px;')
+    ;(w.vm as unknown as { editMode: boolean }).editMode = true
+    await flushPromises()
+    expect(w.find('.cm-table tbody input').exists(), '前置:编辑态行内出了输入框').toBe(true)
+    expect(nameCol()).toBe('width: 200px;')
+    // 余宽归行末空列:表头、每一行、合计行最右一格都是 aria-hidden 的 .fp-fill(破坏验证:删掉数据行那格 → 红)
+    expect(rowsNotEndingInFill(w.get('.cm-table').element)).toEqual([])
   })
 })

@@ -436,12 +436,14 @@ function onParetoClick(p: unknown) {
 .exp-kv .k { color: var(--text-muted); }
 .exp-kv .v { font-family: var(--font-mono); font-weight: 600; }
 .exp-scroll { max-height: 480px; overflow: auto; }
-.exp-scroll thead th { position: sticky; top: 0; background: var(--surface-white); z-index: 1; }
+/* tr::after = .ak-tbl 行末空列(ana.css):吸顶、行态底色都跟着 td 走,否则那一段颜色断开 */
+.exp-scroll thead th, .exp-scroll thead tr::after { position: sticky; top: 0; background: var(--surface-white); z-index: 1; }
 .exp-row { cursor: pointer; }
-.exp-row td { transition: background var(--dur-fast) var(--ease-standard); }
-.exp-row:hover td, .exp-row.on td { background: var(--bg-hover); }
-.exp-row:active:not(.on) td { background: var(--ink-100); transition-duration: 0ms; }
+.exp-row td, .exp-row::after { transition: background var(--dur-fast) var(--ease-standard); }
+.exp-row:hover td, .exp-row.on td, .exp-row:hover::after, .exp-row.on::after { background: var(--bg-hover); }
+.exp-row:active:not(.on) td, .exp-row:active:not(.on)::after { background: var(--ink-100); transition-duration: 0ms; }
 .exp-detail td { background: var(--surface-sunken); padding: 10px 12px; }
+.exp-detail::after { background: var(--surface-sunken); }
 .exp-det-h { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
 .exp-det-r { display: flex; gap: 14px; flex-wrap: wrap; font-size: var(--fs-micro); color: var(--text-secondary); padding: 3px 0; }
 .exp-ring-c { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; gap: 2px; }
@@ -488,6 +490,7 @@ function onParetoClick(p: unknown) {
      前缀写在 ::before/::after 里,模板与桌面一个字都不动。 */
   .exp-rc, .exp-rc tbody { display: block; width: 100%; }
   .exp-rc thead { display: none; }
+  .exp-rc tr::after { content: none; }  /* 行卡不要 .ak-tbl 的行末空列,它会变成一格网格项 */
   .exp-rc tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px;
     align-content: center; border-bottom: 1px solid var(--divider); }
   .exp-rc td { display: block; height: auto; padding: 0; border: none; min-width: 0;

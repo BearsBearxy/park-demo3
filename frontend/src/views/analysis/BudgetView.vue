@@ -294,7 +294,7 @@ const kpiOutlook = computed(() => {
           <div v-if="detail.length" class="bv2-tbl-wrap">
             <table class="bv2-tbl">
               <thead>
-                <tr><th>项目</th><th class="n">预算</th><th class="n">实际</th><th class="n">达成率</th><th class="n">差异</th><th>备注</th></tr>
+                <tr><th>项目</th><th class="n">预算</th><th class="n">实际</th><th class="n">达成率</th><th class="n">差异</th><th>备注</th><th class="fp-fill" aria-hidden="true"></th></tr>
               </thead>
               <tbody>
                 <tr v-for="(d, i) in detail" :key="i" v-tip="d.link ? '打开对应损益附表' : undefined"
@@ -308,6 +308,7 @@ const kpiOutlook = computed(() => {
                     {{ d.diff != null ? (d.diff < 0 ? '−' : '+') + finFmt(Math.abs(d.diff)) : '—' }}</td>
                   <!-- 预算备注常写整段说明(如「包括除四害、绿化、消防维护…」),截断后看不到口径 -->
                   <td v-tip="d.note" class="note">{{ d.note ?? '' }}</td>
+                  <td class="fp-fill" aria-hidden="true"></td>
                 </tr>
               </tbody>
             </table>

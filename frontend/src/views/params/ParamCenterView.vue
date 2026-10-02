@@ -12,6 +12,7 @@
 // 首载加载门 + ++seq 竞态守卫;LIST-PAGE-SPEC 行高 --mx-row-h 56px;表格 table-layout:auto —— 用户可见文字一律不截断
 // (参数 / 作用范围 / 来自 三列两行内换行且给 min-width、单位另起小灰字;值 / 区间 nowrap 按内容撑开;说明列三行 line-clamp + 完整 title;宽了横向滚动)。
 import { ref, computed, onMounted, onDeactivated, watch, nextTick } from 'vue'
+import { textW } from '@/composables/useWideTable'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -229,6 +230,14 @@ const monthly = computed(() => split(grouped.value.monthly, 'monthly'))
 const constant = computed(() => split(grouped.value.constant, 'constant'))
 // ④ 只列该户自己命中的版本行:户级版本起点晚于 ym 时后端出的是继承上级的行(rowId 空),它不是例外、也没有可删的行
 const tenantRows = computed(() => grouped.value.tenant.filter(r => r.rowId != null))
+// 列宽铁律(2026-10-02):三张表的余宽落进行末空列 .fp-fill,不再由「说明 / 算式」「覆盖了」吸收。
+// 这两根是会折行的说明文字:按最长一条排成单行的宽给,但封顶(说明 440 / 覆盖了 320),超了照旧折行(最多 3 行)。
+// 其余列宽写在表头 min-width 上 —— auto 布局里有空列时 <col> 的 px 宽会被压回内容宽。
+const wrapColW = (strs: string[], px: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, textW(strs, px, 28)))
+const monthlyFormulaW = computed(() => wrapColW(monthly.value.rows.map(r => r.formula ?? ''), 11.5, 220, 440))
+const constantFormulaW = computed(() => wrapColW(constant.value.rows.map(r => r.formula ?? ''), 11.5, 220, 440))
+const overrideSrcW = computed(() => wrapColW(
+  tenantRows.value.map(r => r.sourceChain[1] ? r.sourceChain[1].replace(':', ' ') : '（无默认值）'), 12.5, 96, 320))
 
 // ③ 口径:期级组在前、栋级组次之;表级「剔出合计」行按表所在栋归到该栋组下(表主数据未到时暂列「其它表」);池级披露行(2023 冻结价)殿后
 interface BuildingRuleGroup extends RuleGroup { bid: number; excludes: ParamRow[] }
@@ -622,7 +631,7 @@ const FIXED_RULES = [
   <ChainMonthGate v-if="!period.picked" title="计费参数" icon="sliders-horizontal" />
 
   <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.4 迁移查看态(参数速查),摘 base.css 的
-       800px 屏级地板。三张 colgroup 表列永不增删,窄了在 .pm-tablewrap(overflow-x:auto)内横滚;
+       800px 屏级地板。三张表列永不增删(列宽在表头 min-width 上),窄了在 .pm-tablewrap(overflow-x:auto)内横滚;
        参数批量编辑不优化(§11.1),单条修改走 Popover/Drawer,S 档由组件内部全屏化 -->
   <div v-else-if="!rows" class="page-loading fp-fluid"><span class="page-spin" /></div>
 
@@ -684,12 +693,8 @@ const FIXED_RULES = [
       <FPEmpty v-if="!monthly.rows.length" size="sm" :sub="monthly.hidden ? '点右上「显示未设置项」查看可设的项' : undefined">本月无已设置的参数</FPEmpty>
       <div v-else class="pm-tablewrap" data-stale-host :class="{ 'fp-stale': veil }" :aria-busy="veil">
         <table class="pm-table">
-          <colgroup>
-            <col style="width:200px" /><col style="width:170px" /><col style="width:150px" /><col style="width:130px" /><col style="width:100px" /><col />
-            <col style="width:78px" /><col style="width:44px" />
-          </colgroup>
           <thead>
-            <tr><th class="lbl">参数</th><th class="scope">作用范围</th><th>本月值</th><th>生效区间</th><th class="src">来自</th><th class="formula">说明 / 算式</th><th></th><th></th></tr>
+            <tr><th class="lbl" style="min-width:200px">参数</th><th class="scope" style="min-width:170px">作用范围</th><th style="min-width:150px">本月值</th><th style="min-width:130px">生效区间</th><th class="src" style="min-width:100px">来自</th><th class="formula" :style="{ minWidth: monthlyFormulaW + 'px' }">说明 / 算式</th><th style="min-width:78px"></th><th style="min-width:44px"></th><th class="fp-fill" aria-hidden="true"></th></tr>
           </thead>
           <tbody>
             <tr v-for="r in monthly.rows" :id="`pm-row-${rowKey(r)}`" :key="rowKey(r)" :class="{ hl: isHl(r) }">
@@ -717,6 +722,7 @@ const FIXED_RULES = [
               <td class="mut formula" v-tip="r.formula"><span class="pm-clamp">{{ r.formula ?? '' }}</span></td>
               <td class="ops"><Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button></td>
               <td class="ops"><button class="pm-ib" v-tip="'历史'" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button></td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
           </tbody>
         </table>
@@ -739,12 +745,8 @@ const FIXED_RULES = [
       <FPEmpty v-if="!constant.rows.length" size="sm">无已设置的长期常数</FPEmpty>
       <div v-else class="pm-tablewrap" data-stale-host :class="{ 'fp-stale': veil }" :aria-busy="veil">
         <table class="pm-table">
-          <colgroup>
-            <col style="width:200px" /><col style="width:170px" /><col style="width:150px" /><col style="width:130px" /><col style="width:100px" /><col />
-            <col style="width:78px" /><col style="width:44px" />
-          </colgroup>
           <thead>
-            <tr><th class="lbl">参数</th><th class="scope">作用范围</th><th>生效值</th><th>生效区间</th><th class="src">来自</th><th class="formula">说明 / 算式</th><th></th><th></th></tr>
+            <tr><th class="lbl" style="min-width:200px">参数</th><th class="scope" style="min-width:170px">作用范围</th><th style="min-width:150px">生效值</th><th style="min-width:130px">生效区间</th><th class="src" style="min-width:100px">来自</th><th class="formula" :style="{ minWidth: constantFormulaW + 'px' }">说明 / 算式</th><th style="min-width:78px"></th><th style="min-width:44px"></th><th class="fp-fill" aria-hidden="true"></th></tr>
           </thead>
           <tbody>
             <tr v-for="r in constant.rows" :id="`pm-row-${rowKey(r)}`" :key="rowKey(r)" :class="{ hl: isHl(r) }">
@@ -759,6 +761,7 @@ const FIXED_RULES = [
               <td class="mut formula" v-tip="r.formula"><span class="pm-clamp">{{ r.formula ?? '' }}</span></td>
               <td class="ops"><Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button></td>
               <td class="ops"><button class="pm-ib" v-tip="'历史'" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button></td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
           </tbody>
         </table>
@@ -859,12 +862,8 @@ const FIXED_RULES = [
       <FPEmpty v-if="!tenantRows.length" size="sm" sub="全部租户按期 / 全园默认值计价">暂无户级例外</FPEmpty>
       <div v-else class="pm-tablewrap" data-stale-host :class="{ 'fp-stale': veil }" :aria-busy="veil">
         <table class="pm-table">
-          <colgroup>
-            <col style="width:200px" /><col style="width:200px" /><col style="width:170px" /><col style="width:130px" /><col />
-            <col style="width:112px" /><col style="width:44px" />
-          </colgroup>
           <thead>
-            <tr><th class="lbl">租户</th><th class="lbl">参数</th><th>值</th><th>生效区间</th><th class="src">覆盖了</th><th></th><th></th></tr>
+            <tr><th class="lbl" style="min-width:200px">租户</th><th class="lbl" style="min-width:200px">参数</th><th style="min-width:170px">值</th><th style="min-width:130px">生效区间</th><th class="src" :style="{ minWidth: overrideSrcW + 'px' }">覆盖了</th><th style="min-width:112px"></th><th style="min-width:44px"></th><th class="fp-fill" aria-hidden="true"></th></tr>
           </thead>
           <tbody>
             <tr v-for="r in tenantRows" :key="rowKey(r)">
@@ -878,6 +877,7 @@ const FIXED_RULES = [
                 <button v-if="editMode" class="pm-ib danger" v-tip="'删除例外'" @click="delTenantRow(r)"><component :is="iconFor('trash-2')" :size="14" /></button>
               </td>
               <td class="ops"><button class="pm-ib" v-tip="'历史'" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button></td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
           </tbody>
         </table>
