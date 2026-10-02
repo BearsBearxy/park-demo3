@@ -39,7 +39,7 @@ export const CHANGELOG: ReleaseNote[] = [
     added: [],
     improved: [
       { icon: 'message-square', title: '确认和提示', desc: '原来用浏览器自带的确认框和提示框，现在换成软件里的弹窗和底部回执。' },
-      { icon: 'table', title: '表格列宽', desc: '原来固定列能占满屏，现在最多占表格宽的四成、至少露 8 行；宽屏时名称和数字挨着，空白留右边。' },
+      { icon: 'table', title: '表格列宽', desc: '原来固定列能占满屏、名称和数字隔得远；现在固定列按表宽让位，多出的空白留在表格最右边。' },
       { icon: 'share-2', title: '公共电核算', desc: '原来列多、一格挤两行，现在一行一个读数，尖峰平谷按需展开。', to: 'alloc' },
       { icon: 'gauge', title: '园区抄表', desc: '原来顶上六张统计卡，现在并进状态页签，停用的表收在组尾。', to: 'meters' },
       { icon: 'file-check-2', title: '催缴单', desc: '原来四张统计卡、八个按钮，现在并进状态页签，警告直接写是哪一类。', to: 'bill-notices' },
