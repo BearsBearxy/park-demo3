@@ -646,7 +646,7 @@ public class ParamService {
             l.getAcctMonth(), l.getMode(), l.getOldValue(), l.getNewValue(),
             recalc || d == null ? null : valueTextOrNull(d, key, scope, l.getOldValue(), n),
             recalc || d == null ? null : valueTextOrNull(d, key, scope, l.getNewValue(), n),
-            l.getNote(), l.getYm());
+            l.getNote(), l.getYm(), l.getAuthorizer());
     }
 
     // 历史 / 变更记录的值文案:与列表行同一格式器;空值给 null(不给「参与」这类默认语义 —— 日志里的空是「此前无值 / 已删」,前端显「—」)

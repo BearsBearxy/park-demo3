@@ -428,6 +428,22 @@ class ParamApiIT extends AbstractMysqlIT {
         assertEquals(-1.0, num(ch2.get(0).get("newValue")));
     }
 
+    // ── 本月改动表「谁」那格要写「陈会计 张经理授权」(S21 §5.4,2026-10-03):/changes 与 /history 的行带 authorizer,本人有权的行为 null。
+    //    破坏验证:ParamService.change() 末参改回 null → 第一条断言红 ──
+    @Test
+    void changes_carryAuthorizer() throws Exception {
+        jdbc.update("insert into param_change_log(actor, authorizer, tbl, scope, cfg_key, acct_month, mode, old_value, new_value, action)"
+                + " values('it-clerk', 'it-boss', 'price', '', 'water', '2099-07', 'month', null, 4.1, 'set')");
+        jdbc.update("insert into param_change_log(actor, authorizer, tbl, scope, cfg_key, acct_month, mode, old_value, new_value, action)"
+                + " values('it-self', null, 'price', '', 'water', '2099-07', 'month', 4.1, 4.2, 'set')");
+        List<Map<String, Object>> ch = JsonPath.read(body(mvc.perform(get("/api/params/changes").param("ym", "2099-07")
+                .header("Authorization", auth())).andExpect(jsonPath("$.code").value(0))), "$.data");
+        Map<String, Object> elevated = ch.stream().filter(c -> "it-clerk".equals(c.get("actor"))).findFirst().orElseThrow();
+        assertEquals("it-boss", elevated.get("authorizer"));
+        Map<String, Object> self = ch.stream().filter(c -> "it-self".equals(c.get("actor"))).findFirst().orElseThrow();
+        assertNull(self.get("authorizer"));
+    }
+
     // p3 期级参数:@Pattern 放行只是第一关,ParamRegistry.allowed 是第二关。
     // 漏改 ParamRegistry:203 时,这里会拿到 body code=400「参数键不在注册表:water@p3」
     @Test

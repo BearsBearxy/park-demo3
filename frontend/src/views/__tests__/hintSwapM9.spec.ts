@@ -91,7 +91,7 @@ describe('变更记录抽屉 · 加载失败与空状态', () => {
 })
 
 describe('参数修改弹窗 · 删除走确认弹窗', () => {
-  const delBtn = (w: ReturnType<typeof mount>) => w.findAll('button').find(b => b.text().includes('删除 2024-02 专属值'))!
+  const delBtn = (w: ReturnType<typeof mount>) => w.findAll('button').find(b => b.text().includes('删除「仅 2024-02」这一版'))!
 
   it('❗删除类:主按钮红、问句写删哪一个;答「取消」不发删除', async () => {
     const w = mount(ParamEditPopover, { props: { open: true, row: ROW, ym: '2024-02' }, ...stub })

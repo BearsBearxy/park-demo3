@@ -1,26 +1,22 @@
 <script setup lang="ts">
-// 计费参数(S21-PARAM-CENTER-SPEC §5)— 数据中心·出账链组,取代价目管理。tenant_price_cfg + alloc_cfg 两表参数的**同一读写口**:
-// 站在账期看的全部生效参数分四区(① 本月参数 ② 长期常数 ③ 核算口径 ④ 户级例外)+ ⑤ 固定规则只读区;
-// 每行=人话(作用范围/值/生效区间/来自 = 命中链尾)由后端 GET /api/params 解析,本页只分组渲染(utils/paramCenterLogic)。
-// 编辑态(EDIT-MODE-SPEC v2:浏览态零写入口;onDeactivated 复位)每行 [修改] → ParamEditPopover(值 | 生效方式 | 备注)→ PUT /api/params
-// → 成功只 patch 该行(WRITE-KEEP-CONTEXT 铁律二)→ [重算本月](池 → 损耗 → 催缴单)闭环(spec §5.5)。
-// 页面状态(电价 n/6 · 池核算生成没生成 / 生成于何时)贴标题旁(LAYOUT-STABILITY §2 第 4 级,原单独一行的状态条拆掉);
-// 「待重算 / 其他月份受影响」走工具条上的常驻告警 chip + 贴着它的问题面板(§6),组头给「重算本月」与跨月
-// 「一键重算这 N 个月」两条清除路径(写操作,只在编辑态;浏览态组头是「进入编辑模式」)。
-// ①② 无命中的对象级行(栋/池/表,未设置)默认折叠(一期 2024-02 有 480+ 行,只 60 来行有值),按区展开;全园/期级月核对项常显并标「缺」;
-// ③ 口径行无命中=默认语义,始终全列;④ 只列该户自己的版本行(rowId 非空,继承上级的不算例外)。
-// 首载加载门 + ++seq 竞态守卫;LIST-PAGE-SPEC 行高 --mx-row-h 56px;表格 table-layout:auto —— 用户可见文字一律不截断
-// (参数 / 作用范围 / 来自 三列两行内换行且给 min-width、单位另起小灰字;值 / 区间 nowrap 按内容撑开;说明列三行 line-clamp + 完整 title;宽了横向滚动)。
-import { ref, computed, onMounted, onDeactivated, watch, nextTick } from 'vue'
-import { textW } from '@/composables/useWideTable'
+// 计费参数(S21-PARAM-CENTER-SPEC §5,2026-10-03 版,画布 10-A~10-G)— 数据中心·出账链组。tenant_price_cfg + alloc_cfg 两表参数的同一读写口。
+// 版式 = 左目录卡 + 右当前区卡,整页一屏、表在卡里滚(原来一页滚到底约 21,000px)。按「对谁设」分六区:
+//   全园与期级(每月核对 / 长期常数两组可收)· 公摊池(一池一行)· 楼栋损耗(一栋一行)· 户级例外(按户分组)· 光伏分栋判据 · 固定规则(只读),
+//   目录顶「本月改动 N」= 影响本月的改动表。当前区随目录切换,记在地址栏 ?section=;深链落点见 paramSections.landingOf。
+// 每行 = 后端 GET /api/params 已解析的人话(作用范围 / 值 / 生效区间 / 来自),本页只分区渲染;说明 / 算式列撤掉,挂到参数名的悬停说明。
+// 编辑态(EDIT-MODE-SPEC:浏览态零写入口;onDeactivated 复位):点值格 → 贴格 400 宽改值卡(ParamEditPopover)→ PUT /api/params
+// → 成功只 patch 该行(WRITE-KEEP-CONTEXT 铁律二);「待重算 / 其他月份受影响」走标题行「待处理」入口与问题面板(LAYOUT-STABILITY §6)。
+// 首载加载门(主数据也在门里,首进屏零位移)+ ++seq 竞态守卫;所有表行末一列 .fp-fill 吃余宽;公摊池在窄宽下固定「池 → 分摊基数」(LIST-PAGE §9.1)。
+import { ref, computed, onMounted, onDeactivated, watch, nextTick, reactive } from 'vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
-import { paramsApi, type ParamPutReq, type ParamRowDTO, type ParamStatusDTO, type ParamZone } from '@/api/params'
+import { paramsApi, type ParamChangeDTO, type ParamPutReq, type ParamRowDTO, type ParamStatusDTO, type ParamZone } from '@/api/params'
 import { allocApi, type AllocRuleDTO } from '@/api/alloc'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import { useChainDeepPeriod } from '@/composables/useDeepPeriod'
+import { numW, textW, useWideTable, type HeightDims, type WideCol } from '@/composables/useWideTable'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import FPStateTag from '@/components/fp/FPStateTag.vue'
@@ -33,8 +29,8 @@ import type { BuildingDTO } from '@/types/building'
 import { tenantApi } from '@/api/tenant'
 import type { TenantDTO } from '@/types/tenant'
 import {
-  baseRefLabel, groupRows, rangeBadge, sourceLabel, staleSources, staleWho, tenantExceptionDelReqs, tenantExceptionReqs,
-  type ParamRow, type RuleGroup,
+  baseRefLabel, rangeBadge, sourceLabel, staleSources, staleWho, tenantExceptionDelReqs, tenantExceptionReqs,
+  type ParamRow,
 } from '@/utils/paramCenterLogic'
 import { LOSS_BASE_FORM_B_TEMPLATE, PARAM_DEFS, paramDef, writePlan, type ParamMode } from '@/utils/paramRegistry'
 import { useAuthStore, approxDirty } from '@/stores/auth'
@@ -45,7 +41,6 @@ import ChainMonthGate from '@/components/fp/ChainMonthGate.vue'
 import FPStepStrip from '@/components/fp/FPStepStrip.vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
-import Card from '@/components/ds/Card.vue'
 import Select from '@/components/ds/Select.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 import Badge from '@/components/ds/Badge.vue'
@@ -55,23 +50,25 @@ import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import ParamEditPopover, { type RefOption } from './ParamEditPopover.vue'
 import ParamHistoryDrawer from './ParamHistoryDrawer.vue'
 import ParamChangesDrawer from './ParamChangesDrawer.vue'
+import {
+  bare, cellText, changeStats, hit, itemKey, landingOf, LOSS_KEYS, objRows, own, POOL_KEYS, poolName, secOf, stripPhase, tenantGroups,
+  type ObjRow, type Sec,
+} from './paramSections'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 
 const auth = useAuthStore()
-// RBAC:① 区是月度录入(每月照抄供电局账单),②③④ 区是长期计费口径,重算是跑一次出账 —— 三扇门
+// RBAC:月度录入(照抄供电局账单)、长期计费口径、重算(跑一次出账)—— 三扇门
 const canRun = computed(() => auth.can('billing-run:edit'))
 const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
 const idOf = (scope: string) => Number(scope.slice(scope.indexOf(':') + 1))
 
 // ── 编辑模式(EDIT-MODE-SPEC v3):切页签保留编辑态,只关浮层 ──
-// ① 区月度录入(照抄供电局账单)、②③④ 区长期计费口径、重算 —— 三档权限在点「编辑模式」时一次要齐:
-// 缺任何一档当场弹主管授权窗(ELEVATION-SPEC),取消 = 什么都没发生,留在浏览态。
-// 于是**进得了编辑态就一定齐**,四个区的写入口在编辑态直接可用,不再有「点了转成授权请求」的包装。
-// 弹卡标题的人话名。前端没有 kind→人话名的映射表,由各屏自己拼 ——
-// 新开一张映射表会与后端 ReviewKind.label() 形成第二份。
+// 三档权限在点「编辑模式」时一次要齐:缺任何一档当场弹主管授权窗(ELEVATION-SPEC),取消 = 什么都没发生,留在浏览态。
+// 于是进得了编辑态就一定齐,各区写入口在编辑态直接可用。
+// 弹卡标题的人话名。前端没有 kind→人话名的映射表,由各屏自己拼 —— 新开一张映射表会与后端 ReviewKind.label() 形成第二份。
 const reviewLabel = computed(() => `计费参数 · ${ym.value}`)
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
         lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip, reviewKeys } =
@@ -79,240 +76,359 @@ const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, h
     scope: () => S.paramCenter(year.value, month.value),
     // 审核键(§7.1):计费参数每月一把。ym 为空 = 还在选期门,没有月可审。
     reviewKey: () => (ym.value ? `params:${ym.value}` : null),
-    // 改动数(EDIT-MODE §6.1):参数逐行即时写库,没有整页草稿;开着的修改浮层 / 新增例外抽屉 / ③ 行内「添加」
-    // 各算 1 处(照公共电核算 poolDlg 的算法:里面填了什么看不见,宁可多问)。refs 在下面声明,闭包到关页签时才求值
-    dirty: approxDirty(() => (editRow.value ? 1 : 0) + (exOpen.value ? 1 : 0) + (addExcl.value ? 1 : 0)),
+    // 改动数(EDIT-MODE §6.1):参数逐行即时写库,没有整页草稿;开着的改值卡 / 新增例外抽屉各算 1 处
+    // (里面填了什么看不见,宁可多问)。refs 在下面声明,闭包到关页签时才求值
+    dirty: approxDirty(() => (editRow.value ? 1 : 0) + (exOpen.value ? 1 : 0)),
   })
 onDeactivated(() => {
-  editRow.value = null; exOpen.value = false; addExcl.value = null
-  histRow.value = null; changesOpen.value = false; alertOpen.value = false   // 抽屉 Teleport 到 body,KeepAlive 停用不随实例移出
+  closeEdit(); exOpen.value = false
+  histRow.value = null; alertOpen.value = false   // 浮层 Teleport 到 body,KeepAlive 停用不随实例移出
 })
 // 编辑态**就地**转假(被接管 / 30 分钟提权到期)也要关写 UI —— 它们的 v-if 只判自己的 ref,
-// 不判编辑态:改参数的浮层、新增例外的抽屉留在屏上,里面的保存照样 PUT(同 MeterView:162)。
+// 不判编辑态:改值卡、新增例外的抽屉留在屏上,里面的保存照样 PUT(同 MeterView:162)。
 watch(editMode, v => {
   if (v) return
-  editRow.value = null
+  closeEdit()
   exOpen.value = false
-  addExcl.value = null
 })
 
-// ── 账期:出账链组级(stores/billingPeriod,2026-08-28 设计稿 §3.1) ──
-// 顶栏那对年月 Select 已撤 —— 期由出账月矩阵一处选定,五屏共读一份,不可能再各落各的
-// (它们抢的本来就是同一把 billing-chain 月锁)。「默认账期」那一整套
-// (xxxApi.years() + /months + latestPeriodOf 的 snap)随之退场:期一定是用户在矩阵上点出来的,
-// 没有「系统替你猜一个月」这回事 —— 那正是 §7-1 禁的「顺手落进某个期」。
+// ── 账期:出账链组级(stores/billingPeriod,2026-08-28 设计稿 §3.1);期由出账月矩阵一处选定,五屏共读一份 ──
 const period = useBillingPeriodStore()
 const year = computed(() => period.year ?? 0)
 const month = computed(() => period.month ?? 0)
 const ym = computed(() => period.ym ?? '')
-// 链路条:本月各道工序走到哪(与矩阵格子同一份数据)
 const chainSteps = computed(() => chainStepsOf(period.cellOf(ym.value)))
-// 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM(或旧 ?ym=)直落该月,pick + loadChain;本屏逐行即时写库、无草稿,不传 dirty;?zone / ?section / ?rule / ?edit 仍由下面的 applyHandoff 消费。
-// 必须在下面的 onMounted / watch / onReactivated 之前调用:期先落定,首载才只拉一次;切回时也先于状态刷新改期。
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM(或旧 ?ym=)直落该月;本屏逐行即时写库、无草稿,不传 dirty。
+// 必须在下面的 onMounted / watch 之前调用:期先落定,首载才只拉一次。
 useChainDeepPeriod()
-// 期区值域按后端 p\d+|dorm 的形状判断,不枚举具体代码 —— p4 出现时不用改这里。
-// applyHandoff 的深链校验与 refOptions 的 ref_meter 候选过滤共用同一条,
-// 避免两处各写一份、drift 出两种拼法。(本分支增量,随出账链期结构一起保留)
+// 期区值域按后端 p\d+|dorm 的形状判断,不枚举具体代码 —— p4 出现时不用改这里
 const isZoneCode = (s: string) => /^p\d+$/.test(s) || s === 'dorm'
 const zone = ref<ParamZone>('all')
 const zones = useZonesStore()
-onMounted(() => zones.ensure())
 const ZONE_OPTS = computed(() => [{ value: 'all', label: '全园' }, ...zones.list.map(z => ({ value: z.code, label: z.name }))])
+const zoneName = (code: string | null | undefined) => (code ? zones.list.find(z => z.code === code)?.name ?? '' : '')
 
-// ── 数据(首载加载门;++seq 竞态守卫:快速切年月/期区只接受最新一次) ──
+// ── 数据(首载加载门;++seq 竞态守卫:快速切期区只接受最新一次) ──
 const rows = ref<ParamRowDTO[] | null>(null)
 const status = ref<ParamStatusDTO | null>(null)
+const changes = ref<ParamChangeDTO[]>([])
 const loadErr = ref('')
-/**
- * 换期重取时的退让（加载态设计稿 §06 第一档）。旧数据留在原地不闪，
- * 但必须退一步并**停止接受交互** —— 它还是上一期的。顶边那条线是唯一的「在忙」信号。
- */
+/** 换期重取时的退让(加载态设计稿 §06 第一档):旧数据留在原地不闪,但退一步并停止接受交互 */
 const reloading = ref(false)   // ⚠ 不叫 busy:本屏下面已有一个 busy(批量重算用)
-/** 熬过 200ms 才亮 —— 本地后端常几十毫秒回来，闪一下比不显示更晃眼 */
+/** 熬过 200ms 才亮 —— 本地后端常几十毫秒回来,闪一下比不显示更晃眼 */
 const veil = useDeferredFlag(reloading)
+
+// 主数据(池所在期 / 楼栋所在期 / 户所在期 / 选择器候选):失败降级为空,不阻断页面;首载等它们一起到,免得「期」列后补把列宽顶一下
+const buildings = ref<BuildingDTO[]>([])
+const meters = ref<MeterDTO[]>([])
+const tenants = ref<TenantDTO[]>([])
+const rules = ref<AllocRuleDTO[]>([])
+let masters: Promise<unknown> | null = null
+const loadMasters = () => (masters ??= Promise.all([
+  zones.ensure(),
+  buildingApi.list().then(d => { buildings.value = d }).catch(() => {}),
+  tenantApi.list().then(d => { tenants.value = d }).catch(() => {}),
+  allocApi.rules().then(d => { rules.value = d }).catch(() => {}),
+]))
 
 let seq = 0
 async function load() {
   const my = ++seq
   reloading.value = true
   try {
-    const [rs, st] = await Promise.all([
+    // 表的楼栋 / 租户按月分段(METER-TIMELINE-SPEC §2):站在本页账期取
+    const [rs, st, ch, ms] = await Promise.all([
       paramsApi.list(ym.value, zone.value),
       paramsApi.status(ym.value).catch(() => null),
+      paramsApi.changes(ym.value).catch(() => [] as ParamChangeDTO[]),
+      metersApi.list('elec', undefined, ym.value || undefined).catch(() => [] as MeterDTO[]),
+      loadMasters(),
     ])
     if (my !== seq) return
     // 错误只在成功分支清:开头先清的话,重试那一下失败态先闪掉、旧行露出来,回包再失败又换回来
-    rows.value = rs; status.value = st; loadErr.value = ''
-    scrollToSection()
+    rows.value = rs; status.value = st; changes.value = ch; meters.value = ms; loadErr.value = ''
+    applyPending()
   } catch (e) {
     if (my !== seq) return
     rows.value = rows.value ?? []
+    // 标题旁状态签与「待处理」也读 status:不清的话失败件说「不显示上一次读到的」,同屏签和计数却还是上一次(换月失败时是别的月)
+    status.value = null
     loadErr.value = errMsg(e, '参数加载失败')
   } finally {
-    // ⚠ 只有最新那一趟有资格熄灯:被顶掉的旧请求先返回时若把它清了,
-    //   新请求还在路上,退让却已经撤掉 —— 用户会以为数据到了。
+    // ⚠ 只有最新那一趟有资格熄灯:被顶掉的旧请求先返回时若把它清了,新请求还在路上,退让却已经撤掉
     if (my === seq) reloading.value = false
   }
 }
-// 主数据(名字表 / 选择器候选;失败降级为不出对应控件,不阻断页面)
-const buildings = ref<BuildingDTO[]>([])
-const meters = ref<MeterDTO[]>([])
-const tenants = ref<TenantDTO[]>([])
-const rules = ref<AllocRuleDTO[]>([])
-function loadMasters() {
-  buildingApi.list().then(d => { buildings.value = d }).catch(() => {})
-  loadMeters()
-  tenantApi.list().then(d => { tenants.value = d }).catch(() => {})
-  allocApi.rules().then(d => { rules.value = d }).catch(() => {})
+// 写完 / 重算完补一次「本月改动」(目录计数与「● 本月改」跟着变);失败不吭声,下次加载再对
+function refreshChanges() {
+  const my = seq
+  paramsApi.changes(ym.value).then(d => { if (my === seq) changes.value = d }).catch(() => {})
 }
-// 表的楼栋 / 租户按月分段(METER-TIMELINE-SPEC §2):站在本页账期取,切月重拉;旧月回包晚到就丢
-let meterSeq = 0
-function loadMeters() {
-  const my = ++meterSeq
-  metersApi.list('elec', undefined, ym.value || undefined)
-    .then(d => { if (my === meterSeq) meters.value = d }).catch(() => {})
-}
-// 其它屏跳来的深链:?p=2024-02(或旧 ?ym=)&zone=p1&section=rule&rule=23 —— 期归 useChainDeepPeriod,这里消费其余四个键;分析层来的 adopt=YYYY-12 只认领不覆盖
-// edit=1 直接进编辑态(三屏 stale 条的 [去重算]:重算是写操作只在编辑态出,别让用户到了这儿再找「编辑模式」——同 PoolLedgerView generate=1)
+
+// ── 当前区 + 深链(画布 10-B 板下半五条)。其它屏跳来的:?p=2024-02(或旧 ?ym=)&zone=p1&section=…&rule=23(或 section=loss&building=13&key=…)&edit=1 ——
+//    期归 useChainDeepPeriod;分析层来的 adopt=YYYY-12 只认领不覆盖;edit=1 只进编辑态,不自动弹卡 ──
 const route = useRoute()
 const router = useRouter()
 const tabs = useTabsStore()
-const hlScope = ref('')
-let pendingSection = ''
+const sec = ref<Sec>('park')
+const parkOpen = reactive({ monthly: true, constant: true })
+let pending: (() => void) | null = null
 function applyHandoff(): boolean {
   const q = route.query
-  // 不用 ZONE_OPTS 校验:这里在 setup 期同步跑,比 onMounted 里的 zones.ensure() 更早 ——
-  // 深链落地时 zones store 十有八九还是空的,拿 ZONE_OPTS.some(...) 校验会把合法的
-  // ?zone=p2 当非法丢弃(白白落回 'all')。改按后端值域(isZoneCode)+页面自己的 'all' 做形状校验,
-  // 不依赖 store 是否已拉到。
+  // 不用 ZONE_OPTS 校验:这里在 setup 期同步跑,比 zones.ensure() 更早,按后端值域做形状校验
   if (typeof q.zone === 'string' && (q.zone === 'all' || isZoneCode(q.zone))) zone.value = q.zone
-  if (typeof q.section === 'string') pendingSection = q.section
-  if (typeof q.rule === 'string' && /^\d+$/.test(q.rule)) hlScope.value = `rule:${q.rule}`
-  // 分析层「去改常数」带 adopt=YYYY-12:只在没有期时认领(billingPeriod.adoptYm 的旧语义),已选期不动。
-  // 显式深链(p= / ym=)由 useChainDeepPeriod 在 setup 更早处处理,两者互不覆盖:有 p 时期已落定,adopt 自然无事可做。
+  const L = landingOf(q as Record<string, unknown>)
+  sec.value = L.sec
+  if (L.group) {
+    const g = L.group
+    parkOpen[g] = true
+    pending = () => scrollToId(`pm-grp-${g}`)
+  }
+  if (L.rule != null) {
+    const rule = L.rule, key = L.key ?? ''
+    pending = () => jumpTo(`rule:${rule}`, key)
+  }
+  if (L.building != null) {
+    const b = L.building, key = L.key ?? ''
+    pending = () => jumpTo(`building:${b}`, key)
+  }
+  // 分析层「去改常数」带 adopt=YYYY-12:只在没有期时认领(billingPeriod.adoptYm 的旧语义),已选期不动
   period.adoptYm(typeof q.adopt === 'string' ? q.adopt : null)
-  // ⚠ 必须**先认领期再进编辑态**。顺序反了的话 toggleEdit() 占的是 `param-center:0-00`
-  //   (year/month 此刻还是 `period.year ?? 0`)。期现在由 useChainDeepPeriod 在 setup 更早处落定(§4.2),
-  //   本函数只负责 edit=1;顺序约束不变:锁与所编的期错位的表现是「锁没生效」,不报错、没人会发现。
-  //   （2026-08-29 给 useEditMode.enter() 补上"占锁回来再复核一次期"之后,这条当场暴露。）
-  //   period.picked 也要判:没有期时主区是选期矩阵,进了编辑态也没有任何写入口。
-  // 深链也走 toggle:缺权限时弹授权窗(裸写 editMode 会被守卫静默弹回浏览态,用户不知道为什么)
+  // ⚠ 必须**先认领期再进编辑态**:顺序反了占的是 `billing-chain:0-00` 的假锁(锁与所编的期错位,不报错、没人会发现)。
+  //   period.picked 也要判:没有期时主区是选期矩阵。深链也走 toggle:缺权限时弹授权窗。
   if (q.edit === '1' && period.picked && canEnter.value) toggleEdit()
   return period.picked
 }
-function scrollToSection() {
-  if (!pendingSection) return
-  const id = `sec-${pendingSection}`
-  pendingSection = ''
-  nextTick(() => document.getElementById(id)?.scrollIntoView({ block: 'start', behavior: 'smooth' }))
+function applyPending() {
+  const f = pending
+  pending = null
+  if (f) nextTick(f)
 }
-applyHandoff()   // setup 期同步消费 zone/section/rule/edit/adopt(在 watch 注册之前,免得触发第二次拉取;期本身由上面的 useChainDeepPeriod 落定)
-onMounted(() => {
-  loadMasters()
-  if (period.picked) load()
-})
+applyHandoff()   // setup 期同步消费 zone/section/rule/edit/adopt(在 watch 注册之前,免得触发第二次拉取)
+onMounted(() => { if (period.picked) load() })
 watch([ym, zone], () => { if (period.picked) load() })
-watch(ym, loadMeters)
 
-// ── 四区分组 + 未设置折叠(①②:无命中的**对象级**行(栋/池/表)默认藏起来,按区展开;全园/期级月核对项无值常显 + 「缺」——
-//    折叠是为压掉几百条栋级/池级空行,不该连状态条「缺 6 项」的电价一起藏;③ 无命中=默认语义,始终全列) ──
-const grouped = computed(() => groupRows(rows.value ?? []))
-const hasHit = (r: ParamRow) => r.mode != null
-const objectScope = (s: string) => s.startsWith('building:') || s.startsWith('rule:') || s.startsWith('meter:')
-const missing = (r: ParamRow) => !hasHit(r) && r.monthlyCheck && !objectScope(r.scope)   // 全园/期级月核对项本月无值
-const foldable = (r: ParamRow) => !hasHit(r) && !missing(r)
-const showEmpty = ref({ monthly: false, constant: false })
-function split(list: ParamRow[], key: 'monthly' | 'constant') {
-  const hidden = list.filter(foldable).length
-  return { rows: showEmpty.value[key] ? list : list.filter(r => !foldable(r)), hidden }
+/** 切区:地址栏只记 section(期在会话 store 里,不进地址栏;edit / rule 是一次性的交接,不留) */
+function setSec(s: Sec) {
+  if (sec.value === s) return
+  sec.value = s
+  closeEdit()
+  void router.replace({ path: '/params', query: { section: s } })
 }
-const monthly = computed(() => split(grouped.value.monthly, 'monthly'))
-const constant = computed(() => split(grouped.value.constant, 'constant'))
-// ④ 只列该户自己命中的版本行:户级版本起点晚于 ym 时后端出的是继承上级的行(rowId 空),它不是例外、也没有可删的行
-const tenantRows = computed(() => grouped.value.tenant.filter(r => r.rowId != null))
-// 列宽铁律(2026-10-02):三张表的余宽落进行末空列 .fp-fill,不再由「说明 / 算式」「覆盖了」吸收。
-// 这两根是会折行的说明文字:按最长一条排成单行的宽给,但封顶(说明 440 / 覆盖了 320),超了照旧折行(最多 3 行)。
-// 其余列宽写在表头 min-width 上 —— auto 布局里有空列时 <col> 的 px 宽会被压回内容宽。
-const wrapColW = (strs: string[], px: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, textW(strs, px, 28)))
-const monthlyFormulaW = computed(() => wrapColW(monthly.value.rows.map(r => r.formula ?? ''), 11.5, 220, 440))
-const constantFormulaW = computed(() => wrapColW(constant.value.rows.map(r => r.formula ?? ''), 11.5, 220, 440))
-const overrideSrcW = computed(() => wrapColW(
-  tenantRows.value.map(r => r.sourceChain[1] ? r.sourceChain[1].replace(':', ' ') : '（无默认值）'), 12.5, 96, 320))
 
-// ③ 口径:期级组在前、栋级组次之;表级「剔出合计」行按表所在栋归到该栋组下(表主数据未到时暂列「其它表」);池级披露行(2023 冻结价)殿后
-interface BuildingRuleGroup extends RuleGroup { bid: number; excludes: ParamRow[] }
+// ── 六区数据 ──
+const all = computed(() => rows.value ?? [])
+const parkRows = computed(() => all.value.filter(r => secOf(r.key, r.scope) === 'park'))
+const parkGroups = computed(() => [
+  { key: 'monthly' as const, title: '每月核对', sub: '电价照抄供电局账单', rows: parkRows.value.filter(r => r.group === 'monthly') },
+  { key: 'constant' as const, title: '长期常数', sub: '改一次，管到下次改', rows: parkRows.value.filter(r => r.group !== 'monthly') },
+].filter(g => g.rows.length))
+const pvRows = computed(() => all.value.filter(r => secOf(r.key, r.scope) === 'pv'))
+const pools = computed(() => objRows(all.value, 'rule:'))
+const losses = computed(() => objRows(all.value, 'building:'))
+const groups = computed(() => tenantGroups(all.value))
 const meterById = computed(() => new Map(meters.value.map(m => [m.id, m])))
-const ruleGroups = computed(() => {
-  const zones: RuleGroup[] = [], bld: BuildingRuleGroup[] = [], others: RuleGroup[] = []
-  const meterRows: ParamRow[] = []
-  for (const g of grouped.value.rule) {
-    const s = g.rows[0].scope
-    if (s.startsWith('meter:')) meterRows.push(...g.rows)
-    else if (s.startsWith('building:')) bld.push({ ...g, bid: idOf(s), excludes: [] })
-    else if (s.startsWith('rule:')) others.push(g)
-    else zones.push(g)
-  }
-  const orphan: RuleGroup = { scopeLabel: '其它表', rows: [] }
-  for (const r of meterRows) {
+// 不计入楼栋合计的表:表 → 表所在栋(表主数据按本月取)
+// ponytail: 表不在主数据里(或没挂栋)的那几条不显示;要看得到它们,在本区末尾加一行「其它表」
+const exclByBid = computed(() => {
+  const m = new Map<number, ParamRow[]>()
+  for (const r of all.value) {
+    if (!r.scope.startsWith('meter:') || r.key !== 'loss_exclude' || r.rowId == null) continue
     const bid = meterById.value.get(idOf(r.scope))?.buildingId
-    const g = bid == null ? undefined : bld.find(x => x.bid === bid)
-    if (g) g.excludes.push(r); else orphan.rows.push(r)
+    if (bid == null) continue
+    m.set(bid, [...(m.get(bid) ?? []), r])
   }
-  if (orphan.rows.length) others.push(orphan)
-  return { zones, buildings: bld, others }
+  return m
 })
-// 一期公摊分摊度数 G(只读披露,spec §3.3):成员 = fee_key 园区公摊池,÷ 均摊栋数(park_share_div)
-const gLine = computed(() => {
-  if (zone.value !== 'p1') return ''      // 白名单:园区公摊分母是一期独有机制
-  const names = rules.value.filter(r => r.zone === 'p1' && r.feeKey === 'park_loss_pool').map(r => r.name)
-  const div = (rows.value ?? []).find(r => r.key === 'park_share_div' && (r.scope === 'p1' || r.scope === ''))
-  const d = div?.value == null ? '均摊栋数' : `${div.value} 栋`
-  return `一期公摊分摊度数 = ${names.length ? names.join('、') : '园区公共电池'} 本月净量合计 ÷ ${d}（四舍五入到 2 位）`
-})
+const ruleZone = computed(() => new Map(rules.value.map(r => [r.id, r.zone as string])))
+const bldZone = computed(() => new Map(buildings.value.map(b => [b.id, b.zone])))
+const tenantZone = computed(() => new Map(tenants.value.map(t => [t.id, t.phase == null ? null : `p${t.phase}`])))
+const stats = computed(() => changeStats(changes.value))
+const changed = (r: ParamRow) => stats.value.items.has(itemKey(r.scope, r.key))
+const exclOf = (o: ObjRow) => exclByBid.value.get(o.id) ?? []
+const poolChanged = (o: ObjRow) => stats.value.scopes.has(o.scope)
+const lossChanged = (o: ObjRow) => stats.value.scopes.has(o.scope) || exclOf(o).some(r => stats.value.scopes.has(r.scope))
 
-// ── 行呈现:值 / 生效区间徽标 / 来自 / ① 月核对项「值 + 沿用徽标 + 未核对」 ──
+// 区内搜索 / 筛选(公摊池、楼栋损耗、户级例外)
+type F = 'all' | 'set' | 'chg'
+const poolQ = ref(''); const poolF = ref<F>('all')
+const lossQ = ref(''); const lossF = ref<F>('all')
+const tenQ = ref(''); const tenF = ref<F>('all')
+// 公摊池 / 楼栋损耗按期区排(期区选择器的顺序,一期在前;画布 10-B / 10-E),同期内照后端序(对象 id),没标期区的排最后。
+// 后端按对象 id 出行,池 id 小的是二期,不排的话全园视图二期在前
+const zoneRank = (code: string | null | undefined) => { const i = zones.list.findIndex(z => z.code === code); return i < 0 ? zones.list.length : i }
+const byZone = (list: ObjRow[], zoneOf: Map<number, string | null>) => list.sort((a, b) => zoneRank(zoneOf.get(a.id)) - zoneRank(zoneOf.get(b.id)))
+const poolShown = computed(() => byZone(pools.value.filter(o => (!poolQ.value.trim() || o.label.includes(poolQ.value.trim()))
+  && (poolF.value === 'all' || (poolF.value === 'set' ? POOL_KEYS.some(k => own(o.cells[k])) : poolChanged(o)))), ruleZone.value))
+const lossShown = computed(() => byZone(losses.value.filter(o => (!lossQ.value.trim() || o.label.includes(lossQ.value.trim()))
+  && (lossF.value === 'all' || (lossF.value === 'set' ? LOSS_KEYS.some(k => own(o.cells[k])) || exclOf(o).length > 0 : lossChanged(o)))), bldZone.value))
+const tenChanged = (g: { scope: string }) => stats.value.scopes.has(g.scope)
+/** 加载时默认展开的户(本月改过 / 本月有专属值),组序排最前(画布 10-F);同组内照后端序。只随整份数据换,写一行不重排,免得组在手底下跳 */
+const tenLead = ref(new Set<string>())
+const tenShown = computed(() => groups.value.filter(g => (!tenQ.value.trim() || g.name.includes(tenQ.value.trim()))
+  && (tenF.value === 'all' || tenChanged(g))).sort((a, b) => +tenLead.value.has(b.scope) - +tenLead.value.has(a.scope)))
+const fOpts = (list: readonly ObjRow[], set: (o: ObjRow) => boolean, chg: (o: ObjRow) => boolean) => [
+  { value: 'all', label: `全部 ${list.length}` },
+  { value: 'set', label: `有设置 ${list.filter(set).length}` },
+  { value: 'chg', label: `本月改过 ${list.filter(chg).length}` },
+]
+const poolFOpts = computed(() => fOpts(pools.value, o => POOL_KEYS.some(k => own(o.cells[k])), poolChanged))
+const lossFOpts = computed(() => fOpts(losses.value, o => LOSS_KEYS.some(k => own(o.cells[k])) || exclOf(o).length > 0, lossChanged))
+const tenFOpts = computed(() => [
+  { value: 'all', label: `全部 ${groups.value.length} 户` },
+  { value: 'chg', label: `本月改过 ${groups.value.filter(tenChanged).length}` },
+])
+// 户级例外组默认收起;本月改过的、本月有专属值的户展开(画布 10-F)。点组头收放,搜户名 / 跳转时展开。
+// 只在整份数据换了(加载 / 换期区)时重置 —— 写一行是原地 patch,不该把用户手动收放的组冲掉
+const tenOpen = ref(new Set<string>())
+watch(rows, () => {
+  tenLead.value = new Set(groups.value.filter(g => tenChanged(g) || g.rows.some(r => r.mode === 'month')).map(g => g.scope))
+  tenOpen.value = new Set(tenLead.value)
+})
+function toggleTen(scope: string) {
+  const s = new Set(tenOpen.value)
+  if (s.has(scope)) s.delete(scope); else s.add(scope)
+  tenOpen.value = s
+}
+const tenIsOpen = (scope: string) => tenOpen.value.has(scope) || !!tenQ.value.trim()
+
+// 目录
+const NAV: { sec: Sec; name: string }[] = [
+  { sec: 'park', name: '全园与期级' }, { sec: 'pool', name: '公摊池' }, { sec: 'loss', name: '楼栋损耗' }, { sec: 'tenant', name: '户级例外' },
+]
+const NAV2: { sec: Sec; name: string }[] = [{ sec: 'pv', name: '光伏分栋判据' }, { sec: 'fixed', name: '固定规则' }]
+const navCount = computed<Record<string, string>>(() => ({
+  park: String(parkRows.value.length), pool: `${pools.value.length} 池`, loss: `${losses.value.length} 栋`,
+  tenant: `${groups.value.length} 户`, pv: String(pvRows.value.length), fixed: `${FIXED_RULES.length} 条`,
+}))
+const navChg = (s: Sec) => (s === 'changes' || s === 'fixed' ? 0 : stats.value.bySec[s])
+const SEC_DESC: Partial<Record<Sec, string>> = {
+  park: '电价、管理费、水价、面积基数，和一期 / 二期的核算口径',
+  pv: '年锚点与五条判据线',
+  fixed: '写在引擎里的算法约定，不是参数；改它要改代码',
+}
+const SEC_NAME: Record<Sec, string> = {
+  changes: '本月改动', park: '全园与期级', pool: '公摊池', loss: '楼栋损耗', tenant: '户级例外', pv: '光伏分栋判据', fixed: '固定规则',
+}
+
+// ── 格子 ──
 const RANGE_TONE = { month: 'orange', from: 'blue', inherit: 'neutral' } as const
-// 月核对项本月无专属值(不是 month 行、from 版本也不是本月起的)→ 值照常显 + 灰徽标「沿用 X 起设置 / 沿用长期设置」+ 未核对
+// 月核对项本月无专属值(不是 month 行、from 版本也不是本月起的)→「未核对」
 const unchecked = (r: ParamRow) => r.group === 'monthly' && r.monthlyCheck && r.mode === 'from' && !r.hasMonthRow && r.acctMonth !== ym.value
-const carriedBadge = (r: ParamRow) => (r.acctMonth ? `沿用 ${r.acctMonth} 起设置` : '沿用长期设置')
-const rowKey = (r: ParamRow) => `${r.scope}|${r.key}`
-const chainTitle = (r: ParamRow) => r.sourceChain.length ? `命中链：${r.sourceChain.join(' → ')}` : '各级作用域均未设置'
-// 走面积基数的池:「来自」列显「取自「园区分摊面积基数」」,点它跳到 ② 区那一行(命中作用域的那条)并短暂高亮
+const objectScope = (s: string) => s.startsWith('building:') || s.startsWith('rule:') || s.startsWith('meter:')
+const missing = (r: ParamRow) => !hit(r) && r.monthlyCheck && !objectScope(r.scope)   // 全园/期级月核对项本月无值
+const chainTitle = (r: ParamRow) => (r.sourceChain.length ? `命中链：${r.sourceChain.join(' → ')}` : '各级作用域均未设置')
+// 参数名的悬停说明 = 原来的「说明 / 算式」列 + 提示
+const tipOf = (r: ParamRow) => (r.formula ? { text: r.formula, sub: r.hint ?? undefined } : r.hint)
+const unitOf = (r: ParamRow) => (r.unit && (r.valueText ?? '').endsWith(' ' + r.unit) ? r.unit : '')
+const rowDomId = (r: ParamRow) => `pm-row-${itemKey(r.scope, r.key)}`
+const isTxt = (r: ParamRow) => ['enum', 'ref_meter', 'ref_building', 'bool'].includes(paramDef(r.key)?.valueKind ?? '')
+// 全园与期级值格:枚举的括号说明(「分时制（尖峰平谷四段 + 管理费）」)挪到悬停说明,格里只留「分时制」—— 不然一格把整列撑到 260 宽,1366 下生效区间被挤出卡
+const valText = (r: ParamRow) => (isTxt(r) ? bare(r).split('（')[0] : bare(r))
+const valTip = (r: ParamRow) => (valText(r) !== bare(r) ? bare(r) : null)
+const poolLabel = (o: ObjRow) => poolName(o.label)
+const covered = (r: ParamRow) => (r.sourceChain[1] ? r.sourceChain[1].replace(':', ' ') : '（无默认值）')
+
+// 闪一下 / 高亮:深链、本月改动点行、目录搜索、走面积基数的池点链接 —— 同一条 jumpTo
+const flash = ref('')
 const hlRow = ref('')
+function scrollToId(id: string) {
+  document.getElementById(id)?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+}
+function jumpTo(scope: string, key: string) {
+  let s = scope, k = key
+  if (s.startsWith('meter:')) {
+    const bid = meterById.value.get(idOf(s))?.buildingId
+    if (bid == null) { setSec('loss'); return }
+    s = `building:${bid}`; k = 'loss_exclude'
+  }
+  const target = secOf(k, s)
+  setSec(target)
+  if (target === 'pool') { poolQ.value = ''; poolF.value = 'all'; if (!(POOL_KEYS as readonly string[]).includes(k)) k = '' }
+  if (target === 'loss') { lossQ.value = ''; lossF.value = 'all'; if (!(LOSS_KEYS as readonly string[]).includes(k) && k !== 'loss_exclude') k = '' }
+  if (target === 'tenant') {
+    tenQ.value = ''; tenF.value = 'all'
+    tenOpen.value = new Set([...tenOpen.value, s])
+    if (!all.value.some(r => r.scope === s && r.key === k && r.rowId != null)) k = ''
+  }
+  if (target === 'park') {
+    const r = parkRows.value.find(x => x.scope === s && x.key === k)
+    if (r) parkOpen[r.group === 'monthly' ? 'monthly' : 'constant'] = true
+  }
+  flash.value = ''
+  nextTick(() => {
+    flash.value = itemKey(s, k)
+    nextTick(() => scrollToId(document.getElementById(`pm-row-${itemKey(s, k)}`) ? `pm-row-${itemKey(s, k)}` : `pm-row-${s}`))
+  })
+}
+const flashOn = (scope: string, key: string) => flash.value === itemKey(scope, key)
+const isHl = (r: ParamRow) => hlRow.value === itemKey(r.scope, r.key)
+// 走面积基数的池:分摊基数格是那条面积基数参数的值,点它跳到「全园与期级」那一行(命中作用域的那条)并高亮
 function gotoBaseRow(r: ParamRow) {
   const label = baseRefLabel(r)
   const key = label ? PARAM_DEFS.find(d => d.label === label)?.key : undefined
   const hitLabel = r.sourceChain[0]?.slice(0, r.sourceChain[0].indexOf(':'))
-  const target = key ? (rows.value ?? []).find(x => x.key === key && (x.scopeLabel === hitLabel || hitLabel == null)) : undefined
+  const target = key ? all.value.find(x => x.key === key && (x.scopeLabel === hitLabel || hitLabel == null)) : undefined
   if (!target) return
-  hlRow.value = rowKey(target)
-  nextTick(() => document.getElementById(`pm-row-${hlRow.value}`)?.scrollIntoView?.({ block: 'center', behavior: 'smooth' }))
+  hlRow.value = itemKey(target.scope, target.key)
+  jumpTo(target.scope, target.key)
 }
-const isHl = (r: ParamRow) => (!!hlScope.value && r.scope === hlScope.value) || hlRow.value === rowKey(r)
-const otherMonths = computed(() => status.value?.otherMonthsAffected ?? [])   // from 版本波及、快照更早的其它已生成月
-// 'YYYY-MM-DDTHH:mm:ss' → 'MM-DD HH:mm'(同 paramCenterLogic 里那份格式,不值得为一行导出)
+function onJump(c: ParamChangeDTO) { jumpTo(c.scope ?? '', c.key ?? '') }
+
+// 目录搜索「搜参数 / 池 / 栋 / 户」:回车跳到第一处匹配(全园与期级参数名 → 池名 → 楼栋名 → 户名 → 户级例外参数名 → 光伏判据名);
+// 池 / 栋 / 户把词带进那一区的搜索框,同区其余匹配一起留在表里
+const navQ = ref('')
+const navMiss = ref(false)
+function navSearch() {
+  const q = navQ.value.trim()
+  if (!q) return
+  navMiss.value = false
+  const p = parkRows.value.find(r => r.label.includes(q))
+  if (p) return jumpTo(p.scope, p.key)
+  const o = pools.value.find(x => x.label.includes(q))
+  if (o) { jumpTo(o.scope, ''); poolQ.value = q; return }
+  const b = losses.value.find(x => x.label.includes(q))
+  if (b) { jumpTo(b.scope, ''); lossQ.value = q; return }
+  const g = groups.value.find(x => x.name.includes(q))
+  if (g) { jumpTo(g.scope, ''); tenQ.value = q; return }
+  const t = groups.value.flatMap(x => x.rows).find(r => r.label.includes(q))
+  if (t) return jumpTo(t.scope, t.key)
+  const v = pvRows.value.find(r => r.label.includes(q))
+  if (v) return jumpTo(v.scope, v.key)
+  navMiss.value = true
+}
+
+// 页面状态(LAYOUT-STABILITY §2 第 4 级):标题旁的签只报**中性事实** —— 电价 n/6 + 池核算生成没生成 / 生成于何时(一致时,浏览态)。
+// 「改了 N 项 / 另有 X 月受影响」归问题面板(§6),这里不说;编辑态不画「改动都已重算」(画布 10-B)
 const hhmm = (iso: string) => iso.slice(5, 16).replace('T', ' ')
-// 页面状态(LAYOUT-STABILITY §2 第 4 级):原来单独一行的状态条拆成标题旁的标签,只报**中性事实** ——
-// 电价 n/6 + 池核算生成没生成 / 生成于何时(一致时)。「改了 N 项 / 另有 X 月受影响」归问题面板(§6),这里不说。
 const stateTags = computed<{ tone: 'warn' | 'muted'; text: string }[]>(() => {
   const s = status.value
   if (!s) return [{ tone: 'muted', text: '状态没读到' }]
-  const missing = s.priceTotal - s.priceOk
+  const lack = s.priceTotal - s.priceOk
   return [
-    { tone: missing > 0 ? 'warn' : 'muted', text: `本月电价 ${s.priceOk}/${s.priceTotal}${missing > 0 ? ` · 缺 ${missing} 项` : ''}` },
+    { tone: lack > 0 ? 'warn' : 'muted', text: `本月电价 ${s.priceOk}/${s.priceTotal}${lack > 0 ? ` · 缺 ${lack} 项` : ''}` },
     ...(!s.poolSnapshotAt ? [{ tone: 'warn' as const, text: '本月池核算未生成' }]
-      : !s.stale ? [{ tone: 'muted' as const, text: `改动都已重算 · 生成于 ${hhmm(s.poolSnapshotAt)}` }] : []),
+      : !s.stale && !editMode.value ? [{ tone: 'muted' as const, text: `改动都已重算 · 生成于 ${hhmm(s.poolSnapshotAt)}` }] : []),
   ]
 })
 
-// ── 写:弹窗组装 ParamPutReq → PUT → 只 patch 该行(铁律二)+ 状态条计数 ──
+// ── 写:改值卡组装 ParamPutReq → PUT → 只 patch 该行(铁律二) ──
 const editRow = ref<ParamRowDTO | null>(null)
+const editAnchor = ref<HTMLElement | null>(null)
+const exclBid = ref<number | null>(null)   // 「不计入的表」格里的「+」:改值卡换成选表
 const histRow = ref<ParamRowDTO | null>(null)
-const changesOpen = ref(false)
+function openEdit(r: ParamRowDTO | undefined, ev: Event) {
+  if (!editMode.value || !r || !r.editable) return
+  editRow.value = r
+  exclBid.value = null
+  editAnchor.value = ev.currentTarget as HTMLElement
+}
+function closeEdit() { editRow.value = null; exclBid.value = null }
+const editing = (r: ParamRowDTO | undefined) => !!r && !exclBid.value && editRow.value?.scope === r.scope && editRow.value?.key === r.key
 function patchRow(nr: ParamRowDTO, deleted: boolean) {
   const list = rows.value ?? (rows.value = [])
   const i = list.findIndex(r => r.scope === nr.scope && r.key === nr.key)
-  // 户级例外 / 表级剔出行删掉后回包是「继承上级 / 无设置」的行(rowId 空),它不再是一条例外 → 从列表拿掉;其余行原位替换 / 新增追加
+  // 户级例外 / 表级不计入行删掉后回包是「继承上级 / 无设置」的行(rowId 空),它不再是一条例外 → 从列表拿掉;其余行原位替换 / 新增追加
   const drop = deleted && nr.rowId == null && (nr.scope.startsWith('tenant:') || nr.scope.startsWith('meter:'))
   if (i >= 0) { if (drop) list.splice(i, 1); else list[i] = nr }
   else if (!drop) list.push(nr)
@@ -323,13 +439,12 @@ function bumpPending() {
   s.pendingChanges++
   if (s.poolSnapshotAt || s.billBatchAt) {
     s.stale = true
-    // 本地先把「参数」记进过期来源,抽屉里那条「改了 N 项参数」才出得来(下次拉 status 以后端为准)
+    // 本地先把「参数」记进过期来源,面板里那条「改了 N 项参数」才出得来(下次拉 status 以后端为准)
     if (s.staleSources && !s.staleSources.includes('param')) s.staleSources.push('param')
   }
 }
 async function put(req: ParamPutReq): Promise<boolean> {
-  // 写口自守:全屏参数写全走这一个漏斗,守这一处 = 六个调用方一次到位(照 BillNoticesView 口径)。
-  // editMode 会就地转假(接管/提权到期),而调用方的按钮各有各的 v-if —— 漏一个就是浏览态写库。
+  // 写口自守:全屏参数写全走这一个漏斗。editMode 会就地转假(接管/提权到期),调用方各有各的 v-if —— 漏一个就是浏览态写库。
   if (!editMode.value) return false
   const my = seq
   try {
@@ -337,18 +452,19 @@ async function put(req: ParamPutReq): Promise<boolean> {
     if (my !== seq) return true          // 回包前换了月:写已成功,但别把旧月的行 patch 进新月列表
     patchRow(nr, req.value == null)
     bumpPending()
+    refreshChanges()
     return true
-  } catch (e) { receipt.fail(errMsg(e, '保存失败')); return false }   // 不带重试:浮层 / 抽屉还开着,再点「保存」就是重试
+  } catch (e) { receipt.fail(errMsg(e, '保存失败')); return false }   // 不带重试:卡还开着,再点「保存」就是重试
 }
-// 成组写(④ 写计划:主键 + 配套键),中途失败即停(已写的留着;失败回执已出)
+// 成组写(户级例外写计划:主键 + 配套键),中途失败即停(已写的留着;失败回执已出)
 async function putAll(reqs: ParamPutReq[]): Promise<boolean> {
   for (const r of reqs) if (!(await put(r))) return false
   return true
 }
 async function onSave(req: ParamPutReq) {
-  if (await put(req)) editRow.value = null
+  if (await put(req)) closeEdit()
 }
-// ④ [删]:按写计划整组删该户的版本行(主键 + 配套键;后端拦已被生成月取用的行)
+// 户级例外 [删]:按写计划整组删该户的版本行(主键 + 配套键;后端拦已被生成月取用的行)
 async function delTenantRow(r: ParamRow) {
   const mates = writePlan(r.key).slice(1).map(w => paramDef(w.key)?.label).filter(Boolean)
   const extra = mates.length ? `连同配套的「${mates.join('」「')}」一起删除，` : ''
@@ -361,10 +477,8 @@ async function delTenantRow(r: ParamRow) {
   void putAll(tenantExceptionDelReqs(r))   // 等回答时被接管:put 漏斗第一行自守
 }
 
-// 弹窗引用型值的候选:并入他栋 → 同期区楼栋;总表 / 供电侧对账总表 → 该栋 / 该期电表;户级园区表 → 该户挂的表
-// 期区读楼栋真实字段,不按 phase 猜——phase 只有 1/2/3,猜法会把三期(以及宿舍)楼栋都错落进 p1 桶。
-// 三期楼栋在手工标注前 zone=null:候选按 null 分桶,只会跟别的未标注楼栋算同桶,不再混入一期楼栋。
-const zoneOfBuilding = (b: BuildingDTO) => b.zone
+// 改值卡引用型值的候选:并入他栋 → 同期区楼栋;总表 / 供电侧对账总表 → 该栋 / 该期电表;户级园区表 → 该户挂的表
+// 期区读楼栋真实字段,不按 phase 猜 —— 三期楼栋在手工标注前 zone=null,只跟别的未标注楼栋同桶
 const meterOpt = (m: MeterDTO): RefOption => ({ value: String(m.id), label: m.subName ? `${m.name} · ${m.subName}` : m.name })
 const refOptions = computed<RefOption[]>(() => {
   const r = editRow.value
@@ -372,11 +486,9 @@ const refOptions = computed<RefOption[]>(() => {
   if (!r || !d) return []
   if (d.valueKind === 'ref_building') {
     const self = r.scope.startsWith('building:') ? buildings.value.find(b => b.id === idOf(r.scope)) : undefined
-    return buildings.value.filter(b => !self || zoneOfBuilding(b) === zoneOfBuilding(self)).map(b => ({ value: String(b.id), label: b.name }))
+    return buildings.value.filter(b => !self || b.zone === self.zone).map(b => ({ value: String(b.id), label: b.name }))
   }
   if (d.valueKind === 'ref_meter') {
-    // scope 是裸期区码(如 loss_supply_meter/供电局对账总表)时按该期区过滤候选表;
-    // 之前枚举 p1/p2/dorm 漏了 p3,编辑三期这个引用型参数会退到 meters.value(全园所有表都能选)
     const ms = r.scope.startsWith('building:') ? meters.value.filter(m => m.buildingId === idOf(r.scope))
       : r.scope.startsWith('tenant:') ? meters.value.filter(m => m.tenantId === idOf(r.scope))
       : isZoneCode(r.scope) ? meters.value.filter(m => m.zone === r.scope)
@@ -385,22 +497,26 @@ const refOptions = computed<RefOption[]>(() => {
   }
   return []
 })
-
-// ③「不计入楼栋合计的电表 [+ 添加]」:选该栋的表 → 写 loss_exclude=1(自本月起长期)
-const addExcl = ref<{ bid: number; meterId: string } | null>(null)
-const exclCandidates = (g: BuildingRuleGroup): RefOption[] => {
-  const done = new Set(g.excludes.map(r => idOf(r.scope)))
-  return meters.value.filter(m => m.buildingId === g.bid && !done.has(m.id)).map(meterOpt)
+// 「不计入楼栋合计的表 +」:选这栋还没被设成不计入的表 → 写那块表的 loss_exclude=1
+const exclPick = computed<RefOption[] | undefined>(() => {
+  const bid = exclBid.value
+  if (bid == null) return undefined
+  const done = new Set((exclByBid.value.get(bid) ?? []).map(r => idOf(r.scope)))
+  return meters.value.filter(m => m.buildingId === bid && !done.has(m.id)).map(meterOpt)
+})
+function openExcl(o: ObjRow, ev: Event) {
+  if (!editMode.value) return
+  editRow.value = {
+    key: 'loss_exclude', label: '不计入楼栋合计的电表', unit: '', group: 'rule', scope: o.scope, scopeLabel: o.label,
+    value: null, valueText: '', mode: null, acctMonth: '', rangeText: '', sourceChain: [], formula: null, hint: null,
+    editable: true, monthlyCheck: false, hasMonthRow: false, rowId: null, note: null,
+  }
+  exclBid.value = o.id
+  editAnchor.value = ev.currentTarget as HTMLElement
 }
-async function submitExcl() {
-  const a = addExcl.value
-  if (!a || !a.meterId) return
-  if (await put({ key: 'loss_exclude', scope: `meter:${a.meterId}`, acctMonth: ym.value, mode: 'from', value: 1 })) addExcl.value = null
-}
 
-// ④ [+ 新增例外]:租户(FPTenantPicker)+ 键(注册表 tenantEditable)+ 值 + 生效方式 + 备注;
-// 写序列按注册表写计划成组展开(水价配管网费=0 / 一口价配双 mgmt=0 / 管理费双键同值 —— 与系数簿同一份 writePlan);
-// 「损耗费计费基数（按栋）」多选一个楼栋(该户挂表所在栋 = 损耗组成员栋)拼 loss_base_form_b{栋id}
+// 户级例外 [+ 新增例外]:租户(FPTenantPicker)+ 键(注册表 tenantEditable)+ 值 + 生效方式 + 备注;
+// 写序列按注册表写计划成组展开(与系数簿同一份 writePlan);「损耗费计费基数（按栋）」多选一个楼栋拼 loss_base_form_b{栋id}
 const exOpen = ref(false)
 const ex = ref({ tenantId: null as number | null, key: '', val: '', bid: '' as string, mode: 'from' as ParamMode, note: '' })
 const exKeyOpts = PARAM_DEFS.filter(d => d.tenantEditable).map(d => ({ value: d.key, label: d.unit ? `${d.label}（${d.unit}）` : d.label }))
@@ -456,8 +572,7 @@ async function submitEx() {
   const reqs = tenantExceptionReqs({ tenantId: t.tenantId, key: d.key, bid: t.bid ? Number(t.bid) : null, value: v, mode: t.mode, note: t.note.trim() || null }, ym.value)
   if (await putAll(reqs)) exOpen.value = false
 }
-// 深链协议同 gotoParams:KeepAlive 缓存实例只在 setup 消费 query,不换 epoch 就读不到 ——
-// 缺了这半边,催缴单屏若已在页签里缓存着,点过去只是切页签,系数簿窗口不会开。
+// 深链协议同 gotoParams:KeepAlive 缓存实例只在 setup 消费 query,不换 epoch 就读不到
 function gotoCoefBook() {
   tabs.openFresh('bill-notices', { pin: true })
   // 催缴单屏的 p 是催缴单月(收费月)= 本月 +1;它落期时折回本月,系数簿照旧开本月(billingChain「催缴单的月份」)
@@ -469,8 +584,7 @@ const busy = ref(false)
 async function onRecalc() {
   // 写口自守:浏览态 / 参数没读到 一律打不出去(组头按钮的 busy 只是视觉)
   if (!canRecalc.value || loadErr.value) return
-  // 从未生成过催缴单的月(spec §10.6):「重算」其实是首次生成,用户须知道会新添一批催缴单
-  // 本月水电出在下个月的催缴单上(billingChain「催缴单的月份」):重算本月 = 重出下个月的单
+  // 从未生成过催缴单的月(spec §10.6):「重算」其实是首次生成;本月水电出在下个月的催缴单上(billingChain「催缴单的月份」)
   const at = ym.value
   const nym = noticeYmOf(at)
   const first = status.value && !status.value.billBatchAt
@@ -486,21 +600,20 @@ async function onRecalc() {
   try {
     const r = await paramsApi.recalc(ym.value)
     const done = `重算完成：池 ${r.pools} · 损耗单元 ${r.lossUnits} · 催缴单 ${r.notices}（跳过已确认 / 已导出 ${r.skippedConfirmed}）`
-    // 警告说的是钱会摊丢 / 多摊少摊(AllocService.generate),用户必须读到 → 警告回执不自收,第一条原文照抄。
-    // 全部明细本屏没地方放:公共电核算重新生成一次,它的「本次生成告警」组会逐条列出
+    // 警告说的是钱会摊丢 / 多摊少摊(AllocService.generate),用户必须读到 → 警告回执不自收,第一条原文照抄
     const ws = r.warnings
     if (!ws.length) receipt.ok(done)
     else if (ws.length === 1) receipt.warn(`${done}。警告：${ws[0]}`)
     else receipt.warn(`${done}。警告 ${ws.length} 条，第一条：${ws[0]}。其余 ${ws.length - 1} 条要到公共电核算重新生成本月才看得到。`)
     status.value = await paramsApi.status(ym.value)
+    refreshChanges()
     // 生成改的正是矩阵格子上的点(池/损耗亮起、stale 清掉)—— 换出账月时要立刻看得见
     void period.reloadChain().catch(() => { /* 矩阵刷新失败不阻断本屏 */ })
   } catch (e) {
     receipt.fail(errMsg(e, '重算失败'), { label: '重试', run: () => void onRecalc() })
   } finally { busy.value = false }
 }
-// 跨月一键重算(§6-3:告警必须给得出一条点得到的清除路径,不许只写「请切到该月重算」让用户手工切几十次)。
-// 纯前端编排:按月串行调已有 recalc,没有新后端口。任一月失败即停,已成功的月保留并在 toast 里报出断点。
+// 跨月一键重算(§6-3:告警必须给得出一条点得到的清除路径)。纯前端编排:按月串行调已有 recalc,任一月失败即停
 const batchDone = ref(0)
 const batchTotal = ref(0)
 async function onRecalcOthers() {
@@ -522,11 +635,9 @@ async function onRecalcOthers() {
     }
   } finally {
     busy.value = false; batchTotal.value = 0
-    await load()        // 刷新本月列表 + status —— 清干净的告警随之从 chip 上消失
-    // 跨月重算改的是好几个月的格子,矩阵整张重取
+    await load()        // 刷新本月列表 + status —— 清干净的告警随之从入口上消失
     void period.reloadChain().catch(() => { /* 矩阵刷新失败不阻断本屏 */ })
   }
-  // 失败走失败回执(不自收,让用户读完失败月份)
   if (failed) receipt.fail(`重算中断于 ${failed}${batchDone.value ? `；已完成 ${batchDone.value} 个月` : ''}`)
   else receipt.ok(`已重算 ${batchDone.value} 个月：${list.join('、')}`)
 }
@@ -549,16 +660,11 @@ async function onCopy() {
   } finally { busy.value = false }
 }
 
-// ── 屏级告警:常驻 chip + 右侧抽屉(LAYOUT-STABILITY-SPEC §6,2026-08-25 用户拍板) ──
-// 原来这些橙字全挤在状态条里(「参数已改 N 项…另有 2023-08、2023-10 也受影响,请切到该月重算」):
-// 顶动下面四张卡,而且只报不给路 —— 跨月那条得用户手工切几十次月才清得掉,于是变成永久噪音。
-// 判定逻辑不动(后端 status.stale / otherMonthsAffected),这里只搬呈现形态 + 给出清除动作。
+// ── 屏级告警:标题行「待处理」入口 + 贴着它的问题面板(LAYOUT-STABILITY-SPEC §6) ──
 const alertOpen = ref(false)
-// 重算是写操作(EDIT-MODE-SPEC v2:浏览态零写入口)
-const canRecalc = computed(() => canRun.value && editMode.value)
-// 组头动作照公共电核算:编辑态给动作本身;浏览态给「进入编辑模式」,拿到锁后组头换成动作(不自动帮点:拿锁可能要先过
-// 提权弹窗);参数没读到时不给进(同编辑按钮的 :disabled)。进不了编辑模式的人这里没有路可走 ——
-// 只报不给动作的不进面板(§6-3),整组不出。
+const otherMonths = computed(() => status.value?.otherMonthsAffected ?? [])   // from 版本波及、快照更早的其它已生成月
+const canRecalc = computed(() => canRun.value && editMode.value)   // 重算是写操作(浏览态零写入口)
+// 组头动作:编辑态给动作本身;浏览态给「进入编辑模式」(拿锁可能要先过提权弹窗,不自动帮点);进不了编辑模式的人整组不出(§6-3)
 function groupAction(label: string, run: () => void): AlertGroup['action'] {
   if (editMode.value) return { label, icon: 'refresh-cw', busy: busy.value || !!loadErr.value,
     busyLabel: loadErr.value ? '参数没读到，不能重算' : undefined, run }
@@ -567,7 +673,6 @@ function groupAction(label: string, run: () => void): AlertGroup['action'] {
 }
 function gotoMonth(m: string) {
   const [y, mo] = m.split('-').map(Number)
-  // 用户在告警抽屉里点名要去那个月 —— 显式动作,直接换组级期(五屏一起跟过去)
   period.pick(y, mo)                    // watch([ym, zone]) → load()
   alertOpen.value = false
 }
@@ -576,11 +681,10 @@ const alertGroups = computed<AlertGroup[]>(() => {
   if (!s) return []
   const gs: AlertGroup[] = []
   // 过期来源分参数 / 抄表(METER-TIMELINE-SPEC §5):pendingChanges 只数参数,抄表只说改过、不数条数
-  // (抄表一次写会落一整段月份,按条数计没有意义 —— 后端也不给)
   const srcs = staleSources(s)
   const hint = s.lastChangeAt ? `最近改动 ${hhmm(s.lastChangeAt)}` : undefined
-  // 「改了 N 项参数」点开变更记录 —— 改了哪几项、谁改的都在那里(问题所在处)
-  const showChanges = () => { alertOpen.value = false; changesOpen.value = true }
+  // 「改了 N 项参数」点开本月改动 —— 改了哪几项、谁改的都在那里(问题所在处)
+  const showChanges = () => { alertOpen.value = false; setSec('changes') }
   const srcItems = [
     ...(srcs.includes('param') ? [{ text: `自上次重算起改了 ${s.pendingChanges} 项参数`, onClick: showChanges }] : []),
     ...(srcs.includes('meter') ? [{ text: '自上次重算起抄表数据（读数或表档案）有改动' }] : []),
@@ -588,7 +692,7 @@ const alertGroups = computed<AlertGroup[]>(() => {
   const recalc = groupAction('重算本月', () => void onRecalc())
   if (s.stale && recalc) gs.push({
     key: 'stale',
-    title: '待重算',   // LAYOUT-STABILITY §4:stale 归「待重算」一组,与公共电核算 / 楼栋损耗同名
+    title: '待重算',
     desc: `${staleWho(s)}改过，但池核算 / 楼栋损耗 / 催缴单还是改之前生成的 —— 屏上那些金额不会自己跟着变，`
       + '重算一次才对得上（已确认、已导出的户照旧跳过）。',
     items: srcItems,
@@ -602,7 +706,6 @@ const alertGroups = computed<AlertGroup[]>(() => {
       + '不重算的话那几个月的池核算 / 催缴单还是老金额。',
     items: otherMonths.value.map((m, i) => ({
       text: m,
-      // 批量跑起来后每行报进度(共享件的 busy 只会把按钮文案换成「处理中…」,进度只能落在这儿)
       hint: batchTotal.value
         ? (i < batchDone.value ? '已重算' : i === batchDone.value ? '重算中…' : '等待中')
         : '切到该月',
@@ -612,10 +715,25 @@ const alertGroups = computed<AlertGroup[]>(() => {
   })
   return gs
 })
-// 胶囊上的数 = 待处理条目数(FPAlertChip 口径:Σ items,无 items 的组按 1)—— 整组不出的不算
 const alertCount = computed(() => alertGroups.value.reduce((n, g) => n + (g.items.length || 1), 0))
 
-// ⑤ 固定规则(spec §3.5,只读折叠;改它要改代码)—— 人话句子,不出现 Σ / ROUND
+// ── 公摊池窄宽固定列(LIST-PAGE §9.1,画布 10-B 板下注):池(名称列,≤ 可见宽 1/5,悬停看全称)→ 分摊基数;
+//    合计超可见宽 40% 先退分摊基数。按整列文字估宽,不量 DOM;高度不分档(本页表在卡里滚,不贴底合计)
+const wrapEl = ref<HTMLElement | null>(null)
+const NO_H: HeightDims = { grpH: 0, leafH: 40, rowH: 40, footH: 0 }
+const MARK_W = 64   // 「● 本月改」
+const poolCols = computed<WideCol[]>(() => [
+  { key: 'pool', side: 'L', rank: 0, name: true, minW: textW(['三个字'], 14, 24) + MARK_W,
+    w: Math.max(textW(['池'], 12, 24), ...pools.value.map(o => { const n = poolLabel(o); return textW([`${n.loc} ${n.name}`], 14, 30) + (poolChanged(o) ? MARK_W : 0) })) },
+  { key: 'coef', side: 'L', rank: 1,
+    w: Math.max(textW(['分摊基数'], 12, 24), numW(pools.value.map(o => cellText(o.cells.coefficient)), 14, 24)) },
+])
+const { fix } = useWideTable(wrapEl, poolCols, NO_H, computed(() => ({ r: rows.value, z: zone.value })))
+const colW = (px: number) => ({ width: px + 'px', minWidth: px + 'px', maxWidth: px + 'px' })
+const poolSt = computed(() => (sec.value === 'pool' ? { ...colW(fix.value.w.pool), ...fix.value.style.pool } : undefined))
+const coefSt = computed(() => (sec.value === 'pool' ? { ...colW(fix.value.w.coef), ...fix.value.style.coef } : undefined))
+
+// 固定规则(只读;改它要改代码)—— 人话句子,不出现 Σ / ROUND
 const FIXED_RULES = [
   '一期公摊分摊度数 = 园区公共电池当月净量合计 ÷ 均摊栋数（四舍五入到 2 位），各栋同值；分栋差异走「损耗调整度数」。',
   '收取损耗率按「损耗核算方式」三选一：按损耗量核算 = −(分表合计 − 总表 − 公摊分摊度数 − 调整度数) ÷ 分母 + 加点；仅按公摊分摊度数 = 公摊分摊度数 ÷ 分母 + 加点；不核算只列示用量。填了「损耗率（手工指定）」则直接用它。',
@@ -630,33 +748,25 @@ const FIXED_RULES = [
   <!-- ⓪ 没有期 → 出账月矩阵(五屏共用一张)。选过一次之后本会话不再出现,直落表格 -->
   <ChainMonthGate v-if="!period.picked" title="计费参数" icon="sliders-horizontal" />
 
-  <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.4 迁移查看态(参数速查),摘 base.css 的
-       800px 屏级地板。三张表列永不增删(列宽在表头 min-width 上),窄了在 .pm-tablewrap(overflow-x:auto)内横滚;
-       参数批量编辑不优化(§11.1),单条修改走 Popover/Drawer,S 档由组件内部全屏化 -->
+  <!-- fp-fluid:摘 base.css 的 800px 屏级地板;宽档整页一屏、表在右卡里滚,960 以下目录叠在卡上面、整页往下滚 -->
   <div v-else-if="!rows" class="page-loading fp-fluid"><span class="page-spin" /></div>
 
   <div v-else class="pm-page fp-fluid">
     <FPLoadBar :on="veil" />
-    <!-- 链路条:期写在这里,五道工序横跳不换期 -->
-    <FPStepStrip :steps="chainSteps" current="params" :period="ym" @back="period.clear()" />
+    <!-- 链路条:期写在这里,五道工序横跳不换期;编辑态不给「换出账月」(画布 10-B) -->
+    <FPStepStrip :steps="chainSteps" current="params" :period="ym" :hide-back="editMode" @back="period.clear()" />
 
-    <!-- 标题行:年月 + 期区 | 变更记录 + 编辑模式 -->
+    <!-- 标题行:计费参数 + 页面状态签 + 期区 | 待处理 + 交审 + 编辑模式 -->
     <div class="pm-head">
       <div class="pm-head-l">
-        <h2 class="pm-title"><span class="ic"><component :is="iconFor('sliders-horizontal')" :size="18" /></span>计费参数</h2>
-        <!-- 页面状态(§2 第 4 级):原来单独一行的状态条,拆成标题旁的标签 -->
+        <h2 class="pm-title">计费参数</h2>
         <FPStateTag v-for="t in stateTags" :key="t.text" :tone="t.tone">{{ t.text }}</FPStateTag>
         <Segmented :options="ZONE_OPTS" :model-value="zone" size="sm" @update:model-value="zone = $event as ParamZone" />
-        <!-- 屏级告警入口(§6):位置固定在主控区尾,有无告警都渲染(无 → quiet 态),不挪版 -->
-        <FPAlertPanel v-model:open="alertOpen" :count="alertCount" :groups="alertGroups" />
       </div>
       <div class="pm-actions">
-        <Button variant="outline" size="sm" @click="changesOpen = true">
-          <template #leading><component :is="iconFor('history')" :size="14" /></template>
-          变更记录
-        </Button>
-        <!-- 审核动作簇(§01):长在编辑按钮**左边**,同一条 flex 行 —— 编辑按钮位一个像素不动。
-             四态八格由组件自己判(全站唯一那一份),屏这一层只负责喂键与人话名。 -->
+        <!-- 屏级告警入口(§6):有无告警都渲染(无 → quiet 态「无待处理」),不挪版 -->
+        <FPAlertPanel v-model:open="alertOpen" :count="alertCount" :groups="alertGroups" align="end" />
+        <!-- 审核动作簇(§01):长在编辑按钮左边,编辑态里一颗不画(组件自己判) -->
         <FPReviewActions :keys="reviewKeys" :label="reviewLabel" :can-edit="canEnter" :edit="editMode" />
         <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
                           :review-note="reviewNote" :review-tip="reviewTip" :disabled="!editMode && !!loadErr"
@@ -664,239 +774,252 @@ const FIXED_RULES = [
       </div>
     </div>
 
-    <!-- 加载失败(LAYOUT-STABILITY §3):换掉下面五张卡本身,一律带重试 —— 不留上一次读到的行,写入口随卡一起不在。
-         重算本月 / 一键重算在问题面板的组头(只在编辑态),三屏 [去重算] 深链带 edit=1 直接进编辑态 -->
+    <!-- 加载失败(LAYOUT-STABILITY §3):换掉目录与当前区,一律带重试 —— 不留上一次读到的行,写入口随之不在 -->
     <FPLoadError v-if="loadErr" :sub="`${loadErr} · 屏上不显示上一次读到的参数`" @retry="load">
       {{ year }} 年 {{ month }} 月的计费参数没读到
     </FPLoadError>
-    <template v-else>
-    <!-- ① 本月参数 -->
-    <Card id="sec-monthly" surface="white" :padding="0" class="pm-card">
-      <div class="pm-cardhead">
-        <div class="pm-cardtitles">
-          <span class="pm-cardtitle">① 本月参数（每月核对）</span>
-          <span class="pm-cardsub">
-            <b>月度录入</b>：照抄供电局账单的电价与调整量。电价决定每一户的账单，改动需主管授权。
-            本月无专属值的月核对项显示沿用值并标「未核对」
-          </span>
-        </div>
-        <div class="pm-cardops">
-          <button v-if="monthly.hidden" class="pm-link" @click="showEmpty.monthly = !showEmpty.monthly">
-            {{ showEmpty.monthly ? '收起未设置项' : `显示未设置项（${monthly.hidden}）` }}
-          </button>
-          <Button v-if="editMode" variant="outline" size="sm" :disabled="busy" @click="onCopy">
-            <template #leading><component :is="iconFor('copy')" :size="14" /></template>
-            复制上月电价
-          </Button>
-        </div>
-      </div>
-      <FPEmpty v-if="!monthly.rows.length" size="sm" :sub="monthly.hidden ? '点右上「显示未设置项」查看可设的项' : undefined">本月无已设置的参数</FPEmpty>
-      <div v-else class="pm-tablewrap" data-stale-host :class="{ 'fp-stale': veil }" :aria-busy="veil">
-        <table class="pm-table">
-          <thead>
-            <tr><th class="lbl" style="min-width:200px">参数</th><th class="scope" style="min-width:170px">作用范围</th><th style="min-width:150px">本月值</th><th style="min-width:130px">生效区间</th><th class="src" style="min-width:100px">来自</th><th class="formula" :style="{ minWidth: monthlyFormulaW + 'px' }">说明 / 算式</th><th style="min-width:78px"></th><th style="min-width:44px"></th><th class="fp-fill" aria-hidden="true"></th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="r in monthly.rows" :id="`pm-row-${rowKey(r)}`" :key="rowKey(r)" :class="{ hl: isHl(r) }">
-              <td class="lbl" v-tip="r.hint"><span class="pm-lbl">{{ r.label }}</span><span v-if="r.unit" class="pm-unit">{{ r.unit }}</span></td>
-              <td class="mut scope"><span class="pm-lbl">{{ r.scopeLabel }}</span></td>
-              <td class="val">
-                <template v-if="unchecked(r)">
-                  <span class="pm-v">{{ r.valueText }}</span>
-                  <span class="pm-vbadges">
-                    <Badge tone="neutral" variant="subtle" :dot="false" class="pm-carried">{{ carriedBadge(r) }}</Badge>
-                    <Badge tone="orange" variant="subtle" :dot="false">未核对</Badge>
-                  </span>
-                </template>
-                <template v-else-if="!hasHit(r)">
-                  <span class="dim">—</span>
-                  <Badge v-if="missing(r)" tone="orange" variant="subtle" :dot="false">缺</Badge>
-                </template>
-                <template v-else>{{ r.valueText }}</template>
-              </td>
-              <td class="rng"><Badge v-if="rangeBadge(r).text" :tone="RANGE_TONE[rangeBadge(r).tone]" :dot="false">{{ rangeBadge(r).text }}</Badge></td>
-              <td class="mut src" v-tip="chainTitle(r)">
-                <button v-if="baseRefLabel(r)" class="pm-link" @click="gotoBaseRow(r)">{{ sourceLabel(r) }}</button>
-                <template v-else>{{ sourceLabel(r) }}</template>
-              </td>
-              <td class="mut formula" v-tip="r.formula"><span class="pm-clamp">{{ r.formula ?? '' }}</span></td>
-              <td class="ops"><Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button></td>
-              <td class="ops"><button class="pm-ib" v-tip="'历史'" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button></td>
-              <td class="fp-fill" aria-hidden="true"></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </Card>
+    <div v-else class="pm-body">
+      <!-- 左目录卡 -->
+      <nav class="pm-nav" aria-label="计费参数分区">
+        <label class="pm-nq" :class="{ miss: navMiss }" v-tip="navMiss ? '没有匹配的参数、池、栋或户' : null">
+          <component :is="iconFor('search')" :size="13" />
+          <input v-model="navQ" type="text" placeholder="搜参数 / 池 / 栋 / 户" @keydown.enter="navSearch" @input="navMiss = false" />
+        </label>
+        <button type="button" class="pm-ni" :class="{ on: sec === 'changes' }" :aria-current="sec === 'changes' ? 'true' : undefined" @click="setSec('changes')">
+          <component :is="iconFor('history')" :size="14" class="i" />本月改动<span class="sp" /><span class="chg big">{{ stats.items.size }}</span>
+        </button>
+        <div class="pm-sep" />
+        <button v-for="n in NAV" :key="n.sec" type="button" class="pm-ni" :class="{ on: sec === n.sec }"
+                :aria-current="sec === n.sec ? 'true' : undefined" @click="setSec(n.sec)">
+          {{ n.name }}<span class="sp" /><span v-if="navChg(n.sec)" class="chg">改 {{ navChg(n.sec) }}</span><span class="c">{{ navCount[n.sec] }}</span>
+        </button>
+        <div class="pm-sep" />
+        <button v-for="n in NAV2" :key="n.sec" type="button" class="pm-ni" :class="{ on: sec === n.sec }"
+                :aria-current="sec === n.sec ? 'true' : undefined" @click="setSec(n.sec)">
+          {{ n.name }}<span class="sp" /><span v-if="navChg(n.sec)" class="chg">改 {{ navChg(n.sec) }}</span><span class="c">{{ navCount[n.sec] }}</span>
+        </button>
+      </nav>
 
-    <!-- ② 长期常数 -->
-    <Card id="sec-constant" surface="white" :padding="0" class="pm-card">
-      <div class="pm-cardhead">
-        <div class="pm-cardtitles">
-          <span class="pm-cardtitle">② 长期常数（改一次，管到下次改）</span>
-          <span class="pm-cardsub">自某月起长期生效，直到更晚版本；含分摊基数 / 分摊标准附加金额 / 公摊池指定单价</span>
-        </div>
-        <div class="pm-cardops">
-          <button v-if="constant.hidden" class="pm-link" @click="showEmpty.constant = !showEmpty.constant">
-            {{ showEmpty.constant ? '收起未设置项' : `显示未设置项（${constant.hidden}）` }}
-          </button>
-        </div>
-      </div>
-      <FPEmpty v-if="!constant.rows.length" size="sm">无已设置的长期常数</FPEmpty>
-      <div v-else class="pm-tablewrap" data-stale-host :class="{ 'fp-stale': veil }" :aria-busy="veil">
-        <table class="pm-table">
-          <thead>
-            <tr><th class="lbl" style="min-width:200px">参数</th><th class="scope" style="min-width:170px">作用范围</th><th style="min-width:150px">生效值</th><th style="min-width:130px">生效区间</th><th class="src" style="min-width:100px">来自</th><th class="formula" :style="{ minWidth: constantFormulaW + 'px' }">说明 / 算式</th><th style="min-width:78px"></th><th style="min-width:44px"></th><th class="fp-fill" aria-hidden="true"></th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="r in constant.rows" :id="`pm-row-${rowKey(r)}`" :key="rowKey(r)" :class="{ hl: isHl(r) }">
-              <td class="lbl" v-tip="r.hint"><span class="pm-lbl">{{ r.label }}</span><span v-if="r.unit" class="pm-unit">{{ r.unit }}</span></td>
-              <td class="mut scope"><span class="pm-lbl">{{ r.scopeLabel }}</span></td>
-              <td class="val"><span v-if="!hasHit(r) && !r.valueText" class="dim">—</span><template v-else>{{ r.valueText }}</template></td>
-              <td class="rng"><Badge v-if="rangeBadge(r).text" :tone="RANGE_TONE[rangeBadge(r).tone]" :dot="false">{{ rangeBadge(r).text }}</Badge></td>
-              <td class="mut src" v-tip="chainTitle(r)">
-                <button v-if="baseRefLabel(r)" class="pm-link" @click="gotoBaseRow(r)">{{ sourceLabel(r) }}</button>
-                <template v-else>{{ sourceLabel(r) }}</template>
-              </td>
-              <td class="mut formula" v-tip="r.formula"><span class="pm-clamp">{{ r.formula ?? '' }}</span></td>
-              <td class="ops"><Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button></td>
-              <td class="ops"><button class="pm-ib" v-tip="'历史'" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button></td>
-              <td class="fp-fill" aria-hidden="true"></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </Card>
-
-    <!-- ③ 计算方式(按期 / 栋;人话句子) -->
-    <Card id="sec-rule" surface="white" :padding="0" class="pm-card">
-      <div class="pm-cardhead">
-        <div class="pm-cardtitles">
-          <span class="pm-cardtitle">③ 计算方式（按栋）</span>
-          <span class="pm-cardsub">损耗核算方式、总表取数、损耗核算归组、不计入合计的电表、供电局对账；无专属设置的按默认显示</span>
-        </div>
-      </div>
-      <div class="pm-rules">
-        <div v-if="gLine" class="pm-rgroup">
-          <div class="pm-rhead">一期园区公共电（只读）</div>
-          <div class="pm-rrow"><span class="pm-rtxt">{{ gLine }}</span><span class="pm-rnote">成员去「公共电核算」改</span></div>
-        </div>
-        <div v-for="g in ruleGroups.zones" :key="'z' + g.scopeLabel" class="pm-rgroup">
-          <div class="pm-rhead">{{ g.scopeLabel }}</div>
-          <div v-for="r in g.rows" :key="rowKey(r)" class="pm-rrow">
-            <span class="pm-rtxt" v-tip="r.formula">{{ r.label }}：{{ r.valueText }}</span>
-            <Badge v-if="hasHit(r)" :tone="RANGE_TONE[rangeBadge(r).tone]" :dot="false">{{ rangeBadge(r).text }}</Badge>
-            <span v-if="hasHit(r) && r.rowId == null" class="pm-rnote" v-tip="chainTitle(r)">{{ sourceLabel(r) }}</span>
-            <span v-else-if="!hasHit(r)" class="pm-rnote">默认（未单独设置）</span>
-            <span class="pm-rops">
-              <Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button>
-              <button class="pm-ib" v-tip="'历史'" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button>
-            </span>
-          </div>
-        </div>
-        <div v-for="g in ruleGroups.buildings" :key="'b' + g.bid" class="pm-rgroup">
-          <div class="pm-rhead">{{ g.scopeLabel }}</div>
-          <div v-for="r in g.rows" :key="rowKey(r)" class="pm-rrow">
-            <span class="pm-rtxt" v-tip="r.formula">{{ r.label }}：{{ r.valueText }}</span>
-            <Badge v-if="hasHit(r)" :tone="RANGE_TONE[rangeBadge(r).tone]" :dot="false">{{ rangeBadge(r).text }}</Badge>
-            <span v-if="hasHit(r) && r.rowId == null" class="pm-rnote" v-tip="chainTitle(r)">{{ sourceLabel(r) }}</span>
-            <span v-else-if="!hasHit(r)" class="pm-rnote">默认（未单独设置）</span>
-            <span class="pm-rops">
-              <Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button>
-              <button class="pm-ib" v-tip="'历史'" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button>
-            </span>
-          </div>
-          <div class="pm-rrow excl">
-            <span class="pm-rtxt">不计入楼栋合计的电表：</span>
-            <span v-if="!g.excludes.length" class="pm-rnote">（无）</span>
-            <span v-for="r in g.excludes" :key="rowKey(r)" class="pm-chip" :class="{ off: !r.value }" v-tip="`${r.valueText} · ${r.rangeText}`">
-              {{ r.scopeLabel.replace(/（表）$/, '') }}<template v-if="!r.value">（本月计入）</template>
-              <button v-if="editMode" class="pm-chipx" v-tip="'修改'" @click="editRow = r"><component :is="iconFor('pencil')" :size="11" /></button>
-              <button v-else class="pm-chipx" v-tip="'历史'" @click="histRow = r"><component :is="iconFor('history')" :size="11" /></button>
-            </span>
-            <template v-if="editMode">
-              <template v-if="addExcl?.bid === g.bid">
-                <div style="width:240px"><Select :options="exclCandidates(g)" :model-value="addExcl.meterId" size="sm" placeholder="选择该栋的表" @update:model-value="addExcl.meterId = $event" /></div>
-                <Button variant="filled" size="sm" :disabled="!addExcl.meterId" @click="submitExcl">设为不计入</Button>
-                <Button variant="outline" size="sm" @click="addExcl = null">取消</Button>
-              </template>
-              <Button v-else variant="outline" size="sm" @click="addExcl = { bid: g.bid, meterId: '' }">
-                <template #leading><component :is="iconFor('plus')" :size="14" /></template>添加
-              </Button>
+      <!-- 右当前区卡 -->
+      <section class="pm-card" :data-sec="sec">
+        <ParamChangesDrawer v-if="sec === 'changes'" :open="true" :ym="ym" @jump="onJump" />
+        <template v-else>
+          <div class="pm-ch">
+            <b class="pm-ct">{{ SEC_NAME[sec] }}</b>
+            <span v-if="SEC_DESC[sec]" class="s">{{ SEC_DESC[sec] }}</span>
+            <template v-if="sec === 'pool'">
+              <label class="pm-search"><component :is="iconFor('search')" :size="13" /><input v-model="poolQ" type="text" placeholder="搜池名 / 位置" /></label>
+              <Segmented :options="poolFOpts" :model-value="poolF" size="sm" @update:model-value="poolF = $event as F" />
+              <span class="sp" /><span class="s">「–」= 没单独设置</span>
+            </template>
+            <template v-else-if="sec === 'loss'">
+              <label class="pm-search"><component :is="iconFor('search')" :size="13" /><input v-model="lossQ" type="text" placeholder="搜楼栋" /></label>
+              <Segmented :options="lossFOpts" :model-value="lossF" size="sm" @update:model-value="lossF = $event as F" />
+              <span class="sp" /><span class="s">「默认」= 没单独设，按期级口径</span>
+            </template>
+            <template v-else-if="sec === 'tenant'">
+              <label class="pm-search"><component :is="iconFor('search')" :size="13" /><input v-model="tenQ" type="text" placeholder="搜户名" /></label>
+              <Segmented :options="tenFOpts" :model-value="tenF" size="sm" @update:model-value="tenF = $event as F" />
+              <span class="sp" />
+              <div v-if="editMode" class="pm-cardops">
+                <Button variant="outline" size="sm" @click="openEx">
+                  <template #leading><component :is="iconFor('plus')" :size="14" /></template>新增例外
+                </Button>
+                <Button variant="outline" size="sm" @click="gotoCoefBook">
+                  <template #leading><component :is="iconFor('arrow-up-right')" :size="14" /></template>批量修改 → 系数簿
+                </Button>
+              </div>
             </template>
           </div>
-        </div>
-        <div v-for="g in ruleGroups.others" :key="'o' + g.scopeLabel" class="pm-rgroup">
-          <div class="pm-rhead">{{ g.scopeLabel }}</div>
-          <div v-for="r in g.rows" :key="rowKey(r)" class="pm-rrow">
-            <span class="pm-rtxt" v-tip="r.formula">{{ r.label }}：{{ r.valueText }}</span>
-            <Badge v-if="rangeBadge(r).text" :tone="RANGE_TONE[rangeBadge(r).tone]" :dot="false">{{ rangeBadge(r).text }}</Badge>
-            <span class="pm-rops">
-              <Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button>
-              <button class="pm-ib" v-tip="'历史'" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button>
-            </span>
-          </div>
-        </div>
-        <FPEmpty v-if="!ruleGroups.zones.length && !ruleGroups.buildings.length && !ruleGroups.others.length && !gLine" size="sm">本期区没有要设的计算方式</FPEmpty>
-      </div>
-    </Card>
 
-    <!-- ④ 户级例外 -->
-    <Card id="sec-tenant" surface="white" :padding="0" class="pm-card">
-      <div class="pm-cardhead">
-        <div class="pm-cardtitles">
-          <span class="pm-cardtitle">④ 户级例外</span>
-          <span class="pm-cardsub">单户覆盖期 / 全园默认值；批量改到催缴单 → 系数簿</span>
-        </div>
-        <div v-if="editMode" class="pm-cardops">
-          <Button variant="outline" size="sm" @click="openEx">
-            <template #leading><component :is="iconFor('plus')" :size="14" /></template>
-            新增例外
-          </Button>
-          <Button variant="outline" size="sm" @click="gotoCoefBook">
-            <template #leading><component :is="iconFor('arrow-up-right')" :size="14" /></template>
-            批量修改 → 系数簿
-          </Button>
-        </div>
-      </div>
-      <FPEmpty v-if="!tenantRows.length" size="sm" sub="全部租户按期 / 全园默认值计价">暂无户级例外</FPEmpty>
-      <div v-else class="pm-tablewrap" data-stale-host :class="{ 'fp-stale': veil }" :aria-busy="veil">
-        <table class="pm-table">
-          <thead>
-            <tr><th class="lbl" style="min-width:200px">租户</th><th class="lbl" style="min-width:200px">参数</th><th style="min-width:170px">值</th><th style="min-width:130px">生效区间</th><th class="src" :style="{ minWidth: overrideSrcW + 'px' }">覆盖了</th><th style="min-width:112px"></th><th style="min-width:44px"></th><th class="fp-fill" aria-hidden="true"></th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="r in tenantRows" :key="rowKey(r)">
-              <td class="lbl"><span class="pm-lbl">{{ r.scopeLabel.replace(/（户）$/, '') }}</span></td>
-              <td class="mut lbl2" v-tip="r.hint"><span class="pm-lbl">{{ r.label }}</span><span v-if="r.unit" class="pm-unit">{{ r.unit }}</span></td>
-              <td class="val">{{ r.valueText }}</td>
-              <td class="rng"><Badge v-if="rangeBadge(r).text" :tone="RANGE_TONE[rangeBadge(r).tone]" :dot="false">{{ rangeBadge(r).text }}</Badge></td>
-              <td class="mut src" v-tip="chainTitle(r)">{{ r.sourceChain[1] ? r.sourceChain[1].replace(':', ' ') : '（无默认值）' }}</td>
-              <td class="ops">
-                <Button v-if="editMode" variant="outline" size="sm" @click="editRow = r">修改</Button>
-                <button v-if="editMode" class="pm-ib danger" v-tip="'删除例外'" @click="delTenantRow(r)"><component :is="iconFor('trash-2')" :size="14" /></button>
-              </td>
-              <td class="ops"><button class="pm-ib" v-tip="'历史'" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button></td>
-              <td class="fp-fill" aria-hidden="true"></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </Card>
+          <div ref="wrapEl" class="pm-tw" data-stale-host :class="{ 'fp-stale': veil }" :aria-busy="veil" @animationend="flash = ''">
+            <!-- 全园与期级 -->
+            <table v-if="sec === 'park'" class="pm-table">
+              <thead><tr><th>参数</th><th>范围</th><th class="r key gs">本月值</th><th class="gs">生效区间</th><th>来自</th><th class="hi"></th><th class="fp-fill" aria-hidden="true"></th></tr></thead>
+              <tbody>
+                <template v-for="g in parkGroups" :key="g.key">
+                  <tr :id="`pm-grp-${g.key}`" class="pm-grp">
+                    <td class="nm"><span class="nmw">
+                      <button type="button" class="xp" :class="{ open: parkOpen[g.key] }" :aria-expanded="parkOpen[g.key]" :aria-label="parkOpen[g.key] ? '收起' : '展开'"
+                              @click="parkOpen[g.key] = !parkOpen[g.key]"><component :is="iconFor('chevron-right')" :size="13" /></button>
+                      <span class="t">{{ g.title }}</span><span class="bc">{{ g.rows.length }} 项 · {{ g.sub }}</span>
+                    </span></td>
+                    <td></td><td class="key gs"></td><td class="gs"></td>
+                    <!-- 「复制上月电价」左对齐在来自列起点(画布 10-G);跨到填充列,进编辑态不把来自列撑宽 -->
+                    <td colspan="3"><Button v-if="editMode && g.key === 'monthly'" variant="outline" size="sm" :disabled="busy" @click="onCopy">
+                      <template #leading><component :is="iconFor('refresh-cw')" :size="13" /></template>复制上月电价
+                    </Button></td>
+                  </tr>
+                  <template v-if="parkOpen[g.key]">
+                    <tr v-for="r in g.rows" :id="rowDomId(r)" :key="itemKey(r.scope, r.key)" :class="{ hl: isHl(r), 'pm-flash': flashOn(r.scope, r.key) }">
+                      <td class="nm l1"><span class="nmw"><span class="t" v-tip="tipOf(r)">{{ r.label }}</span><span v-if="changed(r)" class="mk"><i class="dot" />本月改</span></span></td>
+                      <td>{{ r.scopeLabel }}</td>
+                      <td class="n r key gs" :class="{ txt: isTxt(r), ed: editMode && r.editable, on: editing(r) }" @click="openEdit(r, $event)">
+                        <template v-if="hit(r)"><span v-tip="valTip(r)">{{ valText(r) }}</span><span v-if="unitOf(r)" class="u">{{ unitOf(r) }}</span></template>
+                        <span v-else-if="editMode && r.editable" class="pm-set"><span class="dim">–</span><span class="b"><component :is="iconFor('plus')" :size="12" />设置</span></span>
+                        <span v-else class="dim">–</span>
+                      </td>
+                      <td class="gs">
+                        <span class="tags">
+                          <Badge v-if="hit(r)" :tone="RANGE_TONE[rangeBadge(r).tone]" :dot="false">{{ r.rangeText }}</Badge>
+                          <Badge v-if="unchecked(r)" tone="orange" :dot="false">未核对</Badge>
+                          <Badge v-if="missing(r)" tone="orange" :dot="false">缺</Badge>
+                        </span>
+                      </td>
+                      <td class="mut" v-tip="chainTitle(r)">{{ sourceLabel(r) }}</td>
+                      <td class="hi"><button type="button" class="pm-ib" v-tip="'历史'" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button></td>
+                      <td class="fp-fill" aria-hidden="true"></td>
+                    </tr>
+                  </template>
+                </template>
+              </tbody>
+            </table>
 
-    <!-- ⑤ 固定规则(只读折叠) -->
-    <Card id="sec-fixed" surface="white" :padding="0" class="pm-card">
-      <details class="pm-fixed">
-        <summary class="pm-cardhead pm-sum">
-          <div class="pm-cardtitles">
-            <span class="pm-cardtitle">⑤ 固定规则（只读）</span>
-            <span class="pm-cardsub">写在引擎里的算法约定，不是参数；改它要改代码</span>
+            <!-- 公摊池:一池一行 -->
+            <template v-else-if="sec === 'pool'">
+              <FPEmpty v-if="!poolShown.length" size="sm">{{ pools.length ? '没有符合条件的池' : '本期区没有公摊池' }}</FPEmpty>
+              <table v-else class="pm-table">
+                <thead><tr>
+                  <th class="fix" :style="poolSt">池</th><th>期</th>
+                  <th class="r gs">加减度数<span class="mo">按月</span></th><th class="r">手工用量<span class="mo">按月</span></th>
+                  <th class="r key gs fix" :style="coefSt">分摊基数</th><th class="r">附加金额（元）</th><th class="r">指定单价（元/度）</th><th class="r">小数位</th>
+                  <th class="hi"></th><th class="fp-fill" aria-hidden="true"></th>
+                </tr></thead>
+                <tbody>
+                  <tr v-for="o in poolShown" :id="`pm-row-${o.scope}`" :key="o.scope" :class="{ 'pm-flash': flashOn(o.scope, '') }">
+                    <td class="nm fix" :style="poolSt"><span class="nmw">
+                      <span class="t" v-tip="`${poolLabel(o).loc} ${poolLabel(o).name}`"><span class="loc">{{ poolLabel(o).loc }}</span>{{ poolLabel(o).name }}</span>
+                      <span v-if="poolChanged(o)" class="mk"><i class="dot" />本月改</span>
+                    </span></td>
+                    <td>{{ zoneName(ruleZone.get(o.id)) }}</td>
+                    <td v-for="k in POOL_KEYS" :key="k" class="n r" :style="k === 'coefficient' ? coefSt : undefined"
+                        :class="{ key: k === 'coefficient', fix: k === 'coefficient', gs: k === 'extra_qty' || k === 'coefficient' || k === 'std_add',
+                                  ed: editMode && o.cells[k]?.editable, on: editing(o.cells[k]), 'pm-flash': flashOn(o.scope, k) }"
+                        @click="openEdit(o.cells[k], $event)">
+                      <template v-if="cellText(o.cells[k])">
+                        <button v-if="baseRefLabel(o.cells[k])" type="button" class="pm-ln" v-tip="`取自「${baseRefLabel(o.cells[k])}」`"
+                                @click.stop="gotoBaseRow(o.cells[k])">{{ cellText(o.cells[k]) }}</button>
+                        <template v-else>{{ cellText(o.cells[k]) }}</template>
+                      </template>
+                      <span v-else-if="editMode && o.cells[k]?.editable" class="pm-set"><span class="dim">–</span><span class="b"><component :is="iconFor('plus')" :size="12" />设置</span></span>
+                      <span v-else class="dim">–</span>
+                    </td>
+                    <td class="hi"><button type="button" class="pm-ib" v-tip="'历史'" @click="histRow = o.cells.coefficient ?? null"><component :is="iconFor('history')" :size="14" /></button></td>
+                    <td class="fp-fill" aria-hidden="true"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </template>
+
+            <!-- 楼栋损耗:一栋一行 -->
+            <template v-else-if="sec === 'loss'">
+              <FPEmpty v-if="!lossShown.length" size="sm">{{ losses.length ? '没有符合条件的楼栋' : '本期区没有要设损耗的楼栋' }}</FPEmpty>
+              <table v-else class="pm-table">
+                <thead><tr>
+                  <th>楼栋</th><th>期</th>
+                  <th class="r key gs">调整度数<span class="mo">按月</span></th><th class="r">手工损耗率<span class="mo">按月</span></th><th class="r">损耗率加点</th>
+                  <th class="gs">损耗核算方式</th><th>总表取数</th><th>损耗核算归组</th><th>供电局对账</th><th class="gs">不计入楼栋合计的表</th>
+                  <th class="hi"></th><th class="fp-fill" aria-hidden="true"></th>
+                </tr></thead>
+                <tbody>
+                  <tr v-for="o in lossShown" :id="`pm-row-${o.scope}`" :key="o.scope" :class="{ 'pm-flash': flashOn(o.scope, '') }">
+                    <td class="nm"><span class="nmw"><span class="t">{{ stripPhase(o.label) }}</span><span v-if="lossChanged(o)" class="mk"><i class="dot" />本月改</span></span></td>
+                    <td>{{ zoneName(bldZone.get(o.id)) }}</td>
+                    <td v-for="k in LOSS_KEYS" :key="k" :class="{
+                          n: k === 'loss_adj_qty' || k === 'loss_rate_manual' || k === 'loss_adj_rate',
+                          r: k === 'loss_adj_qty' || k === 'loss_rate_manual' || k === 'loss_adj_rate',
+                          key: k === 'loss_adj_qty', gs: k === 'loss_adj_qty' || k === 'loss_variant',
+                          ed: editMode && o.cells[k]?.editable, on: editing(o.cells[k]), 'pm-flash': flashOn(o.scope, k) }"
+                        @click="openEdit(o.cells[k], $event)">
+                      <template v-if="k === 'loss_adj_qty' || k === 'loss_rate_manual' || k === 'loss_adj_rate'">
+                        <template v-if="cellText(o.cells[k])">{{ cellText(o.cells[k]) }}</template>
+                        <span v-else-if="editMode && o.cells[k]?.editable" class="pm-set"><span class="dim">–</span><span class="b"><component :is="iconFor('plus')" :size="12" />设置</span></span>
+                        <span v-else class="dim">–</span>
+                      </template>
+                      <template v-else>
+                        <template v-if="own(o.cells[k])">{{ cellText(o.cells[k]) }}</template>
+                        <span v-else class="dft">默认</span>
+                      </template>
+                    </td>
+                    <td class="gs" :class="{ 'pm-flash': flashOn(o.scope, 'loss_exclude') }">
+                      <span class="chipw">
+                        <button v-for="r in exclOf(o)" :key="r.scope" type="button" class="chipm" :class="{ off: !r.value, on: editing(r) }"
+                                v-tip="`${r.valueText} · ${r.rangeText}`" @click="editMode ? openEdit(r, $event) : (histRow = r)">
+                          {{ r.scopeLabel.replace(/（表）$/, '') }}<template v-if="!r.value">（本月计入）</template>
+                        </button>
+                        <button v-if="editMode" type="button" class="pm-add" :class="{ on: exclBid === o.id }" v-tip="'添加不计入的表'" @click="openExcl(o, $event)">
+                          <component :is="iconFor('plus')" :size="12" />
+                        </button>
+                        <span v-if="!exclOf(o).length && !editMode" class="dim">–</span>
+                      </span>
+                    </td>
+                    <td class="hi"><button type="button" class="pm-ib" v-tip="'历史'" @click="histRow = o.cells.loss_adj_qty ?? null"><component :is="iconFor('history')" :size="14" /></button></td>
+                    <td class="fp-fill" aria-hidden="true"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </template>
+
+            <!-- 户级例外:按户分组 -->
+            <template v-else-if="sec === 'tenant'">
+              <FPEmpty v-if="!groups.length" size="sm" sub="全部租户按期 / 全园默认值计价">暂无户级例外</FPEmpty>
+              <FPEmpty v-else-if="!tenShown.length" size="sm">没有符合条件的户</FPEmpty>
+              <table v-else class="pm-table">
+                <thead><tr><th>户 / 参数</th><th class="r key gs">值</th><th class="gs">生效区间</th><th>覆盖了</th><th class="hi"></th><th class="hi"></th><th class="fp-fill" aria-hidden="true"></th></tr></thead>
+                <tbody>
+                  <template v-for="g in tenShown" :key="g.scope">
+                    <tr :id="`pm-row-${g.scope}`" class="pm-grp" :class="{ 'pm-flash': flashOn(g.scope, '') }">
+                      <td class="nm"><span class="nmw">
+                        <button type="button" class="xp" :class="{ open: tenIsOpen(g.scope) }" :aria-expanded="tenIsOpen(g.scope)" :aria-label="tenIsOpen(g.scope) ? '收起' : '展开'"
+                                @click="toggleTen(g.scope)"><component :is="iconFor('chevron-right')" :size="13" /></button>
+                        <span class="t">{{ g.name }}</span><span class="bc">{{ zoneName(tenantZone.get(g.id)) ? `${zoneName(tenantZone.get(g.id))} · ` : '' }}{{ g.rows.length }} 项</span>
+                      </span></td>
+                      <td class="key gs"></td><td class="gs"></td><td></td><td class="hi"></td><td class="hi"></td><td class="fp-fill" aria-hidden="true"></td>
+                    </tr>
+                    <template v-if="tenIsOpen(g.scope)">
+                      <tr v-for="r in g.rows" :id="rowDomId(r)" :key="itemKey(r.scope, r.key)" :class="{ 'pm-flash': flashOn(r.scope, r.key) }">
+                        <td class="nm l1"><span class="nmw"><span class="t" v-tip="tipOf(r)">{{ r.label }}<span v-if="r.unit" class="u">{{ r.unit }}</span></span><span v-if="changed(r)" class="mk"><i class="dot" />本月改</span></span></td>
+                        <td class="n r key gs" :class="{ txt: isTxt(r), ed: editMode && r.editable, on: editing(r) }" @click="openEdit(r, $event)">{{ bare(r) }}</td>
+                        <td class="gs"><Badge :tone="RANGE_TONE[rangeBadge(r).tone]" :dot="false">{{ r.rangeText }}</Badge></td>
+                        <td class="mut" v-tip="chainTitle(r)">{{ covered(r) }}</td>
+                        <td class="hi"><button v-if="editMode" type="button" class="pm-ib danger" v-tip="'删除例外'" @click="delTenantRow(r)"><component :is="iconFor('trash-2')" :size="14" /></button></td>
+                        <td class="hi"><button type="button" class="pm-ib" v-tip="'历史'" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button></td>
+                        <td class="fp-fill" aria-hidden="true"></td>
+                      </tr>
+                    </template>
+                  </template>
+                </tbody>
+              </table>
+            </template>
+
+            <!-- 光伏分栋判据 -->
+            <template v-else-if="sec === 'pv'">
+              <FPEmpty v-if="!pvRows.length" size="sm">没有光伏分栋判据</FPEmpty>
+              <table v-else class="pm-table">
+                <thead><tr><th>参数</th><th class="r key gs">值</th><th class="gs">生效区间</th><th>来自</th><th class="hi"></th><th class="fp-fill" aria-hidden="true"></th></tr></thead>
+                <tbody>
+                  <tr v-for="r in pvRows" :id="rowDomId(r)" :key="itemKey(r.scope, r.key)" :class="{ hl: isHl(r), 'pm-flash': flashOn(r.scope, r.key) }">
+                    <td class="nm"><span class="nmw"><span class="t" v-tip="tipOf(r)">{{ r.label }}</span><span v-if="changed(r)" class="mk"><i class="dot" />本月改</span></span></td>
+                    <td class="n r key gs" :class="{ ed: editMode && r.editable, on: editing(r) }" @click="openEdit(r, $event)">
+                      <template v-if="hit(r)">{{ bare(r) }}<span v-if="unitOf(r)" class="u">{{ unitOf(r) }}</span></template>
+                      <span v-else-if="editMode && r.editable" class="pm-set"><span class="dim">–</span><span class="b"><component :is="iconFor('plus')" :size="12" />设置</span></span>
+                      <span v-else class="dim">–</span>
+                    </td>
+                    <td class="gs"><Badge v-if="hit(r)" :tone="RANGE_TONE[rangeBadge(r).tone]" :dot="false">{{ r.rangeText }}</Badge></td>
+                    <td class="mut" v-tip="chainTitle(r)">{{ sourceLabel(r) }}</td>
+                    <td class="hi"><button type="button" class="pm-ib" v-tip="'历史'" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button></td>
+                    <td class="fp-fill" aria-hidden="true"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </template>
+
+            <!-- 固定规则(只读) -->
+            <ol v-else class="pm-fx"><li v-for="(t, i) in FIXED_RULES" :key="i">{{ t }}</li></ol>
           </div>
-        </summary>
-        <ul class="pm-fixedlist"><li v-for="(t, i) in FIXED_RULES" :key="i">{{ t }}</li></ul>
-      </details>
-    </Card>
-    </template>
+        </template>
+      </section>
+    </div>
 
     <FPElevateDialog
       :page="`计费参数 · ${ym}`" :action="'修改计费口径 / 月度录入'" :perms="asking" what="修改计费口径" @close="cancelAsk" @elevated="onElevated" />
@@ -904,11 +1027,11 @@ const FIXED_RULES = [
                    :what="`计费参数 ${ym}`"
                    @taken="onTaken" @close-takeover="lockedBy = null" @close-evicted="evictedBy = null" />
 
-    <ParamEditPopover :open="!!editRow" :row="editRow" :ym="ym" :ref-options="refOptions" @close="editRow = null" @save="onSave" />
-    <ParamHistoryDrawer :open="!!histRow" :row="histRow" @close="histRow = null" />
-    <ParamChangesDrawer :open="changesOpen" :ym="ym" @close="changesOpen = false" />
+    <ParamEditPopover :open="!!editRow" :row="editRow" :ym="ym" :ref-options="refOptions" :anchor="editAnchor" :meter-pick="exclPick"
+                      @close="closeEdit" @save="onSave" />
+    <ParamHistoryDrawer :open="!!histRow" :row="histRow" :ym="ym" @close="histRow = null" />
 
-    <!-- ④ 新增例外 -->
+    <!-- 户级例外 · 新增 -->
     <FPDrawer :open="exOpen" title="新增户级例外" :subtitle="`账期 ${ym}；只影响该户，覆盖期 / 全园默认值`" icon="plus" :width="520" @close="exOpen = false">
       <div class="pm-exform">
         <label class="pm-exfield"><span class="k">租户</span><FPTenantPicker v-model="ex.tenantId" :tenants="tenantOpts" placeholder="搜索并选择租户" :invalid="!!exErr.tenant" />
@@ -941,84 +1064,127 @@ const FIXED_RULES = [
 </template>
 
 <style scoped>
-.pm-page { position: relative; display: flex; flex-direction: column; gap: 14px; box-sizing: border-box; max-width: 1500px; margin: 0 auto; width: 100%; }
+/* 整页一屏:标题行以下是「左目录 + 右当前区」,表在右卡里滚(画布 10-A,ParamLongNow「改后 1 屏」) */
+.pm-page { position: relative; display: flex; flex-direction: column; gap: 14px; height: 100%; min-height: 0; box-sizing: border-box; max-width: 1600px; margin: 0 auto; width: 100%;
+  /* 本月值 / 值 / 分摊基数 / 调整度数这类「看它」的列:照公共电核算钱列的底(PoolLedgerView --money-cell),不透明 —— 固定列压着别的格横滚 */
+  --pm-key: color-mix(in srgb, var(--accent-blue) 60%, var(--surface-white));
+  --pm-key-grp: color-mix(in srgb, var(--pm-key) 40%, var(--surface-card)); }
 
 .pm-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .pm-head-l { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.pm-title { margin: 0 6px 0 0; display: flex; align-items: center; gap: 11px; font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); }
-.pm-title .ic { width: 34px; height: 34px; border-radius: 10px; background: var(--surface-sunken); display: grid; place-items: center; color: var(--text-secondary); flex: 0 0 auto; }
+.pm-title { margin: 0 6px 0 0; font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .pm-actions { display: flex; align-items: center; gap: 8px; }
 
-/* 区卡(LIST-PAGE-SPEC 列表卡形态) */
-.pm-card { border: 1px solid var(--border-subtle); overflow: hidden; }
-.pm-cardhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 18px 12px; border-bottom: 1px solid var(--divider); }
-.pm-cardtitles { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.pm-cardtitle { font-size: 14.5px; font-weight: var(--fw-semibold); color: var(--text-primary); }
-.pm-cardsub { font-size: var(--fs-label); color: var(--text-muted); }
-.pm-cardops { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
-.pm-link { border: none; background: none; padding: 0 2px; font: inherit; font-size: var(--fs-label); color: var(--hue-blue); cursor: pointer; text-decoration: underline; }
-.pm-tablewrap { overflow-x: auto; }
+.pm-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 16px; align-items: start; }
 
-/* 表格:等高行(--mx-row-h 56px)+ table-layout:auto —— 列宽是下限,内容更宽就撑开(横向滚动),任何文字不截断;
-   参数列 label 两行内换行、单位另起一行小灰字;值/区间/来自 nowrap;说明列两行 line-clamp(完整算式在 title) */
-.pm-table { width: 100%; border-collapse: collapse; table-layout: auto; font-family: var(--font-sans); }
-.pm-table th { background: var(--surface-white); padding: 8px 14px; text-align: left; font: var(--type-label); font-weight: var(--fw-regular); color: var(--text-muted); white-space: nowrap; border-bottom: 1px solid var(--divider); }
-/* 换行列(参数 / 作用范围 / 来自 / 说明)必须给 min-width:auto 布局下 nowrap 列先按内容占位,换行列会被压到最窄再 clamp 成截断 */
-.pm-table th.lbl, .pm-table td.lbl { min-width: 150px; }
-.pm-table th.scope, .pm-table td.scope { min-width: 160px; white-space: normal; line-height: 1.35; }
-.pm-table td.scope .pm-lbl { -webkit-line-clamp: 3; }   /* 池名最长 22 字:160px 两行放完;三行仍在 56px 内 */
-.pm-table th.src, .pm-table td.src { min-width: 96px; white-space: normal; line-height: 1.35; }
-.pm-table th.formula, .pm-table td.formula { min-width: 220px; }
-.pm-table tbody tr { height: var(--mx-row-h, 56px); border-bottom: 1px solid var(--divider); }
-.pm-table tbody tr:last-child { border-bottom: none; }
+/* 左目录卡(画布 .p10-nav):沉底灰卡,当前项浮起成白片 */
+.pm-nav { display: flex; flex-direction: column; gap: 2px; max-height: 100%; overflow-y: auto; box-sizing: border-box; border-radius: 12px; background: var(--surface-card); padding: 8px; }
+.pm-nq { display: flex; align-items: center; gap: 8px; height: 32px; margin: 0 0 6px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--border-control); border-radius: var(--radius-full); background: var(--surface-white); color: var(--text-muted); flex: 0 0 auto; }
+.pm-nq:focus-within { border-color: var(--hue-blue); }
+.pm-nq.miss { border-color: var(--status-danger); }
+.pm-nq input { flex: 1 1 auto; min-width: 0; border: none; outline: none; background: transparent; font-family: var(--font-sans); font-size: 12px; color: var(--text-primary); }
+.pm-ni { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px; flex: 0 0 auto; border: none; border-radius: 8px; background: transparent; font-family: var(--font-sans); font-size: 14px; color: var(--text-secondary); white-space: nowrap; text-align: left; cursor: pointer; }
+.pm-ni:hover { background: var(--bg-hover); }
+.pm-ni:focus-visible { outline: 2px solid var(--hue-blue); outline-offset: -2px; }
+/* 当前项:字重靠合成粗体会撑宽 —— 用阴影与底色浮起,字重照抄画布(600),项本身是整行宽,不挤别的 */
+.pm-ni.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-semibold); box-shadow: var(--shadow-sm), 0 0 0 1px var(--border-subtle); }
+.pm-ni .i { color: var(--text-muted); }
+.pm-ni .sp { flex: 1; }
+.pm-ni .c { font: 12px var(--font-mono); color: var(--text-muted); font-weight: var(--fw-regular); }
+.pm-ni .chg { font: 600 11px/16px var(--font-mono); color: var(--info-text-on-tint); background: var(--info-soft); border-radius: var(--radius-full); padding: 0 7px; }
+.pm-ni .chg.big { font-size: 12px; line-height: 18px; }
+.pm-sep { height: 1px; background: var(--divider); margin: 6px 10px; flex: 0 0 auto; }
+
+/* 右当前区卡(画布 .p10-card) */
+.pm-card { container-type: inline-size; align-self: stretch; min-height: 0; display: flex; flex-direction: column; border-radius: 12px; box-shadow: 0 0 0 1px var(--border-subtle); overflow: hidden; background: var(--surface-white); }
+/* 窄了先缩搜索框(1366 侧栏展开卡宽约 683,楼栋损耗卡头刚好放下);卡再窄(< 680)才折行 —— 图例一个字都不截 */
+.pm-ch { flex: 0 0 auto; display: flex; align-items: center; gap: 8px 10px; min-height: 52px; box-sizing: border-box; padding: 0 12px 0 16px; border-bottom: 1px solid var(--divider); }
+@container (max-width: 679px) { .pm-ch { flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; } }
+.pm-ct { font-size: 16px; font-weight: var(--fw-semibold); white-space: nowrap; color: var(--text-primary); }
+.pm-ch .s { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 图例(「–」= 没单独设置)一个字都不省:窄了先缩搜索框 */
+.pm-ch .sp + .s { flex: none; overflow: visible; }
+.pm-ch .sp { flex: 1; }
+.pm-search { display: inline-flex; align-items: center; gap: 6px; flex: 0 1 200px; min-width: 88px; height: 28px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--border-control); border-radius: var(--radius-full); color: var(--text-muted); }
+.pm-search:focus-within { border-color: var(--hue-blue); }
+.pm-search input { flex: 1 1 auto; min-width: 0; border: none; outline: none; background: transparent; font-family: var(--font-sans); font-size: 12px; color: var(--text-primary); }
+.pm-cardops { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.pm-tw { flex: 1 1 auto; min-height: 0; overflow: auto; }
+
+/* 表(画布 .r9-t):表头 40 贴顶,行 40,14px;key 列浅蓝底 + 表头下蓝线;行末 .fp-fill 吃余宽;任何文字不截断(池名封顶时省略 + 悬停看全称) */
+.pm-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; font-family: var(--font-sans); }
+.pm-table th { position: sticky; top: 0; z-index: 2; height: 40px; padding: 0 12px; background: var(--surface-card); font-size: 12px; font-weight: var(--fw-medium); color: var(--text-muted); text-align: left; white-space: nowrap; border-bottom: 1px solid var(--divider); }
+.pm-table td { height: 40px; padding: 0 12px; border-bottom: 1px solid var(--divider); white-space: nowrap; color: var(--text-primary); background: var(--surface-white); }
+.pm-table .r { text-align: right; }
+.pm-table td.n { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.pm-table td.mut { color: var(--text-muted); }
+.pm-table td.key, .pm-table th.key { background: var(--pm-key); }
+.pm-table th.key { color: var(--text-secondary); background: var(--surface-card); box-shadow: inset 0 -2px 0 var(--hue-blue); }
+.pm-table td.key { font-weight: var(--fw-semibold); }
+.pm-table td.key.txt { font-family: var(--font-sans); font-weight: var(--fw-medium); }
+/* 分组竖线:长写,jsdom 解析不了带 var() 的简写 */
+.pm-table .gs { box-shadow: inset 1px 0 0 var(--divider); }
+.pm-table th.key.gs { box-shadow: inset 1px 0 0 var(--divider), inset 0 -2px 0 var(--hue-blue); }
+.pm-table td.nm { padding-right: 28px; }
+.pm-table td.nm.l1 { padding-left: 40px; }
+.pm-table .nmw { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.pm-table .nmw .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pm-table .nmw .bc { flex: none; font-weight: var(--fw-regular); font-size: 12px; color: var(--text-muted); }
+.pm-table .loc { margin-right: 6px; color: var(--text-muted); }
+.pm-table .u { margin-left: 4px; font: 400 12px var(--font-sans); color: var(--text-muted); }
+.pm-table .mo { display: inline-flex; align-items: center; height: 16px; padding: 0 5px; margin-left: 6px; border-radius: 4px; background: var(--warn-soft); color: var(--orange-text); font-size: 10.5px; font-weight: var(--fw-medium); vertical-align: 1px; }
+.pm-table .mk { display: inline-flex; align-items: center; gap: 4px; flex: none; margin-left: 2px; font-size: 12px; font-weight: var(--fw-medium); color: var(--info-text-on-tint); white-space: nowrap; }
+.pm-table .mk .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pm-table .dim { color: var(--text-disabled); font-weight: var(--fw-regular); }
+.pm-table td.dft, .pm-table .dft { color: var(--text-muted); }
+.pm-table .tags { display: inline-flex; gap: 6px; }
+.pm-table th.hi, .pm-table td.hi { width: 36px; padding: 0 6px; text-align: center; }
+.pm-table tr.pm-grp td { background: var(--surface-card); font-weight: var(--fw-semibold); }
+.pm-table tr.pm-grp td.key { background: var(--pm-key-grp); }
+.pm-table tbody tr:not(.pm-grp):hover td:not(.key) { background: var(--surface-card); }
 .pm-table tbody tr.hl td { background: rgb(255, 250, 225); }
 :root[data-theme="dark"] .pm-table tbody tr.hl td { background: var(--caution-soft); }
-.pm-table td { padding: 0 14px; vertical-align: middle; font-size: 12.5px; color: var(--text-primary); white-space: nowrap; }
-.pm-table td.lbl { font-weight: var(--fw-medium); white-space: normal; line-height: 1.3; }
-.pm-table td.lbl2 { white-space: normal; line-height: 1.3; min-width: 150px; }
-.pm-lbl { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.pm-table td.mut { color: var(--text-muted); }
-.pm-table td.formula { font-size: 11.5px; white-space: normal; line-height: 1.4; }
-/* 说明列最多 3 行(11.5px × 1.4 × 3 ≈ 48px,仍在 56px 行高内);列宽 260 下 44 字算式两行放完,更长的 title 里看全 */
-.pm-clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
-.pm-table td.val { font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
-.pm-table td.val .dim { font-weight: var(--fw-regular); color: var(--text-disabled); margin-right: 6px; }
-/* 沿用值:值一行(nowrap)+ 徽标行(沿用 X 起设置 / 未核对)—— 徽标另起一行免得把值列撑得过宽 */
-.pm-table td.val .pm-v { white-space: nowrap; }
-.pm-table td.val .pm-vbadges { display: flex; gap: 6px; margin-top: 3px; white-space: nowrap; }
-.pm-table td.val .pm-carried { font-weight: var(--fw-regular); }
-.pm-table td.ops { padding: 0 6px; text-align: right; }
-.pm-table td.ops > * { vertical-align: middle; }
-.pm-table td.src .pm-link { padding: 0; }
-.pm-unit { display: block; margin-top: 2px; font-size: var(--fs-micro); color: var(--text-disabled); font-weight: var(--fw-regular); line-height: 1.2; }
-.pm-exfield .pm-unit { display: inline; margin: 0 0 0 6px; }
-.pm-ib { width: 26px; height: 26px; border: none; background: transparent; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-muted); display: inline-grid; place-items: center; }
+/* 编辑态:能点的值格 = 光标 + 悬停描边;打开改值卡的那一格蓝框(画布 .p10-focus);
+   空格平时同浏览态写「–」(卡头图例对得上),悬停 / 正在改换成「+ 设置」虚线 —— 两者叠在同一格位,宽高不随悬停变 */
+.pm-table td.ed { cursor: pointer; }
+.pm-table td.ed:hover { box-shadow: inset 0 0 0 1px var(--border-strong); }
+.pm-table td.on { box-shadow: inset 0 0 0 2px var(--hue-blue); background: var(--info-soft); }
+.pm-set { display: inline-grid; align-items: center; vertical-align: middle; }
+.pm-set > * { grid-area: 1 / 1; }
+.pm-set .b { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 6px; border: 1px dashed var(--border-strong); font: 12px var(--font-sans); color: var(--text-secondary); visibility: hidden; }
+.pm-table td.ed:hover .pm-set .b, .pm-table td.on .pm-set .b { visibility: visible; }
+.pm-table td.ed:hover .pm-set .dim, .pm-table td.on .pm-set .dim { visibility: hidden; }
+/* 闪一下(深链 / 本月改动点行 / 目录搜索):蓝框 + 浅蓝底,褪回原样 */
+.pm-table .pm-flash, .pm-table tr.pm-flash td { animation: pm-flash var(--dur-highlight) var(--ease-standard); }
+@keyframes pm-flash { from { box-shadow: inset 0 0 0 2px var(--hue-blue); background: var(--info-soft); } }
+/* 公摊池固定列:position/left 由 useWideTable 的内联样式给,这里只管叠放 */
+.pm-table td.fix { z-index: 1; }
+.pm-table th.fix { z-index: 3; }
+.pm-table td.nm.fix { overflow: hidden; }
+.pm-ln { padding: 0; border: none; background: none; font: inherit; color: var(--text-link); cursor: pointer; }
+.pm-ln:hover { text-decoration: underline; }
+.xp { width: 22px; height: 22px; margin-left: -4px; padding: 0; flex: none; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); display: inline-grid; place-items: center; cursor: pointer; }
+.xp:hover { background: var(--bg-hover); color: var(--text-primary); }
+.xp svg { transition: transform var(--dur-fast) var(--ease-standard); }
+.xp.open svg { transform: rotate(90deg); }
+.pm-ib { width: 26px; height: 26px; border: none; background: transparent; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-muted); display: inline-grid; place-items: center; vertical-align: middle; }
 .pm-ib:hover { background: var(--bg-hover); color: var(--text-primary); }
-.pm-ib.danger:hover { background: var(--danger-soft); color: var(--hue-red); }
+.pm-ib.danger { color: var(--hue-red); }
+.pm-ib.danger:hover { background: var(--danger-soft); }
+/* 不计入楼栋合计的表:格内签 + 编辑态「+」(画布 10-E) */
+.chipw { display: flex; align-items: center; gap: 4px; }
+.chipm { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border: none; border-radius: var(--radius-full); background: var(--ink-050); font-family: var(--font-sans); font-size: 12px; color: var(--text-secondary); white-space: nowrap; cursor: pointer; }
+.chipm.off { color: var(--text-muted); }
+.chipm.on { box-shadow: 0 0 0 2px var(--hue-blue); }
+.pm-add { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border-radius: 6px; border: 1px dashed var(--border-strong); background: transparent; color: var(--text-muted); cursor: pointer; flex: none; }
+.pm-add:hover, .pm-add.on { border-color: var(--hue-blue); color: var(--hue-blue); }
 
-/* ③ 口径:按栋分组的人话句子行 */
-.pm-rules { display: flex; flex-direction: column; }
-.pm-rgroup { border-bottom: 1px solid var(--divider); padding: 6px 0 8px; }
-.pm-rgroup:last-child { border-bottom: none; }
-.pm-rhead { padding: 6px 18px 4px; font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--text-secondary); }
-.pm-rrow { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 18px 0 30px; font-size: 12.5px; color: var(--text-primary); flex-wrap: wrap; }
-.pm-rrow.excl { padding-top: 4px; padding-bottom: 4px; }
-.pm-rtxt { flex: 0 1 auto; min-width: 0; white-space: normal; line-height: 1.4; }
-.pm-rnote { font-size: var(--fs-micro); color: var(--text-disabled); }
-.pm-rops { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
-.pm-chip { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 4px 0 9px; border-radius: var(--radius-full); background: var(--info-soft); color: var(--hue-blue); font-size: var(--fs-micro); }
-.pm-chip.off { background: var(--bg-sunken); color: var(--text-muted); }
-.pm-chipx { width: 18px; height: 18px; border: none; background: transparent; border-radius: 50%; cursor: pointer; color: inherit; display: inline-grid; place-items: center; opacity: .7; }
-.pm-chipx:hover { opacity: 1; background: color-mix(in srgb, var(--ink-900) 6%, transparent); }
+/* 固定规则(画布 .p10-fx) */
+.pm-fx { margin: 0; padding: 12px 20px 14px 34px; font-size: 13px; line-height: 21px; color: var(--text-secondary); }
+.pm-fx li { margin-bottom: 4px; }
 
-/* ⑤ 固定规则 */
-.pm-fixed summary { list-style: none; cursor: pointer; }
-.pm-fixed summary::-webkit-details-marker { display: none; }
-.pm-fixed[open] .pm-sum { border-bottom: 1px solid var(--divider); }
-.pm-fixed:not([open]) .pm-sum { border-bottom: none; }
-.pm-fixedlist { margin: 0; padding: 12px 18px 14px 34px; font-size: 12.5px; color: var(--text-secondary); line-height: 1.7; }
-
-/* ④ 新增例外表单 */
+/* 户级例外 · 新增表单 */
+.pm-unit { margin-left: 6px; font-size: var(--fs-micro); color: var(--text-disabled); font-weight: var(--fw-regular); }
 .pm-exform { display: flex; flex-direction: column; gap: 14px; }
 .pm-exfield { display: flex; flex-direction: column; gap: 6px; }
 .pm-exfield .k { font-size: var(--fs-label); color: var(--text-secondary); font-weight: var(--fw-medium); }
@@ -1029,10 +1195,11 @@ const FIXED_RULES = [
 .pm-exin::-webkit-outer-spin-button, .pm-exin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .pm-exhint { margin: 0; font-size: var(--fs-micro); color: var(--text-muted); line-height: 16px; min-height: 16px; }
 
-/* ── 响应式(RESPONSIVE-LAYOUT-SPEC §5.4 P3 查看态):只用 960,宽档规则在前 ──
-   卡头收纳:标题句 + 右侧操作组窄档挤不进一行,允许折两行(§2 修订;组成按档静态确定,
-   .pm-cardops 随编辑态进出已在 noInteractionLayoutShift 白名单)。表本身列不动,pm-tablewrap 横滚 */
+/* ── 响应式(RESPONSIVE-LAYOUT-SPEC §5.4 查看态):960 以下目录叠到当前区上面,整页往下滚;卡头折行 ── */
 @media (max-width: 960px) { /* M↓ */
-  .pm-cardhead { flex-wrap: wrap; }
+  .pm-page { height: auto; }
+  .pm-body { grid-template-columns: minmax(0, 1fr); }
+  .pm-nav { max-height: none; }
+  .pm-tw { max-height: 70vh; }
 }
 </style>

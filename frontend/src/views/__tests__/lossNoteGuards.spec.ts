@@ -270,6 +270,32 @@ describe('楼栋损耗 · 屏上的字', () => {
   })
 })
 
+// S21 §5.7(画布 10-B 下半「深链落到哪」):楼栋损耗发起方一律带 section=loss;点调整度数 / 加点格再带这一栋 + 这一键
+// 破坏验证:gotoParams 改回带 section='monthly' → 第一条红;格子不传 headBuildingId → 第一条红;按钮也带 building → 第二条红
+describe('楼栋损耗 · 去计费参数页的深链', () => {
+  it('❗点 A座 的损耗率加点 → section=loss + building=13 + key=loss_adj_rate', async () => {
+    const w = await open()
+    push.mockClear()
+    await w.findAll('.ll-pv')[3].trigger('click')
+    expect(push).toHaveBeenLastCalledWith({ path: '/params',
+      query: expect.objectContaining({ section: 'loss', building: '13', key: 'loss_adj_rate' }) })
+    await w.findAll('.ll-pv')[0].trigger('click')
+    expect(push).toHaveBeenLastCalledWith({ path: '/params',
+      query: expect.objectContaining({ section: 'loss', building: '20', key: 'loss_adj_qty' }) })
+    w.unmount()
+  })
+
+  it('「计算方式设置」→ section=loss,不带栋', async () => {
+    const w = await open()
+    push.mockClear()
+    await w.findAll('button').find(b => b.text().includes('计算方式设置'))!.trigger('click')
+    const q = (push.mock.calls.at(-1)![0] as { query: Record<string, string> }).query
+    expect(q.section).toBe('loss')
+    expect(q).not.toHaveProperty('building')
+    w.unmount()
+  })
+})
+
 describe('楼栋损耗 · 提示件(页面状态 / 空状态 / 加载失败 / 问题面板 / 回执 / 改动数)', () => {
   const STALE = { ...STATUS, stale: true, pendingChanges: 1, lastChangeAt: '2025-03-11T10:20:00' }
   /** 问题面板组头上的动作钮(不含点组头收起的那颗) */

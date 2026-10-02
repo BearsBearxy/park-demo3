@@ -217,11 +217,13 @@ const rateTitle = (u: AllocLossUnitDTO) => u.manualRate != null
 const router = useRouter()
 const tabs = useTabsStore()
 const alertOpen = ref(false)
+// 一律落计费参数「楼栋损耗」区(S21 §5.7);点调整度数 / 加点格再带 building + key,滚到那一栋、闪那一格。
 // edit=1:[去重算] 落地直接进编辑态(重算按钮只在编辑态出)
-function gotoParams(section: 'monthly' | 'constant' | 'rule', edit = false) {
+function gotoParams(buildingId?: number, key?: string, edit = false) {
   alertOpen.value = false   // 抽屉里点走的:本屏被 KeepAlive 缓存,不关的话切回来抽屉还盖着
   tabs.openFresh('params', { pin: true })
-  router.push({ path: '/params', query: { ym: ym.value, zone: zone.value, section, ...(edit ? { edit: '1' } : {}) } })
+  router.push({ path: '/params', query: { ym: ym.value, zone: zone.value, section: 'loss',
+    ...(buildingId != null ? { building: String(buildingId), key } : {}), ...(edit ? { edit: '1' } : {}) } })
 }
 
 // ── 重算本月(问题面板「待重算」组头,只在编辑态出) / 生成本月(空状态按钮,本月还没算、编辑态出):
@@ -263,7 +265,7 @@ const alertGroups = computed<AlertGroup[]>(() => {
         run: () => { alertOpen.value = false; void onRecalc() } }
     : canEnter.value && !loadErr.value
       ? { label: '进入编辑模式', icon: 'pencil', run: () => { alertOpen.value = false; toggleEdit() } }
-      : { label: '去计费参数页重算', icon: 'refresh-cw', run: () => gotoParams('monthly', true) }
+      : { label: '去计费参数页重算', icon: 'refresh-cw', run: () => gotoParams(undefined, undefined, true) }
   return [{
     key: 'stale',
     title: '待重算',
@@ -271,7 +273,7 @@ const alertGroups = computed<AlertGroup[]>(() => {
     desc: `${staleWho(status.value)}在本月算出损耗之后又改过 —— 屏上的损耗量、损耗率还是改之前算的。`
         + '不重算的话,按这些率出的催缴单会一直沿用旧数字。',
     // 明细点了去问题的源头:改过的参数在计费参数页(重算已在组头,这里不再带 edit=1)
-    items: [{ text: staleMsg.value, hint: `${year.value}年${month.value}月`, onClick: () => gotoParams('monthly') }],
+    items: [{ text: staleMsg.value, hint: `${year.value}年${month.value}月`, onClick: () => gotoParams() }],
     action,
   }]
 })
@@ -303,10 +305,8 @@ const alertGroups = computed<AlertGroup[]>(() => {
         <!-- §6:屏级告警入口,位置固定;无告警时 quiet 态仍占位 -->
         <FPAlertPanel v-model:open="alertOpen" :count="alertGroups.length" :groups="alertGroups" align="end" />
         <!-- 本屏除备注外零写入口:损耗怎么算(算法/归组/总表取数/不计入的表)、损耗调整度数/损耗率加点/
-             手工指定率全在计费参数页 ③ 计算方式。
-             ⚠ 按钮上的「计算方式」四个字**不能单独改** —— 它是参数页第 ③ 张卡的名字(ParamCenterView:701),
-                两屏必须同名。要去行话就两屏一起改,不是只改这一头。 -->
-        <Button variant="outline" size="sm" v-tip="'本月这个期区按什么方式算损耗,以及人工填进去的那几个数 —— 去计费参数页看 / 改'" @click="gotoParams('rule')">
+             手工指定率全在计费参数页「楼栋损耗」区(2026-10-03 起六区,原 ①②③④ 卡撤掉)。 -->
+        <Button variant="outline" size="sm" v-tip="'本月这个期区按什么方式算损耗,以及人工填进去的那几个数 —— 在计费参数页「楼栋损耗」看 / 改'" @click="gotoParams()">
           <template #leading><component :is="iconFor('sliders-horizontal')" :size="14" /></template>
           计算方式设置
         </Button>
@@ -345,8 +345,8 @@ const alertGroups = computed<AlertGroup[]>(() => {
             <th class="ll-th" :style="w(100)" v-tip="'损耗量 = 分表用电量 − 总表用电量。负数=分表比总表少，也就是正常有损耗；正数=分表反而比总表多'">损耗量</th>
             <th class="ll-th" :style="w(92)" v-tip="'原损耗率 = 损耗量 ÷ 总表用电量，所以正常有损耗时它是负的。右边「收取损耗率」多数楼栋是按这个数反过来算出要向租户收多少，符号相反是对的；标着「仅按公摊分摊度数」的楼栋不走这条算法，看那一行名字旁边的说明'">原损耗率</th>
             <th class="ll-th" :style="w(116)" v-tip="`一期:各个园区公共用电池本月的用电量加起来 ÷ 均摊栋数（四舍五入到 2 位），各栋同值；悬停格子看分解式。二期不适用,显'–'`">公摊分摊度数</th>
-            <th class="ll-th" :style="w(116)" v-tip="'损耗调整度数（正数多收 / 负数少收），按楼栋按月；在计费参数页 ① 本月参数改'">损耗调整度数</th>
-            <th class="ll-th" :style="w(104)" v-tip="'损耗率加点（如 0.3%），按楼栋长期；在计费参数页 ② 长期常数改'">损耗率加点</th>
+            <th class="ll-th" :style="w(116)" v-tip="'损耗调整度数（正数多收 / 负数少收），按楼栋按月；在计费参数页「楼栋损耗」改'">损耗调整度数</th>
+            <th class="ll-th" :style="w(104)" v-tip="'损耗率加点（如 0.3%），按楼栋长期；在计费参数页「楼栋损耗」改'">损耗率加点</th>
             <th class="ll-th" :style="w(160)" v-tip="'按损耗核算方式算出的率；填了「损耗率（手工指定）」则以它为准并并排显示公式算出的率'">收取损耗率</th>
             <th class="ll-th" :style="w(170)">备注</th>
             <!-- 最右空列 .fp-fill(base.css;LIST-PAGE §4 列宽铁律):表格比内容宽出来的余宽全落在这一列,不再按比例摊到各列 -->
@@ -376,8 +376,8 @@ const alertGroups = computed<AlertGroup[]>(() => {
             </td>
             <!-- 损耗调整度数 / 损耗率加点:格里是快照值,徽标是当前生效参数的生效方式;点击去参数页改 -->
             <td>
-              <span class="ll-nv ll-pv" :class="{ empty: u.adjQty == null }" v-tip="'点击去计费参数页改（① 本月参数 · 损耗调整度数）'"
-                    role="button" tabindex="0" @click="gotoParams('monthly')" @keydown.enter.prevent="gotoParams('monthly')">
+              <span class="ll-nv ll-pv" :class="{ empty: u.adjQty == null }" v-tip="'点击去计费参数页「楼栋损耗」改这一栋的损耗调整度数'"
+                    role="button" tabindex="0" @click="gotoParams(u.headBuildingId, 'loss_adj_qty')" @keydown.enter.prevent="gotoParams(u.headBuildingId, 'loss_adj_qty')">
                 {{ fmt(u.adjQty) }}
                 <span v-if="badgeOf(u.headBuildingId, 'loss_adj_qty')" class="ll-badge"
                       :class="badgeOf(u.headBuildingId, 'loss_adj_qty')!.tone" v-tip="badgeOf(u.headBuildingId, 'loss_adj_qty')!.title">
@@ -385,8 +385,8 @@ const alertGroups = computed<AlertGroup[]>(() => {
               </span>
             </td>
             <td>
-              <span class="ll-nv ll-pv" :class="{ empty: u.adjRate == null }" v-tip="'点击去计费参数页改（② 长期常数 · 损耗率加点）'"
-                    role="button" tabindex="0" @click="gotoParams('constant')" @keydown.enter.prevent="gotoParams('constant')">
+              <span class="ll-nv ll-pv" :class="{ empty: u.adjRate == null }" v-tip="'点击去计费参数页「楼栋损耗」改这一栋的损耗率加点'"
+                    role="button" tabindex="0" @click="gotoParams(u.headBuildingId, 'loss_adj_rate')" @keydown.enter.prevent="gotoParams(u.headBuildingId, 'loss_adj_rate')">
                 {{ fpct(u.adjRate) }}
                 <span v-if="badgeOf(u.headBuildingId, 'loss_adj_rate')" class="ll-badge"
                       :class="badgeOf(u.headBuildingId, 'loss_adj_rate')!.tone" v-tip="badgeOf(u.headBuildingId, 'loss_adj_rate')!.title">
