@@ -127,7 +127,7 @@ const lockScope = computed(() =>
     : null)
 // 第三参 = 改动数(规范 §1.7):关页签 / 退出登录按它问,0 处改动不弹。templateDirty 在下面声明,闭包调用时已就绪
 const lock = useEditLock(() => { mode.value = 'view'; aliasEditId.value = null },
-                          () => props.canEdit, () => templateDirty.value)
+                          () => props.canEdit, () => templateDirty.value, ['book-template:edit'])
 const { lockedBy, evictedBy } = lock
 const heldByOther = lock.watchScope(() => lockScope.value)
 // 退出的路不止一条(点完成/取消/关面板/换账册),用 watch 兜住 —— 漏一条就是一把没人认领的锁
@@ -309,7 +309,9 @@ function fmtTime(s: string): string {
                 <button class="te-histback" @click="backToCurrent">回到现行版</button>
               </template>
             </div>
-            <p v-if="mode === 'edit'">本月生效 v{{ book.ver }} · 保存将存成新版本(任何改动都升版),并只把本月切到新版;同册其他月份不动</p>
+            <!-- 新版号并进这句副句(原页脚上方另起一行的升版提示,2026-10-03 横条收尾)。
+                 版本号是**链尾+1**(后端 maxVer+1),不是本月生效版+1 —— 本月钉在旧版时两者不是一回事 -->
+            <p v-if="mode === 'edit'" class="te-sub-edit">本月生效 v{{ book.ver }} · 保存将存成新版 v{{ book.latestVer + 1 }}(任何改动都升版),只把本月切过去;同册其他月份不动</p>
             <p v-else>本月生效 v{{ book.ver }} · 点右侧版本项可查看历史版定义(只读)</p>
           </div>
           <!-- ⚠ heldByOther 也要挡:这个下拉的 @change 会走 booksApi.pin(册,版本,年,月),
@@ -427,12 +429,6 @@ function fmtTime(s: string): string {
         </div>
 
         <template v-if="mode === 'edit'">
-          <!-- 升版提示:恒显一行(P5 任何保存都升版,轻/重改动的区分已废除,所以不再随改动种类闪现)。
-               版本号是**链尾+1**(后端 maxVer+1),不是本月生效版+1 —— 本月钉在旧版时两者不是一回事 -->
-          <p class="te-verbumpline">
-            <span class="te-verbump">本次保存将存成新版 v{{ book.latestVer + 1 }},只把本月切过去;同册其他月份不动</span>
-          </p>
-
           <footer class="te-foot">
             <input v-model="note" class="te-note" placeholder="变更说明(记入版本与操作日志)" />
             <Button class="te-cancel" variant="outline" size="sm" @click="exitEdit">取消</Button>
@@ -647,15 +643,7 @@ function fmtTime(s: string): string {
 }
 .te-adopt:hover { border-color: var(--hue-blue); color: var(--hue-blue); }
 
-/* 升版提示:恒占一行 */
-.te-verbumpline {
-  margin: 0; min-height: 20px; padding: 4px 22px 0;
-  display: flex; align-items: center;
-  border-top: 1px solid var(--border-subtle);
-}
-.te-verbump { font-size: var(--fs-label); line-height: 20px; color: var(--text-secondary); }
-
-.te-foot { display: flex; align-items: center; gap: 8px; padding: 10px 22px 18px; }
+.te-foot { display: flex; align-items: center; gap: 8px; padding: 10px 22px 18px; border-top: 1px solid var(--border-subtle); }   /* 分隔线原来画在升版提示行上 */
 .te-note { flex: 1; height: 28px; }
 
 /* 窄档摘要行:只在 versSheet 档渲染(v-if),宽档连节点都没有 —— 形状写在这里,不进媒体块 */

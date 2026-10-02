@@ -247,3 +247,29 @@ describe('月度台账 · 抽屉「有值 / 全部」', () => {
     w.unmount()
   })
 })
+
+// 横条收尾(2026-10-03):≤600 那行「编辑模式 · 小屏可录入,建议在桌面端操作」(LedgerView .lgw-s-hint)撤掉,
+// 并进第二行的编辑签;宽档的页底 ⓘ 说明行(.lg-foot)撤掉,单位进工具条右端、口径挂合计行「合计」两个字。
+describe('月度台账 · 横条去处', () => {
+  const tipOf = (el: Element) => (el as HTMLElement & { _tip?: { text: string } })._tip?.text
+
+  // 破坏验证:编辑签改回「编辑中」→ 红
+  it('❗S 档编辑态:编辑签写「编辑中 · 建议桌面」,悬停给全句', () => {
+    asS()
+    const lock = mk({ edit: true }).find('.lg-s-h2 .lg-s-lock.on')
+    expect(lock.text()).toBe('编辑中 · 建议桌面')
+    expect(tipOf(lock.element)).toBe('小屏可录入,建议在桌面端操作')
+  })
+
+  // 破坏验证:.lg-foot 加回来 / .lg-unit 删掉 / footTip 不传 → 红
+  it('❗宽档:没有页底说明行;「单位：元」在工具条最右;口径在「合计」两个字的悬停上', () => {
+    const w = mk()
+    expect(w.find('.lg-foot').exists()).toBe(false)
+    expect(w.text()).not.toContain('的独立台账')
+    const right = w.get('.lg-toolbar > .lg-toolbar-r').element
+    expect(right.parentElement!.lastElementChild, '工具条右组排在最后').toBe(right)
+    expect(right.lastElementChild!.textContent).toBe('单位：元')
+    expect(tipOf(w.get('tfoot .lg-foot-lbl').element))
+      .toBe('本月应收合计 = 各费用项之和;本月结余 = 上月结余 + 应收 − 本月收款。不归本公司收的费用列保持留空。')
+  })
+})

@@ -29,7 +29,6 @@ import { mergeExtras, extractExtras, extraColIds } from '@/utils/bookTemplate'
 import { applyColDecisions } from './bookMapDecisions'
 import { groupUnbound } from '@/utils/tenantSuggest'
 import { toBindOptions } from '@/components/fp/fpTenantPicker'
-import type { ImportResultDTO } from '@/types/import'
 import { FEE_KEYS } from '@/utils/ledgerColumns'
 import { parserProps, runImport } from '@/utils/importRegistry'
 import LedgerNewCompanyDialog from './LedgerNewCompanyDialog.vue'
@@ -45,8 +44,8 @@ import { ask, askLeave } from '@/utils/ask'
 import { receipt } from '@/utils/receipt'
 import LedgerWideTable from './LedgerWideTable.vue'
 import LedgerTenantDrawer from './LedgerTenantDrawer.vue'
-import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
-import ImportResultToast from '@/components/import/ImportResultToast.vue'
+import FpImportModal, { type ImportRec, type ImportPayload, type SectionPick } from '@/components/import/FpImportModal.vue'
+import { settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
 
 // ── 状态机 ───────────────────────────────────────────────
 const books = ref<Book[]>([])
@@ -602,9 +601,9 @@ const drawerRow = computed<LedgerRowDTO | null>(() => {
 })
 
 // ── 导入 Excel(scope = 当前账册公司 + 年 + 月,在表格态入口) ──────────
+// 点导入后弹窗不关(UI-OVERLAY-SPEC §8):年月与覆盖两道预检走弹窗的 confirm(开跑前问),写 + 记 import_log + 刷新走 runner;
+// 失败交给弹窗的失败卡(不走回执)。
 const importing = ref(false)
-const importResult = ref<ImportResultDTO | null>(null)
-type SectionPick = { label?: string; year?: number; month?: number; phase?: number; records: ImportRec[] }
 
 // 关导入弹窗时若列映射面板还挂着 pending Promise,一并按取消收场(弹窗解析在 await 它)
 function closeImport() {
@@ -612,54 +611,29 @@ function closeImport() {
   if (mapOpen.value) finishMap(null)
 }
 
-async function onImport(recs: ImportRec[], fileName: string) {
-  if (companyId.value == null || month.value == null) return
+/** 开跑前:整表导入先认年月(标题识别 ≠ 当前月),再认覆盖(本月已有这些租户的台账);分段导入不预检(同改前) */
+async function confirmImport(payload: ImportPayload): Promise<boolean> {
+  if (Array.isArray((payload as SectionPick[])[0]?.records)) return true
+  const recs = payload as ImportRec[]
   const ym = recs[0]?.__ymDetected as { year: number; month: number } | undefined
-  if (ym && (ym.year !== year.value || ym.month !== month.value)) {
-    if (!(await ask({
-      title: `导入到 ${year.value} 年 ${month.value} 月？`,
-      body: `文件标题识别为 ${ym.year} 年 ${ym.month} 月，当前导入目标是 ${year.value} 年 ${month.value} 月。`,
-      action: '仍导入到本月',
-    }))) return
-  }
-  importing.value = false
-  await runLedgerImport(recs, fileName)
-}
-
-async function onImportSections(picks: SectionPick[], fileName: string) {
-  if (companyId.value == null || month.value == null) return
-  importing.value = false
-  await runSectionsImport(picks, fileName)
-}
-
-async function runLedgerImport(recs: ImportRec[], fileName: string) {
+  if (ym && (ym.year !== year.value || ym.month !== month.value) && !(await ask({
+    title: `导入到 ${year.value} 年 ${month.value} 月？`,
+    body: `文件标题识别为 ${ym.year} 年 ${ym.month} 月，当前导入目标是 ${year.value} 年 ${month.value} 月。`,
+    action: '仍导入到本月',
+  }))) return false
   const n = overwriteTargets(monthDto.value?.rows ?? [], recs.map(r => r.tenantName as string | null | undefined))
-  if (n > 0 && !(await ask({
+  return n === 0 || ask({
     title: '导入会覆盖已有的台账数据',
     body: `本月已有 ${n} 家租户的台账数据，文件里提供的列会被覆盖。`,
     action: '仍要导入',
-  }))) return
-  try {
-    importResult.value = await runImport('ledger', recs,
-      { companyId: companyId.value!, companyName: companyName.value, year: year.value, month: month.value! }, fileName)
-    await loadMonth()
-    refreshDraftAfterImport()
-    await afterImportIssues()
-  } catch (e) {
-    receipt.fail((e as { message?: string })?.message ?? '导入失败')
-  }
+  })
 }
 
-async function runSectionsImport(picks: SectionPick[], fileName: string) {
-  try {
-    importResult.value = await runImport('ledger', picks,
-      { companyId: companyId.value!, companyName: companyName.value, year: year.value, month: month.value! }, fileName)
-    await loadMonth()
-    refreshDraftAfterImport()
-    await afterImportIssues()
-  } catch (e) {
-    receipt.fail((e as { message?: string })?.message ?? '导入失败')
-  }
+async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
+  if (companyId.value == null || month.value == null) return null
+  return settle(await runImport('ledger', payload,
+    { companyId: companyId.value, companyName: companyName.value, year: year.value, month: month.value, _run: p }, fileName), p,
+  async () => { await loadMonth(); refreshDraftAfterImport(); await afterImportIssues() })
 }
 
 // 导入落库后编辑态渲染的是 draft:不重建就一直空表到点保存(2026-08-24 用户点名 bug)。
@@ -816,11 +790,8 @@ function gotoTenants() {
 
       <!-- 表格态 + 行明细抽屉 -->
       <template v-else-if="monthDto">
-        <!-- ≤600 重编辑提示(§5.3):预留位——行常驻定高,文案仅编辑态显,显隐不挪表格
-             (LAYOUT-STABILITY §2-3;条件挂在行内 span 上,不进流内块门禁)。编辑不拦不藏 -->
-        <div class="lgw-s-hint">
-          <span v-if="edit">编辑模式 · 小屏可录入,建议在桌面端操作</span>
-        </div>
+        <!-- ≤600 荐桌面(§5.3/§11.2)不再占一行:并进 S 档第二行的编辑签「编辑中 · 建议桌面」(LedgerWideTable .lg-s-lock),
+             这一行还给表格(2026-10-03 横条收尾)。编辑不拦不藏 -->
         <!-- data-stale-host 常挂:类摘掉后仍有 transition-property,退场才是 200(base.css;不挂就是硬切) -->
         <LedgerWideTable
           data-stale-host
@@ -861,7 +832,7 @@ function gotoTenants() {
               :groups="issueGroups"
               :tenants="allTenants"
               :can-act="edit && auth.can('entry:edit')"
-              act-hint="进入「编辑」模式后可在此绑定;浏览态仅查看。"
+              act-hint="编辑模式下可绑定"
               :on-bind="onBindIssue"
               @goto-tenants="gotoTenants"
             />
@@ -890,9 +861,9 @@ function gotoTenants() {
             companyNames: companies.map(c => c.name),
             bookDef: book?.definition, resolveUnmatched: resolveUnmatchedCb,
           })"
+          :runner="onImport"
+          :confirm="confirmImport"
           @close="closeImport"
-          @import="onImport"
-          @import-sections="onImportSections"
         />
       </template>
 
@@ -927,8 +898,6 @@ function gotoTenants() {
     @apply="onMapApply"
     @close="finishMap(null)"
   />
-
-  <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
 
   <LedgerNewCompanyDialog
     v-if="newDlg"
@@ -970,9 +939,8 @@ function gotoTenants() {
 .lgw-sub { margin:4px 0 0; font-size:var(--fs-label); color:var(--text-muted); }
 .lgw-matrix { flex:0 0 auto; }
 
-/* 顶部 chips 与 S 档提示行:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前 */
+/* 顶部 chips:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前 */
 .lgw-chips { display:none; }
-.lgw-s-hint { display:none; }
 
 /* ── M/S 档(≤960):左轨收成顶部横向 chips(RESPONSIVE-LAYOUT-SPEC §5.6) ── */
 @media (max-width: 960px) {
@@ -992,13 +960,6 @@ function gotoTenants() {
   .lgw-chip.mng { border-style:dashed; color:var(--text-muted); }
   /* 矩阵 12 月卡窄档装不下:横滚圈在矩阵块内,账册头/主区其余内容不跟着滚 */
   .lgw-matrix { overflow-x:auto; }
-}
-
-/* ── S 档(≤600):台账录入不拦不藏,常驻预留提示行(§5.3;LAYOUT-STABILITY §2-3 预留位) ── */
-@media (max-width: 600px) {
-  .lgw-s-hint { display:flex; align-items:center; flex:0 0 20px; height:20px; font-size:12px; color:var(--hue-orange); }
-  /* 宽表主体(LedgerWideTable 根)从 height:100% 改弹性填充:给提示行让位,整屏不多滚一截 */
-  .lgw-s-hint + .lg-page { height:auto; flex:1 1 auto; }
 }
 </style>
 

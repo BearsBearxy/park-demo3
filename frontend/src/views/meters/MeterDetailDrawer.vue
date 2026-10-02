@@ -36,6 +36,7 @@ import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
 import FPNote from '@/components/fp/FPNote.vue'
+import FPStateTag from '@/components/fp/FPStateTag.vue'
 import MeterAssignDialog from './MeterAssignDialog.vue'
 import MeterTimelinePane from './MeterTimelinePane.vue'
 import MeterDeleteDialog from './MeterDeleteDialog.vue'
@@ -524,13 +525,16 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
   >
     <template #badge>
       <Segmented :options="TABS" :model-value="tab" size="sm" @update:model-value="tab = $event" />
+      <!-- 档案分段重新加载失败、手上还有上次那份:旧数据照常只读显示,整块的状态贴标题旁(第 4 级),
+           原来是档案变更页签里一条满宽红条、一出现就把时间线往下推 -->
+      <template v-if="tab === 'timeline' && tlErr && tl">
+        <FPStateTag tone="warn" class="md-stale" v-tip="`${tlErr} 下面是上次加载的样子,暂时不能改。`">旧数据 · 只读</FPStateTag>
+        <button type="button" class="md-link" @click="loadTimeline">重试</button>
+      </template>
     </template>
 
     <!-- ── 表档案 ── -->
     <div v-if="tab === 'profile' && m" :key="formKey" class="md-grid">
-      <FPNote v-if="editProfile && tlErr" tone="danger" class="md-note" @action="loadTimeline">
-        {{ tlErr }} 归属和位置暂时只能看。<template #action>重试</template>
-      </FPNote>
       <div class="md-fld ro"><label>类别 / 分区</label><span>{{ METER_KIND_LABEL[m.kind] }} · {{ zoneLabel(m.zone) }}</span></div>
       <div class="md-fld ro"><label>读数条数</label><span class="mono">{{ history?.length ?? m.readingCount }}</span></div>
 
@@ -559,6 +563,11 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
                @change="editAssign(m, 'area', ($event.target as HTMLInputElement).value)" />
         <span v-else>{{ m.area ?? '—' }}</span>
         <datalist v-if="canAssign" id="md-area-list"><option v-for="a in areaOpts" :key="a" :value="a" /></datalist>
+        <!-- 归属和位置这几格被锁的原因 + 重试,标在被锁的第一格下面(原表单顶上那条满宽红条);
+             常驻占位(LAYOUT-STABILITY §4.2),出错 / 进出编辑态都不把下面的格子顶下去 -->
+        <p class="md-tlslot">
+          <template v-if="editProfile && tlErr">{{ tlErr }} 归属和位置暂时只能看。<button type="button" class="md-link" @click="loadTimeline">重试</button></template>
+        </p>
       </div>
       <div class="md-fld">
         <label v-tip="locPinned(m, 'floorLabel') ? LOC_MANUAL_TITLE : undefined">
@@ -814,10 +823,6 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
       <div v-else-if="bindLoading" class="md-empty">加载中…</div>
       <FPEmpty v-else-if="!bind">该表不在本月绑定报表中</FPEmpty>
       <template v-else>
-        <!-- 编辑态但档案分段没加载出来:改绑定 / 挂租户都按月写,点不了要说清为什么,并给重试 -->
-        <FPNote v-if="editProfile && tlErr" tone="danger" @action="loadTimeline">
-          {{ tlErr }} 暂时不能改绑定、挂租户。<template #action>重试</template>
-        </FPNote>
         <div class="md-bstat">
           <span class="lab">当前状态</span>
           <span class="val" :class="{ stale: bind.status === 'override_stale' }">
@@ -836,12 +841,15 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
           <span v-if="bind.locations?.length" class="locs">{{ bind.locations.join('；') }}</span>
         </div>
 
-        <!-- 本月在租、合同场地房号对得上这块表的另一户(唯一才有):从本月起改归它 -->
-        <FPNote v-if="bind.suggestion" tone="info"
-                @action="editTenant(m, bind.suggestion.tenantId, bind.suggestion.tenantName)">
-          本月在租、合同场地的房号对得上这块表的:{{ bind.suggestion.tenantName ?? `#${bind.suggestion.tenantId}` }} · {{ bind.suggestion.contractNo }}
-          <template v-if="canAssign" #action>从本月起改归 {{ bind.suggestion.tenantName ?? '这一户' }}</template>
-        </FPNote>
+        <!-- 本月在租、合同场地房号对得上这块表的另一户(唯一才有):从本月起改归它。
+             块内提示常驻 32px 预留位(LAYOUT-STABILITY §2 第 3 级),没有建议时透明占位,下面的块不跟着跳 -->
+        <div class="md-sugg">
+          <FPNote v-if="bind.suggestion" tone="info"
+                  @action="editTenant(m, bind.suggestion.tenantId, bind.suggestion.tenantName)">
+            本月在租、合同场地的房号对得上这块表的:{{ bind.suggestion.tenantName ?? `#${bind.suggestion.tenantId}` }} · {{ bind.suggestion.contractNo }}
+            <template v-if="canAssign" #action>从本月起改归 {{ bind.suggestion.tenantName ?? '这一户' }}</template>
+          </FPNote>
+        </div>
 
         <!-- 待核:先挂租户(编辑态) -->
         <div v-if="qb === 'pending'" class="md-bpend">
@@ -856,7 +864,11 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
             </div>
           </template>
           <span v-else-if="!editProfile" class="md-dim">进入编辑模式后可挂租户。</span>
-          <span v-else-if="!tlErr" class="md-dim">正在加载档案分段…</span>
+          <!-- 档案分段没加载出来:挂租户按月写,点不了 —— 原因和重试就写在挂租户的位置上 -->
+          <span v-else class="md-bhint" :class="{ bad: !!tlErr }">
+            <template v-if="tlErr">{{ tlErr }} 暂时不能挂租户。<button type="button" class="md-link" @click="loadTimeline">重试</button></template>
+            <template v-else>正在加载档案分段…</template>
+          </span>
         </div>
 
         <!-- 候选合同(选定绑定=写 override) -->
@@ -883,7 +895,12 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
         <div v-if="canAssign && (bind.status === 'override' || bind.status === 'override_stale')">
           <Button variant="outline" size="sm" @click="askBind(null, null)">解绑(回自动归属)</Button>
         </div>
-        <div v-if="!editProfile && qb && qb !== 'pending'" class="md-dim" style="font-size:var(--fs-label)">进入编辑模式后可选定/解绑。</div>
+        <!-- 选定 / 解绑这一处的说明位常驻:浏览态说怎么才能改;编辑态但档案分段没加载出来,写原因 + 重试
+             (原页签顶上那条满宽红条);编辑态正常时空着,进出编辑态不挪下面 -->
+        <div v-if="qb && qb !== 'pending'" class="md-bhint" :class="{ bad: editProfile && !!tlErr }">
+          <template v-if="!editProfile">进入编辑模式后可选定/解绑。</template>
+          <template v-else-if="tlErr">{{ tlErr }} 暂时不能改绑定。<button type="button" class="md-link" @click="loadTimeline">重试</button></template>
+        </div>
       </template>
     </template>
 
@@ -894,9 +911,6 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
       <FPLoadError v-if="tlErr && !tl" @retry="loadTimeline">{{ tlErr }}</FPLoadError>
       <div v-else-if="!tl" class="md-empty">加载中…</div>
       <template v-else>
-        <FPNote v-if="tlErr" tone="danger" @action="loadTimeline">
-          {{ tlErr }} 下面是上次加载的样子,暂时不能改。<template #action>重试</template>
-        </FPNote>
         <MeterTimelinePane
           :meter="m" :ym="defaultYm" :tl="tl" :edit="canAssign" :tenants="tenants" :buildings="buildings"
           @changed="afterWrite"
@@ -954,7 +968,14 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
 .md-link { border: none; background: none; padding: 0; font: inherit; font-size: var(--fs-label); color: var(--hue-blue); cursor: pointer; }
 .md-link:hover { text-decoration: underline; }
 .md-lk { font-size: var(--fs-label) !important; color: var(--caution-text) !important; }
-.md-note { grid-column: 1 / -1; }
+/* 档案分段没加载出来时被锁处的原因 + 重试(.md-tlslot 表档案「区域」格下,.md-bhint 合同绑定页);常驻 18 高 */
+.md-tlslot { margin: 0; min-height: 18px; line-height: 18px; font-size: var(--fs-label); color: var(--delta-down-text); overflow-wrap: anywhere; }
+.md-bhint { min-height: 18px; line-height: 18px; font-size: var(--fs-label); color: var(--text-disabled); overflow-wrap: anywhere; }
+.md-bhint.bad { color: var(--delta-down-text); }
+.md-tlslot .md-link, .md-bhint .md-link { margin-left: 6px; }
+/* 合同绑定页「改归建议」的块内提示位:常驻 32 高,没有建议时空着(LAYOUT-STABILITY §2 第 3 级) */
+.md-sugg { min-height: 32px; }
+.md-stale { cursor: help; }
 .md-book { margin: 0; font-size: var(--fs-label); color: var(--text-secondary); overflow-wrap: anywhere; }
 
 /* ── 历史读数(mt-d* 家族迁自 v4 ReadingDrawer) ── */

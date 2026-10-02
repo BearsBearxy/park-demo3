@@ -79,9 +79,11 @@ const emit = defineEmits<{
 // ⚠ 第二个参数是权限守卫。宿主 LedgerView 是裸的 `const edit = ref(false)`,**不走 useEditMode** ——
 //   所以铁律①在这一屏没有任何实现:点了「结束授权」人还留在编辑态,锁还被 ping 续着。
 //   权限点与上面那个编辑按钮同源(entry:edit),不新开一个 prop。
+// 口径:原页底 ⓘ 说明行(.lg-foot)删掉,挂到合计行「合计」两个字上(LIST-PAGE-SPEC §2.1)
+const FOOT_TIP = '本月应收合计 = 各费用项之和;本月结余 = 上月结余 + 应收 − 本月收款。不归本公司收的费用列保持留空。'
 const lock = useEditLock(() => { if (props.edit) emit('cancel') },
                           () => auth.can('entry:edit'),
-                          () => props.dirty ?? 0)
+                          () => props.dirty ?? 0, ['entry:edit'])
 const { lockedBy, evictedBy } = lock
 /** 这一期此刻被谁占着 —— 取自在场表，不用点按钮撞门(设计稿 C-2)。 */
 const heldByOther = lock.watchScope(() => props.lockScope ?? null)
@@ -254,7 +256,7 @@ function cardOf(r: LedgerRowDTO): WideCard {
     amount: yuan(due),
     // 应收 0 时 got/due 是 NaN(0/0)或 Infinity —— 写「—」,不写一个算出来的假百分比
     sub: `已收 ${yuan(got)} · 收缴 ${due > 0 ? Math.round((got / due) * 100) + '%' : '—'}`,
-    // balanceEnd = 上月结余 + 应收 − 收款(.lg-foot 那句):>0 = 还欠着,<0 = 多交了。
+    // balanceEnd = 上月结余 + 应收 − 收款(FOOT_TIP 那句):>0 = 还欠着,<0 = 多交了。
     // 桌面 .lg-sumc 是「正橙(pos)负红(neg)」;卡上没有 red 档(WideCardTone 只有 ok/warn/info),
     // 负数取 info —— 它是「余款」不是故障,与稿 §2 字段表画的蓝色胶囊一致。
     pill: bal === 0 ? { text: '已结清', tone: 'ok' as const }
@@ -371,8 +373,9 @@ async function onBack() {
            编辑锁**不进 ⋯** —— 规范 §11.2「不禁止、不隐藏、不优化」,同 :394 那条常驻理由。 -->
       <div v-if="isS" class="lg-s-h2">
         <SearchField class="sf" placeholder="搜索租户" shortcut="" :value="q" :width="180" @change="q = $event" />
-        <span v-if="edit" class="lg-s-lock on">
-          <component :is="iconFor('lock')" :size="16" />编辑中
+        <!-- 荐桌面(§5.3/§11.2)并在编辑签里,不另占一行(原 LedgerView .lgw-s-hint) -->
+        <span v-if="edit" class="lg-s-lock on" v-tip="'小屏可录入,建议在桌面端操作'">
+          <component :is="iconFor('lock')" :size="16" />编辑中 · 建议桌面
         </span>
         <span v-else-if="auth.can('entry:edit') && reviewNote" class="lg-s-lock ro"
               v-tip="reviewBlock?.tip">
@@ -517,7 +520,11 @@ async function onBack() {
           删除所选 ({{ selected.size }})
         </Button>
       </div>
-      <span class="lg-toolbar-note">{{ edit ? '点击单元格编辑数值,不收的费用列留空即可,应收/结余自动计算;勾选行可批量删除' : auth.can('entry:edit') ? '只读 · 点击「编辑模式」录入 · 点击租户名查看明细' : '只读 · 点击租户名查看明细' }}</span>
+      <!-- 「单位：元」在工具条右端(原页底 ⓘ 说明行,LIST-PAGE-SPEC §2.1) -->
+      <span class="lg-toolbar-r">
+        <span class="lg-toolbar-note">{{ edit ? '点击单元格编辑数值,不收的费用列留空即可,应收/结余自动计算;勾选行可批量删除' : auth.can('entry:edit') ? '只读 · 点击「编辑模式」录入 · 点击租户名查看明细' : '只读 · 点击租户名查看明细' }}</span>
+        <span class="lg-unit">单位：元</span>
+      </span>
     </div>
 
     <!-- S 档默认卡片列表(稿 §1 屏样2);⋯ 的「按表格查看」把这张横滚表调回来(稿 §3) -->
@@ -536,16 +543,12 @@ async function onBack() {
       :rows="view"
       :edit="edit"
       :selected="edit ? selected : undefined"
+      :foot-tip="FOOT_TIP"
       @cell-edit="onCellEdit"
       @tenant-click="emit('tenant-click', $event)"
       @toggle-select="toggleSelect"
       @toggle-select-all="toggleSelectAll"
     />
-
-    <p class="lg-foot">
-      <component :is="iconFor('info')" :size="13" />
-      {{ companyName }} 的独立台账 · 本月应收合计 = 各费用项之和;本月结余 = 上月结余 + 应收 − 本月收款。不归本公司收的费用列保持留空。
-    </p>
   </div>
 </template>
 
@@ -588,8 +591,9 @@ async function onBack() {
 .lg-toolbar { flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 .lg-toolbar-l { display:flex; align-items:center; gap:10px; }
 .lg-toolbar-note { font-size:12px; color:var(--text-muted); }
+.lg-toolbar-r { display:flex; align-items:center; gap:12px; }
+.lg-unit { font-size:12px; color:var(--text-muted); white-space:nowrap; }
 
-.lg-foot { flex:0 0 auto; margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
 
 /* ── S 档(≤600)两行顶栏 + 卡片列(稿 WideCardPhone §1)。
       这些块整条挂在 v-if="isS" 上(JS 档位),宽档里 DOM 不存在 —— 故不再套 @media,
@@ -624,7 +628,7 @@ async function onBack() {
 .lg-s-lock {
   flex:0 0 auto; box-sizing:border-box;
   display:inline-flex; align-items:center; gap:6px;
-  height:44px; padding:0 14px; max-width:148px;
+  height:44px; padding:0 14px; max-width:184px;
   border:1px solid var(--border-control); border-radius:var(--radius-md);
   background:var(--surface-white); color:var(--text-primary); cursor:pointer;
   font-family:var(--font-sans); font-size:var(--fs-body); white-space:nowrap; overflow:hidden;

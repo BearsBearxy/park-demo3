@@ -147,7 +147,9 @@ describe('损益附表 · 固定列按表格可见宽度退(07-C)', () => {
     await label(3).trigger('mouseleave')
     await label(2).trigger('mouseenter')   // r3「租金损益小计」+ 徽标 170 > 131,截了
     vi.advanceTimersByTime(500)
-    expect(document.querySelector('.fp-vtip')?.textContent).toBe('租金损益小计')
+    // r3 是小计行:全称作标题,下面带一句口径(原页底说明行,2026-10-03 横条收尾)
+    expect(document.querySelector('.fp-vtip b')?.textContent).toBe('租金损益小计')
+    expect(document.querySelector('.fp-vtip .sub')?.textContent).toBe('这一行存的是文件原值,改明细不会自动重算')
     wr.unmount()
   })
 })

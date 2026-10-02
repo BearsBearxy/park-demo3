@@ -230,14 +230,18 @@ describe('TemplateEditorPanel · 编辑态', () => {
 
   // P5 版本不可变:轻/重改动的区分已废除,提示条不许再随改动种类变脸;
   // P4 只带走当前月:旧文案「历史月份同样按新版显示」与它恰好相反,不许回潮
-  it('升版提示恒在,写明存成「链尾+1」且只带走本月(P4/P5)', async () => {
+  // 2026-10-03 横条收尾:页脚上方那一行升版提示(.te-verbumpline)删掉,新版号并进标题下的副句。
+  // 破坏验证:副句里的 v{latestVer+1} 删掉 / .te-verbumpline 加回来 → 红
+  it('❗升版说明在副句里,写明存成「链尾+1」且只带走本月(P4/P5);页脚上方不再另起一行', async () => {
     const w = await mountEdit()
     // 什么都没改就已经说清楚(任何保存都升版);版本号是链尾+1,不是本月生效版+1
-    expect(w.find('.te-verbump').text()).toContain('v4')
-    expect(w.find('.te-verbump').text()).toContain('只把本月切过去')
-    // 旧口径的「轻改动」:提示条一字不变
+    const sub = () => w.find('.te-head-txt .te-sub-edit').text()
+    expect(sub()).toBe('本月生效 v3 · 保存将存成新版 v4(任何改动都升版),只把本月切过去;同册其他月份不动')
+    expect(w.find('.te-verbumpline').exists()).toBe(false)
+    expect(w.text().split('只把本月切过去'), '只说一遍').toHaveLength(2)
+    // 旧口径的「轻改动」:副句一字不变
     await w.findAll('input.te-name')[0].setValue('厂房租金合计')
-    expect(w.find('.te-verbump').text()).toContain('v4')
+    expect(sub()).toContain('v4')
     expect(w.text()).not.toContain('历史月份')
     w.unmount()
   })
@@ -245,7 +249,7 @@ describe('TemplateEditorPanel · 编辑态', () => {
   it('本月生效版落后于链尾时,提示条按链尾+1 报数', async () => {
     const w = mountPanel({ book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
     await w.find('button.te-editbtn').trigger('click')
-    expect(w.find('.te-verbump').text()).toContain('v5')
+    expect(w.find('.te-sub-edit').text()).toContain('存成新版 v5')
     w.unmount()
   })
 

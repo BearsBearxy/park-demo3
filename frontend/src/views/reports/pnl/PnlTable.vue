@@ -105,6 +105,14 @@ const fc = (k: string) => ({ 'pt-fix': k in fix.value.style })
 // ponytail: StickyStyle 是 interface,模板 :style 要的 CSSProperties 带 `--*` 索引签名,这里转一次;W1 改成 type 别名后可删
 const st = computed(() => fix.value.style as Record<string, CSSProperties>)
 // 封顶了才给名字框定宽(省略号靠它);没封顶按内容自然撑开,估宽偏小也不会误截
+// 口径(原 PnlScheduleView 页底 ⓘ 说明行,LIST-PAGE-SPEC §2.1):本年合计怎么来的挂在它的表头;
+// 小计 / 损益 / 合计行存原值挂在这些行的名称上 —— 名字被截时连全名一起给。按行一次算好(LIST-PAGE §8)
+const ANN_TIP = '本年合计 = 1–12 月相加(「–」是没录,不当 0),只在页面上算,不存库'
+const SUM_TIP = '这一行存的是文件原值,改明细不会自动重算'
+const subTips = computed(() => Object.fromEntries(props.rows.map(r => {
+  const cut = subW.value[r.rowKey] > nameW.value
+  return [r.rowKey, r.kind === 'detail' ? (cut ? r.label : null) : cut ? { text: r.label, sub: SUM_TIP } : SUM_TIP]
+})))
 const subBox = computed(() => nameW.value < subMax.value ? { width: nameW.value - 26 + 'px' } : undefined)
 const wrapStyle = computed(() => hStage.value === 3 ? { minHeight: minTableH(DIMS) + 2 + sbH.value + 'px' } : undefined)   // +2 上下边框
 
@@ -114,12 +122,12 @@ const wrapStyle = computed(() => hStage.value === 3 ? { minHeight: minTableH(DIM
 // 不删列、不改列宽:宽档那张横滚表原样留着,只是多了一条 v-else-if 分支。
 //
 // ⚠ 行结构是**平铺**的:分组是一根列(groupLabel,桌面靠同值省略造出合并观感),不是分组行;
-// 每一行都自带 12 个月值 —— kind=subtotal/pnl/total 那几行存的是母册原值(见 .pnl-foot 那句),
+// 每一行都自带 12 个月值 —— kind=subtotal/pnl/total 那几行存的是母册原值(见上面 SUM_TIP),
 // 点开照样有 12 个月。所以这里没有「点开没数」的行,全部行都出卡、都可点,
 // 分组名按稿落进末行小字,不另画小节头。
 //
 // 编辑态不卡片化:卡上不能放 input(FPWideCards 硬条件②「整卡一个点击目标」),
-// 小屏录入照旧走横滚表 —— .pnl-s-hint 那句「小屏可录入,建议在桌面端操作」说的就是这个形态。
+// 小屏录入照旧走横滚表 —— SchedHeader 编辑签「编辑模式 · 建议桌面」说的就是这个形态。
 const { tier } = useViewport()
 const cardMode = computed(() => tier.value === 's' && !props.edit)
 const openRow = ref<PnlRowDTO | null>(null)
@@ -166,7 +174,7 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
           <th class="pt-c-grp l" :class="fc('grp')" :style="st.grp">{{ groupCol }}</th>
           <th class="pt-c-sub l" :class="fc('sub')" :style="st.sub">科目细分</th>
           <th v-for="m in 12" :key="m" class="pt-h-num">{{ m }}月</th>
-          <th class="pt-c-ann pt-h-ann" :class="fc('ann')" :style="[st.ann, { minWidth: fix.w.ann + 'px' }]">本年合计</th>
+          <th class="pt-c-ann pt-h-ann" :class="fc('ann')" :style="[st.ann, { minWidth: fix.w.ann + 'px' }]"><span v-tip="ANN_TIP">本年合计</span></th>
           <th v-if="edit" class="pt-c-note l">备注</th>
           <th v-if="showFill" class="pt-c-fill" :class="fc('fill')" :style="st.fill">填入</th>
           <!-- 最右空列 .fp-fill(base.css;LIST-PAGE §4 列宽铁律):表格比内容宽出来的余宽全落在这一列,不摊进月份列 -->
@@ -188,7 +196,7 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
           <td class="pt-c-grp l" :class="fc('grp')" :style="st.grp" v-tip="r.groupLabel">{{ showGroup(i) ? r.groupLabel : '' }}</td>
           <td class="pt-c-sub l" :class="fc('sub')" :style="st.sub">
             <div class="pt-sub" :style="subBox">
-              <span class="pt-sub-t" v-tip="subW[r.rowKey] > nameW ? r.label : null">{{ r.label }}</span>
+              <span class="pt-sub-t" v-tip="subTips[r.rowKey]">{{ r.label }}</span>
               <span
                 v-if="badges[r.rowKey]"
                 class="pt-badge"

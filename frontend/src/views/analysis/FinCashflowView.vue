@@ -147,6 +147,7 @@ const wfOpt = computed(() => waterfallOption(wf.value))
 // ── 应收 vs 实收 分组柱(点柱→该期欠费租户清单弹层,spec 下钻) ──
 const rcOpt = computed(() => rcGroupOption(ledgerPeriods.value))
 const drillYm = ref<string | null>(null)
+const FAM_TIP = '家族 = 租户管理里关联在一起的户。按家族汇总时成员的流水合并后再算,某个成员的预收 / 多收会抵减其他成员的欠费(同一个实际客户),所以家族合计可能小于逐户合计。'
 const drillRows = computed(() =>
   drillYm.value ? arrearsOf(famSrc.value, cid.value, drillYm.value) : [])
 // 家族口径徽标「含 N 户」:该期(公司×家族)有流水成员数,>1 才显
@@ -305,13 +306,14 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
           <span style="display: inline-flex; align-items: center; gap: 10px">
             <div class="anx-seg mini" role="group" aria-label="欠费口径切换">
               <button :class="{ on: !famOn }" @click="famOn = false">按户</button>
-              <button :class="{ on: famOn }" @click="famOn = true">按家族</button>
+              <button :class="{ on: famOn }" v-tip="FAM_TIP" @click="famOn = true">按家族</button>
             </div>
             <button class="x" aria-label="关闭" @click="drillYm = null"><component :is="iconFor('x')" :size="15" /></button>
           </span>
         </div>
-        <div class="fin-modal-sub">期末欠费结余 &gt; 0 的{{ famOn ? '家族' : '租户' }},按欠费额降序 · 共 {{ drillRows.length }} {{ famOn ? '族' : '户' }} · 单位 万元</div>
-        <div v-if="famOn" class="fin-modal-sub">家族=租户管理中的关联关系(parent_id);按家族汇总时,家族成员的流水合并后计算——家族内某成员的预收/多收会抵减其他成员的欠费(同一实际客户口径),故家族合计可能小于逐户合计。</div>
+        <!-- 一行副句按口径换文案(2026-10-03 横条收尾:原来切「按家族」会在下面多出一段说明,把表往下推);
+             家族怎么算的全文挂在「按家族」的悬停说明上 -->
+        <div class="fin-modal-sub">期末欠费结余 &gt; 0 的{{ famOn ? '家族' : '租户' }},按欠费额降序 · 共 {{ drillRows.length }} {{ famOn ? '族' : '户' }} · 单位 万元{{ famOn ? ' · 家族合计可能小于逐户合计' : '' }}</div>
         <div class="fin-modal-body">
           <table v-if="drillRows.length" class="ak-tbl">
             <thead><tr><th>租户</th><th>公司</th><th>期初欠费</th><th>本期应收</th><th>本期实收</th><th>期末欠费</th><th>台账</th></tr></thead>

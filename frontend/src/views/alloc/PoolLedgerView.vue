@@ -530,13 +530,14 @@ function roRoundLine(ruleId: number): string {
 }
 const router = useRouter()
 const tabs = useTabsStore()
-// 深链协议:KeepAlive 缓存实例只在 setup 消费 query,必须 openFresh;section 按键归区(加减度数=① 本月参数,分摊基数/取整位=② 长期常数);
+// 深链协议:KeepAlive 缓存实例只在 setup 消费 query,必须 openFresh;带 rule 一律落计费参数「公摊池」那一行,
+// 闪哪一格:带 key 就闪那一格(如取整位 round_scale),没带按 section(monthly=加减度数,constant=分摊基数;S21 §5.7);
 // edit=1:[去重算] 落地直接进编辑态(重算按钮只在编辑态出)
 function gotoParams(ruleId?: number, key: PoolParamKey | null = null, edit = false) {
   tabs.openFresh('params', { pin: true })
   const section = key === 'extra_qty' ? 'monthly' : 'constant'
   router.push({ path: '/params', query: { ym: ym.value, zone: zone.value, section,
-    ...(ruleId != null ? { rule: String(ruleId) } : {}), ...(edit ? { edit: '1' } : {}) } })
+    ...(ruleId != null ? { rule: String(ruleId) } : {}), ...(key ? { key } : {}), ...(edit ? { edit: '1' } : {}) } })
 }
 
 // ── 屏级告警:常驻 chip + 右侧抽屉(LAYOUT-STABILITY-SPEC §6,2026-08-25 用户拍板)──
@@ -719,6 +720,9 @@ const nameSegs = computed<NameSeg[]>(() => {
 })
 
 const formDiff = computed(() => diffs.value.find(d => d.ruleId === form.value.id))
+// 名单变动就地标在名单行上「新在租 / 已退租」(2026-10-03 横条收尾:名单上方那块黄色汇总撤掉,它一出现就把名单往下推)
+const diffAdded = computed(() => new Set(formDiff.value?.added.map(t => t.tenantId) ?? []))
+const diffRemoved = computed(() => new Set(formDiff.value?.removed.map(t => t.tenantId) ?? []))
 // 缺起止日期的受益人:判不了在租 → 不进 member-diff 的 removed,单列一条提醒催补日期
 const formNoDate = computed(() => form.value.members.filter(m => m.inForce === 'unknown'))
 // 园区级池不勾人=后端按该期全园在租名册自动摊(与 AllocService.autoMembers 同口径)
@@ -1428,21 +1432,10 @@ async function delPool() {
             <span style="flex:1"></span>
             <span class="pl-chip" :class="memberChipTone">{{ memberSummary }}</span>
           </div>
-          <template v-if="form.method === 'none'">
-            <div class="pl-innerwarn">
-              <component :is="iconFor('info')" :size="13" />
-              <span>{{ METHOD_HINT.none }} —— 这里没有受益人可选</span>
-            </div>
-          </template>
+          <!-- 园区自担:受益人名单整段换成空状态(它本来就是换掉内容区,不是提示条) -->
+          <FPEmpty v-if="form.method === 'none'" size="sm" :sub="METHOD_HINT.none">这里没有受益人可选</FPEmpty>
           <template v-else>
             <span class="dim">{{ memberHint }}</span>
-            <div v-if="formDiff" class="pl-innerwarn">
-              <component :is="iconFor('alert-triangle')" :size="13" />
-              <span>该定位本月租户有变动:
-                <template v-if="formDiff.added.length">新在租 {{ formDiff.added.map(t => t.tenantName).join('、') }};</template>
-                <template v-if="formDiff.removed.length">已退租 {{ formDiff.removed.map(t => t.tenantName).join('、') }}</template>
-              </span>
-            </div>
             <!-- LAYOUT-STABILITY §4.2:勾选缺日期租户才冒出来,位置必须常驻,否则把下面的名单顶走 -->
             <div class="pl-innerwarn pl-nodatewarn" :class="{ blank: !formNoDate.length }">
               <template v-if="formNoDate.length">
@@ -1479,7 +1472,8 @@ async function delPool() {
                       v-tip="'定不出楼层:该户在本栋既无合同单元、也无户内电表楼层 —— 与其他未定层户合摊 1 份,请补合同单元或该户户内表楼层'">
                   未定层
                 </span>
-                <span v-if="t.inForce === 'no'" class="pl-chip gone">已退租</span>
+                <span v-if="diffAdded.has(t.tenantId)" class="pl-chip ok" v-tip="'本月在租,还不在受益人里'">新在租</span>
+                <span v-if="t.inForce === 'no' || diffRemoved.has(t.tenantId)" class="pl-chip gone">已退租</span>
                 <!-- 2026-09-23:这两档原来都写「已退租」。实测被这么标的户里,一类是下个月才起租、
                      一类是合同表里一行都没有 —— 都不是退租,照着摘人会把还没进场的户摘掉。 -->
                 <span v-else-if="t.inForce === 'future'" class="pl-chip nodate"

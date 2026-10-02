@@ -362,7 +362,9 @@ describe('合同绑定页签 · 带月写', () => {
     await w.setProps({ defaultYm: '2025-04' })
     await flushPromises()
     await toTab(w, 'bind')
-    expect(w.text()).toContain('网络断了 暂时不能改绑定、挂租户。')
+    // 写在挂租户的位置上(原页签顶上那条满宽红条撤掉,2026-10-03 横条收尾)
+    expect(w.find('.md-bpend .md-bhint.bad').text()).toBe('网络断了 暂时不能挂租户。重试')
+    expect(w.find('.fp-note').exists(), '页签顶上不再有满宽红条').toBe(false)
     expect(w.text()).not.toContain('进入编辑模式后可挂租户')
     const calls = vi.mocked(metersApi.timeline).mock.calls.length
     await btn(w, '重试')!.trigger('click')
@@ -854,5 +856,108 @@ describe('对抗复查 · 问着的时候退出了编辑态,答了也不写', ()
     await w.setProps({ editMode: false })
     await reply(true)
     expect(metersApi.update).not.toHaveBeenCalled()
+  })
+})
+
+// ── 横条收尾(2026-10-03,实现规范 §2「横条盘点」MeterDetailDrawer 四行 + MeterAssignDialog) ──
+describe('抽屉里的说明都落在受影响的那一处,不再是满宽条', () => {
+  const tipOf = (el: Element) => (el as HTMLElement & { _tip?: { text: string } })._tip?.text
+  /** 先正常加载出分段,改一次楼层,写完重拉分段失败 —— 手上留着上次那份(同「分段重拉失败」那条的走法) */
+  async function staleDrawer(row?: DrawerRow) {
+    const w = await mountDrawer({ row })
+    vi.mocked(metersApi.timeline).mockRejectedValue({ message: '网络断了' })
+    floorSelect(w).vm.$emit('update:modelValue', '四楼')
+    await flushPromises()
+    await btn(w.findComponent(MeterAssignDialog), '确认修改')!.trigger('click')
+    await flushPromises()
+    return w
+  }
+
+  // 破坏验证:.md-tlerr 那段删掉 / 把 .md-note 满宽条加回来 → 红
+  it('❗表档案:被锁原因 + 重试标在「区域」格下面;表单顶上没有满宽红条;这格常驻占位', async () => {
+    for (const edit of [true, false]) {
+      const ok = await mountDrawer({ edit })
+      const slot = ok.find('.md-grid .md-fld .md-tlslot')
+      expect(slot.exists(), '常驻占位(浏览态也在),出错 / 进出编辑态都不把下面的格子顶下去').toBe(true)
+      expect(slot.text()).toBe('')
+    }
+
+    const w = await staleDrawer()
+    const err = w.find('.md-grid .md-fld .md-tlslot')
+    expect(err.element.parentElement!.querySelector('label')!.textContent).toBe('区域(楼栋/车间)')
+    expect(err.text()).toBe('网络断了 归属和位置暂时只能看。重试')
+    expect(w.find('.md-grid .fp-note').exists(), '满宽红条不许回来').toBe(false)
+    const calls = vi.mocked(metersApi.timeline).mock.calls.length
+    await err.find('button').trigger('click')
+    await flushPromises()
+    expect(metersApi.timeline).toHaveBeenCalledTimes(calls + 1)
+  })
+
+  // 破坏验证:候选合同那一处的 v-else-if 删掉 → 红
+  it('❗合同绑定(非待核):原因 + 重试写在候选合同 / 解绑那一处', async () => {
+    const BIND: MeterBindingRowDTO = {
+      meterId: 1, status: 'manual', bucket: 'ambiguous', contractId: null, contractNo: null, locations: [],
+      candidates: [{ contractId: 55, contractNo: 'C-055', buildingName: 'A座', startDate: '2025-01-01', endDate: '2025-12-31' }],
+      hasReading: true, suggestion: null,
+    }
+    const w = await staleDrawer(rowOf({}, BIND))
+    await toTab(w, 'bind')
+    const err = w.find('.md-bcands + .md-bhint')
+    expect(err.classes()).toContain('bad')
+    expect(err.text()).toBe('网络断了 暂时不能改绑定。重试')
+    expect(w.findAll('.fp-note')).toHaveLength(0)
+  })
+
+  // 破坏验证:.md-sugg 外壳去掉(FPNote 直接 v-if)/ min-height 改小 → 红
+  it('❗改归建议:块内提示常驻 32px 预留位,有没有建议下面的块都在同一处', async () => {
+    const base: MeterBindingRowDTO = { meterId: 1, status: 'manual', bucket: 'ambiguous', contractId: null, contractNo: null,
+      locations: [], candidates: [], hasReading: true, suggestion: null }
+    const without = await mountDrawer({ row: rowOf({}, base) })
+    await toTab(without, 'bind')
+    const withS = await mountDrawer({ row: rowOf({}, { ...base, suggestion: { tenantId: 8, tenantName: '新租户科技', contractId: 66, contractNo: 'C-066' } }) })
+    await toTab(withS, 'bind')
+    // 两种情况下 body 的子块序列一样:建议那一格都在,只是空着
+    const seq = (w: VueWrapper) => [...w.find('.fp-dwr-body').element.children].map(e => e.className)
+    expect(seq(without)).toEqual(seq(withS))
+    expect(without.find('.md-sugg').text()).toBe('')
+    expect(withS.find('.md-sugg .fp-note').text()).toContain('本月在租、合同场地的房号对得上这块表的:新租户科技 · C-066')
+    const css = readFileSync(join(__dirname, '../MeterDetailDrawer.vue'), 'utf8')
+    expect(css).toMatch(/\.md-sugg\s*\{\s*min-height:\s*32px/)
+  })
+
+  // 破坏验证:标题旁那枚签删掉 / FPNote 红条加回档案变更页签 → 红
+  it('❗档案变更:重新加载失败、手上有旧数据 → 标题旁「旧数据 · 只读」,悬停写原因,旁边带重试;旧时间线照常显示', async () => {
+    const w = await staleDrawer()
+    await toTab(w, 'timeline')
+    const tag = w.find('.fp-dwr-hd .md-stale')
+    expect(tag.text()).toBe('旧数据 · 只读')
+    expect(tipOf(tag.element)).toBe('网络断了 下面是上次加载的样子,暂时不能改。')
+    expect(w.find('.fp-dwr-body .fp-note').exists(), '正文不再有满宽红条').toBe(false)
+    expect(w.findComponent({ name: 'MeterTimelinePane' }).exists(), '旧数据照常只读显示').toBe(true)
+    const calls = vi.mocked(metersApi.timeline).mock.calls.length
+    await w.find('.fp-dwr-hd .md-stale + .md-link').trigger('click')
+    await flushPromises()
+    expect(metersApi.timeline).toHaveBeenCalledTimes(calls + 1)
+    await toTab(w, 'profile')
+    expect(w.find('.fp-dwr-hd .md-stale').exists(), '只挂在档案变更页签').toBe(false)
+  })
+
+  // 破坏验证:选项副句里那一句删掉 / FPNote 加回来 → 红
+  it('❗改归属换租户:「整月算给谁」写在每个选项自己的副句里,选项组下面没有满宽说明', async () => {
+    const BIND: MeterBindingRowDTO = {
+      meterId: 1, status: 'manual', bucket: 'ambiguous', contractId: null, contractNo: null, locations: [], candidates: [],
+      hasReading: true, suggestion: { tenantId: 8, tenantName: '新租户科技', contractId: 66, contractNo: 'C-066' },
+    }
+    const w = await mountDrawer({ row: rowOf({}, BIND) })
+    await toTab(w, 'bind')
+    await btn(w, '从本月起改归 新租户科技')!.trigger('click')
+    await flushPromises()
+    const dlg = w.findComponent(MeterAssignDialog)
+    const subs = dlg.findAll('.ad-opt').map(o => o.findAll('.s').map(x => x.text()))
+    expect(subs).toEqual([
+      ['影响 2025-03 起', '水电按月抄表，2025年3月整月算给 新租户科技。'],
+      ['影响 2024-01 起', '水电按月抄表，2024年1月整月算给 新租户科技。'],
+    ])
+    expect(dlg.find('.fp-note').exists()).toBe(false)
   })
 })

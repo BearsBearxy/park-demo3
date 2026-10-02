@@ -38,8 +38,8 @@ import SchedHeader from '@/components/sched/SchedHeader.vue'
 import SchedMonthPills from '@/components/sched/SchedMonthPills.vue'
 import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
 import { loadExtraYears, saveExtraYears, buildYearRows } from '@/utils/matrixYears'
-import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
-import ImportResultToast from '@/components/import/ImportResultToast.vue'
+import FpImportModal, { type ImportPayload, type SectionPick } from '@/components/import/FpImportModal.vue'
+import { importBusy, settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
 import { parserProps, runImport } from '@/utils/importRegistry'
 import SalaryTable from './SalaryTable.vue'
 import SalaryRecordDrawer from './SalaryRecordDrawer.vue'
@@ -98,7 +98,7 @@ async function reloadOverview() {
 }
 
 const {
-  year, edit, drawer, importing, importResult, selectedIds, importedCount,
+  year, edit, drawer, importing, selectedIds, importedCount,
   guard, refresh, pickYear, toggleSelect, selectAll, onBatchDelete, onClearImported,
 } = useSchedScreen({
   load: loadMonth,
@@ -140,14 +140,15 @@ onMounted(reloadOverview)
 
 // 编辑态**就地**转假(SchedHeader 被接管/提权到期/换期 exitEdit)要关写浮层 ——
 // 它们的 v-if 只判自己的 ref,留着的话失锁后「保存」「导入」照样落库(后端写口不校验锁)。
-watch(edit, v => { if (!v) { drawer.value = false; importing.value = false } })
+// 导入窗在跑就不收(D14,importBusy):收了照样写完,只是人看不到写进去多少
+watch(edit, v => { if (!v) { drawer.value = false; if (!importBusy.value) importing.value = false } })
 // S 档点卡看整行(§5.3)。存的是**那一行的快照**,所以换期就得关 —— 否则新月的表里没有这个人,
 // 抽屉还顶着上个月的一行。与 edit 无关(只读,不占锁,所以不进上面那条 watch(edit))。
 const rowDetail = ref<SalaryRecordDTO | null>(null)
 watch(() => `${year.value}-${month.value}`, () => { rowDetail.value = null })
 
 // 抽屉是 FPDrawer(Teleport to body):KeepAlive 切页签子树停用,它留在 body 上飘在别的屏顶上
-onDeactivated(() => { drawer.value = false; importing.value = false; rowDetail.value = null })
+onDeactivated(() => { drawer.value = false; if (!importBusy.value) importing.value = false; rowDetail.value = null })
 
 async function pickMonth(m: number) {
   month.value = m
@@ -237,23 +238,30 @@ const edge = (first: boolean) => {
 // columnMap:真实工资表叶子标签 → SalaryRecord 字段 key(姓名走 nameLabels;派生/未建模列不入)。
 // role=文本列(text:true,存原串不 cleanNum)。前缀匹配扛单位后缀(应出勤（天）/请假（天）)。
 // 「其它津贴」(other,津贴项) 与 「其他」(otherDeduct,扣项) 靠完整标签+前缀消歧;不导 合计工资/实出勤/全勤考核/应发/实发/代缴代扣。
-// 工资多月分段导入:经 runImport(共享 registry 逐段执行 + 记录 import_log),跳到首段年月 + reload。
-async function onImportSections(
-  picks: { year?: number; month?: number; phase?: number; records: ImportRec[] }[],
-  fileName: string,
-) {
-  importing.value = false
-  if (!edit.value) return   // 写口自守(同 onCreate)
-  if (year.value == null) return
+// 工资多月分段导入:经 runImport(共享 registry 逐段执行 + 记录 import_log),reload;关窗后跳到首段年月。
+// 是导入弹窗的 runner(UI-OVERLAY-SPEC §8):弹窗不关,跑完原地出结果卡;失败交给弹窗的失败卡(不走回执)。
+// 跳期挪到关窗之后:锁按月(S.salary),一换月 SchedHeader 就退出编辑 → 上面 watch(edit) 收掉导入窗,结果卡跟着没了。
+let importJump: SectionPick | null = null
+async function onImportSections(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
+  importJump = null
+  if (!edit.value) return null   // 写口自守(同 onCreate)
+  if (year.value == null) return null
   // 矩阵态导入不了(导入按钮在宽表的编辑态里),month 到这里必非空
-  const ctx = { year: year.value, month: month.value ?? undefined }
-  await guard('导入失败', async () => {
-    importResult.value = await runImport('salary', picks, ctx, fileName)
-    const first = picks[0]
-    if (first) { year.value = first.year ?? year.value; month.value = first.month ?? month.value }
-    selectedIds.value = new Set()   // 跳期清勾选(同 onCreate)
-    await refresh()
-  })
+  const picks = payload as SectionPick[]
+  const res = await runImport('salary', picks, { year: year.value, month: month.value ?? undefined, _run: p }, fileName)
+  importJump = picks[0] ?? null
+  // loadMonth 自己吞错改 readErr:刷完看它,照实报「本页没刷新上」
+  return settle(res, p, () => refresh().then(() => { if (readErr.value) throw new Error(readErr.value) }))
+}
+/** 关导入窗:导入过就跳到首段年月再拉(同改前「跳到首段年月 + reload」,只是挪到看完结果之后) */
+function closeImport() {
+  importing.value = false
+  const j = importJump
+  importJump = null
+  if (!j || ((j.year ?? year.value) === year.value && (j.month ?? month.value) === month.value)) return
+  year.value = j.year ?? year.value; month.value = j.month ?? month.value
+  selectedIds.value = new Set()   // 跳期清勾选(同 onCreate)
+  void refresh()   // loadMonth / reloadOverview 都自己兜错
 }
 
 const onCreate = async (req: SalaryRecordReq) => {
@@ -334,6 +342,7 @@ const onExport = () => guard('导出失败', async () => {
           :year="year!"
           :edit="edit"
           perm="entry:edit"
+          desk-hint
           @back="backToMonths"
           @toggle-edit="edit = !edit"
          :show-import="true" @import="importing = true" :dirty="drawer || importing ? 1 : 0" dirty-approx import-keeps-manual>
@@ -370,12 +379,7 @@ const onExport = () => guard('导出失败', async () => {
           </div>
         </div>
 
-        <!-- ≤600 重编辑提示(§5.3/§11.2):预留位——行常驻定高,文案仅编辑态显,显隐不挪表格
-             (LAYOUT-STABILITY §2-3)。备注直编/批删照常可用,不拦不藏 -->
-        <div class="s12-s-hint">
-          <span v-if="edit">编辑模式 · 小屏可操作,建议在桌面端操作</span>
-        </div>
-
+        <!-- ≤600 荐桌面(§5.3/§11.2)并进 SchedHeader 的编辑签「编辑模式 · 建议桌面」,这一行还给表格 -->
         <!-- fp-stale 带 pointer-events:none —— 换期在途旧行不许被点、被删(同族 6 屏都有,本屏漏) -->
         <SalaryTable
           :class="{ 'fp-stale': veil }"
@@ -414,8 +418,8 @@ const onExport = () => guard('导出失败', async () => {
         v-bind="parserProps('salary')"
         :default-year="year!"
         :default-month="month!"
-        @close="importing = false"
-        @import-sections="onImportSections"
+        :runner="onImportSections"
+        @close="closeImport"
       />
     </template>
 
@@ -429,8 +433,6 @@ const onExport = () => guard('导出失败', async () => {
 
     <!-- 切年/切月过渡兜底转圈 -->
     <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
-
-    <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
   </template>
 
   <!-- overview 一次都没拿到:硬失败面 —— 矩阵是唯一入口,转圈死等 = 整本账不可达(fp-fluid 同挂) -->
@@ -463,12 +465,4 @@ const onExport = () => guard('导出失败', async () => {
   background: var(--accent-blue); color: var(--hue-blue); display: grid; place-items: center; flex: none;
 }
 .s12-gate-sub { margin: 4px 0 0; font-size: var(--fs-label); color: var(--text-muted); }
-
-/* S 档提示行:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前 */
-.s12-s-hint { display:none; }
-
-/* ── S 档(≤600):编辑不拦不藏,常驻预留提示行(§5.3/§11.2;LAYOUT-STABILITY §2-3 预留位) ── */
-@media (max-width: 600px) {
-  .s12-s-hint { display:flex; align-items:center; flex:0 0 20px; height:20px; font-size:12px; color:var(--hue-orange); }
-}
 </style>

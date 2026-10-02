@@ -346,11 +346,14 @@ const contactLine = computed(() =>
       <!-- 4. 标的段列表(§6.1:每段=类型徽标+位置+段面积 + 该类型钉死费用行只读;条件项有才显) -->
       <div>
         <FPSectionLabel icon="list">标的段与费用</FPSectionLabel>
-        <!-- 块内提示(画布 01-A 卡3):只和这块有关,放在块里;「去绑定」= 编辑弹窗里每段的「面积落在」 -->
-        <FPNote v-if="(contract.unboundTermCount ?? 0) > 0" tone="warn" class="cd-note" @action="emit('edit', contract)">
-          租金行还没绑单元
-          <template v-if="auth.can('contract:edit')" #action>去绑定</template>
-        </FPNote>
+        <!-- 块内提示(画布 01-A 卡3):只和这块有关,放在块里;「去绑定」= 编辑弹窗里每段的「面积落在」。
+             常驻 32px 预留位(LAYOUT-STABILITY §2 第 3 级):全绑了也空着占位,切合同时下面的费用网格不跳 -->
+        <div class="cd-note">
+          <FPNote v-if="(contract.unboundTermCount ?? 0) > 0" tone="warn" @action="emit('edit', contract)">
+            租金行还没绑单元
+            <template v-if="auth.can('contract:edit')" #action>去绑定</template>
+          </FPNote>
+        </div>
         <!-- 连续费用网格:表头一次,按段分组(段带+费用行+小计),底部合同合计;字体/列沿 demo3 原生 -->
         <div v-if="segGroups.length" class="cd-ch">
           <div class="cd-ch-head">
@@ -456,7 +459,7 @@ const contactLine = computed(() =>
 .cd-inline-actions { display:flex; gap:6px; flex:0 0 auto; }
 .cd-inline-body { flex:1 1 auto; overflow-y:auto; padding:16px 20px; display:flex; flex-direction:column; gap:18px; }
 /* 宽屏两栏(lease abstract):左=合同信息+生命周期,右=标的段与费用;填满主区宽度,窄屏自动单列 */
-.cd-note { margin-top:8px; }
+.cd-note { margin-top:8px; min-height:32px; }
 .cd-cols { display:grid; grid-template-columns:minmax(0,0.9fr) minmax(0,1.1fr); gap:24px; align-items:start; }
 .cd-col-l, .cd-col-r { display:flex; flex-direction:column; gap:18px; min-width:0; }
 @media (max-width:880px) { .cd-cols { grid-template-columns:1fr; } }

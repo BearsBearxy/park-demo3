@@ -19,7 +19,6 @@ import Select from '@/components/ds/Select.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPMark from '@/components/fp/FPMark.vue'
-import FPNote from '@/components/fp/FPNote.vue'
 import { ask } from '@/utils/ask'
 
 const props = defineProps<{
@@ -99,7 +98,6 @@ const acctOpts = (id: number) => [
   })),
   { value: '', label: '不印账户块' },
 ]
-const noAcctCos = computed(() => selectedCoIds.value.filter(id => !acctByCo.value[id]))
 
 // ── 多选 ──
 const allChecked = computed(() =>
@@ -165,9 +163,12 @@ const statusOf = (r: PayTenantRow) => STATUS_LABEL[r.status]
           <Select :options="acctOpts(id)" :model-value="acctByCo[id] ?? ''" size="sm"
                   @update:model-value="acctByCo = { ...acctByCo, [id]: $event }" />
         </div>
+        <!-- 不印账户块就地标在这家公司的下拉旁(原账户区下面那条满宽说明,一出现就把租户表往下推)。
+             位置常驻、选了账户只是看不见,换选项不挪别家的下拉 -->
+        <FPMark tone="muted" class="ex-noacct" :class="{ off: !!acctByCo[id] }"
+                v-tip="'这家公司这次不印收款账户块(没录账户或选了「不印账户块」),通知单出简化版,不阻断导出'">不印</FPMark>
       </div>
     </div>
-    <FPNote v-if="noAcctCos.length" tone="info">{{ noAcctCos.length }} 家公司这次不印账户块(没录账户或选了「不印」)—— 通知单出简化版,不阻断。</FPNote>
 
     <div class="ex-wrap">
       <table class="ex-table">
@@ -243,6 +244,7 @@ const statusOf = (r: PayTenantRow) => STATUS_LABEL[r.status]
 .ex-accts { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-card); }
 .ex-lbl { font-size: 11.5px; color: var(--text-muted); }
 .ex-acct { display: flex; align-items: center; gap: 6px; }
+.ex-noacct.off { visibility: hidden; }
 .ex-co { font-size: 12px; font-weight: var(--fw-semibold); color: var(--text-primary); }
 
 .ex-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface-white); }

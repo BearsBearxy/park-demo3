@@ -71,7 +71,7 @@ describe('FPSortableTable(楼栋 / 租户 / 账号 / 导入中心)', () => {
   })
 })
 
-describe('FinReportTable(资产负债表左右两张 + 利润表)', () => {
+describe('FinReportTable(资产负债表成对一张 + 利润表)', () => {
   const ROWS: FinTableRow[] = [
     { key: 1, no: 1, label: '一、营业收入', level: 0, type: 'normal' },
     { key: 'isc-1', label: '一期租户', level: 1, type: 'normal', custom: true, canAddChild: true },
@@ -117,7 +117,7 @@ describe('TbTable(科目余额表)', () => {
   ]
   const totals = Object.fromEntries(TB_FIELDS.map(f => [f.key, 0])) as Record<TbFieldKey, number>
   const open = () => mount(TbTable, {
-    props: { rows: ROWS, expanded: new Set<string>(), parents: new Set<string>(), totals, valueOf: () => 0, editable: false },
+    props: { rows: ROWS, expanded: new Set<string>(), kids: new Map<string, number>(), totals, valueOf: () => 0, editable: false, dataKey: '1:2025-1' },
   })
   const STYLE = styleOf(read('views/reports/trial-balance/TbTable.vue'))
 
@@ -134,11 +134,12 @@ describe('TbTable(科目余额表)', () => {
   })
 
   // 破坏验证:min-width:1240 加回 → 红(窄屏横滚时空列还占着 1240 − 内容宽);金额列 min-width 删掉 → 红
-  it('❗表不再给 min-width:1240;代码 / 金额列宽写在表头 min-width 上', () => {
+  // 2026-10-03:代码列与期末两列是固定列候选(LIST-PAGE §9.1,useWideTable 按整列最长的值算宽),宽写在表头内联 min-width 上
+  it('❗表不再给 min-width:1240;金额列宽写在表头 min-width 上,代码列宽由固定列计划内联给', () => {
     expect(STYLE).not.toMatch(/min-width:\s*1240px/)
-    expect(STYLE).toMatch(/\.fin-table thead th\.tb-codeh \{ min-width:96px; \}/)
-    expect(STYLE).toMatch(/\.fin-table thead th\.h2 \{ min-width:128px; \}/)
+    expect(STYLE).toMatch(/\.fin-table thead th\.h2 \{ min-width:120px; \}/)
     expect(STYLE).toMatch(/\.tb-x \{[^}]*display:grid;\s*visibility:hidden/)
+    expect((open().find('thead th.tb-c').element as HTMLElement).style.minWidth).toMatch(/^\d+px$/)
   })
 })
 
