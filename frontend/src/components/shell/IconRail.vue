@@ -39,7 +39,9 @@ watch(userMenuOpen, (open) => {
   userMenuStyle.value = { position: 'fixed', top: 'auto', left: `${r.left}px`, bottom: `${window.innerHeight - r.top + 8}px` }
 })
 
-function onLogout() {
+// 退出登录会卸掉所有页签:有没保存改动的逐页先走离开确认(画布 02-A),点「继续编辑」就不退;0 处改动直接退
+async function onLogout() {
+  if (!(await tabsStore.leaveOk(tabsStore.tabs.map(t => t.value)))) return
   auth.logout()
   router.push('/login')
 }
@@ -94,13 +96,16 @@ function goLayer(layer: NavLayer) {
       <!-- 账号菜单:向上弹(头像在屏幕左下角,默认向下会出屏) -->
       <Popover v-model="userMenuOpen" :width="200" :style="userMenuStyle">
         <template #trigger>
-          <button ref="userBtn" class="fp-rail-user" :title="auth.displayName ?? '未登录'" aria-label="当前账号">
-            <Avatar :name="auth.displayName ?? '—'" :text="personNick(auth.displayName)" :size="32" />
-          </button>
+          <!-- ShellTip 不用 v-tip:v-tip 触屏按下就出,气泡翻到头像上方,正好盖住向上弹的菜单最下面「版本更新 / 退出登录」 -->
+          <ShellTip :title="auth.displayName ?? '未登录'" align="start" up>
+            <button ref="userBtn" class="fp-rail-user" aria-label="当前账号">
+              <Avatar :name="auth.displayName ?? '—'" :text="personNick(auth.displayName)" :size="32" />
+            </button>
+          </ShellTip>
         </template>
         <div class="fp-user-menu">
           <div class="fp-user-name">{{ auth.displayName ?? '未登录' }}</div>
-          <div class="fp-user-role" :title="auth.roleLabel" :class="{ ro: auth.isReadonly }">{{ auth.roleLabel }}</div>
+          <div v-tip="auth.roleLabel" class="fp-user-role" :class="{ ro: auth.isReadonly }">{{ auth.roleLabel }}</div>
           <div class="fp-user-sep" />
           <div class="fp-user-appr">
             <div class="h"><SunMoon :size="14" />外观</div>
@@ -115,7 +120,7 @@ function goLayer(layer: NavLayer) {
           <div class="fp-user-sep" />
           <button class="fp-user-row" @click="upd.openHistory()">
             <Sparkles :size="14" />版本更新
-            <span class="ver">v{{ upd.version }}<span v-if="upd.unread" class="dot" /></span>
+            <span class="ver">v{{ upd.version }}</span>
           </button>
           <button class="fp-user-logout" @click="onLogout">
             <LogOut :size="14" />退出登录
@@ -251,11 +256,10 @@ function goLayer(layer: NavLayer) {
                       transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
 .fp-appr-seg button:hover:not(.on) { color: var(--text-secondary); }
 .fp-appr-seg button.on { background: var(--surface-raised); color: var(--text-primary); box-shadow: var(--shadow-pill); }
-/* 版本更新一行:和退出登录同一排版,右侧写当前版本号(等宽,未读时带蓝点) */
+/* 版本更新一行:和退出登录同一排版,右侧写当前版本号(等宽)。没看过的更新只在铃铛上提示(06-G),这里不挂点 */
 .fp-user-row { display: flex; align-items: center; gap: 7px; width: 100%; border: none; background: transparent; color: var(--text-secondary); font-family: var(--font-sans); font-size: 12.5px; padding: 7px 6px; border-radius: 8px; cursor: pointer; }
 .fp-user-row:hover { background: var(--bg-hover); color: var(--text-primary); }
 .fp-user-row .ver { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-muted); }
-.fp-user-row .dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--hue-blue); }
 .fp-user-logout { display: flex; align-items: center; gap: 7px; width: 100%; border: none; background: transparent; color: var(--text-secondary); font-family: var(--font-sans); font-size: 12.5px; padding: 7px 6px; border-radius: 8px; cursor: pointer; }
 .fp-user-logout:hover { background: var(--bg-hover); color: var(--hue-red); }
 </style>

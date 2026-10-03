@@ -197,7 +197,7 @@ const onExport = () => guard('导出失败', async () => {
           :review-keys="reviewKeys"
           @back="goGate"
           @toggle-edit="edit = !edit"
-         :show-import="true" @import="importing = true">
+         :show-import="true" @import="importing = true" :dirty="drawer || importing ? 1 : 0" dirty-approx>
           <template #edit-actions>
             <Button variant="outline" size="sm" @click="drawer = true">
               <template #leading><component :is="iconFor('plus')" :size="14" /></template>

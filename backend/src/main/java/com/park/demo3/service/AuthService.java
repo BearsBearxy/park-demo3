@@ -32,10 +32,16 @@ public LoginResp login(LoginReq req) {
         String key = LoginRateLimiter.key(clientIp(), req.username());
         if (limiter.isLocked(key)) throw new BizException(ResultCode.TOO_MANY_REQUESTS);
         AuthUser u = users.selectOne(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getUsername, req.username()));
-        boolean active = u != null && u.getStatus() == 1;
-        if (!enc.matches(req.password(), active ? u.getPasswordHash() : DUMMY_HASH) || !active) {
+        // 停用的账号也按它自己的哈希比:密码对了才说「账号已停用」(10-01 照画布 06-E,规范 §2 第 13 条)。
+        // 密码错一律「用户名或密码错误」—— 拿不出密码的人从这里分不出账号是停用还是不存在,不给枚举口。
+        boolean pwOk = enc.matches(req.password(), u != null ? u.getPasswordHash() : DUMMY_HASH);
+        if (!pwOk || u == null) {
             limiter.recordFailure(key);   // 口令错/查无此人/已停用 一律记一次失败
             throw new BizException(ResultCode.UNAUTHORIZED, "用户名或密码错误");
+        }
+        if (u.getStatus() != 1) {
+            limiter.recordFailure(key);   // 照样算失败:限流不因为密码对了就放宽
+            throw new BizException(ResultCode.FORBIDDEN, "账号已停用，请联系管理员");
         }
         limiter.reset(key);
         // 权限与导航层从内存快照取(与 JwtAuthFilter 同一份),不烤进令牌 —— 停用要立刻生效。
@@ -52,6 +58,18 @@ public LoginResp login(LoginReq req) {
                              u.getUsername(), u.getDisplayName(), u.getRole(),
                              ps, nl, rn, u.getMustChangePassword() != null && u.getMustChangePassword() == 1);
     }
+    /**
+     * 当前账号的权限、导航层、角色名(V133)。App 挂载时调:登录响应里那份会在角色被改后变旧,
+     * 铃铛里「角色或权限被改 · 刷新后生效」要靠它说实话。读的是内存快照,零查库。
+     */
+    public MeResp me() {
+        String me = org.springframework.security.core.context.SecurityContextHolder
+            .getContext().getAuthentication().getName();
+        UserPermissionCache.UserAuth ua = perms.get(me);
+        if (ua == null) throw new BizException(ResultCode.UNAUTHORIZED);
+        return new MeResp(me, ua.perms().stream().sorted().toList(), ua.navLayers(), ua.roleNames());
+    }
+
     // 取 XFF 首段(nginx 用 $proxy_add_x_forwarded_for 透传)。首段是客户端自报值、可伪造,
     // 所以 IP 只是尽力而为的分桶维度,不是身份。
     // ponytail: 上限——换 IP 就能换桶,分布式爆破挡不住;键里带 username 保证的是「同源刷同一账号」必被锁。

@@ -246,12 +246,16 @@ describe('DatePicker —— 对抗复查补的几条(2026-09-20)', () => {
   })
 
   it('宿主的 title 只落在触发器上:面板里的格子不在它下面(悬停不冒那条长提示)', async () => {
-    w = mount(DatePicker, { props: { modelValue: '2026-03', mode: 'month' }, attrs: { title: '自该账期起停用', class: 'host-cls' }, attachTo: document.body })
+    // 2026-10-01:title 是声明的 prop,走 v-tip(挂在元素的 _tip 上),组件里不再有原生 title
+    type TipEl = HTMLElement & { _tip?: { text: string } }
+    const tipUp = (el: Element | null) => { for (; el; el = el.parentElement) if ((el as TipEl)._tip) return (el as TipEl)._tip!.text }
+    w = mount(DatePicker, { props: { modelValue: '2026-03', mode: 'month', clearable: true }, attrs: { title: '自该账期起停用', class: 'host-cls' }, attachTo: document.body })
     expect(w.classes(), '宿主的 class 还要落在根上').toContain('host-cls')
-    expect(w.attributes('title')).toBeUndefined()
-    expect(w.find('.dp-box').attributes('title')).toBe('自该账期起停用')
+    expect((w.find('.dp-box').element as TipEl)._tip?.text).toBe('自该账期起停用')
+    expect((w.find('.dp-clr').element as TipEl)._tip?.text).toBe('清除')
     await openIt(w)
-    expect(cell(w, '2026-03').element.closest('[title]')).toBeNull()
+    expect(tipUp(cell(w, '2026-03').element), '格子悬停冒出了宿主那条提示').toBeUndefined()
+    expect(w.element.querySelector('[title]'), '不再用浏览器 title').toBeNull()
   })
 })
 

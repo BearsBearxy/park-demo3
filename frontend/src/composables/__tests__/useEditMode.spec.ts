@@ -1,9 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { nextTick, ref } from 'vue'
+import { defineComponent, h, nextTick, ref } from 'vue'
+import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
-import { useEditMode } from '@/composables/useEditMode'
+import { useEditMode, type EditModeOpts } from '@/composables/useEditMode'
 import { useReviewStore } from '@/stores/review'
+import { useUiStore } from '@/stores/ui'
+import { usePresenceStore, type Seat } from '@/stores/presence'
+import { shellOf } from '@/composables/useTabShells'
 import api from '@/api'
 
 /** 种一份授权 —— 走真实路径 requestElevation(),而不是往 store 里塞。
@@ -620,5 +624,103 @@ describe('reviewKeys:喂给审核动作簇的那几把键', () => {
     ym.value = '2025-04'
     await nextTick()
     expect(m.reviewKeys.value).toEqual(['salary:2025-04'])
+  })
+})
+
+// ══════════ 编辑态里这张表被别人交审 / 审了 → 当面说(06-E 当场出现组,FE-STOP) ══════════
+//
+// 改前是静默退出编辑,人不知道为什么被踢出来。现在退出前报给 ui.editStop,App 那个居中弹窗读它。
+describe('编辑态里被别人交审 / 审核通过 → ui.editStop', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    localStorage.clear()
+    sessionStorage.clear()
+    vi.clearAllMocks()
+    vi.mocked(api.get).mockImplementation(() => Promise.resolve([]) as never)
+  })
+
+  /**
+   * 进编辑态(该年还没有审核行),然后别人在另一个浏览器把它置成 status,本屏重取。
+   * screen 给了就挂在那一屏的页签壳里(provide 屏名,同线上),弹窗正文的屏名才取得到。
+   */
+  async function editThen(status: string, opts: EditModeOpts = SALARY, extra: Record<string, unknown> = {}, screen?: string) {
+    asRole(['entry:edit'])
+    let m!: ReturnType<typeof useEditMode>
+    if (screen) mount(shellOf(`${screen}:0`, defineComponent({ setup() { m = useEditMode(['entry:edit'], opts); return () => h('div') } })))
+    else m = useEditMode(['entry:edit'], opts)
+    const rs = useReviewStore()
+    await rs.ensureYear(2025)
+    await m.toggle()
+    await nextTick()
+    expect(m.editMode.value, '没进去编辑态,下面的断言都落空').toBe(true)
+    seedReview(status, extra)
+    rs.invalidate('2025-03')
+    await rs.ensureYear(2025)
+    await nextTick()
+    expect(m.editMode.value, '锁上了就该退出').toBe(false)
+  }
+
+  // 破坏验证:删掉 watch 里 ui.reportEditStop(...) 那一句 → 红
+  it('❗别人审核通过 → 写审的人', async () => {
+    await editThen('approved')
+    expect(useUiStore().editStop).toMatchObject({ status: 'approved', by: '李审' })
+  })
+
+  // 破坏验证:ui.ts 里 by 恒取 reviewedBy → 红
+  it('❗别人交审 → 写交审的人,不是审核人', async () => {
+    await editThen('submitted')
+    expect(useUiStore().editStop).toMatchObject({ status: 'submitted', by: '张三' })
+  })
+
+  // 破坏验证:useEditMode 拼 what 时去掉屏名那一段(tabMeta(screen)?.page)→ 红。弹窗会写成「李审 审核通过了「2025-03」」
+  it('❗弹窗正文的 what = 这一屏的名字 · 那个月', async () => {
+    await editThen('approved', SALARY, {}, 'salary')
+    expect(useUiStore().editStop?.what).toBe('附表12 工资明细 · 2025-03')
+  })
+
+  // 行里记的是账号(真实数据就是 'lishen' 这种),不是中文名 —— 夹具写中文名的话,查不查在场表结果都一样。
+  // 破坏验证:ui.ts 删掉在场表那一句(by 直接写账号)→ 第一条红;.find 判据写错(按 displayName 比)→ 第一条红
+  const seat = (user: string, displayName: string): Seat => ({
+    sid: `s-${user}`, user, displayName, role: '审核员', scope: null, label: null, mode: 'view',
+    editScopes: [], sinceMs: 0, idleMs: 0, self: false,
+  })
+  it('❗审的人在线:账号换成在场表里的显示名', async () => {
+    usePresenceStore().users = [seat('zhangsan', '张三'), seat('lishen', '李审')]
+    await editThen('approved', SALARY, { reviewedBy: 'lishen' })
+    expect(useUiStore().editStop).toMatchObject({ status: 'approved', by: '李审' })
+  })
+  it('❗审的人不在线:在场表里没有,照写账号', async () => {
+    usePresenceStore().users = [seat('zhangsan', '张三')]
+    await editThen('approved', SALARY, { reviewedBy: 'lishen' })
+    expect(useUiStore().editStop).toMatchObject({ status: 'approved', by: 'lishen' })
+  })
+
+  // 破坏验证:删掉 ui.ts 里 `by === me` 那一截 → 红
+  it('❗自己审的不弹 —— 那是他自己点的', async () => {
+    useAuthStore().me = '李审'
+    await editThen('approved')
+    expect(useUiStore().editStop).toBeNull()
+  })
+
+  // 破坏验证:只取 reviewKeys 的第一把去 rowOf → 红
+  it('❗多键屏:锁上的是第二把,也认得出是谁', async () => {
+    await editThen('approved', { reviewKey: () => ['alloc:2025-03', 'salary:2025-03'] })
+    expect(useUiStore().editStop).toMatchObject({ key: 'salary:2025-03', by: '李审' })
+  })
+
+  // 破坏验证:删掉 `k === wasK` → 红
+  it('❗换到一个早已审过的月 → 照样退出,但不弹(他自己换的月,药丸写着)', async () => {
+    asRole(['entry:edit'])
+    seedReview('approved')                       // 该年只有 2025-03 已审
+    const ym = ref('2025-02')
+    const m = useEditMode(['entry:edit'], { reviewKey: () => `salary:${ym.value}` })
+    await useReviewStore().ensureYear(2025)
+    await m.toggle()
+    await nextTick()
+    expect(m.editMode.value).toBe(true)
+    ym.value = '2025-03'
+    await nextTick()
+    expect(m.editMode.value).toBe(false)
+    expect(useUiStore().editStop).toBeNull()
   })
 })

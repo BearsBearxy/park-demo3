@@ -29,7 +29,7 @@ function parts(file: string, nextSibling: string) {
 
 describe('分析屏首进骨架 · 块高照真版式钉死(C6-01)', () => {
   it('❗园区能耗:页头 44 + 五张卡 = 300/170/250/250/170', () => {
-    const p = parts('ParkEnergyView.vue', '<AnaEmpty v-else-if="failed"')
+    const p = parts('ParkEnergyView.vue', '<FPLoadError v-else-if="failed"')
     expect(p.spins, '版式已知还在转圈').toBe(0)
     // 2026-09-16 起页头 / 卡头 / 人话句照抄真版式,序列里只剩五张图块(与图同表降档)
     expect(p.shims).toEqual([300, 170, 250, 250, 170])
@@ -37,14 +37,14 @@ describe('分析屏首进骨架 · 块高照真版式钉死(C6-01)', () => {
   })
 
   it('❗出租与楼栋:TreeMap 300、明细表 296、环 300、散点 300、面积转换右栏 250(图例 / 合计 / 指标行照抄真版式)', () => {
-    const p = parts('ParkView.vue', '<AnaEmpty v-else-if="failed"')
+    const p = parts('ParkView.vue', '<FPLoadError v-else-if="failed"')
     expect(p.spins, '版式已知还在转圈').toBe(0)
     expect(p.shims).toEqual([300, 296, 300, 300, 250])
     expect(p.charts, '图高变了,骨架没跟').toEqual([300, 300, 300, 250])
   })
 
-  it('❗电费成本分析:三张 300(页头 / 模拟说明条 / 结论条照抄真版式)', () => {
-    const p = parts('ElecAnalysisView.vue', '<AnaEmpty v-else-if="failed"')
+  it('❗电费成本分析:三张 300(页头 / 结论条照抄真版式;模拟数据说明 2026-10-01 起在期间选择旁,不进正文)', () => {
+    const p = parts('ElecAnalysisView.vue', '<FPLoadError v-else-if="failed"')
     expect(p.spins, '版式已知还在转圈').toBe(0)
     expect(p.shims).toEqual([300, 300, 300])
     expect(p.charts, '图高变了,骨架没跟').toEqual([300, 300, 300])

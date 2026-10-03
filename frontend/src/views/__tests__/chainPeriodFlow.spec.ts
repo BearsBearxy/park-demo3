@@ -76,7 +76,7 @@ describe('出账链动线 · 楼栋损耗', () => {
   it('本会话第一次进 → 出账月矩阵，不是表格', async () => {
     const w = await open()
     expect(w.find('.cmg').exists(), '该看到选期矩阵').toBe(true)
-    expect(w.find('.ll-wrap').exists(), '不该直接落表格').toBe(false)
+    expect(w.find('.ll-page').exists(), '不该直接落表格').toBe(false)
     expect(allocApi.loss, '没选期就不该去拉某个月的数据').not.toHaveBeenCalled()
   })
 
@@ -86,7 +86,7 @@ describe('出账链动线 · 楼栋损耗', () => {
     await w.findAll('.bmm-card')[2].trigger('click')
     await flushPromises()
     expect(w.find('.cmg').exists(), '门该退场').toBe(false)
-    expect(w.find('.ll-wrap').exists()).toBe(true)
+    expect(w.find('.ll-page').exists()).toBe(true)
     expect(allocApi.loss).toHaveBeenCalledWith('2025-03')
   })
 
@@ -104,7 +104,7 @@ describe('出账链动线 · 楼栋损耗', () => {
 
     const again = await open()
     expect(again.find('.cmg').exists(), '选过期了就不该再拦').toBe(false)
-    expect(again.find('.ll-wrap').exists()).toBe(true)
+    expect(again.find('.ll-page').exists()).toBe(true)
     expect(allocApi.loss).toHaveBeenCalledWith('2025-03')
   })
 

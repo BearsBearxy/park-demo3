@@ -9,6 +9,7 @@ import PvView from '@/views/pv/PvView.vue'
 import { pvApi } from '@/api/pv'
 import { pvMeterApi } from '@/api/pvMeter'
 import { useAuthStore } from '@/stores/auth'
+import type { PvRecordDTO, PvYearDTO } from '@/types/pv'
 
 /**
  * 一屏两本账：功能门 → 左栏（2026-08-29「两本账」设计稿 §②）。
@@ -268,4 +269,43 @@ describe('光伏 · 期间深链(SIDEBAR-UX-REDESIGN §4.2 年表屏 p 只取年
     alive.value = true; await flushPromises()
     expect(pvApi.records, '只有 refresh 那一趟').toHaveBeenCalledTimes(1)
   })
+})
+
+// 改动数(EDIT-MODE §6.1):关页签 / 退出登录 / 关浏览器按 auth 登记的改动数问,0 处不问。
+// 附表族 5 个即时落库屏唯一的草稿是开着的新增抽屉 / 导入窗 —— 页头拿不到这个数就按 0 登记,抽屉里填了一半关页签不问就丢。
+describe('附表族即时落库屏 · 新增抽屉 / 导入窗算 1 处改动', () => {
+  const ROW: PvRecordDTO = {
+    id: 1, phase: 'p1', phaseName: '一期', acctMonth: '2025-03', occurMonth: '2025-02',
+    selfKwh: 1000, selfAmt: 600, gridKwh: 200, gridAmt: 80, gen: 1200, fee: 680, note: null, source: 'manual',
+  }
+  const YEAR: PvYearDTO = {
+    year: 2025, phases: [], rows: [ROW],
+    total: { gen: 1200, fee: 680, selfKwh: 1000, selfAmt: 600, gridKwh: 200, gridAmt: 80 },
+  }
+
+  // 破坏验证:PvView 的 <SchedHeader> 去掉 :dirty → 抽屉开着 dirtyTotal 仍是 0 → 红
+  it('❗光伏:编辑态 0 处;点「新增记账」开抽屉 → 1 处;关上回 0', async () => {
+    query.p = '2025'
+    vi.mocked(pvApi.records).mockResolvedValue(YEAR)
+    const w = await open()
+    const vm = w.vm as unknown as { edit: boolean; drawer: boolean }
+    vm.edit = true
+    await flushPromises()
+    const auth = useAuthStore()
+    expect(auth.dirtyTotal, '编辑态没开浮层不算改动').toBe(0)
+    await w.findAll('button').find(b => b.text().includes('新增记账'))!.trigger('click')
+    await flushPromises()
+    expect(auth.dirtyTotal).toBe(1)
+    vm.drawer = false
+    await flushPromises()
+    expect(auth.dirtyTotal).toBe(0)
+  })
+
+  // 另外 4 屏接法逐字相同(与上面「三屏一致性门禁」同一理由),只做结构门禁
+  it.each(['/pv/PvView.vue', '/charging/ChargingView.vue', '/elec/ElecView.vue', '/utilities/UtilitiesView.vue', '/salary/SalaryView.vue'])(
+    '%s 把抽屉 / 导入窗报给页头的 dirty', (rel) => {
+      const src = readFileSync(join(__dirname, '..', rel), 'utf8')
+      const tag = src.slice(src.indexOf('<SchedHeader'), src.indexOf('>', src.indexOf('<SchedHeader')))
+      expect(tag).toContain(':dirty="drawer || importing ? 1 : 0"')
+    })
 })

@@ -223,7 +223,9 @@ function onDoc(e: MouseEvent) {
 function onKey(e: KeyboardEvent) {
   // Esc 只关本下拉:不阻断的话宿主弹窗(FPDrawer 的 window keydown)会连宿主一起关,
   // 用户想收下拉、结果整个抽屉没了,录到一半的东西全丢(UI-OVERLAY-SPEC §2)
-  if (e.key === "Escape") {
+  // 只在下拉开着时拦:监听挂在 document 上、组件一挂载就常驻,不判 open 的话页面上(含 KeepAlive 里)
+  // 任何一个收着的下拉都会吞掉全站每一次 Esc,弹窗、抽屉按 Esc 一概关不掉
+  if (e.key === "Escape" && open.value) {
     e.stopPropagation();
     open.value = false;
   }

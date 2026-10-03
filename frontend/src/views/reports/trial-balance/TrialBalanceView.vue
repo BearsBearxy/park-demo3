@@ -32,6 +32,9 @@ import TbTable from './TbTable.vue'
 import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
 import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import { receipt } from '@/utils/receipt'
+import { ask } from '@/utils/ask'
 
 const STMT = 'tb'
 
@@ -52,7 +55,7 @@ const {
   periodSteps, stripLabel, stripQuery, deepNote,
   pickCompany, pickCell, backToMatrix, addEarlier, addLater, removeYear,
   enterEdit, onTaken, lockedBy, evictedBy, heldByOther, lockScope, requestCancel, saveConfirm, finishEdit, save, onDiscard,
-  onNewCompany, onEditCompany, onDeleteCompany, submitCompany, confirmDelete,
+  onNewCompany, onEditCompany, onDeleteCompany, submitCompany,
   importing, importResult, importSummary, onImport, requestImport,
 } = useFinStatementScreen({
   stmt: STMT,
@@ -253,7 +256,6 @@ function removeAccount(rowKey: string) {
 }
 
 // ── 批量删除(编辑态复选 → PAGE-BEHAVIOR-SPEC §2 居中确认 → 沿单删语义连子树移除,随保存落库) ──
-const bulkConfirm = ref(false)
 const bulkDoomed = computed(() => collectDoomed(selected.value))  // 含级联子树的实际移除行数(确认弹窗展示)
 function toggleSelect(rowKey: string) {
   const next = new Set(selected.value)
@@ -261,8 +263,18 @@ function toggleSelect(rowKey: string) {
   else next.add(rowKey)
   selected.value = next
 }
+// 确认(十件 ⑨):标题问句、正文给数、主按钮写动作;删除类默认焦点在「取消」
+async function askBulkRemove() {
+  const n = bulkDoomed.value.size
+  if (await ask({
+    title: `删除所选 ${selected.value.size} 个科目？`,
+    body: `连同其全部子科目(合计 ${n} 行)及这些行的本期金额一并移除;点「保存」后整期生效,「取消」编辑可放弃。`,
+    action: `删除 ${n} 行`,
+    danger: true,
+  })) bulkRemove()
+}
 function bulkRemove() {
-  bulkConfirm.value = false
+  if (!editable.value) return   // 确认期间编辑权被接管(只退编辑态、选集还在):不再动科目树
   removeKeys(collectDoomed(selected.value))
   selected.value = new Set()
 }
@@ -281,7 +293,7 @@ async function onExport() {
     await writeAoaWorkbook(`科目余额表-${companyName.value ?? '全部汇总'}-${year.value}年${month.value}月.xlsx`,
       [{ name: `${year.value}年${month.value}月`, aoa: [header, ...body, foot] }])
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '导出失败')
+    receipt.fail((e as { message?: string })?.message ?? '导出失败', { label: '重试', run: () => void onExport() })
   }
 }
 // 新增/重命名/删除公司写的是 management_company,归 master 不归 report(RBAC §5.6:
@@ -339,11 +351,7 @@ const sheet = useFormSheet()
       <div v-if="!companiesLoaded" class="page-loading"><span class="page-spin" /></div>
 
       <!-- 一家公司都没有:左栏「新增」是唯一出路,别给一屏空矩阵 -->
-      <div v-else-if="companyId === null" class="finw-empty">
-        <component :is="iconFor('table-2')" :size="28" />
-        <p class="t">还没有管理公司</p>
-        <p class="s">在左栏底部「新增」建一家,科目余额表 按公司 × 年月分期</p>
-      </div>
+      <FPEmpty v-else-if="companyId === null" sub="在左栏底部「新增」建一家,科目余额表 按公司 × 年月分期">还没有管理公司</FPEmpty>
 
       <!-- ⓪ 选期矩阵(年份门 + 月历合成一张,2026-08-24「选期矩阵 v3」推到报表层) -->
       <template v-else-if="month === null">
@@ -377,7 +385,7 @@ const sheet = useFormSheet()
                    :query="stripQuery" back-label="换期" @back="backToMatrix" />
       <div class="fin-head">
         <div class="fin-head-l">
-          <button class="fin-back" title="返回选期矩阵" @click="backToMatrix"><component :is="iconFor('arrow-left')" :size="16" /></button>
+          <button class="fin-back" v-tip="'返回选期矩阵'" @click="backToMatrix"><component :is="iconFor('arrow-left')" :size="16" /></button>
           <div>
             <h2 class="fin-title">科目余额表</h2>
             <p class="fin-sub">{{ isAll ? '全部汇总' : company?.name }} · <span class="mono">{{ year }} 年 {{ month }} 月</span></p>
@@ -440,7 +448,7 @@ const sheet = useFormSheet()
         <div class="tb-tools">
           <SearchField v-model="query" placeholder="搜索科目代码 / 名称" :width="240" shortcut="" />
           <span class="fin-tag">{{ rows.length }} / {{ accounts.length }} 项</span>
-          <Button v-if="edit && !isAll && selected.size" variant="danger" size="sm" :disabled="saving" @click="bulkConfirm = true">
+          <Button v-if="edit && !isAll && selected.size" variant="danger" size="sm" :disabled="saving" @click="askBulkRemove">
             <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
             删除所选 ({{ selected.size }})
           </Button>
@@ -545,7 +553,6 @@ const sheet = useFormSheet()
     :companies="finCompanies"
     @close="dlg = null"
     @submit-company="submitCompany"
-    @confirm-delete="confirmDelete"
   />
 
   <!-- 新增科目居中弹窗(遵 PAGE-BEHAVIOR-SPEC §2:Teleport + backdrop 居中;样式 1:1 FinDialogs .fin-mask/.fin-dlg),放最后 -->
@@ -569,32 +576,13 @@ const sheet = useFormSheet()
             <div class="lab">父级科目</div>
             <Select v-model="addParent" :options="parentOptions" size="sm" />
           </div>
-          <div class="fin-erm">{{ addErr }}</div>
+          <p class="fp-field-err"><template v-if="addErr">{{ addErr }}</template></p>
         </div>
         <div class="fin-dlg-f">
           <Button variant="gray" size="sm" @click="addOpen = false">取消</Button>
           <Button variant="filled" size="sm" @click="submitAdd">
             <template #leading><component :is="iconFor('check')" /></template>
             添加
-          </Button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
-
-  <!-- 批量删除确认(遵 PAGE-BEHAVIOR-SPEC §2 居中弹窗,同上 .fin-mask/.fin-dlg),放最后 -->
-  <Teleport to="body">
-    <div v-if="bulkConfirm" class="fin-mask" @mousedown="bulkConfirm = false">
-      <div class="fin-dlg" role="dialog" aria-modal="true" @mousedown.stop>
-        <div class="fin-dlg-h">
-          <h3>删除所选科目</h3>
-          <p>将删除所选 {{ selected.size }} 个科目,并连同其全部子科目(合计 {{ bulkDoomed.size }} 行)及这些行的本期金额一并移除;点「保存」后整期生效,「取消」编辑可放弃。</p>
-        </div>
-        <div class="fin-dlg-f">
-          <Button variant="gray" size="sm" @click="bulkConfirm = false">取消</Button>
-          <Button variant="danger" size="sm" @click="bulkRemove">
-            <template #leading><component :is="iconFor('trash-2')" /></template>
-            删除 {{ bulkDoomed.size }} 行
           </Button>
         </div>
       </div>
@@ -660,7 +648,6 @@ const sheet = useFormSheet()
 .fin-in { width:100%; box-sizing:border-box; height:36px; padding:0 12px; font-size:var(--fs-body); color:var(--text-primary); border:1px solid var(--border-control); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
 .fin-in:focus { border-color:var(--hue-blue); }
 .fin-in.err { border-color:var(--hue-red); }
-.fin-erm { font-size:11.5px; color:var(--hue-red); margin-top:-6px; min-height:14px; }
 .fin-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:16px 22px 20px; }
 
 /* ── 工作台外壳(2026-08-29,设计稿 §3.2a):左轨常驻 + 主区。与月度台账 .lgw 家族同形 ── */
@@ -696,13 +683,6 @@ const sheet = useFormSheet()
 }
 .finw-sub { margin: 4px 0 0; font-size: var(--fs-label); color: var(--text-muted); }
 .finw-matrix { flex: 0 0 auto; }
-
-.finw-empty {
-  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
-  color: var(--text-disabled);
-}
-.finw-empty .t { margin: 8px 0 0; font-size: 15px; font-weight: var(--fw-semibold); color: var(--text-muted); }
-.finw-empty .s { margin: 0; font-size: 12px; color: var(--text-disabled); }
 
 /* 顶部 chips:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前(§1) */
 .finw-chips { display:none; }

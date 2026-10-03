@@ -6,7 +6,7 @@ import { computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import SchedNoteCell from '@/components/sched/SchedNoteCell.vue'
 import { rowLocked, ROW_LOCK_TIP } from '@/components/sched/reviewLock'
-import Button from '@/components/ds/Button.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
 import type { OfficeRecordDTO, OfficeTotal } from '@/types/utilities'
 
 const props = defineProps<{
@@ -50,16 +50,10 @@ const num = (n: number, d = 2) =>
 
 <template>
   <div class="ut-tablewrap">
-    <!-- 空年引导态(jsx 364-375) -->
-    <div v-if="props.rows.length === 0" class="ut-empty">
-      <div class="ut-empty-ic"><component :is="iconFor(icon)" :size="24" /></div>
-      <div class="ut-empty-t">{{ year }} 年暂无{{ name }}记录</div>
-      <div class="ut-empty-s">{{ note }} 进入编辑模式可手动新增;记录自动归入对应年份。</div>
-      <Button v-if="edit" variant="filled" @click="emit('add')">
-        <template #leading><component :is="iconFor('plus')" :size="16" /></template>
-        新增记账
-      </Button>
-    </div>
+    <!-- 空年:全站同一种空状态(十件 ⑦),占住表格区居中 -->
+    <FPEmpty v-if="props.rows.length === 0" class="ut-empty"
+             :sub="`${note} 进入编辑模式可手动新增;记录自动归入对应年份。`"
+             :action="edit ? '新增记账' : undefined" @action="emit('add')">{{ year }} 年暂无{{ name }}记录</FPEmpty>
 
     <table v-else class="ut-table">
       <thead>
@@ -73,7 +67,7 @@ const num = (n: number, d = 2) =>
                   class="ut-cb"
                   :checked="allSelected"
                   :disabled="props.rows.length === 0"
-                  title="全选"
+                  v-tip="'全选'"
                   @change="emit('selectAll', ($event.target as HTMLInputElement).checked)"
                 />
                 <span class="ut-th-name">记账月</span>
@@ -86,6 +80,7 @@ const num = (n: number, d = 2) =>
           <th rowspan="2" class="ut-cap"><span class="ut-th"><span class="ut-th-name">水电费合计</span><span class="ut-th-unit">元</span></span></th>
           <th class="l ut-h-note" rowspan="2"><span class="ut-th l"><span class="ut-th-name">备注</span></span></th>
           <th v-if="edit" class="ut-h-act" rowspan="2"></th>
+          <th class="fp-fill" rowspan="2" aria-hidden="true"></th>
         </tr>
         <tr class="s">
           <th class="ut-cap"><span class="ut-th"><span class="ut-th-name">用电量</span><span class="ut-th-unit">千瓦</span></span></th>
@@ -105,7 +100,7 @@ const num = (n: number, d = 2) =>
                 type="checkbox"
                 class="ut-cb"
                 :checked="selectedIds?.has(r.id) ?? false"
-                title="选中以批量删除"
+                v-tip="'选中以批量删除'"
                 :disabled="rowLocked(lockedMonths, r.acctMonth)"
                     @change="emit('toggleSelect', r)"
               />
@@ -126,12 +121,13 @@ const num = (n: number, d = 2) =>
           </td>
           <td v-if="edit">
             <span class="ut-acts">
-              <span v-if="rowLocked(lockedMonths, r.acctMonth)" class="ut-actlock" :title="ROW_LOCK_TIP"><component :is="iconFor('lock')" :size="14" /></span>
-                  <button v-else class="ut-actbtn del" title="删除" @click="emit('delete', r)">
+              <span v-if="rowLocked(lockedMonths, r.acctMonth)" class="ut-actlock" v-tip="ROW_LOCK_TIP"><component :is="iconFor('lock')" :size="14" /></span>
+                  <button v-else class="ut-actbtn del" v-tip="'删除'" @click="emit('delete', r)">
                 <component :is="iconFor('trash-2')" :size="15" />
               </button>
             </span>
           </td>
+          <td class="fp-fill" aria-hidden="true"></td>
         </tr>
         <tr class="ut-filler" aria-hidden="true"><td :colspan="99"></td></tr>
       </tbody>
@@ -147,6 +143,7 @@ const num = (n: number, d = 2) =>
           <th class="ut-c-num ut-cap-cell">{{ num(props.total.total) }}</th>
           <th class="l"></th>
           <th v-if="edit"></th>
+          <th class="fp-fill" aria-hidden="true"></th>
         </tr>
       </tfoot>
     </table>
@@ -156,7 +153,10 @@ const num = (n: number, d = 2) =>
 <style scoped>
 /* 1:1 from screen-utilities.jsx UtStyles(.ut-table 段,44-93) */
 .ut-tablewrap { flex:1 1 auto; min-height:0; overflow:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--surface-white); }
-.ut-table { border-collapse:separate; border-spacing:0; width:100%; min-width:900px; height:100%; font-family:var(--font-sans); font-size:13px; color:var(--text-primary); }
+/* 不给表格 px 保底宽(2026-10-02):列都 nowrap、按内容撑,窄了照样横滚;保底宽比内容宽时多出来的全落进行末空列,横滚看到的是空白。
+   编辑态备注框按自身默认宽撑列:width:100% 的输入框不撑列,有了行末空列(.fp-fill)备注列会缩回表头的保底 150 */
+.ut-table { border-collapse:separate; border-spacing:0; width:100%; height:100%; font-family:var(--font-sans); font-size:13px; color:var(--text-primary); }
+.ut-table :deep(.lc-note-in) { width:auto; min-width:100%; }
 .ut-table tbody tr.ut-filler td { height:0; padding:0; line-height:0; font-size:0; border:none; background:var(--surface-white); }
 .ut-filler { height:100%; }
 .ut-table th, .ut-table td { padding:0 14px; box-sizing:border-box; white-space:nowrap; text-align:right; }
@@ -204,11 +204,8 @@ const num = (n: number, d = 2) =>
 .ut-table tfoot .ut-c-num { color:var(--brand-deep); font-weight:var(--fw-semibold); }
 .ut-foot-lbl { text-align:left; font-size:13px; color:var(--text-primary); }
 
-/* 空年引导态 */
-.ut-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; height:100%; min-height:240px; padding:40px; text-align:center; }
-.ut-empty-ic { width:52px; height:52px; border-radius:16px; background:var(--surface-card); display:grid; place-items:center; color:var(--text-muted); }
-.ut-empty-t { font-size:15px; font-weight:var(--fw-semibold); color:var(--text-primary); }
-.ut-empty-s { font-size:13px; color:var(--text-muted); max-width:400px; line-height:1.5; }
+/* 空年:表格区是块级滚动盒,FPEmpty 的 flex 撑不开它,这里给满高才能上下居中 */
+.ut-empty { height:100%; }
 
 /* ── 响应式(RESPONSIVE-LAYOUT-SPEC §5.4 定宽表):列/min-width 一根不动,
    窄了在 .ut-tablewrap(overflow:auto,现成)内横滚;查看态迁移只动触屏可达性 ── */

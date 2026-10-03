@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { shellOf, staleShellNames } from '@/composables/useTabShells'
 import { useRoute } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
+import { usePresenceStore } from '@/stores/presence'
+import { useUiStore } from '@/stores/ui'
 import { sessionState } from '@/api'
+import { receipt } from '@/utils/receipt'
 import AppShell from './components/shell/AppShell.vue'
+import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
+import Button from '@/components/ds/Button.vue'
+import { iconFor } from '@/components/ds/icon'
 
 const route = useRoute()
 const tabs = useTabsStore()
@@ -19,13 +25,58 @@ const routeValue = computed(() => route.path.slice(1))
 const staleShells = computed(() => staleShellNames(tabs.epoch))
 // 模板里拿不到全局 location,显式暴露
 const reload = () => window.location.reload()
-// 哪一种漂移:别人登了,还是别处登出了。两句话、两个按钮。
+// 哪一种漂移:别人登了,还是别处登出了。两句话,按钮都是「刷新」。
 const driftKind = computed(() => sessionState())
+// 弹窗一出来焦点就落在「刷新」上:它是这一页唯一还能做的事
+const driftEl = ref<HTMLElement | null>(null)
+watch(() => auth.drifted, async (d) => {
+  if (!d) return
+  await nextTick()
+  driftEl.value?.querySelector('button')?.focus()
+})
 
 // ── 提权横幅(ELEVATION-SPEC) ──
 // 刷新页面后授权在服务端还活着(30 分钟内存态),横幅要跟着回来 ——
 // 否则用户以为授权没了,又去叫一次主管。
-onMounted(() => { void auth.refreshElevation() })
+// refreshMe:管理员改了我的角色,铃铛说「刷新后生效」,刷新了就得真的生效(06-E)
+onMounted(() => { void auth.refreshElevation(); void auth.refreshMe() })
+
+// ── 当场出现、不进铃铛(PAGE-BEHAVIOR-SPEC §5.2,画布 06-E) ──
+const presence = usePresenceStore()
+const ui = useUiStore()
+/**
+ * 临时授权到期 / 被提前收回时底部那一句。靠这份授权编辑的屏会因权限不齐当场退出编辑(useEditMode / useEditLock 的守卫)。
+ * 「已退出编辑」只在**确实有屏退出了**时说:人在别的屏用自己的权限编辑,授权到期那张表什么都没退,
+ * 照 auth.editing 判就成了假话(EDIT-MODE §6.2「编辑中」指靠这份授权编辑的那一屏)。
+ * 所以比到期前后登记的编辑器个数:前一个在守卫跑之前数,后一个在守卫跑完之后数。
+ */
+const expiredText = (editorsBefore: number) =>
+  (auth.editorCount < editorsBefore ? '授权已到期，已退出编辑' : '授权已到期')
+// 按时到期:授权掉出有效期。自己点「完成」「结束授权」、退出登录清掉的,到期时刻还没到,不说。
+// 两拍:sync 那个在到期的同一刻(各屏 pre 级守卫还没跑)记下编辑器个数;post 那个等这一轮守卫都跑完再比、再说。
+// 只在真到期时记 —— 守卫退出编辑后 endElevation() 会再清一次 grants,那一下不能把记下的数冲掉。
+let expiredWith: number | null = null
+watch(() => auth.grants, (now, before) => {
+  if (now.length < before.length && before.some((g) => g.expiresAt <= Date.now())) expiredWith = auth.editorCount
+}, { flush: 'sync' })
+watch(() => auth.grants, () => {
+  if (expiredWith == null) return
+  receipt.warn(expiredText(expiredWith))
+  expiredWith = null
+}, { flush: 'post' })
+// 被系统提前收回:心跳从「还在」跳成「没了」,本页却还握着授权 → 清掉、说一句,各屏随之退出编辑。
+// 只认 true → false 这一跳:刚拿到授权时,在途的那一拍是授权之前发的,会带回 false,那不是收回。
+// 这个回调本身跑在 pre 队列里:nextTick 等的是这一轮 flush 跑完,清授权触发的各屏守卫也在这一轮里。
+watch(() => presence.elevated, (now, before) => {
+  if (now !== false || before !== true || !auth.grants.length) return
+  const n = auth.editorCount
+  void auth.endElevation(true)
+  void nextTick(() => receipt.warn(expiredText(n)))
+})
+// 远程授权批下来时,请求者的弹窗可能已经关了(06-E「弹窗关着时批下来,本页不知道」):
+// 没人认领这次结果,横幅和写入口就都不知道。这里补拉一次;弹窗开着时它自己也拉,多拉一次无妨。
+watch(() => presence.outcome, (o) => { if (o?.approved) void auth.refreshElevation() })
+
 const elevMin = computed(() => Math.floor(auth.elevationLeftMs / 60000))
 const elevSec = computed(() => Math.floor((auth.elevationLeftMs % 60000) / 1000))
 const elevBy = computed(() => [...new Set(auth.grants.map((g) => g.authorizerName))].join('、'))
@@ -39,19 +90,27 @@ const elevWhat = computed(() => auth.grants.map((g) => g.permLabel).join('、'))
 
        2026-09-12:文案按**实测到的那一种**分开写。改前只有一句「已在别的标签页登录为
        另一个账号」,而触发它的三种情况里有两种不是那回事 —— 别的标签页**登出**也会触发,
-       用户看到的是一句假话。屏上只陈述实测,不替用户断定原因。 -->
-  <div v-if="auth.drifted" class="app-drift" role="alert">
-    <template v-if="driftKind === 'signed-out'">
-      <span class="app-drift-t">此浏览器已在别的标签页退出登录</span>
-      <span class="app-drift-d">本页还停在登录后的界面，操作已被拦下。</span>
-      <button type="button" class="app-drift-b" @click="reload">去登录</button>
-    </template>
-    <template v-else>
-      <span class="app-drift-t">此浏览器已在别的标签页登录为另一个账号</span>
-      <span class="app-drift-d">本页显示的还是上一个身份，操作已被拦下 —— 否则做的事会记在对方头上。</span>
-      <button type="button" class="app-drift-b" @click="reload">切换到当前账号</button>
-    </template>
+       用户看到的是一句假话。屏上只陈述实测,不替用户断定原因。
+
+       2026-10-01 用户拍板(画布 06-E):顶部红色满宽横幅换成居中弹窗,只有「刷新」。
+       点外面、Esc 都不关(UI-OVERLAY-SPEC §3.5 例外)—— 这时本页请求都发不出去,关掉只剩一页死界面。
+       所以遮罩上**不挂** mousedown、也不听 Esc。 -->
+  <div v-if="auth.drifted" class="app-dlg-scrim">
+    <div ref="driftEl" class="app-dlg" role="alertdialog" aria-modal="true" aria-labelledby="app-dlg-t" aria-describedby="app-dlg-d">
+      <div class="app-dlg-h">
+        <span class="app-dlg-ic"><component :is="iconFor('alert-triangle')" :size="16" /></span>
+        <h3 id="app-dlg-t">{{ driftKind === 'signed-out' ? '此浏览器已在别的标签页退出登录' : '此浏览器已在别的标签页登录为另一个账号' }}</h3>
+      </div>
+      <p v-if="driftKind === 'signed-out'" id="app-dlg-d" class="app-dlg-b">本页还停在登录后的界面，操作已被拦下。刷新后回到登录页。</p>
+      <p v-else id="app-dlg-d" class="app-dlg-b">本页显示的还是上一个身份，操作已被拦下 —— 否则做的事会记在对方头上。刷新后换成当前账号。</p>
+      <div class="app-dlg-f">
+        <Button variant="filled" @click="reload">刷新</Button>
+      </div>
+    </div>
   </div>
+
+  <!-- 正在编辑的表被别人交审 / 审核通过(06-E 当场出现组):各屏退出编辑前报到 ui.editStop,全站一个弹窗说谁做的 -->
+  <FPEvictedDialog :eviction="null" :review="ui.editStop" @close="ui.editStop = null" />
 
   <!-- 提权横幅：授权期间必须一直看得见 —— 谁授权的、还剩多久、怎么提前结束。
        没有它,用户不知道自己正握着一份别人担责的权限。 -->
@@ -83,24 +142,28 @@ const elevWhat = computed(() => auth.grants.map((g) => g.permLabel).join('、'))
 </template>
 
 <style>
-/* 身份漂移横幅：固定在顶部盖住一切,它比任何页面内容都要紧 */
-.app-drift {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  padding: 10px 18px; box-sizing: border-box;
-  /* 浅色 = master 上实际画出来的 #FAEDE7(那时 --warn-bg 还没定义,吃的是逗号后面这个);红边横幅,暗色走出错底 */
-  background: #FAEDE7; border-bottom: 1px solid var(--hue-red);
-  font-family: var(--font-sans); font-size: var(--fs-label);
+/* 身份漂移弹窗:形态同 FPEvictedDialog(居中卡片 + 遮罩)。z 照原横幅 9999,盖住下面的授权条与一切弹窗 */
+.app-dlg-scrim {
+  position: fixed; inset: 0; z-index: 9999;
+  display: grid; place-items: center;
+  background: var(--scrim);
+  opacity: 0; animation: fp-fade-in var(--dur-base) var(--ease-out) forwards;
 }
-:root[data-theme="dark"] .app-drift { background: var(--danger-bg); }
-.app-drift-t { font-weight: var(--fw-semibold); color: var(--hue-red); }
-.app-drift-d { color: var(--text-secondary); }
-.app-drift-b {
-  margin-left: auto; border: 1px solid var(--hue-red); background: var(--surface-white);
-  color: var(--hue-red); border-radius: var(--radius-full); padding: 4px 14px;
-  font-family: var(--font-sans); font-size: var(--fs-label); cursor: pointer;
+.app-dlg {
+  width: min(432px, 92vw); box-sizing: border-box;
+  background: var(--surface-raised); border-radius: var(--radius-xl); box-shadow: var(--shadow-dialog);
+  font-family: var(--font-sans);
+  animation: fp-rise-in var(--dur-base) var(--ease-out) both;
 }
-.app-drift-b:hover { background: var(--hue-red); color: var(--control-solid-text); }
+.app-dlg-h { display: flex; align-items: center; gap: 9px; padding: 20px 22px 0; }
+.app-dlg-h h3 { margin: 0; font-size: var(--fs-h3); font-weight: var(--fw-semibold); color: var(--text-primary); }
+.app-dlg-ic {
+  width: 30px; height: 30px; flex: 0 0 auto; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--danger-soft); color: var(--hue-red);
+}
+.app-dlg-b { margin: 0; padding: 14px 22px 4px; font-size: 13.5px; line-height: 1.65; color: var(--text-primary); }
+.app-dlg-f { display: flex; justify-content: flex-end; padding: 16px 22px 20px; }
 
 /* 提权横幅：和漂移横幅同一层，但语气不同 —— 那个是出事了，这个是「你现在有一份临时权限」。
    用中性的蓝而不是警示色：它不是错误，只是一个必须一直看得见的状态。 */

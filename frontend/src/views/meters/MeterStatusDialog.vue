@@ -12,6 +12,8 @@ import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import DatePicker from '@/components/ds/DatePicker.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
+import FPNote from '@/components/fp/FPNote.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
 
 const props = defineProps<{
   edit: boolean
@@ -154,14 +156,16 @@ const fmtUsage = (n: number) => n.toLocaleString('en-US', { maximumFractionDigit
 
     <p v-if="moving && fromYm === old" class="sd-hint">月份没变。</p>
     <p v-else-if="!inBounds" class="sd-lk">这个月越过了相邻的那一行,不能这样挪。</p>
-    <p v-else-if="fromYm && !ready && !impErr" class="sd-hint">正在数这次会改到的月份…</p>
+    <!-- 影响范围没算出来 = 这块内容加载失败(十件 ⑦):换掉影响那一块,带重试 -->
+    <FPLoadError v-else-if="fromYm && !ready && impErr" @retry="loadImpact">{{ impErr }}</FPLoadError>
+    <p v-else-if="fromYm && !ready" class="sd-hint">正在数这次会改到的月份…</p>
     <template v-else-if="effect">
       <p class="sd-line">{{ effect.line }}</p>
       <p v-if="effect.locked.length" class="sd-lk">这几个月不能改:{{ lockedText(effect.locked) }}</p>
-      <div v-if="effect.readings.length" class="sd-warn">
+      <FPNote v-if="effect.readings.length" tone="warn">
         这 {{ effect.readings.length }} 个月的读数将不再计费:
         <span v-for="r in effect.readings" :key="r.ym" class="mono">{{ r.ym }}({{ fmtUsage(r.usage) }})</span>
-      </div>
+      </FPNote>
       <template v-if="!moving && status === 'removed' && imp">
         <p v-if="imp.pools.length" class="sd-hint">
           这块表在公摊池 {{ imp.pools.map(p => p.name).join('、') }} 里:旧表不用移出,自 {{ fromYm }} 起自动不计;换上的新表要自己加进池。
@@ -170,8 +174,8 @@ const fmtUsage = (n: number) => n.toLocaleString('en-US', { maximumFractionDigit
       </template>
     </template>
 
-    <!-- 影响没算出来 / 保存失败:一行常驻,出错不把下面的按钮顶走 -->
-    <p class="sd-err"><template v-if="impErr || err">{{ [impErr, err].filter(Boolean).join(' ') }}</template></p>
+    <!-- 保存失败:一行常驻,出错不把下面的按钮顶走 -->
+    <p class="fp-field-err"><template v-if="err">{{ err }}</template></p>
 
     <template #footer>
       <Button variant="gray" size="sm" :disabled="busy" @click="close">取消</Button>
@@ -191,7 +195,5 @@ const fmtUsage = (n: number) => n.toLocaleString('en-US', { maximumFractionDigit
 .sd-line { margin: 0; font-size: var(--fs-body); color: var(--text-primary); }
 .sd-hint { margin: 0; font-size: var(--fs-label); color: var(--text-secondary); overflow-wrap: anywhere; }
 .sd-lk { margin: 0; font-size: var(--fs-label); color: var(--caution-text); overflow-wrap: anywhere; }
-.sd-warn { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 8px 12px; border-radius: var(--radius-md); background: var(--caution-soft); font-size: var(--fs-label); color: var(--caution-text); }
-.sd-warn .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-.sd-err { margin: 0; min-height: 18px; line-height: 18px; font-size: var(--fs-label); color: var(--hue-red); overflow-wrap: anywhere; }
+.mono { margin-left: 10px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 </style>

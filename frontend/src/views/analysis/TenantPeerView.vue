@@ -7,7 +7,7 @@
 // 两张卡。T11:「这张图为什么可信/和预测图的区别」对照卡。四张卡都在「单位租金」页签下——
 // 电费/缴费行为两个页签在设计稿里没有对应的卡片规格(不是「本任务先跳过」,是稿子本身没定义
 // 画什么;T10 的「电费会翻车」卡是拿电费当反例摆在单位租金页签里说明,不是补上电费页签的
-// 内容),所以这两个页签禁用 + hover 写「暂未开放」。
+// 内容),所以这两个页签禁用 + 悬停说明写「暂未开放」。
 //
 // 数据变换纯函数见 ./TenantPeer.logic.ts(单测,含 break-verify 记录见 t8-report.md / t10-report.md)。
 import { computed, onMounted, ref, watch } from 'vue'
@@ -16,6 +16,7 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaUnitRentHist from '@/components/ana/AnaUnitRentHist.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import { fetchBuildings, fetchContractDetail, fetchContracts, fetchS10TenantMap, fetchTenants } from '@/analysis/anaData'
 import type { ContractDTO, PropertyType } from '@/types/contract'
@@ -37,19 +38,23 @@ const phaseOf = ref<Map<number, number>>(new Map())
 const tenants = ref<TenantDTO[]>([])
 const s10Map = ref<Map<string, AnalysisS10Row[]>>(new Map())
 
+let seq = 0   // 切回重读 / 点重试可能叠着发:只认最后一趟
 async function reload() {
-  // 切回重读会重跑本函数:错误不清,重试成功后屏上仍挂着上次的失败文案(P3 T2 评审坐实)
-  err.value = ''
+  const my = ++seq
   try {
     const [cs, bs, ts, s10] = await Promise.all([fetchContracts(), fetchBuildings(), fetchTenants(), fetchS10TenantMap()])
+    if (my !== seq) return
     contracts.value = cs
     phaseOf.value = new Map(bs.map((b) => [b.id, b.phase]))
     tenants.value = ts
     s10Map.value = s10
+    // 切回重读会重跑本函数:错误不清,重试成功后屏上仍挂着上次的失败文案(P3 T2 评审坐实)。
+    // 只在成功分支清:重试在途时失败卡留在原地,不先闪出「没有在租合同」那张空态
+    err.value = ''
   } catch (e) {
-    err.value = e instanceof Error ? e.message : String(e)
+    if (my === seq) err.value = e instanceof Error ? e.message : String(e)
   } finally {
-    loaded.value = true
+    if (my === seq) loaded.value = true
   }
 }
 onMounted(reload)
@@ -202,8 +207,9 @@ const TABS: { k: TabKey; l: string; on: boolean }[] = [
     </div>
     <!-- skel:end -->
 
+    <!-- 加载失败(画布 06-D 右格):换掉内容区,带重试;重试走同一个 reload(首进 / 切回共用) -->
     <div v-else-if="err" class="ak-page">
-      <AnaEmpty label="分析数据加载失败" :hint="err" />
+      <FPLoadError sub="屏上不显示上一次读到的数字" @retry="reload">合同、楼栋和租户数据没读到</FPLoadError>
     </div>
 
     <div v-else-if="!tenantOptions.length" class="ak-page">
@@ -220,8 +226,8 @@ const TABS: { k: TabKey; l: string; on: boolean }[] = [
       </div>
 
       <div class="anx-seg tp-tabs" role="group" aria-label="对标维度">
-        <button v-for="t in TABS" :key="t.k" :class="{ on: tab === t.k }" :disabled="!t.on"
-          :title="t.on ? undefined : '暂未开放'" @click="tab = t.k">{{ t.l }}</button>
+        <button v-for="t in TABS" :key="t.k" v-tip="t.on ? undefined : '暂未开放'" :class="{ on: tab === t.k }"
+          :disabled="!t.on" @click="tab = t.k">{{ t.l }}</button>
       </div>
 
       <template v-if="tab === 'rent'">

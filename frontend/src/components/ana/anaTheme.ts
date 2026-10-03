@@ -1,6 +1,6 @@
 // src/components/ana/anaTheme.ts — ECharts 统一主题:浅色 fpAnaTheme / 暗色 fpAnaThemeDark(spec §一,DARK-MODE-SPEC §6)。
 // 色板:蓝族主色 + teal/coral/amber 辅助 + 语义红;细网格(var(--divider) 观感)、
-// tooltip 深底白字沿 .cz-tip 观感(背景 = --tip-bg、圆角 9、字号 11)。
+// tooltip 与 ShellTip 同款(背景 = --tip-bg、字 12 / 行高 18、圆角 6、内边距 6×10),和 .cz-tip、自绘图气泡一个样子。
 // 主题为纯 JSON,无法引用 CSS 变量 → 取 tokens.css 字面值,浅色、暗色各一套(ANA_LIGHT / ANA_DARK,同结构)。
 // 暗色值出处:运维文档/设计稿/未实现/暗色模式-2026-09-19 的 Analysis 板第 1 节(生成脚本逐格断言 ≥3 / ≥4.5)。
 // 视图里要在 option 里写颜色的,一律从 anaPalette() 取(按当前外观;读它的 computed 会在切外观时重算)。
@@ -89,7 +89,7 @@ export const ANA_DARK: AnaPalette = {
 /**
  * 自绘 SVG 图(租金带 AnaRentBandChart / 续签 AnaRenewalChart / 预测 AnaForecastChart / 单价分布 AnaUnitRentHist)的颜色。
  * 以 CSS 变量挂在图的根上(:style="anaSvgVars()"),样式里引这些 --sv-… 变量;模板里调,切外观时重算、不用重挂载。
- * 浅色 = 各图原来写死的 Figma 取色(逐位不变);暗色:网格 / 轴线 / 坐标字 / 提示框同 ANA_DARK,
+ * 浅色 = 各图原来写死的 Figma 取色(逐位不变);暗色:网格 / 轴线 / 坐标字同 ANA_DARK(悬停气泡直接引令牌 --tip-bg,同 ShellTip),
  * 数据线与字换同色相的浅色(线对卡片 ≥3、字 ≥4.5),带子换压暗的蓝。
  */
 const SVG_LIGHT = {
@@ -114,8 +114,6 @@ const SVG_LIGHT = {
   '--sv-deep': '#185FA5',
   '--sv-gap': '#D97757',
   '--sv-cap': '#4F79A8',
-  '--sv-tip-bg': '#1E293B',
-  '--sv-tip-text': '#E2E8F0',
   '--sv-hair': '#C7D2FE',
   '--sv-fc-band': '#C7D2FE',
   '--sv-fc-mid': '#A5B4FC',
@@ -144,8 +142,6 @@ const SVG_DARK: typeof SVG_LIGHT = {
   '--sv-deep': 'rgb(143,178,221)',
   '--sv-gap': '#F0997B',
   '--sv-cap': 'rgb(143,178,221)',
-  '--sv-tip-bg': 'rgb(62,77,95)',
-  '--sv-tip-text': '#E2E8F0',
   '--sv-hair': 'rgba(165,180,252,.5)',
   '--sv-fc-band': '#4F46E5',
   '--sv-fc-mid': 'rgba(165,180,252,.7)',
@@ -199,9 +195,9 @@ function makeTheme(p: AnaPalette) {
     transitionDuration: 0,
     backgroundColor: p.tipBg,
     borderWidth: 0,
-    borderRadius: 9,
-    padding: [8, 11],
-    textStyle: { color: '#fff', fontSize: 11 },   // 两套都是深底白字
+    borderRadius: 6,
+    padding: [6, 10],
+    textStyle: { color: '#fff', fontSize: 12, lineHeight: 18 },   // 两套都是深底白字
     extraCssText: p.tipShadow,
   },
   }

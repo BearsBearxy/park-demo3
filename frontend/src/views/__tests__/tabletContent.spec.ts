@@ -138,20 +138,21 @@ describe('FPSortableTable td padding(稿 §① delta 行5)', () => {
   it('❗M 档 td/th 收到 10px,表头与表体同档(不同档会错列)', () => {
     const w = mountTable(true)
     expect(w.find('table').exists(), 'M 档是平板=小桌面,必须仍然是表格').toBe(true)
-    for (const td of w.findAll('tbody td')) {
+    // 行末空列 .fp-fill 是 padding 0 的余宽格,不在本条范围
+    for (const td of w.findAll('tbody td:not(.fp-fill)')) {
       expect((td.element as HTMLElement).style.padding).toBe('0px 10px')
     }
-    for (const th of w.findAll('thead th')) {
+    for (const th of w.findAll('thead th:not(.fp-fill)')) {
       expect((th.element as HTMLElement).style.padding).toBe('0px 10px 10px')
     }
   })
 
   it('❗XL 档仍是 16px —— 档位判定不是恒真表达式', () => {
     const w = mountTable(false)
-    for (const td of w.findAll('tbody td')) {
+    for (const td of w.findAll('tbody td:not(.fp-fill)')) {
       expect((td.element as HTMLElement).style.padding).toBe('0px 16px')
     }
-    for (const th of w.findAll('thead th')) {
+    for (const th of w.findAll('thead th:not(.fp-fill)')) {
       expect((th.element as HTMLElement).style.padding).toBe('0px 16px 10px')
     }
   })
@@ -159,9 +160,10 @@ describe('FPSortableTable td padding(稿 §① delta 行5)', () => {
   it('❗骨架行与数据行同 padding(两档各自对齐,精确占位口径)', () => {
     for (const [m, px] of [[true, '0px 10px'], [false, '0px 16px']] as const) {
       const w = mountTable(m)
-      const tds = w.findAll('tbody td')
-      // skeletonRows:1 + ROWS:1 → 骨架 2 格 + 数据 2 格
+      const tds = w.findAll('tbody td:not(.fp-fill)')
+      // skeletonRows:1 + ROWS:1 → 骨架 2 格 + 数据 2 格(另各带 1 个行末空列)
       expect(tds).toHaveLength(4)
+      expect(w.findAll('tbody td.fp-fill')).toHaveLength(2)
       expect(tds.every(td => (td.element as HTMLElement).style.padding === px)).toBe(true)
       vi.unstubAllGlobals(); _resetViewportForTest()
     }
@@ -170,7 +172,7 @@ describe('FPSortableTable td padding(稿 §① delta 行5)', () => {
 
 // ── §① delta 行6/行7 + 黄框:表头写法、条宽、列数 ────────────────────
 describe('楼栋管理 M 档列宽压缩(稿 §① delta 行6 / 行7 / 黄框)', () => {
-  const headers = (w: ReturnType<typeof mount>) => w.findAll('thead th').map(th => th.text().replace(/[↑↓↕]/g, '').trim())
+  const headers = (w: ReturnType<typeof mount>) => w.findAll('thead th:not(.fp-fill)').map(th => th.text().replace(/[↑↓↕]/g, '').trim())
   // 出租率格:render 里第一段 span 带 min-width(条),第二段是 40px 的数
   const barStyle = (w: ReturnType<typeof mount>) => {
     const td = w.findAll('tbody tr:last-child td')[7]
@@ -208,8 +210,9 @@ describe('楼栋管理 M 档列宽压缩(稿 §① delta 行6 / 行7 / 黄框)',
     // 换写法的只有「可租」那一列,其余九个表头逐字相同
     const diff = xHeaders.filter((h, i) => h !== mHeaders[i])
     expect(diff).toEqual(['可租面积 ㎡'])
-    // 列数 = 每行格子数:M 档行里的 td 也是 10 个(没有靠隐藏列省宽)
-    expect(wm.findAll('tbody tr:last-child td')).toHaveLength(10)
+    // 列数 = 每行格子数:M 档行里的 td 也是 10 个(没有靠隐藏列省宽),外加行末 1 个空列
+    expect(wm.findAll('tbody tr:last-child td:not(.fp-fill)')).toHaveLength(10)
+    expect(wm.findAll('tbody tr:last-child td')).toHaveLength(11)
   })
 })
 

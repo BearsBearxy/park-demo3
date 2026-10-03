@@ -7,6 +7,7 @@
 import { computed, ref, watch } from 'vue'
 import type { ParamPutReq, ParamRowDTO } from '@/api/params'
 import { paramDef, type ParamMode } from '@/utils/paramRegistry'
+import { ask } from '@/utils/ask'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import Segmented from '@/components/ds/Segmented.vue'
@@ -89,12 +90,19 @@ const delLabel = computed(() => {
   if (props.row.rowId != null) return `删除此版本（${props.row.rangeText}）`
   return ''
 })
-function remove() {
+async function remove() {
   const r = props.row
   if (!r) return
   const monthRow = r.hasMonthRow
   const desc = monthRow ? `${props.ym} 的专属值` : `版本「${r.rangeText}」`
-  if (!confirm(`确认删除「${r.scopeLabel} · ${r.label}」${desc}？删除后该月回退到上一层级 / 上一版本的值。`)) return
+  const ok = await ask({
+    title: `删除「${r.scopeLabel} · ${r.label}」${desc}？`,
+    body: '删除后该月回退到上一层级 / 上一版本的值。',
+    action: '删除',
+    danger: true,
+  })
+  // 问的途中弹窗关了或换了一行:不替别的行发删除(比键不比引用:父页重载会换掉行对象)
+  if (!ok || !props.open || props.row?.key !== r.key || props.row?.scope !== r.scope) return
   emit('save', {
     key: r.key, scope: r.scope,
     acctMonth: monthRow ? props.ym : r.acctMonth, mode: monthRow ? 'month' : r.mode,

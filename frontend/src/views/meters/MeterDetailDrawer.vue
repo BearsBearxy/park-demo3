@@ -24,6 +24,8 @@ import {
 } from '@/composables/useMeterWorkbench'
 import { useAuthStore } from '@/stores/auth'
 import { useViewport } from '@/composables/useViewport'
+import { ask as askConfirm } from '@/utils/ask'
+import { receipt } from '@/utils/receipt'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Segmented from '@/components/ds/Segmented.vue'
@@ -31,6 +33,9 @@ import Select from '@/components/ds/Select.vue'
 import DatePicker from '@/components/ds/DatePicker.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import FPNote from '@/components/fp/FPNote.vue'
 import MeterAssignDialog from './MeterAssignDialog.vue'
 import MeterTimelinePane from './MeterTimelinePane.vue'
 import MeterDeleteDialog from './MeterDeleteDialog.vue'
@@ -42,7 +47,8 @@ const props = defineProps<{
   defaultYm: string              // 查看月 V:档案站在这个月看、按月改从这个月起;也是新增读数的默认月份
   tenants: TenantDTO[]
   buildings: BuildingDTO[]
-  bindAvailable: boolean         // GET /binding 是否可用(后端未就绪降级)
+  bindAvailable: boolean         // GET /binding 是否可用(页面那趟失败 = false)
+  bindLoading?: boolean          // 页面那趟 GET /binding 还在路上:先显示加载中,不出失败态
   areaOpts: string[]             // §A.3 位置字段候选(库内既有值 ∪ 基准表,由 MeterView 汇总)
   floorOpts: string[]
   sideOpts: string[]
@@ -111,17 +117,23 @@ const assetReqOf = (mm: MeterDTO): MeterAssetReq => ({
   kind: mm.kind, zone: mm.zone, name: mm.name, meterType: mm.meterType, deviceType: mm.deviceType,
   code: mm.code, factor: mm.factor,
 })
-// 标识名/编码行内提交:乐观更新失败回滚。name 是唯一键 (kind,zone,name),后端 409 的中文消息原样弹出,不吞。
+// 字段报错(十件 ⑤):贴在那一格下面,不走回执;失败的保存走结果回执(十件 ⑧)
+const nameErr = ref('')
+const facErr = ref('')
+// 标识名/编码行内提交:乐观更新失败回滚。name 是唯一键 (kind,zone,name),后端 409 的中文消息原样报出,不吞。
 function commitAsset(mm: MeterDTO, key: 'name' | 'code', raw: string) {
   if (!editProfile.value) return
   const t = raw.trim()
-  if (key === 'name' && t === '') { alert('标识名不能为空'); return }
+  if (key === 'name') {
+    nameErr.value = t === '' ? '标识名不能为空' : ''
+    if (nameErr.value) return
+  }
   const v = key === 'name' ? t : (t || null)      // 编码留空=清除
   const rec = mm as unknown as Record<'name' | 'code', string | null>
   if (v === (rec[key] ?? null)) return
   const prev = rec[key]
   rec[key] = v
-  metersApi.update(mm.id, assetReqOf(mm)).catch((e) => { rec[key] = prev; alert(failMsg(e)) })
+  metersApi.update(mm.id, assetReqOf(mm)).catch((e) => { rec[key] = prev; receipt.fail(failMsg(e)) })
 }
 const SPOT_TITLE = '位置原文:下次导入按它认表(表编码/标识名认不到时)。'
   + '改它时,没有标「人工设定」的楼层/方位/房号会跟着按新的原文重新解析;标了的不动'
@@ -141,23 +153,27 @@ const SUSPECT_TITLE: Record<string, string> = {
   incomplete: '档案不全(区域/位置/企业名称/编码四项全空):用量照常计入Σ,只是提醒补档案。'
     + '补齐任一项保存即自动清标,也可在此直接解除',
 }
-function clearSuspect(mm: MeterDTO) {
+async function clearSuspect(mm: MeterDTO) {
   if (!editProfile.value) return
-  if (!confirm(`确认「${mm.name}」是独立的一块表?解除后它的用量会立即重新计入楼栋分表Σ 与池分母。`)) return
+  const ok = await askConfirm({
+    title: `把「${mm.name}」认领为独立的一块表？`, body: '解除后它的用量会立即重新计入楼栋分表Σ 与池分母。', action: '认领为独立表',
+  })
+  if (!ok || !editProfile.value || m.value?.id !== mm.id) return     // 问的途中退出了编辑 / 换了表:不写
   const prev = mm.suspect
   mm.suspect = null
   metersApi.update(mm.id, { ...assetReqOf(mm), suspect: '' })
     .then(() => emit('reload'))    // 进/出Σ 改变对账口径,重载刷新
-    .catch((e) => { mm.suspect = prev; alert(failMsg(e)) })
+    .catch((e) => { mm.suspect = prev; receipt.fail(failMsg(e)) })
 }
 function commitFactor(mm: MeterDTO, raw: string) {
   if (!editProfile.value) return
   const v = raw.trim() === '' ? 1 : Number(raw)   // 留空=1(档案 factor NOT NULL DEFAULT 1)
-  if (!Number.isFinite(v) || v <= 0) { alert('倍率需为正数'); return }
+  facErr.value = !Number.isFinite(v) || v <= 0 ? '倍率需为正数' : ''
+  if (facErr.value) return
   if (v === mm.factor) return
   const prev = mm.factor
   mm.factor = v
-  metersApi.update(mm.id, assetReqOf(mm)).catch((e) => { mm.factor = prev; alert(failMsg(e)) })
+  metersApi.update(mm.id, assetReqOf(mm)).catch((e) => { mm.factor = prev; receipt.fail(failMsg(e)) })
 }
 function commitDeviceType(mm: MeterDTO, raw: string) {
   if (!editProfile.value) return
@@ -165,7 +181,7 @@ function commitDeviceType(mm: MeterDTO, raw: string) {
   if (v === mm.deviceType) return
   const prev = mm.deviceType
   mm.deviceType = v
-  metersApi.update(mm.id, assetReqOf(mm)).catch((e) => { mm.deviceType = prev; alert(failMsg(e)) })
+  metersApi.update(mm.id, assetReqOf(mm)).catch((e) => { mm.deviceType = prev; receipt.fail(failMsg(e)) })
 }
 
 // ── 归属 / 位置 / 合同绑定:按月写(METER-TIMELINE-SPEC §3.3) ──
@@ -217,7 +233,7 @@ function request(a: Ask) {
   if (!direct) { ask.value = a; return }
   a.run({ mode: 'from', siblingIds: [], alsoMigrate: false })
     .then(afterWrite)
-    .catch((e) => { formKey.value++; alert(failMsg(e)) })
+    .catch((e) => { formKey.value++; receipt.fail(failMsg(e)) })
 }
 function afterWrite() {
   ask.value = null
@@ -303,10 +319,14 @@ async function clearManual(mm: MeterDTO) {
   if (!canAssign.value) return
   const sp = manualSpan.value
   if (!sp || sp.locked.length) return
-  if (!confirm(`把 ${rangeText(sp.from, sp.until)} 这一段的人工设定清掉?\n`
-    + '清掉后下次导入按册子写这一段;楼层、方位、房号回到按位置原文解析的值,租户和归属现在的值不变。')) return
+  const ok = await askConfirm({
+    title: `清掉 ${rangeText(sp.from, sp.until)} 这一段的人工设定？`,
+    body: '清掉后下次导入按册子写这一段;楼层、方位、房号回到按位置原文解析的值,租户和归属现在的值不变。',
+    action: '改回按册子',
+  })
+  if (!ok || !canAssign.value || m.value?.id !== mm.id) return
   try { await metersApi.clearManual(mm.id, props.defaultYm); afterWrite() }
-  catch (e) { alert(failMsg(e)) }
+  catch (e) { receipt.fail(failMsg(e)) }
 }
 const statusLine = computed(() => {
   const mm = m.value
@@ -356,6 +376,7 @@ function touTitle(r: MeterReadingDTO, side: 'prev' | 'curr'): string | undefined
 const editId = ref<number | null>(null)
 const adding = ref(false)
 const touOpen = ref(false)
+const formErr = ref('')          // 读数行的字段报错(月份没选),贴在表下面
 const form = ref({
   ym: '', prevTotal: '', currTotal: '', note: '',
   prevSharp: '', prevPeak: '', prevFlat: '', prevValley: '',
@@ -379,7 +400,7 @@ function startEdit(r: MeterReadingDTO) {
   touOpen.value = m.value?.kind === 'elec'
     && [r.prevSharp, r.prevPeak, r.prevFlat, r.prevValley, r.currSharp, r.currPeak, r.currFlat, r.currValley].some(x => x != null)
 }
-function cancelForm() { editId.value = null; adding.value = false; touOpen.value = false }
+function cancelForm() { editId.value = null; adding.value = false; touOpen.value = false; formErr.value = '' }
 watch(() => props.editMode, v => { if (!v) cancelForm() })
 // P1-5:原先这里无 catch —— 一次失败 history 就永远停在 null,「加载中…」不散、
 // 「新增读数」(:disabled="!history")永久禁用,只能关抽屉重开碰运气。改为记失败态 + 重试。
@@ -397,6 +418,8 @@ async function loadHistory() {
 }
 watch(() => m.value?.id, () => {
   cancelForm()
+  nameErr.value = ''
+  facErr.value = ''
   tab.value = 'profile'
   loadHistory()
 }, { immediate: true })
@@ -420,7 +443,8 @@ async function saveForm() {
   if (!editReading.value) return
   const mm = m.value
   if (!mm) return
-  if (!/^\d{4}-\d{2}$/.test(form.value.ym)) { alert('请选择月份'); return }
+  formErr.value = /^\d{4}-\d{2}$/.test(form.value.ym) ? '' : '请选择月份'
+  if (formErr.value) return
   const req = {
     meterId: mm.id, ym: form.value.ym,
     prevTotal: numOrNull(form.value.prevTotal), currTotal: numOrNull(form.value.currTotal),
@@ -437,13 +461,16 @@ async function saveForm() {
     await loadTimeline()
     if (m.value?.id !== mm.id) return          // 拉的途中换了表
     if (!tl.value || tlErr.value) {
-      alert(`这块表的在册状态没加载出来${tlErr.value ? `(${tlErr.value})` : ''},判断不了这条读数会不会让它从 ${req.ym} 起在册。请稍后重试。`)
+      receipt.fail(`这块表的在册状态没加载出来${tlErr.value ? `(${tlErr.value})` : ''},判断不了这条读数会不会让它从 ${req.ym} 起在册。请稍后重试。`)
       return
     }
   }
   const st = tl.value?.status
   const heals = editId.value == null && hasCurr && !!st && (!st.length || req.ym < st[0].fromYm)
-  if (heals && !confirm(`这块表将从 ${req.ym} 起在册。确认保存这条读数?`)) return
+  if (heals) {
+    const ok = await askConfirm({ title: `这块表将从 ${req.ym} 起在册，保存这条读数？`, action: '保存' })
+    if (!ok || !editReading.value || m.value?.id !== mm.id) return
+  }
   try {
     // 新录快照当时表倍率;编辑改量不改快照(后端语义,同 PV 口径)
     if (editId.value != null) await metersApi.updateReading(editId.value, req)
@@ -452,16 +479,17 @@ async function saveForm() {
     if (heals) loadTimeline()
     await reloadAfterWrite(mm)
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '保存失败')   // 同表同月 409 中文文案直达
+    receipt.fail((e as { message?: string })?.message ?? '保存失败')   // 同表同月 409 中文文案直达
   }
 }
 async function delReading(r: MeterReadingDTO) {
   if (!editReading.value) return
   const mm = m.value
   if (!mm) return
-  if (!confirm(`确认删除 ${r.ym} 的读数?`)) return
+  const ok = await askConfirm({ title: `删除 ${r.ym} 的读数？`, body: '删除后不能撤销。', action: '删除', danger: true })
+  if (!ok || !editReading.value || m.value?.id !== mm.id) return
   try { await metersApi.deleteReading(r.id); await reloadAfterWrite(mm) }
-  catch (e) { alert((e as { message?: string })?.message ?? '删除失败') }
+  catch (e) { receipt.fail((e as { message?: string })?.message ?? '删除失败') }
 }
 
 // ── 【合同绑定】(§4:分桶原因/候选选绑/一键确认/解绑/待核挂租户) ──
@@ -500,77 +528,80 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
 
     <!-- ── 表档案 ── -->
     <div v-if="tab === 'profile' && m" :key="formKey" class="md-grid">
-      <div v-if="editProfile && tlErr" class="md-fld span2 md-tlfail">
-        <span>{{ tlErr }} 归属和位置暂时只能看。</span>
-        <Button variant="outline" size="sm" @click="loadTimeline">重试</Button>
-      </div>
+      <FPNote v-if="editProfile && tlErr" tone="danger" class="md-note" @action="loadTimeline">
+        {{ tlErr }} 归属和位置暂时只能看。<template #action>重试</template>
+      </FPNote>
       <div class="md-fld ro"><label>类别 / 分区</label><span>{{ METER_KIND_LABEL[m.kind] }} · {{ zoneLabel(m.zone) }}</span></div>
       <div class="md-fld ro"><label>读数条数</label><span class="mono">{{ history?.length ?? m.readingCount }}</span></div>
 
       <div class="md-fld">
         <label>标识名(内部键)</label>
-        <input v-if="editProfile" class="mt-edit l md-in mono" type="text" :value="m.name"
-               title="同分区同类唯一(kind,zone,name);与已有表重名保存会被后端拒绝并回滚"
-               @change="commitAsset(m, 'name', ($event.target as HTMLInputElement).value)" />
+        <!-- 能改的时候报错位常驻(LAYOUT-STABILITY §4.2):出错不把下面的格子顶下去 -->
+        <template v-if="editProfile">
+          <input class="mt-edit l md-in mono" type="text" :value="m.name"
+                 v-tip="'同分区同类唯一(kind,zone,name);与已有表重名保存会被后端拒绝并回滚'"
+                 @change="commitAsset(m, 'name', ($event.target as HTMLInputElement).value)" />
+          <p class="fp-field-err">{{ nameErr }}</p>
+        </template>
         <span v-else class="mono">{{ m.name }}</span>
       </div>
       <div class="md-fld">
         <label>表编码</label>
         <input v-if="editProfile" class="mt-edit l md-in mono" type="text" :value="m.code ?? ''"
-               title="导入的首选身份键:补上它可解掉「同位置多块表歧义」的导入报错。留空=清除"
+               v-tip="'导入的首选身份键:补上它可解掉「同位置多块表歧义」的导入报错。留空=清除'"
                @change="commitAsset(m, 'code', ($event.target as HTMLInputElement).value)" />
         <span v-else class="mono">{{ m.code ?? '—' }}</span>
       </div>
       <div class="md-fld">
         <label>区域(楼栋/车间)</label>
         <input v-if="canAssign" class="mt-edit l md-in" type="text" list="md-area-list" :value="m.area ?? ''"
-               title="抄表屏区块带头,同时进导入位置索引;可从库内既有区域中选,也可直接输入。留空=清除"
+               v-tip="'抄表屏区块带头,同时进导入位置索引;可从库内既有区域中选,也可直接输入。留空=清除'"
                @change="editAssign(m, 'area', ($event.target as HTMLInputElement).value)" />
         <span v-else>{{ m.area ?? '—' }}</span>
         <datalist v-if="canAssign" id="md-area-list"><option v-for="a in areaOpts" :key="a" :value="a" /></datalist>
       </div>
       <div class="md-fld">
-        <label :title="locPinned(m, 'floorLabel') ? LOC_MANUAL_TITLE : undefined">
+        <label v-tip="locPinned(m, 'floorLabel') ? LOC_MANUAL_TITLE : undefined">
           楼层{{ locPinned(m, 'floorLabel') ? ' · 人工设定(导入不覆盖)' : '' }}
         </label>
         <Select v-if="canAssign" size="sm" :model-value="m.floorLabel ?? ''"
                 :style="{ width: '100%' }"
-                title="稳定位置主数据,决定抄表屏排序与公摊按层分份;留空=跨层或不适用"
+                v-tip="'稳定位置主数据,决定抄表屏排序与公摊按层分份;留空=跨层或不适用'"
                 :options="[{ value: '', label: '—(跨层/不适用)' }, ...floorOpts.map(f => ({ value: f, label: f }))]"
                 @update:model-value="editAssign(m, 'floorLabel', $event)" />
         <span v-else :class="{ dim: !m.floorLabel }">{{ m.floorLabel ?? '跨层/未录' }}</span>
       </div>
       <div class="md-fld">
-        <label :title="locPinned(m, 'side') ? LOC_MANUAL_TITLE : undefined">
+        <label v-tip="locPinned(m, 'side') ? LOC_MANUAL_TITLE : undefined">
           方位{{ locPinned(m, 'side') ? ' · 人工设定(导入不覆盖)' : '' }}
         </label>
         <Select v-if="canAssign" size="sm" :model-value="m.side ?? ''"
                 :style="{ width: '100%' }"
-                title="同层东西侧分栏的依据;留空=整层不分侧"
+                v-tip="'同层东西侧分栏的依据;留空=整层不分侧'"
                 :options="[{ value: '', label: '—(不分侧)' }, ...sideOpts.map(s => ({ value: s, label: s }))]"
                 @update:model-value="editAssign(m, 'side', $event)" />
         <span v-else :class="{ dim: !m.side }">{{ m.side ?? '—' }}</span>
       </div>
       <div class="md-fld">
-        <label :title="locPinned(m, 'roomNo') ? LOC_MANUAL_TITLE : undefined">
+        <label v-tip="locPinned(m, 'roomNo') ? LOC_MANUAL_TITLE : undefined">
           房号{{ locPinned(m, 'roomNo') ? ' · 人工设定(导入不覆盖)' : '' }}
         </label>
         <input v-if="canAssign" class="mt-edit l md-in" type="text" :value="m.roomNo ?? ''"
-               title="单元/房号(如 101室);跨多间的表宁可留空。留空=清除"
+               v-tip="'单元/房号(如 101室);跨多间的表宁可留空。留空=清除'"
                @change="editAssign(m, 'roomNo', ($event.target as HTMLInputElement).value)" />
         <span v-else :class="{ dim: !m.roomNo }">{{ m.roomNo ?? '—' }}</span>
       </div>
       <div class="md-fld">
         <label>位置原文(导入匹配键)</label>
         <input v-if="canAssign" class="mt-edit l md-in" type="text" :value="m.spot ?? ''"
-               :title="SPOT_TITLE"
+               v-tip="SPOT_TITLE"
                @change="editAssign(m, 'spot', ($event.target as HTMLInputElement).value)" />
         <span v-else>{{ m.spot ?? '—' }}</span>
       </div>
       <div class="md-fld">
         <label>企业名称原文{{ m.tenantManual ? ' · 人工设定' : '' }}</label>
         <input v-if="canAssign" class="mt-edit l md-in" type="text" :value="m.tenantName ?? ''"
-               title="账册「企业名称」列原文;公摊/基础设施表这里存的是用途描述。留空=清除"
+               v-tip="'账册「企业名称」列原文;公摊/基础设施表这里存的是用途描述。留空=清除'"
                @change="editAssign(m, 'tenantName', ($event.target as HTMLInputElement).value)" />
         <span v-else>{{ m.tenantName ?? '—' }}<span v-if="row?.pending" class="md-warn">待核</span></span>
       </div>
@@ -604,15 +635,18 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
       <div class="md-fld">
         <label>表名称</label>
         <input v-if="canAssign" class="mt-edit l md-in" type="text" :value="m.subName ?? ''"
-               title="表名称(如 电表①),回车/失焦保存;留空=清除"
+               v-tip="'表名称(如 电表①),回车/失焦保存;留空=清除'"
                @change="editAssign(m, 'subName', ($event.target as HTMLInputElement).value)" />
         <span v-else>{{ m.subName ?? '—' }}</span>
       </div>
       <div class="md-fld">
         <label>倍率</label>
-        <input v-if="editProfile" class="mt-edit md-in" type="number" min="0" step="0.01" :value="m.factor"
-               :title="FACTOR_TITLE"
-               @change="commitFactor(m, ($event.target as HTMLInputElement).value)" />
+        <template v-if="editProfile">
+          <input class="mt-edit md-in" type="number" min="0" step="0.01" :value="m.factor"
+                 v-tip="FACTOR_TITLE"
+                 @change="commitFactor(m, ($event.target as HTMLInputElement).value)" />
+          <p class="fp-field-err">{{ facErr }}</p>
+        </template>
         <span v-else class="mono">{{ m.factor }}</span>
       </div>
       <!-- 表类型=电表概念(单相/三相/需量…),水表不适用不显示(2026-08-04 报障) -->
@@ -643,7 +677,7 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
       <!-- §G5 存疑标:只在有标时出现;shadow 表不进分表Σ,给一个显式的人工解除入口 -->
       <div v-if="m.suspect" class="md-fld span2">
         <label>档案状态</label>
-        <span class="md-susp" :class="m.suspect" :title="SUSPECT_TITLE[m.suspect ?? '']">{{ SUSPECT_LABEL[m.suspect ?? ''] }}</span>
+        <span class="md-susp" :class="m.suspect" v-tip="SUSPECT_TITLE[m.suspect ?? '']">{{ SUSPECT_LABEL[m.suspect ?? ''] }}</span>
         <Button v-if="editProfile" variant="outline" size="sm" @click="clearSuspect(m)">
           认领为独立表(解除存疑)
         </Button>
@@ -654,14 +688,10 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
     <!-- ── 历史读数(原 ReadingDrawer 内容) ── -->
     <template v-else-if="tab === 'history'">
       <!-- 失败态:给出原因与重试入口(此时 history 恒 null,「新增读数」照旧禁用 —— 不知道有哪些月就录会撞 409) -->
-      <div v-if="historyErr" class="md-empty fail">
-        <div>{{ historyErr }}</div>
-        <Button variant="outline" size="sm" @click="loadHistory">重试</Button>
-      </div>
+      <FPLoadError v-if="historyErr" @retry="loadHistory">{{ historyErr }}</FPLoadError>
       <div v-else-if="!history" class="md-empty">加载中…</div>
-      <div v-else-if="drawerRows.length === 0 && !adding" class="md-empty">
-        该表暂无读数{{ editReading ? ',点下方「新增读数」补录历史月,或在表格里直接录当月。' : ',进入编辑模式后可补录。' }}
-      </div>
+      <FPEmpty v-else-if="drawerRows.length === 0 && !adding"
+        :sub="editReading ? '点下方「新增读数」补录历史月,或在表格里直接录当月。' : '进入编辑模式后可补录。'">该表暂无读数</FPEmpty>
       <div v-else class="md-hwrap">
         <table class="md-htable">
           <!-- 列宽预算(抽屉内容宽~692):月份128(原生月选 2024年08月+图标要够)+上月104+本月104+用量96+状态84=516,备注弹性 -->
@@ -692,15 +722,15 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
                   <td class="l"><DatePicker v-model="form.ym" mode="month" variant="cell" aria-label="月份" /></td>
                   <td><input v-model="form.prevTotal" class="md-din num" type="number" step="0.01" placeholder="—" /></td>
                   <td><input v-model="form.currTotal" class="md-din num" type="number" step="0.01" placeholder="—" /></td>
-                  <td class="ro" :title="`按原倍率快照 ${r.factorSnap} 计`">{{ previewUsage }}</td>
+                  <td class="ro" v-tip="`按原倍率快照 ${r.factorSnap} 计`">{{ previewUsage }}</td>
                   <td class="l">
                     <button v-if="m?.kind === 'elec'" class="md-toulink" :class="{ on: touOpen }" @click="touOpen = !touOpen">尖峰平谷</button>
                     <span v-else class="md-dim">—</span>
                   </td>
                   <td class="l"><input v-model="form.note" class="md-din" type="text" placeholder="备注" /></td>
                   <td class="ops">
-                    <button class="mt-iop ok" title="保存" @click="saveForm"><component :is="iconFor('check')" :size="15" /></button>
-                    <button class="mt-iop" title="取消" @click="cancelForm"><component :is="iconFor('x')" :size="15" /></button>
+                    <button class="mt-iop ok" v-tip="'保存'" @click="saveForm"><component :is="iconFor('check')" :size="15" /></button>
+                    <button class="mt-iop" v-tip="'取消'" @click="cancelForm"><component :is="iconFor('x')" :size="15" /></button>
                   </td>
                 </tr>
                 <tr v-if="touOpen && m?.kind === 'elec'" class="tourow">
@@ -722,18 +752,18 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
               </template>
               <tr v-else>
                 <td class="l mono">{{ r.ym }}</td>
-                <td :title="touTitle(r, 'prev')">{{ fq(r.prevTotal) }}</td>
-                <td :title="touTitle(r, 'curr')">{{ fq(r.currTotal) }}</td>
-                <td :class="{ neg: (r.usageTotal ?? 0) < 0 }" :title="`× 倍率快照 ${r.factorSnap}`">{{ fq(r.usageTotal) }}</td>
+                <td v-tip="touTitle(r, 'prev')">{{ fq(r.prevTotal) }}</td>
+                <td v-tip="touTitle(r, 'curr')">{{ fq(r.currTotal) }}</td>
+                <td :class="{ neg: (r.usageTotal ?? 0) < 0 }" v-tip="`× 倍率快照 ${r.factorSnap}`">{{ fq(r.usageTotal) }}</td>
                 <td class="l flags">
                   <span v-if="readingFlags(r).missing" class="mt-flag warn">漏抄</span>
                   <span v-if="readingFlags(r).negative" class="mt-flag bad">倒走</span>
-                  <span v-if="readingFlags(r).touMismatch" class="mt-flag bad" title="尖峰平谷用量之和与总用量不符">时段不符</span>
+                  <span v-if="readingFlags(r).touMismatch" class="mt-flag bad" v-tip="'尖峰平谷用量之和与总用量不符'">时段不符</span>
                 </td>
-                <td class="l note" :title="r.note ?? undefined">{{ r.note || '—' }}</td>
+                <td class="l note" v-tip="r.note ?? undefined">{{ r.note || '—' }}</td>
                 <td v-if="editReading" class="ops">
-                  <button class="mt-iop" title="编辑" @click="startEdit(r)"><component :is="iconFor('pencil')" :size="14" /></button>
-                  <button class="mt-iop danger" title="删除" @click="delReading(r)"><component :is="iconFor('trash-2')" :size="14" /></button>
+                  <button class="mt-iop" v-tip="'编辑'" @click="startEdit(r)"><component :is="iconFor('pencil')" :size="14" /></button>
+                  <button class="mt-iop danger" v-tip="'删除'" @click="delReading(r)"><component :is="iconFor('trash-2')" :size="14" /></button>
                 </td>
               </tr>
             </template>
@@ -742,15 +772,15 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
                 <td class="l"><DatePicker v-model="form.ym" mode="month" variant="cell" aria-label="月份" /></td>
                 <td><input v-model="form.prevTotal" class="md-din num" type="number" step="0.01" placeholder="—" /></td>
                 <td><input v-model="form.currTotal" class="md-din num" type="number" step="0.01" placeholder="—" /></td>
-                <td class="ro" :title="`按当前表倍率 ${m?.factor ?? 1} 预览,保存时快照`">{{ previewUsage }}</td>
+                <td class="ro" v-tip="`按当前表倍率 ${m?.factor ?? 1} 预览,保存时快照`">{{ previewUsage }}</td>
                 <td class="l">
                   <button v-if="m?.kind === 'elec'" class="md-toulink" :class="{ on: touOpen }" @click="touOpen = !touOpen">尖峰平谷</button>
                   <span v-else class="md-dim">—</span>
                 </td>
                 <td class="l"><input v-model="form.note" class="md-din" type="text" placeholder="备注" /></td>
                 <td class="ops">
-                  <button class="mt-iop ok" title="保存" @click="saveForm"><component :is="iconFor('check')" :size="15" /></button>
-                  <button class="mt-iop" title="取消" @click="cancelForm"><component :is="iconFor('x')" :size="15" /></button>
+                  <button class="mt-iop ok" v-tip="'保存'" @click="saveForm"><component :is="iconFor('check')" :size="15" /></button>
+                  <button class="mt-iop" v-tip="'取消'" @click="cancelForm"><component :is="iconFor('x')" :size="15" /></button>
                 </td>
               </tr>
               <tr v-if="touOpen && m?.kind === 'elec'" class="tourow">
@@ -773,23 +803,21 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
           </tbody>
         </table>
       </div>
+      <template v-if="adding || editId != null"><p class="fp-field-err">{{ formErr }}</p></template>
     </template>
 
     <!-- ── 合同绑定 ── -->
     <template v-else-if="tab === 'bind' && m">
-      <div v-if="m.ownership !== 'tenant'" class="md-empty">
-        非租户表({{ ownershipLabel(m.ownership, m.kind) }})无合同绑定。
-      </div>
-      <div v-else-if="!bindAvailable" class="md-empty">
-        绑定数据不可用 —— 需要后端 GET /api/meters/binding 端点(S2-BIND-SPEC §3)。
-      </div>
-      <div v-else-if="!bind" class="md-empty">该表不在本月绑定报表中。</div>
+      <FPEmpty v-if="m.ownership !== 'tenant'">非租户表({{ ownershipLabel(m.ownership, m.kind) }})无合同绑定</FPEmpty>
+      <!-- 页面那趟绑定数据没读到(失败降级为 null);抽屉自己重拉不了,指到刷新 -->
+      <FPEmpty v-else-if="!bindAvailable" tone="error" sub="刷新页面后再看。">本月的绑定数据没读到</FPEmpty>
+      <div v-else-if="bindLoading" class="md-empty">加载中…</div>
+      <FPEmpty v-else-if="!bind">该表不在本月绑定报表中</FPEmpty>
       <template v-else>
         <!-- 编辑态但档案分段没加载出来:改绑定 / 挂租户都按月写,点不了要说清为什么,并给重试 -->
-        <div v-if="editProfile && tlErr" class="md-tlfail">
-          <span>{{ tlErr }} 暂时不能改绑定、挂租户。</span>
-          <Button variant="outline" size="sm" @click="loadTimeline">重试</Button>
-        </div>
+        <FPNote v-if="editProfile && tlErr" tone="danger" @action="loadTimeline">
+          {{ tlErr }} 暂时不能改绑定、挂租户。<template #action>重试</template>
+        </FPNote>
         <div class="md-bstat">
           <span class="lab">当前状态</span>
           <span class="val" :class="{ stale: bind.status === 'override_stale' }">
@@ -809,15 +837,11 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
         </div>
 
         <!-- 本月在租、合同场地房号对得上这块表的另一户(唯一才有):从本月起改归它 -->
-        <div v-if="bind.suggestion" class="md-bsug">
-          <span class="lab">
-            本月在租、合同场地的房号对得上这块表的:{{ bind.suggestion.tenantName ?? `#${bind.suggestion.tenantId}` }} · {{ bind.suggestion.contractNo }}
-          </span>
-          <Button v-if="canAssign" variant="outline" size="sm"
-                  @click="editTenant(m, bind.suggestion.tenantId, bind.suggestion.tenantName)">
-            从本月起改归 {{ bind.suggestion.tenantName ?? '这一户' }}
-          </Button>
-        </div>
+        <FPNote v-if="bind.suggestion" tone="info"
+                @action="editTenant(m, bind.suggestion.tenantId, bind.suggestion.tenantName)">
+          本月在租、合同场地的房号对得上这块表的:{{ bind.suggestion.tenantName ?? `#${bind.suggestion.tenantId}` }} · {{ bind.suggestion.contractNo }}
+          <template v-if="canAssign" #action>从本月起改归 {{ bind.suggestion.tenantName ?? '这一户' }}</template>
+        </FPNote>
 
         <!-- 待核:先挂租户(编辑态) -->
         <div v-if="qb === 'pending'" class="md-bpend">
@@ -867,16 +891,12 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
     <template v-else-if="tab === 'timeline' && m">
       <!-- 本月册子(SPEC §10.4):这块表在查看月导入的册子里出现过没有、出自哪个文件 -->
       <p class="md-book">{{ bookLine(row!) }}</p>
-      <div v-if="tlErr && !tl" class="md-empty fail">
-        <div>{{ tlErr }}</div>
-        <Button variant="outline" size="sm" @click="loadTimeline">重试</Button>
-      </div>
+      <FPLoadError v-if="tlErr && !tl" @retry="loadTimeline">{{ tlErr }}</FPLoadError>
       <div v-else-if="!tl" class="md-empty">加载中…</div>
       <template v-else>
-        <div v-if="tlErr" class="md-tlfail">
-          <span>{{ tlErr }} 下面是上次加载的样子,暂时不能改。</span>
-          <Button variant="outline" size="sm" @click="loadTimeline">重试</Button>
-        </div>
+        <FPNote v-if="tlErr" tone="danger" @action="loadTimeline">
+          {{ tlErr }} 下面是上次加载的样子,暂时不能改。<template #action>重试</template>
+        </FPNote>
         <MeterTimelinePane
           :meter="m" :ym="defaultYm" :tl="tl" :edit="canAssign" :tenants="tenants" :buildings="buildings"
           @changed="afterWrite"
@@ -934,14 +954,11 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
 .md-link { border: none; background: none; padding: 0; font: inherit; font-size: var(--fs-label); color: var(--hue-blue); cursor: pointer; }
 .md-link:hover { text-decoration: underline; }
 .md-lk { font-size: var(--fs-label) !important; color: var(--caution-text) !important; }
-.md-tlfail { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: var(--fs-label); color: var(--hue-red); }
-.md-tlfail span { font-size: var(--fs-label); color: var(--hue-red); }
+.md-note { grid-column: 1 / -1; }
 .md-book { margin: 0; font-size: var(--fs-label); color: var(--text-secondary); overflow-wrap: anywhere; }
 
 /* ── 历史读数(mt-d* 家族迁自 v4 ReadingDrawer) ── */
 .md-empty { padding: 40px 12px; text-align: center; color: var(--text-disabled); font-size: var(--fs-label); }
-/* 加载失败:与「加载中…」同位,红字 + 重试按钮竖排 */
-.md-empty.fail { display: flex; flex-direction: column; align-items: center; gap: 12px; color: var(--hue-red); }
 .md-hwrap { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; }
 .md-htable { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12.5px; white-space: nowrap; }
 .md-htable th { padding: 8px 10px; text-align: right; font-family: var(--font-sans); font-weight: var(--fw-medium); font-size: 11px; color: var(--text-muted); background: var(--surface-card); border-bottom: 1px solid var(--divider); }
@@ -977,8 +994,6 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
 .md-bstat .reason { flex-basis: 100%; font-size: var(--fs-label); color: var(--text-secondary); }
 .md-bstat .reason.ok { color: var(--ok-text); }
 .md-bstat .locs { flex-basis: 100%; font-size: var(--fs-label); color: var(--text-secondary); }
-.md-bsug { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px 14px; border-radius: var(--radius-md); background: var(--info-soft); }
-.md-bsug .lab { font-size: var(--fs-label); color: var(--text-primary); overflow-wrap: anywhere; }
 .md-bpend { display: flex; flex-direction: column; gap: 8px; }
 .md-bpend .lab { font-size: var(--fs-label); color: var(--text-secondary); }
 .md-bpend .pick { max-width: 360px; }

@@ -83,7 +83,7 @@ const matchStats = computed(() => {
         </button>
         <ul v-if="showChanges" class="ir-errs-list">
           <li v-for="(c, i) in changes" :key="i">
-            <span class="ir-errs-label" :title="c.label">{{ c.label }}</span>
+            <span class="ir-errs-label" v-tip="c.label">{{ c.label }}</span>
             <span class="ir-errs-reason">{{ FIELD_LABEL[c.field] ?? c.field }} {{ chgVal(c, c.before) }} → {{ chgVal(c, c.after) }} · {{ chgSpan(c) }}</span>
           </li>
         </ul>

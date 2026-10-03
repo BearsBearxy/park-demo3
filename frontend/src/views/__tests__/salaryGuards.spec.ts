@@ -11,6 +11,8 @@ import type {
   SalaryOverviewDTO, SalaryYearMonthDTO, SalaryRecordDTO, SalaryTotal,
 } from '@/types/salary'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
+import { receipts } from '@/utils/receipt'
+import { askQueue } from '@/utils/ask'
 
 /**
  * 附表12(SalaryView)刚落地的取数/写口守卫 —— 钉住 2026-08-29 这批未提交改动(git diff 可见)。
@@ -91,7 +93,8 @@ beforeEach(() => {
   vi.setSystemTime(new Date('2025-06-15T00:00:00'))
   // SchedHeader 的门:perm="entry:edit"。缺了它编辑按钮点不进去,④⑤⑦ 全测不到
   useAuthStore().permissions = ['entry:edit']
-  vi.spyOn(window, 'alert').mockImplementation(() => {})
+  receipts.splice(0)
+  askQueue.splice(0)
   vi.mocked(salaryApi.overview).mockResolvedValue(OVERVIEW as never)
   vi.mocked(salaryApi.records).mockResolvedValue(M3 as never)
   vi.mocked(salaryApi.create).mockResolvedValue(REC({ id: 9, name: '王五', acctMonth: '2025-01', source: 'manual' }) as never)
@@ -144,7 +147,8 @@ describe('附表12 · 取数失败守卫', () => {
     const w = await open()
     expect(w.find('.s12-fail').exists(), 'overview 挂了要说出来').toBe(true)
     expect(w.find('.page-loading').exists(), '不许永久转圈').toBe(false)
-    expect(w.text()).toContain('工资总览加载失败')
+    expect(w.find('.s12-fail .fp-empty[role="alert"] .t').text()).toBe('工资各月的录入情况没读到')
+    expect(w.find('.s12-fail .fp-empty .sub').text(), '后端的原因写在副句里').toBe('后端挂了 · 读到之前选不了月')
 
     vi.mocked(salaryApi.overview).mockResolvedValue(OVERVIEW as never)
     await w.find('.s12-fail button').trigger('click')   // 重试
@@ -167,8 +171,8 @@ describe('附表12 · 取数失败守卫', () => {
     expect(w.find('.s12-table').exists(), '旧月的行不许顶着新月期标').toBe(false)
     expect(w.text(), '3 月的「张三」必须随失败一起退场').not.toContain('张三')
     expect(w.find('.s12-fail').exists(), '要落失败分支,不是转圈').toBe(true)
-    expect(w.text()).toContain('2025年2月工资加载失败')
-    expect(w.text()).toContain('后端 500')
+    expect(w.find('.s12-fail .fp-empty[role="alert"] .t').text()).toBe('2025 年 2 月的工资没读到')
+    expect(w.find('.s12-fail .fp-empty .sub').text()).toBe('后端 500 · 屏上不显示别的月的数字')
 
     // 重试在途:readErr 只在成功时清 —— 失败条要一直站到新数据真的落位
     let resolveRecords!: (v: SalaryYearMonthDTO) => void
@@ -305,19 +309,17 @@ describe('附表12 · 浏览态写口自守(前置做足,守卫删掉必须红)'
     expect(salaryApi.batchDelete).not.toHaveBeenCalled()
   })
 
-  it('⑥b-2 浏览态直呼 onClearImported(importedCount>0 + confirm 恒真):零 API', async () => {
-    // 红线:useSchedScreen.ts:117 守卫删掉 → confirm(true)→ clearImported 被打出去 → 两条断言红。
-    // 前置做足:M3 那行 source=import → importedCount=1;confirm 恒真 —— 守卫后无人拦路。
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('⑥b-2 浏览态直呼 onClearImported(importedCount>0):零 API,连确认框都不弹', async () => {
+    // 红线:useSchedScreen.ts onClearImported 开头的 `if (!edit.value) return` 删掉 → ask 入队 → 红。
+    // 前置做足:M3 那行 source=import → importedCount=1 —— 守卫后无人拦路。
     const w = await toTable()
     const vm = vmOf(w)
     expect(vm.importedCount, '前置:本月有导入行').toBe(1)
     expect(vm.edit, '前置:浏览态').toBe(false)
-    await vm.onClearImported()
+    void vm.onClearImported()
     await flushPromises()
-    expect(confirmSpy, '浏览态连确认框都不该弹').not.toHaveBeenCalled()
+    expect(askQueue, '浏览态连确认框都不该弹').toHaveLength(0)
     expect(salaryApi.clearImported).not.toHaveBeenCalled()
-    confirmSpy.mockRestore()
   })
 })
 
@@ -338,10 +340,10 @@ describe('附表12 · onCreate 写与刷新分开兜', () => {
     expect(salaryApi.records, '归入 1 月并拉 1 月').toHaveBeenLastCalledWith(2025, 1)
     expect(w.find('.s12-count').text(), '期标跳到 1 月').toContain('2025年1月')
     expect(vm.selectedIds.size, '跳期必须清勾选').toBe(0)
-    expect(window.alert, '写与刷新都成功,一个 alert 都不该有').not.toHaveBeenCalled()
+    expect(receipts, '写与刷新都成功,一条失败回执都不该有').toHaveLength(0)
   })
 
-  it('⑦b create 成功但 refresh 失败 → alert 不许说「新增工资失败」(写成功不谎报)', async () => {
+  it('⑦b create 成功但 refresh 失败 → 回执不许说「新增工资失败」(写成功不谎报)', async () => {
     // 红线:SalaryView.vue:203-218 退回改前的 guard('新增工资失败') 一锅兜
     // (连同 loadMonth 恢复上抛)→ create 已落库却弹「新增工资失败」,用户重录出重复行 → 红。
     const w = await toTable()
@@ -350,9 +352,19 @@ describe('附表12 · onCreate 写与刷新分开兜', () => {
     await vmOf(w).onCreate({ acctMonth: '2025-01', name: '王五', base: 3000 })
     await flushPromises()
     expect(salaryApi.create, '前置:写确实成功了').toHaveBeenCalled()
-    const said = vi.mocked(window.alert).mock.calls.flat().map(String)
+    const said = receipts.map(r => r.text)
     expect(said.some(s => s.includes('新增工资失败')), '写成功不许谎报成写失败').toBe(false)
     expect(w.find('.s12-fail').exists(), '刷新失败走失败条(带重试),不是谎话').toBe(true)
+  })
+
+  it('⑦c create 失败 → 失败回执说后端的话', async () => {
+    // 红线:onCreate 的 catch 退回 alert / 不报 → receipts 为空 → 红。
+    const w = await toTable()
+    await enterEdit(w)
+    vi.mocked(salaryApi.create).mockRejectedValueOnce({ message: '王五 3 月已有一行' })
+    await vmOf(w).onCreate({ acctMonth: '2025-03', name: '王五', base: 3000 })
+    await flushPromises()
+    expect(receipts.map(r => [r.tone, r.text])).toEqual([['fail', '王五 3 月已有一行']])
   })
 })
 
@@ -398,7 +410,7 @@ describe('附表12 · 矩阵在场角标(全仓此前零断言)', () => {
     const marked = cells.filter(c => c.find('.bmm-who').exists())
     expect(marked.length, '只有李四那把月锁对应的格出角标').toBe(1)
     expect(cells[2].find('.bmm-who').exists(), '亮的是 2025-03(cells[2])').toBe(true)
-    expect(cells[2].find('.bmm-who').attributes('title')).toBe('李四 正在编辑')
+    expect((cells[2].find('.bmm-who').element as HTMLElement & { _tip?: { text: string } })._tip?.text).toBe('李四 正在编辑')
     expect(cells[1].find('.bmm-who').exists(), '自己的 2025-02 锁不标').toBe(false)
   })
 })

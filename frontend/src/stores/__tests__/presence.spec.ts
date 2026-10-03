@@ -384,3 +384,40 @@ describe('审核计数', () => {
     expect(p.myReturned).toBe(0)
   })
 })
+
+// ══════════ 铃铛的两个数顺 ping 回来(06-G,S5 FE-API) ══════════
+describe('铃铛计数', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  // 破坏验证:删掉 ping 里 unseenResults / elevated / systemSeen 任一行赋值 → 红
+  it('❗unseenResults、elevated、systemSeen 顺同一条 ping 落进 store', async () => {
+    vi.mocked(api.put).mockResolvedValueOnce(
+      { users: [], evictions: [], approvals: [], outcome: null, unseenResults: 3, elevated: false,
+        systemSeen: { changelogVersion: '0.24.0', bellKey: 'v0.25.0' } } as never)
+    const p = usePresenceStore()
+    await p.ping()
+    expect(p.unseenResults).toBe(3)
+    expect(p.elevated, 'false 是「服务端说授权没了」,不能被当成缺席').toBe(false)
+    expect(p.systemSeen).toEqual({ changelogVersion: '0.24.0', bellKey: 'v0.25.0' })
+  })
+
+  // 破坏验证:`?? 0` 改成 `?? unseenResults.value`、`?? null` 改成 `?? elevated.value` → 红。
+  // elevated 缺席要回 null 不回 false:false 会被当成「授权被收回」去清本页的授权。
+  it('❗字段缺席:unseenResults 归 0,elevated 回 null(不是 false,也不是上一拍的值)', async () => {
+    const p = usePresenceStore()
+    vi.mocked(api.put).mockResolvedValueOnce(
+      { users: [], evictions: [], approvals: [], outcome: null, unseenResults: 2, elevated: true,
+        systemSeen: { changelogVersion: '0.24.0', bellKey: null } } as never)
+    await p.ping()
+    expect(p.elevated, '前置:上一拍是 true').toBe(true)
+    vi.mocked(api.put).mockResolvedValueOnce(
+      { users: [], evictions: [], approvals: [], outcome: null } as never)
+    await p.ping()
+    expect(p.unseenResults).toBe(0)
+    expect(p.elevated).toBe(null)
+    expect(p.systemSeen).toBe(null)
+  })
+})

@@ -65,7 +65,7 @@ describe('conclusionText(§C4 人话结论行)', () => {
   })
   it('收入为负保本无解(bePct=null)→ 替代句(spec 定稿)', () => {
     expect(conclusionText(calcBe(-636050.65, 5917279.67, 0.62), '2025-12'))
-      .toBe('当前口径月收入为负,保本点不适用——见期间横幅')
+      .toBe('当前口径月收入为负,保本点不适用')
   })
 })
 

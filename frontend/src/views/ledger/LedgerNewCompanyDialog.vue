@@ -3,6 +3,7 @@
 import { ref, onMounted } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
+import FPNote from '@/components/fp/FPNote.vue'
 import { useFormSheet } from '@/composables/useFormSheet'
 
 // 带输入的居中弹卡 → S 档全屏 sheet(styles/form-sheet.css)
@@ -36,11 +37,8 @@ function submit() {
         <input ref="inputRef" class="lg-dlg-in" :class="{ err }" v-model="name"
                placeholder="如:园区水电管理公司"
                @input="err = ''" @keydown.enter="submit" />
-        <div class="lg-dlg-erm">{{ err }}</div>
-        <div class="lg-dlg-note">
-          <component :is="iconFor('info')" :size="15" />
-          <span>新台账各列均为空白。切换到该公司后点击「编辑」,在对应费用列录入收款即可 —— 不收的费用列保持留空。</span>
-        </div>
+        <p class="fp-field-err"><template v-if="err">{{ err }}</template></p>
+        <FPNote tone="info" class="lg-dlg-note">新台账各列均为空白。切换到该公司后点击「编辑」,在对应费用列录入收款即可 —— 不收的费用列保持留空。</FPNote>
       </div>
       <div class="lg-dlg-f fp-fsheet-ft">
         <Button variant="gray" size="sm" @click="emit('close')">取消</Button>
@@ -68,9 +66,7 @@ function submit() {
   font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
 .lg-dlg-in:focus { border-color:var(--hue-blue); }
 .lg-dlg-in.err { border-color:var(--hue-red); }
-.lg-dlg-erm { font-size:11.5px; color:var(--hue-red); margin-top:6px; min-height:14px; }
-.lg-dlg-note { display:flex; gap:8px; align-items:flex-start; margin-top:12px; padding:11px 13px; border-radius:var(--radius-md);
-  background:var(--accent-sky); font-size:12px; line-height:1.55; color:var(--text-secondary); }
-.lg-dlg-note > :first-child { flex:0 0 auto; color:var(--hue-blue); margin-top:1px; }
+.lg-dlg-in + .fp-field-err { margin-top:6px; }
+.lg-dlg-note { margin-top:12px; }
 .lg-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:16px 22px 20px; }
 </style>

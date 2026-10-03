@@ -17,6 +17,7 @@ import { contractApi } from '@/api/contract'
 import { buildingApi } from '@/api/building'
 import { companyBookApi } from '@/api/billDelivery'
 import { billsApi } from '@/api/bills'
+import { receipts } from '@/utils/receipt'
 import BillNoticesView from '@/views/bills/BillNoticesView.vue'
 
 vi.mock('vue-router', () => ({
@@ -171,17 +172,18 @@ describe('催缴单 · 已导出户作废', () => {
     prompt.mockRestore()
   })
 
+  // 2026-10-01:alert 换成失败回执(十件 ⑧);prompt 这次不换(规范 §4)
   it('理由为空不作废', async () => {
+    receipts.splice(0)
     const w = await open()
     await enterEdit(w)
     await openDrawer(w)
     const prompt = vi.spyOn(window, 'prompt').mockReturnValueOnce('   ')
-    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
     await w.findAll('button').find(b => b.text() === '作废')!.trigger('click')
     await flushPromises()
     expect(billNoticesApi.void).not.toHaveBeenCalled()
-    expect(alert).toHaveBeenCalledWith('理由必填')
-    prompt.mockRestore(); alert.mockRestore()
+    expect(receipts.map(r => [r.tone, r.text])).toEqual([['fail', '理由必填']])
+    prompt.mockRestore()
   })
 })
 

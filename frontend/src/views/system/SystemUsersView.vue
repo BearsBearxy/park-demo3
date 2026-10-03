@@ -6,7 +6,11 @@
 //
 // 读全开的唯一例外是 system 层(§0):无 system:edit 的人进得来、看得见全部账号与角色,
 //   只是所有写按钮不渲染 —— 与其它屏「显示但不能改」同一口径。
-import { ref, computed, watch, onMounted, onBeforeUnmount, h } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, h, withDirectives } from 'vue'
+import { vTip } from '@/directives/tip'
+import { ask } from '@/utils/ask'
+import { receipt } from '@/utils/receipt'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
 import { onReactivated } from '@/composables/onReactivated'
 import { systemApi } from '@/api/system'
 import type { RoleDTO, UserDTO } from '@/types/system'
@@ -22,13 +26,14 @@ import FPSectionLabel from '@/components/fp/FPSectionLabel.vue'
 import FPSortableTable, { type SortableColumn } from '@/components/fp/FPSortableTable.vue'
 import { useFitRows } from '@/components/fp/useFitRows'
 import FPPager from '@/components/fp/FPPager.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
+import { textW } from '@/composables/useWideTable'
 import { iconFor } from '@/components/ds/icon'
 import { useAuthStore } from '@/stores/auth'
 import { useFormSheet } from '@/composables/useFormSheet'
 
 const auth = useAuthStore()
-// 新建账号 / 重置密码两个弹卡带输入 → S 档全屏 sheet;停用确认只有一句话 + 两个钮,
-// 按判据仍是居中小卡(styles/form-sheet.css)。
+// 新建账号 / 重置密码两个弹卡带输入 → S 档全屏 sheet(styles/form-sheet.css);停用 / 启用确认走 ask(十件 ⑨)。
 const sheet = useFormSheet()
 const canEdit = computed(() => auth.can('system:edit'))
 
@@ -64,14 +69,19 @@ function rejectText(e: unknown, fallback: string): string {
   return msg || fallback
 }
 
+// seq:写后重拉与手点重试并发时只认最后一次;错误只在成功分支清(重试途中失败态不闪回骨架)
+let seq = 0
 async function reload() {
-  loadErr.value = ''
+  const my = ++seq
   try {
     // 账号只有几十行:q/roleId/status 三个筛选全在前端算,不为每次敲键去 refetch
     const [us, rs] = await Promise.all([systemApi.users(), systemApi.roles()])
+    if (my !== seq) return
     users.value = us
     roles.value = rs
+    loadErr.value = ''
   } catch (e) {
+    if (my !== seq) return
     users.value = null                       // 失败不留半截旧数据在屏上
     loadErr.value = errText(e, '服务异常')
   }
@@ -109,8 +119,18 @@ const kpi = computed(() => {
 // 停用行灰化(数据照常显示,只是视觉降一档);启用行正常色
 const nameColor = (u: UserDTO) => (u.status === 1 ? 'var(--text-primary)' : 'var(--text-muted)')
 const fmtTime = (s: string) => (s ? s.replace('T', ' ').slice(0, 16) : '—')
-// S 档行卡次级字段:角色拼一串,口径与角色列的 title 一致(不另造格式)
+// S 档行卡次级字段:角色拼一串,口径与角色列的悬停说明一致(不另造格式)
 const roleText = (u: UserDTO) => (u.roles.length ? u.roles.map(r => r.name).join(' · ') : '未分配角色')
+
+// 角色列宽(列宽铁律 §4,2026-10-02):按全部账号里最宽的一组角色签估(不按当前页、不随筛选),翻页 / 筛选列不挪位。
+// 签 = 内边距 2×2 + 圆点 6 + 6 + 12px 字;签间 6;没角色写「未分配角色」(14px);左右内边距 32。数据没到时不给宽。
+const roleColW = computed(() => {
+  const all = users.value ?? []
+  if (!all.length) return undefined
+  return `${32 + Math.max(...all.map(u => (u.roles.length
+    ? u.roles.reduce((s, r) => s + textW([r.name], 12, 16), 0) + 6 * (u.roles.length - 1)
+    : textW(['未分配角色'], 14, 0))))}px`
+})
 
 const columns = computed<SortableColumn<UserDTO>[]>(() => {
   const cols: SortableColumn<UserDTO>[] = [
@@ -119,38 +139,37 @@ const columns = computed<SortableColumn<UserDTO>[]>(() => {
       sortValue: (u: UserDTO) => u.username,
       render: (u: UserDTO) => h('span', { style: { display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 } }, [
         h(Avatar, { name: u.displayName || u.username, size: 30, style: u.status === 1 ? undefined : 'opacity:.55' }),
-        h('span', {
-          title: u.username,
+        withDirectives(h('span', {
           style: {
             fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 'var(--fw-medium)',
             color: nameColor(u), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           },
-        }, u.username),
+        }, u.username), [[vTip, u.username]]),
       ]),
     },
     {
       key: 'displayName', header: '显示名', width: '190px',
       sortValue: (u: UserDTO) => u.displayName,
       render: (u: UserDTO) => h('span', { style: { display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 } }, [
-        h('span', {
-          title: u.displayName,
+        withDirectives(h('span', {
           style: { color: nameColor(u), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-        }, u.displayName),
+        }, u.displayName), [[vTip, u.displayName]]),
         // 首次登录强制改密(拍板 #3):没改过的标出来,管理员才知道这人还在用初始密码
         u.mustChangePassword
-          ? h(Badge, { tone: 'orange', variant: 'subtle', style: 'flex:0 0 auto', title: '该账号还在用初始密码,下次登录会被要求修改' }, () => '待改密')
+          ? withDirectives(h(Badge, { tone: 'orange', variant: 'subtle', style: 'flex:0 0 auto' }, () => '待改密'),
+            [[vTip, '该账号还在用初始密码,下次登录会被要求修改']])
           : null,
       ]),
     },
     {
-      // 唯一的弹性列(列宽铁律:至多一列不定宽,吸收余宽)
-      key: 'roles', header: '角色',
+      // 按全部账号里最宽的一组角色签定宽(roleColW);余宽归表格最右的空列(列宽铁律,2026-10-02)
+      key: 'roles', header: '角色', width: roleColW.value,
       sortValue: (u: UserDTO) => u.roles.map(r => r.name).join(','),
       render: (u: UserDTO) => u.roles.length
-        ? h('span', {
-            title: u.roles.map(r => r.name).join(' · '),
+        ? withDirectives(h('span', {
             style: { display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' },
-          }, u.roles.map(r => h(Badge, { key: r.id, tone: 'slate', variant: 'subtle', style: 'flex:0 0 auto' }, () => r.name)))
+          }, u.roles.map(r => h(Badge, { key: r.id, tone: 'slate', variant: 'subtle', style: 'flex:0 0 auto' }, () => r.name))),
+          [[vTip, roleText(u)]])
         : h('span', { style: { color: 'var(--text-muted)' } }, '未分配角色'),
     },
     {
@@ -175,16 +194,15 @@ const columns = computed<SortableColumn<UserDTO>[]>(() => {
         const selfTip = '不能对自己做这个操作 —— 改掉自己的角色或停用自己会把你锁在门外,'
                       + '而这个系统没有第二条进门的路。请让另一位管理员操作。'
         return h('span', { style: { display: 'inline-flex', gap: '6px', justifyContent: 'flex-end' } }, [
-          h(Button, {
-            variant: 'outline', size: 'sm', disabled: isMe, title: isMe ? selfTip : undefined,
+          withDirectives(h(Button, {
+            variant: 'outline', size: 'sm', disabled: isMe,
             onClick: (e: MouseEvent) => { e.stopPropagation(); if (!isMe) openEdit(u) },
-          }, () => '编辑'),
+          }, () => '编辑'), [[vTip, isMe ? selfTip : undefined]]),
           h(Button, { variant: 'outline', size: 'sm', onClick: (e: MouseEvent) => { e.stopPropagation(); openReset(u) } }, () => '重置密码'),
-          h(Button, {
-            variant: u.status === 1 ? 'gray' : 'filled', size: 'sm',
-            disabled: isMe, title: isMe ? selfTip : undefined,
-            onClick: (e: MouseEvent) => { e.stopPropagation(); if (!isMe) openToggle(u) },
-          }, () => (u.status === 1 ? '停用' : '启用')),
+          withDirectives(h(Button, {
+            variant: u.status === 1 ? 'gray' : 'filled', size: 'sm', disabled: isMe,
+            onClick: (e: MouseEvent) => { e.stopPropagation(); if (!isMe) void askToggle(u) },
+          }, () => (u.status === 1 ? '停用' : '启用')), [[vTip, isMe ? selfTip : undefined]]),
         ])
       },
     })
@@ -293,35 +311,32 @@ async function submitReset() {
 }
 
 // ─── 停用 / 启用 ──────────────────────────────────────────
-const tgTarget = ref<UserDTO | null>(null)
-const tgErr = ref('')
-const tgBusy = ref(false)
-
-function openToggle(u: UserDTO) {
-  tgTarget.value = u; tgErr.value = ''
+// ask(十件 ⑨):停用是 danger(主按钮红、默认焦点在「取消」);文案是「停用」,不是「删除」。
+// 被后端拒(停自己等)报回执带「重试」(十件 ⑧),重试钉住当时那个账号和目标状态
+async function askToggle(u: UserDTO) {
+  const off = u.status === 1
+  const who = `「${u.displayName}(${u.username})」`
+  if (!(await ask(off
+    ? { title: `停用${who}？`, body: '停用后立即无法登录，已登录的会话下一个请求即失效；历史记录中该账号的操作痕迹保留。', action: '停用账号', danger: true }
+    : { title: `启用${who}？`, body: '启用后该账号可以立即登录，权限按其当前角色生效。', action: '启用账号' }))) return
+  await setStatus(u, off ? 0 : 1)
 }
-
-async function submitToggle() {
-  const u = tgTarget.value
-  if (!u || tgBusy.value) return
-  tgBusy.value = true
+async function setStatus(u: UserDTO, status: 0 | 1) {
   try {
-    await systemApi.setUserStatus(u.id, u.status === 1 ? 0 : 1)
-    tgTarget.value = null
+    await systemApi.setUserStatus(u.id, status)
     await reload()
   } catch (e) {
-    tgErr.value = rejectText(e, '操作失败')
-  } finally {
-    tgBusy.value = false
+    const what = status === 0 ? '停用失败' : '启用失败'
+    const t = rejectText(e, '')
+    receipt.fail(t ? `${what}：${t}` : what, { label: '重试', run: () => void setStatus(u, status) })
   }
 }
 
-// Esc 关最上层的弹窗(抽屉自带,三个 .fin-dlg 靠这一条)。ds/Select 展开时会在 capture
+// Esc 关最上层的弹窗(抽屉自带,两个 .fin-dlg 靠这一条)。ds/Select 展开时会在 capture
 // 阶段吞掉 Esc,所以收下拉不会连坐把弹窗一起关掉(UI-OVERLAY-SPEC §2)。
 function onEsc(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
-  if (tgTarget.value) tgTarget.value = null
-  else if (pwTarget.value) pwTarget.value = null
+  if (pwTarget.value) pwTarget.value = null
   else if (newDlg.value) newDlg.value = false
 }
 onMounted(() => window.addEventListener('keydown', onEsc))
@@ -341,7 +356,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
         </p>
       </div>
       <div v-if="canEdit" style="display:flex;gap:8px">
-        <Button variant="filled" size="sm" @click="openNew">
+        <!-- 账号与角色没读到时不开新建:角色清单是空的,建出来的账号一个角色都挂不上 -->
+        <Button variant="filled" size="sm" :disabled="!!loadErr" @click="openNew">
           <template #leading><component :is="iconFor('plus')" :size="14" /></template>
           新建账号
         </Button>
@@ -390,7 +406,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
 
           <!-- 3. 列表卡片(LIST-PAGE-SPEC §3) -->
           <Card surface="white" :padding="0" class="mx-listcard">
-            <div ref="tableWrapEl" class="mx-tablewrap">
+            <!-- 加载失败换掉表格本身(十件 ⑦),和表格互斥 -->
+            <FPLoadError v-if="loadErr" :sub="`${loadErr} · 屏上不显示任何账号，重试成功前无法管理`" @retry="reload">
+              账号列表没读到
+            </FPLoadError>
+            <div v-else ref="tableWrapEl" class="mx-tablewrap">
               <FPSortableTable
                 :columns="columns"
                 :rows="paged"
@@ -418,19 +438,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
                   </div>
                 </template>
               </FPSortableTable>
+              <FPEmpty v-if="users && filtered.length === 0">没有匹配的账号</FPEmpty>
             </div>
-            <div v-if="users && filtered.length === 0" style="text-align:center;padding:40px;color:var(--text-disabled)">没有匹配的账号</div>
-            <div v-if="!users || filtered.length > 0" class="mx-pagerbar">
+            <div v-if="!loadErr && (!users || filtered.length > 0)" class="mx-pagerbar">
               <FPPager :page="safePage" :pageCount="pageCount" :total="filtered.length" @page="page = $event" />
             </div>
           </Card>
         </div>
       </div>
-    <!-- 失败态仍是流内条:阻断性错误本就该打断流程(LAYOUT-STABILITY §6) -->
-    <FPLoadError v-if="loadErr" @retry="reload">
-      <span>账号列表没加载出来:{{ loadErr }} —— 屏上不显示任何账号,重试成功前无法管理。</span>
-    </FPLoadError>
-
     <!-- 4. 编辑抽屉(用户名不可改) -->
     <FPDrawer
       :open="!!openUser"
@@ -483,7 +498,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
           </label>
           <div v-if="roles.length === 0" class="su-hint">没有可分配的角色 —— 先去「角色权限」屏建一个。</div>
         </div>
-        <div class="su-erm">{{ eErr }}</div>
+        <p class="fp-field-err su-err"><template v-if="eErr">{{ eErr }}</template></p>
       </div>
     </FPDrawer>
 
@@ -533,7 +548,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
                   <div v-if="roles.length === 0" class="su-hint">没有可分配的角色 —— 可以先建账号,之后再到「角色权限」屏分配。</div>
                 </div>
               </div>
-              <div class="fin-erm">{{ nErr }}</div>
+              <p class="fp-field-err"><template v-if="nErr">{{ nErr }}</template></p>
             </div>
             <div class="fin-dlg-f fp-fsheet-ft">
               <Button variant="gray" size="sm" @click="newDlg = false">取消</Button>
@@ -570,7 +585,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
                 <div class="lab">新密码 <b class="req">*</b></div>
                 <input class="su-in" :class="{ err: pwErr }" type="password" v-model="pwVal" placeholder="交给本人" @input="pwErr = ''" @keydown.enter="submitReset" />
               </div>
-              <div class="fin-erm">{{ pwErr }}</div>
+              <p class="fp-field-err"><template v-if="pwErr">{{ pwErr }}</template></p>
             </div>
             <div class="fin-dlg-f fp-fsheet-ft">
               <Button variant="gray" size="sm" @click="pwTarget = null">取消</Button>
@@ -584,38 +599,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
       </div>
     </Teleport>
 
-    <!-- 7. 停用 / 启用 二次确认(文案是「停用」,不是「删除」) -->
-    <Teleport to="body">
-      <div v-if="tgTarget" class="fin-mask" @mousedown="tgTarget = null">
-        <div class="fin-dlg" role="dialog" aria-modal="true" @mousedown.stop>
-          <div class="fin-dlg-h">
-            <h3>{{ tgTarget.status === 1 ? '停用账号' : '启用账号' }}</h3>
-            <p v-if="tgTarget.status === 1">
-              确认停用「{{ tgTarget.displayName }}({{ tgTarget.username }})」?
-              停用后立即无法登录,已登录的会话下一个请求即失效;历史记录中该账号的操作痕迹保留。
-            </p>
-            <p v-else>
-              确认启用「{{ tgTarget.displayName }}({{ tgTarget.username }})」?启用后该账号可以立即登录,权限按其当前角色生效。
-            </p>
-            <!-- 错误位常驻(LAYOUT-STABILITY-SPEC §4.2):红字凭空长一行会把「确认停用」顶到手指底下跑掉。
-                 选择器带 .fin-dlg-h 前缀:.fin-dlg-h p 的 muted 色特异性高于单类名,压不住会把红字染灰 -->
-            <p class="tg-err"><template v-if="tgErr">{{ tgErr }}</template></p>
-          </div>
-          <div class="fin-dlg-f" style="padding-top:20px">
-            <Button variant="gray" size="sm" @click="tgTarget = null">取消</Button>
-            <Button :variant="tgTarget.status === 1 ? 'danger' : 'filled'" size="sm" :disabled="tgBusy" @click="submitToggle">
-              <template #leading><component :is="iconFor(tgTarget.status === 1 ? 'lock' : 'check')" :size="14" /></template>
-              {{ tgTarget.status === 1 ? '确认停用' : '确认启用' }}
-            </Button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
   </div>
 </template>
 
 <style scoped>
-/* 加载失败条(1:1 PoolLedgerView .pl-bar.err) */
 /* 表单(1:1 TenantNewDialog .fin-field/.fin-in:md=36 与 ds/Select 同档) */
 .su-field { display: flex; flex-direction: column; }
 /* 多个字段竖排间距走容器 gap,不用 `+` 相邻选择器 —— 弹窗体本身已是 flex gap:14,
@@ -630,7 +617,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
 /* 只读字段:长得像输入框但明显不可编辑(sunken 底 + 无边框聚焦态) */
 .su-ro { height: 36px; display: flex; align-items: center; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-sunken); color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--fs-body); }
 .su-hint { font-size: var(--fs-label); color: var(--text-muted); line-height: 1.5; margin-top: 6px; }
-.su-erm { font-size: var(--fs-label); color: var(--hue-red); min-height: 16px; margin-top: 8px; line-height: 1.5; }
+.su-err { margin-top: 8px; }
 
 /* 角色多选 */
 .su-roles { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 6px; max-height: 240px; overflow-y: auto; }
@@ -648,11 +635,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
 .fin-dlg-h { padding: 20px 22px 0; }
 .fin-dlg-h h3 { margin: 0; font-size: var(--fs-h3); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .fin-dlg-h p { margin: 6px 0 0; font-size: var(--fs-label); line-height: 1.5; color: var(--text-muted); }
-/* 停用/启用弹窗的错误位:恒定一行高,空着也占位 */
-.fin-dlg-h .tg-err { margin-top: 10px; font-size: var(--fs-label); color: var(--hue-red); min-height: 18px; line-height: 18px; }
 .fin-dlg-b { padding: 18px 22px 4px; display: flex; flex-direction: column; gap: 14px; }
 .fin-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.fin-erm { font-size: var(--fs-label); color: var(--hue-red); margin-top: -6px; min-height: 16px; line-height: 1.5; }
+.fin-dlg-b > .fp-field-err { margin-top: -6px; }
 .fin-dlg-f { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 22px 20px; }
 
 /* S 档工具栏(RESPONSIVE-LAYOUT-SPEC §5.1 迁移③):右组 搜索230+角色150+状态130 ≈530px,

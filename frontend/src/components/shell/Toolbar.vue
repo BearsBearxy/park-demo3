@@ -1,26 +1,20 @@
 <script setup lang="ts">
 // Toolbar — ported from shell.jsx .fp-toolbar / AppToolbar.
-import { computed, ref, defineAsyncComponent, onBeforeUnmount, watch } from 'vue'
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { usePresenceStore } from '@/stores/presence'
 import { useAuthStore } from '@/stores/auth'
-// ponytail: 铃铛抽屉懒加载。Toolbar 在外壳里是**急切**的,静态 import 会把这个抽屉
-// 连同它的 CSS 一起压进首屏 index 块 —— 而它只在点铃铛时才出现。
-// ⚠ 必须配下面的 v-if 才真省:defineAsyncComponent 是**渲染时**才拉块的,
-//   常挂在树上(只靠 :open=false)等于没懒。
-// FPDrawer 内部本来就是 `v-if="open"` 且没有过渡,外层再包一层 v-if 视觉上一模一样;
-// 它那个 Esc 栈用的是 `{ immediate: true }` 的 watch + onBeforeUnmount,挂卸载都接得住。
-const FPApprovalDrawer = defineAsyncComponent(() => import('@/components/fp/FPApprovalDrawer.vue'))
 import { useUiStore } from '@/stores/ui'
 import { useTabsStore } from '@/stores/tabs'
 import IconButton from '@/components/ds/IconButton.vue'
 import FPPresenceBar from '@/components/fp/FPPresenceBar.vue'
-import { PanelLeft, Star, Search, History, Bell, Sparkles } from 'lucide-vue-next'
+import { PanelLeft, Star, Search, History, Sparkles } from 'lucide-vue-next'
 import { useUpdateStore } from '@/stores/update'
 import { useFavoritesStore, MAX_FAVS } from '@/stores/favorites'
 import { fpBuildRoutes, fpFindLayer } from '@/nav/fpNav'
 import ShellTip from '@/components/shell/ShellTip.vue'
+import NotifyBell from '@/components/shell/NotifyBell.vue'
 import { useViewport } from '@/composables/useViewport'
+import { receipt } from '@/utils/receipt'
 
 const emit = defineEmits<{ 'open-command': [] }>()
 
@@ -34,25 +28,11 @@ function prefetchPalette() {
 const route = useRoute()
 const ui = useUiStore()
 
-// ── 待批授权(设计稿 §07 F-3) ──
-// Bell 从此有事做了 —— 它此前是顶栏四个死按钮之一(收藏 / 主题 / 操作记录 / 通知);2026-09-03 主题钮删除,死按钮清零
-// (收藏 2026-09-18 起是真收藏,见下面 ☆ 一段)。
-const presence = usePresenceStore()
 const auth = useAuthStore()
 const router = useRouter()
-const inbox = ref(false)
-/**
- * 铃铛红点 = 三件要我处理的事的总和(§7.4 通知行):
- *   等我批的授权 + 等我审的键 + 我交的表被退回。
- * 三个数都顺同一条 ping 回来;抽屉里分三段列出来,红点只给一个总数 ——
- * 分三个红点会让顶栏出现三个几乎一样的点,没人分得清哪个是哪个。
- */
-const pendingCount = computed(() =>
-  presence.approvals.length + presence.pendingReviews + presence.myReturned)
 
 // ── 版本更新(VERSION-UPDATE-SPEC §1) ──
-// 蓝点 = 有没看过的更新,不写数字;红色数字留给「要我处理的事」(上面那颗)。
-// 贴法与铃铛红点同款:absolute 贴在定尺寸按钮上,出现与消失都不挪顶栏。
+// ✦ 上不再挂点:没看过的更新收进铃铛(06-G「只挂在铃铛上」),记号与面板都在 NotifyBell 里。
 const upd = useUpdateStore()
 
 const meta = computed(() => route.meta as Record<string, string>)
@@ -88,25 +68,16 @@ function goLayerHome() {
 // ── ☆ 收藏(TAB-BAR-SPEC §6.3)。2026-09-18 前它是「把预览页签钉成常驻」,预览槽取消后改成收藏 ──
 const favs = useFavoritesStore()
 const starred = computed(() => favs.has(activeValue.value))
-/** ☆ 下方的深色提示条:'added' = 已收藏(带撤销);'full' = 满了。4 秒后、或换了屏就收起。 */
-const starNote = ref<'added' | 'full' | null>(null)
-/** 刚收藏的是哪一屏 —— 撤销撤它,不撤「现在停在哪」。 */
-let starredV = ''
-let starTimer: ReturnType<typeof setTimeout> | undefined
+/**
+ * 收藏走全站结果回执(TAB-BAR-SPEC §6.3,画布 06-B ⑧):成功 4 秒自收、带「撤销」;满了是警告,不自收。
+ * 撤销撤的是**刚收藏的那一屏**(v 在闭包里)—— 回执是全站的,换了屏还在,不能撤「现在停在哪」。
+ */
 function toggleStar() {
-  const r = favs.toggle(activeValue.value)
-  clearTimeout(starTimer)
-  starredV = activeValue.value
-  starNote.value = r === 'added' || r === 'full' ? r : null
-  if (starNote.value) starTimer = setTimeout(() => { starNote.value = null }, 4000)
+  const v = activeValue.value
+  const r = favs.toggle(v)
+  if (r === 'added') receipt.ok('已收藏，在「首页」上能找到', { label: '撤销', run: () => favs.remove(v) })
+  else if (r === 'full') receipt.warn(`最多收藏 ${MAX_FAVS} 个，先在首页去掉几个`)
 }
-function undoStar() {
-  clearTimeout(starTimer)
-  favs.remove(starredV)
-  starNote.value = null
-}
-watch(activeValue, () => { clearTimeout(starTimer); starNote.value = null })
-onBeforeUnmount(() => clearTimeout(starTimer))
 
 // 上下文 chip:面包屑后面的常驻预留位(§6)。无期显「—」而不是 v-if ——
 // 一进一出会把它右边的东西推着走,LAYOUT-STABILITY §1 铁律禁止。
@@ -149,17 +120,13 @@ const ctxText = computed(() => {
       <ShellTip title="这一页现在看的是哪一期、哪家公司" align="start">
         <span class="fp-ctx-chip">{{ ctxText }}</span>
       </ShellTip>
-      <!-- ☆ 收藏:和浏览器地址栏右边的星一个位置(§6.1) -->
+      <!-- ☆ 收藏:和浏览器地址栏右边的星一个位置(§6.1);收藏成没成走底部结果回执 -->
       <span class="fp-star">
         <ShellTip :title="starred ? '取消收藏' : '收藏此页'" :sub="starred ? '' : '收藏后在「首页」上一点就到'">
           <IconButton :aria-label="starred ? '取消收藏' : '收藏此页'" :aria-pressed="String(starred)" @click="toggleStar">
             <Star :size="16" :class="{ 'fp-star-on': starred }" />
           </IconButton>
         </ShellTip>
-        <span v-if="starNote" class="fp-star-note" role="status">
-          <template v-if="starNote === 'added'">已收藏，在「首页」上能找到<button type="button" class="act" @click="undoStar">撤销</button></template>
-          <template v-else>最多收藏 {{ MAX_FAVS }} 个，先在首页去掉几个</template>
-        </span>
       </span>
     </template>
 
@@ -184,31 +151,20 @@ const ctxText = computed(() => {
           <History :size="16" />
         </IconButton>
       </ShellTip>
-      <!-- 版本更新:蓝点只表示「有没看过的更新」,看过就没有(同上一条的贴法) -->
+      <!-- 版本更新:不挂点,没看过的更新在铃铛的「系统」组里(06-G「只挂在铃铛上」) -->
       <span class="fp-upd">
         <ShellTip title="版本更新" :kbd="`v${upd.version}`" sub="这一版改了什么" align="end" :disabled="upd.coachOn">
           <IconButton aria-label="版本更新" @click="upd.openHistory()">
             <Sparkles :size="16" />
           </IconButton>
         </ShellTip>
-        <span v-if="upd.unread" class="fp-upd-dot" />
         <!-- 看完「本次更新」后在这儿提示一次入口在哪,4 秒后自己收起 -->
         <span v-if="upd.coachOn" class="fp-upd-coach" role="status">更新记录随时在这里看</span>
       </span>
-      <!-- 通知 = 待批授权。红点**只在有待批时出现**,position:absolute 贴在图标上 ——
-           不改图标尺寸、不挪工具条。这是全站唯一允许「凭空出现」的标记:
-           它贴在一个尺寸恒定的按钮上,出现与消失都不影响布局。 -->
-      <span class="fp-bell">
-        <ShellTip :title="pendingCount ? `待我处理 · ${pendingCount} 件` : '待我处理'" sub="等我批的授权、等我审的表、被退回的表" align="end">
-          <IconButton aria-label="待批授权" @click="inbox = true">
-            <Bell :size="16" />
-          </IconButton>
-        </ShellTip>
-        <span v-if="pendingCount" class="fp-bell-dot">{{ pendingCount }}</span>
-      </span>
+      <!-- 通知(PAGE-BEHAVIOR-SPEC §5.3):红数字 / 蓝点只挂在这一个按钮上,面板也从它弹出 -->
+      <NotifyBell />
     </div>
   </header>
-  <FPApprovalDrawer v-if="inbox" :open="inbox" @close="inbox = false" />
 </template>
 
 <style scoped>
@@ -302,22 +258,6 @@ button.fp-crumb-page.lk:hover {
 
 .fp-star { position: relative; display: inline-flex; margin-left: -4px; }
 .fp-star-on { fill: var(--hue-blue); color: var(--hue-blue); }
-/* 收藏提示条:☆ 正下方,深底;和底部网络提示同一套颜色(§6.3)。贴附浮层,120ms 长出 */
-.fp-star-note {
-  position: absolute; top: calc(100% + 8px); left: -12px; z-index: var(--z-popover);
-  display: inline-flex; align-items: center; gap: 10px;
-  padding: 8px 12px; border-radius: var(--radius-md);
-  background: var(--toast-bg); color: var(--text-on-solid);
-  font-size: var(--fs-label); line-height: 18px; white-space: nowrap;
-  box-shadow: var(--shadow-toast);   /* 待加的 --shadow-toast:暗色下多一圈 1px 亮边 */
-  animation: fp-pop-in var(--dur-fast) var(--ease-out);
-}
-.fp-star-note .act {
-  height: 24px; padding: 0 9px;
-  border: 1px solid color-mix(in srgb, var(--text-on-solid) 45%, transparent); border-radius: var(--radius-sm);
-  background: transparent; color: var(--text-on-solid); font-size: var(--fs-label); cursor: pointer;
-}
-.fp-star-note .act:hover { background: color-mix(in srgb, var(--text-on-solid) 14%, transparent); }
 
 .fp-toolbar-right {
   margin-left: auto;
@@ -349,13 +289,6 @@ button.fp-crumb-page.lk:hover {
 }
 
 .fp-upd { position: relative; display: inline-flex; }
-.fp-upd-dot {
-  position: absolute; top: 3px; right: 3px;
-  width: 8px; height: 8px; border-radius: var(--radius-full);
-  background: var(--hue-blue);
-  box-shadow: 0 0 0 1.5px var(--surface-white);
-  pointer-events: none;
-}
 /* 入口提示:贴附浮层,从按钮下方长出(motion.css 的 fp-pop-in,与下拉、账号菜单同规格)。
    绝对定位 + pointer-events:none —— 它只说一句话,不接管点击,也不挪顶栏。 */
 .fp-upd-coach {
@@ -371,18 +304,6 @@ button.fp-crumb-page.lk:hover {
   content: ""; position: absolute; top: -6px; right: 20px;
   border-left: 6px solid transparent; border-right: 6px solid transparent;
   border-bottom: 6px solid var(--tip-bg);
-}
-
-.fp-bell { position: relative; display: inline-flex; }
-.fp-bell-dot {
-  position: absolute; top: 1px; right: 1px;
-  min-width: 14px; height: 14px; padding: 0 3px;
-  border-radius: var(--radius-full);
-  background: var(--hue-red); color: var(--control-solid-text);   /* 实底上的字:暗色下红提亮,字反深 */
-  font-family: var(--font-mono); font-size: 9.5px; font-weight: var(--fw-semibold);
-  display: grid; place-items: center;
-  box-shadow: 0 0 0 1.5px var(--surface-white);
-  pointer-events: none;
 }
 
 .fp-kbd {

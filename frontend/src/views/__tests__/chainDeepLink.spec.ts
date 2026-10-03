@@ -68,7 +68,7 @@ describe('出账链 · 带期深链', () => {
     query.p = '2025-03'
     const w = await open()
     expect(w.find('.cmg').exists(), '门该被深链跳过').toBe(false)
-    expect(w.find('.ll-wrap').exists()).toBe(true)
+    expect(w.find('.ll-page').exists()).toBe(true)
     expect(allocApi.loss).toHaveBeenCalledWith('2025-03')
     expect(allocApi.loss, '首载只拉一次(期在 watch 注册前落定)').toHaveBeenCalledTimes(1)
   })

@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
  * 每请求零 DB 查询,改完立刻生效,停用立刻踢。
  *
  * 停用/删号的账号**不进快照** → JwtAuthFilter 查不到 → 该请求保持匿名 → 401。
+ * 停用的另记一份名单({@link #isDisabled}),让 401 带上「账号已停用」这个理由(V133)。
  */
 @Slf4j
 @Component
@@ -50,6 +51,8 @@ public class UserPermissionCache {
     private final ElevationStore elevations;
 
     private volatile Map<String, UserAuth> snapshot = Map.of();
+    /** status≠1 的账号名。不进 snapshot(那样就有权限了),单独记,只用来给 401 说理由。 */
+    private volatile Set<String> disabled = Set.of();
 
     public UserPermissionCache(AuthUserMapper users, AuthUserRoleMapper userRoles,
                                AuthRoleMapper roles, AuthRolePermMapper rolePerms,
@@ -76,6 +79,8 @@ public class UserPermissionCache {
         // 粗粒度(清所有人)是故意的:reload 不知道是谁变了,而角色变更本就罕见,
         // 代价只是重新叫主管点一次头。
         elevations.revokeAllUsers();
+        disabled = users.selectList(Wrappers.<AuthUser>lambdaQuery().ne(AuthUser::getStatus, 1)).stream()
+            .map(AuthUser::getUsername).collect(Collectors.toUnmodifiableSet());
         // 只装 status=1 的账号:停用的查不到 → 下一个请求就 401,不必等令牌过期
         List<AuthUser> active = users.selectList(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getStatus, 1));
         if (active.isEmpty()) { snapshot = Map.of(); return; }
@@ -124,6 +129,9 @@ public class UserPermissionCache {
 
     /** 找不到 = 账号不存在或已停用。 */
     public UserAuth get(String username) { return username == null ? null : snapshot.get(username); }
+
+    /** 这个账号存在且被停用了。只给「令牌签名有效」之后用 —— 拿它回答陌生人就成了枚举口。 */
+    public boolean isDisabled(String username) { return username != null && disabled.contains(username); }
 
     /**
      * 定点换掉一个账号的令牌版本与当前会话 id(V125)。

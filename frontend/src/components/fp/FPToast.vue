@@ -19,20 +19,25 @@
  * 这与本仓已有的 AppShell `.fp-net-toast`（--ink-900 深底白字）是同一套语言。
  * 首版曾沿用被收编那 5 处绿条的浅色语义底，属偏离设计系统，2026-08-22 按设计稿纠正。
  */
-import { ref, watch, onBeforeUnmount } from 'vue'
+import { computed, watch, onBeforeUnmount } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 
 const props = withDefaults(defineProps<{
   /** 消息文本，空串 = 不显示。用 v-model 绑定，自动消失时组件会把它置空 */
   modelValue: string
   tone?: 'success' | 'info' | 'warning' | 'error'
-  /** card = 贴宿主容器底部（**宿主必须 position:relative**）；page = 贴屏幕底部居中 */
-  placement?: 'card' | 'page'
-  /** 自动消失毫秒数，0 = 不自动关（错误提示常用 0，让用户自己读完关掉） */
+  /** card = 贴宿主容器底部（**宿主必须 position:relative**）；page = 贴屏幕底部居中；
+   *  stack = 不自己定位，由外面排（FPReceiptHost 叠放回执用） */
+  placement?: 'card' | 'page' | 'stack'
+  /** 自动消失毫秒数，0 = 不自动关。tone="error" 恒不自动关（失败留到手动关，画布 02-C） */
   duration?: number
-}>(), { tone: 'success', placement: 'card', duration: 3000 })
+  /** 动作钮的字（「重试」「刷新」「撤销」），点了先收起再 emit retry；不给就没有 */
+  retryText?: string
+  /** 同一句消息要从头计时就换它（FPReceiptHost 去重时 +1）；文本没变、它变了也重置 */
+  resetKey?: number
+}>(), { tone: 'success', placement: 'card', duration: 4000 })
 
-const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
+const emit = defineEmits<{ 'update:modelValue': [value: string]; retry: [] }>()
 
 // 图标走 fill 实心（CSS 覆盖 lucide 根 svg 的 fill="none"，子 path 继承）：
 // 绿实心圆 + 白勾 / 黄实心三角 + 深色感叹号 —— 语气**只由图标区分**，底色恒定深色。
@@ -40,26 +45,31 @@ const ICONS = { success: 'check-circle-2', info: 'info', warning: 'alert-triangl
 
 let timer: ReturnType<typeof setTimeout> | null = null
 const clear = () => { if (timer) { clearTimeout(timer); timer = null } }
+// 成功 4 秒自收；失败不自收（LAYOUT-STABILITY §4.1，2026-09-30 改）
+const autoMs = computed(() => (props.tone === 'error' ? 0 : props.duration))
 
-// 换一条新消息要重置计时 —— 否则第二条会继承第一条剩下的时间，一闪就没
-watch(() => props.modelValue, (msg) => {
+// 换一条新消息要重置计时 —— 否则第二条会继承第一条剩下的时间，一闪就没；同一句再推一次（resetKey 变）同理
+watch([() => props.modelValue, () => props.resetKey], ([msg]) => {
   clear()
-  if (msg && props.duration > 0) timer = setTimeout(() => emit('update:modelValue', ''), props.duration)
+  if (msg && autoMs.value > 0) timer = setTimeout(() => emit('update:modelValue', ''), autoMs.value)
 }, { immediate: true })
 
 onBeforeUnmount(clear)
 
 function close() { clear(); emit('update:modelValue', '') }
+function retry() { close(); emit('retry') }
 </script>
 
 <template>
   <Transition name="fpt">
-    <div v-if="modelValue" :class="['fpt', `fpt--${tone}`, `fpt--${placement}`]" role="status" aria-live="polite">
-      <component :is="iconFor(ICONS[tone])" :size="20" class="fpt-i" />
+    <!-- 失败 / 警告 = alert（原断网条就是 alert）；成功 / 说明 = status（隐含 polite） -->
+    <div v-if="modelValue" :class="['fpt', `fpt--${tone}`, `fpt--${placement}`]"
+         :role="tone === 'error' || tone === 'warning' ? 'alert' : 'status'">
+      <component :is="iconFor(ICONS[tone])" :size="placement === 'stack' ? 16 : 20" class="fpt-i" />
       <span class="fpt-m">{{ modelValue }}</span>
-      <!-- 设计稿无关闭按钮（toast 一律自动消失）。duration=0 是本仓的扩展用法
-           （错误提示让用户读完再关），那种情况下不给按钮就永远关不掉，故只在此时渲染。 -->
-      <button v-if="duration === 0" class="fpt-x" type="button" aria-label="关闭" @click="close">
+      <button v-if="retryText" class="fpt-act" type="button" @click="retry">{{ retryText }}</button>
+      <!-- 自动消失的不给 ×；不自动消失的（失败、duration=0）不给按钮就永远关不掉，故只在此时渲染（画布 02-C）。 -->
+      <button v-if="autoMs === 0" class="fpt-x" type="button" aria-label="关闭" @click="close">
         <component :is="iconFor('x')" :size="14" />
       </button>
     </div>
@@ -101,6 +111,9 @@ function close() { clear(); emit('update:modelValue', '') }
 /* page = 贴屏幕底部。--z-toast 是最高档，不被任何弹窗遮挡（PAGE-BEHAVIOR-SPEC §3）。
    与 AppShell 的 .fp-net-toast 同一个 bottom:28px 与同一套深色语言，两者同时出现不打架。 */
 .fpt--page { position: fixed; bottom: 28px; z-index: var(--z-toast); }
+/* stack = 外面排版（FPReceiptHost 的列里）：回到流内，宽度上限直接给 560（外层是收缩宽，百分比会绕回自己）。
+   结果回执比卡内提示大一号（画布 02-C / 01-A 卡5，1:1 实测）：44 高 = 12 + 20 + 12，左右 16。 */
+.fpt--stack { position: relative; bottom: auto; max-width: 560px; padding: 12px 16px; }
 
 .fpt-i { flex: 0 0 auto; }
 .fpt-m { min-width: 0; overflow-wrap: anywhere; }
@@ -113,6 +126,14 @@ function close() { clear(); emit('update:modelValue', '') }
   color: inherit; opacity: .65; cursor: pointer;
 }
 .fpt-x:hover { opacity: 1; background: color-mix(in srgb, var(--text-on-solid) 14%, transparent); }
+/* 动作钮：稿 02-C「重试」是浅蓝字，没有框 */
+.fpt-act {
+  flex: 0 0 auto;
+  height: 20px; padding: 0 4px;
+  border: none; background: none; border-radius: var(--radius-xs);
+  color: var(--fpt-info); font: inherit; font-weight: var(--fw-medium); cursor: pointer;
+}
+.fpt-act:hover { background: color-mix(in srgb, var(--text-on-solid) 14%, transparent); }
 
 /* 语气只由图标区分，底色恒定 —— 这是与 jfen 设计稿一致的地方，也是与旧版浅色语义底最大的差别。
    CSS 的 fill 会覆盖 lucide 根 svg 的 presentation attribute fill="none"（作者样式表优先级更高），
@@ -138,6 +159,12 @@ function close() { clear(); emit('update:modelValue', '') }
 .fpt--warning .fpt-i { fill: var(--fpt-warning); color: var(--toast-bg); }
 .fpt--error   .fpt-i { fill: var(--fpt-error);   color: var(--toast-bg); }
 .fpt--info    .fpt-i { fill: var(--fpt-info);    color: var(--toast-bg); }
+/* 结果回执（stack）的图标是描边：空心圆 + 勾 / 叉，线条取语气色（画布 02-C，16 号图标画出来约 14px 的环） */
+.fpt--stack .fpt-i { fill: none; }
+.fpt--stack.fpt--success .fpt-i { color: var(--fpt-success); }
+.fpt--stack.fpt--warning .fpt-i { color: var(--fpt-warning); }
+.fpt--stack.fpt--error   .fpt-i { color: var(--fpt-error); }
+.fpt--stack.fpt--info    .fpt-i { color: var(--fpt-info); }
 
 /* 只动 opacity/transform，不动尺寸 —— 进出场都不得引起任何重排 */
 

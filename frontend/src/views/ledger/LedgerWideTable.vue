@@ -21,9 +21,13 @@ import { ledgerRowKey } from '@/types/ledger'
 import { useAuthStore } from '@/stores/auth'
 import { useEditLock } from '@/composables/useEditLock'
 import { useReviewStore } from '@/stores/review'
+import { useUiStore } from '@/stores/ui'
 import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
 import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
+import FPAlertPanel from '@/components/fp/FPAlertPanel.vue'
+import { ask, askLeave } from '@/utils/ask'
+import { receipt } from '@/utils/receipt'
 
 // 台账录入 = entry(RBAC §2)。无权时表格与合计照常显示,只是没有「编辑模式」入口。
 const auth = useAuthStore()
@@ -38,7 +42,11 @@ const props = defineProps<{
   edit: boolean
   saving: boolean
   addableTenants?: FPTenantOption[]   // 编辑态「添加租户行」候选(在租且本月尚无行;含 phase/parentName 供徽章)
-  issueCount?: number              // 本月未绑定租户行数(>0 时工具条显琥珀入口,点开问题抽屉)
+  issueCount?: number              // 本月未绑定租户行数(入口胶囊上的数;0 时胶囊静默)
+  /** 未绑定问题面板开没开(状态在父层,切走再回来要复原);面板内容由 #issues 插槽给 */
+  issuesOpen?: boolean
+  /** 未保存改动数(父层 LedgerView.dirtyCount:draft 与快照逐行比,含批删)。离开确认与页签橙点都看它 */
+  dirty?: number
   focusTenant?: string             // 核对跳转深链:定位并高亮该租户行(一次性,完成后 emit focus-done 由父层清空)
   /** 本期编辑锁的作用域(CONCURRENCY-SPEC §3.1):ledger:{companyId}:{year}-{month}。
    *  不传 = 不上锁,行为与加锁之前一个字不差。 */
@@ -58,7 +66,7 @@ const emit = defineEmits<{
   'add-tenant': [tenantId: number]
   'bulk-remove': [rowKeys: number[]]
   'edit-template': []
-  'open-issues': []
+  'update:issuesOpen': [open: boolean]
   'focus-done': []
 }>()
 
@@ -72,7 +80,8 @@ const emit = defineEmits<{
 //   所以铁律①在这一屏没有任何实现:点了「结束授权」人还留在编辑态,锁还被 ping 续着。
 //   权限点与上面那个编辑按钮同源(entry:edit),不新开一个 prop。
 const lock = useEditLock(() => { if (props.edit) emit('cancel') },
-                          () => auth.can('entry:edit'))
+                          () => auth.can('entry:edit'),
+                          () => props.dirty ?? 0)
 const { lockedBy, evictedBy } = lock
 /** 这一期此刻被谁占着 —— 取自在场表，不用点按钮撞门(设计稿 C-2)。 */
 const heldByOther = lock.watchScope(() => props.lockScope ?? null)
@@ -87,8 +96,14 @@ watch(() => props.reviewKey, (k) => { void review.ensureFor(k) }, { immediate: t
 const reviewBlock = computed(() => review.blockOf(props.reviewKey))
 const reviewNote = computed(() => reviewBlock.value?.note ?? null)
 
-/** 编辑态里这一册这一月被审了 → 请父层退出(它那边 5 条路都汇到 cancel)。 */
-watch(reviewBlock, (rb) => { if (rb && props.edit) emit('cancel') })
+/** 编辑态里这一册这一月被审了 → 请父层退出(它那边 5 条路都汇到 cancel)。
+ *  同一把键在手上被别人交审 / 审了才当面说一声(06-E 当场出现组);键变了是换了册或月,不弹。 */
+const ui = useUiStore()
+watch([reviewBlock, () => props.reviewKey], ([rb, k], [wasRb, wasK]) => {
+  if (!rb || !props.edit) return
+  if (!wasRb && k === wasK) ui.reportEditStop(review.rowOf(k ?? null), auth.me, reviewLabel.value)
+  emit('cancel')
+})
 
 // ── 交审动作簇(per-screen-review §03-B2) ────────────────────────
 // 这一屏一次只看得见**当前这一册这一个月**那一把键 —— 「一次交全部公司」是本月出账清单的活,
@@ -174,8 +189,7 @@ function onAddTenant(id: number | null) {
 
 // ── 编辑态批量删除(勾选 → 确认 → 从 draft 移除,保存时以空行落库删除) ──
 const selected = ref(new Set<number>())
-const bulkConfirm = ref(false)
-watch(() => props.edit, (e) => { if (!e) { selected.value = new Set(); bulkConfirm.value = false } })
+watch(() => props.edit, (e) => { if (!e) selected.value = new Set() })
 function toggleSelect(rowKey: number) {
   const next = new Set(selected.value)
   if (next.has(rowKey)) next.delete(rowKey)
@@ -186,8 +200,16 @@ function toggleSelectAll() {
   const all = rows.value.map(r => ledgerRowKey(r))
   selected.value = all.every(k => selected.value.has(k)) ? new Set() : new Set(all)
 }
-function bulkRemove() {
-  bulkConfirm.value = false
+// 删除类确认(02-B 右):焦点在「取消」。确认框开着时编辑态可能被接管 —— 答完再守一次
+async function bulkRemove() {
+  const n = selected.value.size
+  if (!n || !(await ask({
+    title: `删除所选 ${n} 行台账？`,
+    body: `这 ${n} 行的费用、结余、备注会从本月台账移除，点「保存」后生效，「取消」编辑可放弃。`,
+    action: `删除 ${n} 行`,
+    danger: true,
+  }))) return
+  if (!props.edit) return
   emit('bulk-remove', [...selected.value])
   selected.value = new Set()
 }
@@ -269,7 +291,7 @@ async function onExport() {
   try {
     await exportLedgerMonth(props.month, props.companyName, props.year, props.monthNo, props.book?.definition)
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '导出失败')
+    receipt.fail((e as { message?: string })?.message ?? '导出失败', { label: '重试', run: () => void onExport() })
   }
 }
 
@@ -288,36 +310,44 @@ const moreItems = computed(() => [
     : []),
 ])
 
-// draft 是 month.rows 的浅拷贝(LedgerView.vue:181),所以直接 JSON 比对即可判脏。
-// 不另立 dirty 计数器 —— 计数器要在 onCellEdit / 添加行 / 批删三处同步维护,漏一处就骗人。
-const isDirty = computed(() =>
-  props.edit && JSON.stringify(props.draft) !== JSON.stringify(props.month.rows))
+// 改动数由父层按 draft 与快照逐行比出来(props.dirty),不另立计数器 ——
+// 计数器要在 onCellEdit / 添加行 / 批删三处同步维护,漏一处就骗人。
 
 // 导入会重拉整月数据,握在手里的 draft 会被静默冲掉 —— 这正是改前把导入关在浏览态所规避的东西。
-// 现在导入收进了编辑态,守卫必须补上,否则等于把那个坑挪到了编辑态里。
-function onImport() {
-  if (isDirty.value &&
-      !window.confirm('本月台账有修改尚未保存。\n导入会重新载入本月数据,这些修改将丢失。\n\n仍要导入?')) return
+// 现在导入收进了编辑态,守卫必须补上,否则等于把那个坑挪到了编辑态里。(02-B 左:普通确认)
+async function onImport() {
+  const n = props.dirty ?? 0
+  if (n > 0 && !(await ask({
+    title: '导入会重新载入本月数据',
+    body: `本月有 ${n} 处改动还没保存，导入后会丢失。`,
+    action: '仍要导入',
+  }))) return
+  if (!props.edit) return
   emit('import')
 }
 
-// 取消 = 丢弃整月草稿(LedgerView.vue:221-223 直接清空 draft),此前一点即弃、零提示。
-function onCancel() {
-  if (isDirty.value && !window.confirm('放弃本月未保存的修改?')) return
+// 取消 = 丢弃整月草稿(LedgerView 直接清空 draft):有改动先问,0 处直接退
+async function onCancel() {
+  if (!(await askLeave({ page: reviewLabel.value, count: props.dirty ?? 0, verb: '退出编辑' }))) return
   emit('cancel')
 }
 
-// 从上月复制:先 confirm()(覆盖本月已有行,spec §4.2)
-function onCopyPrev() {
-  if (window.confirm(`从 ${props.month.prevMonth} 月复制将覆盖本月已录入的行,确认继续?`)) {
-    emit('copy-from-prev')
-  }
+// 从上月复制:覆盖本月已有行(spec §4.2),删除类确认
+async function onCopyPrev() {
+  if (!(await ask({
+    title: `从 ${props.month.prevMonth} 月复制到本月？`,
+    body: '本月已录入的行会被覆盖。',
+    action: '复制并覆盖',
+    danger: true,
+  }))) return
+  if (!props.edit) return
+  emit('copy-from-prev')
 }
 
 // 返回箭头(回矩阵态,两态常驻;「换期」文本按钮仅浏览态,SPEC §5.2-2 导航类编辑态隐藏):
-// 编辑态有未保存修改先走脏确认,矩阵态回来草稿已不在
-function onBack() {
-  if (isDirty.value && !window.confirm('本月台账有修改尚未保存,换期将丢失这些修改,继续?')) return
+// 编辑态有未保存修改先走离开确认(02-A),0 处直接换期;矩阵态回来草稿已不在
+async function onBack() {
+  if (!(await askLeave({ page: reviewLabel.value, count: props.dirty ?? 0, verb: '离开' }))) return
   emit('back')
 }
 </script>
@@ -329,10 +359,10 @@ function onBack() {
            日期字段点开 = 换期(回月份矩阵)—— 与桌面「换期」按钮同一条动线,这一屏换期的唯一出口。 -->
       <div v-if="isS" class="lg-s-h1">
         <div class="tt">
-          <div class="nm" :title="sTitle">{{ sTitle }}</div>
+          <div class="nm" v-tip="sTitle">{{ sTitle }}</div>
           <div class="sub">{{ view.length }} 户 · {{ colCount }} 列</div>
         </div>
-        <button class="lg-s-date" type="button" title="换期(返回月份矩阵)" @click="onBack">
+        <button class="lg-s-date" type="button" v-tip="'换期（返回月份矩阵）'" @click="onBack">
           <span class="v">{{ year }}-{{ String(monthNo).padStart(2, '0') }}</span>
           <component :is="iconFor('calendar')" :size="18" />
         </button>
@@ -345,7 +375,7 @@ function onBack() {
           <component :is="iconFor('lock')" :size="16" />编辑中
         </span>
         <span v-else-if="auth.can('entry:edit') && reviewNote" class="lg-s-lock ro"
-              :title="reviewBlock?.tip ?? undefined">
+              v-tip="reviewBlock?.tip">
           <component :is="iconFor('lock')" :size="16" />{{ reviewNote }}
         </span>
         <button v-else-if="auth.can('entry:edit')" type="button" class="lg-s-lock"
@@ -356,7 +386,7 @@ function onBack() {
         <FPMoreMenu class="mm" :items="moreItems" @select="onMore" />
       </div>
       <div v-if="!isS" class="lg-head-l">
-        <button class="lg-back" @click="onBack" title="换期(返回月份矩阵)"><component :is="iconFor('arrow-left')" :size="16" /></button>
+        <button class="lg-back" @click="onBack" v-tip="'换期（返回月份矩阵）'"><component :is="iconFor('arrow-left')" :size="16" /></button>
         <div>
           <h2 class="lg-title">{{ book?.name ?? companyName }} <span v-if="book" class="lg-ver">v{{ book.ver }}</span> · {{ year }} 年 {{ monthNo }} 月</h2>
           <p class="lg-sub">{{ companyName }} · 一行一租户 · 上月（{{ month.prevMonth }} 月）结余结转本月</p>
@@ -444,7 +474,7 @@ function onBack() {
           <!-- 锁位就长在这颗按钮上(设计稿 §05):min-width 定死,三态换文案不换宽度。 -->
           <!-- 审核闸(§7.5):已审核 / 待审核时按钮位换成同尺寸禁用药丸(与 .lg-lockbtn 同 min-width)。 -->
           <span v-if="auth.can('entry:edit') && reviewNote" class="lg-lockbtn lg-reviewpill"
-                :title="reviewBlock?.tip ?? undefined">
+                v-tip="reviewBlock?.tip">
             <component :is="iconFor('lock')" :size="14" />{{ reviewNote }}
           </span>
           <Button v-else-if="auth.can('entry:edit')" variant="outline" size="sm"
@@ -474,13 +504,15 @@ function onBack() {
       <div class="lg-toolbar-l">
         <!-- S 档的搜索在第二行工具行里(稿 §1 注释②),这里不再出第二个 -->
         <SearchField v-if="!isS" placeholder="搜索租户" shortcut="" :value="q" :width="180" @change="q = $event" />
-        <!-- 未绑定问题入口:紧贴搜索框、**常驻**(LAYOUT-STABILITY:入口随月份出现/消失会挪动工具条;
-             0 问题时置灰,点开是空态说明,用户 2026-08-23 反馈「入口找不到」后定为常驻) -->
-        <button class="lg-issues" :class="{ quiet: (issueCount ?? 0) === 0 }" @click="emit('open-issues')">
-          <component :is="iconFor('alert-triangle')" :size="13" />
-          未绑定 {{ issueCount ?? 0 }}
-        </button>
-        <Button v-if="edit && selected.size" variant="danger" size="sm" :disabled="saving" @click="bulkConfirm = true">
+        <!-- 未绑定问题入口:紧贴搜索框、**常驻**(LAYOUT-STABILITY §6:入口随月份出现/消失会挪动工具条;
+             0 问题时静默,点开是空态说明,用户 2026-08-23 反馈「入口找不到」后定为常驻)。
+             点开 = 贴着胶囊的问题面板(06-C 方案 A,页面不变暗),未绑定清单由父层从 #issues 插槽放进来 -->
+        <FPAlertPanel :open="!!issuesOpen" :count="issueCount ?? 0" :groups="[]"
+                      label="未绑定" quiet-label="无未绑定"
+                      @update:open="emit('update:issuesOpen', $event)">
+          <slot name="issues" />
+        </FPAlertPanel>
+        <Button v-if="edit && selected.size" variant="danger" size="sm" :disabled="saving" @click="bulkRemove">
           <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
           删除所选 ({{ selected.size }})
         </Button>
@@ -509,25 +541,6 @@ function onBack() {
       @toggle-select="toggleSelect"
       @toggle-select-all="toggleSelectAll"
     />
-
-    <!-- 批量删除确认(居中弹窗,项目 PAGE-BEHAVIOR-SPEC §2 惯例;点「保存」后生效,取消编辑可放弃) -->
-    <Teleport to="body">
-      <div v-if="bulkConfirm" class="lg-bulk-mask" @mousedown="bulkConfirm = false">
-        <div class="lg-bulk-dlg" role="dialog" aria-modal="true" @mousedown.stop>
-          <div class="h">
-            <h3>删除所选台账行</h3>
-            <p>将从本月台账移除所选 {{ selected.size }} 行(含其费用/结余/备注);点「保存」后生效,「取消」编辑可放弃。</p>
-          </div>
-          <div class="f">
-            <Button variant="gray" size="sm" @click="bulkConfirm = false">取消</Button>
-            <Button variant="danger" size="sm" @click="bulkRemove">
-              <template #leading><component :is="iconFor('trash-2')" /></template>
-              删除 {{ selected.size }} 行
-            </Button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
 
     <p class="lg-foot">
       <component :is="iconFor('info')" :size="13" />
@@ -571,26 +584,10 @@ function onBack() {
 .lg-addbtn :deep(.fp-tp-trigger) { height:28px; padding:0 12px; gap:6px; border-radius:var(--radius-full); font-size:var(--fs-label); }
 .lg-addbtn :deep(.fp-tp-trigger .txt.ph) { color:var(--text-primary); }
 .lg-addbtn :deep(.fp-tp-pop) { width:260px; left:auto; right:0; }
-/* 批量删除确认弹窗(1:1 LedgerNewCompanyDialog .lg-dlg 风格) */
-.lg-bulk-mask { position:fixed; inset:0; background:var(--scrim); z-index:320; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); }
-.lg-bulk-dlg { width:min(420px,92vw); background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:var(--shadow-dialog); }
-.lg-bulk-dlg .h { padding:20px 22px 4px; }
-.lg-bulk-dlg .h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
-.lg-bulk-dlg .h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
-.lg-bulk-dlg .f { display:flex; justify-content:flex-end; gap:8px; padding:16px 22px 20px; }
 
 .lg-toolbar { flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 .lg-toolbar-l { display:flex; align-items:center; gap:10px; }
 .lg-toolbar-note { font-size:12px; color:var(--text-muted); }
-.lg-issues {
-  display:inline-flex; align-items:center; gap:5px;
-  height:28px; padding:0 10px; border-radius:var(--radius-full);
-  border:1px solid var(--status-warning); background:transparent;
-  color:var(--status-warning); font-size:12px; font-weight:var(--fw-medium);
-  cursor:pointer; white-space:nowrap;
-}
-.lg-issues:hover { background:var(--bg-hover); }
-.lg-issues.quiet { border-color:var(--border-control); color:var(--text-muted); }
 
 .lg-foot { flex:0 0 auto; margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
 

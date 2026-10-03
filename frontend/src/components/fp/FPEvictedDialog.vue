@@ -10,16 +10,22 @@
 //
 // 形态照抄 import/SaveConfirmDialog.vue（同款居中卡片 + scrim），那边已经是「有 N 处改动」
 // 这类对话的既有样板。
+//
+// review 分支(06-E 当场出现组「正在编辑的表被交审或审核通过」→ 同一个居中弹窗):
+// App 挂一个全局的,读 ui.editStop。写谁交审 / 谁审过,只有「知道了」。
 import { computed, ref } from 'vue'
 import type { Eviction } from '@/api/locks'
+import type { EditStop } from '@/stores/ui'
 import Button from '@/components/ds/Button.vue'
 import { iconFor } from '@/components/ds/icon'
 
 const props = defineProps<{
   /** 非空即打开。来自 useEditMode 的 evictedBy */
   eviction: Eviction | null
+  /** 非空即打开(review 分支)。来自 ui.editStop;它自带 what,不读下面那个 */
+  review?: EditStop | null
   /** 这一期给人看的名字，如「一泽 2025-06 月度台账」 */
-  what: string
+  what?: string
   /** 未保存的改动处数 */
   dirtyCount?: number
   /**
@@ -30,7 +36,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ close: [] }>()
 
-const open = computed(() => !!props.eviction)
+const open = computed(() => !!props.eviction || !!props.review)
 const dirty = computed(() => props.dirtyCount ?? 0)
 const canCopy = computed(() => dirty.value > 0 && !!props.copyText)
 const copied = ref(false)
@@ -53,9 +59,18 @@ async function copy() {
       <div class="evd-card">
         <div class="evd-h">
           <span class="evd-ic"><component :is="iconFor('alert-triangle')" :size="16" /></span>
-          <h3>{{ eviction?.byDisplayName ? '你的编辑权已被接管' : '你的编辑态已失效' }}</h3>
+          <h3 v-if="review">{{ review.status === 'approved' ? '这张表已审核通过' : '这张表已交审' }}</h3>
+          <h3 v-else>{{ eviction?.byDisplayName ? '你的编辑权已被接管' : '你的编辑态已失效' }}</h3>
         </div>
-        <div class="evd-b">
+        <div v-if="review" class="evd-b">
+          <p class="evd-lead">
+            <b>{{ review.by }}</b> {{ review.status === 'approved' ? '审核通过了' : '交审了' }}「{{ review.what }}」，你已退回浏览态。
+          </p>
+          <p class="evd-note">
+            {{ review.status === 'approved' ? '要再改，需审核员先撤销审核。' : '审核结果出来之前不能改；要改，请交审人撤回，或等审核员退回。' }}
+          </p>
+        </div>
+        <div v-else class="evd-b">
           <p v-if="eviction?.byDisplayName" class="evd-lead">
             <b>{{ eviction.byDisplayName }}</b> 接管了「{{ what }}」的编辑权<template
               v-if="eviction.authorizerName">，由 <b>{{ eviction.authorizerName }}</b> 授权</template>。

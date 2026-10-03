@@ -101,8 +101,9 @@ describe('纯读屏切回重读(P3 §4.1 Step6b) · 源码门禁', () => {
   it('ChargingAnalysisView 回签走静默分支,首进与换年照旧置 loading', () => {
     const s = src('/analysis/ChargingAnalysisView.vue')
     expect(s, '回签:silent=true').toContain('onReactivated(() => { void load(year.value, true) })')
-    expect(s, '首进 / 换年:照旧转圈').toContain('if (!silent) { loading.value = true; failed.value = false }')
-    expect(s, '静默那趟失败也不翻成错误卡').toContain('if (my === seq && !silent) failed.value = true')
+    expect(s, '首进 / 换年:照旧转圈').toContain('if (!silent) loading.value = true')
+    // 失败卡记的是失败的那一年(y),不是选择器上的年 —— \b 挡住 `= year.value` 这类前缀相同的写法
+    expect(s, '静默那趟失败也不翻成错误卡').toMatch(/if \(my === seq && !silent\) failed\.value = y\b/)
   })
 
   // KeepAlive 深度是「恢复现场」的实际收益所在:被挤掉的屏切回就是空白重来。

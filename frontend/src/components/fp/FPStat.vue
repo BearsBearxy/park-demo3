@@ -25,7 +25,7 @@ const { small, tip } = useFitDown(numEl)
   <div class="fs" :style="{ background: bg }">
     <span class="fs-l">{{ label }}</span>
     <span v-if="loading" class="fp-shim fs-sk" aria-hidden="true"></span>
-    <span v-else ref="numEl" class="fs-n" :class="{ s16: small }" :style="valueColor ? { color: valueColor } : undefined" :title="tip">{{ parts[0] }}<span v-if="parts[1]" class="u">{{ parts[1] }}</span></span>
+    <span v-else ref="numEl" class="fs-n" :class="{ s16: small }" :style="valueColor ? { color: valueColor } : undefined" v-tip="tip">{{ parts[0] }}<span v-if="parts[1]" class="u">{{ parts[1] }}</span></span>
     <span v-if="sub" class="fs-s">{{ sub }}</span>
   </div>
 </template>

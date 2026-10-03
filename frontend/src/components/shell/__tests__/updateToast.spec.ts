@@ -8,6 +8,7 @@ import { useUiStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
 import { usePresenceStore } from '@/stores/presence'
 import { BRAND } from '@/brand'
+import { receipts } from '@/utils/receipt'
 
 const route = reactive({ meta: { value: 'data-home' } as Record<string, string>, path: '/data-home' })
 vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => ({ push: vi.fn() }) }))
@@ -45,6 +46,7 @@ describe('AppShell · 刷新提示条', () => {
     setActivePinia(createPinia())
     localStorage.clear()
     document.body.innerHTML = ''
+    receipts.splice(0)
   })
   afterEach(() => {
     usePresenceStore().stop()
@@ -52,21 +54,14 @@ describe('AppShell · 刷新提示条', () => {
     vi.useRealTimers()
   })
 
-  it('服务器换了版本 ⇒ 底部出提示条,写新版本号', async () => {
+  // 破坏验证:提示条 v-if 改成 `upd.barKind || upd.hasNewVersion` → 红。
+  // 「已更新到 v…」(含编辑中那句)2026-09-30 起进铃铛「系统」一行(VERSION-UPDATE-SPEC §6),断言在铃铛面板那边。
+  it('❗服务器换了版本 ⇒ 底部不出提示条(进铃铛),页面上也没有「已更新到」', async () => {
     const w = mountShell()
-    await serverSays('9.9.9')
-    const bar = document.querySelector('.fp-upd-toast')!
-    expect(bar).toBeTruthy()
-    expect(bar.textContent).toContain(`${BRAND.name}已更新到 v9.9.9`)
-    expect(bar.textContent).toContain('刷新后生效')
-    w.unmount()
-  })
-
-  it('编辑态换一句话:先保存再刷新', async () => {
-    const w = mountShell()
-    useAuthStore().openEditor(Symbol('ledger'))
-    await serverSays('9.9.9')
-    expect(document.querySelector('.fp-upd-toast')!.textContent).toContain('你正在编辑，保存后再刷新')
+    const upd = await serverSays('9.9.9')
+    expect(upd.hasNewVersion, '前置:真有新版').toBe(true)
+    expect(document.querySelector('.fp-upd-toast')).toBeNull()
+    expect(document.body.textContent).not.toContain(`${BRAND.name}已更新到`)
     w.unmount()
   })
 
@@ -83,16 +78,19 @@ describe('AppShell · 刷新提示条', () => {
     const w = mountShell()
     const reload = vi.fn()
     vi.stubGlobal('location', { ...window.location, reload })
-    await serverSays('9.9.9')
+    useUpdateStore().reportBlocked()
+    await nextTick()
     const btn = [...document.querySelectorAll('.fp-upd-toast .act')].find((b) => b.textContent === '刷新')!
     btn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     expect(reload).toHaveBeenCalled()
     w.unmount()
   })
 
-  it('点 × 收起;这一版不再提示', async () => {
+  it('点 × 收起「这一页属于新版本」', async () => {
     const w = mountShell()
-    const upd = await serverSays('9.9.9')
+    const upd = useUpdateStore()
+    upd.reportBlocked()
+    await nextTick()
     const x = [...document.querySelectorAll('.fp-upd-toast .act')].find((b) => b.textContent === '×')!
     x.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
@@ -103,20 +101,23 @@ describe('AppShell · 刷新提示条', () => {
 
   it('下面还有别的提示条时往上让位(--lift 数的是下面几条)', async () => {
     const w = mountShell()
-    const upd = await serverSays('9.9.9')
+    const upd = useUpdateStore()
+    upd.reportBlocked()
+    await nextTick()
     const bar = () => document.querySelector('.fp-upd-toast') as HTMLElement
     expect(bar().style.getPropertyValue('--lift')).toBe('0')
 
     useUiStore().reportNetError('读取失败，请检查网络')
     await nextTick()
     expect(bar().style.getPropertyValue('--lift')).toBe('1')
-    expect(upd.barKind).toBe('new')
+    expect(upd.barKind).toBe('blocked')
     w.unmount()
   })
 
   it('「本次更新」开着时先不出,关掉弹窗才出(提示档会压住弹窗按钮)', async () => {
     const w = mountShell()
-    const upd = await serverSays('9.9.9')
+    const upd = useUpdateStore()
+    upd.reportBlocked()
     upd.popupOpen = true
     await nextTick()
     expect(document.querySelector('.fp-upd-toast')).toBeNull()
@@ -124,6 +125,30 @@ describe('AppShell · 刷新提示条', () => {
     upd.popupOpen = false
     await nextTick()
     expect(document.querySelector('.fp-upd-toast')).toBeTruthy()
+    w.unmount()
+  })
+
+  it('❗断网 ⇒ 底部一条带「刷新」的失败回执,不再自写 .fp-net-toast;同一句再报不叠第二条', async () => {
+    const w = mountShell()
+    const ui = useUiStore()
+    const shown = () => [...document.querySelectorAll('.frh .fpt')]
+    ui.reportNetError('网络异常或服务不可用，请稍后重试')
+    await nextTick()
+    expect(shown().map((e) => e.querySelector('.fpt-m')!.textContent)).toEqual(['网络异常或服务不可用，请稍后重试'])
+    expect([...shown()[0].querySelectorAll('button')].map((b) => b.textContent?.trim())).toEqual(['刷新', ''])   // 刷新 + ×
+    expect(document.querySelector('.fp-net-toast')).toBeNull()
+
+    ui.reportNetError('网络异常或服务不可用，请稍后重试')   // 连报同一句:不叠第二条
+    await nextTick()
+    expect(shown().length).toBe(1)
+
+    // 用户点 × 关掉,接着同一句再失败:要再出(对抗复查:旧写法 netError 存字符串,同一句值不变 watch 不响,屏上什么都没有)
+    shown()[0].querySelector<HTMLButtonElement>('.fpt-x')!.click()
+    await nextTick()
+    expect(shown().length, '前置:点 × 收了').toBe(0)
+    ui.reportNetError('网络异常或服务不可用，请稍后重试')
+    await nextTick()
+    expect(shown().length).toBe(1)
     w.unmount()
   })
 

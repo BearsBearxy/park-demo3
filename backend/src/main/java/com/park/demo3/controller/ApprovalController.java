@@ -38,4 +38,8 @@ public class ApprovalController {
     @Operation(summary = "批准 / 拒绝。批准要输**自己的**密码，在自己的电脑上")
     @PostMapping("/{id}")
     public void decide(@PathVariable String id, @RequestBody DecideReq req) { svc.decide(id, req); }
+
+    @Operation(summary = "撤回本人还没人批的请求(等待中关掉授权弹窗)。不算超时;别人的撤不动")
+    @DeleteMapping("/{id}")
+    public void cancel(@PathVariable String id) { svc.cancel(id); }
 }

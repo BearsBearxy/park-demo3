@@ -1,9 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import IconRail from '@/components/shell/IconRail.vue'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
+import { useUpdateStore } from '@/stores/update'
+import MobileNavDrawer from '@/components/shell/mobile/MobileNavDrawer.vue'
 
 const push = vi.fn()
 vi.mock('vue-router', () => ({
@@ -92,4 +95,63 @@ describe('IconRail · 角色行(P5)', () => {
     w.unmount()
   })
 
+  describe('头像的说明气泡', () => {
+    afterEach(() => { vi.useRealTimers(); document.body.innerHTML = '' })
+
+    // v-tip 触屏按下就出、翻到头像上方,正好盖住向上弹的账号菜单最下面「版本更新 / 退出登录」;
+    // tip.ts 文件头也写着图标轨继续用 ShellTip(它没有触屏分支)
+    it('❗触屏点头像不出气泡;鼠标停 500ms 照样出名字', async () => {
+      vi.useFakeTimers()
+      useAuthStore().displayName = '周明'
+      const w = mount(IconRail, { attachTo: document.body, global: { stubs: { PopoverItem: true, Avatar: true } } })
+      const btn = w.find('.fp-rail-user').element
+      const e = new MouseEvent('pointerdown', { bubbles: true })
+      Object.defineProperty(e, 'pointerType', { value: 'touch' })
+      btn.dispatchEvent(e)
+      await nextTick()
+      expect(document.querySelector('.fp-tip')).toBeNull()
+
+      btn.closest('.fp-tipw')!.dispatchEvent(new MouseEvent('mouseenter'))
+      vi.advanceTimersByTime(500)
+      await nextTick()
+      expect(document.querySelector('.fp-tip b')?.textContent).toBe('周明')
+      w.unmount()
+    })
+  })
+
+})
+
+// ══════════ 记号只挂在铃铛上(06-G 规则表「只挂在铃铛上」,S5 FE-DOT) ══════════
+describe('没看过的更新:账号菜单与手机抽屉不再挂点', () => {
+  beforeEach(() => { setActivePinia(createPinia()); localStorage.clear() })
+
+  /** 登进来、这一版没看过 —— 改前这时三处各亮一颗蓝点 */
+  function unreadUser() {
+    useAuthStore().me = 'zhou'
+    const upd = useUpdateStore()
+    upd.loadSeen()
+    expect(upd.unread, '前置:真有没看过的更新').toBe(true)
+    return upd
+  }
+
+  // 破坏验证:版本号后面加回 `<span v-if="upd.unread" class="dot" />` → 红
+  it('❗账号菜单「版本更新」一行:有没看过的更新也不带 .dot', () => {
+    const upd = unreadUser()
+    const w = mount(IconRail, {
+      global: { stubs: { Popover: { template: '<div><slot name="trigger" /><slot /></div>' }, PopoverItem: true, Avatar: true } },
+    })
+    const row = w.findAll('.fp-user-row').find((b) => b.text().includes('版本更新'))!
+    expect(row.text(), '行本身还在,版本号照写').toContain(`v${upd.version}`)
+    expect(row.find('.dot').exists()).toBe(false)
+  })
+
+  // 破坏验证:加回 `:class="{ unread: upd.unread }"` 或版本号后的 .dot → 红
+  it('❗手机抽屉「版本更新」一行:没有 .dot,也不换未读底色', () => {
+    const upd = unreadUser()
+    const w = mount(MobileNavDrawer, { props: { open: true }, global: { stubs: { teleport: true } } })
+    const row = w.findAll('.mnav-row').find((b) => b.text().includes('版本更新'))!
+    expect(row.text(), '行本身还在,版本号照写').toContain(`v${upd.version}`)
+    expect(row.find('.dot').exists()).toBe(false)
+    expect(row.classes()).not.toContain('unread')
+  })
 })

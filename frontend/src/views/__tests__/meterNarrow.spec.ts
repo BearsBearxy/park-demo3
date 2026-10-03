@@ -30,6 +30,7 @@ import { join } from 'node:path'
 import MeterView from '@/views/meters/MeterView.vue'
 import MeterLedgerGrid from '@/views/meters/MeterLedgerGrid.vue'
 import Segmented from '@/components/ds/Segmented.vue'
+import Select from '@/components/ds/Select.vue'
 import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import { useUiStore } from '@/stores/ui'
 import { metersApi, type MeterDTO, type MeterReadingDTO, type MeterBindingDTO, type MeterDeleteDTO } from '@/api/meters'
@@ -376,6 +377,12 @@ describe('§5.10 · 筛选行收成「搜索 + 带计数的筛选钮」', () => 
     expect(panel.findAllComponents(Segmented), '分区 + 电/水 两条段控').toHaveLength(2)
     expect(panel.findAll('.ds-sel-trigger'), '楼栋 / 归属 / 状态 三条下拉').toHaveLength(3)
     expect(panel.text()).toContain('重置')
+    // 状态下拉(宽档已并进状态页签,S/M 档照旧):细项原名都在,不在册两项叫「已拆」「未在册」
+    const labels = w.findAllComponents(Select)   // S 档宽档行不渲染:此刻的下拉都在面板里
+      .map(s => (s.props('options') as { value: string; label: string }[]))
+      .find(o => o.some(x => x.value === 'changed'))!.map(x => x.label)
+    expect(labels).toEqual(expect.arrayContaining(['本月有变化', '期区对不上', '缺底数', '本月册子里没有', '已拆', '未在册']))
+    expect(labels).not.toContain('已退场')
     // 面板里的控件按 §6.2 主操作档 44 高(form-sheet.css 压 input/.ds-sel-trigger,这里管段)
     expect(cssProp(SRC, '.mt5-panel .mt5-seg', 'min-height')).toBe('44px')
     w.unmount()
@@ -464,14 +471,14 @@ describe('§5.11 · 「⋯」里的不可逆动作有二次确认', () => {
 
     // 不是「菜单里一行字点了就删」:先拉预览数字、再要人手打账期(§5.11 待办条那句)
     expect(metersApi.batchDelete).not.toHaveBeenCalled()
-    expect(w.find('.mt-dlg h3').text()).toBe(`批量删除本期 · ${YM}`)
-    const confirmBtn = w.findAll('.mt-dlg-f button').find(b => b.text().includes('确认删除'))
-    expect(confirmBtn, '前提:确认删除那颗按钮真的在').toBeTruthy()
+    expect(w.find('.mt-dlg h3').text()).toBe(`删除 ${YM} 全部读数？`)
+    const confirmBtn = w.findAll('.mt-dlg-f button').find(b => b.text().includes('删除 137 条'))
+    expect(confirmBtn, '前提:「删除 137 条」那颗按钮真的在').toBeTruthy()
     expect(confirmBtn!.attributes('disabled'), '账期没打就能点 —— 二次确认成了摆设').toBeDefined()
 
     vm.delTyped = YM
     await flushPromises()
-    expect(w.findAll('.mt-dlg-f button').find(b => b.text().includes('确认删除'))!.attributes('disabled')).toBeUndefined()
+    expect(w.findAll('.mt-dlg-f button').find(b => b.text().includes('删除 137 条'))!.attributes('disabled')).toBeUndefined()
     w.unmount()
   })
 })
@@ -573,29 +580,31 @@ describe('§5.10 M 档(601–960)· 平板竖屏:标题行不画、筛选照收�
   })
 })
 
-describe('§9 · XL 档零差异:标题行、6 张卡、7 件筛选原样', () => {
-  it('标题行 + 6 张统计卡照旧,S 档那两块一个都不出现', async () => {
+// 宽档 2026-10-01 按画布 04-A 改了(6 张卡并进状态页签、七个按钮收成四个),细节由 meterLayout.spec 钉;
+// 这里只钉「宽档与窄档两套块互不串门」
+describe('§9 · XL 档:画布 04-A 那一套,窄档的块一个都不出现', () => {
+  it('标题行在、6 张卡并进了页签,S 档那两块一个都不出现', async () => {
     asXL()
     const w = await open()
     expect(w.find('.mt-head').exists()).toBe(true)
     expect(w.find('.mt-title').text()).toContain('园区抄表')
-    expect(w.findAll('.mt5-cards .mt5-card'), '6 张卡一张都不许少').toHaveLength(6)
-    expect(w.find('.mt5-prog .bar').exists(), '宽档进度条仍是条不是底纹').toBe(true)
-    // 先断「真的选到了东西」(上面四条),再断不该有的
+    expect(w.find('.mt-prog').text(), '进度条换成标题旁一句').toBe('租户表已抄 2 / 3')
+    // 先断「真的选到了东西」(上面三条),再断不该有的
+    expect(w.findAll('.mt5-cards .mt5-card'), '宽档 6 张卡已并进状态页签').toHaveLength(0)
     expect(w.find('.mt5-sum').exists(), 'S 档摘要行漏到宽档了').toBe(false)
     expect(w.find('.mt5-fbar').exists(), 'S 档筛选条漏到宽档了').toBe(false)
     w.unmount()
   })
 
-  it('筛选条 7 件原样:段控 2 + 下拉 3 + 搜索 1 + 重置 1', async () => {
+  it('第二行:段控 2(电水 + 状态页签)+ 下拉 1(归属)+ 搜索 1,没有重置', async () => {
     asXL()
     const w = await open()
     const bar = w.find('.mt5-filters')
-    expect(bar.exists(), '前提:宽档筛选条还在').toBe(true)
+    expect(bar.exists(), '前提:宽档第二行还在').toBe(true)
     expect(bar.findAllComponents(Segmented)).toHaveLength(2)
-    expect(bar.findAll('.ds-sel-trigger')).toHaveLength(3)
+    expect(bar.findAll('.ds-sel-trigger')).toHaveLength(1)
     expect(bar.findAll('.mx-search input')).toHaveLength(1)
-    expect(bar.text()).toContain('重置')
+    expect(bar.text()).not.toContain('重置')
     w.unmount()
   })
 
@@ -610,12 +619,13 @@ describe('§9 · XL 档零差异:标题行、6 张卡、7 件筛选原样', () =
     w.unmount()
   })
 
-  it('宽档不画筛选钮 / 不画「⋯」—— 那两件是 S 档收纳出来的', async () => {
+  it('宽档不画筛选钮;「…」只有标题行那一颗(画布 04-A),不是 S 档那条收纳行里的', async () => {
     asXL()
     const w = await open()
     expect(w.find('.mt5-filters').exists(), '前提:宽档筛选条还在').toBe(true)
     expect(w.find('.mt5-fbtn').exists()).toBe(false)
-    expect(w.find('.fp-more-btn').exists()).toBe(false)
+    expect(w.findAll('.fp-more-btn')).toHaveLength(1)
+    expect(w.find('.mt-head .fp-more-btn').exists()).toBe(true)
     w.unmount()
   })
 })
@@ -636,10 +646,11 @@ describe('METER-TIMELINE-SPEC §10.4 · 本月册子:整段零记录出一句,�
     w.unmount()
   })
 
-  it('整月没有读数:让位给「暂无抄表数据」那条,不叠两条', async () => {
+  it('整月没有读数:让位给空状态和「本月还没有读数」,不叠「本月没导册子」', async () => {
     vi.mocked(metersApi.list).mockResolvedValue(METERS.map(noBook))
     const w = await open([])
-    expect(w.find('.mt-empty').exists(), '前提:空态引导出来了').toBe(true)
+    expect(w.find('.fp-empty').exists(), '前提:空状态出来了').toBe(true)
+    expect(w.findAll('.mt-head .fp-state').map(t => t.text())).toEqual(['本月还没有读数'])
     expect(w.find('.mt-bookbar').exists()).toBe(false)
     w.unmount()
   })
@@ -652,7 +663,10 @@ describe('METER-TIMELINE-SPEC §10.4 · 本月册子:整段零记录出一句,�
     const tags = w.findAll('.mlg-book')
     expect(tags).toHaveLength(1)
     expect(tags[0].text()).toBe('本月册子没有')
-    expect(tags[0].attributes('title')).toBe('这个月导入的册子里没有这块表;显示的是最早那一行(按旧档案补记)')
+    // 悬停说明(十件 ⑩):原生 title 换成 v-tip,原句挂在元素上
+    expect((tags[0].element as HTMLElement & { _tip?: { text: string } })._tip?.text)
+      .toBe('这个月导入的册子里没有这块表;显示的是最早那一行(按旧档案补记)')
+    expect(tags[0].attributes('title'), '原生 title 不许回来').toBeUndefined()
     expect(tags[0].element.closest('.mlg-tname')!.querySelector('.nm')!.textContent).toBe('租户2')
     w.unmount()
   })
@@ -663,12 +677,15 @@ describe('METER-TIMELINE-SPEC §10.4 · 本月册子:整段零记录出一句,�
     expect(cssProp(GRID_SRC, '.mlg-tname .nm', 'flex')).toBe('1 1 auto')
   })
 
-  it('状态下拉有「本月册子里没有」:选中后下拉写着它,表里只剩打标那一行', async () => {
+  // 宽档状态下拉已并进页签(画布 04-A),这一项只在 S/M 筛选面板的状态下拉里
+  it('S 档状态下拉有「本月册子里没有」:选中后下拉写着它,表里只剩打标那一行', async () => {
+    asS()
     vi.mocked(metersApi.list).mockResolvedValue([METERS[0], noBook(METERS[1]), METERS[2]])
     const w = await open()
     vmOf(w).status = 'bookMissing'
+    vmOf(w).panel = 'filter'
     await flushPromises()
-    expect(w.findAll('.mt5-filters .ds-sel-trigger')[2].text()).toBe('本月册子里没有')
+    expect(w.findAll('.mt5-panel .ds-sel-trigger')[2].text()).toBe('本月册子里没有')
     expect(w.findAll('.mlg-tname').map(c => c.find('.nm').text())).toEqual(['租户2'])
     w.unmount()
   })

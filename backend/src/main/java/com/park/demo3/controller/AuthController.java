@@ -25,6 +25,10 @@ public class AuthController {
     @PostMapping("/login")
     public LoginResp login(@Valid @RequestBody LoginReq req) { return auth.login(req); }
 
+    @io.swagger.v3.oas.annotations.Operation(summary = "当前账号的权限、导航层、角色名(角色被改后刷新用)")
+    @GetMapping("/me")
+    public MeResp me() { return auth.me(); }
+
     /**
      * 登出(V125)。改前前端只把本地令牌删掉,服务端不知情 ——
      * 那张令牌在剩下的有效期里仍然能用。现在它当场作废。

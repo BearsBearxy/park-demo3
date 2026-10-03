@@ -10,7 +10,6 @@ import { useAuthStore } from '@/stores/auth'
 import Button from '@/components/ds/Button.vue'
 import Input from '@/components/ds/Input.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
-import { iconFor } from '@/components/ds/icon'
 import { permLabel, loadPermDict } from '@/api/perms'
 import { approvalsApi, type Authorizer } from '@/api/approvals'
 import { usePresenceStore } from '@/stores/presence'
@@ -130,6 +129,21 @@ function startTick() {
 }
 function stopTick() { if (tick) { clearInterval(tick); tick = null } }
 
+/**
+ * 撤回还在等的请求(画布 06-E「点了取消请求照样报超时」):等待中关掉弹窗、点「取消请求」都走这里。
+ * 撤回的不算超时,不进铃铛。已经倒数到 0 的不撤 —— 那次确实超时了,该进铃铛「有结果了」。
+ * 撤不掉(断网 / 已被批)静默:最坏是按超时算,不值得为它打断人。
+ */
+function cancelRequest() {
+  if (myId.value && leftMs.value > 0) void approvalsApi.cancel(myId.value).catch(() => {})
+  myId.value = null
+  stopTick(); waiting.value = false
+}
+
+// 等待中切回「请人走过来」(底部按钮或上面的分段都算):远程那条不要了,当场撤回、停倒计时 ——
+// 不撤的话 2 分钟后框里报超时、铃铛冒「远程授权超时」,人早就改走另一条路了。
+watch(tab, (t) => { if (t === 'onsite' && waiting.value) cancelRequest() })
+
 const pickedName = computed(() =>
   candidates.value?.find((c) => c.username === picked.value)?.displayName ?? '')
 const mmss = computed(() => {
@@ -164,7 +178,7 @@ watch(() => presence.outcome, async (o) => {
 })
 
 watch(open, (o) => {
-  if (!o) { stopTick(); waiting.value = false; myId.value = null; return }
+  if (!o) { cancelRequest(); return }
   account.value = ''; password.value = ''; err.value = ''
   acctRO.value = true; pwdRO.value = true
   tab.value = 'onsite'; candidates.value = null; picked.value = null
@@ -266,12 +280,7 @@ async function submit() {
       <!-- ⚠ 错误位**常驻**(LAYOUT-STABILITY-SPEC §7)。写成 v-if 的话密码输错时
            这行凭空长出来,把下面的说明和「确认授权」按钮一起顶下去 ——
            用户正要重点一次的按钮在他手指底下跑掉。2026-08-22 用户截图指出。 -->
-      <p class="ev-err">
-        <template v-if="err">
-          <component :is="iconFor('alert-triangle')" :size="14" />
-          {{ err }}
-        </template>
-      </p>
+      <p class="fp-field-err"><template v-if="err">{{ err }}</template></p>
 
       <p v-if="!canRemote || tab === 'onsite'" class="ev-note">
         授权是给<b>这台电脑上的这个账号</b>的，不是替他登录。做事的人仍然是
@@ -282,8 +291,8 @@ async function submit() {
       <!-- ⚠ 等待态的逃生口必须一直挂着：主管不在电脑前时请求者会干等，
            这是当初否掉远程批准的第二条理由，今天依然成立。 -->
       <template v-if="canRemote && tab === 'remote' && waiting">
-        <Button variant="gray" size="sm" @click="waiting = false">取消请求</Button>
-        <Button variant="outline" size="sm" @click="tab = 'onsite'; waiting = false">改为请人走过来</Button>
+        <Button variant="gray" size="sm" @click="cancelRequest">取消请求</Button>
+        <Button variant="outline" size="sm" @click="tab = 'onsite'">改为请人走过来</Button>
       </template>
       <template v-else-if="canRemote && tab === 'remote'">
         <Button variant="gray" size="sm" @click="emit('close')">取消</Button>
@@ -318,12 +327,6 @@ async function submit() {
   /* 掩码点不能走自托管子集(iOS 上是一排黑竖条),见 tokens.css 的 --font-ui。
      这里是 type="text",选不中 base.css 那条 input[type="password"],得自己写。 */
   font-family: var(--font-ui);
-}
-.ev-err {
-  /* 常驻占位：min-height 恰好一行，空着时不可见但占着地方 */
-  margin: 0; min-height: 18px;
-  display: flex; align-items: center; gap: 6px;
-  font-size: var(--fs-label); line-height: 18px; color: var(--status-danger);
 }
 .ev-note { margin: 0; font-size: var(--fs-micro); line-height: 1.6; color: var(--text-muted); }
 .ev-note b { color: var(--text-primary); font-weight: var(--fw-semibold); }

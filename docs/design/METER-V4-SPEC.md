@@ -38,7 +38,7 @@
   - `date_missing` 且候选唯一 → **「确认绑定」一键**（写 override）；
   - `ambiguous`/`bld_mismatch` → 候选合同 Select 选定绑定；
   - `no_contract` → 只读提示（补合同是业务动作）。
-- 工具栏侧（编辑态）：「按名精确匹配一键挂」按钮（POST auto-link-by-name，confirm 带预估数）。
+- 工具栏侧（编辑态）：「按名精确匹配一键挂」按钮（POST auto-link-by-name，确认时带预估数；2026-09-30 改，已实现（2026-10-01，jfen/hint-impl；画布 02-B）：用软件内确认弹窗，不用浏览器 `confirm()`，见 UI-OVERLAY-SPEC §7；原写「confirm 带预估数」）。
 - 空态=全绿时显「该月派生就绪 ✓」结论条。
 
 ## 5. 交付与验收

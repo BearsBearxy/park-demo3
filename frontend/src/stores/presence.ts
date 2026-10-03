@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import api, { readToken } from '@/api'
 import type { Eviction } from '@/api/locks'
 import type { Pending, Outcome } from '@/api/approvals'
+import type { SystemSeen } from '@/api/notices'
 import { NAV_SCOPE_PREFIX, scopeNote, scopePeriod } from '@/utils/lockScopes'
 
 /** 在线的一个人（服务端算好时长与排序）。 */
@@ -160,6 +161,16 @@ export const usePresenceStore = defineStore('presence', () => {
    * 录入方看不见 —— 拿它们当「审核态变了」的信号,一半的人永远收不到。
    */
   const reviewRev = ref(0)
+  /**
+   * 铃铛要的两个数,顺同一条 ping 回来(06-G「多个标签页、多台电脑」)。
+   * · unseenResults 「有结果了」里我还没看过几条 —— 看没看过记在服务端,换个标签页 / 换台电脑一样
+   * · elevated      服务端那边我的临时授权还在不在 —— 被系统提前收回时本页靠它知道(06-E)。
+   *                 null = 后端没给(旧后端 / 半截响应):不能当成「没了」去清授权
+   * · systemSeen    系统类看过到哪儿了(更新记录版本号 / 上次开铃铛时的系统组键)。别处看过,这里跟着灭
+   */
+  const unseenResults = ref(0)
+  const elevated = ref<boolean | null>(null)
+  const systemSeen = ref<SystemSeen | null>(null)
 
   /**
    * 本会话此刻握着的锁 → 各自的被接管回调。
@@ -255,6 +266,7 @@ export const usePresenceStore = defineStore('presence', () => {
         users: Seat[]; evictions: Eviction[] | null
         approvals: Pending[]; outcome: Outcome | null
         pendingReviews?: number; myReturned?: number; reviewRev?: number
+        unseenResults?: number; elevated?: boolean; systemSeen?: SystemSeen | null
       }>('/presence/ping', { sid, scope, label, lastActivityAt, editScopes })
       users.value = r?.users ?? []
       approvals.value = r?.approvals ?? []
@@ -262,6 +274,9 @@ export const usePresenceStore = defineStore('presence', () => {
       pendingReviews.value = r?.pendingReviews ?? 0
       myReturned.value = r?.myReturned ?? 0
       reviewRev.value = r?.reviewRev ?? 0
+      unseenResults.value = r?.unseenResults ?? 0
+      elevated.value = r?.elevated ?? null
+      systemSeen.value = r?.systemSeen ?? null
       // 通知按 scope 派回**它自己的每一个**登记者(同名 scope 可能有多个屏,都得退)。
       // 拍快照再迭代:回调里会 dropLock,原地迭代会漏。
       // ⚠ 只派给「发拍之前就登记着」的(since < myGen):这拍发出之后才登记的回调,
@@ -322,5 +337,5 @@ export const usePresenceStore = defineStore('presence', () => {
     api.delete(`/presence/${sid}`).catch(() => { /* TTL 兜底 */ })
   }
 
-  return { sid, users, others, approvals, outcome, pendingReviews, myReturned, reviewRev, editorsByScope, editorsUnder, editingNote, holdsEditUnder, enter, holdLock, dropLock, touch, stop, ping }
+  return { sid, users, others, approvals, outcome, pendingReviews, myReturned, reviewRev, unseenResults, elevated, systemSeen, editorsByScope, editorsUnder, editingNote, holdsEditUnder, enter, holdLock, dropLock, touch, stop, ping }
 })

@@ -54,14 +54,16 @@ beforeEach(() => {
 })
 
 describe('入口:顶栏 ✦', () => {
-  it('有没看过的更新 ⇒ ✦ 上一颗蓝点;看过就没有', async () => {
+  // 2026-10-01 S5:点只挂在铃铛上(06-G「只挂在铃铛上」),✦ 不再挂
+  it('有没看过的更新 ⇒ 铃铛上一颗蓝点、✦ 上没有;看过就没有', async () => {
     const { upd } = login()
     const w = mount(Toolbar, { global: { stubs: { FPPresenceBar: true } } })
-    expect(w.find('.fp-upd-dot').exists()).toBe(true)
+    expect(w.find('.fp-upd-dot').exists()).toBe(false)
+    expect(w.find('.nb .nb-dot').exists()).toBe(true)
 
     upd.markSeen()
     await nextTick()
-    expect(w.find('.fp-upd-dot').exists()).toBe(false)
+    expect(w.find('.nb .nb-dot').exists()).toBe(false)
   })
 
   it('点 ✦ 开「更新记录」;悬停说明带版本号(TAB-BAR-SPEC §6.4)', async () => {
@@ -90,14 +92,13 @@ describe('入口:顶栏 ✦', () => {
 })
 
 describe('入口:账号菜单', () => {
-  it('菜单里有「版本更新」一行,右侧写当前版本号,未读时带蓝点', async () => {
+  it('菜单里有「版本更新」一行,右侧写当前版本号(不挂点,见 iconRail.spec),点了开更新记录', async () => {
     const { upd } = login()
     const w = mount(IconRail)
     await w.find('button[aria-label="当前账号"]').trigger('click')
     const row = w.findAll('.fp-user-row').find((b) => b.text().includes('版本更新'))
     expect(row).toBeTruthy()
     expect(row!.text()).toContain(`v${upd.version}`)
-    expect(row!.find('.dot').exists()).toBe(true)
 
     await row!.trigger('click')
     expect(upd.historyOpen).toBe(true)

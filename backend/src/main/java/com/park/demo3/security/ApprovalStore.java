@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 /** 远程授权的待批队列（设计稿 §07）。骨架 —— 行为由 ApprovalStoreTest 逐条驱动。 */
 @Component
@@ -94,8 +95,24 @@ public class ApprovalStore {
     /** 请求者取结果。**读一次即消费** —— 否则他每 20 秒被同一个结果通知一次。 */
     public Outcome pollOutcome(String requester) { return outcomes.remove(requester); }
 
+    /**
+     * 请求者本人撤回还没人批的请求(等待中关掉授权弹窗)。撤回的**不算超时**,不回调 onExpire ——
+     * 06-E 的问题列:「点了取消请求照样报超时」。别人的请求撤不动,原样留着。
+     */
+    public boolean cancel(String id, String requester) {
+        sweep();
+        Pending p = pendings.get(id);
+        return p != null && p.requester().equals(requester) && pendings.remove(id, p);
+    }
+
+    /** 过期清扫时对每条过期请求回调一次(铃铛「你请的远程授权超时」)。由 ApprovalService 接上。 */
+    public void onExpire(Consumer<Pending> cb) { this.onExpire = cb; }
+    private volatile Consumer<Pending> onExpire = p -> {};
+
     private void sweep() {
         Instant cut = clock.instant().minus(TTL);
-        pendings.values().removeIf(p -> p.createdAt().isBefore(cut));
+        // remove(id, p) 成功的那一方才回调:两路请求同时清扫,同一条也只报一次超时
+        for (Pending p : pendings.values())
+            if (p.createdAt().isBefore(cut) && pendings.remove(p.id(), p)) onExpire.accept(p);
     }
 }

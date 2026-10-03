@@ -9,8 +9,10 @@ import { systemApi } from '@/api/system'
 import type { NavLayerDTO, PermDTO, RoleDTO } from '@/types/system'
 import { useAuthStore } from '@/stores/auth'
 import { useScreen } from '@/composables/useTabShells'
+import { ask, askLeave } from '@/utils/ask'
 import { iconFor } from '@/components/ds/icon'
 import FPToast from '@/components/fp/FPToast.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
 import Button from '@/components/ds/Button.vue'
 import Badge from '@/components/ds/Badge.vue'
 
@@ -30,15 +32,24 @@ const msg = ref<{ tone: 'ok' | 'err'; text: string } | null>(null)
 const selId = ref<number | null>(null)
 const creating = ref(false)
 const form = ref({ code: '', name: '', remark: '', perms: [] as string[], navLayers: [] as string[] })
+// 字段报错(十件 ⑤):点过一次保存才亮,之后随输入即时消;贴在字段下面,不走页面 toast
+const tried = ref(false)
+const nameErr = computed(() => (tried.value && !form.value.name.trim() ? '角色名必填' : ''))
+// code 建后不可改,写坏了只能重建一个:在这儿挡住,别等后端 500
+const codeErr = computed(() => (tried.value && creating.value && !/^[A-Za-z][A-Za-z0-9_-]*$/.test(form.value.code.trim())
+  ? '标识必填,且只能用英文字母开头 + 字母/数字/下划线/短横' : ''))
 
 const cur = computed(() => roles.value.find(r => r.id === selId.value) ?? null)
 const builtinRoles = computed(() => roles.value.filter(r => r.builtin))
 const customRoles = computed(() => roles.value.filter(r => !r.builtin))
 
+// seq:保存 / 删除后的重拉与手点重试并发时只认最后一次;错误只在成功分支清(重试途中失败态不闪回)
+let seq = 0
 async function load(keepId?: number | null) {
-  loadErr.value = ''
+  const my = ++seq
   try {
     const [cat, rs] = await Promise.all([systemApi.perms(), systemApi.roles()])
+    if (my !== seq) return
     perms.value = cat.perms
     navLayerDefs.value = cat.navLayers
     roles.value = rs
@@ -46,13 +57,16 @@ async function load(keepId?: number | null) {
     selId.value = rs.some(r => r.id === id) ? id! : rs[0]?.id ?? null
     creating.value = false
     fillForm(cur.value)
+    loadErr.value = ''
   } catch (e) {
+    if (my !== seq) return
     loadErr.value = errMsg(e, '角色数据加载失败')
-  } finally { loaded.value = true }
+  } finally { if (my === seq) loaded.value = true }
 }
 onMounted(() => load())
 
 function fillForm(r: RoleDTO | null) {
+  tried.value = false
   form.value = r
     ? { code: r.code, name: r.name, remark: r.remark ?? '', perms: [...r.perms], navLayers: [...r.navLayers] }
     // 新角色缺省:零权限 + 全部导航层(比反过来安全 —— 少给权限只是不能改,少给导航层是整层看不见)
@@ -75,44 +89,52 @@ const permGroups = computed(() =>
 )
 
 // ── 编辑 ──
-const sameSet = (a: string[], b: string[]) =>
-  a.length === b.length && [...a].sort().join('|') === [...b].sort().join('|')
-const dirty = computed(() => {
+// 改动数(EDIT-MODE §6.1):名称 / 备注各算 1 处,权限点与导航层每勾一个、每去一个各算 1 处。
+// 新建时只数标识、名称和勾上的权限点(导航层缺省全勾,不算改动)
+const setDiff = (a: string[], b: string[]) => a.filter(x => !b.includes(x)).length + b.filter(x => !a.includes(x)).length
+const dirtyCount = computed(() => {
   const f = form.value
-  if (creating.value) return !!(f.code.trim() || f.name.trim() || f.perms.length)
+  if (creating.value) return +!!f.code.trim() + +!!f.name.trim() + f.perms.length
   const r = cur.value
-  if (!r) return false
-  return f.name !== r.name || f.remark !== (r.remark ?? '')
-    || !sameSet(f.perms, r.perms) || !sameSet(f.navLayers, r.navLayers)
+  if (!r) return 0
+  return +(f.name !== r.name) + +(f.remark !== (r.remark ?? ''))
+    + setDiff(f.perms, r.perms) + setDiff(f.navLayers, r.navLayers)
 })
+const dirty = computed(() => dirtyCount.value > 0)
 
 // 有没保存的改动 = 在编辑:登记进 auth.editors —— 页签条不把这一格换掉、关浏览器先确认(TAB-BAR-SPEC §2)
 const meId = Symbol('roles')
 const screen = useScreen()
 // 撤登记时顺带结束授权:这是最后一个编辑态的话,授权不该留到 30 分钟到期(还有别的在编辑时它自己不作为)
 function unregister() { auth.closeEditor(meId); void auth.endElevation() }
-watch(dirty, (on) => { if (on) auth.openEditor(meId, screen); else unregister() })
+watch(dirty, (on) => { if (on) auth.openEditor(meId, screen, () => dirtyCount.value); else unregister() })
 onUnmounted(unregister)
 
-function guardDirty(): boolean {
-  return !dirty.value || confirm('有未保存的改动,继续将放弃。确认?')
-}
-function pick(id: number) {
+// 换角色 / 去新建会丢掉手上的改动:askLeave(0 处不弹)
+const leave = () => askLeave({ page: creating.value ? '新建角色' : cur.value?.name ?? '', count: dirtyCount.value, verb: '离开' })
+async function pick(id: number) {
   if (id === selId.value && !creating.value) return
-  if (!guardDirty()) return
+  if (!(await leave())) return
   msg.value = null
   selId.value = id
   creating.value = false
   fillForm(cur.value)
 }
-function startCreate() {
-  if (!guardDirty()) return
+async function startCreate() {
+  if (!(await leave())) return
   msg.value = null
   creating.value = true
   fillForm(null)
 }
-function cancel() {
-  if (!guardDirty()) return
+// 「取消」本身就是放弃改动:问的是放弃,不是离开
+async function cancel() {
+  if (dirty.value && !(await ask({
+    title: `放弃这 ${dirtyCount.value} 处改动？`,
+    body: '放弃后回到上次保存的样子。',
+    action: '放弃改动',
+    cancel: '继续编辑',
+    danger: true,
+  }))) return
   msg.value = null
   creating.value = false
   fillForm(cur.value)
@@ -128,12 +150,8 @@ async function save() {
   const f = form.value
   const name = f.name.trim()
   const code = f.code.trim()
-  if (!name) { msg.value = { tone: 'err', text: '角色名必填' }; return }
-  // code 建后不可改,写坏了只能重建一个:在这儿挡住,别等后端 500
-  if (creating.value && !/^[A-Za-z][A-Za-z0-9_-]*$/.test(code)) {
-    msg.value = { tone: 'err', text: '标识必填,且只能用英文字母开头 + 字母/数字/下划线/短横' }
-    return
-  }
+  tried.value = true
+  if (nameErr.value || codeErr.value) return   // 错已贴在字段下面
   saving.value = true
   msg.value = null
   try {
@@ -151,7 +169,12 @@ async function save() {
 
 async function remove(r: RoleDTO) {
   if (saving.value) return
-  if (!confirm(`删除角色「${r.name}」?此操作不可撤销。`)) return
+  if (!(await ask({
+    title: `删除角色「${r.name}」？`,
+    body: '这个角色下没有账号在用，删除后不能撤销。',
+    action: '删除角色',
+    danger: true,
+  }))) return
   saving.value = true
   msg.value = null
   try {
@@ -179,17 +202,13 @@ async function remove(r: RoleDTO) {
       </div>
     </div>
 
-    <FPLoadError v-if="loadErr" @retry="load()">
-      <span>{{ loadErr }}</span>
-    </FPLoadError>
-    <!-- 保存成功/失败走 toast(浮层,不顶下面的角色矩阵)。上面的 loadErr 条**不动** ——
-         它带「重试」按钮、要一直看得见,属持久错误态,不是短暂反馈。 -->
+    <!-- 保存成功/失败走 toast(浮层,不顶下面的角色矩阵);加载失败在下面换掉整块内容(十件 ⑦) -->
     <FPToast :model-value="msg?.text ?? ''" :tone="msg?.tone === 'ok' ? 'success' : 'error'"
              placement="page" :duration="msg?.tone === 'ok' ? 4000 : 0"
              @update:model-value="msg = null" />
 
     <div v-if="!loaded" class="sr-empty">加载中…</div>
-    <div v-else-if="!roles.length && loadErr" class="sr-empty">角色数据不可用</div>
+    <FPLoadError v-else-if="loadErr" :sub="`${loadErr} · 屏上不显示角色和权限`" @retry="load()">角色权限没读到</FPLoadError>
 
     <div v-else class="sr-split">
       <!-- 左:角色列表 -->
@@ -218,14 +237,16 @@ async function remove(r: RoleDTO) {
       <section v-if="creating || cur" class="sr-pane">
         <div class="sr-panehead">
           <div class="sr-nameline">
-            <input v-if="canEdit" v-model="form.name" class="sr-name" placeholder="角色名,如:财务专员" />
+            <input v-if="canEdit" v-model="form.name" class="sr-name" :class="{ bad: !!nameErr }" placeholder="角色名,如:财务专员" />
             <span v-else class="sr-name ro">{{ form.name }}</span>
             <Badge v-if="!creating && cur?.builtin" tone="slate" variant="subtle" :dot="false">预置</Badge>
           </div>
+          <!-- 报错位在可编辑时常驻(条件是权限,不是有没有错);字才跟着错走 -->
+          <template v-if="canEdit"><p class="fp-field-err"><template v-if="nameErr">{{ nameErr }}</template></p></template>
           <div class="sr-codeline">
             <template v-if="creating">
               <label class="sr-codelbl">标识</label>
-              <input v-model="form.code" class="sr-code" placeholder="英文标识,如 finance_clerk;建后不可改" />
+              <input v-model="form.code" class="sr-code" :class="{ bad: !!codeErr }" placeholder="英文标识,如 finance_clerk;建后不可改" />
             </template>
             <template v-else>
               <span class="sr-codetxt">{{ cur?.code }}</span>
@@ -236,12 +257,13 @@ async function remove(r: RoleDTO) {
             <!-- 删除只对自定义角色出现;有账号在用时禁用并说清要先改派(预置角色一律无此按钮) -->
             <Button v-if="canEdit && !creating && cur && !cur.builtin" variant="outline" size="sm"
                     :disabled="cur.userCount > 0 || saving"
-                    :title="cur.userCount > 0 ? `该角色下还有 ${cur.userCount} 个账号,请先改派` : '删除该角色'"
+                    v-tip="cur.userCount > 0 ? `该角色下还有 ${cur.userCount} 个账号,请先改派` : '删除该角色'"
                     @click="remove(cur)">
               <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
               删除角色
             </Button>
           </div>
+          <template v-if="creating"><p class="fp-field-err"><template v-if="codeErr">{{ codeErr }}</template></p></template>
           <input v-if="canEdit" v-model="form.remark" class="sr-remark" placeholder="备注(选填):这个角色给谁用" />
           <p v-else-if="form.remark" class="sr-remark ro">{{ form.remark }}</p>
         </div>
@@ -323,10 +345,12 @@ async function remove(r: RoleDTO) {
 .sr-name { flex: 0 1 320px; height: 34px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--border-control); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-sans); font-size: var(--fs-h3); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .sr-name:focus { outline: none; border-color: var(--hue-blue); }
 .sr-name.ro { border-color: transparent; padding-left: 0; line-height: 34px; }
+.sr-name.bad { border-color: var(--status-danger); }
 .sr-codeline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .sr-codelbl { font-size: var(--fs-label); color: var(--text-secondary); }
 .sr-code { width: 280px; height: 30px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--border-control); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text-primary); }
 .sr-code:focus { outline: none; border-color: var(--hue-blue); }
+.sr-code.bad { border-color: var(--status-danger); }
 .sr-codetxt { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text-secondary); padding: 2px 8px; border-radius: var(--radius-full); background: var(--surface-sunken); }
 .sr-hint { font-size: var(--fs-micro); color: var(--text-muted); }
 .sr-remark { height: 30px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--border-control); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-primary); }

@@ -14,6 +14,9 @@ import FPSortableTable, { type SortableColumn } from '@/components/fp/FPSortable
 import type { SortState } from '@/components/fp/fpSort'
 import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import { ask } from '@/utils/ask'
+import { receipt } from '@/utils/receipt'
 import { IMPORT_TYPES, runImport, type ImportCtx, type ImportTypeEntry } from '@/utils/importRegistry'
 import { useAuthStore } from '@/stores/auth'
 import { useZonesStore } from '@/stores/zones'
@@ -144,8 +147,11 @@ async function handleImport(recs: ImportRec[], fileName: string) {
   // 台账两道核对与预检(与 LedgerView.onImport 同款编排):①文件标题年月≠目标年月先确认
   if (activeKey.value === 'ledger') {
     const ym = recs[0]?.__ymDetected as { year: number; month: number } | undefined
-    if (ym && (ym.year !== ctx.value.year || ym.month !== ctx.value.month)
-      && !window.confirm(`文件标题识别为 ${ym.year}年${ym.month}月,当前导入目标是 ${ctx.value.year}年${ctx.value.month}月,仍导入到当前目标吗?`)) return
+    if (ym && (ym.year !== ctx.value.year || ym.month !== ctx.value.month) && !(await ask({
+      title: `仍导入到 ${ctx.value.year} 年 ${ctx.value.month} 月？`,
+      body: `文件标题识别为 ${ym.year} 年 ${ym.month} 月,当前导入目标是 ${ctx.value.year} 年 ${ctx.value.month} 月。`,
+      action: '仍要导入',
+    }))) return
   }
   await doRun(recs, fileName)
 }
@@ -163,7 +169,11 @@ async function confirmLedgerOverwrite(recs: ImportRec[]): Promise<boolean> {
     const existing = new Set(dto.rows.map(r => r.tenantName))
     // 按去重租户家数计(同名多行文件下与 LedgerView 同口径,复审:计数口径)
     const n = new Set(recs.map(r => String(r.tenantName ?? '').trim()).filter(nm => existing.has(nm))).size
-    return n === 0 || window.confirm(`${ctx.value.year} 年 ${ctx.value.month} 月已有 ${n} 家租户的台账数据,导入将覆盖这些租户文件中提供的列,继续?`)
+    return n === 0 || await ask({
+      title: `导入会覆盖 ${ctx.value.year} 年 ${ctx.value.month} 月 ${n} 家租户的台账`,
+      body: `这 ${n} 家已有台账数据,文件里提供的列会被覆盖。`,
+      action: '仍要导入',
+    })
   } catch { return true }
 }
 // 导后「去查看」(SIDEBAR-UX-REDESIGN §9 P0b):只给期在导入时就已知的三类 —— 台账(ctx)、附10 / 附12(第一段 pick 的 year/month/phase);
@@ -191,7 +201,7 @@ function goView() {
 }
 async function doRun(payload: Parameters<typeof runImport>[1], fileName: string) {
   if (!activeKey.value) return
-  // 覆盖预检仅平铺台账做;段模式(元素带 .records)不做覆盖 confirm(规范 v1 边界)
+  // 覆盖预检仅平铺台账做;段模式(元素带 .records)不做覆盖确认(规范 v1 边界)
   const isSections = !!(payload as { records?: unknown }[])[0]?.records
   if (activeKey.value === 'ledger' && !isSections && !(await confirmLedgerOverwrite(payload as ImportRec[]))) return
   try {
@@ -199,7 +209,7 @@ async function doRun(payload: Parameters<typeof runImport>[1], fileName: string)
     viewTo.value = viewLink(activeKey.value, ctx.value, payload as unknown[])
     await reload()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '导入失败')
+    receipt.fail((e as { message?: string })?.message ?? '导入失败')
   }
 }
 
@@ -249,7 +259,7 @@ const cols: SortableColumn<ImportLogDTO>[] = [
     <div>
       <h3 class="im-section-t">按数据类型导入</h3>
       <p class="im-sub" style="margin:0 0 14px">每类数据对应一张模板,卡片显示最近导入状态</p>
-      <p v-if="!visibleTypes.length" class="im-sub" style="margin:0">当前账号没有任何导入权限,下方仍可查看全部导入记录。</p>
+      <FPEmpty v-if="!visibleTypes.length" size="sm" sub="下方仍可查看全部导入记录。">当前账号没有任何导入权限</FPEmpty>
       <div v-else class="im-grid">
         <div v-for="t in visibleTypes" :key="t.key" class="im-tile">
           <div class="im-tile-top">

@@ -139,20 +139,25 @@ describe('update store', () => {
     expect(u.historyFromWhatsNew).toBe(false)
   })
 
-  it('轮询到服务器换了版本 ⇒ 提示条出「有新版」', async () => {
+  // 破坏验证:hasNewVersion 恒 false,或 barKind 在有新版时回非 null → 红
+  it('❗轮询到服务器换了版本 ⇒ hasNewVersion(进铃铛「系统」),底部条不出', async () => {
     login()
     const u = useUpdateStore()
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ version: '9.9.9' }) })))
     await u.checkVersion()
     expect(u.serverVersion).toBe('9.9.9')
-    expect(u.barKind).toBe('new')
+    expect(u.hasNewVersion).toBe(true)
+    expect(u.barKind, '有新版 2026-09-30 起不走底部条').toBe(null)
   })
 
-  it('服务器版本和自己一样 ⇒ 不出提示条', async () => {
+  // 破坏验证:hasNewVersion 去掉「!== version」→ 红
+  it('❗服务器版本和自己一样 ⇒ 没有新版', async () => {
     login()
     const u = useUpdateStore()
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ version: VER }) })))
     await u.checkVersion()
+    expect(u.serverVersion, '前置:问到了').toBe(VER)
+    expect(u.hasNewVersion).toBe(false)
     expect(u.barKind).toBe(null)
   })
 
@@ -161,10 +166,11 @@ describe('update store', () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('offline'))))
     await u.checkVersion()
     expect(u.serverVersion).toBe(null)
+    expect(u.hasNewVersion).toBe(false)
     expect(u.barKind).toBe(null)
   })
 
-  it('按需加载失败压过「有新版」,文案换成第二种', async () => {
+  it('按需加载失败 ⇒ 底部条出「这一页属于新版本」(有新版时也照出)', async () => {
     const u = useUpdateStore()
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ version: '9.9.9' }) })))
     await u.checkVersion()
@@ -172,16 +178,16 @@ describe('update store', () => {
     expect(u.barKind).toBe('blocked')
   })
 
-  it('点 × 只压住这一版的「有新版」;之后真打不开仍然出', async () => {
+  // 破坏验证:dismissBar 顺手清掉 serverVersion → 红
+  it('❗点 × 只收「这一页属于新版本」;铃铛里的「有新版」没有 ×,刷新才消失', async () => {
     const u = useUpdateStore()
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ version: '9.9.9' }) })))
     await u.checkVersion()
+    u.reportBlocked()
+    expect(u.barKind).toBe('blocked')
     u.dismissBar()
     expect(u.barKind).toBe(null)
-    u.reportBlocked()
-    expect(u.barKind).toBe('blocked')
-    u.dismissBar()                       // 关掉第二种后,被压住的第一种不复活
-    expect(u.barKind).toBe(null)
+    expect(u.hasNewVersion).toBe(true)
   })
 
   it('轮询:每 POLL_MS 问一次,切回标签页额外问一次', () => {

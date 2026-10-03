@@ -42,14 +42,15 @@ public class SystemService {
     private final AuditLogService audit;
     private final AuditQueryMapper auditQuery;
     private final SessionService sessions;
+    private final NoticeService notices;
 
     public SystemService(AuthUserMapper users, AuthRoleMapper roles, AuthRolePermMapper rolePerms,
                          AuthUserRoleMapper userRoles, PasswordEncoder enc,
                          UserPermissionCache cache, AuditLogService audit, AuditQueryMapper auditQuery,
-                         SessionService sessions) {
+                         SessionService sessions, NoticeService notices) {
         this.users = users; this.roles = roles; this.rolePerms = rolePerms;
         this.userRoles = userRoles; this.enc = enc; this.cache = cache;
-        this.audit = audit; this.auditQuery = auditQuery; this.sessions = sessions;
+        this.audit = audit; this.auditQuery = auditQuery; this.sessions = sessions; this.notices = notices;
     }
 
     // ══════════ 操作日志时间线（RBAC-SPEC §7.2） ══════════
@@ -132,6 +133,11 @@ public class SystemService {
         // 预置角色的**权限与导航层可改**（「交付后客户自己调」的核心），只有 code 和"能不能删"是固定的
         List<String> next = validPerms(req.perms());
         guardSelfKeepsSystemEdit(id, next);
+        // 原样保存不发通知:没改的东西写「你的权限被改了」是假话。备注不算 —— 持有人看不到它。
+        Set<String> before = rolePerms.selectList(Wrappers.<AuthRolePerm>lambdaQuery().eq(AuthRolePerm::getRoleId, id))
+            .stream().map(AuthRolePerm::getPerm).collect(Collectors.toSet());
+        boolean changed = !before.equals(new HashSet<>(next)) || !Objects.equals(r.getName(), req.name())
+            || !Objects.equals(r.getNavLayers(), joinLayers(req.navLayers()));
         r.setName(req.name());
         r.setNavLayers(joinLayers(req.navLayers()));
         r.setRemark(req.remark());
@@ -139,6 +145,14 @@ public class SystemService {
         replacePerms(id, next);
         audit.log("role.update", "role:" + r.getCode(), "权限 " + next.size() + " 项");
         cache.reload();
+        if (changed) {
+            // 持这个角色的每个人(NoticeService.add 跳过操作人自己)
+            List<Integer> holders = userRoles.selectList(Wrappers.<AuthUserRole>lambdaQuery().eq(AuthUserRole::getRoleId, id))
+                .stream().map(AuthUserRole::getUserId).toList();
+            if (!holders.isEmpty()) for (AuthUser h : users.selectBatchIds(holders))
+                notices.add(h.getUsername(), NoticeService.Kind.perms_changed,
+                    "你的角色「" + req.name() + "」的权限被改了", "刷新后生效", null);
+        }
         return oneRole(id);
     }
 
@@ -216,12 +230,14 @@ public class SystemService {
                 "不能修改自己的角色。显示名可以改，角色请让另一位管理员来改 —— "
               + "万一改错把自己关在门外，这个系统没有第二条进门的路。");
 
+        boolean rolesDiff = !self && rolesChanged(id, req.roleIds());   // 先判再改,改完就比不出来了
         u.setDisplayName(req.displayName());
         users.updateById(u);
         if (!self) replaceRoles(id, req.roleIds());   // 自己那行角色原样不动
         audit.log("user.update", "user:" + u.getUsername(),
             self ? "改显示名" : "角色 " + safe(req.roleIds()).size() + " 个");
         cache.reload();
+        if (rolesDiff) notices.add(u.getUsername(), NoticeService.Kind.perms_changed, "你的角色被改了", "刷新后生效", null);
         return oneUser(id);
     }
 

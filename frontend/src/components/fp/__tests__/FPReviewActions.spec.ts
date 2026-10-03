@@ -10,6 +10,7 @@ import FPReviewDialog from '@/components/fp/FPReviewDialog.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useReviewStore } from '@/stores/review'
 import { reviewApi } from '@/api/review'
+import { receipts } from '@/utils/receipt'
 import type { ReviewRow, ReviewStatus } from '@/types/review'
 
 vi.mock('@/api/review', () => ({
@@ -103,7 +104,7 @@ describe('审核动作簇 FPReviewActions', () => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
     document.body.innerHTML = ''      // Teleport 的残留会让上一条的文本污染下一条
-    vi.stubGlobal('alert', vi.fn())   // jsdom 没有实现 alert
+    receipts.splice(0)                // 回执是模块级队列,上一条的会留到下一条
   })
 
   // ── §02 四态 × 两角色 ────────────────────────────────────
@@ -445,20 +446,19 @@ describe('审核动作簇 FPReviewActions', () => {
     expect(reviewApi.approve).toHaveBeenCalledWith(KEY)
   })
 
-  // 破坏验证:把 run() 的三分支合成一句 alert(msg) → 红
-  it('❗409 与 403 分流成两句话(合成一句用户分不出该找谁)', async () => {
-    const a = vi.fn()
-    vi.stubGlobal('alert', a)
-    ;(reviewApi.approve as ReturnType<typeof vi.fn>).mockRejectedValueOnce({ code: 409, message: '计费参数还没审' })
+  // 破坏验证:把 run() 的三分支合成一句 receipt.fail(msg) → 红;receipt.fail 改回 alert → 红
+  it('❗409 与 403 分流成两句话(合成一句用户分不出该找谁),报在底部失败回执', async () => {
+    // 409 原样报:后端的 409 还有「当前是「已审核」,不能交审」,冠「上游还没审完」就和原话相反
+    ;(reviewApi.approve as ReturnType<typeof vi.fn>).mockRejectedValueOnce({ code: 409, message: '计费参数 当前是「已审核」,不能通过' })
     const w = mountWith({
       rows: [row(KEY, 'submitted', { submittedBy: 'lisi' })],
       perms: ['entry:edit', 'review:approve'],
     })
     await click(w, '通过')
-    expect(a).toHaveBeenCalledWith('上游还没审完：计费参数还没审')
+    expect(receipts.map(r => [r.tone, r.text])).toEqual([['fail', '计费参数 当前是「已审核」,不能通过']])
 
     ;(reviewApi.approve as ReturnType<typeof vi.fn>).mockRejectedValueOnce({ code: 403, message: '没有这张表的权限' })
     await click(w, '通过')
-    expect(a).toHaveBeenLastCalledWith('你没有这张表的权限：没有这张表的权限')
+    expect(receipts.at(-1)).toMatchObject({ tone: 'fail', text: '你没有这张表的权限：没有这张表的权限' })
   })
 })

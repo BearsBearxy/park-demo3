@@ -77,7 +77,7 @@ function pick(colId: string, v: string) {
       </div>
       <div v-for="c in cells" :key="c.colId" class="psg-row" :class="{ gap: c.companyId == null }">
         <span class="nm">{{ c.label }}<em v-if="c.note" class="psg-tag">整单通吃</em></span>
-        <span class="it" :title="c.items.join('、')">{{ c.items.join('、') }}</span>
+        <span class="it" v-tip="c.items.join('、')">{{ c.items.join('、') }}</span>
         <span class="am">{{ c.amount == null ? '–' : fpMoney(c.amount) }}</span>
         <span class="co">
           <Select v-if="canEdit" :options="coOpts" :model-value="c.companyId == null ? '' : String(c.companyId)"

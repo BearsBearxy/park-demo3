@@ -1,6 +1,20 @@
 import api from '@/api'
 import type { PendingItem, ReviewRow } from '@/types/review'
 
+/** 我交的、被退回的一张表(后端 GET /review/returned)。label 是后端拼好的人话名,同 PendingItem。 */
+export interface ReturnedItem {
+  key: string
+  kind: string
+  scope: string | null
+  period: string
+  label: string
+  reviewedBy: string | null
+  /** 审核人显示名(「李审」)。铃铛行写「李审：理由 · 时刻」 */
+  reviewedByName: string | null
+  reviewedAt: string | null
+  reason: string | null
+}
+
 /**
  * 审核机制(SIDEBAR-UX-REDESIGN §7.4)。
  *
@@ -31,4 +45,8 @@ export const reviewApi = {
   /** 铃铛抽屉用:待审**明细**(跨全部月)。只有个数的话,人得自己在年份条上逐月翻着找。
    *  ⚠ 只在抽屉打开时取 —— 别挂到 3 秒一拍的心跳上,那条通道只该带一个号。 */
   pending: () => api.get<PendingItem[]>('/review/pending'),
+
+  /** 铃铛「等你处理」:我交的表被退回了哪几张,逐张带理由(06-E)。心跳只带个数(myReturned),
+   *  明细同 pending 只在面板打开时取。 */
+  returned: () => api.get<ReturnedItem[]>('/review/returned'),
 }

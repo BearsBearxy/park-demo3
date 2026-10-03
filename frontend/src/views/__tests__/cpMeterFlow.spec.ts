@@ -6,10 +6,14 @@ import { join } from 'node:path'
 import { setActivePinia, createPinia } from 'pinia'
 
 import CpMeterView from '@/views/charging/CpMeterView.vue'
+import { rowsNotEndingInFill } from '@/composables/__tests__/wideTableStub'
 import { cpMeterApi } from '@/api/cpMeter'
 import type { CpStationDTO, CpReadingDTO, CpPowerUsageDTO } from '@/api/cpMeter'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/api'
+import { ask } from '@/utils/ask'
+import { receipts } from '@/utils/receipt'
+import { exportCpMeterMonth, buildCpMeterTemplate } from '@/utils/cpMeterExcel'
 
 /**
  * 分桩充电明细(CpMeterView)挂载测 —— 模板照 meterPeriodFlow.spec.ts(PvMeterView
@@ -28,6 +32,13 @@ vi.mock('@/api/cpMeter', () => ({
     powerUsage: vi.fn(), upsertPowerUsage: vi.fn(),
     importRows: vi.fn(), simulate: vi.fn(),
   },
+}))
+
+// 站内确认(十件 ⑨)替掉了原生 confirm():没挂 FPConfirmHost 时 ask() 永远不落地,这里直接给答复
+vi.mock('@/utils/ask', async (orig) => ({ ...(await orig<typeof import('@/utils/ask')>()), ask: vi.fn() }))
+// 导出 / 模板下载只钉「失败走回执 + 重试」,不真去拼 Excel
+vi.mock('@/utils/cpMeterExcel', async (orig) => ({
+  ...(await orig<typeof import('@/utils/cpMeterExcel')>()), exportCpMeterMonth: vi.fn(), buildCpMeterTemplate: vi.fn(),
 }))
 
 // 锁 mock 照 paramCenterView.spec:69:不 mock 的话 locksApi 走真 axios,jsdom 里抛错 →
@@ -83,6 +94,8 @@ beforeEach(() => {
   vi.mocked(cpMeterApi.readings).mockResolvedValue([] as never)
   vi.mocked(cpMeterApi.powerUsage).mockResolvedValue([] as never)
   vi.mocked(cpMeterApi.months).mockResolvedValue(['2025-01', '2025-02', '2025-03'])
+  vi.mocked(ask).mockResolvedValue(true)
+  receipts.splice(0)
 })
 
 async function open(vehicleType: 'car' | 'ebike' = 'car') {
@@ -178,7 +191,7 @@ describe('分桩充电明细 · 选期动线', () => {
 
   it('❗换月取数失败 → 说出来 + 清空,不许「新期标题 + 上一期数字」', async () => {
     // 红线:CpMeterView.vue:136-142 失败分支删掉(裸 await)或不清 readings ——
-    // .fp-lderr 不出现 / 屏上是 3 月的数顶着 7 月的期标。
+    // .fp-empty.error 不出现 / 屏上是 3 月的数顶着 7 月的期标。
     vi.mocked(cpMeterApi.readings).mockResolvedValue(MAR as never)
     const w = await open()
     await w.findAll('.bmm-card')[2].trigger('click')   // 2025-03,有数据
@@ -192,7 +205,7 @@ describe('分桩充电明细 · 选期动线', () => {
     await flushPromises()
 
     expect(w.find('.cm-per').text(), '期标已经是新期').toBe('2025-07')
-    expect(w.find('.fp-lderr').exists(), '失败必须说出来').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '失败必须说出来').toBe(true)
     expect(w.text()).toContain('后端挂了')
   })
 
@@ -201,7 +214,7 @@ describe('分桩充电明细 · 选期动线', () => {
     // 或 :405 的 :error 不接 —— 失败静默,矩阵永远转圈。
     vi.mocked(cpMeterApi.months).mockRejectedValue(new Error('后端挂了'))
     const w = await open()
-    expect(w.find('.fp-lderr').exists()).toBe(true)
+    expect(w.find('.fp-empty.error').exists()).toBe(true)
     expect(w.text()).toContain('后端挂了')
     expect(w.findAll('.bmm-card')).toHaveLength(0)
   })
@@ -230,7 +243,7 @@ describe('分桩充电明细 · 取数失败时不许猜', () => {
     ;(w.vm as unknown as { editMode: boolean }).editMode = true
     await flushPromises()
 
-    expect(w.find('.fp-lderr').exists(), '失败条得在').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '失败条得在').toBe(true)
     expect(w.findAll('.cm-edit'), '桩名/运营商/电表的行内输入框').toHaveLength(0)
     expect(btn(w, '导入'), '导入整月 Excel 的入口').toBeUndefined()
   })
@@ -248,7 +261,7 @@ describe('分桩充电明细 · 取数失败时不许猜', () => {
     // `!loadErr &&` 删掉 —— 失败时 readings 被清成 [],「暂无」把失败说成「真的没有」。
     vi.mocked(cpMeterApi.readings).mockRejectedValue(new Error('后端挂了'))
     const w = await toTable()
-    expect(w.find('.fp-lderr').exists()).toBe(true)
+    expect(w.find('.fp-empty.error').exists()).toBe(true)
     expect(w.find('.cm-empty').exists(), '「暂无记录」把失败说成了「真的没有」').toBe(false)
   })
 
@@ -258,8 +271,8 @@ describe('分桩充电明细 · 取数失败时不许猜', () => {
     vi.mocked(cpMeterApi.stations).mockRejectedValue(new Error('档案挂了'))
     const w = await toTable()
     expect(w.find('.page-spin').exists(), '不许永久转圈').toBe(false)
-    expect(w.find('.cm-gate-fail').exists()).toBe(true)
-    expect(w.text()).toContain('充电桩档案加载失败')
+    expect(w.find('.cm-gate-fail .fp-empty.error').exists(), '换掉整页的是全站那一种加载失败').toBe(true)
+    expect(w.text()).toContain('充电桩档案没读到')
 
     vi.mocked(cpMeterApi.stations).mockResolvedValue(STATIONS as never)
     await btn(w, '重试')!.trigger('click')
@@ -278,7 +291,7 @@ describe('分桩充电明细 · 取数失败时不许猜', () => {
 
     await w.findAll('.bmm-card')[2].trigger('click')   // 换月:记录这次是成功的
     await flushPromises()
-    expect(w.text(), '档案的失败被记录的成功抹掉了').toContain('充电桩档案加载失败')
+    expect(w.text(), '档案的失败被记录的成功抹掉了').toContain('充电桩档案没读到')
   })
 
   it('重试只重来挂掉的那一份', async () => {
@@ -288,7 +301,7 @@ describe('分桩充电明细 · 取数失败时不许猜', () => {
     vi.mocked(cpMeterApi.stations).mockClear()
     vi.mocked(cpMeterApi.readings).mockClear()
 
-    await w.find('.fp-lderr button').trigger('click')
+    await w.find('.fp-empty.error button').trigger('click')
     await flushPromises()
     expect(cpMeterApi.readings, '挂的那份要重来').toHaveBeenCalled()
     expect(cpMeterApi.stations, '好好的那份不必再拉一遍').not.toHaveBeenCalled()
@@ -330,10 +343,10 @@ describe('分桩充电明细 · 门不许在错误的时机敞开', () => {
     await flushPromises()
 
     vi.mocked(cpMeterApi.readings).mockImplementation(hang as never)
-    await w.find('.fp-lderr button').trigger('click')   // 重试 —— 这一趟永不结算
+    await w.find('.fp-empty.error button').trigger('click')   // 重试 —— 这一趟永不结算
     await nextTick()
 
-    expect(w.find('.fp-lderr').exists(), '失败条不该在重试一开始就消失').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '失败条不该在重试一开始就消失').toBe(true)
     expect(btn(w, '导出')!.attributes('disabled'), '在途时导出必须仍禁用').toBeDefined()
     expect(w.findAll('.cm-edit'), '在途时不该冒出写入口').toHaveLength(0)
     expect(w.find('.cm-empty').exists(), '在途时不该宣布「本月暂无」').toBe(false)
@@ -347,13 +360,13 @@ describe('分桩充电明细 · 门不许在错误的时机敞开', () => {
     const w = await toTable()
     ;(w.vm as unknown as { editMode: boolean }).editMode = true
     await flushPromises()
-    expect(w.find('.fp-lderr').exists(), '前提:先失败一次').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '前提:先失败一次').toBe(true)
 
     vi.mocked(cpMeterApi.readings).mockResolvedValue(MAR as never)
-    await w.find('.fp-lderr button').trigger('click')       // 重试,这次成功
+    await w.find('.fp-empty.error button').trigger('click')       // 重试,这次成功
     await flushPromises()
 
-    expect(w.find('.fp-lderr').exists(), '成功了失败条还挂着').toBe(false)
+    expect(w.find('.fp-empty.error').exists(), '成功了失败条还挂着').toBe(false)
     expect(btn(w, '导出')!.attributes('disabled'), '成功了导出还禁着').toBeUndefined()
     expect(w.findAll('.cm-edit').length, '成功了写入口没回来').toBeGreaterThan(0)
   })
@@ -400,12 +413,11 @@ describe('分桩充电明细 · 门不许在错误的时机敞开', () => {
     // onImport(:351)/onSimulate(:363)—— 删掉任何一句,对应的 not.toHaveBeenCalled 红。
     //
     // ⚠ 前置状态必须做足(本仓栽过三次):openSt 是 null / stForm 空 / form 空 /
-    //   confirm 假的时候,这些函数在**自己原有的**早退分支就 return 了 ——
+    //   确认弹窗答「取消」的时候,这些函数在**自己原有的**早退分支就 return 了(ask 恒真见 beforeEach)——
     //   守卫删掉照样绿,断言等于没写。
     vi.mocked(cpMeterApi.readings).mockResolvedValue(MAR as never)
     const w = await toTable()
     const vm = w.vm as unknown as Record<string, never>
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
 
     // 先在编辑态里把状态摆好(抽屉打开、两份表单填好、新增行展开)……
     ;(vm as unknown as { editMode: boolean }).editMode = true
@@ -473,7 +485,7 @@ describe('分桩充电明细 · 门不许在错误的时机敞开', () => {
     await stale
     await flushPromises()
 
-    expect(w.text(), '成功之后不该再冒出失败文案').not.toContain('充电桩档案加载失败')
+    expect(w.text(), '成功之后不该再冒出失败文案').not.toContain('充电桩档案没读到')
     expect(w.findAll('.cm-edit').length, '数据是对的却被锁成只读').toBeGreaterThan(0)
   })
 
@@ -495,13 +507,15 @@ describe('分桩充电明细 · 门不许在错误的时机敞开', () => {
     ;(w.vm as unknown as { editMode: boolean }).editMode = true   // 换期守卫会退出,这里只测按钮
     await flushPromises()
 
-    expect(w.find('.fp-lderr').exists(), '前提:确实是失败态').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '前提:确实是失败态').toBe(true)
     expect(done()?.attributes('disabled'), '编辑态里的「完成」被禁掉了 —— 退不出去').toBeUndefined()
   })
 
   it('❗切页签要收掉抽屉 —— 它是 Teleport to body,子树没了它不会没', async () => {
     // 红线:CpMeterView.vue:62 onDeactivated 里把 `openSt.value = null` 删掉 ——
     // FPDrawer Teleport 到 body,随 KeepAlive 停用不会移出,浮在别的页面上。
+    // 浏览态的空月,表格区换成空状态(没有桩行可点)—— 给一条记录让桩行在场
+    vi.mocked(cpMeterApi.readings).mockResolvedValue(MAR as never)
     const Host = defineComponent({
       components: { CpMeterView },
       props: { on: { type: Boolean, default: true } },
@@ -539,14 +553,15 @@ describe('分桩充电明细 · 门不许在错误的时机敞开', () => {
     // 并把真实记录全部藏起来:说了假话还删了信息。
     vi.mocked(cpMeterApi.readings).mockResolvedValue(MAR as never)
     const w = await toTable()
+    // 抽屉先开着:档案挂了以后表格区换成加载失败、桩行点不到了 —— 真实剧本是切回来重拉档案时挂
+    await w.findAll('.cm-table tbody tr')[0].trigger('click')
+    await flushPromises()
     vi.mocked(cpMeterApi.stations).mockRejectedValue(new Error('档案挂了'))
     await (w.vm as unknown as { loadStations: () => Promise<void> }).loadStations()
     await flushPromises()
-    expect(w.text(), '前提:档案的失败已经上屏').toContain('充电桩档案加载失败')
+    expect(w.text(), '前提:档案的失败已经上屏').toContain('充电桩档案没读到')
 
-    await w.findAll('.cm-table tbody tr')[0].trigger('click')
-    await flushPromises()
-    expect(w.text(), '记录好好的,抽屉不该说记录没加载成功').not.toContain('本月记录未加载成功')
+    expect(w.text(), '记录好好的,抽屉不该说记录没读到').not.toContain('充电记录没读到')
     expect(w.findAll('.cm-dtable tbody tr').length, '这一桩的真实记录被藏了').toBeGreaterThan(0)
   })
 })
@@ -594,7 +609,6 @@ describe('充电桩分桩明细 · 写完要刷账期清单', () => {
     await flushPromises()
     vi.mocked(cpMeterApi.months).mockClear()
     vi.mocked(cpMeterApi.deleteReading).mockResolvedValue(undefined as never)
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
 
     await (w.vm as unknown as { delRow: (id: number, d: string) => Promise<void> })
       .delRow(1, '2025-03-05')
@@ -643,6 +657,8 @@ describe('分桩充电明细 · 复查补钉', () => {
     // 删掉 myStations/myReadings/myUsage 的 .filter(vehicleType) 时:
     // 附表7 渲染出电动车桩,月汇总把电动车的量加进汽车账,导出的政府报表两本账串一张表。
     // 此前注释声称钉了行数,实际零断言(复查抓到:测试文件对自身覆盖面说了假话)。
+    // 浏览态的空月表格区换成空状态 —— 给一条汽车桩记录让桩行在场
+    vi.mocked(cpMeterApi.readings).mockResolvedValue(MAR as never)
     const w = await toCar()
     const names = w.findAll('.cm-table tbody tr').map(r => r.text())
     expect(names.length, 'car 屏只有 2 台汽车桩').toBe(2)
@@ -677,7 +693,6 @@ describe('分桩充电明细 · 复查补钉', () => {
 
     // 失败回滚:乐观更新写上去的值要退回去
     vi.mocked(cpMeterApi.upsertPowerUsage).mockRejectedValue(new Error('挂了'))
-    vi.spyOn(window, 'alert').mockImplementation(() => {})
     const live = { ...u, meterKwh: 120 }
     vm.commitMeter(live as never, '999')
     expect((live as { meterKwh: number }).meterKwh, '乐观更新先写上').toBe(999)
@@ -730,8 +745,6 @@ describe('分桩充电明细 · 复查补钉', () => {
     }
     vm.editMode = true
     await flushPromises()
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
-    vi.spyOn(window, 'alert').mockImplementation(() => {})
 
     // onImport(走 importRegistry 的 http.post)
     const api = (await import('@/api')).default
@@ -782,10 +795,9 @@ describe('分桩充电明细 · 复查补钉', () => {
     expect(cpMeterApi.months, '切回来要重拉账期清单').toHaveBeenCalled()
   })
 
-  it('❗confirm 期间对面才进编辑 → 复查要拦住(TOCTOU)', async () => {
-    // confirm() 同步阻塞事件循环:对话框开着期间 ping 一拍都发不出,弹框前的检查
-    // 读的是冻结名单,窗口宽度 = 用户读文案的时长。服务端对 /simulate 不查锁,
-    // 前端这道闸是唯一防线 —— confirm 返回后必须再复查一次。
+  it('❗确认弹窗问的期间对面才进编辑 → 复查要拦住(TOCTOU)', async () => {
+    // 弹框前的检查读的是弹框那一刻的名单,窗口宽度 = 用户读文案的时长。服务端对 /simulate 不查锁,
+    // 前端这道闸是唯一防线 —— 答完必须再复查一次。
     const w = await toCar()
     const vm = w.vm as unknown as { editMode: boolean; onSimulate: () => Promise<void> }
     vm.editMode = true
@@ -793,8 +805,7 @@ describe('分桩充电明细 · 复查补钉', () => {
     const { usePresenceStore } = await import('@/stores/presence')
     const pres = usePresenceStore()
     pres.users = []                                  // 弹框前:对面没人
-    vi.spyOn(window, 'alert').mockImplementation(() => {})
-    vi.spyOn(window, 'confirm').mockImplementation(() => {
+    vi.mocked(ask).mockImplementation(async () => {
       // 用户读文案的这段时间里,李四在对面进了编辑态
       pres.users = [{
         sid: 's9', user: 'lisi', displayName: '李四', role: null, scope: null, label: '附表8',
@@ -804,7 +815,7 @@ describe('分桩充电明细 · 复查补钉', () => {
     })
 
     await vm.onSimulate()
-    expect(cpMeterApi.simulate, 'confirm 之后不复查就写穿对面的锁').not.toHaveBeenCalled()
+    expect(cpMeterApi.simulate, '答完不复查就写穿对面的锁').not.toHaveBeenCalled()
   })
 
   it('❗电表卡与空态横幅也要吃车型过滤 —— myUsage/myIds 各自钉死', async () => {
@@ -858,8 +869,6 @@ describe('分桩充电明细 · 复查补钉', () => {
     const vm = w.vm as unknown as { editMode: boolean; onSimulate: () => Promise<void> }
     vm.editMode = true
     await flushPromises()
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
     // 对面(ebike)同年有人在编辑 —— 在场表直接喂
     const { usePresenceStore } = await import('@/stores/presence')
     usePresenceStore().users = [{
@@ -869,8 +878,11 @@ describe('分桩充电明细 · 复查补钉', () => {
 
     await vm.onSimulate()
     expect(cpMeterApi.simulate, 'simulate 会写对面的账,对面有锁就不许跑').not.toHaveBeenCalled()
-    expect(alert).toHaveBeenCalled()
-    expect(String(alert.mock.calls[0][0])).toContain('李四')
+    // 没跑成是「得等」不是出错:警告回执带「重试」(对面退出后点一下),确认弹窗根本不该弹
+    expect(receipts.at(-1)?.tone).toBe('warn')
+    expect(receipts.at(-1)?.text).toContain('李四')
+    expect(receipts.at(-1)?.action?.label).toBe('重试')
+    expect(ask).not.toHaveBeenCalled()
   })
 })
 
@@ -938,5 +950,273 @@ describe('分桩充电明细 · 行内日期格', () => {
     dp.vm.$emit('update:modelValue', '2025-03-09')
     await flushPromises()
     expect(vm.form.readDate).toBe('2025-03-09')
+  })
+})
+
+/**
+ * S4 提示件替换(T27,实现规范 §1.1–§1.5):原生 confirm / alert / title、流内失败条与「本月暂无」条
+ * 换成站内那一套 —— 确认弹窗、结果回执、字段报错、悬停说明、加载失败 / 空状态 / 页面状态。
+ */
+describe('分桩充电明细 · 提示件(S4)', () => {
+  async function toCar() {
+    const w = await open('car')
+    await w.findAll('.bmm-card')[2].trigger('click')
+    await flushPromises()
+    return w
+  }
+  /** 2025-03 编辑态,快充1 有一条记录(MAR)、小桔有一行电表 */
+  async function toEdit() {
+    // 桩库给一份拷贝:行内改名是就地改对象,共用夹具会把「快充1号」漏进后面的用例
+    vi.mocked(cpMeterApi.stations).mockResolvedValue(STATIONS.map(s => ({ ...s })) as never)
+    vi.mocked(cpMeterApi.readings).mockResolvedValue(MAR as never)
+    vi.mocked(cpMeterApi.powerUsage).mockResolvedValue([USAGE_ROW] as never)
+    const w = await toCar()
+    ;(w.vm as unknown as { editMode: boolean }).editMode = true
+    await flushPromises()
+    return w
+  }
+  /** 往行内格里敲一个值再失焦(格子挂的是 @change) */
+  async function type(input: ReturnType<ReturnType<typeof mount>['find']>, v: string) {
+    ;(input.element as HTMLInputElement).value = v
+    await input.trigger('change')
+    await flushPromises()
+  }
+  const errUnder = (input: ReturnType<ReturnType<typeof mount>['find']>) =>
+    input.element.parentElement?.querySelector('.cm-cellerr')?.textContent
+
+  it('❗本月记录没读到 → 换掉两张卡本身(不留表格),一句写清哪月 + 副句;重试接上重拉', async () => {
+    vi.mocked(cpMeterApi.readings).mockRejectedValue(new Error('后端挂了'))
+    const w = await toCar()
+    const err = w.find('.cm-page > .fp-empty.error')
+    expect(err.exists(), '加载失败要占住内容区').toBe(true)
+    expect(err.text()).toContain('2025 年 3 月的充电记录没读到')
+    expect(err.find('.sub').text()).toBe('后端挂了 · 屏上不显示上个月的数字')
+    expect(w.find('.cm-card').exists(), '失败时主表卡不留(互斥,不是叠在表格上方)').toBe(false)
+
+    vi.mocked(cpMeterApi.readings).mockClear()
+    await err.find('button').trigger('click')
+    await flushPromises()
+    expect(cpMeterApi.readings, '重试要真去重拉那个月').toHaveBeenCalledWith(2025, 3)
+  })
+
+  it('❗本型本月一条记录都没有(浏览态):标题旁贴「本月还没有充电记录」,主表卡里换成空状态;编辑态桩行回来', async () => {
+    const w = await toCar()                           // readings 默认 []
+    expect(w.find('.cm-titlerow .fp-state').text()).toBe('本月还没有充电记录')
+    const card = w.find('.cm-card')
+    expect(card.find('.fp-empty.cm-empty').text()).toContain('2025 年 3 月还没有充电记录')
+    expect(card.find('table').exists(), '空状态换掉的是表格本身').toBe(false)
+
+    ;(w.vm as unknown as { editMode: boolean }).editMode = true
+    await flushPromises()
+    expect(w.findAll('.cm-table tbody tr'), '编辑态点桩行开抽屉是逐条录入的入口,不换').toHaveLength(2)
+    expect(w.find('.cm-titlerow .fp-state').exists(), '页面状态两态都在').toBe(true)
+  })
+
+  it('❗本型本月有记录 → 不贴「本月还没有充电记录」', async () => {
+    const w = await toEdit()
+    expect(w.find('.cm-titlerow .fp-state').exists()).toBe(false)
+  })
+
+  it('❗桩名清空 → 红字「桩名不能为空」贴在桩名格下面、框变红、空着的值留着;不走回执、不发请求', async () => {
+    const w = await toEdit()
+    const input = w.findAll('.cm-table input.cm-edit')[0]
+    await type(input, '')
+    expect(errUnder(input), '红字要贴在这一格下面').toBe('桩名不能为空')
+    expect(input.classes(), '框变红').toContain('bad')
+    expect((input.element as HTMLInputElement).value, '不被重绘刷回旧桩名').toBe('')
+    expect(receipts, '字段错误不走回执').toHaveLength(0)
+    expect(cpMeterApi.updateStation).not.toHaveBeenCalled()
+
+    vi.mocked(cpMeterApi.updateStation).mockResolvedValue({} as never)
+    await type(input, '快充1号')
+    expect(errUnder(input), '改对了红字要收掉').toBe('')
+    expect(cpMeterApi.updateStation).toHaveBeenCalled()
+  })
+
+  it('❗运营商清空 → 红字「运营商不能为空」贴在运营商格下面', async () => {
+    const w = await toEdit()
+    const input = w.findAll('.cm-table input.cm-edit')[1]
+    await type(input, '  ')
+    expect(errUnder(input)).toBe('运营商不能为空')
+    expect(receipts).toHaveLength(0)
+  })
+
+  it('❗电表用电量敲负数 → 红字贴在那一格下面,不走回执', async () => {
+    const w = await toEdit()
+    const input = w.find('.cm-utable input.cm-edit')
+    await type(input, '-3')
+    expect(errUnder(input)).toBe('请输入非负数字')
+    expect(input.attributes('aria-invalid')).toBe('true')
+    expect(receipts).toHaveLength(0)
+    expect(cpMeterApi.upsertPowerUsage).not.toHaveBeenCalled()
+  })
+
+  it('❗抽屉记录行:没选日期 / 填了负数 → 红字贴在抽屉表下面(不走回执);行开着时那一行常驻', async () => {
+    const w = await toEdit()
+    const vm = w.vm as unknown as {
+      openSt: CpStationDTO | null; startAdd: () => void; saveForm: () => Promise<void>
+      form: { readDate: string; chargeKwh: string; fee: string; revenue: string; note: string }
+    }
+    vm.openSt = STATIONS[0]
+    await flushPromises()
+    expect(w.find('.fp-dwr-body > .fp-field-err').exists(), '没开记录行时不占这一行').toBe(false)
+    vm.startAdd()
+    await flushPromises()
+    const errLine = () => w.find('.fp-dwr-body > .fp-field-err')
+    expect(errLine().exists(), '记录行开着,报错位常驻').toBe(true)
+    expect(errLine().text()).toBe('')
+
+    vm.form = { ...vm.form, readDate: '' }
+    await vm.saveForm()
+    await flushPromises()
+    expect(errLine().text()).toBe('请选择日期')
+
+    vm.form = { readDate: '2025-03-09', chargeKwh: '10', fee: '-1', revenue: '5', note: '' }
+    await vm.saveForm()
+    await flushPromises()
+    expect(errLine().text()).toBe('充电量 / 手续费 / 收益不能为负')
+    expect(receipts, '字段错误不走回执').toHaveLength(0)
+    expect(cpMeterApi.createReading).not.toHaveBeenCalled()
+  })
+
+  it('❗删记录走站内确认:标题问句带日期、删除类;答取消不删,问的途中被接管也不删', async () => {
+    const w = await toEdit()
+    const vm = w.vm as unknown as { editMode: boolean; delRow: (id: number, d: string) => Promise<void> }
+    vi.mocked(cpMeterApi.deleteReading).mockResolvedValue(undefined as never)
+
+    vi.mocked(ask).mockResolvedValue(false)
+    await vm.delRow(1, '2025-03-05')
+    expect(vi.mocked(ask).mock.calls[0][0]).toMatchObject({ title: '删除 2025-03-05 的充电记录？', action: '删除这条记录', danger: true })
+    expect(cpMeterApi.deleteReading, '答了取消还删').not.toHaveBeenCalled()
+
+    vi.mocked(ask).mockImplementationOnce(async () => { vm.editMode = false; return true })
+    await vm.delRow(1, '2025-03-05')
+    expect(cpMeterApi.deleteReading, '问的途中编辑态被接管了还删').not.toHaveBeenCalled()
+  })
+
+  it('❗删桩走站内确认:标题问句带桩名、删除类;答取消不删', async () => {
+    const w = await toEdit()
+    const vm = w.vm as unknown as { openSt: CpStationDTO | null; delStation: () => Promise<void> }
+    vm.openSt = STATIONS[0]
+    vi.mocked(ask).mockResolvedValue(false)
+    await vm.delStation()
+    expect(vi.mocked(ask).mock.calls[0][0]).toMatchObject({ title: '删除充电桩「快充1」？', action: '删除充电桩', danger: true })
+    expect(cpMeterApi.deleteStation).not.toHaveBeenCalled()
+  })
+
+  it('❗导出 / 模板下载失败 → 失败回执带「重试」,点了真去再导一次', async () => {
+    vi.mocked(cpMeterApi.readings).mockResolvedValue(MAR as never)
+    const w = await toCar()
+    vi.mocked(exportCpMeterMonth).mockRejectedValueOnce(new Error('磁盘满了'))
+    await w.findAll('button').find(b => b.text().includes('导出'))!.trigger('click')
+    await flushPromises()
+    expect(receipts.map(r => [r.tone, r.text, r.action?.label])).toEqual([['fail', '磁盘满了', '重试']])
+    receipts[0].action!.run()
+    await flushPromises()
+    expect(exportCpMeterMonth, '「重试」要真去再导一次').toHaveBeenCalledTimes(2)
+
+    vi.mocked(buildCpMeterTemplate).mockRejectedValueOnce(new Error('模板坏了'))
+    await w.findAll('button').find(b => b.text().includes('下载模板'))!.trigger('click')
+    await flushPromises()
+    expect(receipts.at(-1)?.text).toBe('模板坏了')
+    receipts.at(-1)!.action!.run()
+    await flushPromises()
+    expect(buildCpMeterTemplate).toHaveBeenCalledTimes(2)
+  })
+
+  it('❗模拟填充:先问(不是删除类),答完才跑,结果走成功回执', async () => {
+    const w = await toEdit()
+    vi.mocked(cpMeterApi.simulate).mockResolvedValue({ filled: 8, skipped: 2 } as never)
+    await (w.vm as unknown as { onSimulate: () => Promise<void> }).onSimulate()
+    await flushPromises()
+    const q = vi.mocked(ask).mock.calls[0][0]
+    expect(q).toMatchObject({ title: '模拟填充 2025 全年？', action: '模拟填充 2025 全年' })
+    expect(q.danger, '只填空位、不覆盖手工数据,不是删除类').toBeFalsy()
+    expect(receipts.map(r => [r.tone, r.text])).toEqual([['ok', '模拟完成：填充 8 条，跳过 2 条（手工/导入占位、值未变或缺桩）。']])
+  })
+
+  it('❗改动数:即时提交的格子算 0;抽屉里开着记录行算一处(关页签才问)', async () => {
+    const w = await toEdit()
+    const auth = useAuthStore()
+    expect(auth.dirtyTotal, '桩名 / 电表值都是即时提交,关页签不该白问').toBe(0)
+    const vm = w.vm as unknown as { openSt: CpStationDTO | null; startAdd: () => void }
+    vm.openSt = STATIONS[0]
+    await flushPromises()
+    vm.startAdd()
+    expect(auth.dirtyTotal).toBe(1)
+    // 破坏验证:dirty 去掉 approxDirty 包装 → 红(离开确认会说「1 处改动」,其实只知道记录行开着)
+    expect(auth.dirtyApproxOn(''), '开着就算 1,不报处数').toBe(true)
+  })
+
+  it('❗抽屉开着时本月记录挂了 → 抽屉里也是全站那一种加载失败,重试就地重拉', async () => {
+    const w = await toEdit()
+    ;(w.vm as unknown as { openSt: CpStationDTO | null }).openSt = STATIONS[0]
+    await flushPromises()
+    vi.mocked(cpMeterApi.readings).mockRejectedValue(new Error('后端挂了'))
+    await (w.vm as unknown as { loadMonth: () => Promise<void> }).loadMonth()
+    await flushPromises()
+    const inDrawer = w.find('.fp-dwr-body .fp-empty.error')
+    expect(inDrawer.text()).toContain('2025 年 3 月的充电记录没读到')
+
+    vi.mocked(cpMeterApi.readings).mockClear()
+    await inDrawer.find('button').trigger('click')
+    await flushPromises()
+    expect(cpMeterApi.readings).toHaveBeenCalledWith(2025, 3)
+  })
+
+  it('❗编辑态整屏没有一个原生 title(抽屉开着、记录行在场)—— 悬停说明一律走 v-tip', async () => {
+    vi.mocked(cpMeterApi.readings).mockResolvedValue([
+      ...MAR,
+      { id: 2, stationId: 1, stationName: '快充1', readDate: '2025-03-20', chargeKwh: 80, fee: 4, revenue: 40,
+        note: '模拟:按附表推导', source: 'simulated' },
+    ] satisfies CpReadingDTO[] as never)
+    vi.mocked(cpMeterApi.powerUsage).mockResolvedValue([USAGE_ROW] as never)
+    const w = await toCar()
+    ;(w.vm as unknown as { editMode: boolean }).editMode = true
+    await flushPromises()
+    ;(w.vm as unknown as { openSt: CpStationDTO | null }).openSt = STATIONS[0]
+    await flushPromises()
+    expect(w.find('.cm-sim').exists(), '前提:模拟徽标在场').toBe(true)
+    expect(w.find('.cm-utable td.loss').exists(), '前提:负损耗那格在场').toBe(true)
+    expect(w.findAll('[title]').map(e => e.html().slice(0, 90)), '还有原生 title').toEqual([])
+    // 图标钮没有可读的字,v-tip 给它补 aria-label —— 光删 title 不换 v-tip 这条就红
+    expect(w.find('.cm-iop.danger').attributes('aria-label')).toBe('删除')
+  })
+})
+
+describe('分桩充电明细 · 禁用钮的悬停说明', () => {
+  it('❗失败态导出钮被禁用 → 悬停说明挂在外层,停一会儿就出(禁用的钮自己收不到鼠标)', async () => {
+    vi.mocked(cpMeterApi.readings).mockRejectedValue(new Error('后端挂了'))
+    // 气泡只给挂在文档里的宿主出(directives/tip.ts 判 isConnected)
+    const w = mount(CpMeterView, { props: { vehicleType: 'car' }, attachTo: document.body, global: { stubs: { Teleport: true } } })
+    await flushPromises()
+    await w.findAll('.bmm-card')[2].trigger('click')
+    await flushPromises()
+    const host = w.findAll('.cm-ebtn').find(h => h.text().includes('导出'))!
+    expect(host.find('button').attributes('disabled'), '前提:失败态导出钮禁用').toBeDefined()
+    await host.trigger('mouseenter')
+    await new Promise(r => setTimeout(r, 560))
+    expect(document.body.querySelector('.fp-vtip')?.textContent).toBe('本月数据没读到,导出会得到一份全零的表 —— 先重试')
+    await host.trigger('mouseleave')
+    w.unmount()
+  })
+})
+
+// 列宽铁律(LIST-PAGE §4 / §7,2026-10-02):桩名是主表 colgroup 第一根,宽要是随编辑态变,后面 5 根数字列整排平移
+describe('分桩充电明细 · 桩名列宽不随编辑态变', () => {
+  // 破坏验证:stNameW 的 canMaster 改回 editStation → 浏览态按「充电桩」表头 76px,红
+  it('❗有档案编辑权的人浏览态就按输入框的 200 预留,进出编辑态同宽', async () => {
+    vi.mocked(cpMeterApi.readings).mockResolvedValue(MAR as never)
+    const w = await open()
+    await w.findAll('.bmm-card')[2].trigger('click')
+    await flushPromises()
+    const nameCol = () => w.find('.cm-table colgroup col').attributes('style')
+    expect(nameCol()).toBe('width: 200px;')
+    ;(w.vm as unknown as { editMode: boolean }).editMode = true
+    await flushPromises()
+    expect(w.find('.cm-table tbody input').exists(), '前置:编辑态行内出了输入框').toBe(true)
+    expect(nameCol()).toBe('width: 200px;')
+    // 余宽归行末空列:表头、每一行、合计行最右一格都是 aria-hidden 的 .fp-fill(破坏验证:删掉数据行那格 → 红)
+    expect(rowsNotEndingInFill(w.get('.cm-table').element)).toEqual([])
   })
 })

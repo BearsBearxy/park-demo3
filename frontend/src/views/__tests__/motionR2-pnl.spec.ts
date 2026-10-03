@@ -317,23 +317,23 @@ describe('对抗复查 2026-09-16:首进两趟取数 / 换年在途的横幅与�
     await flushPromises()
     return w
   }
-  /** 跨年步进在途:横幅不插、grid 不被推;到数后也没有横幅(2025-12 有数) */
+  /** 跨年步进在途:期间旁的回退标签不冒出来、grid 不被推;到数后也没有(2025-12 有数) */
   async function expectNoBannerAcrossYear(w: VueWrapper, fn: (...a: never[]) => Promise<unknown>, make: (...a: never[]) => unknown) {
     const grid = w.find('.av2-grid[data-stale-host]').element
     const before = grid.previousElementSibling
-    expect(w.find('.ana-pbanner').exists()).toBe(false)
+    expect(w.find('.anx-period .fp-state').exists()).toBe(false)
     const release = holdNext(fn as never, make as never)
     usePeriod().step(-1)
     await flushPromises()
     expect(usePeriod().ym.value).toBe('2025-12')
-    expect(w.find('.ana-pbanner').exists(), '在途拿新月对旧年的覆盖月,插进一条假横幅').toBe(false)
+    expect(w.find('.anx-period .fp-state').exists(), '在途拿新月对旧年的覆盖月,冒出一个假回退标签').toBe(false)
     expect(grid.previousElementSibling, 'grid 上方多了东西 = 被推下去').toBe(before)
     release()
     await flushPromises()
-    expect(w.find('.ana-pbanner').exists()).toBe(false)
+    expect(w.find('.anx-period .fp-state').exists()).toBe(false)
   }
 
-  it('❗驾驶舱:2026-01 步进到 2025-12,在途不插回退横幅', async () => {
+  it('❗驾驶舱:2026-01 步进到 2025-12,在途不出回退标签', async () => {
     const w = await bootJan(CockpitView)
     await expectNoBannerAcrossYear(w, data.fetchPnlSummary, (y: number) => pnlSum(y))
   })
@@ -360,7 +360,7 @@ describe('对抗复查 2026-09-16:首进两趟取数 / 换年在途的横幅与�
     expect(ys(), '名次没换到 translateY 上').toEqual(['translateY(0px)', 'translateY(34px)', 'translateY(102px)', 'translateY(68px)'])
   })
 
-  it('❗费用与报销:2026-01 步进到 2025-12,在途不插回退横幅', async () => {
+  it('❗费用与报销:2026-01 步进到 2025-12,在途不出回退标签', async () => {
     const w = await bootJan(ExpenseView)
     await expectNoBannerAcrossYear(w, data.fetchPnlYear, (_s: string, y: number) => s5For(y))
   })
@@ -475,5 +475,95 @@ describe('弹层里的图瞬现(原则 7)', () => {
     const inModal = w.findAllComponents({ name: 'AnaEChart' }).filter((c) => modal.element.contains(c.element))
     expect(inModal).toHaveLength(1)
     expect(inModal[0].props('entrance')).toBe(false)
+  })
+})
+
+// 画布 06-D 中格 / 实现规范 §1.5、§2 第 8 条:期间回退不用满宽横条 —— 整页回退贴期间选择旁,离群月是图卡里一行。
+describe('期间回退:期间选择旁的标签 / 图卡里一行,不用满宽横条', () => {
+  type TipEl = HTMLElement & { _tip?: { text: string } }
+  const tags = (w: VueWrapper) => w.findAll('.anx-period .fp-state').map((e) => e.text())
+  /** 驾驶舱某张图卡头里的回退标签(画布 06-D 中格:单图回退贴卡头) */
+  const headTag = (w: VueWrapper, title: string) =>
+    w.findAll('.av2-grid[data-stale-host] .av2-card-h .t').find((t) => t.text().startsWith(title))!.find('.fp-state')
+  async function bootAug(comp: Component) {
+    providePeriodMonths(MONTHS, MONTHS)
+    usePeriod().setGran('month')
+    usePeriod().setYear(2026)
+    usePeriod().setMonth(8)
+    const w = mount(comp as never, STUBS)
+    mounted.push(w)
+    await flushPromises()
+    return w
+  }
+
+  it('❗驾驶舱:选 2026-08 而损益只录到 7 月 → 只在期间旁挂一枚「显示 2026-07 · 8 月无数据」;构成环同锚,卡头不重复', async () => {
+    vi.mocked(data.fetchPnlSummary).mockImplementation(async (y: number) => {
+      const s = pnlSum(y)
+      return y === 2026 ? { ...s, months: s.months.filter((m) => m !== 8) } : s
+    })
+    const w = await bootAug(CockpitView)
+    expect(tags(w)).toEqual(['显示 2026-07 · 8 月无数据'])
+    expect(headTag(w, '收入构成').exists(), '整页回退只贴期间旁,构成环卡头不重复').toBe(false)
+    expect(w.findAll('.anx-body .fp-state').length, '正文里不该有回退标签').toBe(0)
+    usePeriod().setMonth(7)
+    await flushPromises()
+    expect(tags(w), '7 月有损益,期间旁标签该撤').toEqual([])
+  })
+
+  it('❗驾驶舱:台账只到 7 月 → 收缴率卡头「显示 2026-07」,期间旁不挂;选 6 月(在柱子范围里)不挂', async () => {
+    vi.mocked(data.fetchCollectRates).mockResolvedValue([
+      { ym: '2026-06', receivable: 100000, collected: 90000, rate: 90 },
+      { ym: '2026-07', receivable: 120000, collected: 96000, rate: 80 },
+    ])
+    const w = await bootAug(CockpitView)
+    expect(tags(w)).toEqual([])
+    expect(headTag(w, '收缴率 vs 目标').text()).toBe('显示 2026-07')
+    usePeriod().setMonth(6)
+    await flushPromises()
+    expect(headTag(w, '收缴率 vs 目标').exists(), '所选月在柱子范围里,这张图没有回退').toBe(false)
+  })
+
+  // 破坏验证:删掉 #period-note 里那枚「收缴率显示」→ 红(KPI 瓦是 4 月的数,屏上只剩瓦里小字)
+  it('❗驾驶舱:台账断月(04、06 有,05 无)选 05 → KPI 瓦按 04,期间旁「收缴率显示 2026-04」;卡头不挂', async () => {
+    vi.mocked(data.fetchCollectRates).mockResolvedValue([
+      { ym: '2026-04', receivable: 100000, collected: 90000, rate: 90 },
+      { ym: '2026-06', receivable: 120000, collected: 96000, rate: 80 },
+    ])
+    const w = await bootAug(CockpitView)
+    expect(tags(w), '选 08:卡头已挂「显示 2026-06」,期间旁不重复').toEqual([])
+    usePeriod().setMonth(5)
+    await flushPromises()
+    expect(tags(w)).toEqual(['收缴率显示 2026-04'])
+    expect(headTag(w, '收缴率 vs 目标').exists(), '05 在柱子范围里,图没有回退').toBe(false)
+  })
+
+  it('❗驾驶舱:当年有收入为负的月 → 主图卡里图上方一行块内提示(FPNote),不是横条', async () => {
+    vi.mocked(data.fetchPnlSummary).mockImplementation(async (y: number) => {
+      const s = pnlSum(y)
+      if (y !== 2026) return s
+      const revenue = [...s.revenue]
+      revenue[2] = -50000
+      return { ...s, revenue }
+    })
+    const w = await bootAug(CockpitView)
+    const note = w.find('.av2-grid[data-stale-host] .av2-s8 .fp-note')
+    expect(note.exists(), '离群月提示不在主图卡里').toBe(true)
+    expect(note.text()).toBe('2026-03 收入为负,已计入年度营收/成本/利润与达成率')
+    expect(note.element.nextElementSibling?.classList.contains('stub-chart'), '提示不在图上方').toBe(true)
+  })
+
+  it('❗费用与报销:选 2026-08 而附表5 只录到 7 月 → 期间旁「显示 2026-07 · 8 月无数据」;异动榜科目名悬停看全称', async () => {
+    vi.mocked(data.fetchPnlYear).mockImplementation(async (_s: string, y: number) => {
+      const d = s5For(y)
+      return y === 2026 ? { ...d, rows: d.rows.map((r) => ({ ...r, m: r.m.map((v, i) => (i === 7 ? null : v)) })) } : d
+    })
+    const w = await bootAug(ExpenseView)
+    expect(tags(w)).toEqual(['显示 2026-07 · 8 月无数据'])
+    const lbs = w.findAll('.ex-mv .lb')
+    expect(lbs.length, '异动榜没出行,这条判据是空跑').toBeGreaterThan(0)
+    for (const lb of lbs) {
+      expect(lb.attributes('title')).toBeUndefined()
+      expect((lb.element as TipEl)._tip?.text).toBe(lb.text())
+    }
   })
 })

@@ -9,6 +9,7 @@ import SchedHeader from '@/components/sched/SchedHeader.vue'
 import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useReviewStore } from '@/stores/review'
+import { useUiStore } from '@/stores/ui'
 import api from '@/api'
 
 /**
@@ -338,6 +339,22 @@ describe('SchedHeader 审核闸', () => {
     await flushPromises()
     await nextTick()
     expect(w.emitted('toggle-edit')?.[0], '换到已审核的月要强制退出').toEqual([true])
+    // 破坏验证:删掉 SchedHeader 里 `k === wasK` → 红
+    expect(useUiStore().editStop, '他自己换的月,药丸写着,不弹').toBeNull()
+  })
+
+  // 06-E 当场出现组:同一个月在手上被别人审了 → 退出前报给 App 的居中弹窗
+  // 破坏验证:删掉 SchedHeader 里 ui.reportEditStop(...) 那一句 → 红
+  it('❗编辑态里这个月被别人审核通过 → 强制退出,并写明谁审的、哪张表', async () => {
+    const w = mk({ reviewKey: 'salary:2025-03', edit: true })
+    await flushPromises()
+    seedReview('approved')
+    const rs = useReviewStore()
+    rs.invalidate('2025-03')
+    await rs.ensureYear(2025)
+    await flushPromises()
+    expect(w.emitted('toggle-edit')?.[0]).toEqual([true])
+    expect(useUiStore().editStop).toMatchObject({ status: 'approved', by: '李审', what: '附表12 · 工资明细 · 2025-03' })
   })
 
   // ❗onToggleEdit 里那道闸唯一**可达**的路:提权弹窗批准后的回调

@@ -350,6 +350,75 @@ class ReviewApiIT extends AbstractMysqlIT {
         }
     }
 
+    // ══ 铃铛(V133;06-E / 06-F)══════════════════════════════════════════════
+
+    /**
+     * 通过 → 交审人一条 review_approved;撤销 → 交审人与原审核人各一条 review_withdrawn 带理由。
+     * 撤销是删行,交审人 / 原审核人必须在删之前读住 —— 这条红了多半是读晚了。
+     * 交审人、审核员、撤销人三个人各不相同,「发给自己跳过」才不会把哪一条吞掉。
+     */
+    @Test
+    void approveAndWithdraw_landInTheSubmittersBell_andTheOriginalReviewersToo() throws Exception {
+        String a = admin();
+        String clk = mkUser(a, "it-clk", "finance_clerk", "李出纳"), rv = mkUser(a, "it-rv", "reviewer", "李审");
+        try {
+            String tc = login(clk, PASS), tr = login(rv, PASS);
+            seedElecCostEntry();
+            ok(doPost("/api/review/" + MODEL + "/submit", tc));
+
+            // 待审明细:表名在前、月在后,带交审人显示名(06-F「月度台账 2026-08 等你审 / 李出纳交」)
+            String pend = body(doGet("/api/review/pending", a));
+            assertThat(JsonPath.<List<String>>read(pend, "$.data[?(@.key=='" + MODEL + "')].label"))
+                .containsExactly("园区电费模型 " + YM);
+            assertThat(JsonPath.<List<String>>read(pend, "$.data[?(@.key=='" + MODEL + "')].submittedByName"))
+                .containsExactly("李出纳");
+
+            ok(doPost("/api/review/" + MODEL + "/approve", tr));
+            List<Map<String, Object>> n = bell(tc);
+            assertThat(n).hasSize(1);
+            assertThat(n.get(0)).containsEntry("kind", "review_approved").containsEntry("ref", MODEL)
+                .containsEntry("title", "园区电费模型 " + YM + " 审核通过");
+            assertThat(bell(tr)).as("审核员自己点的通过,不进自己的铃铛").isEmpty();
+
+            ok(doPostJson("/api/review/" + MODEL + "/withdraw", a, "{\"reason\":\"金额录错了\"}"));
+            n = bell(tc);
+            assertThat(n).hasSize(2);
+            assertThat(n.get(0)).containsEntry("kind", "review_withdrawn").containsEntry("ref", MODEL)
+                .containsEntry("detail", "金额录错了");
+            assertThat(bell(tr)).as("原审核人不是撤销人,也要知道自己的判断被撤了")
+                .singleElement().satisfies(x -> assertThat(x).containsEntry("kind", "review_withdrawn"));
+        } finally { cleanup(clk); cleanup(rv); }
+    }
+
+    /** 退回逐张列出带理由(06-E「你交的表被退回」);只列本人交的。 */
+    @Test
+    void returned_listsOnlyMyReturnedTables_withReviewerNameAndReason() throws Exception {
+        String a = admin();
+        String clk = mkUser(a, "it-clk", "finance_clerk", "李出纳"), rv = mkUser(a, "it-rv", "reviewer", "李审");
+        try {
+            String tc = login(clk, PASS), tr = login(rv, PASS);
+            seedElecCostEntry();
+            ok(doPost("/api/review/" + MODEL + "/submit", tc));
+            ok(doPostJson("/api/review/" + MODEL + "/return", tr, "{\"reason\":\"一期总表漏了基本电费\"}"));
+
+            List<Map<String, Object>> mine = JsonPath.read(body(doGet("/api/review/returned", tc)), "$.data");
+            assertThat(mine).singleElement().satisfies(r -> assertThat(r)
+                .containsEntry("key", MODEL).containsEntry("label", "园区电费模型 " + YM)
+                .containsEntry("reason", "一期总表漏了基本电费").containsEntry("reviewedByName", "李审"));
+            assertThat(JsonPath.<List<String>>read(body(doGet("/api/review/returned", a)), "$.data[*].key"))
+                .as("别人交的退回单不在我的清单里").doesNotContain(MODEL);
+
+            // 重新交了:这张表此刻是 submitted,不是退回 —— 只按「我交的」取会把它当成「你交的X 被退回」
+            ok(doPost("/api/review/" + MODEL + "/submit", tc));
+            assertThat(JsonPath.<List<Object>>read(body(doGet("/api/review/returned", tc)), "$.data"))
+                .as("只列退回的,我交的待审表不在里面").isEmpty();
+        } finally { cleanup(clk); cleanup(rv); }
+    }
+
+    private List<Map<String, Object>> bell(String token) throws Exception {
+        return JsonPath.read(body(doGet("/api/notices", token)), "$.data");
+    }
+
     // ══ 键里带冒号 ══════════════════════════════════════════════════════════
 
     /** ledger:7:2024-02 有两个冒号。@PathVariable 单段能不能吃下,这条是唯一的证据。 */
@@ -542,11 +611,16 @@ class ReviewApiIT extends AbstractMysqlIT {
     private String hdr(String t) { return "Bearer " + t; }
 
     private String mkUser(String adminToken, String prefix, String roleCode) throws Exception {
+        return mkUser(adminToken, prefix, roleCode, "审核测试");
+    }
+
+    /** 显示名各不相同的那几条用:交审人和审核人同名时,断言分不清屏上写的是谁。 */
+    private String mkUser(String adminToken, String prefix, String roleCode, String displayName) throws Exception {
         String uname = prefix + "-" + System.nanoTime();
         int roleId = roleIdOf(adminToken, roleCode);
         mvc.perform(MockMvcRequestBuilders.post("/api/system/users")
             .header("Authorization", hdr(adminToken)).contentType("application/json")
-            .content("{\"username\":\"" + uname + "\",\"displayName\":\"审核测试\","
+            .content("{\"username\":\"" + uname + "\",\"displayName\":\"" + displayName + "\","
                    + "\"password\":\"" + PASS + "\",\"roleIds\":[" + roleId + "]}"))
            .andExpect(status().isOk());
         return uname;
@@ -560,6 +634,7 @@ class ReviewApiIT extends AbstractMysqlIT {
     }
 
     private void cleanup(String username) {
+        jdbc.update("DELETE FROM user_notice WHERE username=? OR actor=?", username, username);
         jdbc.update("DELETE FROM review_log WHERE actor=?", username);
         jdbc.update("DELETE FROM auth_audit_log WHERE actor=? OR authorizer=?", username, username);
         jdbc.update("DELETE aur FROM auth_user_role aur JOIN auth_user u ON u.id=aur.user_id WHERE u.username=?", username);

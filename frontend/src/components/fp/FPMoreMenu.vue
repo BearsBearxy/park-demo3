@@ -3,13 +3,17 @@
 // 不消失只降级 —— v2 时代「导出被关在浏览态分支」的坑不重蹈,又不让低频动作占主行宽度。
 // 浮层规矩(UI-OVERLAY-SPEC):点外关走 document capture(带 open 守卫),Esc 自关并 stopPropagation
 // (内层浮层赢,宿主弹窗听 bubble);无 <Transition>(repo 禁令)。
+// 2026-10-01(画布 05-A「簿册 ▾」「导出 ▾」、04-B「…」里红字「批量删除本期」):传 label 时触发钮换成
+// 「图标 字 ▾」描边钮(ds/Button outline sm,和「编辑模式」同高),面板左对齐触发钮;不传 label 仍是「…」原样。
+// danger 项红字(删除类),确认交给调用方走 ask()。
 import { ref, onBeforeUnmount, watch } from 'vue'
 import { MoreHorizontal } from 'lucide-vue-next'
+import Button from '@/components/ds/Button.vue'
 import { iconFor } from '@/components/ds/icon'
 
-export interface MoreItem { key: string; label: string; icon?: string; disabled?: boolean }
+export interface MoreItem { key: string; label: string; icon?: string; disabled?: boolean; danger?: boolean }
 
-const props = defineProps<{ items: MoreItem[] }>()
+const props = defineProps<{ items: MoreItem[]; label?: string; icon?: string }>()
 const emit = defineEmits<{ (e: 'select', key: string): void }>()
 
 const open = ref(false)
@@ -47,14 +51,20 @@ function pick(it: MoreItem) {
 
 <template>
   <div ref="root" class="fp-more">
-    <button class="fp-more-btn" :class="{ on: open }" type="button" title="更多操作"
+    <Button v-if="props.label" class="fp-more-lbl" :class="{ on: open }" variant="outline" size="sm"
+            aria-haspopup="menu" :aria-expanded="open" @click="open = !open">
+      <template v-if="props.icon" #leading><component :is="iconFor(props.icon)" :size="14" /></template>
+      {{ props.label }}
+      <template #trailing><component :is="iconFor('chevron-down')" :size="12" class="dd" /></template>
+    </Button>
+    <button v-else class="fp-more-btn" :class="{ on: open }" type="button" v-tip="'更多操作'"
             @click="open = !open">
       <MoreHorizontal :size="16" />
     </button>
-    <div v-if="open" class="fp-more-pop" role="menu">
-      <button v-for="it in props.items" :key="it.key" class="fp-more-item" role="menuitem"
-              :disabled="it.disabled" @click="pick(it)">
-        <component :is="iconFor(it.icon ?? 'circle')" v-if="it.icon" :size="14" />
+    <div v-if="open" class="fp-more-pop" :class="{ start: !!props.label }" role="menu">
+      <button v-for="it in props.items" :key="it.key" class="fp-more-item" :class="{ danger: it.danger }"
+              role="menuitem" :disabled="it.disabled" @click="pick(it)">
+        <component :is="iconFor(it.icon ?? 'circle')" v-if="it.icon" :size="props.label ? 16 : 14" />
         {{ it.label }}
       </button>
     </div>
@@ -71,6 +81,8 @@ function pick(it: MoreItem) {
   transition: color var(--dur-fast), border-color var(--dur-fast);
 }
 .fp-more-btn:hover, .fp-more-btn.on { color: var(--text-primary); border-color: var(--border-strong); }
+.fp-more .fp-more-lbl.on { --ds-btn-border: var(--border-control-strong); }
+.fp-more-lbl .dd { color: var(--text-muted); }
 .fp-more-pop {
   position: absolute; top: calc(100% + 4px); right: 0; z-index: var(--z-popover);
   min-width: 148px; padding: 4px;
@@ -89,4 +101,9 @@ function pick(it: MoreItem) {
 }
 .fp-more-item:hover:not(:disabled) { background: var(--surface-sunken); color: var(--text-primary); }
 .fp-more-item:disabled { color: var(--text-disabled); cursor: default; }
+/* 带字触发钮的面板照画布 05-A「簿册 ▾」:至少 200 宽、每项 36 高、14 字、16 图标(「…」那一版暂不动,等 spec-9 定) */
+.fp-more-pop.start { right: auto; left: 0; min-width: 200px; }
+.fp-more-pop.start .fp-more-item { box-sizing: border-box; height: 36px; padding: 0 12px; font-size: var(--fs-body); }
+.fp-more-item.danger:not(:disabled),
+.fp-more-item.danger:hover:not(:disabled) { color: var(--status-danger); }
 </style>

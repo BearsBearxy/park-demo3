@@ -57,6 +57,8 @@ public class PermissionRegistry {
         //   (ApprovalService 逐条校验),而不是「能不能请求提权」。
         add(HttpMethod.POST, "/api/auth/approvals", Perm.ELEVATE_REQUEST);
         add(HttpMethod.POST, "/api/auth/approvals/**", ANY_AUTHENTICATED);
+        // 撤回自己的请求(等待中关掉授权弹窗):只动请求者本人的那条,别人的 ApprovalStore.cancel 撤不动
+        add(HttpMethod.DELETE, "/api/auth/approvals/*", ANY_AUTHENTICATED);
 
         // 编辑锁(CONCURRENCY-SPEC §4.4)。这里放行到「任何已登录账号」,具体的门在 LockService:
         // 一个 :edit 权都没有的账号占锁毫无意义,只会变成谁都解不开的堵。
@@ -69,6 +71,9 @@ public class PermissionRegistry {
         // 在场心跳(PRESENCE §02)。任何已登录账号都要发 —— 浏览态也发,顶栏头像组靠它。
         // 只读账号也在场:他在看哪一屏是有用信息(「赵总在看经营分析」),而他本来就写不了任何东西。
         add(null, "/api/presence/**", ANY_AUTHENTICATED);
+
+        // 铃铛(PAGE-BEHAVIOR-SPEC §5):标已看 / 记系统类看过,只动本人的行(收件人取自令牌),人人都有铃铛。
+        add(null, "/api/notices/**", ANY_AUTHENTICATED);
 
         // ═══ 出账链:同一 controller 前缀下混着口径与运行两档 ═══
         add(null, "/api/alloc/rules",        Perm.PARAM_POLICY_EDIT);

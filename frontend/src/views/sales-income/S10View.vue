@@ -30,8 +30,9 @@ import type { TenantDTO } from '@/types/tenant'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
-import FPSideDrawer from '@/components/fp/FPSideDrawer.vue'
+import FPAlertPanel from '@/components/fp/FPAlertPanel.vue'
 import FPTenantIssuePanel, { type IssueGroup } from '@/components/fp/FPTenantIssuePanel.vue'
+import { ask, askLeave } from '@/utils/ask'
 import { groupUnbound } from '@/utils/tenantSuggest'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -216,11 +217,24 @@ async function pickCell(y: number, m: number) {
   await pickYear(y)
 }
 
+// 离开确认(02-A):编辑态有草稿时,切册 / 页头返回箭头(=切账期)都会丢掉它;0 处直接放行
+const askLeaveDraft = () => askLeave({
+  page: `附表10 · ${railBook.value?.name ?? ''}${year.value != null ? ` · ${periodOf(year.value, month.value)}` : ''}`,
+  count: edit.value ? dirty.size : 0,
+  verb: '离开',
+})
+
+// 页头返回箭头 = 回年月矩阵换期(画布 02-A「切账期」),草稿不问就丢
+async function onBack() {
+  if (!(await askLeaveDraft())) return
+  goGate()
+}
+
 // 左轨切册:一键切换,回该册矩阵(§5 进宽表必点月卡)
-function selectBook(id: number) {
+async function selectBook(id: number) {
   if (id === activeBookId.value) return
-  // 编辑态有脏改动:切册=丢弃,先确认(与台账屏 selectBook 同款,审查#18)
-  if (edit.value && dirty.size > 0 && !window.confirm('正在编辑本期附表,切换账册将丢弃未保存的修改,继续?')) return
+  // 编辑态有脏改动:切册=丢弃,先走离开确认(与台账屏 selectBook 同款,审查#18)
+  if (!(await askLeaveDraft())) return
   edit.value = false
   selectedIds.value = new Set()
   activeBookId.value = id
@@ -565,10 +579,16 @@ const rowTotal = (r: S10RecordDTO) => (edit.value ? localRowTotal(r) : Number(r.
 const tenantCount = computed(() => monthData.value?.rows.length ?? 0)
 
 // 导入入口按 §5 移进 #edit-actions 首位(SchedHeader 自带导入按钮排在槽后,顺序不合规,不用);
-// 脏草稿确认沿用 SchedHeader.onImport 同款文案 —— 导入落库后重拉数据会静默冲掉草稿。
-function onImportClick() {
-  if (dirty.size > 0 &&
-      !window.confirm(`当前有 ${dirty.size} 处修改尚未保存。\n导入会重新载入本期数据,这些修改将丢失。\n\n仍要导入?`)) return
+// 脏草稿确认沿用 SchedHeader.onImport 同款文案(02-B 左)—— 导入落库后重拉数据会静默冲掉草稿。
+// 确认框开着时编辑态可能被接管,答完再守一次。
+async function onImportClick() {
+  const n = dirty.size
+  if (n > 0 && !(await ask({
+    title: '导入会替换本期之前导入的行，手工录的行不动',   // 后端只删本期 source='import' 的行(S10Service.importRows)
+    body: `本期有 ${n} 处改动还没保存，导入后会丢失。`,
+    action: '仍要导入',
+  }))) return
+  if (!edit.value) return
   importing.value = true
 }
 </script>
@@ -636,7 +656,7 @@ function onImportClick() {
               perm="entry:edit"
               :dirty="dirty.size"
               :copy-text="draftAsTsv"
-              @back="goGate"
+              @back="onBack"
               @toggle-edit="finishEdit">
               <!-- 工具条 §5 五段定序:录入(导入>批量>单行添加) | 配置 | ⋯溢出 | 主控恒右。
                    导入用自绘按钮抢首位(SchedHeader 自带的排槽后),脏确认在 onImportClick。 -->
@@ -692,12 +712,20 @@ function onImportClick() {
                 </Button>
               </div>
               <div class="s10-toolbar-r">
-                <!-- 常驻入口(0 时置灰;用户反馈「入口找不到」,且随数据出现/消失会挪动工具条) -->
-                <button class="s10-issues" :class="{ quiet: issueCount === 0 }"
-                        @click="issuesOpen = true; ensureTenantsLoaded()">
-                  <component :is="iconFor('alert-triangle')" :size="13" />
-                  未绑定 {{ issueCount }}
-                </button>
+                <!-- 常驻入口胶囊(0 时静默;用户反馈「入口找不到」,且随数据出现/消失会挪动工具条)。
+                     点开 = 贴着胶囊的问题面板(06-C 方案 A,页面不变暗);胶囊在工具条右侧,面板往左展开 -->
+                <FPAlertPanel :open="issuesOpen" :count="issueCount" :groups="[]" align="end"
+                              label="未绑定" quiet-label="无未绑定"
+                              @update:open="issuesOpen = $event; $event && ensureTenantsLoaded()">
+                  <FPTenantIssuePanel
+                    :groups="issueGroups"
+                    :tenants="allTenants"
+                    :can-act="edit && auth.can('entry:edit')"
+                    act-hint="进入「编辑」模式后可在此绑定;浏览态仅查看。"
+                    :on-bind="onBindIssue"
+                    @goto-tenants="gotoTenants"
+                  />
+                </FPAlertPanel>
                 <span v-if="edit" class="s10-editflag">
                   <component :is="iconFor('pencil')" :size="13" />已修改 <b>{{ dirty.size }}</b> 处
                 </span>
@@ -784,18 +812,6 @@ function onImportClick() {
       @close="bindRowId = null"
     />
 
-    <!-- 未绑定租户问题抽屉(V105) -->
-    <FPSideDrawer :open="issuesOpen" title="未绑定的租户行" @close="issuesOpen = false">
-      <FPTenantIssuePanel
-        :groups="issueGroups"
-        :tenants="allTenants"
-        :can-act="edit && auth.can('entry:edit')"
-        act-hint="进入「编辑」模式后可在此绑定;浏览态仅查看。"
-        :on-bind="onBindIssue"
-        @goto-tenants="gotoTenants"
-      />
-    </FPSideDrawer>
-
     <!-- 模板编辑器(表格态入口,当前左轨选中的那一册的**本月**那版;编辑走 book-template:edit、
          换版走第17点 book-template:switch;本月已录入 → 模板定稿,面板置灰) -->
     <TemplateEditorPanel
@@ -851,15 +867,6 @@ function onImportClick() {
 .s10-count { font-size:12px; color:var(--text-muted); }
 .s10-count b { color:var(--text-secondary); font-weight:var(--fw-semibold); font-family:var(--font-mono); }
 .s10-editflag { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--hue-orange); background:var(--warn-bg); padding:5px 11px; border-radius:var(--radius-full); }
-.s10-issues {
-  display: inline-flex; align-items: center; gap: 5px;
-  height: 28px; padding: 0 10px; border-radius: var(--radius-full);
-  border: 1px solid var(--status-warning); background: transparent;
-  color: var(--status-warning); font-size: 12px; font-weight: var(--fw-medium);
-  cursor: pointer; white-space: nowrap;
-}
-.s10-issues:hover { background: var(--bg-hover); }
-.s10-issues.quiet { border-color: var(--border-control); color: var(--text-muted); }
 .s10-editflag b { font-family:var(--font-mono); margin:0 2px; }
 
 /* 矩阵块:桌面无横滚(占位类,窄档媒体块内加 overflow) */

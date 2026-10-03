@@ -8,6 +8,8 @@ import type { TenantDTO } from '@/types/tenant'
 import type { BuildingDTO } from '@/types/building'
 import { ownershipLabel } from '@/utils/meterSplit'
 import { iconFor } from '@/components/ds/icon'
+import { ask } from '@/utils/ask'
+import { receipt } from '@/utils/receipt'
 import Button from '@/components/ds/Button.vue'
 import MeterStatusDialog from './MeterStatusDialog.vue'
 import {
@@ -61,12 +63,11 @@ const batchHead = computed(() => {
 })
 const at = (s: string) => s.replace('T', ' ').slice(0, 16)
 
-// ── 写:编辑态就地转假 / 页面停用时关掉弹窗;每个写函数开头再自守一次 ──
+// ── 写:编辑态就地转假 / 页面停用时关掉弹窗;每个写函数开头、问完之后各自守一次 ──
 const dlg = ref<{ row: MeterStatusRow | null } | null>(null)
 watch(() => props.edit, v => { if (!v) dlg.value = null })
 onDeactivated(() => { dlg.value = null })
 const busy = ref(false)
-const note = ref('')
 
 function openStatus(row: MeterStatusRow | null) {
   if (!props.edit) return
@@ -75,31 +76,35 @@ function openStatus(row: MeterStatusRow | null) {
 async function dropStatus(row: MeterStatusRow, i: number) {
   if (!props.edit || busy.value) return
   const back = STATUS_LABEL[props.tl.status[i - 1].status]
-  if (!confirm(`撤回「${STATUS_LABEL[row.status]} · ${rangeText(row.fromYm, untilOf(statusFroms.value, i))}」这一行?`
-    + `\n撤回后这段月份回到上一行的「${back}」。`)) return
+  const ok = await ask({
+    title: `撤回「${STATUS_LABEL[row.status]} · ${rangeText(row.fromYm, untilOf(statusFroms.value, i))}」这一行？`,
+    body: `撤回后这段月份回到上一行的「${back}」。`, action: '撤回',
+  })
+  if (!ok || !props.edit || busy.value) return
   busy.value = true
   try {
     await metersApi.deleteStatus(props.meter.id, row.fromYm)
-    note.value = ''
     emit('changed')
-  } catch (e) { alert((e as { message?: string })?.message ?? '撤回失败，请重试') }
+  } catch (e) { receipt.fail((e as { message?: string })?.message ?? '撤回失败，请重试') }
   finally { busy.value = false }
 }
 async function revert(batchId: string, fileName: string | null) {
   if (!props.edit || busy.value) return
-  if (!confirm(`撤销这次导入(${fileName ?? '文件名没有记下'})写下的档案改动?`
-    + '\n这次导入改到的每一块表都按导入前的样子还原,读数不动。')) return
+  const ok = await ask({
+    title: `撤销这次导入(${fileName ?? '文件名没有记下'})写下的档案改动？`,
+    body: '这次导入改到的每一块表都按导入前的样子还原,读数不动。', action: '撤销这次导入',
+  })
+  if (!ok || !props.edit || busy.value) return
   busy.value = true
   try {
     const n = await metersApi.revertImport(batchId)
-    note.value = `已还原 ${n} 行档案,读数没有动。`
+    receipt.ok(`已还原 ${n} 行档案,读数没有动。`)
     emit('changed')
-  } catch (e) { alert((e as { message?: string })?.message ?? '撤销失败，请重试') }
+  } catch (e) { receipt.fail((e as { message?: string })?.message ?? '撤销失败，请重试') }
   finally { busy.value = false }
 }
 function onStatusDone() {
   dlg.value = null
-  note.value = ''
   emit('changed')
 }
 </script>
@@ -120,10 +125,10 @@ function onStatusDone() {
         <span class="st" :class="s.status">{{ STATUS_LABEL[s.status] }}</span>
         <span class="src">{{ SRC_LABEL[s.src] }}</span>
         <span v-if="edit" class="ops">
-          <button class="mt-iop" title="改这一行的月份" :disabled="busy" @click="openStatus(s)">
+          <button class="mt-iop" v-tip="'改这一行的月份'" :disabled="busy" @click="openStatus(s)">
             <component :is="iconFor('pencil')" :size="14" />
           </button>
-          <button v-if="i > 0" class="mt-iop danger" title="撤回这一行" :disabled="busy" @click="dropStatus(s, i)">
+          <button v-if="i > 0" class="mt-iop danger" v-tip="'撤回这一行'" :disabled="busy" @click="dropStatus(s, i)">
             <component :is="iconFor('rotate-ccw')" :size="14" />
           </button>
         </span>
@@ -146,7 +151,6 @@ function onStatusDone() {
 
   <section class="tp-sec">
     <div class="tp-hd"><h4>变更记录</h4></div>
-    <p v-if="note" class="tp-note">{{ note }}</p>
     <p v-if="!tl.log.length" class="tp-empty">还没有改过。上线时迁移的档案不记在这里。</p>
     <ul v-else class="tp-log">
       <li v-for="l in tl.log" :key="l.id">
@@ -154,7 +158,7 @@ function onStatusDone() {
           <span class="mono">{{ at(l.at) }}</span>
           <span>{{ l.operator ?? '—' }}</span>
           <span>{{ l.rowRef?.startsWith('撤销导入 ') ? '撤销导入' : SRC_LABEL[l.src] }}</span>
-          <span v-if="l.fileName" class="file" :title="l.fileName">{{ l.fileName }}</span>
+          <span v-if="l.fileName" class="file" v-tip="l.fileName">{{ l.fileName }}</span>
         </div>
         <div class="what">
           {{ l.tbl === 'status' ? '在册状态' : '归属' }} · {{ l.fromYm === EARLIEST ? '最早那一段' : `自 ${l.fromYm} 起那一段` }}
@@ -184,7 +188,6 @@ function onStatusDone() {
 .tp-hd { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
 .tp-hd h4 { margin: 0; font-size: var(--fs-h4); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .tp-empty { margin: 0; font-size: var(--fs-label); color: var(--text-muted); }
-.tp-note { margin: 0; font-size: var(--fs-label); color: var(--ok-text); }
 .tp-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; }
 .tp-list li { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; padding: 8px 12px; border-bottom: 1px solid var(--divider); font-size: var(--fs-label); color: var(--text-secondary); }
 .tp-list li:last-child { border-bottom: none; }

@@ -15,6 +15,7 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import { fint, fnum, hues, inkA } from '@/components/ana/anaFmt'
 import { anaPalette } from '@/components/ana/anaTheme'
@@ -45,17 +46,22 @@ const bSummary = ref<BuildingSummaryDTO | null>(null)   // 全园出租率(面�
 const contracts = ref<ContractDTO[]>([])
 const tenants = ref<TenantDTO[]>([])
 
+// 切回重读 / 点重试都重跑 reload:失败标志不清,重试成功后屏上仍挂着「加载失败」卡(P3 T2 评审坐实)。
+// 只在成功分支清:重试在途时失败卡留在原地,不先闪出一页空表。两趟叠着发(切回 + 重试)只认最后一趟。
+let seq = 0
 async function reload() {
-  // 切回重读会重跑本函数:失败标志不清,重试成功后屏上仍挂着「加载失败」卡(P3 T2 评审坐实)
-  failed.value = false
+  const my = ++seq
   try {
-    ;[buildings.value, bSummary.value, contracts.value, tenants.value] = await Promise.all([
+    const [bs, sum, cs, ts] = await Promise.all([
       fetchBuildings(), fetchBuildingSummary(), fetchContracts(), fetchTenants(),
     ])
+    if (my !== seq) return
+    ;[buildings.value, bSummary.value, contracts.value, tenants.value] = [bs, sum, cs, ts]
+    failed.value = false
   } catch {
-    failed.value = true
+    if (my === seq) failed.value = true
   } finally {
-    loading.value = false
+    if (my === seq) loading.value = false
   }
 }
 onMounted(reload)
@@ -360,7 +366,8 @@ const areaBarOption = computed(() => ({
       </div>
     </div>
     <!-- skel:end -->
-    <AnaEmpty v-else-if="failed" label="数据加载失败" hint="请刷新重试" />
+    <!-- 加载失败(画布 06-D 右格):换掉内容区,带重试;重试走同一个 reload(首进 / 切回共用) -->
+    <FPLoadError v-else-if="failed" sub="屏上不显示上一次读到的数字" @retry="reload">楼栋、合同和租户数据没读到</FPLoadError>
     <div v-else class="ak-page">
       <div class="ak-head">
         <div class="ak-h-l">

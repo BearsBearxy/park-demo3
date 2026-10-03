@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import Avatar from '@/components/ds/Avatar.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
 import { usePresenceStore } from '@/stores/presence'
 
 // 明确选期门 v3(BOOK-WORKBENCH-SPEC §5,2026-08-24 拍板):年份 tab 退场,
@@ -13,7 +14,7 @@ import { Plus, X, Lock } from 'lucide-vue-next'
 import type { ReviewStatus } from '@/types/review'
 
 // 角标悬停说人话。四档逐字照设计稿 §07-④ 的 legend —— 屏上只有一个点,
-// 「橙 = 待审核」这层意思除了 title 没有第二个地方能讲。
+// 「橙 = 待审核」这层意思除了悬停说明没有第二个地方能讲。
 const REVIEW_TITLE: Record<ReviewStatus, string> = {
   entered: '未交审 · 该你交了',
   submitted: '待审核 · 在审核员手上',
@@ -166,21 +167,21 @@ watchPostEffect(() => {
             :key="m.month"
             class="bmm-card"
             :class="[m.hasData ? 'has' : 'blank', { cur: m.cur, stale: m.hasData && m.stale }]"
-            :title="m.hasData && m.stale ? '参数或抄表改动晚于快照 —— 屏上数字是旧的，需重算' : undefined"
+            v-tip="m.hasData && m.stale ? '参数或抄表改动晚于快照 —— 屏上数字是旧的，需重算' : undefined"
             @click="emit('pick', y.year, m.month)"
           >
             <span class="bmm-month">{{ m.month }}月</span>
             <!-- 在场标记(PRESENCE §04)。**绝对定位** —— 有人在编辑和没人在编辑,格子尺寸完全一样。
                  这里是「选哪个月进去」的决策点,也是最该标的地方。 -->
             <span v-if="editorOf(y.year, m.month)" class="bmm-who"
-                  :title="`${editorOf(y.year, m.month)!.displayName} 正在编辑`">
+                  v-tip="`${editorOf(y.year, m.month)!.displayName} 正在编辑`">
               <Avatar :uid="editorOf(y.year, m.month)!.user"
                       :name="editorOf(y.year, m.month)!.displayName" :size="20" class="bmm-av" />
             </span>
             <!-- 审核角标(设计稿 §07-④)。与在场标记同族的**独立 absolute 分支** ——
                  严禁并进下面那条 v-else-if 互斥链:年份条恒传 pips,进了链就一次都画不出来。 -->
             <span v-if="m.hasData && m.review" class="bmm-rv" :class="`rv-${m.review}`"
-                  :title="titleOf(m.review)">
+                  v-tip="titleOf(m.review)">
               <Lock v-if="m.review === 'approved'" :size="11" />
               <i v-else class="bmm-rvdot" />
             </span>
@@ -195,7 +196,7 @@ watchPostEffect(() => {
         </div>
         <!-- 移除槽常驻占宽:hover 行且 removable 才显,不挤动月卡网格 -->
         <span v-if="manageYears" class="bmm-rm-slot">
-          <button v-if="y.removable" class="bmm-rm" :title="`移除 ${y.year} 年(仅本机,录入数据后自动转正)`"
+          <button v-if="y.removable" class="bmm-rm" v-tip="`移除 ${y.year} 年(仅本机,录入数据后自动转正)`"
                   @click="emit('remove-year', y.year)">
             <X :size="12" />移除
           </button>
@@ -210,7 +211,7 @@ watchPostEffect(() => {
         <span class="bmm-rm-slot"></span>
       </div>
     </template>
-    <div v-else class="bmm-placeholder">请选择账册</div>
+    <FPEmpty v-else>请选择账册</FPEmpty>
   </div>
 </template>
 
@@ -397,13 +398,6 @@ watchPostEffect(() => {
 }
 
 .bmm-addbtn:hover { color: var(--hue-blue); border-color: var(--hue-blue); }
-
-.bmm-placeholder {
-  padding: var(--space-8) 0;
-  text-align: center;
-  font-size: var(--fs-body);
-  color: var(--text-disabled);
-}
 
 /* ─── 窄档降列(RESPONSIVE-LAYOUT-SPEC §5.8)─────────────────────────────
    上面一行都不动 —— 宽档(L/XL)DOM 与像素零差异是 §9 的硬标准,本组件 9 个屏共用。

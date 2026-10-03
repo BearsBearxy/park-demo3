@@ -7,8 +7,9 @@
  * v-model support added: modelValue mirrors `active`; emits "update:modelValue".
  * 2026-09-03(SIDEBAR-UX-REDESIGN §3.2):加 openTitles / toggle 做组折叠;删掉全仓零调用点的 collapsed 折叠轨道与 flyout 分支。
  */
-import { defineComponent, h, ref, computed, Fragment } from "vue";
+import { defineComponent, h, ref, computed, Fragment, withDirectives } from "vue";
 import { usePresenceStore } from '@/stores/presence'
+import { vTip } from '@/directives/tip'
 import Popover from '@/components/ds/Popover.vue'
 
 // ---- shared types ---------------------------------------------------------
@@ -180,7 +181,7 @@ export default defineComponent({
           it.trailing ? h("span", {}, [it.trailing]) : null,
           // 在场标记(PRESENCE §04):有人正在这一屏的某一期编辑。
           // **绝对定位** —— 出现与消失都不改变行的尺寸(LAYOUT-STABILITY)。
-          // role=img + aria-label:光靠颜色的 6px 圆点屏读念不出来,title 是鼠标 hover 的老路,两个并存。
+          // role=img + aria-label:光靠颜色的 6px 圆点屏读念不出来;鼠标悬停走 v-tip,两个并存。
           // 接 ds/Popover:点按/Enter 打开,点外关走 Popover 自带的 capture mousedown(UI-OVERLAY-SPEC)。
           note
             ? h("span", {
@@ -197,8 +198,7 @@ export default defineComponent({
                 onClick: (e: MouseEvent) => e.stopPropagation(),
               }, [
                 h(Popover, { width: 206, align: "end" }, {
-                  trigger: () => h("span", {
-                    title: note,
+                  trigger: () => withDirectives(h("span", {
                     role: "img",
                     "aria-label": note,
                     tabindex: 0,
@@ -210,7 +210,7 @@ export default defineComponent({
                       width: "6px", height: "6px", borderRadius: "50%",
                       background: "var(--hue-orange)",
                     },
-                  }),
+                  }), [[vTip, note]]),
                   default: () => note,
                 }),
               ])
@@ -246,17 +246,16 @@ export default defineComponent({
         sec.title,
         h("span", { style: { position: "absolute", right: "12px", top: "50%", marginTop: "-7px", display: "inline-flex" } }, [Chevron(open)]),
         notes.length
-          ? h("span", {
-              title: notes.join("\n"),
+          ? withDirectives(h("span", {
               // 与展开态那颗点同款(role/aria-label):组收着时它是唯一的在场信号,
-              // 光有 title 屏读念不出来(2026-09-06 复查补齐)。
+              // 光有悬停说明屏读念不出来(2026-09-06 复查补齐)。
               role: "img",
               "aria-label": notes.join("\n"),
               style: {
                 position: "absolute", right: "32px", top: "50%", marginTop: "-3px",
                 width: "6px", height: "6px", borderRadius: "50%", background: "var(--hue-orange)",
               },
-            })
+            }), [[vTip, notes.join("\n")]])
           : null,
       ]);
     }

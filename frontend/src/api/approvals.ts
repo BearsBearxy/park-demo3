@@ -52,4 +52,7 @@ export const approvalsApi = {
   /** 批准要带**自己的**密码；拒绝不用。 */
   decide: (id: string, approve: boolean, password?: string) =>
     api.post<void>(`/auth/approvals/${id}`, { approve, password }),
+
+  /** 撤回我发出、还没人批的请求(等待中关掉授权弹窗)。撤回的不算超时,不进铃铛。只有请求者本人撤得了。 */
+  cancel: (id: string) => api.delete<void>(`/auth/approvals/${id}`),
 }

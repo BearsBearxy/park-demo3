@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { defineComponent, h, KeepAlive } from 'vue'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
@@ -21,6 +23,8 @@ import type { WorkbenchRow } from '@/composables/useMeterWorkbench'
 import type { TenantDTO } from '@/types/tenant'
 import { useAuthStore } from '@/stores/auth'
 import { rangeText, untilOf, logLines, revertedBatches, type LogFmt } from '@/views/meters/meterTimeline'
+import { askQueue, answer } from '@/utils/ask'
+import { receipts } from '@/utils/receipt'
 
 /**
  * 表档案抽屉按月写(METER-TIMELINE-SPEC §3.3–§3.6,PLAN C2)。
@@ -102,9 +106,11 @@ beforeEach(() => {
   vi.mocked(metersApi.setStatus).mockResolvedValue()
   vi.mocked(metersApi.deleteStatus).mockResolvedValue()
   vi.mocked(metersApi.revertImport).mockResolvedValue(3)
-  vi.spyOn(window, 'confirm').mockReturnValue(true)
-  vi.spyOn(window, 'alert').mockImplementation(() => {})
+  askQueue.splice(0)
+  receipts.splice(0)
 })
+/** 答复队头那一条确认(FPConfirmHost 挂在 AppShell,这里直接答) */
+const reply = async (ok: boolean) => { answer(ok); await flushPromises() }
 
 async function mountDrawer(o: { row?: DrawerRow; tl?: MeterTimelineDTO; edit?: boolean } = {}) {
   vi.mocked(metersApi.timeline).mockResolvedValue(o.tl ?? tlOf())
@@ -194,7 +200,7 @@ describe('表档案页签 · 资产列与按月写', () => {
 
   it('F=V、没有同房间的表、没有上线复制段、没有不能改的月:不弹框,直接写这一行', async () => {
     const w = await mountDrawer({ tl: TL_SAME })
-    const inp = w.find('input[title^="单元/房号"]')
+    const inp = w.find('input[aria-label^="单元/房号"]')
     ;(inp.element as HTMLInputElement).value = '302室'
     await inp.trigger('change')
     await flushPromises()
@@ -242,7 +248,7 @@ describe('表档案页签 · 资产列与按月写', () => {
     await flushPromises()
     expect(metersApi.assign).toHaveBeenCalledTimes(1)
     expect(w.text()).toContain('网络断了 归属和位置暂时只能看。')
-    expect(w.find('input[title^="单元/房号"]').exists()).toBe(false)
+    expect(w.find('input[aria-label^="单元/房号"]').exists()).toBe(false)
     expect(w.findComponent(FPTenantPicker).exists()).toBe(false)
     expect(w.find('input[type="number"]').exists()).toBe(true)
   })
@@ -256,6 +262,8 @@ describe('表档案页签 · 资产列与按月写', () => {
     const w = await mountDrawer({ row: rowOf({ tenantManual: 1 }), tl: TL_SAME })
     await btn(w, '改回按册子')!.trigger('click')
     await flushPromises()
+    expect(askQueue[0].title).toBe(`清掉 ${V} 起 这一段的人工设定？`)
+    await reply(true)
     expect(metersApi.clearManual).toHaveBeenCalledWith(1, V)
   })
 })
@@ -268,10 +276,10 @@ describe('历史读数 · 早于第一条在册状态补读数', () => {
     datePicker(w).vm.$emit('update:modelValue', '2023-11')
     const curr = w.findAll('input.md-din.num')[1]
     await curr.setValue('100')
-    vi.mocked(window.confirm).mockReturnValue(false)
-    await w.find('button[title="保存"]').trigger('click')
+    await w.find('button[aria-label="保存"]').trigger('click')
     await flushPromises()
-    expect(window.confirm).toHaveBeenCalledWith('这块表将从 2023-11 起在册。确认保存这条读数?')
+    expect(askQueue.map(a => a.title)).toEqual(['这块表将从 2023-11 起在册，保存这条读数？'])
+    await reply(false)
     expect(metersApi.createReading).not.toHaveBeenCalled()
   })
 
@@ -285,16 +293,19 @@ describe('历史读数 · 早于第一条在册状态补读数', () => {
     datePicker(w).vm.$emit('update:modelValue', '2023-11')
     await w.findAll('input.md-din.num')[1].setValue('100')
     const calls = vi.mocked(metersApi.timeline).mock.calls.length
-    await w.find('button[title="保存"]').trigger('click')
+    await w.find('button[aria-label="保存"]').trigger('click')
     await flushPromises()
     expect(metersApi.timeline, '存之前先重拉一次').toHaveBeenCalledTimes(calls + 1)
-    expect(vi.mocked(window.alert).mock.calls.at(-1)?.[0]).toContain('在册状态没加载出来(网络断了)')
+    expect(receipts.at(-1)?.tone).toBe('fail')
+    expect(receipts.at(-1)?.text).toContain('在册状态没加载出来(网络断了)')
+    expect(askQueue, '不许悄悄跳过在册确认').toHaveLength(0)
     expect(metersApi.createReading).not.toHaveBeenCalled()
 
     vi.mocked(metersApi.timeline).mockResolvedValue(tlOf())
-    await w.find('button[title="保存"]').trigger('click')
+    await w.find('button[aria-label="保存"]').trigger('click')
     await flushPromises()
-    expect(window.confirm).toHaveBeenCalledWith('这块表将从 2023-11 起在册。确认保存这条读数?')
+    expect(askQueue.map(a => a.title)).toEqual(['这块表将从 2023-11 起在册，保存这条读数？'])
+    await reply(true)
     expect(metersApi.createReading).toHaveBeenCalledTimes(1)
   })
 })
@@ -377,9 +388,12 @@ describe('档案变更页签', () => {
       }),
     })
     await toTab(w, 'timeline')
-    expect(w.findAll('button[title="撤回这一行"]')).toHaveLength(1)
-    await w.find('button[title="撤回这一行"]').trigger('click')
+    expect(w.findAll('button[aria-label="撤回这一行"]')).toHaveLength(1)
+    await w.find('button[aria-label="撤回这一行"]').trigger('click')
     await flushPromises()
+    expect(metersApi.deleteStatus, '先问').not.toHaveBeenCalled()
+    expect(askQueue[0].title).toBe('撤回「停用 · 2025-06 起」这一行？')
+    await reply(true)
     expect(metersApi.deleteStatus).toHaveBeenCalledWith(1, '2025-06')
 
     const reverts = w.findAll('button').filter(b => b.text() === '撤销这次导入的档案改动')
@@ -387,8 +401,10 @@ describe('档案变更页签', () => {
     expect(w.findAll('.tp-done').map(x => x.text())).toEqual(['这次导入的档案改动已撤销'])
     await reverts[0].trigger('click')
     await flushPromises()
+    await reply(true)
     expect(metersApi.revertImport).toHaveBeenCalledWith('b-2')
-    expect(w.text()).toContain('已还原 3 行档案,读数没有动。')
+    expect(receipts.map(r => [r.tone, r.text])).toContainEqual(['ok', '已还原 3 行档案,读数没有动。'])
+    expect(w.text(), '结果不再是流内一行字').not.toContain('已还原')
   })
   it('顶部那一句(SPEC §10.4):本月册子出自哪个文件、什么时候;册子里没有这块表就直说', async () => {
     const seen = { ...rowOf({ bookSeen: true, bookFile: '三月抄表.xlsx', bookAt: '2026-09-24T10:30:00' }), book: 'seen' }
@@ -533,6 +549,109 @@ describe('改归属弹框', () => {
   })
 })
 
+describe('T19 · 抽屉里的提示件(机械替换)', () => {
+  const READ = (id: number, ym: string) => ({
+    id, meterId: 1, ym, prevTotal: 100, currTotal: 120,
+    prevSharp: null, prevPeak: null, prevFlat: null, prevValley: null,
+    currSharp: null, currPeak: null, currFlat: null, currValley: null,
+    factorSnap: 500, usageTotal: 10000, usageSharp: null, usagePeak: null, usageFlat: null, usageValley: null,
+    note: null, source: 'manual' as const,
+  })
+
+  it('标识名清空 / 倍率填负数:字段下面写原因(常驻 18 高那一行),不发请求、不出回执', async () => {
+    const w = await mountDrawer()
+    const name = w.find('input[aria-label^="同分区同类唯一"]')
+    ;(name.element as HTMLInputElement).value = '  '
+    await name.trigger('change')
+    const fac = w.find('input[type="number"]')
+    ;(fac.element as HTMLInputElement).value = '-2'
+    await fac.trigger('change')
+    expect(w.findAll('.fp-field-err').map(p => p.text())).toEqual(['标识名不能为空', '倍率需为正数'])
+    expect(metersApi.update).not.toHaveBeenCalled()
+    expect(receipts).toHaveLength(0)
+  })
+
+  it('保存失败走失败回执(不自收),原因原样', async () => {
+    vi.mocked(metersApi.update).mockRejectedValueOnce({ message: '与已有表重名' })
+    const w = await mountDrawer()
+    const name = w.find('input[aria-label^="同分区同类唯一"]')
+    ;(name.element as HTMLInputElement).value = '二车间总电'
+    await name.trigger('change')
+    await flushPromises()
+    expect(receipts.map(r => [r.tone, r.text])).toEqual([['fail', '与已有表重名']])
+  })
+
+  it('删读数是删除类确认(红钮、焦点在取消):不答就不删,答了才删', async () => {
+    vi.mocked(metersApi.meterReadings).mockResolvedValue([READ(31, '2025-02')])
+    const w = await mountDrawer()
+    await toTab(w, 'history')
+    await w.find('button[aria-label="删除"]').trigger('click')
+    await flushPromises()
+    expect(askQueue.map(a => [a.title, a.action, a.danger])).toEqual([['删除 2025-02 的读数？', '删除', true]])
+    expect(metersApi.deleteReading).not.toHaveBeenCalled()
+    await reply(true)
+    expect(metersApi.deleteReading).toHaveBeenCalledWith(31)
+  })
+
+  it('认领为独立表先问;答了才写 suspect 清空', async () => {
+    const w = await mountDrawer({ row: rowOf({ suspect: 'shadow' }) })
+    await btn(w, '认领为独立表(解除存疑)')!.trigger('click')
+    await flushPromises()
+    expect(askQueue.map(a => a.title)).toEqual(['把「一车间总电」认领为独立的一块表？'])
+    expect(metersApi.update).not.toHaveBeenCalled()
+    await reply(true)
+    expect(vi.mocked(metersApi.update).mock.calls[0][1]).toMatchObject({ suspect: '' })
+  })
+
+  it('历史读数 / 合同绑定没东西可显示:空状态件占住页签内容区(不是灰字一行)', async () => {
+    const w = await mountDrawer()
+    await toTab(w, 'history')
+    expect(w.find('.fp-empty .t').text()).toBe('该表暂无读数')
+    expect(w.find('.fp-empty .sub').text()).toContain('「新增读数」')
+    await toTab(w, 'bind')
+    expect(w.find('.fp-empty:not(.error)').text()).toBe('该表不在本月绑定报表中')
+    await w.setProps({ bindAvailable: false })
+    expect(w.find('.fp-empty.error .t').text()).toBe('本月的绑定数据没读到')
+    // 页面那趟还在路上:加载中,不出失败态。破坏验证:抽屉里删掉 bindLoading 那一支 → 红
+    await w.setProps({ bindAvailable: true, bindLoading: true })
+    expect(w.find('.fp-empty.error').exists(), '在途不是没读到').toBe(false)
+    expect(w.find('.md-empty').text()).toBe('加载中…')
+    const pub = await mountDrawer({ row: rowOf({ ownership: 'share' }) })
+    await toTab(pub, 'bind')
+    expect(pub.find('.fp-empty .t').text()).toMatch(/^非租户表\(.+\)无合同绑定$/)
+    expect(pub.find('.md-empty').exists()).toBe(false)
+  })
+
+  it('历史读数没读到:整块换成加载失败件(role=alert),唯一的钮「重试」重拉', async () => {
+    vi.mocked(metersApi.meterReadings).mockRejectedValueOnce({ message: '历史读数没读到' })
+    const w = await mountDrawer()
+    await toTab(w, 'history')
+    const fail = w.find('[role="alert"]')
+    expect(fail.text()).toContain('历史读数没读到')
+    expect(w.find('.md-htable').exists()).toBe(false)
+    const calls = vi.mocked(metersApi.meterReadings).mock.calls.length
+    await fail.find('button').trigger('click')
+    await flushPromises()
+    expect(metersApi.meterReadings).toHaveBeenCalledTimes(calls + 1)
+  })
+
+  it('抽屉 / 抄表格 / 档案变更 / 本 spec 四个文件:没有原生确认与提示框,模板里没有原生 title', () => {
+    const dir = join(__dirname, '..')
+    const files = ['MeterDetailDrawer.vue', 'MeterLedgerGrid.vue', 'MeterTimelinePane.vue', '__tests__/meterDetailDrawer.spec.ts']
+    const native = new RegExp(['window\\.(confirm|alert)\\b', '(?<![.\\w])(confirm|alert)\\('].join('|'))
+    // 小写原生标签,或透传到原生的 ds 组件(Select / Button 没有声明 title prop)上的 title= / :title=
+    const titled = /<([a-z][\w-]*|Select|Button)\b[^>]*?\s:?title=/
+    for (const f of files) {
+      const src = readFileSync(join(dir, f), 'utf8')
+      expect(native.test(src), `${f} 里还有原生确认 / 提示框`).toBe(false)
+      if (f.endsWith('.vue')) {
+        const tpl = src.slice(src.indexOf('<template>'), src.lastIndexOf('</template>'))
+        expect(tpl.match(titled)?.[0] ?? null, `${f} 模板里还有原生 title`).toBeNull()
+      }
+    }
+  })
+})
+
 describe('删除表确认框', () => {
   // 用户 2026-09-24「为什么删除南盛物流要去计费参数重新生成」:只挂在草稿单里时,确认框列单、勾上一步删完
   const IMPACT = (x: Partial<MeterDeleteImpactDTO> = {}): MeterDeleteImpactDTO => ({
@@ -551,9 +670,9 @@ describe('删除表确认框', () => {
     return { w, dlg: w.findComponent(MeterDeleteDialog) }
   }
 
-  it('没挂任何单:不用原生 confirm,确认框里直接删,不带连删单参数;删完刷新并关抽屉', async () => {
+  it('没挂任何单:不另弹确认,确认框里直接删,不带连删单参数;删完刷新并关抽屉', async () => {
     const { w, dlg } = await openDelete(IMPACT())
-    expect(window.confirm).not.toHaveBeenCalled()
+    expect(askQueue).toHaveLength(0)
     expect(metersApi.deleteImpact).toHaveBeenCalledWith(1)
     expect(dlg.text()).toContain('删掉「一车间总电」?删了不能恢复。')
     expect(dlg.find('input[type="checkbox"]').exists()).toBe(false)
@@ -674,5 +793,66 @@ describe('删除表确认框', () => {
     await flushPromises()
     expect(dlg.find('.dd-err').text()).toBe('')
     expect(btn(dlg, '删除')!.attributes('disabled')).toBeUndefined()
+  })
+})
+
+// ── 对抗复查(asserts-2):原生确认框换成异步 ask() 之后,「问着的时候编辑权被接管 / 提权到期,答了是也不写」成了新防线 ──
+// 每条:触发写操作 → 确认排上 → 编辑态打假(setProps editMode:false)→ 答「是」→ 对应接口一次都不调
+describe('对抗复查 · 问着的时候退出了编辑态,答了也不写', () => {
+  const READ1 = {
+    id: 31, meterId: 1, ym: '2025-02', prevTotal: 100, currTotal: 120,
+    prevSharp: null, prevPeak: null, prevFlat: null, prevValley: null,
+    currSharp: null, currPeak: null, currFlat: null, currValley: null,
+    factorSnap: 500, usageTotal: 10000, usageSharp: null, usagePeak: null, usageFlat: null, usageValley: null,
+    note: null, source: 'manual' as const,
+  }
+  // 破坏验证:delReading 里 ask 之后的 `!editReading.value ||` 删掉 → 红
+  it('删读数', async () => {
+    vi.mocked(metersApi.meterReadings).mockResolvedValue([READ1])
+    const w = await mountDrawer()
+    await toTab(w, 'history')
+    await w.find('button[aria-label="删除"]').trigger('click')
+    await flushPromises()
+    expect(askQueue[0]?.title).toBe('删除 2025-02 的读数？')
+    await w.setProps({ editMode: false })
+    await reply(true)
+    expect(metersApi.deleteReading).not.toHaveBeenCalled()
+  })
+
+  // 破坏验证:保存读数时在册确认之后的 `!editReading.value ||` 删掉 → 红
+  it('补早于在册的读数(「这块表将从 M 起在册」)', async () => {
+    const w = await mountDrawer({ tl: tlOf() })
+    await toTab(w, 'history')
+    await btn(w, '新增读数')!.trigger('click')
+    datePicker(w).vm.$emit('update:modelValue', '2023-11')
+    await w.findAll('input.md-din.num')[1].setValue('100')
+    await w.find('button[aria-label="保存"]').trigger('click')
+    await flushPromises()
+    expect(askQueue.map(a => a.title)).toEqual(['这块表将从 2023-11 起在册，保存这条读数？'])
+    await w.setProps({ editMode: false })
+    await reply(true)
+    expect(metersApi.createReading).not.toHaveBeenCalled()
+  })
+
+  // 破坏验证:clearManual 里 ask 之后的 `!canAssign.value ||` 删掉 → 红
+  it('改回按册子', async () => {
+    const w = await mountDrawer({ row: rowOf({ tenantManual: 1 }), tl: TL_SAME })
+    await btn(w, '改回按册子')!.trigger('click')
+    await flushPromises()
+    expect(askQueue[0]?.title).toBe(`清掉 ${V} 起 这一段的人工设定？`)
+    await w.setProps({ editMode: false })
+    await reply(true)
+    expect(metersApi.clearManual).not.toHaveBeenCalled()
+  })
+
+  // 破坏验证:clearSuspect 里 ask 之后的 `!editProfile.value ||` 删掉 → 红
+  it('认领为独立表(解除存疑)', async () => {
+    const w = await mountDrawer({ row: rowOf({ suspect: 'shadow' }) })
+    await btn(w, '认领为独立表(解除存疑)')!.trigger('click')
+    await flushPromises()
+    expect(askQueue[0]?.title).toBe('把「一车间总电」认领为独立的一块表？')
+    await w.setProps({ editMode: false })
+    await reply(true)
+    expect(metersApi.update).not.toHaveBeenCalled()
   })
 })

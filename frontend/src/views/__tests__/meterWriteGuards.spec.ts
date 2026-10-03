@@ -13,8 +13,9 @@ import {
 import { useAuthStore } from '@/stores/auth'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { exportMeterMonth } from '@/utils/meterExcel'
-import Select from '@/components/ds/Select.vue'
 import api from '@/api'
+import { ask } from '@/utils/ask'
+import { receipts } from '@/utils/receipt'
 
 /**
  * 园区抄表 · 编辑态被就地打假之后,写口必须自守(MeterView.vue 2026-08-29 那一版的 6 处)。
@@ -76,6 +77,8 @@ vi.mock('@/api/review', () => ({
   },
 }))
 vi.mock('@/api/params', () => ({ paramsApi: { status: () => Promise.resolve(null) } }))
+// 站内确认(十件 ⑨)替掉了原生 confirm():没挂 FPConfirmHost 时 ask() 永远不落地,这里直接给答复
+vi.mock('@/utils/ask', async (orig) => ({ ...(await orig<typeof import('@/utils/ask')>()), ask: vi.fn() }))
 // FPStepStrip 里点链路条要 router.push;query 可变 —— 期间深链那条要在切回之间换掉 ?p=
 const query: Record<string, string> = {}
 vi.mock('vue-router', () => ({
@@ -151,7 +154,6 @@ interface MeterVm {
   meterDlg: boolean
   delPreview: MeterDeleteDTO | null
   delTyped: string
-  okMsg: string
   mForm: typeof M_FORM
   loadReadings: () => Promise<void>
   confirmDelete: () => Promise<void>
@@ -180,7 +182,8 @@ beforeEach(() => {
   vi.mocked(metersApi.readings).mockResolvedValue(READINGS)
   vi.mocked(metersApi.binding).mockResolvedValue(BINDING)
   vi.mocked(metersApi.months).mockResolvedValue([YM])
-  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  vi.mocked(ask).mockResolvedValue(true)
+  receipts.splice(0)
   vi.spyOn(window, 'alert').mockImplementation(() => {})
 })
 
@@ -212,7 +215,7 @@ describe('园区抄表 · 编辑态被接管走之后写口自守', () => {
     await openAllDialogs(vm)
 
     expect(w.findAll('.mt-dlg h3').map(h => h.text()), '前提:两个自绘弹窗确实开着')
-      .toEqual(['新增表', `批量删除本期 · ${YM}`])
+      .toEqual(['新增表', `删除 ${YM} 全部读数？`])
     expect(w.find('.fpimp-scrim').exists(), '前提:导入弹窗确实开着').toBe(true)
 
     vm.editMode = false            // ← 接管 / 提权到期走的正是这一句(不卸载、不跳路由)
@@ -232,7 +235,7 @@ describe('园区抄表 · 编辑态被接管走之后写口自守', () => {
     //   · confirmDelete 要 delPreview 真有值、delTyped 真等于 p.ym、delBusy 为假
     //   · submitMeter 要 mForm.name 非空且 factor 可解析成正数
     //   · onImport 的 payload 要有行(registry 的 run 里 `if (!rows.length) return`)
-    //   · autoLink 要 linking 为假、confirm() 返回 true
+    //   · autoLink 要 linking 为假、ask() 答 true
     //   下面那条「编辑态里同样的状态照打」的孪生用例就是这几个前置的自检。
     const w = await open()
     const vm = vmOf(w)
@@ -303,7 +306,7 @@ describe('园区抄表 · 编辑态被接管走之后写口自守', () => {
     vi.mocked(metersApi.readings).mockRejectedValue(new Error('后端挂了'))
     await vm.loadReadings()
     await flushPromises()
-    expect(w.find('.fp-lderr').exists(), '前提:失败条已经上屏').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '前提:失败条已经上屏').toBe(true)
 
     const done = w.find('button.fp-emb')
     expect(done.text(), '前提:按钮此刻是编辑态的那颗「完成」').toContain('完成')
@@ -429,31 +432,35 @@ describe('园区抄表 · 档案按月(METER-TIMELINE-SPEC §2 / §6)', () => {
     await flushPromises()
     await vmOf(w).onExport()
     expect(exportMeterMonth, '4 月的读数配 3 月的档案导出去了').not.toHaveBeenCalled()
-    expect(window.alert).toHaveBeenCalled()
+    expect(receipts.map(r => r.text)).toContain('2025-04 的表档案或读数还没加载好，稍后再导出')
     apr.resolve(APR)
     await flushPromises()
     await vmOf(w).onExport()
     expect(exportMeterMonth).toHaveBeenCalledWith('2025-04', APR, READINGS, expect.anything())
   })
 
-  it('❗状态下拉有「本月有变化」「期区对不上」「缺底数」,不在册两项改叫「已拆」「未在册」', async () => {
+  // 宽档状态下拉已并进状态页签(画布 04-A);下拉里那几项的原名在 S/M 筛选面板里照旧,由 meterNarrow 那边钉
+  it('❗宽档状态页签:不在册两项叫「已拆」「未在册」,非零才出', async () => {
+    vi.mocked(metersApi.list).mockResolvedValue([...METERS, NOT_YET])
     const w = await open()
-    const labels = w.findAllComponents(Select)
-      .map(s => (s.props('options') as { value: string; label: string }[]))
-      .find(o => o.some(x => x.value === 'changed'))!.map(x => x.label)
-    expect(labels).toEqual(expect.arrayContaining(['本月有变化', '期区对不上', '缺底数', '已拆', '未在册']))
-    expect(labels).not.toContain('已退场')
+    const tabs = w.findAll('.mt-tabs [role="tab"]').map(t => t.text())
+    expect(tabs, '有 1 块本月还不在册的表').toContain('未在册 1')
+    expect(tabs.some(t => t.startsWith('已拆')), '已拆 0 块却出了页签').toBe(false)
+    expect(tabs.join(' ')).not.toContain('已退场')
   })
 
-  it('❗已拆 / 未在册的说明条按状态段说话,不再教人清空账期', async () => {
+  it('❗已拆 / 未在册的说明挂在页签悬停上,按状态段说话,不再教人清空账期', async () => {
     const w = await open()
-    for (const s of ['removed', 'notYet']) {
-      vmOf(w).status = s
+    for (const [s, lab] of [['removed', '已拆'], ['notYet', '未在册']]) {
+      vmOf(w).status = s             // 选中的那一个数为 0 也留着
       await flushPromises()
-      const t = w.find('.mt-hidbar').text()
+      const tab = w.findAll('.mt-tabs [role="tab"]').find(t => t.text().startsWith(lab))
+      expect(tab, `前提:「${lab}」页签在`).toBeTruthy()
+      const t = (tab!.find('span').element as HTMLElement & { _tip?: { text: string } })._tip?.text ?? ''
       expect(t).toContain('在册状态')
       expect(t).not.toContain('账期')
     }
+    expect(w.find('.mt-hidbar').exists(), '宽档不再出流内说明条').toBe(false)
   })
 })
 
@@ -506,14 +513,14 @@ describe('园区抄表 · 缺底数与自愈(SPEC §3.4)', () => {
     vm.editMode = true
     await flushPromises()
     vm.onCellEdit({ meterId: 2, field: 'currTotal', value: '50' })
-    vi.mocked(window.confirm).mockReturnValue(false)
+    vi.mocked(ask).mockResolvedValue(false)
     await vm.onSaveChanges()
     await flushPromises()
-    expect(vi.mocked(window.confirm).mock.calls.at(-1)?.[0]).toContain(`将从 ${YM} 起在册`)
+    expect(vi.mocked(ask).mock.calls.at(-1)?.[0].body).toContain(`将从 ${YM} 起在册`)
     expect(metersApi.createReading, '取消了还存').not.toHaveBeenCalled()
     expect(vm.dirtyIds, '取消后草稿还在').toEqual([2])
 
-    vi.mocked(window.confirm).mockReturnValue(true)
+    vi.mocked(ask).mockResolvedValue(true)
     await vm.onSaveChanges()
     await flushPromises()
     expect(metersApi.createReading).toHaveBeenCalledWith(expect.objectContaining({ meterId: 2, currTotal: 50 }))
@@ -578,12 +585,30 @@ describe('园区抄表 · 导入结果与批删预览报档案改动(SPEC §3.2 
     expect(w.find('.mt5-del-list').text()).toContain('连带删除本月册子记录 9 条,删后这个月算作没导入过册子')
     await vm.confirmDelete()
     await flushPromises()
-    expect(vm.okMsg).toContain('、9 条本月册子记录。')
+    expect(receipts.map(r => r.tone), '删干净了 = 底部成功回执').toEqual(['ok'])
+    expect(receipts[0].text).toContain('、9 条本月册子记录。')
+  })
+
+  // 破坏验证:confirmDelete 里 receipt[blocked > 0 ? 'warn' : 'ok'] 写死成 'ok' → 红(跳过的表一闪就没了)
+  it('❗批量删除本期:有表档案跳过没删 → 警告回执(不自收),句里报跳过几份', async () => {
+    const w = await open()
+    const vm = vmOf(w)
+    vi.mocked(metersApi.batchDelete).mockResolvedValue({ ...DEL_DONE, meterBlocked: ['测试表C'] })
+    vm.editMode = true
+    await flushPromises()
+    vm.delPreview = { ...DEL_PREVIEW }
+    vm.delTyped = YM
+    await flushPromises()
+    await vm.confirmDelete()
+    await flushPromises()
+    expect(receipts.map(r => r.tone)).toEqual(['warn'])
+    expect(receipts[0].text).toContain('另有 1 份表档案跳过未删')
   })
 
   // ── 该月的催缴单(用户 2026-09-24「想批量删除,结果也是删不了」):三种形状各一条 ──
+  // 主按钮写动作本身(十件 ⑨):「删除 137 条」,不写「确认删除」
   const confirmBtn = (w: Awaited<ReturnType<typeof open>>) =>
-    w.findAll('.mt-dlg-f button').find(b => b.text().includes('确认删除'))!
+    w.findAll('.mt-dlg-f button').find(b => b.text().includes(`删除 ${DEL_PREVIEW.readings} 条`))!
 
   it('❗批量删除本期 · 该月没有催缴单:不出第三个勾选项,确认键照常放行', async () => {
     const w = await open()
@@ -621,7 +646,7 @@ describe('园区抄表 · 导入结果与批删预览报档案改动(SPEC §3.2 
     await vm.confirmDelete()
     await flushPromises()
     expect(metersApi.batchDelete).toHaveBeenCalledWith(YM, { cascade: true, dropEmptyMeters: true, dropDraftNotices: true })
-    expect(vm.okMsg).toContain('、248 张草稿催缴单')
+    expect(receipts.at(-1)!.text).toContain('、248 张草稿催缴单')
   })
 
   it('❗批量删除本期 · 有已确认/已导出的单:列户名(最多 5 户,余者等 N 户),确认键禁用', async () => {
@@ -744,13 +769,15 @@ describe('园区抄表 · 档案失败态与切回(E 修补)', () => {
     const vm = vmOf(w)
     vm.status = 'notYet'
     await flushPromises()
-    expect(w.find('.mt-hidbar').text()).toContain('已有本月读数的,改读数不会让它在册')
+    const tab = w.findAll('.mt-tabs [role="tab"]').find(t => t.text().startsWith('未在册'))!
+    expect((tab.find('span').element as HTMLElement & { _tip?: { text: string } })._tip?.text)
+      .toContain('已有本月读数的,改读数不会让它在册')
     vm.editMode = true
     await flushPromises()
     vm.onCellEdit({ meterId: 2, field: 'currTotal', value: '50' })
     await vm.onSaveChanges()
     await flushPromises()
-    expect(vi.mocked(window.confirm).mock.calls.some(c => String(c[0]).includes('起在册'))).toBe(false)
+    expect(vi.mocked(ask).mock.calls.some(c => String(c[0].body).includes('起在册'))).toBe(false)
     expect(metersApi.updateReading).toHaveBeenCalledWith(14, expect.objectContaining({ meterId: 2, currTotal: 50 }))
   })
 })

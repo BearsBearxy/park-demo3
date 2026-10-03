@@ -4,6 +4,7 @@ import { defineComponent, h, KeepAlive, nextTick, ref } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
 import ElecCostView from '@/views/elec/ElecCostView.vue'
+import { rowsNotEndingInFill } from '@/composables/__tests__/wideTableStub'
 import { elecCostApi } from '@/api/elecCost'
 import type {
   ElecMeterDTO, ElecCostEntryDTO, ElecPriceCfgDTO, ElecMetricDTO,
@@ -12,6 +13,8 @@ import { useAuthStore } from '@/stores/auth'
 import { reviewApi } from '@/api/review'
 import type { ReviewRow, ReviewStatus } from '@/types/review'
 import api from '@/api'
+import { ask } from '@/utils/ask'
+import { receipts } from '@/utils/receipt'
 
 /**
  * 电费成本总览(ElecCostView)挂载测 —— 模板照 cpMeterFlow.spec.ts + meterPeriodFlow.spec.ts
@@ -58,6 +61,9 @@ vi.mock('@/api/locks', () => ({
     releaseOnUnload: () => {},
   },
 }))
+
+// 站内确认(十件 ⑨)替掉了原生 confirm():没挂 FPConfirmHost 时 ask() 永远不落地,这里直接给答复
+vi.mock('@/utils/ask', async (orig) => ({ ...(await orig<typeof import('@/utils/ask')>()), ask: vi.fn() }))
 
 // 期间深链(SIDEBAR-UX-REDESIGN §4.2):屏接了 useDeepPeriod(内部 useRoute)。query 可变 —— 深链那几条要在切回之间换掉 ?p=;
 // fullPath 走 getter:useRoute() 的返回对象只建一次,写成普通字段的话切回时读到的还是旧地址(照 meterWriteGuards.spec:60-66)。
@@ -106,6 +112,8 @@ beforeEach(() => {
   // ⚠ 每条都要重设:clearAllMocks 只清调用记录不清实现,角标那条设的已审核行会漏进
   //   后面每一条 —— 而 approved 会把编辑闸锁上,⑥⑦ 那些编辑态用例会莫名其妙地红。
   vi.mocked(reviewApi.states).mockResolvedValue([] as never)
+  vi.mocked(ask).mockResolvedValue(true)
+  receipts.splice(0)
 })
 
 async function open() {
@@ -206,7 +214,7 @@ describe('电费成本总览 · ② 取数失败时不许猜', () => {
     ;(w.vm as unknown as { editMode: boolean }).editMode = true
     await flushPromises()
 
-    expect(w.find('.fp-lderr').exists(), '失败条得在').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '失败条得在').toBe(true)
     expect(w.text()).toContain('后端挂了')
     expect(w.findAll('.ec-in'), '金额/备注行内输入框').toHaveLength(0)
     expect(w.findAll('.ec-nameedit'), '电表名行内输入框').toHaveLength(0)
@@ -223,8 +231,8 @@ describe('电费成本总览 · ③ 电表清单独立槽', () => {
     vi.mocked(elecCostApi.meters).mockRejectedValue(new Error('清单挂了'))
     const w = await toTable()
     expect(w.find('.page-spin').exists(), '不许永久转圈').toBe(false)
-    expect(w.find('.ec-gate-fail').exists()).toBe(true)
-    expect(w.text()).toContain('电表清单加载失败')
+    expect(w.find('.ec-gate-fail .fp-empty.error').exists(), '换掉整页的是全站那一种加载失败').toBe(true)
+    expect(w.text()).toContain('电表清单没读到')
 
     vi.mocked(elecCostApi.meters).mockResolvedValue(METERS as never)
     await btn(w, '重试')!.trigger('click')
@@ -243,7 +251,7 @@ describe('电费成本总览 · ③ 电表清单独立槽', () => {
 
     await w.findAll('.bmm-card')[2].trigger('click')   // 换月:费项这次是成功的
     await flushPromises()
-    expect(w.text(), '清单的失败被费项的成功抹掉了').toContain('电表清单加载失败')
+    expect(w.text(), '清单的失败被费项的成功抹掉了').toContain('电表清单没读到')
   })
 })
 
@@ -260,10 +268,10 @@ describe('电费成本总览 · ④ readErr 只在成功清', () => {
     await flushPromises()
 
     vi.mocked(elecCostApi.entries).mockImplementation(hang as never)
-    await w.find('.fp-lderr button').trigger('click')   // 重试 —— 这一趟永不结算
+    await w.find('.fp-empty.error button').trigger('click')   // 重试 —— 这一趟永不结算
     await nextTick()
 
-    expect(w.find('.fp-lderr').exists(), '失败条不该在重试一开始就消失').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '失败条不该在重试一开始就消失').toBe(true)
     expect(w.findAll('.ec-in'), '在途时不该冒出写入口').toHaveLength(0)
     expect(w.find('.ec-empty').exists(), '在途时不该宣布「本月暂无」').toBe(false)
   })
@@ -275,13 +283,13 @@ describe('电费成本总览 · ④ readErr 只在成功清', () => {
     const w = await toFailedTable()
     ;(w.vm as unknown as { editMode: boolean }).editMode = true
     await flushPromises()
-    expect(w.find('.fp-lderr').exists(), '前提:先失败一次').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '前提:先失败一次').toBe(true)
 
     vi.mocked(elecCostApi.entries).mockResolvedValue(ENTRIES as never)
-    await w.find('.fp-lderr button').trigger('click')       // 重试,这次成功
+    await w.find('.fp-empty.error button').trigger('click')       // 重试,这次成功
     await flushPromises()
 
-    expect(w.find('.fp-lderr').exists(), '成功了失败条还挂着').toBe(false)
+    expect(w.find('.fp-empty.error').exists(), '成功了失败条还挂着').toBe(false)
     expect(w.findAll('.ec-in').length, '成功了写入口没回来').toBeGreaterThan(0)
   })
 })
@@ -305,7 +313,7 @@ describe('电费成本总览 · ⑤ 失败态禁"进"不禁"出"', () => {
     ;(w.vm as unknown as { editMode: boolean }).editMode = true   // 只测按钮本身
     await flushPromises()
 
-    expect(w.find('.fp-lderr').exists(), '前提:确实是失败态').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '前提:确实是失败态').toBe(true)
     expect(done()?.attributes('disabled'), '编辑态里的「完成」被禁掉了 —— 退不出去').toBeUndefined()
   })
 
@@ -347,7 +355,7 @@ describe('电费成本总览 · ⑦ 浏览态下每个写函数都打不出去',
     // onSimulate(:400)/onImport(:432)—— 删掉任何一句,对应的 not.toHaveBeenCalled 红。
     //
     // ⚠ 前置状态必须做足(本仓栽过四次):entries 有值(commitAmount/commitNote 的
-    //   cur/e 才存在,否则在自己原有的早退分支就 return 了)、mForm 填好、confirm 恒真、
+    //   cur/e 才存在,否则在自己原有的早退分支就 return 了)、mForm 填好、ask 恒真(beforeEach)、
     //   cfgs 有行 —— 守卫删掉照样绿的断言等于没写。
     // ⚠ commitCfg/onSimulate 判 editC:param-policy:edit 已在权限种子里(见 beforeEach),
     //   让「editC 里的 editMode 项被删」这种破坏真的能走到发请求那一步。
@@ -360,8 +368,6 @@ describe('电费成本总览 · ⑦ 浏览态下每个写函数都打不出去',
     vi.mocked(elecCostApi.savePriceCfg).mockResolvedValue(undefined as never)
     vi.mocked(elecCostApi.simulate).mockResolvedValue({ filled: 1, skipped: 0, byRule: {} } as never)
     const w = await toTable()
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
-    vi.spyOn(window, 'alert').mockImplementation(() => {})
 
     // 先在编辑态里把状态摆好(新增表单填好)……
     const vm = w.vm as unknown as Record<string, never>
@@ -474,7 +480,7 @@ describe('电费成本总览 · 首败不转圈', () => {
     await flushPromises()
 
     expect(w.find('.page-spin').exists(), '不许永久转圈').toBe(false)
-    expect(w.find('.fp-lderr').exists(), '失败条要在').toBe(true)
+    expect(w.find('.fp-empty.error').exists(), '失败条要在').toBe(true)
     expect(w.text()).toContain('后端挂了')
   })
 })
@@ -496,7 +502,6 @@ describe('电费成本总览 · 复查第二轮补钉', () => {
     const w = await toTable()
     ;(w.vm as unknown as { editMode: boolean }).editMode = true
     await flushPromises()
-    vi.spyOn(window, 'alert').mockImplementation(() => {})
     return w
   }
 
@@ -602,30 +607,31 @@ describe('电费成本总览 · 复查第二轮补钉', () => {
     expect(staled.length, '三张卡(费项/指标/参数)都要退一步').toBe(3)
   })
 
-  it('❗2025 任一月有人在编辑 → 模拟填充不许跑;confirm 期间才进来的也要拦', async () => {
+  it('❗2025 任一月有人在编辑 → 模拟填充不许跑;确认弹窗问的期间才进来的也要拦', async () => {
     // simulate 写 2025 全年,本屏只持当月的月锁;服务端不查锁,这道闸是唯一防线。
     const { elecCostApi } = await import('@/api/elecCost')
     const { usePresenceStore } = await import('@/stores/presence')
     const w = await toEdit()
     const vm = w.vm as unknown as { onSimulate: () => Promise<void> }
     const pres = usePresenceStore()
-    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
 
     // 弹框前就有人 → 直接拦
     pres.users = [{
       sid: 's9', user: 'lisi', displayName: '李四', role: null, scope: null, label: '电费',
       mode: 'edit', editScopes: ['elec-cost:2025-03'], sinceMs: 1, idleMs: 0, self: false,
     }]
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     await vm.onSimulate()
     expect(elecCostApi.simulate).not.toHaveBeenCalled()
-    expect(String(alert.mock.calls.at(-1)![0])).toContain('李四')
-    // 预检的独有可观察量:人早就在,confirm 根本不该弹(只靠复检的话这里会弹一次)
-    expect(confirmSpy, '弹框前就该拦下,不该让用户白读一遍确认文案').not.toHaveBeenCalled()
+    // 没跑成是「得等」不是出错:警告回执带「重试」(对面退出后点一下),不是浏览器 alert
+    expect(receipts.at(-1)?.tone).toBe('warn')
+    expect(receipts.at(-1)?.text).toContain('李四')
+    expect(receipts.at(-1)?.action?.label).toBe('重试')
+    // 预检的独有可观察量:人早就在,确认弹窗根本不该弹(只靠复检的话这里会弹一次)
+    expect(ask, '弹框前就该拦下,不该让用户白读一遍确认文案').not.toHaveBeenCalled()
 
-    // TOCTOU:弹框前没人,confirm 期间进来 → 复检拦
+    // TOCTOU:弹框前没人,问的期间进来 → 复检拦
     pres.users = []
-    vi.spyOn(window, 'confirm').mockImplementation(() => {
+    vi.mocked(ask).mockImplementation(async () => {
       pres.users = [{
         sid: 's9', user: 'wangwu', displayName: '王五', role: null, scope: null, label: '电费',
         mode: 'edit', editScopes: ['elec-cost:2025-07'], sinceMs: 1, idleMs: 0, self: false,
@@ -633,7 +639,7 @@ describe('电费成本总览 · 复查第二轮补钉', () => {
       return true
     })
     await vm.onSimulate()
-    expect(elecCostApi.simulate, 'confirm 之后不复查就写穿别人的月').not.toHaveBeenCalled()
+    expect(elecCostApi.simulate, '答完不复查就写穿别人的月').not.toHaveBeenCalled()
   })
 
   it('同期两笔连改的指标乱序回包 —— 后发的那笔要赢', async () => {
@@ -645,11 +651,11 @@ describe('电费成本总览 · 复查第二轮补钉', () => {
     let slow!: (v: unknown) => void
     vi.mocked(elecCostApi.metrics)
       .mockReturnValueOnce(new Promise(r => { slow = r }) as never)   // 第一笔:慢
-      .mockResolvedValueOnce([{ key: 'k', label: 'x', value: 222, formula: '', missing: [] }] as never)
+      .mockResolvedValueOnce([{ key: 'k', label: 'x', value: 222, formulaText: '', missing: [] }] as never)
     const p1 = vm.reloadMetrics()
     const p2 = vm.reloadMetrics()                                     // 第二笔:快,先落位
     await p2
-    slow([{ key: 'k', label: 'x', value: 111, formula: '', missing: [] }])
+    slow([{ key: 'k', label: 'x', value: 111, formulaText: '', missing: [] }])
     await p1
     expect((vm.metrics?.[0] as { value: number } | undefined)?.value, '旧回包盖了新指标').toBe(222)
   })
@@ -713,5 +719,234 @@ describe('电费成本总览 · 月卡审核角标', () => {
     await open()
     await flushPromises()
     expect(vi.mocked(reviewApi.states).mock.calls.map(c => c[0]), '数据年只有 2025 ⇒ 一趟').toEqual([2025])
+  })
+})
+
+/**
+ * S4 提示件替换(T27,实现规范 §1.1–§1.5):原生 confirm / alert / title、流内失败条与「本月暂无」条
+ * 换成站内那一套 —— 确认弹窗、结果回执、字段报错、悬停说明、加载失败 / 空状态 / 页面状态。
+ */
+describe('电费成本总览 · 提示件(S4)', () => {
+  /** 2025-03 编辑态:运营表A · 用电费用 100(ENTRIES)+ 电价参数两行 */
+  async function toEdit() {
+    vi.mocked(elecCostApi.entries).mockResolvedValue(ENTRIES as never)
+    const w = await toTable()
+    ;(w.vm as unknown as { editMode: boolean }).editMode = true
+    await flushPromises()
+    return w
+  }
+  /** 往行内格里敲一个值再失焦(格子挂的是 @change) */
+  async function type(input: ReturnType<ReturnType<typeof mount>['find']>, v: string) {
+    ;(input.element as HTMLInputElement).value = v
+    await input.trigger('change')
+    await flushPromises()
+  }
+  const errUnder = (input: ReturnType<ReturnType<typeof mount>['find']>) =>
+    input.element.parentElement?.querySelector('.ec-cellerr')?.textContent
+
+  it('❗本月费项没读到 → 换掉三张卡本身(不留表格),一句写清哪月 + 副句;重试接上重拉', async () => {
+    const w = await toFailedTable()
+    const err = w.find('.ec-page > .fp-empty.error')
+    expect(err.exists(), '加载失败要占住内容区').toBe(true)
+    expect(err.text()).toContain('2025 年 7 月的费项没读到')
+    expect(err.find('.sub').text()).toBe('后端挂了 · 屏上不显示上个月的数字')
+    expect(w.findAll('.ec-listcard'), '失败时三张卡一张都不留(互斥,不是叠在表格上方)').toHaveLength(0)
+
+    vi.mocked(elecCostApi.entries).mockClear()
+    await err.find('button').trigger('click')
+    await flushPromises()
+    expect(elecCostApi.entries, '重试要真去重拉那个月').toHaveBeenCalledWith(2025, 7)
+  })
+
+  it('❗本月一条费项都没有(浏览态):标题旁贴「本月还没有费项」,费项卡里换成空状态;编辑态表格回来', async () => {
+    const w = await toTable()                         // entries 默认 []
+    expect(w.find('.ec-titlerow .fp-state').text()).toBe('本月还没有费项')
+    const card = w.findAll('.ec-listcard')[0]
+    expect(card.find('.fp-empty.ec-empty').text()).toContain('2025 年 3 月还没有费项')
+    expect(card.find('table').exists(), '空状态换掉的是表格本身').toBe(false)
+
+    ;(w.vm as unknown as { editMode: boolean }).editMode = true
+    await flushPromises()
+    expect(w.findAll('.ec-listcard')[0].find('table.ec-table').exists(), '编辑态表格就是逐格录入的地方,不换').toBe(true)
+    expect(w.find('.ec-titlerow .fp-state').exists(), '页面状态两态都在').toBe(true)
+  })
+
+  it('❗有费项的月不贴「本月还没有费项」', async () => {
+    const w = await toEdit()
+    expect(w.find('.ec-titlerow .fp-state').exists()).toBe(false)
+  })
+
+  it('❗金额敲负数 → 红字贴在这一格下面、框变红、敲的数留着;不走回执、不发请求。改对了红字收掉', async () => {
+    const w = await toEdit()
+    const input = w.findAll('input.ec-in[type="number"]').find(i => (i.element as HTMLInputElement).value === '100')!
+    await type(input, '-5')
+    expect(errUnder(input), '红字要贴在这一格下面').toBe('请输入非负数字')
+    expect(input.classes(), '框变红').toContain('bad')
+    expect((input.element as HTMLInputElement).value, '敲的数留着,不被重绘刷回旧值').toBe('-5')
+    expect(receipts, '字段错误不走回执').toHaveLength(0)
+    expect(elecCostApi.upsertEntry).not.toHaveBeenCalled()
+
+    vi.mocked(elecCostApi.upsertEntry).mockResolvedValue({ ...ENTRIES[0], amount: 5 } as never)
+    await type(input, '5')
+    expect(errUnder(input), '改对了红字要收掉').toBe('')
+    expect(elecCostApi.upsertEntry).toHaveBeenCalled()
+  })
+
+  it('❗电表名清空 → 红字「电表名称不能为空」贴在名字格下面,不走回执', async () => {
+    const w = await toEdit()
+    const input = w.findAll('input.ec-nameedit')[0]
+    await type(input, '')
+    expect(errUnder(input)).toBe('电表名称不能为空')
+    expect(input.attributes('aria-invalid')).toBe('true')
+    expect(receipts).toHaveLength(0)
+    expect(elecCostApi.updateMeter).not.toHaveBeenCalled()
+  })
+
+  it('❗电价参数敲负数 → 红字贴在那一格下面,不走回执', async () => {
+    const w = await toEdit()
+    const input = w.findAll('input.ec-cfgin')[0]
+    await type(input, '-0.1')
+    expect(errUnder(input)).toBe('请输入非负数字')
+    expect(receipts).toHaveLength(0)
+    expect(elecCostApi.savePriceCfg).not.toHaveBeenCalled()
+  })
+
+  it('❗退出编辑 / 换月都清掉行内格的报错(格子的键不带月)', async () => {
+    const w = await toEdit()
+    const vm = w.vm as unknown as { cellErr: unknown; editMode: boolean }
+    vm.cellErr = { k: 'cfg:pv_grid_price|month', msg: '请输入非负数字', raw: '-1' }
+    vm.editMode = false
+    await flushPromises()
+    expect(vm.cellErr, '退出编辑要清').toBeNull()
+
+    vm.cellErr = { k: 'amt:2|usage|', msg: '请输入非负数字', raw: '-1' }
+    await w.find('.ec-permonth').trigger('click')
+    await flushPromises()
+    expect(vm.cellErr, '换月要清').toBeNull()
+  })
+
+  it('❗金额保存失败 → 失败回执带后端原话(不弹浏览器 alert)', async () => {
+    const w = await toEdit()
+    vi.mocked(elecCostApi.upsertEntry).mockRejectedValue(new Error('服务器没有响应'))
+    ;(w.vm as unknown as { commitAmount: (mid: number, f: string, s: string, raw: string) => void })
+      .commitAmount(2, 'usage', '', '120')
+    await flushPromises()
+    expect(receipts.map(r => [r.tone, r.text])).toEqual([['fail', '服务器没有响应']])
+  })
+
+  it('❗删电表走站内确认:标题问句带表名、按钮写动作、删除类;答取消不删,问的途中被接管也不删', async () => {
+    const w = await toEdit()
+    const vm = w.vm as unknown as { editMode: boolean }
+    vi.mocked(elecCostApi.deleteMeter).mockResolvedValue(undefined as never)
+
+    vi.mocked(ask).mockResolvedValue(false)
+    await w.find('.ec-del').trigger('click')
+    await flushPromises()
+    expect(vi.mocked(ask).mock.calls[0][0]).toMatchObject({ title: '删除电表「园区总表」？', action: '删除电表', danger: true })
+    expect(elecCostApi.deleteMeter, '答了取消还删').not.toHaveBeenCalled()
+
+    vi.mocked(ask).mockImplementationOnce(async () => { vm.editMode = false; return true })
+    await w.find('.ec-del').trigger('click')
+    await flushPromises()
+    expect(elecCostApi.deleteMeter, '问的途中编辑态被接管了还删').not.toHaveBeenCalled()
+
+    vm.editMode = true
+    await flushPromises()
+    vi.mocked(ask).mockResolvedValue(true)
+    await w.find('.ec-del').trigger('click')
+    await flushPromises()
+    expect(elecCostApi.deleteMeter).toHaveBeenCalledWith(1)
+  })
+
+  it('❗模拟填充:先问(不是删除类),答完才跑,结果走成功回执', async () => {
+    const w = await toEdit()
+    vi.mocked(elecCostApi.simulate).mockResolvedValue({ filled: 12, skipped: 3, byRule: {} } as never)
+    await (w.vm as unknown as { onSimulate: () => Promise<void> }).onSimulate()
+    await flushPromises()
+    const q = vi.mocked(ask).mock.calls[0][0]
+    expect(q).toMatchObject({ title: '模拟填充 2025 全年？', action: '模拟填充 2025 全年' })
+    expect(q.danger, '只填空位、不覆盖手工数据,不是删除类').toBeFalsy()
+    expect(receipts.map(r => [r.tone, r.text])).toEqual([['ok', '模拟完成：填充 12 条，跳过 3 条（手工/导入占位或值未变）。']])
+  })
+
+  it('❗改动数:即时提交没有草稿算 0;开着新增电表弹窗算一处(关页签才问)', async () => {
+    const w = await toEdit()
+    const auth = useAuthStore()
+    expect(auth.dirtyTotal, '金额 / 备注 / 电价都是即时提交,关页签不该白问').toBe(0)
+    ;(w.vm as unknown as { meterDlg: boolean }).meterDlg = true
+    expect(auth.dirtyTotal).toBe(1)
+    // 破坏验证:dirty 去掉 approxDirty 包装 → 红(离开确认会说「1 处改动」,其实只知道弹窗开着)
+    expect(auth.dirtyApproxOn(''), '开着就算 1,不报处数').toBe(true)
+  })
+
+  it('❗电表清单首载就挂 → 整页是全站那一种加载失败(带副句和重试)', async () => {
+    vi.mocked(elecCostApi.meters).mockRejectedValue(new Error('清单挂了'))
+    const w = await toTable()
+    const err = w.find('.ec-gate-fail .fp-empty.error')
+    expect(err.exists()).toBe(true)
+    expect(err.find('.sub').text()).toContain('没有它这页显示不出来')
+    expect(err.find('button').text()).toContain('重试')
+  })
+
+  it('❗编辑态整屏没有一个原生 title —— 悬停说明一律走 v-tip', async () => {
+    // 拆分行(模拟徽标)+ 并存合计行(黄警)都摆出来,让每种带说明的格子都在场
+    vi.mocked(elecCostApi.entries).mockResolvedValue([
+      ...ENTRIES,
+      { id: 21, meterId: 1, meterName: '园区总表', acctMonth: '2025-03', feeKey: 'tou_industrial', subKey: 'bg',
+        amount: 50, qty: 10, note: '模拟:按附表推导', source: 'simulated' },
+      { id: 22, meterId: 1, meterName: '园区总表', acctMonth: '2025-03', feeKey: 'tou_industrial', subKey: '',
+        amount: 70, qty: null, note: null, source: 'manual' },
+    ] satisfies ElecCostEntryDTO[] as never)
+    const w = await toTable()
+    ;(w.vm as unknown as { editMode: boolean }).editMode = true
+    await flushPromises()
+    ;(w.vm as unknown as { toggleOpen: (m: number, f: string) => void }).toggleOpen(1, 'tou_industrial')
+    await flushPromises()
+    expect(w.find('.ec-warn').exists(), '前提:并存黄警在场').toBe(true)
+    expect(w.find('.ec-sim').exists(), '前提:模拟徽标在场').toBe(true)
+    expect(w.findAll('[title]').map(e => e.html().slice(0, 90)), '还有原生 title').toEqual([])
+    // 图标钮没有可读的字,v-tip 给它补 aria-label —— 光删 title 不换 v-tip 这条就红
+    expect(w.find('.ec-del').attributes('aria-label')).toBe('删除电表(有费项数据不可删)')
+  })
+})
+
+describe('电费成本总览 · 禁用钮的悬停说明', () => {
+  it('❗失败态编辑钮被禁用 → 悬停说明挂在外层,停一会儿就出(禁用的钮自己收不到鼠标)', async () => {
+    vi.mocked(elecCostApi.entries).mockRejectedValue(new Error('后端挂了'))
+    // 气泡只给挂在文档里的宿主出(directives/tip.ts 判 isConnected)
+    const w = mount(ElecCostView, { attachTo: document.body, global: { stubs: { Teleport: true } } })
+    await flushPromises()
+    await w.findAll('.bmm-card')[2].trigger('click')
+    await flushPromises()
+    const host = w.find('.ec-ebtn')
+    expect(host.find('button').attributes('disabled'), '前提:失败态编辑钮禁用').toBeDefined()
+    await host.trigger('mouseenter')
+    await new Promise(r => setTimeout(r, 560))
+    expect(document.body.querySelector('.fp-vtip')?.textContent).toBe('本月数据没读到,先点「重试」再进编辑')
+    await host.trigger('mouseleave')
+    w.unmount()
+  })
+})
+
+// 列宽铁律(LIST-PAGE §4 / §7,2026-10-02):项目是主表 colgroup 第一根,宽要是随编辑态变,金额 / 电量 / 来源 / 备注整排平移
+describe('电费成本 · 列宽不随编辑态变', () => {
+  // 破坏验证:itemW 电表行的 canEntry 改回 editE → 浏览态项目列按表名算,第一段红;
+  //   noteW 的 canEntry 改回 editE → 浏览态备注列按「旧备注」算,第二段红
+  it('❗有录入权的人浏览态就按编辑态的宽预留:项目列、备注列进出编辑态同宽', async () => {
+    vi.mocked(elecCostApi.entries).mockResolvedValue(ENTRIES as never)
+    const w = await toTable()
+    const cols = () => w.find('.ec-table colgroup').findAll('col').map(c => c.attributes('style') ?? '')
+    // 项目 = 电表行:输入框 220 + 删除钮 32,+ 6 + 类型签(11px 两字 22 + 2 + 18)+ 内边距 32 = 332
+    expect(cols()[0]).toBe('width: 332px;')
+    expect(cols()[4]).toBe('width: 200px;')
+    ;(w.vm as unknown as { editMode: boolean }).editMode = true
+    await flushPromises()
+    expect(w.find('.ec-table tbody input').exists(), '前置:编辑态行内出了输入框').toBe(true)
+    expect(cols()[0]).toBe('width: 332px;')
+    expect(cols()[4]).toBe('width: 200px;')
+    // 三张表(费项 / 派生指标 / 电价参数)每一行末尾都是空列
+    const tables = w.findAll('.ec-table')
+    expect(tables).toHaveLength(3)
+    for (const t of tables) expect(rowsNotEndingInFill(t.element)).toEqual([])
   })
 })

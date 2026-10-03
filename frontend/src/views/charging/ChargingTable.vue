@@ -5,7 +5,7 @@
 import { computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Segmented from '@/components/ds/Segmented.vue'
-import Button from '@/components/ds/Button.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
 import SchedNoteCell from '@/components/sched/SchedNoteCell.vue'
 import { rowLocked, ROW_LOCK_TIP } from '@/components/sched/reviewLock'
 import type { ChargingCatDTO, ChargingRecordDTO, ChargingTotal } from '@/types/charging'
@@ -113,16 +113,14 @@ const k = computed(() => {
     </div>
 
     <div class="ch-tablewrap">
-      <!-- 空年 / 空类别引导态(jsx 346-357) -->
-      <div v-if="period.length === 0" class="ch-empty">
-        <div class="ch-empty-ic"><component :is="iconFor(icon)" :size="24" /></div>
-        <div class="ch-empty-t">{{ year }} 年<template v-if="cat !== 'all'">（{{ catById[cat]?.short }}）</template>暂无记账记录</div>
-        <div class="ch-empty-s">进入编辑模式可手动新增各充电桩类别的电量、手续费及服务费与成本;记录自动归入对应年份。</div>
-        <Button v-if="edit" variant="filled" @click="emit('add')">
-          <template #leading><component :is="iconFor('plus')" :size="16" /></template>
-          新增记账
-        </Button>
-      </div>
+      <!-- 空年 / 空类别(十件 ⑦ 空状态,全站一种样子):占住表格区,一句 + 副句 + 编辑态一个按钮 -->
+      <FPEmpty
+        v-if="period.length === 0"
+        class="ch-empty"
+        sub="进入编辑模式可手动新增各充电桩类别的电量、手续费及服务费与成本;记录自动归入对应年份。"
+        :action="edit ? '新增记账' : undefined"
+        @action="emit('add')"
+      >{{ year }} 年<template v-if="cat !== 'all'">（{{ catById[cat]?.short }}）</template>暂无记账记录</FPEmpty>
 
       <table v-else class="ch-table">
         <thead>
@@ -135,7 +133,7 @@ const k = computed(() => {
                   class="ch-cb"
                   :checked="allSelected"
                   :disabled="period.length === 0"
-                  title="全选"
+                  v-tip="'全选'"
                   @change="emit('selectAll', ($event.target as HTMLInputElement).checked)"
                 />
                 <span class="ch-th-name">记账月份</span>
@@ -147,6 +145,7 @@ const k = computed(() => {
             <th><span class="ch-th"><span class="ch-th-name">利润</span><span class="ch-th-unit">元</span></span></th>
             <th class="l" style="min-width:150px"><span class="ch-th-name">备注</span></th>
             <th v-if="edit" class="ch-h-act"></th>
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </thead>
         <tbody>
@@ -165,6 +164,7 @@ const k = computed(() => {
               <td class="ch-c-num ch-grp-tot" :style="{ color: g.profit < 0 ? 'var(--hue-red)' : 'var(--hue-blue)' }">{{ yuan(g.profit) }}</td>
               <td class="l"></td>
               <td v-if="edit"></td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
             <!-- 明细行(jsx 392-408) -->
             <tr v-for="r in g.rows" :key="r.id" class="ch-row">
@@ -175,7 +175,7 @@ const k = computed(() => {
                     type="checkbox"
                     class="ch-cb"
                     :checked="selectedIds?.has(r.id) ?? false"
-                    title="选中以批量删除"
+                    v-tip="'选中以批量删除'"
                     :disabled="rowLocked(lockedMonths, r.acctMonth)"
                     @change="emit('toggleSelect', r)"
                   />
@@ -193,12 +193,13 @@ const k = computed(() => {
               </td>
               <td v-if="edit">
                 <span class="ch-acts">
-                  <span v-if="rowLocked(lockedMonths, r.acctMonth)" class="ch-actlock" :title="ROW_LOCK_TIP"><component :is="iconFor('lock')" :size="14" /></span>
-                  <button v-else class="ch-actbtn del" title="删除" @click="emit('delete', r)">
+                  <span v-if="rowLocked(lockedMonths, r.acctMonth)" class="ch-actlock" v-tip="ROW_LOCK_TIP"><component :is="iconFor('lock')" :size="14" /></span>
+                  <button v-else class="ch-actbtn del" v-tip="'删除'" @click="emit('delete', r)">
                     <component :is="iconFor('trash-2')" :size="15" />
                   </button>
                 </span>
               </td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
           </template>
           <tr class="ch-filler" aria-hidden="true"><td :colspan="99"></td></tr>
@@ -212,6 +213,7 @@ const k = computed(() => {
             <th class="ch-c-num ch-foot-profit" :style="k.profit < 0 ? { color: 'var(--hue-red)' } : undefined">{{ yuan(k.profit) }}</th>
             <th class="l"></th>
             <th v-if="edit"></th>
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </tfoot>
       </table>
@@ -231,7 +233,10 @@ const k = computed(() => {
 
 /* 表:卡片内单滚动,thead/tfoot 粘性 */
 .ch-tablewrap { flex:1 1 auto; min-height:0; overflow:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--surface-white); }
-.ch-table { border-collapse:separate; border-spacing:0; width:100%; min-width:880px; height:100%; font-family:var(--font-sans); font-size:13px; color:var(--text-primary); }
+/* 不给表格 px 保底宽(2026-10-02):列都 nowrap、按内容撑,窄了照样横滚;保底宽比内容宽时多出来的全落进行末空列,横滚看到的是空白。
+   编辑态备注框按自身默认宽撑列:width:100% 的输入框不撑列,有了行末空列(.fp-fill)备注列会缩回表头的保底 150 */
+.ch-table { border-collapse:separate; border-spacing:0; width:100%; height:100%; font-family:var(--font-sans); font-size:13px; color:var(--text-primary); }
+.ch-table :deep(.lc-note-in) { width:auto; min-width:100%; }
 .ch-table tbody tr.ch-filler td { height:0; padding:0; line-height:0; font-size:0; border:none; background:var(--surface-white); }
 .ch-filler { height:100%; }
 .ch-table th, .ch-table td { padding:0 14px; box-sizing:border-box; white-space:nowrap; text-align:right; }
@@ -278,11 +283,8 @@ const k = computed(() => {
 .ch-table tfoot .ch-c-num { color:var(--brand-deep); font-size:12.5px; font-weight:var(--fw-semibold); }
 .ch-foot-lbl { text-align:left; font-size:13px; color:var(--text-primary); }
 
-/* 空 / 未来年份引导态 */
-.ch-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; height:100%; min-height:240px; padding:40px; text-align:center; }
-.ch-empty-ic { width:52px; height:52px; border-radius:16px; background:var(--surface-card); display:grid; place-items:center; color:var(--text-muted); }
-.ch-empty-t { font-size:15px; font-weight:var(--fw-semibold); color:var(--text-primary); }
-.ch-empty-s { font-size:13px; color:var(--text-muted); max-width:380px; line-height:1.5; }
+/* 空 / 未来年份:FPEmpty 撑满表格区(外形归 FPEmpty,这里只给高度) */
+.ch-empty { height:100%; }
 
 /* ── 响应式(RESPONSIVE-LAYOUT-SPEC §5.4 定宽表):列/min-width 一根不动,
    窄了在 .ch-tablewrap(overflow:auto,现成)内横滚;查看态迁移只动工具行与触屏可达性 ── */

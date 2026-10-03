@@ -1,9 +1,10 @@
 <script setup lang="ts">
 // Ported 1:1 from screen-ledger.jsx (table structure 620-664, sticky offsets 413-416/525-530,
 // body cell 532-558, footer 646-661). Pure presentation; all CSS in this file's scoped block.
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { iconFor } from '@/components/ds/icon'
-import { useViewport } from '@/composables/useViewport'
+import FPMark from '@/components/fp/FPMark.vue'
+import { minTableH, numW, textW, useWideTable, type HeightDims, type WideCol } from '@/composables/useWideTable'
 import type { ColumnModel, LeafColumn, ColumnKey } from '@/utils/ledgerColumns'
 import type { LedgerRowDTO } from '@/types/ledger'
 import { ledgerRowKey } from '@/types/ledger'
@@ -33,79 +34,68 @@ const ChevronRight = iconFor('chevron-right')
 const leaves = computed(() => props.columns.groups.flatMap(g => g.cols))
 const allCols = computed(() => [...props.columns.fixedLeft, ...leaves.value, ...props.columns.fixedRight])
 
-// sticky offsets (jsx 413-416): left accumulates L→R, right accumulates R→L over fixedRight reversed.
-// 选择列启用时占最左 32px,fixedLeft 整体右移。
+// LIST-PAGE §9.1(画布 07-A/07-C):固定列按表格自己能看见的宽度退(左右合计 ≤ 40%),不按屏幕档;
+// 退掉的列原地变普通列。先后(2026-10-01 用户确认):租户 → 本月结余 → 应收合计 → 上月结余 → 收款;
+// 备注任何宽度都不固定,不传。
+const RANK: Partial<Record<ColumnKey, number>> = {
+  tenantName: 0, balanceEnd: 1, totalReceivable: 2, balancePrev: 3, totalCollected: 4,
+}
+// 编辑态选择列占最左 32px,跟租户绑在一起:rank 0,计入 40%,永远不退
+const SEL_KEY = '__sel'
 const SEL_W = 32
-// spec §W4 数字列宽度策略:中部费用列(无 kind,非固定)去锁死,minWidth 保底随内容撑
-// (.lg-table 已 width:max-content + .lg-wrap overflow:auto,表内横滚现成);
-// 固定数字列(kind num/sum/bal)的 sticky offset 由列宽累加(leftOff/rightOff),随内容变宽会破 sticky,
-// 降级为放宽 104→128 仍锁死(保留 ellipsis + title 兜底);offset 与 widthStyle 同用 effW 保持同步。
-const FIXED_NUM_W = 128
-function effW(c: LeafColumn): number {
-  return c.kind === 'num' || c.kind === 'sum' || c.kind === 'bal' ? Math.max(c.w, FIXED_NUM_W) : c.w
-}
-// RESPONSIVE-LAYOUT-SPEC §5.3 S 档查看优先:sticky 只留首根数据列(编辑态选择列照旧)与表头,
-// 其余固定列**原位退成普通列**(列序/列宽不动,只去 sticky——多根 sticky 在 390px 会占满视口)。
-// sticky 是内联 style(offset 按列宽常量累加),CSS 媒体块盖不住内联,档位判定只能进 JS:
-// 走 useViewport 单例(jsdom/SSR 无 matchMedia 恒 xl → 桌面档与既有测试零变化)。
-const { tier } = useViewport()
-const stickyLeft = computed(() => tier.value === 's' ? props.columns.fixedLeft.slice(0, 1) : props.columns.fixedLeft)
-const stickyRight = computed(() => tier.value === 's' ? [] : props.columns.fixedRight)
-const leftOff = computed<Record<string, number>>(() => {
-  const m: Record<string, number> = {}; let lo = selectable.value ? SEL_W : 0
-  stickyLeft.value.forEach(c => { m[c.key] = lo; lo += effW(c) })
-  return m
-})
-const rightOff = computed<Record<string, number>>(() => {
-  const m: Record<string, number> = {}; let ro = 0
-  ;[...stickyRight.value].reverse().forEach(c => { m[c.key] = ro; ro += effW(c) })
-  return m
-})
-const isFixed = (c: LeafColumn) => c.key in leftOff.value || c.key in rightOff.value
+// 表格高度(§9.2):分组表头 34 / 列名 38 / 行 34 / 合计 40,与下面 CSS 同值
+const LG_DIMS: HeightDims = { grpH: 34, leafH: 38, rowH: 34, footH: 40 }
 
-// jsx 525-530: sticky left/right + edge boxShadow on inner-most fixed col.
-// 内沿以 sticky 集合为准(S 档只剩首列,描边跟着挪到它身上)
-function fixStyle(c: LeafColumn): Record<string, string> {
-  const fl = stickyLeft.value
-  const fr = stickyRight.value
-  if (c.key in leftOff.value) {
-    return {
-      position: 'sticky',
-      left: leftOff.value[c.key] + 'px',
-      ...(c.key === fl[fl.length - 1].key ? { boxShadow: '1px 0 0 var(--border-subtle)' } : {}),
-    }
+// 列宽不量 DOM(§4 列宽铁律):固定数字列按整列全部行 + 合计里最长的数定宽,不省略;
+// 表头字比数宽时按表头(整列是 0 的列不至于窄成一条)。
+// 租户按最长的名字:.lg-tname 内边距 20 + 间距 5 + 箭头 13;有未绑定行再加「● 未绑定」标记(间距 5 + FPMark 点 6、间距 4、三个字)。
+function colW(c: LeafColumn): number {
+  if (c.kind === 'text') {
+    const dot = props.rows.some(r => r.tenantId == null) ? 5 + textW(['未绑定'], 12, 10) : 0
+    return textW([...props.rows.map(r => r.tenantName), '合　计'], 12.5, 38) + dot
   }
-  if (c.key in rightOff.value) {
-    return {
-      position: 'sticky',
-      right: rightOff.value[c.key] + 'px',
-      ...(c.key === fr[0].key ? { boxShadow: '-1px 0 0 var(--border-subtle)' } : {}),
-    }
-  }
-  return {}
+  const vals = props.rows.map(r => lgFmt((r as any)[c.key]))
+  return Math.max(numW([...vals, lgFmt(sums.value[c.key])]), textW([c.label], 11.5, 16))
 }
+const wideCols = computed<WideCol[]>(() => {
+  const out: WideCol[] = selectable.value ? [{ key: SEL_KEY, side: 'L', w: SEL_W, rank: 0 }] : []
+  const add = (side: 'L' | 'R') => (c: LeafColumn) => {
+    const rank = RANK[c.key]
+    if (rank != null) out.push({ key: c.key, side, w: colW(c), rank, name: c.kind === 'text' })
+  }
+  props.columns.fixedLeft.forEach(add('L'))
+  props.columns.fixedRight.forEach(add('R'))
+  return out
+})
+const wrapEl = ref<HTMLElement | null>(null)
+// 父层换月、换账册、保存后重拉都会给新的列模型 → 按新数据重算一次列宽;
+// 同一张表里列宽只增不减(搜索筛掉长数、编辑改短都不挪位)
+const { fix, hStage, sbH } = useWideTable(wrapEl, wideCols, LG_DIMS, () => props.columns)
+// 第 4 步 还不够:表格区最少 列名 + 8 行高,整页往下滚(外层 .lgw-main 本来就是 overflow-y:auto)
+const wrapStyle = computed(() => (hStage.value === 3 ? { minHeight: minTableH(LG_DIMS) + sbH.value + 'px' } : undefined))
+// 名称列封顶 1/5:表格布局不认 td 的 max-width,封顶宽写在名字本身上,超了省略、悬停看全称
+const nameStyle = computed(() => ({ maxWidth: fix.value.nameW + 'px' }))
 
 function widthStyle(c: LeafColumn): Record<string, string> {
-  const w = effW(c) + 'px'
+  const w = (fix.value.w[c.key] ?? c.w) + 'px'
   if (!c.kind) return { minWidth: w }   // 费用数字列:仅保底,列随内容撑
   return { width: w, minWidth: w, maxWidth: w }
 }
-function cellStyle(c: LeafColumn): Record<string, string> {
-  return { ...widthStyle(c), ...fixStyle(c) }
-}
-// spec LIST-PAGE §8:列宽/sticky offset 只随列模型与 selectable(→leftOff)变,与行无关。
-// 逐格调 cellStyle() 每次都返回新对象,27 列×130 行 = patcher 认为样式全变→全表重刷;
-// 改按列算一次、引用稳定后 diff 直接跳过。编辑态切换会让整张表重算一次,那是必须的。
-const cellStyles = computed<Record<string, Record<string, string>>>(() =>
-  Object.fromEntries(allCols.value.map(c => [c.key, cellStyle(c)])))
-const fixedKeys = computed(() => new Set(allCols.value.filter(isFixed).map(c => c.key)))
+// spec LIST-PAGE §8:列宽/sticky 只随固定方案与列模型变,与行无关。
+// 逐格算样式每次都返回新对象,27 列×130 行 = patcher 认为样式全变→全表重刷;
+// 改按列算一次、引用稳定后 diff 直接跳过(宽度和列宽都没变时 fix 是同一个对象,这里不重算)。
+const cellStyles = computed<Record<string, Record<string, string | undefined>>>(() =>
+  Object.fromEntries(allCols.value.map(c => [c.key, { ...widthStyle(c), ...fix.value.style[c.key] }])))
+const fixedKeys = computed(() => new Set(Object.keys(fix.value.style)))
 // 选择列格样式(编辑态每行一个)同理提成常量,避免逐行新建对象
 const SEL_TD_STYLE = { position: 'sticky', left: '0px' } as const
 
 // number format (jsx lgFmt): 0/empty → "", else 2dp grouped.
+// 格式器只建一次:列宽按整列全部数算,编辑态每敲一键要格式化 行数×4 个数,toLocaleString 每次新建格式器慢约 40 倍
+const LG_NF = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 function lgFmt(v: number | null | undefined): string {
   if (v == null || v === 0) return ''
-  return Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return LG_NF.format(Number(v))
 }
 
 const view = computed(() => props.rows)
@@ -126,20 +116,22 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
 </script>
 
 <template>
-  <div class="lg-wrap">
+  <div ref="wrapEl" class="lg-wrap" :class="{ 'lg-grp-free': hStage >= 1, 'lg-foot-free': hStage >= 2 }" :style="wrapStyle">
     <table class="lg-table">
       <thead>
         <tr>
           <th v-if="selectable" rowspan="2" class="lg-grp-th lg-fix-th lg-fix lg-selc" :style="{ left: '0px' }">
-            <input type="checkbox" class="lg-cb" :checked="allChecked" title="全选/清空" @change="emit('toggle-select-all')" />
+            <input type="checkbox" class="lg-cb" :checked="allChecked" v-tip="'全选/清空'" @change="emit('toggle-select-all')" />
           </th>
-          <!-- lg-fix 系 class 跟 fixedKeys 走(S 档退级列若保留会以高 z-index 盖住仅存的 sticky 首列) -->
+          <!-- lg-fix 系 class 跟 fixedKeys 走(退掉的列若保留会以高 z-index 盖住还固定着的列) -->
           <th v-for="c in columns.fixedLeft" :key="c.key" rowspan="2"
               class="lg-grp-th" :class="fixedKeys.has(c.key) && 'lg-fix-th lg-fix'" :style="cellStyles[c.key]">{{ c.label }}</th>
           <th v-for="g in columns.groups" :key="g.name" :colspan="g.cols.length"
               class="lg-grp-th">{{ g.name }}</th>
           <th v-for="c in columns.fixedRight" :key="c.key" rowspan="2"
               class="lg-grp-th" :class="fixedKeys.has(c.key) && 'lg-fix-th lg-fix'" :style="cellStyles[c.key]">{{ c.label }}</th>
+          <!-- 最右空列 .fp-fill(base.css;LIST-PAGE §4 列宽铁律):表格比内容宽出来的余宽全落在这一列,不摊进费用列 -->
+          <th class="lg-grp-th fp-fill" rowspan="2" aria-hidden="true"></th>
         </tr>
         <tr>
           <th v-for="c in leaves" :key="c.key" class="lg-leaf-th" :style="cellStyles[c.key]">{{ c.label }}</th>
@@ -156,24 +148,24 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
             <!-- 租户名 (text):两态统一为可点击文本,点开行明细抽屉(账面名/绑定都在抽屉里改——
                  与园区抄表同一动线:表格不做行内改名,用户 2026-08-23 拍板)。
                  名字独立 span:深链 flashFocusRow 按 .lg-tname-txt 精确匹配,徽章文本不得混进名字 -->
-            <span v-if="c.kind === 'text'" class="lg-tname"
-                  :title="row.tenantName + (row.carried ? ' · 上月结转,本月未记账' : ' · 点击查看明细/绑定')"
+            <span v-if="c.kind === 'text'" class="lg-tname" :style="nameStyle"
+                  v-tip="{ text: row.tenantName, sub: row.carried ? '上月结转,本月未记账' : '点击查看明细/绑定' }"
                   @click="emit('tenant-click', row)">
               <span class="lg-tname-txt" :class="{ carried: row.carried }">{{ row.tenantName }}</span>
-              <!-- 未绑定:紧凑圆点(文字胶囊会把长租户名挤到看不见,用户 2026-08-24 拍板);语义进 title -->
-              <span v-if="row.tenantId == null" class="lg-unbound-dot" title="未绑定租户档案 · 点击行名处理"></span>
+              <!-- 未绑定:就地标记 点 + 字(十件 ①;原来只有圆点、意思全靠 title)。名字超宽时省略的是名字,标记不缩 -->
+              <FPMark v-if="row.tenantId == null" tone="warn">未绑定</FPMark>
               <component :is="ChevronRight" :size="13" class="ch" />
             </span>
             <!-- 应收合计 (sum, 派生只读) -->
-            <span v-else-if="c.kind === 'sum'" class="lg-sumc" :title="lgFmt(row.totalReceivable)">{{ lgFmt(row.totalReceivable) }}</span>
+            <span v-else-if="c.kind === 'sum'" class="lg-sumc">{{ lgFmt(row.totalReceivable) }}</span>
             <!-- 本月结余 (bal, 派生只读, 正橙负红) -->
             <span v-else-if="c.kind === 'bal'"
-                  class="lg-sumc" :class="{ neg: row.balanceEnd < 0, pos: row.balanceEnd > 0 }" :title="lgFmt(row.balanceEnd)">{{ lgFmt(row.balanceEnd) }}</span>
+                  class="lg-sumc" :class="{ neg: row.balanceEnd < 0, pos: row.balanceEnd > 0 }">{{ lgFmt(row.balanceEnd) }}</span>
             <!-- 备注 (note) -->
             <template v-else-if="c.kind === 'note'">
               <input v-if="edit" class="lg-ni l" type="text" :value="row.note ?? ''" placeholder="—"
                      @input="onInput(ledgerRowKey(row), 'note', $event)" />
-              <span v-else class="lg-note" :title="row.note ?? ''">{{ row.note || '' }}</span>
+              <span v-else class="lg-note" v-tip="row.note">{{ row.note || '' }}</span>
             </template>
             <!-- balancePrev:结余链派生位只读(=上月期末);首次出现月=期初,编辑态可录(全链唯一人工位) -->
             <template v-else-if="c.key === 'balancePrev'">
@@ -181,19 +173,20 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
                      :value="row.balancePrev === 0 ? '' : row.balancePrev" placeholder="期初"
                      @input="onInput(ledgerRowKey(row), 'balancePrev', $event)" />
               <span v-else class="lg-nv" :class="{ empty: !row.balancePrev }"
-                    :title="lgFmt(row.balancePrev) + (row.balancePrevDerived ? ' · 自动=上月期末' : '')">{{ row.balancePrev ? lgFmt(row.balancePrev) : '–' }}</span>
+                    v-tip="row.balancePrevDerived ? '自动 = 上月期末' : undefined">{{ row.balancePrev ? lgFmt(row.balancePrev) : '–' }}</span>
             </template>
             <!-- totalCollected + 21 费用列 (number, 编辑态可输入);
                  归档列(readonly)只显示已发生的钱,不接受新录入——同 balancePrevDerived 那套写法 -->
             <template v-else>
-              <input v-if="edit && !c.readonly" class="lg-ni" type="number"
+              <input v-if="edit && !c.readonly" class="lg-ni" :class="{ nat: !c.kind }" type="number"
                      :value="(row as any)[c.key] === 0 ? '' : (row as any)[c.key]"
                      @input="onInput(ledgerRowKey(row), c.key, $event)" />
-              <span v-else class="lg-nv" :class="{ empty: !(row as any)[c.key] }" :title="lgFmt((row as any)[c.key])">{{ (row as any)[c.key] ? lgFmt((row as any)[c.key]) : '–' }}</span>
+              <span v-else class="lg-nv" :class="{ empty: !(row as any)[c.key] }">{{ (row as any)[c.key] ? lgFmt((row as any)[c.key]) : '–' }}</span>
             </template>
           </td>
+          <td class="fp-fill" aria-hidden="true"></td>
         </tr>
-        <tr class="lg-filler" aria-hidden="true"><td :colspan="allCols.length + (selectable ? 1 : 0)"></td></tr>
+        <tr class="lg-filler" aria-hidden="true"><td :colspan="allCols.length + (selectable ? 1 : 0) + 1"></td></tr>
       </tbody>
       <tfoot>
         <tr>
@@ -212,6 +205,7 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
                         : c.key === 'balanceEnd' ? { color: sumEnd < 0 ? 'var(--hue-red)' : 'var(--hue-orange)' }
                         : undefined">{{ lgFmt(sums[c.key]) }}</span>
           </th>
+          <th class="fp-fill" aria-hidden="true"></th>
         </tr>
       </tfoot>
     </table>
@@ -227,7 +221,10 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
 .lg-table th, .lg-table td { border-bottom:1px solid var(--divider); box-sizing:border-box; padding:0; }
 .lg-table thead th { position:sticky; background:var(--surface-card); color:var(--text-muted); font-size:11.5px; font-weight:var(--fw-semibold); text-align:center; padding:0 8px; z-index:4; }
 .lg-grp-th { top:0; height:34px; }
-.lg-leaf-th { top:34px; height:38px; line-height:1.25; white-space:normal; }
+/* 费用列的列名与分组名不折行:费用列不给宽(只保底),列宽 = 整列最长的内容;
+   折行会让列缩到最窄、余宽跑进最右空列(.fp-fill),和改前「按内容撑开」不一样 */
+.lg-leaf-th { top:34px; height:38px; line-height:1.25; white-space:nowrap; }
+.lg-table thead th[colspan] { white-space:nowrap; }
 .lg-fix-th { top:0; z-index:6; vertical-align:middle; }
 /* 固定表头单元格须盖过横向滚动的分组/子列表头(否则 .lg-fix 的低 z-index 会让其被遮住) */
 .lg-table thead th.lg-fix-th { z-index:8; }
@@ -240,26 +237,22 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
 .lg-selc { width:32px; min-width:32px; max-width:32px; text-align:center; padding:0 !important; }
 .lg-cb { width:14px; height:14px; accent-color:var(--hue-blue); cursor:pointer; vertical-align:middle; }
 .lg-tname:hover { color:var(--hue-blue); }
-/* 未绑定:紧凑圆点(琥珀描边,warning 语义);完整提示走 title */
-.lg-unbound-dot {
-  flex:0 0 auto; width:8px; height:8px; border-radius:50%;
-  border:2px solid var(--status-warning); background:transparent; box-sizing:border-box;
-}
 .lg-tname-txt { overflow:hidden; text-overflow:ellipsis; }
 /* 结转虚行:名字弱化提示「未记账」(结余列仍正常显示,费用列本就留空) */
 .lg-tname-txt.carried { color:var(--text-muted); font-style:normal; }
 .lg-tname .ch { opacity:0; flex:0 0 auto; color:var(--text-disabled); transition:opacity var(--dur-fast); }
 .lg-table tbody tr:hover .lg-tname .ch { opacity:1; }
-/* .lg-nv/.lg-sumc 保留 ellipsis(spec §W4 降级取舍):费用列已随内容撑宽,永不触发;
-   四根锁死的固定数字列(sticky offset 依赖列宽)靠它防溢出串格,title 兜底完整值 */
-.lg-nv { display:block; text-align:right; font-size:12px; padding:0 8px; color:var(--text-secondary); font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* 数字不省略(LIST-PAGE §4 列宽铁律):费用列随内容撑宽;固定数字列按整列最长的数定宽(numW) */
+.lg-nv { display:block; text-align:right; font-size:12px; padding:0 8px; color:var(--text-secondary); font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .lg-nv.empty { color:var(--text-disabled); }
 .lg-note { display:block; text-align:left; font-size:12px; padding:0 10px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.lg-sumc { display:block; text-align:right; font-weight:var(--fw-semibold); color:var(--hue-blue); font-size:12px; padding:0 8px; font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lg-sumc { display:block; text-align:right; font-weight:var(--fw-semibold); color:var(--hue-blue); font-size:12px; padding:0 8px; font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .lg-sumc.neg { color:var(--hue-red); }
 .lg-sumc.pos { color:var(--hue-orange); }
 .lg-ni { width:100%; box-sizing:border-box; border:1px solid transparent; background:transparent; text-align:right; font-size:12px; padding:3px 6px; outline:none; color:var(--text-primary); font-family:var(--font-mono); border-radius:var(--radius-sm); }
 .lg-ni.l { text-align:left; }
+/* 费用列(不给宽)里的输入框按自身默认宽撑列:width:100% 的输入框不撑列,有了最右空列费用列就会缩到只剩保底宽 */
+.lg-ni.nat { width:auto; min-width:100%; }
 .lg-ni:focus { background:var(--accent-blue); border-color:var(--hue-blue); }
 .lg-ni::-webkit-outer-spin-button, .lg-ni::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
 
@@ -268,4 +261,13 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
 .lg-table tfoot th.lg-fix { z-index:7; }
 .lg-foot-lbl { display:block; padding:0 10px; text-align:left; font-family:var(--font-sans); font-size:12.5px; color:var(--text-primary); }
 .lg-foot-v { display:block; text-align:right; padding:0 8px; font-size:12px; font-variant-numeric:tabular-nums; color:var(--brand-deep); }
+
+/* 表格高度(LIST-PAGE §9.2)不够露 8 行时按顺序让:第 2 步 分组表头不贴顶、只贴列名——第一行 top:-34px 滚出去,
+   跨两行的固定表头留下半截贴着;第 3 步 合计不贴底,跟在最后一行后面。第 4 步的 min-height 走内联(wrapStyle) */
+.lg-grp-free .lg-table thead .lg-grp-th { top:-34px; }
+.lg-grp-free .lg-table thead .lg-leaf-th { top:0; }
+/* 跨两行的表头格(固定列、全选框、备注)贴在 -34px 只露下面 38px:字挪到下半格正中,不然字顶被切掉(同附表10、工资表)。
+   !important 只为压过 .lg-selc 的 padding:0 !important,全选框也得挪 */
+.lg-grp-free .lg-table thead th[rowspan] { vertical-align:bottom; padding-bottom:11px !important; }
+.lg-foot-free .lg-table tfoot th { bottom:auto; }
 </style>

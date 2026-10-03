@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   FROZEN_HINT,
   bandFooter, buildLossReconRows, buildPoolExportAoa, costPerLine, foldQtySrcIds,
-  groupPoolsByBookBlock, lineFloor, lineLabel, lineUseName, lossFooter, meterDiffGroup, netSummary, POOL_LOC_HINT,
+  groupPoolsByBookBlock, lineFloor, lineLabel, lineShortLabel, lineUseName, lossFooter, meterDiffGroup, netSummary, POOL_LOC_HINT,
   poolAutoName, poolFeeLabel, poolFloor, poolFooter, poolLocKind, poolNote, poolSemantics,
-  poolSpan, poolSubtitle, poolSubtotal, stdDisplay,
+  poolSpan, poolSubtitle, poolSubtotal, stdDisplay, poolMethodLabel, hasTouQty, fmtFixed2, bandTitle,
 } from './poolLedgerLogic'
 import type {
   AllocLossReconDTO, AllocLossUnitDTO, AllocMeterDiffDTO, AllocMethod, AllocPoolLineDTO, AllocPoolRowDTO,
@@ -489,7 +489,7 @@ describe('§I3/§I4 原册块1 逐格验收', () => {
   it('招商中心 hover:8 项有符号量相加 ≡ 152.06,冲减表数=5(账册扣度不算表)', () => {
     const r = rows()[3]
     const s = netSummary(r)!
-    expect(s.text).toBe('净额 · 冲减 5 表')
+    expect(s.text).toBe('冲减 5 表')
     expect(s.title.split('\n')).toHaveLength(10)            // 抬头 + 8 项 + 合计
     expect(s.title).toContain('+697.6')
     expect(s.title).toContain('−670')
@@ -606,5 +606,49 @@ describe('meterDiffGroup 未入池的公摊表', () => {
   it('没挂楼栋的表也要显示,不能整条吞掉', () => {
     const g = meterDiffGroup([md({ buildingId: null, buildingName: null })], 'p1')!
     expect(g.items[0].text).toContain('(未挂楼栋)')
+  })
+})
+
+describe('03-A 电表列只写表 lineShortLabel', () => {
+  it('全称只留表号', () =>
+    expect(lineShortLabel(line({ label: 'A座·负一层·地下车库东侧照明·电表①', subName: '电表①' }))).toBe('电表①'))
+  it('「新表」剥掉(屏上画成小签)', () =>
+    expect(lineShortLabel(line({ subName: '电表①新表' }))).toBe('电表①'))
+  it('冲减表保留「−」', () => expect(lineShortLabel(line({ sign: -1 }))).toBe('−电表①'))
+  it('没录表号回落全称,不截出用途', () =>
+    expect(lineShortLabel(line({ label: 'A座·一楼·大堂', subName: null }))).toBe('A座·一楼·大堂'))
+})
+
+describe('03-A 分摊方式只写方式 poolMethodLabel', () => {
+  it('按面积不带基数、户对户、按层均摊', () => {
+    expect(poolMethodLabel(pool({ method: 'area', baseSnap: 80000 }))).toBe('按面积')
+    expect(poolMethodLabel(pool({ method: 'direct' }))).toBe('户对户')
+    expect(poolMethodLabel(pool({ method: 'floor', baseSnap: 7 }))).toBe('按层均摊')
+  })
+})
+
+describe('hasTouQty 有没有分时读数', () => {
+  it('平价表四段全 null=无;有一段是 0 也算有', () => {
+    expect(hasTouQty(line({}))).toBe(false)
+    expect(hasTouQty(line({ qtyFlat: 0 }))).toBe(true)
+    expect(hasTouQty(pool({ qtyValley: 12.5 }))).toBe(true)
+  })
+})
+
+describe('03-A 组头组名 bandTitle', () => {
+  it('去掉原册块名尾巴上的「合计：」「合计:」「合计」,别处的「合计」不动', () => {
+    expect(bandTitle('A座及园区公共表合计：')).toBe('A座及园区公共表')
+    expect(bandTitle('A座电梯及楼层公共电合计')).toBe('A座电梯及楼层公共电')
+    expect(bandTitle('园区合计:')).toBe('园区')
+    expect(bandTitle('合计表一期')).toBe('合计表一期')
+    expect(bandTitle('园区级')).toBe('园区级')
+  })
+})
+
+describe('03-C 两位小数 fmtFixed2', () => {
+  it('497.3→497.30,千分位,null=–', () => {
+    expect(fmtFixed2(497.3)).toBe('497.30')
+    expect(fmtFixed2(20215.35)).toBe('20,215.35')
+    expect(fmtFixed2(null)).toBe('–')
   })
 })

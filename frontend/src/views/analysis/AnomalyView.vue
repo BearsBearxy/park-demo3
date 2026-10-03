@@ -293,8 +293,8 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
             <span class="score" :style="{ color: tierColor(t.tier) }">{{ t.score }}</span>
             <span class="body">
               <!-- 租户名常是长公司名(实测「采研企业管理(佛山)有限公司,颐美青科…」660px 被截到 222px),
-                   截断后认不出是哪一户 —— 补 title 出全文 -->
-              <span class="nm" :title="t.name">{{ t.name }}</span>
+                   截断后认不出是哪一户 —— 悬停说明出全文 -->
+              <span v-tip="t.name" class="nm">{{ t.name }}</span>
               <span class="sub">
                 {{ t.arrears > 0.005 ? '欠费 ¥' + fint(t.arrears) : (t.payRate != null ? '收缴 ' + t.payRate.toFixed(0) + '%' : '无台账') }}
                 · {{ t.spikes.length ? '突变 ' + t.spikes.length + ' 处' : (t.gone ? '计费中断' : '能耗平稳') }}
@@ -362,10 +362,10 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
           </div>
           <AnaEmpty v-else label="该租户未命中任何规则" hint="欠费 / 能耗突变 / 收入中断 / 负值行 均未触发" />
           <div v-if="sel" class="mn-links">
-            <button class="mn-go" :disabled="!sel.company || !model.lastLedgerYm" :title="sel.company ? '' : '该租户无台账记录'" @click="goLedger(sel)">
+            <button v-tip="sel.company ? '' : '该租户无台账记录'" class="mn-go" :disabled="!sel.company || !model.lastLedgerYm" @click="goLedger(sel)">
               查台账<component :is="iconFor('arrow-up-right')" :size="13" />
             </button>
-            <button class="mn-go" :disabled="!sel.months.length" :title="sel.months.length ? '' : '该租户无附表10 记录'" @click="goS10(sel)">
+            <button v-tip="sel.months.length ? '' : '该租户无附表10 记录'" class="mn-go" :disabled="!sel.months.length" @click="goS10(sel)">
               查附表10<component :is="iconFor('arrow-up-right')" :size="13" />
             </button>
           </div>

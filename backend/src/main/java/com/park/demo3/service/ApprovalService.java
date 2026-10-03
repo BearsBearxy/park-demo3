@@ -49,12 +49,17 @@ public class ApprovalService {
     private final ElevationService elevation;
     private final AuditLogService audit;
     private final AuthUserMapper users;
+    private final NoticeService bell;
 
     public ApprovalService(ApprovalStore store, PresenceStore presence, UserPermissionCache cache,
                            ElevationStore elevations, ElevationService elevation,
-                           AuditLogService audit, AuthUserMapper users) {
+                           AuditLogService audit, AuthUserMapper users, NoticeService bell) {
         this.store = store; this.presence = presence; this.cache = cache;
         this.elevations = elevations; this.elevation = elevation; this.audit = audit; this.users = users;
+        this.bell = bell;
+        // 超时没人造成:清扫跑在谁的心跳里都行,那人恰好是请求者时 add 会当「自己做的」吞掉,所以走 addAsSystem
+        store.onExpire(p -> bell.addAsSystem(p.requester(), NoticeService.Kind.approval_timeout,
+            "你请的远程授权超时了", whatOf(p), null));
     }
 
     /** 能批这几个权限点的同事。在线的排前面 —— 挑一个不在线的人等于白等两分钟。 */
@@ -147,16 +152,27 @@ public void decide(String id, DecideReq req) {
         ApprovalStore.Pending p = store.take(id, me());
         if (p == null) throw new BizException(ResultCode.CONFLICT, "这条请求已经处理过或已过期");
 
+        String name = myName();
         if (!req.approve()) {
-            store.settle(p, false, me(), myName());
+            store.settle(p, false, me(), name);
             audit.log("elevate.reject", "user:" + p.requester(), "拒绝远程授权请求");
+            bell.add(p.requester(), NoticeService.Kind.approval_rejected, name + "拒绝了你的授权", whatOf(p), null);
             return;
         }
         elevations.grant(p.requester(), p.perms(), me());
-        store.settle(p, true, me(), myName());
+        store.settle(p, true, me(), name);
         audit.logAuthorized("elevate.grant", "perm:" + String.join(",", p.perms()), me(),
             "远程授权 " + (ElevationStore.TTL_SECONDS / 60) + " 分钟给 " + p.requesterName()
           + ":" + p.context().action());
+        // 06-F「王主管批准了你的授权 / 30 分钟内可以改读数」
+        bell.add(p.requester(), NoticeService.Kind.approval_approved, name + "批准了你的授权",
+            (ElevationStore.TTL_SECONDS / 60) + " 分钟内可以" + p.context().action(), null);
+    }
+
+    /** 撤回本人还没人批的请求(等待中关掉授权弹窗)。不算超时、不进铃铛;已处理 / 已过期 / 别人的,什么都不做。 */
+    @NoReviewGuard(reason = "只从内存里的 ApprovalStore 摘掉本人的一条待批,一行库都不落;与 request 同一道理")
+    public void cancel(String id) {
+        store.cancel(id, me());
     }
 
     // ══════════ 内部 ══════════
@@ -167,6 +183,11 @@ public void decide(String id, DecideReq req) {
         return new PendingDTO(p.id(), p.requester(), p.requesterName(), p.requesterRole(),
             p.perms(), p.perms().stream().map(Perm::label).toList(),
             p.context().page(), p.context().action(), p.context().impact(), Math.max(0, left));
+    }
+
+    /** 铃铛小字:哪一屏要做什么(「园区抄表 · 2026 年 · 修改表档案 / 抄表读数」)。 */
+    private static String whatOf(ApprovalStore.Pending p) {
+        return p.context().page() + " · " + p.context().action();
     }
 
     private static List<String> clean(List<String> perms) {

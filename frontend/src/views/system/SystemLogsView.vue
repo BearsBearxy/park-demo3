@@ -20,6 +20,7 @@ import DatePicker from '@/components/ds/DatePicker.vue'
 import Badge from '@/components/ds/Badge.vue'
 import FPPager from '@/components/fp/FPPager.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'   // 原先漏导入:失败态渲染成不认识的标签,重试钮不在
+import FPEmpty from '@/components/fp/FPEmpty.vue'
 import { useFitRows } from '@/components/fp/useFitRows'
 import { iconFor } from '@/components/ds/icon'
 
@@ -76,8 +77,11 @@ const pageSize = useFitRows(listWrapEl)
 // ─── 取数(服务端分页) ────────────────────────────────────
 // 记住本次请求用的每页行数:窗口高度变 → pageSize 变 → 才重新请求(避免挂载期重复发一次)
 let lastSize = 0
+// seq:连改筛选 / 翻页时只认最后一次请求,先发后到的旧页不许盖掉新页。
+// 错误只在成功分支清:重试途中失败态留在屏上,不闪回转圈
+let seq = 0
 async function load() {
-  loadErr.value = ''
+  const my = ++seq
   lastSize = pageSize.value
   try {
     const r = await systemApi.logs({
@@ -88,10 +92,13 @@ async function load() {
       page: page.value,
       size: pageSize.value,
     })
+    if (my !== seq) return
     rows.value = r.rows
     total.value = r.total
     actors.value = r.actors
+    loadErr.value = ''
   } catch (e) {
+    if (my !== seq) return
     rows.value = null                                  // 失败不留半截旧数据在屏上
     loadErr.value = (e as { message?: string })?.message || '服务异常'
   }
@@ -145,8 +152,8 @@ const view = computed(() => (rows.value ?? []).map((r, i) => {
     target: r.target || '—',
     detail,
     authorizer,
-    // 一行读起来像一句话:谁 · 什么时候 · 对什么 · 做了什么(截断时靠 title 出全文)
-    title: [`${m.label} · ${fmtTime(r.ts)}`, r.actor || '—', act, r.target || '—', detail,
+    // 一行读起来像一句话:谁 · 什么时候 · 对什么 · 做了什么(截断时靠悬停说明出全文)
+    tip: [`${m.label} · ${fmtTime(r.ts)}`, r.actor || '—', act, r.target || '—', detail,
       authorizer && `由 ${authorizer} 授权`].filter(Boolean).join('  ·  '),
   }
 }))
@@ -193,7 +200,12 @@ const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.va
     <!-- 3. 时间线卡片(骨架同列表页:卡片定高 + 分页条贴底,LIST-PAGE-SPEC §3) -->
     <Card surface="white" :padding="0" class="mx-listcard">
       <div ref="listWrapEl" class="lg-wrap">
-        <div v-for="r in view" :key="r.key" class="lg-row" :data-src="r.source" :title="r.title">
+        <!-- 加载失败换掉整块时间线(十件 ⑦),和行互斥 -->
+        <FPLoadError v-if="loadErr" :sub="`${loadErr} · 屏上不显示任何记录，重试成功前查不到留痕`" @retry="load">
+          操作日志没读到
+        </FPLoadError>
+        <template v-else>
+        <div v-for="r in view" :key="r.key" class="lg-row" :data-src="r.source" v-tip="r.tip">
           <span class="lg-rail"><span class="lg-dot" :style="{ background: r.color }" /></span>
           <span class="lg-badge">
             <Badge :tone="r.tone" variant="solid" :dot="false">{{ r.srcLabel }}</Badge>
@@ -214,13 +226,11 @@ const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.va
         </div>
         <!-- 空/加载/失败三态都留在 wrap 内:wrap 是 useFitRows 的量高对象,
              v-if 掉整块会让每页行数失去测量锚点 -->
-        <div v-if="rows && view.length === 0" class="lg-empty">
-          {{ hasFilter ? '这个筛选条件下没有操作记录 —— 换个来源、操作人或日期范围试试。' : '还没有任何操作记录。' }}
-        </div>
-        <FPLoadError v-else-if="loadErr" class="lg-center" @retry="load">
-          <span>操作日志没加载出来:{{ loadErr }} —— 屏上不显示任何记录,重试成功前查不到留痕。</span>
-        </FPLoadError>
+        <FPEmpty v-if="rows && view.length === 0" :sub="hasFilter ? '换个来源、操作人或日期范围试试' : undefined">
+          {{ hasFilter ? '这个筛选条件下没有操作记录' : '还没有任何操作记录' }}
+        </FPEmpty>
         <div v-else-if="!rows" class="page-loading"><span class="page-spin" /></div>
+        </template>
       </div>
       <div v-if="view.length > 0" class="mx-pagerbar">
         <FPPager :page="page" :pageCount="pageCount" :total="total" @page="goPage" />
@@ -230,15 +240,11 @@ const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.va
 </template>
 
 <style scoped>
-/* 加载失败条(1:1 SystemUsersView .su-bar.err);margin:auto 0 让它在卡片里竖向居中 */
-/* 失败条在定高卡片里垂直居中 —— 原 .lg-bar 靠 `margin: auto 0` 做到,
-   换成 FPLoadError 之后由这一条接手(组件只管自己的样子,不管宿主怎么摆)。 */
-.lg-center { margin: auto 0; }
 /* 时间线容器:高度由布局链撑满,禁止滚动条 —— 每页行数由 useFitRows 保证恰好放满(LIST-PAGE-SPEC §6)。
    竖向 flex 是为了首载/失败态(.page-loading / FPLoadError 都靠 flex 与 auto margin)在卡片里居中 */
 .lg-wrap { flex: 1 1 auto; overflow: hidden; padding: 10px 16px 0; display: flex; flex-direction: column; }
 
-/* 行:等高铁律(--mx-row-h),内容一律 nowrap + ellipsis,全文走 title。
+/* 行:等高铁律(--mx-row-h),内容一律 nowrap + ellipsis,全文走悬停说明。
    flex:0 0 auto —— 行高是布局常量,任何情况下都不许被压缩(差一行就把等高铁律破了) */
 .lg-row { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; height: var(--mx-row-h, 56px); border-bottom: 1px solid var(--divider); }
 .lg-row:hover { background: var(--bg-panel); }
@@ -262,7 +268,6 @@ const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.va
 /* 授权人:审计的第二个人,给足对比度别当装饰淡化掉 */
 .lg-auth { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: var(--radius-full); background: rgba(255, 149, 0, 0.12); color: var(--badge-orange-text); font-size: var(--fs-label); font-weight: var(--fw-medium); white-space: nowrap; }
 
-.lg-empty { margin: auto 0; text-align: center; padding: 40px; color: var(--text-disabled); font-size: var(--fs-body); }
 
 /* ── 响应式(RESPONSIVE-LAYOUT-SPEC §5.1 迁移③/②)——宽档在前窄档在后 ── */
 /* M(≤960):工具栏两行收纳 —— 右组(两 Select + 日期范围)~590px,601px 附近一行放不下。
@@ -289,7 +294,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.va
     column-gap: 10px;
     row-gap: 4px;
   }
-  .lg-actor { grid-area: actor; max-width: 40vw; }  /* 超长操作人名不许把 390 撑破,截断走 title */
+  .lg-actor { grid-area: actor; max-width: 40vw; }  /* 超长操作人名不许把 390 撑破,截断走悬停说明 */
   .lg-act { grid-area: act; }
   .lg-what { grid-area: what; }
   .lg-badge { grid-area: badge; }

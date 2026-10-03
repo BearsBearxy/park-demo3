@@ -28,7 +28,7 @@ const months = Array.from({ length: 12 }, (_, i) => i + 1)
       role="tab"
       :aria-selected="m === value"
       :class="['lc-mpill', { on: m === value, empty: has && !has(m) }]"
-      :title="editorOf(m) ? `${editorOf(m)!.displayName} 正在编辑` : (has && !has(m) ? '暂无数据' : undefined)"
+      v-tip="editorOf(m) ? `${editorOf(m)!.displayName} 正在编辑` : (has && !has(m) ? '暂无数据' : undefined)"
       @click="emit('change', m)"
     >{{ m }}月<span v-if="editorOf(m)" class="lc-mdot" /></button>
   </div>

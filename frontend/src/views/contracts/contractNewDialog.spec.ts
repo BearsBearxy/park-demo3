@@ -1,9 +1,9 @@
-import { mount } from '@vue/test-utils'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { mount, enableAutoUnmount } from '@vue/test-utils'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
-import type { ContractDTO, ContractCreateReq, ContractDetailDTO, ContractRenewReq } from '@/types/contract'
+import type { BillingLineDTO, ContractDTO, ContractCreateReq, ContractDetailDTO, ContractRenewReq } from '@/types/contract'
 
 // CONTRACT-CARD-V2-SPEC §6:期限原文三件套(termText/termType/tierPriceNote)在编辑弹窗可录可存。
 // 原文留档为参考,不参与计费(§1),此处只验「回填 → 提交」链路不丢字段。
@@ -17,10 +17,16 @@ vi.mock('@/api/building', () => ({
 }))
 
 import ContractNewDialog from './ContractNewDialog.vue'
+import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
+import FPUnitPicker from '@/components/fp/FPUnitPicker.vue'
 import { contractApi } from '@/api/contract'
+import { tenantApi } from '@/api/tenant'
+import { askQueue, answer } from '@/utils/ask'
 
 // 弹窗填过东西会登记进 auth.editors(TAB-BAR-SPEC §2),要有 Pinia
 beforeEach(() => setActivePinia(createPinia()))
+// 弹窗在 window 上听 Esc:上一条用例没卸掉的弹窗会接着听,有改动的还会各问一遍 —— 每条用例后统一卸
+enableAutoUnmount(afterEach)
 
 const initial = {
   id: 7, contractNo: 'S10-0074',
@@ -370,5 +376,189 @@ describe('合同弹窗 · 续签时选续签或递增', () => {
     const w = mountEdit()
     await flushPromises()
     expect(w.findAll('.ct-link')).toHaveLength(0)
+  })
+})
+
+// 关闭(画布 02-A 离开确认):遮罩误点 / Esc 有改动先问,0 处直接关;改动数 = 碰过几个字段(同一字段改几遍算一处),
+// 同一个数登记进 auth.editors(页签橙点、关页签、关浏览器都读它)
+describe('合同弹窗 · 关闭走离开确认 + 改动数', () => {
+  const DETAIL = {
+    contract: initial,
+    tenant: { companyName: '周兴', contactName: '', contactPhone: '', businessType: '', status: 1 },
+    billingLines: [],
+    extraUnitIds: [],
+  }
+  beforeEach(() => {
+    vi.clearAllMocks()
+    askQueue.splice(0)
+    vi.mocked(contractApi.detail).mockResolvedValue(DETAIL as ContractDetailDTO)
+    vi.mocked(contractApi.update).mockResolvedValue(initial)
+  })
+  const pickerOf = (w: ReturnType<typeof mountEdit>, label: string) =>
+    w.findAllComponents({ name: 'DatePicker' }).find((c) => c.props('ariaLabel') === label)!
+
+  // 破坏验证:tryClose 不走 askLeave、直接 emit close → 红;askLeave 的 count 传死 1 → 「2 处」红;
+  //           onNative 不按字段记(每次事件都 touch(Symbol()))→ 同一字段改两遍变 3 处 → 红
+  it('❗有改动点遮罩:问「关闭「编辑合同」？」并写改动数;继续编辑不关,放弃改动才关', async () => {
+    const w = mountEdit()
+    await flushPromises()
+    await w.find('textarea.ct-in').setValue('改一下期限原文')
+    await w.find('textarea.ct-in').setValue('又改一下')          // 同一个字段:还是一处
+    pickerOf(w, '签订日期').vm.$emit('update:modelValue', '2023-07-30')
+    await flushPromises()
+    expect(useAuthStore().dirtyTotal, '登记进 editors 的就是这个数').toBe(2)
+    await w.find('.ct-mask').trigger('mousedown')
+    expect(askQueue).toHaveLength(1)
+    expect(askQueue[0]).toMatchObject({ title: '关闭「编辑合同」？', body: '这页有 2 处改动还没保存。', cancel: '继续编辑', danger: true })
+    answer(false)
+    await flushPromises()
+    expect(w.emitted('close'), '点「继续编辑」不许关').toBeUndefined()
+    await w.find('.ct-mask').trigger('mousedown')
+    answer(true)
+    await flushPromises()
+    expect(w.emitted('close')).toHaveLength(1)
+    w.unmount()
+  })
+
+  // 破坏验证:askLeave 的 count<=0 放行被改成照样问 → askQueue 有一条 → 红
+  it('❗没碰过任何字段:点遮罩直接关,不问', async () => {
+    const w = mountEdit()
+    await flushPromises()
+    await w.find('.ct-mask').trigger('mousedown')
+    await flushPromises()
+    expect(askQueue).toHaveLength(0)
+    expect(w.emitted('close')).toHaveLength(1)
+    w.unmount()
+  })
+
+  // 破坏验证:onKey 改回直接 emit('close') → 有改动按 Esc 也直接关 → 红
+  it('❗有改动按 Esc 也先问', async () => {
+    const w = mountEdit()
+    await flushPromises()
+    await w.find('textarea.ct-in').setValue('改一下')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(askQueue).toHaveLength(1)
+    expect(w.emitted('close')).toBeUndefined()
+    answer(true)
+    await flushPromises()
+    expect(w.emitted('close')).toHaveLength(1)
+    w.unmount()
+  })
+
+  // 加载失败(十件 ⑦):换掉整张表单,带重试;重试成功才回到表单。保存钮失败时点不动
+  // 新增态:没有计费明细要等,保存钮点不动只能是失败态挡的
+  // 破坏验证:load 的 catch 不设 loadErr → 没有失败态 → 红;FPLoadError 的 @retry 不接 load → 重试后还在失败态 → 红;
+  //           保存钮的 :disabled 去掉 !!loadErr → 红
+  it('❗租户/楼栋清单没读到:表单换成「没读到 + 重试」,保存点不动;重试成功回到表单', async () => {
+    vi.mocked(tenantApi.list).mockRejectedValueOnce(new Error('503'))
+    const w = mount(ContractNewDialog, { global: { stubs: { teleport: true } } })
+    await flushPromises()
+    const err = w.find('.ct-dlg-b .fp-empty.error')
+    expect(err.exists()).toBe(true)
+    expect(err.text()).toContain('租户和楼栋清单没读到')
+    expect(w.find('.ct-grid').exists(), '失败态和表单互斥').toBe(false)
+    expect(w.findAll('.ct-dlg-f button')[1].attributes('disabled'), '失败态下保存点不动').toBeDefined()
+    await err.find('button').trigger('click')
+    await flushPromises()
+    expect(w.find('.fp-empty').exists()).toBe(false)
+    expect(w.find('.ct-grid').exists()).toBe(true)
+    expect(w.findAll('.ct-dlg-f button')[1].attributes('disabled')).toBeUndefined()
+    w.unmount()
+  })
+
+  // 详情两趟叠着发(首载 + 重试 / 再开)只认后发的那趟:先发的晚到,旧计费行不盖新的,失败不冒失败件、保存照常能点。
+  // 破坏验证:load 里详情回来后的 `if (my !== loadSeq) return` 删掉 → 段位置被旧数盖成「旧位置」→ 红;
+  //           详情 catch 的 `my === loadSeq` 判断删掉 → 冒失败件、保存点不动 → 红
+  it('❗计费明细先发的晚到:旧明细不盖新明细,失败不冒失败件,保存照常能点', async () => {
+    const line = (location: string): BillingLineDTO =>
+      ({ id: 31, contractId: 7, propertyType: 'factory', location, feeKey: 'rent_factory', area: 390, unitPrice: 14.282, seq: 1 })
+    let lateOk!: (d: ContractDetailDTO) => void, lateFail!: (e: Error) => void
+    vi.mocked(contractApi.detail)
+      .mockImplementationOnce(() => new Promise((_, rej) => { lateFail = rej }))
+      .mockImplementationOnce(() => new Promise((res) => { lateOk = res }))
+      .mockResolvedValueOnce({ ...DETAIL, billingLines: [line('新位置')] } as ContractDetailDTO)
+    const w = mountEdit()
+    await flushPromises()                     // 第一趟:清单到了,详情挂住
+    const vm = w.vm as unknown as { load: () => Promise<void> }
+    void vm.load(); await flushPromises()     // 第二趟:详情挂住
+    await vm.load(); await flushPromises()    // 第三趟:详情到
+    const loc = () => (w.find('.ct-bl-loc').element as HTMLInputElement).value
+    expect(loc()).toBe('新位置')
+    lateOk({ ...DETAIL, billingLines: [line('旧位置')] } as ContractDetailDTO)
+    await flushPromises()
+    expect(loc(), '先发的旧明细盖了上来').toBe('新位置')
+    lateFail(new Error('timeout'))
+    await flushPromises()
+    expect(w.find('.fp-empty.error').exists(), '先发的失败冒了出来').toBe(false)
+    expect(w.findAll('.ct-dlg-f button')[1].attributes('disabled'), '保存照常能点').toBeUndefined()
+    w.unmount()
+  })
+
+  // 破坏验证:detail 的 catch 不设 loadErr('detail') → 表单照出、只是没有计费行 → 红
+  it('❗计费明细没读到:同样换掉表单(这时保存会清空计费行),重试成功才放行保存', async () => {
+    vi.mocked(contractApi.detail).mockRejectedValueOnce(new Error('timeout'))
+    const w = mountEdit()
+    await flushPromises()
+    expect(w.find('.fp-empty.error').text()).toContain('这份合同的计费明细没读到')
+    expect(w.findAll('.ct-dlg-f button')[1].attributes('disabled')).toBeDefined()
+    await w.find('.fp-empty.error button').trigger('click')
+    await flushPromises()
+    expect(w.find('.ct-grid').exists()).toBe(true)
+    expect((w.find('textarea.ct-in').element as HTMLTextAreaElement).value, '重试后照常回填').toBe(initial.termText)
+    expect(w.findAll('.ct-dlg-f button')[1].attributes('disabled')).toBeUndefined()
+    w.unmount()
+  })
+})
+
+// 改动数的另几条来源:不是原生输入框的那几处(选租户 / 选单元 / 段上的单元 chip / 加删段 / 删遗留行 / 加删免租期)。
+// 以前点遮罩直接丢录入的正是这几条 —— 每条只做那一步,改动数就得是 1,点遮罩问「1 处」。
+// 破坏验证:逐一删掉对应函数里的 touch(…) → 那一条红(选租户 touch('tenant') / onUnitSelChange touch('units') /
+//           toggleSegUnit touch(seg.unitIds) / addSegment / removeSegment / removeRow / addRentFreeRow / removeRentFreeRow)
+describe('合同弹窗 · 改动数:非原生控件那几条路', () => {
+  type TipEl = HTMLElement & { _tip?: { text: string } }
+  const delBtn = (w: ReturnType<typeof mount>, tip: string) =>
+    w.findAll('.ct-rf-del').find(b => (b.element as TipEl)._tip?.text === tip)!
+  const EDIT_INIT = { ...initial, unitId: 11, rentFree: [{ start: '2023-08-10', end: '2023-09-09', note: '装修期' }] } as ContractDTO
+  const LINES: BillingLineDTO[] = [
+    { id: 31, contractId: 7, propertyType: 'factory', location: 'E座', feeKey: 'rent_factory', area: 390, unitPrice: 14.282, seq: 1 },
+    // 段内 other = 存量导入的遗留费项(可见可删)
+    { id: 32, contractId: 7, propertyType: 'factory', location: 'E座', feeKey: 'other', amountOverride: 120, seq: 2 },
+  ]
+  beforeEach(() => {
+    vi.clearAllMocks()
+    askQueue.splice(0)
+    vi.mocked(contractApi.detail).mockResolvedValue({
+      contract: EDIT_INIT,
+      tenant: { companyName: '周兴', contactName: '', contactPhone: '', businessType: '', status: 1 },
+      billingLines: LINES, extraUnitIds: [],
+    } as ContractDetailDTO)
+  })
+  const STEPS: Array<[string, 'new' | 'edit', (w: ReturnType<typeof mount>) => Promise<unknown> | void]> = [
+    ['选租户', 'new', (w) => w.findComponent(FPTenantPicker).vm.$emit('update:modelValue', 5)],
+    ['选单元', 'new', (w) => w.findComponent(FPUnitPicker).vm.$emit('update:modelValue', [11])],
+    ['添加标的段', 'new', async (w) => {
+      await w.findAll('button').find(b => b.text() === '添加标的段')!.trigger('click')
+      await w.find('.ct-seg-menu-item').trigger('click')
+    }],
+    ['添加免租期', 'new', (w) => w.findAll('button').find(b => b.text() === '添加免租期')!.trigger('click')],
+    ['点段上的单元 chip', 'edit', (w) => w.find('.ct-bl-uchip').trigger('click')],
+    ['删除标的段', 'edit', (w) => delBtn(w, '删除标的段').trigger('click')],
+    ['删除遗留费项', 'edit', (w) => delBtn(w, '删除该遗留费项').trigger('click')],
+    ['删除免租期', 'edit', (w) => delBtn(w, '删除该段').trigger('click')],
+  ]
+  it.each(STEPS)('❗只做「%s」:改动数 1,点遮罩问「1 处」', async (_, mode, step) => {
+    const w = mount(ContractNewDialog, {
+      props: mode === 'edit' ? { initial: EDIT_INIT } : {},
+      global: { stubs: { teleport: true } },
+    })
+    await flushPromises()
+    expect(useAuthStore().dirtyTotal, '前置:没碰过任何东西').toBe(0)
+    await step(w)
+    await flushPromises()
+    expect(useAuthStore().dirtyTotal).toBe(1)
+    await w.find('.ct-mask').trigger('mousedown')
+    expect(askQueue.map(a => a.body)).toEqual(['这页有 1 处改动还没保存。'])
+    w.unmount()
   })
 })

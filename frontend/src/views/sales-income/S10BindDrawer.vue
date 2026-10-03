@@ -60,7 +60,7 @@ async function commitRename(e: Event) {
         <div class="s10-bind-fld">
           <label>账面名(导入原文,与档案名可不一致)</label>
           <input v-if="canBind" class="s10-bind-in" type="text" :value="row.tenantName"
-                 :disabled="binding" title="回车/失焦保存;未绑定行改对名字会自动配档"
+                 :disabled="binding" v-tip="'回车或失焦保存；未绑定行改对名字会自动配档'"
                  @change="commitRename" />
           <span v-else>{{ row.tenantName }}</span>
         </div>

@@ -98,6 +98,8 @@ describe('远程授权 · 请求端', () => {
     await w.vm.$nextTick()
 
     expect(w.emitted('elevated')).toBeFalsy()
+    // 拒绝的原因落在常驻的字段报错位(十件 ⑤ .fp-field-err),不是自写的报错行
+    expect(w.find('.fp-field-err').text()).toBe('周明 拒绝了这次请求。')
   })
 
   it('别人那次请求的结果，本弹窗不认领', async () => {
@@ -113,5 +115,78 @@ describe('远程授权 · 请求端', () => {
     await w.vm.$nextTick()
 
     expect(w.emitted('elevated')).toBeFalsy()
+  })
+})
+
+// 画布 06-E「你请的远程授权超时」问题列:点了「取消请求」照样报超时。
+// 撤回走 DELETE /auth/approvals/{id},撤回的不算超时、不进铃铛(实现规范 §1.10 末条)。
+describe('远程授权 · 等待中撤回请求', () => {
+  beforeEach(() => {
+    localStorage.clear(); sessionStorage.clear()
+    localStorage.setItem('token', 'test-token')
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+  const cancels = () => vi.mocked(api.delete).mock.calls.filter((c) => String(c[0]).startsWith('/auth/approvals/'))
+
+  // 破坏验证:watch(open) 关闭分支里不调 cancelRequest(改回只清 myId)→ 红
+  it('❗发出请求后关掉弹窗 → 以该 id 撤回一次', async () => {
+    const { w, vm } = await openPicked()
+    vi.mocked(api.post).mockResolvedValueOnce({ id: 'req-9', leftMs: 120_000 } as never)
+    await vm.send()
+    await w.setProps({ perms: null })
+    expect(cancels()).toEqual([['/auth/approvals/req-9']])
+  })
+
+  // 破坏验证:把 cancelRequest 里的 `myId.value &&` 去掉 → 没有 id 也发 DELETE → 红
+  it('没发请求就关 → 不撤', async () => {
+    const { w } = await openPicked()
+    await w.setProps({ perms: null })
+    expect(cancels()).toHaveLength(0)
+  })
+
+  // 破坏验证:「取消请求」按钮改回 @click="waiting = false" → 红
+  it('❗点「取消请求」→ 撤回,之后再关弹窗不重复撤', async () => {
+    const { w, vm } = await openPicked()
+    vi.mocked(api.post).mockResolvedValueOnce({ id: 'req-7', leftMs: 120_000 } as never)
+    await vm.send()
+    await w.vm.$nextTick()
+    const btn = w.findAll('button').find((b) => b.text() === '取消请求')!
+    await btn.trigger('click')
+    expect(cancels(), '点下去当场就撤,不是等关弹窗').toEqual([['/auth/approvals/req-7']])
+    await w.setProps({ perms: null })
+    expect(cancels()).toEqual([['/auth/approvals/req-7']])
+  })
+
+  // 只切页签不撤的话,2 分钟后框里报超时、铃铛冒「远程授权超时」,人早就改走另一条路了。
+  // 破坏验证:去掉 watch(tab) 那条 cancelRequest → 红
+  it('❗等待中点「改为请人走过来」→ 当场撤回、倒计时停,之后不报超时', async () => {
+    const { w, vm } = await openPicked()
+    vi.useFakeTimers()
+    try {
+      vi.mocked(api.post).mockResolvedValueOnce({ id: 'req-3', leftMs: 120_000 } as never)
+      await vm.send()
+      await w.vm.$nextTick()
+      await w.findAll('button').find((b) => b.text() === '改为请人走过来')!.trigger('click')
+      expect(cancels()).toEqual([['/auth/approvals/req-3']])
+      expect(vm.tab).toBe('onsite')
+      vi.advanceTimersByTime(130_000)
+      await w.vm.$nextTick()
+      expect(w.find('.fp-field-err').text()).toBe('')
+    } finally { vi.useRealTimers() }
+  })
+
+  // 破坏验证:把 cancelRequest 里的 `leftMs.value > 0` 去掉 → 超时后关也撤 → 红。
+  // 超时了的请求不能撤:撤掉的话服务端那条「授权超时」就不写了,人永远不知道它超时了。
+  it('倒数到 0 之后再关 → 不撤(那次算超时)', async () => {
+    const { w, vm } = await openPicked()
+    vi.useFakeTimers()
+    try {
+      vi.mocked(api.post).mockResolvedValueOnce({ id: 'req-5', leftMs: 1_000 } as never)
+      await vm.send()
+      vi.advanceTimersByTime(1_000)
+      await w.setProps({ perms: null })
+      expect(cancels()).toHaveLength(0)
+    } finally { vi.useRealTimers() }
   })
 })

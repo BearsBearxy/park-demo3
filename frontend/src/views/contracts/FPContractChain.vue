@@ -16,7 +16,7 @@ const escalatedAway = (id: number) =>
       v-for="it in props.chain" :key="it.c.id" type="button" class="cc-chip"
       :class="{ cur: it.c.id === props.currentId }"
       :disabled="it.c.id === props.currentId"
-      :title="it.c.contractNo"
+      v-tip="it.c.contractNo"
       @click="emit('jump', it.c)"
     >
       <span class="cc-seq">{{ it.seq }}</span>

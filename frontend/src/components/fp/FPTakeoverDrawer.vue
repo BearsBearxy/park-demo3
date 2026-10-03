@@ -15,6 +15,7 @@ import { scopeNote } from '@/utils/lockScopes'
 import Button from '@/components/ds/Button.vue'
 import Input from '@/components/ds/Input.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
+import FPNote from '@/components/fp/FPNote.vue'
 import { iconFor } from '@/components/ds/icon'
 
 const props = defineProps<{
@@ -109,12 +110,10 @@ async function submit() {
           他的页面还开着，但<b>已经 {{ idleText.replace('前', '') }}没有任何操作</b>。
           你可以直接接管，<b>不需要主管授权</b>。
         </p>
-        <div class="tk-warn">
-          <p class="tk-note strong">
-            {{ holder?.displayName }} 会在 20 秒内收到当面提示，并被退回浏览态。
-            <b>他未保存的内容需要他自己复制走</b> —— 系统不会替他保存。
-          </p>
-        </div>
+        <FPNote tone="warn">
+          {{ holder?.displayName }} 会在 20 秒内收到当面提示，并被退回浏览态。
+          <b>他未保存的内容需要他自己复制走</b> —— 系统不会替他保存。
+        </FPNote>
         <p class="tk-note">这一下会写进操作日志：接管人 {{ auth.displayName || auth.me }} · 无授权人 · 理由「持有人空闲」。</p>
       </template>
 
@@ -144,11 +143,7 @@ async function submit() {
 
       <!-- ⚠ 错误位常驻（LAYOUT-STABILITY §7）：写成 v-if 的话输错时这行凭空长出来，
            把「确认接管」按钮从用户指头底下顶走。 -->
-      <p class="tk-err">
-        <template v-if="err">
-          <component :is="iconFor('alert-triangle')" :size="14" />{{ err }}
-        </template>
-      </p>
+      <p class="fp-field-err"><template v-if="err">{{ err }}</template></p>
     </div>
     <template #footer>
       <Button variant="gray" size="sm" @click="emit('close')">只看不改</Button>
@@ -172,16 +167,11 @@ async function submit() {
 .tk-sc { font-size: 11.5px; color: var(--text-muted); font-family: var(--font-mono);
          font-variant-numeric: tabular-nums; margin-top: 2px; }
 .tk-lead { margin: 0; font-size: 13.5px; line-height: 1.65; color: var(--text-primary); }
-.tk-warn { border: 1px solid var(--border-subtle); border-left: 3px solid var(--hue-orange);
-           border-radius: 10px; padding: 11px 13px; background: var(--surface-card); }
 .tk-note { margin: 0; font-size: 11.5px; line-height: 1.6; color: var(--text-muted); }
-.tk-note.strong { color: var(--text-primary); }
 .tk-note b, .tk-lead b { font-weight: var(--fw-semibold); color: var(--text-primary); }
 /* font-family:掩码点不能走自托管子集(iOS 上是一排黑竖条),见 tokens.css 的 --font-ui。
    这里是 type="text",选不中 base.css 那条 input[type="password"],得自己写。 */
 .tk-mask :deep(input) { -webkit-text-security: disc; text-security: disc; font-family: var(--font-ui); }
 .tk-shared { margin: 0; display: flex; align-items: flex-start; gap: 6px;
              font-size: var(--fs-micro); line-height: 1.6; color: var(--text-muted); }
-.tk-err { margin: 0; min-height: 18px; display: flex; align-items: center; gap: 6px;
-          font-size: var(--fs-label); line-height: 18px; color: var(--status-danger); }
 </style>

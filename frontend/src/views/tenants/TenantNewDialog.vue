@@ -162,7 +162,7 @@ async function submit() {
             <!-- 可搜索选择器;「不关联」=null,placeholder 即空态,选中后可用旁边 × 清除 -->
             <div class="fin-parent-row">
               <FPTenantPicker v-model="parentId" :tenants="parentPickerOptions" placeholder="不关联" style="flex:1;min-width:0" />
-              <button v-if="parentId != null" type="button" class="fin-clear" title="清除关联(不关联)" @click="parentId = null">
+              <button v-if="parentId != null" type="button" class="fin-clear" v-tip="'清除关联(不关联)'" @click="parentId = null">
                 <component :is="iconFor('x')" :size="14" />
               </button>
             </div>
@@ -170,13 +170,13 @@ async function submit() {
           <div class="fin-field">
             <div class="lab">别名 · 导入匹配用</div>
             <input class="fin-in" v-model="aliases" placeholder="选填,逗号分隔(如财务表用的老板名:李富全)"
-                   title="园区财务 worksheet 常用老板名/曾用名;导入与一键挂租户按名匹配时,别名与正名同权" @keydown.enter="submit" />
+                   v-tip="'园区财务 worksheet 常用老板名/曾用名;导入与一键挂租户按名匹配时,别名与正名同权'" @keydown.enter="submit" />
           </div>
           <div class="fin-field">
             <div class="lab">备注</div>
             <input class="fin-in" v-model="remark" placeholder="选填" @keydown.enter="submit" />
           </div>
-          <div class="fin-erm">{{ err }}</div>
+          <p class="fp-field-err"><template v-if="err">{{ err }}</template></p>
         </div>
         <div class="fin-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="emit('close')">取消</Button>
@@ -208,7 +208,7 @@ async function submit() {
 .fin-in:focus { border-color:var(--hue-blue); }
 .fin-in.err { border-color:var(--hue-red); }
 .fin-dp { --dp-r: var(--radius-md); }
-.fin-erm { font-size:11.5px; color:var(--hue-red); margin-top:-6px; min-height:14px; }
+.fin-dlg-b > .fp-field-err { margin-top:-6px; }
 /* 关联主租户:选择器 + 清除小按钮(回到「不关联」) */
 .fin-parent-row { display:flex; align-items:center; gap:8px; }
 .fin-clear { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; border:1px solid var(--border-control); border-radius:var(--radius-sm); background:var(--surface-white); color:var(--text-muted); cursor:pointer; transition:border-color var(--dur-fast) var(--ease-standard); }

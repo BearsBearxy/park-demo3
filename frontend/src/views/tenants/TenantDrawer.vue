@@ -12,6 +12,8 @@ import Badge from '@/components/ds/Badge.vue'
 import Button from '@/components/ds/Button.vue'
 import { iconFor } from '@/components/ds/icon'
 import { useAuthStore } from '@/stores/auth'
+import { ask } from '@/utils/ask'
+import { receipt } from '@/utils/receipt'
 
 const auth = useAuthStore()
 
@@ -24,18 +26,27 @@ const emit = defineEmits<{ close: []; edit: []; deleted: [] }>()
 const detail = ref<TenantDetailDTO | null>(null)
 const categoryMap = ref<Record<number, string>>({})
 
-// ── 删除确认(样式 1:1 FinDialogs .fin-mask/.fin-dlg) ──
-const delOpen = ref(false)
+// ── 删除:ask(十件 ⑨)问过再删;失败报回执带「重试」(十件 ⑧),重试钉住当时那户 ──
 const delBusy = ref(false)
-async function confirmDelete() {
-  if (!props.tenant || delBusy.value) return
+async function askDelete() {
+  const t = props.tenant
+  if (!t || delBusy.value) return
+  if (await ask({
+    title: `删除「${t.companyName}」？`,
+    body: '删除后不能撤销。有合同或台账记录的租户删不了，要先处理相关数据。',
+    action: '删除租户',
+    danger: true,
+  })) await remove(t)
+}
+async function remove(t: TenantDTO) {
+  if (delBusy.value) return
   delBusy.value = true
   try {
-    await tenantApi.remove(props.tenant.id)
-    delOpen.value = false
+    await tenantApi.remove(t.id)
     emit('deleted')
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '操作失败')
+    const m = (e as { message?: string })?.message
+    receipt.fail(m ? `删除租户失败：${m}` : '删除租户失败', { label: '重试', run: () => void remove(t) })
   } finally {
     delBusy.value = false
   }
@@ -43,7 +54,6 @@ async function confirmDelete() {
 
 watch(() => props.tenant, async (t) => {
   detail.value = null
-  delOpen.value = false
   if (!t) return
   if (Object.keys(categoryMap.value).length === 0) {
     const cats: TenantCategoryDTO[] = await tenantApi.categories()
@@ -103,7 +113,7 @@ const subtitle = computed(() => {
     </template>
 
     <template #footer>
-      <Button v-if="auth.can('master:edit')" variant="danger" size="sm" @click="delOpen = true">
+      <Button v-if="auth.can('master:edit')" variant="danger" size="sm" :disabled="delBusy" @click="askDelete">
         <template #leading>
           <component :is="iconFor('trash-2')" :size="14" />
         </template>
@@ -223,33 +233,4 @@ const subtitle = computed(() => {
     <!-- ponytail: 账单概览(近4月) deferred to P2 — no bill data source until 账单/ledger subsystem is built -->
 
   </FPDrawer>
-
-  <!-- 删除确认弹窗(独立 Teleport,盖在 drawer 之上) -->
-  <Teleport to="body">
-    <div v-if="delOpen && tenant" class="fin-mask" @mousedown="delOpen = false">
-      <div class="fin-dlg" role="dialog" aria-modal="true" @mousedown.stop>
-        <div class="fin-dlg-h">
-          <h3>删除租户</h3>
-          <p>确认删除「{{ tenant.companyName }}」?此操作不可撤销。若该租户存在合同或台账记录,将无法删除,请先处理相关数据。</p>
-        </div>
-        <div class="fin-dlg-f" style="padding-top:20px">
-          <Button variant="gray" size="sm" @click="delOpen = false">取消</Button>
-          <Button variant="danger" size="sm" :disabled="delBusy" @click="confirmDelete">
-            <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
-            确认删除
-          </Button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
 </template>
-
-<style scoped>
-/* 1:1 FinDialogs.vue .fin-mask/.fin-dlg;z-index 高于 FPDrawer(300/301) 以盖在抽屉上 */
-.fin-mask { position:fixed; inset:0; background:var(--scrim); z-index:320; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
-.fin-dlg { width:min(440px,92vw); max-height:88vh; overflow-y:auto; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:var(--shadow-dialog); animation:fp-rise-in var(--dur-base) var(--ease-standard) both; }
-.fin-dlg-h { padding:20px 22px 0; }
-.fin-dlg-h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
-.fin-dlg-h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
-.fin-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:16px 22px 20px; }
-</style>

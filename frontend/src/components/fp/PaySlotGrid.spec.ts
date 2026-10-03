@@ -80,6 +80,14 @@ describe('PaySlotGrid 展开后的行表', () => {
     await w.findAllComponents({ name: 'Select' })[2].vm.$emit('update:modelValue', '')
     expect(w.emitted('save')).toBeUndefined()
   })
+  it('承接的费项那格放不下时,全文走悬停说明(v-tip),不是原生 title', async () => {
+    const w = await openIt(mk())
+    const it0 = w.findAll('.psg-row:not(.hd) .it')[0]
+    const t = (it0.element as HTMLElement & { _tip?: { text: string } })._tip?.text
+    expect(t).toContain('楼层公共')
+    expect(t).toBe(it0.text())
+    expect(it0.attributes('title')).toBeUndefined()
+  })
   it('只读态:不出下拉,公司显胶囊、没设的显「未设置」', async () => {
     const w = await openIt(mk({ canEdit: false }))
     expect(w.findAllComponents({ name: 'Select' }).length).toBe(0)

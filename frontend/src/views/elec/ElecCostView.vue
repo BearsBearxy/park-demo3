@@ -7,6 +7,7 @@
 // 编辑模式(EDIT-MODE-SPEC v2):浏览态=完全只读,一切纯文本(DOM 无输入框);金额/备注行内输入、
 // 电表增删改、电价参数小节、导入、模拟填充全部收编辑态。viewer 永远浏览态。年月选择 years 数据驱动(同 PvMeterView)。
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
+import { textW } from '@/composables/useWideTable'
 import { onReactivated } from '@/composables/onReactivated'
 import { useDeepPeriod } from '@/composables/useDeepPeriod'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
@@ -17,7 +18,7 @@ import {
 } from '@/api/elecCost'
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, approxDirty } from '@/stores/auth'
 import { useFormSheet } from '@/composables/useFormSheet'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
@@ -28,6 +29,10 @@ import { useMonthGate } from '@/composables/useMonthGate'
 import FPMonthGate from '@/components/fp/FPMonthGate.vue'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import FPStateTag from '@/components/fp/FPStateTag.vue'
+import { ask } from '@/utils/ask'
+import { receipt } from '@/utils/receipt'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import { usePresenceStore } from '@/stores/presence'
 import { iconFor } from '@/components/ds/icon'
@@ -60,6 +65,8 @@ const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, h
         lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip, reviewKeys } =
   useEditMode(['entry:edit', 'param-policy:edit'], {
     scope: () => S.elecCost(year.value, month.value),
+    // 改动数(02-A 离开确认):金额 / 备注 / 电价都是即时提交,没有草稿;开着的新增电表 / 导入弹窗算一处
+    dirty: approxDirty(() => (meterDlg.value || importing.value ? 1 : 0)),
     // 审核键(§7.1):**elec-model**,不是 elec-cost —— 后者是附表11 的报送台账(ElecView/elec_record)。
     // 两把键 2026-09-07 用户拍板拆开;这一把没有清单行,也不进整月锁账的集合。
     reviewKey: () => (year.value && month.value
@@ -76,6 +83,7 @@ watch(editMode, v => {
   if (v) return
   meterDlg.value = false
   importing.value = false
+  cellErr.value = null
 })
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
@@ -142,7 +150,7 @@ async function loadMeters() {
     const data = await elecCostApi.meters()
     if (my === mtSeq) { meters.value = data; metersErr.value = '' }
   } catch {
-    if (my === mtSeq) metersErr.value = '电表清单加载失败,请重试'
+    if (my === mtSeq) metersErr.value = '电表清单没读到'
   }
 }
 /** 失败条上的「重试」:只重来挂掉的那一份。 */
@@ -224,7 +232,8 @@ onReactivated(() => {
   loadMonths()
   if (picked.value) loadMonth()
 })
-watch(gateYm, () => { if (picked.value) loadMonth() })
+// 换期清掉行内格的报错:格子的键不带月,不清的话上个月敲错的数会挂到这个月同一格上
+watch(gateYm, () => { cellErr.value = null; if (picked.value) loadMonth() })
 
 // ── 电表排序(总表→宿舍→运营,组内 sortNo 由后端排好)与费项行值域 ──
 const KIND_LABEL: Record<ElecMeterKind, string> = { master: '总表', dorm: '宿舍', ops: '运营' }
@@ -319,12 +328,40 @@ const rows = computed<FlatRow[]>(() => {
           out.push({ t: 'split', key: `s${m.id}|${f.key}|${s.key}`, m, label: s.label, feeKey: f.key, subKey: s.key, e: entryOf(m.id, f.key, s.key) })
         }
         // 并存脏数据的合计行:展开后单列出,编辑态清空即删(否则黄警无处消除)
-        if (dirty) out.push({ t: 'dirty', key: `d${m.id}|${f.key}`, m, label: '合计行(与拆分并存,清空可删)', feeKey: f.key, subKey: '', e: entryOf(m.id, f.key) })
+        if (dirty) out.push({ t: 'dirty', key: `d${m.id}|${f.key}`, m, label: DIRTY_LABEL, feeKey: f.key, subKey: '', e: entryOf(m.id, f.key) })
       }
     }
   }
   return out
 })
+const DIRTY_LABEL = '合计行(与拆分并存,清空可删)'
+
+// ── 三张表的文字列宽(列宽铁律,2026-10-02):按内容定宽,余宽落进行末空列 .fp-fill。按字数估(textW),不量 DOM。
+// 「项目」按本月全部电表 × 全部费项 × 全部拆分子项算 —— 不只算展开着的那几行,展开 / 收起拆分时列不挪位。
+//   电表行 = 名(编辑态换成 ≤220 的输入框 + 删除钮 6+26)+ 6 + 类型签(11px 字 + 内边距 16 + 边框 2);
+//     有录入权的人浏览态也按输入框那一档预留(取两者大的)—— 进出编辑态列不挪位(LIST-PAGE §7);
+//   费项行 = 缩进 28(拆分 / 并存行 56)+ 箭头位 20 + 6 +(拆分 / 并存行图标 12 + 6)+ 字 + 6 + 「并存⚠」签(按有算,行间不跳);
+//   右侧 16 是格子右内边距。
+const itemW = computed(() => {
+  const ws = [textW(['项目'], 12, 32)]
+  for (const m of orderedMeters.value) {
+    ws.push(Math.max(canEntry.value ? 220 + 32 : 0, textW([m.name], 12.5, 0)) + 6 + textW([KIND_LABEL[m.kind]], 11, 18) + 32)
+    for (const f of FEE_ROWS_BY_KIND[m.kind]) {
+      ws.push(28 + 26 + textW([f.label], 12.5, 0) + 6 + textW(['并存⚠'], 11, 14) + 16)
+      for (const s of f.subs ?? []) ws.push(56 + 26 + 18 + textW([s.label], 12.5, 0) + 16)
+      if (f.subs) ws.push(56 + 26 + 18 + textW([DIRTY_LABEL], 12.5, 0) + 16)
+    }
+  }
+  return Math.max(...ws)
+})
+// 「备注」:本月全部备注里最长的一条;编辑态是输入框,有录入权的人浏览态也至少给 200(进出编辑态列不挪位)
+const noteW = computed(() => Math.max(textW(['备注', ...(entries.value ?? []).map(e => e.note ?? '')], 12.5, 32), canEntry.value ? 200 : 0))
+// 派生指标「公式」:全部公式里最长的一条
+const formulaW = computed(() => textW(['公式', ...(metrics.value ?? []).map(m => m.formulaText)], 12, 32))
+// 电价参数「参数」:缩进 28 + 占位 20 + 6 + 名 + 6 + 单位(11px)+ 右内边距 16
+const cfgW = computed(() => Math.max(textW(['参数'], 12, 32),
+  ...(cfgs.value ?? []).map(c => 28 + 26 + textW([CFG_META[c.cfgKey]?.label ?? c.cfgKey], 12.5, 0) + 6 + textW([CFG_META[c.cfgKey]?.unit ?? ''], 11, 0) + 16)))
+
 const fmtQty = (r: DataRow) => {
   const q = r.derived ? r.dQty : r.e?.qty
   return q == null ? '—' : fq(q)
@@ -333,6 +370,15 @@ const SRC_LABEL: Record<string, string> = { manual: '手工', import: '导入', 
 
 // 本月模拟值计数(工具栏灰标提示)
 const simCount = computed(() => (entries.value ?? []).filter(e => e.source === 'simulated').length)
+
+// ── 行内格的字段报错(十件 ⑤):红字贴在那一格输入框正下方,不走回执;同一格再交一次、过了校验才清 ──
+// raw 留住用户敲的原值 —— 不留的话一重绘格子被刷回旧值,红字对着一个看着没毛病的数。
+// ponytail: 全屏只记一格(新报错顶掉旧的);同时错几格成了常态再换成按格的 Map
+const cellErr = ref<{ k: string; msg: string; raw: string } | null>(null)
+const errOf = (k: string) => (cellErr.value?.k === k ? cellErr.value.msg : '')
+const rawOf = (k: string, v: string | number | null | undefined) => (cellErr.value?.k === k ? cellErr.value.raw : v ?? '')
+function badCell(k: string, msg: string, raw: string) { cellErr.value = { k, msg, raw } }
+function okCell(k: string) { if (cellErr.value?.k === k) cellErr.value = null }
 
 // ── 金额提交(编辑态;乐观更新失败回滚;清空=删行;PUT upsert 后 source→manual,模拟徽标即时消失) ──
 function commitAmount(meterId: number, feeKey: string, subKey: string, raw: string) {
@@ -347,21 +393,24 @@ function commitAmount(meterId: number, feeKey: string, subKey: string, raw: stri
   //   之后每笔录入都按 acctMonth=8 月把 7 月语境的数写成 8 月真数据。
   const my = seq
   const t = raw.trim()
+  const k = `amt:${meterId}|${feeKey}|${subKey}`
   const cur = entryOf(meterId, feeKey, subKey)
   const prev = entries.value
   if (t === '') {
+    okCell(k)
     if (!cur) return
     entries.value = prev.filter(e => e.id !== cur.id)   // 清空=删行;拆分删净后合计口径自动回落
     elecCostApi.deleteEntry(cur.id)
       .then(reloadMetrics)
       .catch(e => {
         if (my === seq) entries.value = prev   // 期没换才有资格回滚;换过了 loadMonth 已重取真值
-        alert((e as { message?: string })?.message ?? '删除失败，请重试')
+        receipt.fail((e as { message?: string })?.message ?? '删除失败，请重试')
       })
     return
   }
   const v = Number(t)
-  if (!isFinite(v) || v < 0) { alert('请输入非负数字'); return }
+  if (!isFinite(v) || v < 0) { badCell(k, '请输入非负数字', raw); return }
+  okCell(k)
   if (cur && v === cur.amount) return
   // 手工覆盖模拟行时丢弃「模拟:...」推导备注(不再成立);其余保留原备注与电量
   const note = cur ? (cur.source === 'simulated' ? null : cur.note) : null
@@ -378,7 +427,7 @@ function commitAmount(meterId: number, feeKey: string, subKey: string, raw: stri
     })
     .catch(e => {
       if (my === seq) entries.value = prev
-      alert((e as { message?: string })?.message ?? '保存失败，请重试')
+      receipt.fail((e as { message?: string })?.message ?? '保存失败，请重试')
     })
 }
 
@@ -398,26 +447,29 @@ function commitNote(e: ElecCostEntryDTO | undefined, raw: string) {
     .then(dto => { entries.value = (entries.value ?? []).map(x => (x.id === e.id ? dto : x)) })
     .catch(err => {
       if (my === seq) entries.value = prev
-      alert((err as { message?: string })?.message ?? '保存失败，请重试')
+      receipt.fail((err as { message?: string })?.message ?? '保存失败，请重试')
     })
 }
 
 // ── 电表增删改(编辑态;1:1 照 PvMeterView commitStationName/delStation 模式) ──
 function commitMeterName(m: ElecMeterDTO, raw: string) {
   if (!editE.value) return
+  const k = `name:${m.id}`
   const v = raw.trim()
-  if (!v) { alert('电表名称不能为空'); return }
+  if (!v) { badCell(k, '电表名称不能为空', raw); return }
+  okCell(k)
   if (v === m.name) return
   const prev = m.name
   m.name = v
   elecCostApi.updateMeter(m.id, { name: v, kind: m.kind })
-    .catch(e => { m.name = prev; alert((e as { message?: string })?.message ?? '保存失败，请重试') })   // 重名 409 中文文案直达
+    .catch(e => { m.name = prev; receipt.fail((e as { message?: string })?.message ?? '保存失败，请重试') })   // 重名 409 中文文案直达
 }
 async function delMeter(m: ElecMeterDTO) {
   if (!editE.value) return
-  if (!confirm(`确认删除电表「${m.name}」?有费项数据的电表不可删除。`)) return
+  const ok = await ask({ title: `删除电表「${m.name}」？`, body: '有费项数据的电表删不掉。', action: '删除电表', danger: true })
+  if (!ok || !editE.value) return   // 问的途中被接管 / 授权到期:不写
   try { await elecCostApi.deleteMeter(m.id); await loadMeters() }
-  catch (e) { alert((e as { message?: string })?.message ?? '删除失败') }   // 有数据 409 → 中文守卫文案
+  catch (e) { receipt.fail((e as { message?: string })?.message ?? '删除失败') }   // 有数据 409 → 中文守卫文案
 }
 
 // 新增电表弹窗(名称 + 类型;类型决定费项值域,建后有数据不可改类)
@@ -460,7 +512,9 @@ function commitCfg(c: ElecPriceCfgDTO, scope: 'month' | 'default', raw: string) 
   const my = seq
   const t = raw.trim()
   const v = t === '' ? null : Number(t)
-  if (v != null && (!isFinite(v) || v < 0)) { alert('请输入非负数字'); return }
+  const k = `cfg:${c.cfgKey}|${scope}`
+  if (v != null && (!isFinite(v) || v < 0)) { badCell(k, '请输入非负数字', raw); return }
+  okCell(k)
   if (v === (scope === 'month' ? c.monthValue : c.defaultValue)) return
   const prev = cfgs.value
   const next: ElecPriceCfgDTO = { ...c, [scope === 'month' ? 'monthValue' : 'defaultValue']: v }
@@ -472,11 +526,11 @@ function commitCfg(c: ElecPriceCfgDTO, scope: 'month' | 'default', raw: string) 
     .then(reloadMetrics)
     .catch(e => {
       if (my === seq) cfgs.value = prev
-      alert((e as { message?: string })?.message ?? '保存失败，请重试')
+      receipt.fail((e as { message?: string })?.message ?? '保存失败，请重试')
     })
 }
 
-// ── 模拟填充 2025(编辑态):确认弹窗→POST simulate→结果 alert→重载并跳 2025 ──
+// ── 模拟填充 2025(编辑态):确认弹窗→POST simulate→结果回执→重载 ──
 const simulating = ref(false)
 const presence = usePresenceStore()
 async function onSimulate() {
@@ -493,28 +547,35 @@ async function onSimulate() {
     return null
   }
   const pre = busyOn()
+  // 没跑成不是出错,是「得等」:警告回执不自收,带「重试」—— 对面退出后点一下就行
+  const again = { label: '重试', run: () => void onSimulate() }
   if (pre) {
-    alert(`模拟填充会写 2025 全年,而 ${pre.who.displayName} 正在编辑 2025年${pre.m}月 —— 等他退出编辑模式再跑。`)
+    receipt.warn(`模拟填充会写 2025 全年,而 ${pre.who.displayName} 正在编辑 2025年${pre.m}月 —— 等他退出编辑模式再跑。`, again)
     return
   }
-  if (!confirm('模拟填充 2025 全年：按附表11/附表6/附表13 等真实数据推导本模型的空缺费项与电价参数。\n\n只写空位与既有「模拟」灰标行，绝不覆盖手工录入/导入的数据。确认执行？')) return
-  // confirm() 阻塞事件循环,名单冻结在弹框前 —— 返回后刷一拍复检(TOCTOU,同 CpMeter)
+  const ok = await ask({
+    title: '模拟填充 2025 全年？',
+    body: '按附表11 / 附表6 / 附表13 等真实数据推导本模型的空缺费项与电价参数。只写空位与既有「模拟」灰标行，不覆盖手工录入和导入的数据。',
+    action: '模拟填充 2025 全年',
+  })
+  if (!ok || !editC.value) return
+  // 问的这段时间里对面可能进来 —— 答完刷一拍复检(TOCTOU,同 CpMeter)
   await presence.ping()
   const late = busyOn()
   if (late) {
-    alert(`模拟填充会写 2025 全年,而 ${late.who.displayName} 正在编辑 2025年${late.m}月 —— 等他退出编辑模式再跑。`)
+    receipt.warn(`模拟填充会写 2025 全年,而 ${late.who.displayName} 正在编辑 2025年${late.m}月 —— 等他退出编辑模式再跑。`, again)
     return
   }
   simulating.value = true
   try {
     const r = await elecCostApi.simulate(2025)
-    alert(`模拟完成：填充 ${r.filled} 条，跳过 ${r.skipped} 条（手工/导入占位或值未变）。`)
+    receipt.ok(`模拟完成：填充 ${r.filled} 条，跳过 ${r.skipped} 条（手工/导入占位或值未变）。`)
     await loadYears()
     // 模拟填充写的是 2025 全年。不再自动把人挪到 2025 ——
     // 期归 store,矩阵上那一年会亮起来,要看点进去即可(改前是 year.value = 2025 直接跳)。
     if (picked.value) await loadMonth()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '模拟填充失败')
+    receipt.fail((e as { message?: string })?.message ?? '模拟填充失败')
   } finally {
     simulating.value = false
   }
@@ -529,7 +590,7 @@ const importCtx: ImportCtx = {}
 let elecCostParser: ({ templateCols: string[] } & Record<string, unknown>) | null = null
 try { elecCostParser = parserProps('elecCost', importCtx) } catch { elecCostParser = null }
 function openImport() {
-  if (!elecCostParser) { alert('导入解析器(importRegistry elecCost)尚未接入。'); return }
+  if (!elecCostParser) { receipt.fail('电费成本的导入还没接上,暂时只能逐格录入'); return }
   importing.value = true
 }
 async function onImport(payload: ImportRec[] | { label?: string; records: ImportRec[] }[], fileName: string) {
@@ -539,7 +600,7 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
     importResult.value = await runImport('elecCost', payload as never, importCtx, fileName)
     await Promise.all([loadMonth(), loadYears()])
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '导入失败')
+    receipt.fail((e as { message?: string })?.message ?? '导入失败')
   }
 }
 
@@ -569,11 +630,9 @@ function fmtMetric(mt: ElecMetricDTO): string {
     @retry="loadMonths"
   />
 
-  <!-- 电表清单一次都没拿到:硬失败面(照 PvMeterView) -->
+  <!-- 电表清单一次都没拿到:没有它费项清单铺不出来 —— 加载失败换掉整页内容(十件 ⑦,一律带重试) -->
   <div v-else-if="!meters && metersErr" class="ec-gate-fail">
-    <component :is="iconFor('alert-triangle')" :size="18" />
-    <span>{{ metersErr }}</span>
-    <Button variant="outline" size="sm" @click="loadMeters">重试</Button>
+    <FPLoadError sub="费项清单按电表一行行铺,没有它这页显示不出来" @retry="loadMeters">{{ metersErr }}</FPLoadError>
   </div>
 
   <div v-else-if="!meters || !entries || !metrics || !cfgs" class="page-loading"><span class="page-spin" /></div>
@@ -585,7 +644,11 @@ function fmtMetric(mt: ElecMetricDTO): string {
     <div class="ec-head">
       <div class="ec-headl">
         <div>
-          <h2 class="ec-title"><span class="ic"><component :is="iconFor('gauge')" :size="18" /></span>电费成本总览</h2>
+          <div class="ec-titlerow">
+            <h2 class="ec-title"><span class="ic"><component :is="iconFor('gauge')" :size="18" /></span>电费成本总览</h2>
+            <!-- 页面状态(十件 ⑥):本月一条费项都没有。没读到时不贴 —— 没读到就不知道有没有 -->
+            <FPStateTag v-if="!loadErr && entries.length === 0" tone="warn">本月还没有费项</FPStateTag>
+          </div>
           <p class="ec-sub">园区电费物理模型 · 总表/宿舍/运营电表按费项逐月录入 · 派生收益指标 · 金额单位 元</p>
         </div>
       </div>
@@ -598,7 +661,7 @@ function fmtMetric(mt: ElecMetricDTO): string {
 
     <!-- 工具栏:模拟值提示 + 年月选择(只读操作不受管) + 编辑态按钮组 -->
     <div class="mx-toolbar">
-      <div v-if="simCount > 0" class="ec-simhint" title="来源列灰「模拟」徽标为系统按附表真实数据推导的模拟值;录入真实金额后自动转为手工数据">
+      <div v-if="simCount > 0" class="ec-simhint" v-tip="'来源列灰「模拟」徽标为系统按附表真实数据推导的模拟值;录入真实金额后自动转为手工数据'">
         <component :is="iconFor('info')" :size="13" />本月 {{ simCount }} 条模拟值(灰标)
       </div>
       <div v-else />
@@ -622,30 +685,26 @@ function fmtMetric(mt: ElecMetricDTO): string {
              四态八格由组件自己判(全站唯一那一份),屏这一层只负责喂键与人话名。 -->
         <FPReviewActions :keys="reviewKeys" :label="reviewLabel" :can-edit="canEnter" :edit="editMode" />
         <!-- 失败态禁"进"不禁"出"(:disabled 不分编辑态,不带 !editMode 会把「完成」也禁掉 → 死锁) -->
-        <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
-                          :review-note="reviewNote" :review-tip="reviewTip"
-                          :disabled="!editMode && !!loadErr"
-                          :title="!editMode && loadErr ? '数据未加载成功,先点失败条上的「重试」再进编辑' : undefined"
-                          @toggle="toggleEdit()" />
+        <!-- 悬停说明挂外面这层:钮禁用时自己收不到鼠标(同园区抄表) -->
+        <span v-tip="!editMode && loadErr ? '本月数据没读到,先点「重试」再进编辑' : undefined" class="ec-ebtn">
+          <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
+                            :review-note="reviewNote" :review-tip="reviewTip"
+                            :disabled="!editMode && !!loadErr"
+                            @toggle="toggleEdit()" />
+        </span>
       </div>
     </div>
 
-    <FPLoadError v-if="loadErr" @retry="retryLoad">
-      <div v-if="readErr">{{ year }}年{{ month }}月费项加载失败:{{ readErr }} —— 表内为空,不拿上一期的数顶替,编辑模式已锁。</div>
-      <div v-if="metersErr">{{ metersErr }} —— 电表清单停留在上次拉到的版本。</div>
+    <!-- 加载失败(十件 ⑦,LAYOUT-STABILITY §3):换掉下面三张卡本身,不是卡上方的流内条。
+         两份数据各自成行,别让一条盖掉另一条的原因;失败时 entries / metrics 已清空,写入口全关 -->
+    <FPLoadError v-if="loadErr" :sub="readErr ? `${readErr} · 屏上不显示上个月的数字` : undefined" @retry="retryLoad">
+      <div class="msg">
+        <div v-if="readErr">{{ year }} 年 {{ month }} 月的费项没读到</div>
+        <div v-if="metersErr">{{ metersErr }}</div>
+      </div>
     </FPLoadError>
 
-    <!-- 空态引导。⚠ 排除 loadErr:失败态下 entries 被清成 [],「暂无」会把失败说成「真的没有」 -->
-    <div v-if="!loadErr && entries.length === 0" class="ec-empty">
-      <component :is="iconFor('info')" :size="14" />
-      <span>
-        {{ year }}年{{ month }}月暂无费项数据 ——
-        <template v-if="editE">可直接在下方清单行内录入金额,或「导入」长表 Excel,或「模拟填充 2025」按附表真实数据推导。</template>
-        <template v-else-if="canEntry">进入右上角「编辑模式」可录入金额、导入或模拟填充。</template>
-        <template v-else>各费项显示为「—」。</template>
-      </span>
-    </div>
-
+    <template v-else>
     <!-- ① 费项清单(主表)。fp-stale 带 pointer-events:none —— 旧数据不许被点、被录 -->
     <Card surface="white" :padding="0" class="ec-listcard"
           :class="{ 'fp-stale': veil }" :aria-busy="veil">
@@ -655,10 +714,16 @@ function fmtMetric(mt: ElecMetricDTO): string {
           <span class="ec-cardsub">每月按电表填报各费项金额；浏览核对，修改请进编辑模式</span>
         </div>
       </div>
-      <table class="ec-table">
-        <colgroup><col /><col style="width:130px" /><col style="width:110px" /><col style="width:90px" /><col /></colgroup>
+      <!-- 本月一条费项都没有、又不在能录的编辑态 → 空状态占住表格区(十件 ⑦)。
+           ⚠ 编辑态不换:表格就是逐格录入的地方,换掉它空月就只剩导入一条路(同园区抄表) -->
+      <FPEmpty v-if="entries.length === 0 && !editE" class="ec-empty"
+               :sub="canEntry ? '进入「编辑模式」后可以逐格录入金额、导入长表 Excel,或按附表真实数据模拟填充 2025。' : '这个月各电表的费项都还没录。'">
+        {{ year }} 年 {{ month }} 月还没有费项
+      </FPEmpty>
+      <table v-else class="ec-table">
+        <colgroup><col :style="{ width: itemW + 'px' }" /><col style="width:130px" /><col style="width:110px" /><col style="width:90px" /><col :style="{ width: noteW + 'px' }" /><col /></colgroup>
         <thead>
-          <tr><th>项目</th><th class="num">金额(元)</th><th class="num">电量(kWh)</th><th>来源</th><th>备注</th></tr>
+          <tr><th>项目</th><th class="num">金额(元)</th><th class="num">电量(kWh)</th><th>来源</th><th>备注</th><th class="fp-fill" aria-hidden="true"></th></tr>
         </thead>
         <tbody>
           <tr v-for="r in rows" :key="r.key"
@@ -666,54 +731,63 @@ function fmtMetric(mt: ElecMetricDTO): string {
             <!-- 电表分组行:表名+类型徽标+该表小计,底色区分;编辑态名称行内改+删 -->
             <template v-if="r.t === 'group'">
               <td class="lbl g">
-                <input v-if="editE" class="ec-nameedit" type="text" :value="r.m.name"
-                       title="电表名,回车/失焦保存(需唯一)"
-                       @change="commitMeterName(r.m, ($event.target as HTMLInputElement).value)" />
+                <span v-if="editE" class="ec-fld">
+                  <input class="ec-nameedit" :class="{ bad: errOf(`name:${r.m.id}`) }" type="text"
+                         :value="rawOf(`name:${r.m.id}`, r.m.name)" :aria-invalid="errOf(`name:${r.m.id}`) ? 'true' : undefined"
+                         v-tip="'电表名,回车/失焦保存(需唯一)'"
+                         @change="commitMeterName(r.m, ($event.target as HTMLInputElement).value)" />
+                  <span class="fp-field-err ec-cellerr"><template v-if="errOf(`name:${r.m.id}`)">{{ errOf(`name:${r.m.id}`) }}</template></span>
+                </span>
                 <span v-else class="ec-gname">{{ r.m.name }}</span>
                 <span class="ec-kind">{{ KIND_LABEL[r.m.kind] }}</span>
-                <button v-if="editE" class="ec-del" title="删除电表(有费项数据不可删)" @click="delMeter(r.m)">
+                <button v-if="editE" class="ec-del" v-tip="'删除电表(有费项数据不可删)'" @click="delMeter(r.m)">
                   <component :is="iconFor('trash-2')" :size="14" />
                 </button>
               </td>
-              <td class="num gsum" title="该表各费项金额合计(核对用;有拆分的费项按拆分Σ计,抵减类费项亦计入)">{{ fy(r.subtotal) }}</td>
+              <td class="num gsum" v-tip="'该表各费项金额合计(核对用;有拆分的费项按拆分Σ计,抵减类费项亦计入)'">{{ fy(r.subtotal) }}</td>
               <td colspan="3" />
             </template>
             <!-- 费项行(缩进一级)/拆分子行·并存合计行(缩进两级) -->
             <template v-else>
               <td class="lbl" :class="[r.t === 'fee' ? 'lv1' : 'lv2', { warn: r.t === 'dirty' }]">
                 <button v-if="r.chevron" class="ec-chev" :class="{ open: r.open }"
-                        :title="r.open ? '收起楼栋拆分' : '展开楼栋拆分'"
+                        v-tip="r.open ? '收起楼栋拆分' : '展开楼栋拆分'"
                         @click="toggleOpen(r.m.id, r.feeKey)">
                   <component :is="iconFor('chevron-right')" :size="14" />
                 </button>
                 <span v-else class="ec-chevpad" />
                 <component :is="iconFor('corner-down-right')" v-if="r.t === 'split'" :size="12" />
                 <component :is="iconFor('alert-triangle')" v-if="r.t === 'dirty'" :size="12" />
-                <span :title="r.hint">{{ r.label }}</span>
+                <span v-tip="r.hint">{{ r.label }}</span>
                 <span v-if="r.t === 'fee' && r.dirty" class="ec-warn"
-                      title="合计行与拆分行并存,金额以拆分Σ为准(spec §3);展开后清空合计行可消除本警示">并存⚠</span>
+                      v-tip="'合计行与拆分行并存,金额以拆分Σ为准;展开后清空合计行可消除本警示'">并存⚠</span>
               </td>
               <td class="num">
                 <!-- 有拆分行:金额=Σ拆分读时派生(只读),展开子行修改;其余行编辑态行内输入,浏览态纯文本 -->
-                <span v-if="r.derived" class="ec-derived" title="由楼栋拆分行求和派生;展开子行修改">{{ fy(r.dAmount ?? 0) }}</span>
-                <input v-else-if="editE" class="ec-in" type="number" min="0" step="0.01"
-                       :value="r.e?.amount ?? ''" placeholder="—"
-                       title="金额(元),回车/失焦保存;清空=删除该费项行"
-                       @change="commitAmount(r.m.id, r.feeKey, r.subKey, ($event.target as HTMLInputElement).value)" />
+                <span v-if="r.derived" class="ec-derived" v-tip="'由楼栋拆分行求和派生;展开子行修改'">{{ fy(r.dAmount ?? 0) }}</span>
+                <span v-else-if="editE" class="ec-fld">
+                  <input class="ec-in" :class="{ bad: errOf(`amt:${r.m.id}|${r.feeKey}|${r.subKey}`) }" type="number" min="0" step="0.01"
+                         :value="rawOf(`amt:${r.m.id}|${r.feeKey}|${r.subKey}`, r.e?.amount)" placeholder="—"
+                         :aria-invalid="errOf(`amt:${r.m.id}|${r.feeKey}|${r.subKey}`) ? 'true' : undefined"
+                         v-tip="'金额(元),回车/失焦保存;清空=删除该费项行'"
+                         @change="commitAmount(r.m.id, r.feeKey, r.subKey, ($event.target as HTMLInputElement).value)" />
+                  <span class="fp-field-err ec-cellerr"><template v-if="errOf(`amt:${r.m.id}|${r.feeKey}|${r.subKey}`)">{{ errOf(`amt:${r.m.id}|${r.feeKey}|${r.subKey}`) }}</template></span>
+                </span>
                 <span v-else :class="{ zero: !r.e }">{{ r.e ? fy(r.e.amount) : '—' }}</span>
               </td>
               <td class="num qty" :class="{ zero: fmtQty(r) === '—' }">{{ fmtQty(r) }}</td>
               <td class="src">
-                <span v-if="r.e?.source === 'simulated'" class="ec-sim" :title="r.e.note ?? '模拟数据'">模拟</span>
+                <span v-if="r.e?.source === 'simulated'" class="ec-sim" v-tip="r.e.note ?? '模拟数据'">模拟</span>
                 <span v-else-if="r.e" class="ec-srctxt">{{ SRC_LABEL[r.e.source] }}</span>
               </td>
               <td class="note">
                 <input v-if="editE && r.e && !r.derived" class="ec-in txt" type="text"
-                       :value="r.e.note ?? ''" placeholder="—" title="备注,回车/失焦保存"
+                       :value="r.e.note ?? ''" placeholder="—" v-tip="'备注,回车/失焦保存'"
                        @change="commitNote(r.e, ($event.target as HTMLInputElement).value)" />
-                <span v-else-if="r.e?.note" class="ec-notetxt" :title="r.e.note">{{ r.e.note }}</span>
+                <span v-else-if="r.e?.note" class="ec-notetxt" v-tip="r.e.note">{{ r.e.note }}</span>
               </td>
             </template>
+            <td class="fp-fill" aria-hidden="true"></td>
           </tr>
         </tbody>
       </table>
@@ -730,16 +804,17 @@ function fmtMetric(mt: ElecMetricDTO): string {
         </div>
       </div>
       <table class="ec-table">
-        <colgroup><col style="width:200px" /><col style="width:150px" /><col /><col style="width:240px" /></colgroup>
+        <colgroup><col style="width:200px" /><col style="width:150px" /><col :style="{ width: formulaW + 'px' }" /><col style="width:240px" /><col /></colgroup>
         <thead>
-          <tr><th>指标</th><th class="num">本月值</th><th>公式</th><th>缺失数据源</th></tr>
+          <tr><th>指标</th><th class="num">本月值</th><th>公式</th><th>缺失数据源</th><th class="fp-fill" aria-hidden="true"></th></tr>
         </thead>
         <tbody>
           <tr v-for="mt in metrics" :key="mt.key" :class="{ miss: mt.missing.length > 0 }">
             <td class="lbl lv1"><span class="ec-chevpad" /><span>{{ mt.label }}</span></td>
             <td class="num mval" :class="{ neg: (mt.value ?? 0) < 0, zero: mt.value == null }">{{ fmtMetric(mt) }}</td>
-            <td class="formula" :title="mt.formulaText">{{ mt.formulaText }}</td>
-            <td class="missing" :title="mt.missing.join('；') || undefined">{{ mt.missing.join('；') }}</td>
+            <td class="formula" v-tip="mt.formulaText">{{ mt.formulaText }}</td>
+            <td class="missing" v-tip="mt.missing.join('；') || undefined">{{ mt.missing.join('；') }}</td>
+            <td class="fp-fill" aria-hidden="true"></td>
           </tr>
         </tbody>
       </table>
@@ -756,35 +831,45 @@ function fmtMetric(mt: ElecMetricDTO): string {
         </div>
       </div>
       <table class="ec-table">
-        <colgroup><col /><col style="width:170px" /><col style="width:170px" /><col style="width:190px" /></colgroup>
+        <colgroup><col :style="{ width: cfgW + 'px' }" /><col style="width:170px" /><col style="width:170px" /><col style="width:190px" /><col /></colgroup>
         <thead>
-          <tr><th>参数</th><th class="num">{{ month }}月值</th><th class="num">长期默认值</th><th class="num">生效值</th></tr>
+          <tr><th>参数</th><th class="num">{{ month }}月值</th><th class="num">长期默认值</th><th class="num">生效值</th><th class="fp-fill" aria-hidden="true"></th></tr>
         </thead>
         <tbody>
           <tr v-for="c in cfgs" :key="c.cfgKey">
             <td class="lbl lv1">
               <span class="ec-chevpad" />
-              <span :title="c.note ?? undefined">{{ CFG_META[c.cfgKey]?.label ?? c.cfgKey }}</span>
+              <span v-tip="c.note ?? undefined">{{ CFG_META[c.cfgKey]?.label ?? c.cfgKey }}</span>
               <span class="ec-unit">{{ CFG_META[c.cfgKey]?.unit }}</span>
             </td>
             <td class="num">
-              <input class="ec-cfgin" type="number" min="0" step="0.0001"
-                     :value="c.monthValue ?? ''" placeholder="—" title="当月值,回车/失焦保存;清空=回退默认"
-                     @change="commitCfg(c, 'month', ($event.target as HTMLInputElement).value)" />
+              <span class="ec-fld">
+                <input class="ec-cfgin" :class="{ bad: errOf(`cfg:${c.cfgKey}|month`) }" type="number" min="0" step="0.0001"
+                       :value="rawOf(`cfg:${c.cfgKey}|month`, c.monthValue)" placeholder="—"
+                       :aria-invalid="errOf(`cfg:${c.cfgKey}|month`) ? 'true' : undefined" v-tip="'当月值,回车/失焦保存;清空=回退默认'"
+                       @change="commitCfg(c, 'month', ($event.target as HTMLInputElement).value)" />
+                <span class="fp-field-err ec-cellerr"><template v-if="errOf(`cfg:${c.cfgKey}|month`)">{{ errOf(`cfg:${c.cfgKey}|month`) }}</template></span>
+              </span>
             </td>
             <td class="num">
-              <input class="ec-cfgin" type="number" min="0" step="0.0001"
-                     :value="c.defaultValue ?? ''" placeholder="—" title="长期默认值,回车/失焦保存"
-                     @change="commitCfg(c, 'default', ($event.target as HTMLInputElement).value)" />
+              <span class="ec-fld">
+                <input class="ec-cfgin" :class="{ bad: errOf(`cfg:${c.cfgKey}|default`) }" type="number" min="0" step="0.0001"
+                       :value="rawOf(`cfg:${c.cfgKey}|default`, c.defaultValue)" placeholder="—"
+                       :aria-invalid="errOf(`cfg:${c.cfgKey}|default`) ? 'true' : undefined" v-tip="'长期默认值,回车/失焦保存'"
+                       @change="commitCfg(c, 'default', ($event.target as HTMLInputElement).value)" />
+                <span class="fp-field-err ec-cellerr"><template v-if="errOf(`cfg:${c.cfgKey}|default`)">{{ errOf(`cfg:${c.cfgKey}|default`) }}</template></span>
+              </span>
             </td>
             <td class="num eff" :class="{ zero: c.value == null }">
               {{ c.value != null ? c.value : '未配置' }}
               <span v-if="c.source" class="ec-cfgsrc">{{ c.source === 'month' ? '当月' : '默认' }}</span>
             </td>
+            <td class="fp-fill" aria-hidden="true"></td>
           </tr>
         </tbody>
       </table>
     </Card>
+    </template>
 
     <!-- 新增电表轻量弹窗(仅编辑态入口) -->
     <div v-if="meterDlg" class="ec-mask" :class="{ 'fp-fsheet': sheet }" @mousedown="meterDlg = false">
@@ -796,7 +881,7 @@ function fmtMetric(mt: ElecMetricDTO): string {
         <div class="ec-dlg-b fp-fsheet-bd">
           <Input v-model="mForm.name" label="电表名称" placeholder="如:充电桩总表" size="sm" />
           <Select v-model="mForm.kind" label="类型" :options="KIND_OPTS" size="sm" />
-          <div class="ec-dlg-err">{{ mErr }}</div>
+          <p class="fp-field-err"><template v-if="mErr">{{ mErr }}</template></p>
         </div>
         <div class="ec-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="meterDlg = false">取消</Button>
@@ -838,26 +923,23 @@ function fmtMetric(mt: ElecMetricDTO): string {
 }
 .ec-permonth:hover { color: var(--hue-blue); border-color: var(--hue-blue); }
 .ec-per { flex: 0 0 auto; font-family: var(--font-mono); font-size: 13px; font-weight: var(--fw-bold); }
+.ec-ebtn { display: inline-flex; flex: 0 0 auto; }
 
-.ec-gate-fail {
-  display: flex; align-items: center; justify-content: center; gap: 10px;
-  height: 100%; color: var(--hue-red); font-size: 13px;
-}
+/* 加载失败换掉整页:FPEmpty 只长不缩,给它一根撑满的纵向 flex */
+.ec-gate-fail { display: flex; flex-direction: column; height: 100%; }
 /* position: relative —— FPLoadBar 是 absolute,宿主不给参照它会认 AppShell 的 .fp-main-card */
 .ec-page { position: relative; display: flex; flex-direction: column; gap: 16px; box-sizing: border-box; max-width: 1600px; margin: 0 auto; width: 100%; }
 
 /* ── 标题行(同 PvMeterView .pm-head 家族) ── */
 .ec-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .ec-headl { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ec-titlerow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ec-title { margin: 0; display: flex; align-items: center; gap: 11px; font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .ec-title .ic { width: 34px; height: 34px; border-radius: 10px; background: var(--surface-sunken); display: grid; place-items: center; color: var(--text-secondary); flex: 0 0 auto; }
 .ec-sub { margin: 5px 0 0; font-size: var(--fs-label); color: var(--text-muted); }
 
 /* 工具栏左侧模拟值提示 */
 .ec-simhint { display: flex; align-items: center; gap: 6px; font-size: var(--fs-label); color: var(--text-muted); cursor: help; }
-
-/* ── 空态引导条 ── */
-.ec-empty { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); }
 
 /* ── 列表卡(LIST-PAGE-SPEC 形态:Card+表格,卡头=标题+副标题) ── */
 .ec-listcard { border: 1px solid var(--border-subtle); overflow: hidden; }
@@ -866,7 +948,7 @@ function fmtMetric(mt: ElecMetricDTO): string {
 .ec-cardtitle { font-size: 14.5px; font-weight: var(--fw-semibold); color: var(--text-primary); }
 .ec-cardsub { font-size: var(--fs-label); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* ── 表格:定宽列律(colgroup+fixed,至多弹性列吸收余宽)+行高等高铁律(46px,内容 ellipsis 不撑行) ── */
+/* ── 表格:定宽列律(colgroup+fixed,各列按内容定宽,余宽落进行末空列 .fp-fill,LIST-PAGE §4 2026-10-02)+行高等高铁律(46px,内容 ellipsis 不撑行) ── */
 .ec-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-family: var(--font-sans); }
 .ec-table th { position: sticky; top: 0; background: var(--surface-white); padding: 8px 16px; text-align: left; font: var(--type-label); font-weight: var(--fw-regular); color: var(--text-muted); white-space: nowrap; border-bottom: 1px solid var(--divider); }
 .ec-table th.num { text-align: right; }
@@ -903,7 +985,7 @@ function fmtMetric(mt: ElecMetricDTO): string {
 .ec-warn { font-size: var(--fs-micro); color: var(--hue-orange); background: rgb(255, 247, 232); border-radius: var(--radius-full); padding: 1px 7px; cursor: help; }
 :root[data-theme="dark"] .ec-warn { background: var(--warn-soft); }
 
-/* 来源列:模拟=灰徽标(title=推导来源),手工/导入=灰文本 */
+/* 来源列:模拟=灰徽标(悬停说明=推导来源),手工/导入=灰文本 */
 .ec-sim { font-size: var(--fs-micro); color: var(--text-muted); background: var(--bg-sunken); border-radius: var(--radius-full); padding: 1px 7px; cursor: help; }
 .ec-srctxt { font-size: var(--fs-micro); color: var(--text-disabled); }
 .ec-notetxt { color: var(--text-secondary); }
@@ -935,6 +1017,18 @@ function fmtMetric(mt: ElecMetricDTO): string {
 .ec-cfgin { width: 100%; box-sizing: border-box; height: 30px; padding: 0 8px; text-align: right; border: 1px solid var(--border-control); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-body); color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard); appearance: textfield; -moz-appearance: textfield; }
 .ec-cfgin::-webkit-outer-spin-button, .ec-cfgin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .ec-cfgin:focus { outline: none; border-color: var(--hue-blue); }
+
+/* ── 行内格的字段报错(十件 ⑤):红字贴在输入框正下方,浮在格子下沿 —— 不撑行高、不挪同行别的格。
+   只在出错时有字;最后一行翻到输入框上方,免得被卡片圆角裁掉。框变红跟着。 ── */
+.ec-fld { position: relative; display: flex; min-width: 0; }
+td.num .ec-fld { width: 100%; }
+.ec-table td:has(> .ec-fld) { overflow: visible; }
+.ec-cellerr { position: absolute; left: 0; top: 100%; z-index: 2; padding: 0 4px; border-radius: var(--radius-sm); background: var(--surface-white); white-space: nowrap; pointer-events: none; }
+td.num .ec-cellerr { left: auto; right: 0; }
+.ec-table tbody tr:last-child .ec-cellerr { top: auto; bottom: 100%; }
+.ec-cellerr:empty { display: none; }
+.ec-nameedit.bad, .ec-nameedit.bad:focus, .ec-in.bad, .ec-in.bad:hover, .ec-in.bad:focus,
+.ec-cfgin.bad, .ec-cfgin.bad:focus { border-color: var(--delta-down-text); }
 .ec-cfgin::placeholder { color: var(--text-disabled); }
 .ec-table td.eff { color: var(--text-secondary); }
 .ec-cfgsrc { margin-left: 6px; font-size: var(--fs-micro); font-family: var(--font-sans); color: var(--text-muted); background: var(--bg-sunken); border-radius: var(--radius-full); padding: 1px 7px; }
@@ -946,6 +1040,5 @@ function fmtMetric(mt: ElecMetricDTO): string {
 .ec-dlg-h h3 { margin: 0; font-size: 16px; font-weight: var(--fw-semibold); color: var(--text-primary); }
 .ec-dlg-h p { margin: 6px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--text-muted); }
 .ec-dlg-b { padding: 16px 22px 4px; display: flex; flex-direction: column; gap: 12px; }
-.ec-dlg-err { font-size: 11.5px; color: var(--hue-red); min-height: 14px; }
 .ec-dlg-f { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 22px 20px; }
 </style>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 合同期时间轴(F2):纯 CSS 横条,不用 ECharts——蓝淡色=计租期,红淡色=免租期,深色竖线=今天;
-// hover 用原生 title 显示区间日期+备注。无起止日期显示「待签约」空态。
+// 悬停说明(v-tip)显示区间日期+备注。无起止日期显示「待签约」空态。
 import { computed } from 'vue'
 import type { RentFreePeriod } from '@/types/contract'
 
@@ -51,10 +51,10 @@ const todayPct = computed(() => {
 
 <template>
   <div v-if="range" class="ctl">
-    <div class="ctl-bar" :title="`计租期 ${startDate} → ${endDate}`">
+    <div class="ctl-bar" v-tip="`计租期 ${startDate} → ${endDate}`">
       <div v-for="(f, i) in freeSegs" :key="i" class="ctl-free"
-           :style="{ left: f.left + '%', width: f.width + '%' }" :title="f.title" />
-      <div v-if="todayPct != null" class="ctl-today" :style="{ left: todayPct + '%' }" :title="`今天 ${todayStr}`" />
+           :style="{ left: f.left + '%', width: f.width + '%' }" v-tip="f.title" />
+      <div v-if="todayPct != null" class="ctl-today" :style="{ left: todayPct + '%' }" v-tip="`今天 ${todayStr}`" />
     </div>
     <div class="ctl-legend">
       <span><i class="ctl-dot rent" /> 计租期</span>

@@ -1,7 +1,7 @@
 // 公共电核算(PoolLedgerView)写口守卫 —— 钉住 2026-08-29 落地的 5 处 + F2(载入竞态)一处:
 //   ① watch(editMode) 转假 → 池配置抽屉(FPDrawer)跟着关(:86)
-//   ② onDeactivated 收 alertOpen —— FPAlertPanel 是 FPSideDrawer(Teleport to body),
-//     子树随 KeepAlive 停用消失时它会留在 body 上飘着(:83)
+//   ② KeepAlive 停用 → 问题面板收起:FPAlertPanel 自己 onDeactivated 收 + 本屏 onDeactivated 里的
+//     alertOpen=false 双保险(任一处在都绿,两处都删才红;组件那处单独钉在 alertPanel.spec「屏被 KeepAlive 停用」)
 //   ③ onGenerate 开头 `if (!editMode.value) return` —— 生成是整月先删后插(:287)
 //   ④ submitPool(:686) / delPool(:726) 开头同款守卫
 //   ⑤ 期由 useChainDeepPeriod 在 setup 期落定,applyHandoff 只剩 generate=1,顺序仍是先有期再进编辑,
@@ -43,6 +43,7 @@ vi.mock('@/api/alloc', () => ({
   allocApi: {
     pools: vi.fn(() => Promise.resolve({ generated: false, rows: [] })),
     memberDiff: vi.fn(() => Promise.resolve([])),
+    meterDiff: vi.fn(() => Promise.resolve([])),
     rules: vi.fn(() => Promise.resolve([])),
     generate: vi.fn(() => Promise.resolve({ warnings: [] })),
     createRule: vi.fn(() => Promise.resolve({})),
@@ -86,7 +87,8 @@ vi.mock('@/api/review', () => ({
 
 import PoolLedgerView from '../alloc/PoolLedgerView.vue'
 import { allocApi, type AllocRuleDTO } from '@/api/alloc'
-import { paramsApi } from '@/api/params'
+import { paramsApi, type ParamStatusDTO } from '@/api/params'
+import { askQueue, answer } from '@/utils/ask'
 
 /** vm 直呼写函数用(script setup 的顶层绑定在 dev 构建里挂在实例代理上,meterPeriodFlow 同款) */
 interface Vm {
@@ -122,6 +124,8 @@ describe('PoolLedgerView 写口守卫', () => {
     await w.findAll('button').find(b => b.text().includes('新增池'))!.trigger('click')
     await flushPromises()
     expect(document.querySelector('.fp-dwr-backdrop'), '前置:池配置抽屉开着').not.toBeNull()
+    // 破坏验证:PoolLedgerView 的 dirty 去掉 approxDirty 包装 → 红(离开确认会说「1 处改动」,其实只知道抽屉开着)
+    expect(useAuthStore().dirtyApproxOn(''), '抽屉开着就算 1,不报处数').toBe(true)
     // 提权到期同款路径:权限掉光 → useEditMode 的 watch([editMode, missing]) 把 editMode 就地转假
     useAuthStore().permissions = []
     await flushPromises()
@@ -132,7 +136,7 @@ describe('PoolLedgerView 写口守卫', () => {
     w.unmount()
   })
 
-  it('② KeepAlive 停用收 alertOpen —— FPAlertPanel 是 Teleport 抽屉,子树没了它不会没', async () => {
+  it('② KeepAlive 停用(切页签)→ 问题面板收起,切回来不还开着', async () => {
     const Host = defineComponent({
       components: { PoolLedgerView },
       props: { on: { type: Boolean, default: true } },
@@ -141,17 +145,17 @@ describe('PoolLedgerView 写口守卫', () => {
     useBillingPeriodStore().pick(2025, 3)
     const w = mount(Host, { global: { stubs: { Teleport: true } } })
     await flushPromises()
-    await w.find('button.fac').trigger('click')   // 常驻告警 chip → 开右侧抽屉
+    await w.find('button.fac').trigger('click')   // 入口胶囊 → 开问题面板
     await flushPromises()
-    expect(w.find('.fp-sdw').exists(), '前置:告警抽屉开着').toBe(true)
+    expect(w.find('.fap').exists(), '前置:问题面板开着').toBe(true)
 
     await w.setProps({ on: false })   // KeepAlive 停用 = 切到别的页签
     await flushPromises()
     await w.setProps({ on: true })
     await flushPromises()
-    // production 删掉 :83 onDeactivated 里的 `alertOpen.value = false` → 切回来抽屉还开着 → 红
-    // (真实站点里它 Teleport to body,停用时就飘在下一个屏上;单测 stub Teleport 后表现为切回仍渲染)
-    expect(w.find('.fp-sdw').exists()).toBe(false)
+    // 同时删掉 FPAlertPanel.vue 的 `onDeactivated(() => { if (props.open) emit('update:open', false) })`
+    // 和本屏 onDeactivated 里的 `alertOpen.value = false` → 切回来面板还开着 → 红;只删一处照样绿(双保险)
+    expect(w.find('.fap').exists()).toBe(false)
     w.unmount()
   })
 
@@ -185,18 +189,20 @@ describe('PoolLedgerView 写口守卫', () => {
     w.unmount()
   })
 
-  it('④b 浏览态直呼 delPool:有 id、confirm 恒真也删不动', async () => {
+  it('④b 浏览态直呼 delPool:有 id 也不问、删不动', async () => {
     const w = await mountPicked()
     const vm = w.vm as unknown as Vm
-    // 前置做足:id 非空(守卫后第一个早退)+ confirm 恒真(第二个早退)
+    // 前置做足:id 非空(守卫后第一个早退);确认框(ask)一出就答「删除池」
     vm.form.id = 7
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     expect(vm.editMode, '前置:浏览态').toBe(false)
-    await vm.delPool()
+    const done = vm.delPool()
     await flushPromises()
-    // production 删掉 :726 `if (!editMode.value) return` → deleteRule(7) 被打出去 → 红
+    // production 删掉开头的 `if (!editMode.value) return` → 浏览态也弹「删除池「…」？」→ 红
+    expect(askQueue, '浏览态连确认框都不该出').toHaveLength(0)
+    if (askQueue.length) answer(true)
+    await done
+    await flushPromises()
     expect(allocApi.deleteRule).not.toHaveBeenCalled()
-    confirmSpy.mockRestore()
     w.unmount()
   })
 
@@ -268,6 +274,35 @@ describe('PoolLedgerView 写口守卫', () => {
     expect(texts[iSubmit], '双键屏两把一起交').toBe('交审（2 项）')
     // §01:动作簇在编辑按钮**左边**,不是右边、也不是另起一行
     expect(iSubmit, '动作簇必须排在编辑按钮之前').toBeLessThan(iEdit)
+    w.unmount()
+  })
+})
+
+// T16(画布 06-C 方案 A):问题面板从右侧抽屉换成贴着入口的浮层;stale / 池配置改过并成「待重算」一组,组头「重算本月」。
+describe('公共电核算 · 问题面板', () => {
+  // 参数 10:00 改过、池结果 9:00 算的 → stale
+  const STALE: ParamStatusDTO = {
+    priceOk: 6, priceTotal: 6, pendingChanges: 2, lastChangeAt: '2025-04-02T10:00:00',
+    poolSnapshotAt: '2025-04-02T09:00:00', billBatchAt: null, stale: true, otherMonthsAffected: [],
+    lastChangeSource: 'param', staleSources: ['param'],
+  }
+  // 破坏验证:组头 action 的 label 改回「重新生成」→ 第二条红;run 不调 onGenerate → 第三条红;
+  //           面板退回 FPSideDrawer(带遮罩)→ 第一条红
+  it('⑧ 打开面板页面不变暗;编辑态「待重算」组头是「重算本月」,点了按本月生成', async () => {
+    vi.mocked(paramsApi.status).mockResolvedValueOnce(STALE)
+    vi.mocked(allocApi.generate).mockClear()
+    const w = await mountPicked()
+    await w.findAll('button').find(b => b.text().includes('编辑模式'))!.trigger('click')
+    await flushPromises()
+    await w.find('button.fac').trigger('click')
+    await flushPromises()
+    expect(document.querySelector('.fp-sdw-mask'), '问题面板不带遮罩').toBeNull()
+    const head = w.findAll('.fap-gh').find(h => h.text().includes('待重算'))!
+    const btn = head.findAll('button').find(b => b.text() === '重算本月')
+    expect(btn, '组头有「重算本月」').toBeDefined()
+    await btn!.trigger('click')
+    await flushPromises()
+    expect(allocApi.generate).toHaveBeenCalledWith('2025-03')
     w.unmount()
   })
 })

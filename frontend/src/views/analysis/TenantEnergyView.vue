@@ -10,7 +10,7 @@ import { useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
-import AnaShell from './AnaShell.vue'
+import AnaShell, { periodNote } from './AnaShell.vue'
 import { usePeriod } from '@/analysis/usePeriod'
 import { anaSettings } from '@/analysis/anaSettings'
 import { fetchLedgerRows, fetchS10TenantMap, fetchTenants } from '@/analysis/anaData'
@@ -21,7 +21,8 @@ import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
-import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
+import FPStateTag from '@/components/fp/FPStateTag.vue'
 import { NEG, WARN, fint, hues, inkA } from '@/components/ana/anaFmt'
 import { bandSeries } from '@/components/ana/anaTheme'
 import { PHASES } from '@/views/sales-income/layout'
@@ -40,18 +41,22 @@ const tenantMap = ref<Map<string, AnalysisS10Row[]>>(new Map())
 const ledgerRows = ref<AnalysisLedgerRow[]>([])
 const tenantList = ref<TenantDTO[]>([])
 
+let seq = 0   // 切回重读 / 重试可能叠着发:只认最后一趟
 async function reload() {
-  // 切回重读会重跑本函数:错误不清,重试成功后屏上仍挂着上次的失败文案(P3 T2 评审坐实)
-  err.value = ''
+  const my = ++seq
   try {
     const [tm, lr, ts] = await Promise.all([fetchS10TenantMap(), fetchLedgerRows(), fetchTenants()])
+    if (my !== seq) return
     tenantMap.value = tm
     ledgerRows.value = lr
     tenantList.value = ts
+    // 切回重读会重跑本函数:错误不清,重试成功后屏上仍挂着上次的失败文案(P3 T2 评审坐实)。
+    // 只在成功分支清:重试在途时失败件留在原地,不先闪出「s10 未录入」那张空态。
+    err.value = ''
   } catch (e) {
-    err.value = e instanceof Error ? e.message : String(e)
+    if (my === seq) err.value = e instanceof Error ? e.message : String(e)
   } finally {
-    loaded.value = true
+    if (my === seq) loaded.value = true
   }
 }
 onMounted(reload)
@@ -79,7 +84,7 @@ const curYm = computed(() => {
 })
 const winMonths = computed(() => s10Months.value.filter((m) => m <= curYm.value))
 
-// §五策略2「回退必须显式」:本期/台账期落在所选期间之外 → 横幅(月粒度比月;年粒度比年;相等不渲染)
+// §五策略2「回退必须显式」:本期落在所选期间之外 → 期间旁标签,台账期 → 应收实收卡头标签(月粒度比月;年粒度比年;相等不渲染)
 const selPeriodLabel = computed(() => period.ym.value ?? `${period.sel.value.year}年`)
 const outOfSel = (used: string): boolean =>
   period.ym.value ? used !== period.ym.value : !used.startsWith(period.sel.value.year + '-')
@@ -300,7 +305,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
 </script>
 
 <template>
-  <!-- §五:月敏感屏(full);「本期=≤所选的最近 s10 月」回退以横幅显式 -->
+  <!-- §五:月敏感屏(full);「本期=≤所选的最近 s10 月」回退以期间选择旁的标签显式 -->
   <AnaShell period-mode="full" :kpi-hold="!loaded ? 6 : 0">
     <!-- v-if 必须在槽内层:挂在 <template #kpis> 上时条件为假 → $slots.kpis 不存在 →
          AnaShell 的容器判不到、连同 min-height 一起不渲染 → 数据到达时整条 KPI 带凭空插入,
@@ -316,6 +321,10 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
       <AnaKpiTile label="期末欠费" :value="`¥${(arrearsSum / 10000).toFixed(1)}万`" :note="ledgerYm || '台账未录入'" />
       <AnaKpiTile label="欠费户数" :value="`${arrears.length} 户`" :note="ledgerYm || '台账未录入'" />
       </template>
+    </template>
+    <!-- §五策略2:所选期无 s10 →「本期」回退最近覆盖月,整屏口径 → 期间选择旁标签(画布 06-D,禁静默) -->
+    <template #period-note>
+      <FPStateTag v-if="s10Fallback && !err" tone="muted">{{ periodNote(selPeriodLabel, curYm) }}</FPStateTag>
     </template>
     <template #tools>
       <!-- 取数途中占位不可见(手机上工具条会因它多折一行,数据到了才插进来整页下推 38px);取完确实没数据才拿掉 -->
@@ -354,7 +363,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
             <p class="ana-ref"><span class="ana-hole">占位</span></p>
           </div>
           <div class="av2-card">
-            <!-- 台账期回退横幅与收缴率一行跟数据出没,库里现有数据两样都有,骨架按「有」留位。
+            <!-- 收缴率一行跟数据出没,库里现有数据有,骨架按「有」留位(台账期回退 2026-10-01 起是卡头标签,不占行)。
                  卡头的租户名是默认选中的榜首(现为两字简称),占位按两字留;榜首换成长名字时卡头会多折一行。 -->
             <div class="av2-card-h">
               <span class="t"><span class="ana-hole">某某</span> · 应收 vs 实收</span>
@@ -363,7 +372,6 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
                 <button class="te2-link" disabled tabindex="-1">查附表10 →</button>
               </span>
             </div>
-            <AnaPeriodBanner class="ana-hole" selected="0000-00" used="0000-00" source="台账" style="margin-bottom: 8px" />
             <AnaSkelChart :height="200" />
             <div class="te2-payline"><span class="ana-hole">0000-00 收缴率 <b>00%</b> · 期末结余 <b>¥0.0万</b></span></div>
           </div>
@@ -390,9 +398,8 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
     </div>
     <!-- skel:end -->
 
-    <div v-else-if="err" class="ak-page">
-      <AnaEmpty label="分析数据加载失败" :hint="err" />
-    </div>
+    <!-- 加载失败(画布 06-D 右格):换掉内容区,带重试;重试走同一个 reload(首载 / 切回共用) -->
+    <FPLoadError v-else-if="err" sub="屏上不显示上一次读到的数字" @retry="reload">租户用能数据没读到</FPLoadError>
 
     <div v-else-if="!s10Months.length" class="ak-page">
       <div class="ak-head">
@@ -408,8 +415,6 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
     </div>
 
     <div v-else class="ak-page">
-      <!-- §五策略2:所选期无 s10 →「本期」回退最近覆盖月,全屏口径横幅(禁静默) -->
-      <AnaPeriodBanner v-if="s10Fallback" :selected="selPeriodLabel" :used="curYm" source="s10" />
       <div class="av2-grid">
         <!-- 左列:租户搜索列表(本期费额降序,点击选中);spec §B/W3 按户|按家族开关 -->
         <div class="av2-card av2-s4 te2-left">
@@ -433,7 +438,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
               <span class="amt">{{ fint(r.cur) }}</span>
               <span v-if="!byFamily" class="dot" :style="{ background: payDot(r.name) }"></span>
             </button>
-            <div v-if="!listRows.length" class="te2-none">无匹配租户</div>
+            <AnaEmpty v-if="!listRows.length" label="无匹配租户" />
           </div>
         </div>
 
@@ -450,15 +455,14 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
           </div>
           <div class="av2-card">
             <div class="av2-card-h">
-              <span class="t">{{ selRow?.name ?? '—' }} · 应收 vs 实收</span>
+              <!-- §五策略2:所选期无台账 → 台账期回退,卡头标签(画布 06-D,禁静默) -->
+              <span class="t">{{ selRow?.name ?? '—' }} · 应收 vs 实收<FPStateTag v-if="ledgerFallback" tone="muted" style="margin-left: 8px">显示 {{ ledgerYm }}</FPStateTag></span>
               <span class="te2-links">
                 <button class="te2-link" :disabled="!ledgerYm" @click="goLedger">查台账 →</button>
                 <button class="te2-link" :disabled="!curYm" @click="goS10">查附表10 →</button>
               </span>
             </div>
             <template v-if="ledgerYms.length">
-              <!-- §五策略2:所选期无台账 → 台账期回退,卡顶横幅(禁静默) -->
-              <AnaPeriodBanner v-if="ledgerFallback" :selected="selPeriodLabel" :used="ledgerYm" source="台账" style="margin-bottom: 8px" />
               <template v-if="selPay.length">
                 <AnaEChart :option="payOption" :height="200" />
                 <div v-if="selPayRow" class="te2-payline">
@@ -466,7 +470,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
                   <span> · 期末结余 </span><b :style="{ color: selPayRow.bal > 0.005 ? 'var(--hue-red)' : 'var(--text-primary)' }">¥{{ (selPayRow.bal / 10000).toFixed(1) }}万</b>
                 </div>
               </template>
-              <div v-else class="te2-none" style="padding: 28px 0">该租户台账无应收/实收记录</div>
+              <AnaEmpty v-else label="该租户台账无应收/实收记录" />
             </template>
             <AnaEmpty v-else label="月度台账未录入" hint="录入台账后此处对照该租户应收与实收" to="/ledger" toText="去录入台账" />
           </div>
@@ -521,7 +525,6 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
 .te2-item .ph { flex: 0 0 auto; font-size: var(--fs-micro); color: var(--text-muted); }
 .te2-item .amt { flex: 0 0 auto; font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-primary); }
 .te2-item .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
-.te2-none { text-align: center; color: var(--text-disabled); font-size: var(--fs-label); padding: 16px 0; }
 .te2-right { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .te2-links { display: inline-flex; gap: 10px; }
 .te2-link { border: none; background: transparent; color: var(--text-link); font-size: var(--fs-micro); cursor: pointer; font-family: var(--font-sans); padding: 0; }

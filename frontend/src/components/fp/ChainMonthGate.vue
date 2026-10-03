@@ -157,8 +157,8 @@ const edge = (first: boolean) => {
       </div>
     </div>
 
-    <FPLoadError v-if="loadErr" @retry="period.reloadChain()">
-      <span>{{ loadErr }} —— 矩阵没显示出来，不是这些月都没做过。</span>
+    <FPLoadError v-if="loadErr" :sub="`${loadErr} · 不是这些月都没做过`" @retry="period.reloadChain()">
+      各月进度没读到
     </FPLoadError>
 
     <div v-else-if="!loaded" class="page-loading"><span class="page-spin" /></div>

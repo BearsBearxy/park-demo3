@@ -3,7 +3,7 @@
 // 值与原生框同格式:date 'YYYY-MM-DD' / range [from, to] / month 'YYYY-MM' / year 'YYYY';空 = ''。
 // 面板照稿 Picker(304 宽、打字行、快捷 + 翻页、周一开头、固定 6 行);≤600 换成底部面板。
 // 点外面 / Esc 的写法同 ds/Select:document capture 阶段(UI-OVERLAY-SPEC §1 §2)。
-import { computed, nextTick, onUnmounted, ref, useAttrs, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import { useViewport } from '@/composables/useViewport'
 
@@ -34,14 +34,11 @@ const props = withDefaults(defineProps<{
   /** chip 左侧图标 */
   icon?: string
   ariaLabel?: string
+  /** 悬停说明(v-tip),只挂在触发框上:挂在根上的话,面板(非手机时在根里面)里每一格悬停都冒出这条长提示 */
+  title?: string
 }>(), { mode: 'date', variant: 'field', size: 'md', align: 'start', icon: 'calendar' })
 
 const emit = defineEmits<{ 'update:modelValue': [v: T]; change: [v: T] }>()
-
-// 宿主的 title 只给触发器:落在根上的话,面板(非手机时在根里面)里每一格悬停都冒出宿主那条长提示
-defineOptions({ inheritAttrs: false })
-const attrs = useAttrs()
-const rootAttrs = computed(() => { const { title: _t, ...rest } = attrs; return rest })
 
 // ── 日期小算术(本地时区,只用年月日) ──
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -338,7 +335,7 @@ onUnmounted(() => {
 
 // ── 面板内容 ──
 const curYm = computed(() => `${vy.value}-${pad(vm.value)}`)
-const title = computed(() => (kind.value === 'date' ? `${vy.value}年${vm.value}月` : kind.value === 'month' ? `${vy.value}年` : `${vy.value}–${vy.value + 11}`))
+const navTitle = computed(() => (kind.value === 'date' ? `${vy.value}年${vm.value}月` : kind.value === 'month' ? `${vy.value}年` : `${vy.value}–${vy.value + 11}`))
 const navOff = computed<[boolean, boolean]>(() => {
   const { min, max } = props
   if (kind.value === 'date') {
@@ -445,14 +442,13 @@ const sheetTitle = computed(() => props.ariaLabel || props.placeholder || '选�
 
 <template>
   <div
-    v-bind="rootAttrs"
     ref="root"
     class="dp"
     :class="[`dp-v-${variant}`, { sm: size === 'sm', touch: vp.isTouch.value }]"
     :data-open="open ? '' : undefined"
     :data-invalid="invalid ? '' : undefined"
   >
-    <div class="dp-box" :class="{ on: variant === 'chip' && hasValue, dis: disabled }" :title="(attrs.title as string | undefined)" @click="toggle">
+    <div class="dp-box" :class="{ on: variant === 'chip' && hasValue, dis: disabled }" v-tip="title" @click="toggle">
       <component :is="iconFor(icon)" v-if="variant === 'chip'" class="dp-cico" :size="15" />
       <button
         ref="trig"
@@ -468,7 +464,7 @@ const sheetTitle = computed(() => props.ariaLabel || props.placeholder || '选�
         <span v-else-if="phText" class="dp-v dp-ph">{{ phText }}</span>
         <span v-else class="dp-v"><i v-for="(x, i) in phToks(segN)" :key="i" :class="x.c">{{ x.t }}</i></span>
       </button>
-      <button v-if="clearable && hasValue && !disabled" type="button" class="dp-clr" title="清除" aria-label="清除" @click.stop="clear">
+      <button v-if="clearable && hasValue && !disabled" type="button" class="dp-clr" v-tip="'清除'" aria-label="清除" @click.stop="clear">
         <component :is="iconFor('x')" :size="variant === 'chip' ? 13 : 12" />
       </button>
       <component :is="iconFor('calendar')" v-if="variant === 'field' || variant === 'inline'" class="dp-ico" :size="16" />
@@ -525,7 +521,7 @@ const sheetTitle = computed(() => props.ariaLabel || props.placeholder || '选�
           >{{ q.t }}</button>
           <span class="dp-nav">
             <button type="button" class="dp-nb" :disabled="navOff[0]" aria-label="上一页" @click="page(-1)"><component :is="iconFor('chevron-left')" :size="16" /></button>
-            <span class="dp-nt">{{ title }}</span>
+            <span class="dp-nt">{{ navTitle }}</span>
             <button type="button" class="dp-nb" :disabled="navOff[1]" aria-label="下一页" @click="page(1)"><component :is="iconFor('chevron-right')" :size="16" /></button>
           </span>
         </div>

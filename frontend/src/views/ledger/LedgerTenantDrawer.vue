@@ -3,6 +3,7 @@
 // 数据用②已加载的行(无额外请求)。
 import { computed, ref } from 'vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
 import FPStat from '@/components/fp/FPStat.vue'
 import FPSectionLabel from '@/components/fp/FPSectionLabel.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
@@ -154,7 +155,7 @@ const balTone = computed(() => {
         <div class="lg-dw-fld">
           <label>账面名(导入原文,与档案名可不一致)</label>
           <input v-if="canBind" class="lg-dw-in" type="text" :value="row.tenantName"
-                 :disabled="binding" title="回车/失焦保存;未绑定行改对名字会自动配档"
+                 :disabled="binding" v-tip="'回车/失焦保存;未绑定行改对名字会自动配档'"
                  @change="commitRename" />
           <span v-else>{{ row.tenantName }}</span>
         </div>
@@ -201,7 +202,7 @@ const balTone = computed(() => {
       </div>
 
       <!-- 费用分组(仅非零,按组 + 组内小计)jsx 693-705 -->
-      <div v-if="!hasFees" class="lg-dw-empty">该租户在 {{ companyName }} 暂无费用记账</div>
+      <FPEmpty v-if="!hasFees" size="sm">该租户在 {{ companyName }} 还没有费用记账</FPEmpty>
       <div v-for="g in feeGroups" :key="g.name">
         <div class="lg-dw-gt"><span>{{ g.name }}</span><b>{{ lgFmt(g.gsum) }}</b></div>
         <div v-for="c in g.items" :key="c.key" class="lg-dw-row">
@@ -245,7 +246,6 @@ const balTone = computed(() => {
 /* 备注给全文不截:文字块自己换行,段控定宽顶在右上角 */
 .lg-dw-ctx .t { flex:1 1 auto; min-width:0; margin:0; font-size:var(--fs-label); line-height:1.6; color:var(--text-secondary); overflow-wrap:anywhere; }
 /* 1:1 from screen-ledger.jsx LgStyles 241-249 */
-.lg-dw-empty { padding:40px 0; text-align:center; color:var(--text-disabled); font-size:13px; }
 .lg-dw-gt { font-size:11.5px; font-weight:var(--fw-semibold); color:var(--text-muted); margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; }
 .lg-dw-gt b { color:var(--text-secondary); font-family:var(--font-mono); }
 .lg-dw-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 0; border-bottom:1px solid var(--divider); font-size:12px; }

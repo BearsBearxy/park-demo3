@@ -23,10 +23,7 @@ const { isTouch } = useViewport()
 const PAGE = Object.fromEntries(fpAllPages().map(p => [p.value, p]))
 
 /** 页签上的一整句:`屏名 · 期 · 公司`,有几段写几段。期与公司来自 tabs.ctx —— 未激活的页签早已卸载。 */
-const titleOf = (v: string): string => {
-  const c = tabs.ctx[v]
-  return [tabMeta(v)?.page ?? v, c?.p, c?.coName].filter(Boolean).join(' · ')
-}
+const titleOf = (v: string): string => tabs.titleOf(v)
 const ctxOf = (v: string) => [tabs.ctx[v]?.p, tabs.ctx[v]?.coName].filter(Boolean).join(' · ')
 
 const activeValue = computed(() => (route.meta as Record<string, string>).value ?? '')
@@ -112,18 +109,12 @@ function selectTab(v: string) {
   if (v !== activeValue.value) router.push('/' + v)
 }
 
-/** 关掉 / 重新加载会卸掉这一屏的实例(App.vue 的 KeepAlive 按纪元卸载):我正在编辑的先问一句。 */
-function okToDrop(vs: string[], verb: string): boolean {
-  const editing = vs.filter(v => tabs.isEditing(v))
-  if (!editing.length) return true
-  const names = editing.map(v => `「${tabMeta(v)?.page ?? v}」`).join('')
-  return window.confirm(`${names}正在编辑。${verb}会丢失未保存的改动，继续？`)
-}
-
+// 关掉 / 重新加载会卸掉这一屏的实例(App.vue 的 KeepAlive 按纪元卸载):有没保存改动的先走离开确认
+// (tabs.leaveOk,画布 02-A),0 处改动直接关。
 async function closeTab(v: string, viaMouse = false) {
   if (v === HOME) return
   hideCard()
-  if (!okToDrop([v], '关掉')) return
+  if (!(await tabs.leaveOk([v]))) return
   if (viaMouse) frozenW.value = tabW.value
   const current = activeValue.value
   const next = tabs.close(v)
@@ -208,18 +199,18 @@ async function runMenu(k: string) {
   switch (k) {
     case 'new': newTab(v); break
     // 当前页签:epoch++ 让 KeepAlive 换新实例,原地重挂载;别的页签:下次切过去时是全新的
-    case 'reload': if (okToDrop([v], '重新加载')) tabs.dropState(v); break
+    case 'reload': if (await tabs.leaveOk([v], '重新加载')) tabs.dropState(v); break
     case 'pin': if (menuTabPinned(v)) tabs.unpin(v); else tabs.pin(v); break
     case 'fav': favs.toggle(v); break
     case 'close': await closeTab(v); break
     case 'others': {
-      if (!okToDrop(tabs.tabs.filter(t => !t.pinned && t.value !== v).map(t => t.value), '关掉')) break
+      if (!(await tabs.leaveOk(tabs.tabs.filter(t => !t.pinned && t.value !== v).map(t => t.value)))) break
       await closeMany(tabs.closeOthers(v), v)
       break
     }
     case 'right': {
       const i = tabs.tabs.findIndex(t => t.value === v)
-      if (!okToDrop(tabs.tabs.slice(i + 1).filter(t => !t.pinned).map(t => t.value), '关掉')) break
+      if (!(await tabs.leaveOk(tabs.tabs.slice(i + 1).filter(t => !t.pinned).map(t => t.value)))) break
       await closeMany(tabs.closeRight(v), v)
       break
     }
@@ -399,6 +390,8 @@ const dragStyle = (v: string) =>
             <component :is="iconFor(tabMeta(t.value)?.icon ?? '')" :size="t.pinned ? 16 : 14" />
           </span>
           <span v-if="!t.pinned" class="fp-tab-label">{{ titleOf(t.value) }}</span>
+          <!-- 这一屏有没保存的改动(画布 02-A):× 前一颗橙点;0 处改动不挂 -->
+          <i v-if="tabs.dirtyOf(t.value) > 0" class="fp-tab-dot" aria-hidden="true" />
           <!-- 固定钮:只在触屏渲染(桌面 DOM 不变)。触屏没有双击语义、右键菜单也不是触屏手势,
                它是触屏上唯一的固定入口(§6.3)。桌面的双击/右键入口原样保留。 -->
           <button
@@ -616,6 +609,9 @@ const dragStyle = (v: string) =>
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 改动点(画布 02-A):6px 橙点挂在 × 前;固定签没有标题和 ×,贴在图标右上角 */
+.fp-tab-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--hue-orange); }
+.fp-tab.pn > .fp-tab-dot { position: absolute; top: 9px; right: 9px; }
 .fp-tab-x {
   flex: 0 0 auto;
   width: 20px;

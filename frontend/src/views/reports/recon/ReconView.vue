@@ -126,9 +126,9 @@ function onPatch(tenantName: string, marked: boolean, note: string | null) {
           <p class="rc-psub">按月核对:月度台账(各管理公司之和)⇄ 附表10(按期区申报)</p>
         </div>
         <span class="fin-ypill">
-          <button title="上一年" @click="setYear(year - 1)"><component :is="iconFor('chevron-left')" :size="15" /></button>
+          <button v-tip="'上一年'" @click="setYear(year - 1)"><component :is="iconFor('chevron-left')" :size="15" /></button>
           <span class="v">{{ year }}</span>
-          <button :disabled="year >= maxYear" title="下一年" @click="setYear(year + 1)"><component :is="iconFor('chevron-right')" :size="15" /></button>
+          <button :disabled="year >= maxYear" v-tip="'下一年'" @click="setYear(year + 1)"><component :is="iconFor('chevron-right')" :size="15" /></button>
         </span>
       </div>
 

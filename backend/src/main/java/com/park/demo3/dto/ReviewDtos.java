@@ -32,7 +32,17 @@ public final class ReviewDtos {
      * 「屏 → kind → 人话」这张表会在前后端各存一份,必漂移。
      */
     public record PendingItemDTO(String key, String kind, String scope, String period,
-                                 String label, String submittedBy, java.time.LocalDateTime submittedAt) {}
+                                 String label, String submittedBy, java.time.LocalDateTime submittedAt,
+                                 /** 交审人显示名。铃铛「等你处理」第二行写「李出纳交 · 10 分钟前」(06-F) */
+                                 String submittedByName) {}
+
+    /**
+     * 我交的、被退回的一张表(铃铛「等你处理」,06-E「逐张列出带理由」)。
+     * 第二行「李审：B座 3 块表读数比上月小 · 09:12」= reviewedByName + reason + reviewedAt。
+     */
+    public record ReturnedItemDTO(String key, String kind, String scope, String period, String label,
+                                  String reviewedBy, String reviewedByName, LocalDateTime reviewedAt,
+                                  String reason) {}
 
     public record ReasonReq(
         @NotBlank(message = "必须写明理由") @Size(max = 255) String reason) {}

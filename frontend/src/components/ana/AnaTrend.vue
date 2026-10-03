@@ -98,10 +98,10 @@ function onMove(e: PointerEvent) {
 <style scoped>
 /* 首挂擦入:数据组一条 clip-path 从左到右(fp-wipe 在 ana.css,基态写在这里) */
 .trend-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
-.ana-trend-tip { position: absolute; top: 2px; min-width: 134px; pointer-events: none; background: var(--tip-bg); color: var(--text-on-solid); border-radius: 10px; padding: 9px 12px; box-shadow: var(--shadow-tooltip); }
-.ana-trend-tip .lb { font-size: 11px; opacity: 0.65; margin-bottom: 6px; }
+.ana-trend-tip { position: absolute; top: 2px; min-width: 134px; pointer-events: none; background: var(--tip-bg); color: var(--text-on-solid); border-radius: 6px; padding: 6px 10px; font-size: 12px; line-height: 18px; box-shadow: var(--shadow-tooltip); }
+.ana-trend-tip .lb { opacity: 0.65; margin-bottom: 6px; }
 .ana-trend-tip .row { display: flex; align-items: center; gap: 8px; }
 .ana-trend-tip .sw { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
-.ana-trend-tip .nm { font-size: var(--fs-micro); opacity: 0.8; flex: 1; }
+.ana-trend-tip .nm { opacity: 0.8; flex: 1; }
 .ana-trend-tip .vv { font-family: var(--font-mono); font-weight: 600; font-size: var(--fs-label); }
 </style>

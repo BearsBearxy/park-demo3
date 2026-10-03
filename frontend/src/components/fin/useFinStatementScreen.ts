@@ -27,10 +27,15 @@ import { maxSelectableYear } from '@/utils/yearGate'
 import { S } from '@/utils/lockScopes'
 import { useEditLock } from '@/composables/useEditLock'
 import { useReviewStore } from '@/stores/review'
+import { useUiStore } from '@/stores/ui'
+import { tabMeta } from '@/stores/tabs'
+import { useScreen } from '@/composables/useTabShells'
 import type { ReviewStatus } from '@/types/review'
 import { runImport } from '@/utils/importRegistry'
 import { finMoney } from '@/utils/finFmt'
 import { useAuthStore } from '@/stores/auth'
+import { ask, askLeave } from '@/utils/ask'
+import { receipt } from '@/utils/receipt'
 
 /** 公司的最小形状。原先长在 FinCompanyPicker 上,那个整屏选择器已随四层动线退场。 */
 export interface FinCompany { id: number | string; name: string; short?: string }
@@ -41,6 +46,8 @@ export interface FinMonthMeta { month: number; hasData: boolean; preview?: strin
 // BookMonthMatrix 的 book 只是「有没有选中的东西」一个比特(见该组件 prop 注释)。
 // 模块级常量而非每次渲染新建 {}:身份稳定,不白白触发子组件重渲。
 const MATRIX_BOOK = {}
+
+const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
 
 export function useFinStatementScreen(opts: {
   stmt: 'is' | 'bs' | 'tb'
@@ -296,11 +303,13 @@ export function useFinStatementScreen(opts: {
   }
 
   // ── 状态迁移(两层:左栏选公司 → 矩阵点月格 → 正文) ────────
-  /** 左栏点一项。'all' = 全部汇总(只读)。编辑态切公司会丢草稿,先问。 */
+  /** 离开确认里的「这页」:公司 · 期(屏名由屏自己给,这里不拼,见 reviewLabelOf 注释)。 */
+  const pageLabel = () => [companyName.value, periodOf(year.value, month.value)].filter(Boolean).join(' · ')
+  /** 左栏点一项。'all' = 全部汇总(只读)。编辑态切公司会丢草稿,先问(0 处改动 askLeave 直接放行)。 */
   async function pickCompany(id: number | string) {
     if (id === companyId.value) return
-    if (edit.value && dirty.value > 0 &&
-        !window.confirm(`正在编辑本期,切换公司将丢弃 ${dirty.value} 处未保存的修改,继续?`)) return
+    if (edit.value && !(await askLeave({ page: pageLabel(), count: dirty.value, verb: '离开' }))) return
+    if (id === companyId.value) return   // 问的这会儿别处已经切过去了
     companyId.value = (id === 'all' ? 'all' : Number(id))
     month.value = null; edit.value = false; draft.value = {}; period.value = null
     opts.resetLocal()
@@ -330,7 +339,8 @@ export function useFinStatementScreen(opts: {
   //   给一个存不了盘的视图上锁,只会平白挡住别人。
   const lockScope = () => S.report(stmt, companyId.value, year.value, month.value)
   // 被接管时**只退编辑态,不清草稿** —— 他还要把没保存的东西复制走。
-  const lock = useEditLock(() => { edit.value = false }, () => canEdit.value)
+  // 改动数接进 auth.editors:页签橙点、关页签 / 退出登录的离开确认都按它(0 处不弹)
+  const lock = useEditLock(() => { edit.value = false }, () => canEdit.value, () => dirty.value)
   const { lockedBy, evictedBy } = lock
   /** 这一期此刻被谁占着 —— 取自在场表，不用点按钮撞门（设计稿 C-2）。 */
   const heldByOther = lock.watchScope(lockScope)
@@ -371,7 +381,15 @@ export function useFinStatementScreen(opts: {
   const reviewNote = computed(() => reviewBlock.value?.note ?? null)
   const reviewTip = computed(() => reviewBlock.value?.tip ?? null)
   // 编辑态里被别人审了就退出来 —— 跨账号同步之后这条真会触发(改前它是死的)。
-  watch(reviewBlock, (b) => { if (b && edit.value) cancelEdit() })
+  // 退出前当面说一声谁交审 / 谁审过(06-E 当场出现组,App 的居中弹窗读 ui.editStop)。
+  // 换公司 / 换月 / 回矩阵都先把 edit 置假(pickCompany / pickCell / backToMatrix),所以走到这里的只有「别人动了这一把」。
+  const ui = useUiStore()
+  const screen = useScreen()
+  watch(reviewBlock, (b, was) => {
+    if (!b || !edit.value) return
+    if (!was) ui.reportEditStop(review.rowOf(reviewKey.value), auth.me, [tabMeta(screen)?.page, pageLabel()].filter(Boolean).join(' · '))
+    cancelEdit()
+  })
 
   // ── 编辑流 ───────────────────────────────────────────────
   async function enterEdit() {
@@ -394,8 +412,8 @@ export function useFinStatementScreen(opts: {
     edit.value = false; draft.value = {}; opts.resetLocal()
   }
   /** 「取消」按钮:有草稿先问。改前一点即弃,整期录入无声消失。 */
-  function requestCancel() {
-    if (dirty.value > 0 && !window.confirm(`放弃本期 ${dirty.value} 处未保存的修改?`)) return
+  async function requestCancel() {
+    if (!(await askLeave({ page: pageLabel(), count: dirty.value, verb: '退出编辑' }))) return
     cancelEdit()
   }
   // 退出编辑:有改动先弹保存确认,无改动直接退。
@@ -415,7 +433,8 @@ export function useFinStatementScreen(opts: {
       edit.value = false; draft.value = {}; opts.resetLocal()
       await loadYear()  // 刷新月历(hasData/预览)
     } catch (e) {
-      alert((e as { message?: string })?.message ?? '保存失败')
+      // 草稿还在、编辑态没退:「重试」= 再存一次当前草稿;退出编辑之后点它什么都不做
+      receipt.fail(errMsg(e, '保存失败'), { label: '重试', run: () => { if (edit.value) void save(buildBody) } })
     } finally {
       saving.value = false
     }
@@ -434,10 +453,17 @@ export function useFinStatementScreen(opts: {
     if (!t) return   // 停在「全部汇总」时无对象可改
     dlg.value = { type: 'company', mode: 'edit', company: t }
   }
-  function onDeleteCompany(c?: FinCompany) {
+  /** 删公司:先 ask(删除类,焦点在「取消」),答「删除公司」才删。 */
+  async function onDeleteCompany(c?: FinCompany) {
     const t = c ?? (company.value ? { id: company.value.id, name: company.value.name } : null)
     if (!t) return
-    dlg.value = { type: 'delco', company: t }
+    if (!(await ask({
+      title: `删除「${t.name}」？`,
+      body: '名下还有台账、报表或催缴单时删不掉；删除后不能撤销。',
+      action: '删除公司',
+      danger: true,
+    }))) return
+    await confirmDelete(t)
   }
   async function submitCompany(name: string) {
     const d = dlg.value
@@ -451,16 +477,15 @@ export function useFinStatementScreen(opts: {
       dlg.value = null
       companies.value = await companyApi.list()
     } catch (e) {
-      alert((e as { message?: string })?.message ?? '保存公司失败')
+      // 弹窗还开着;关掉之后点「重试」什么都不做(上面 d?.type 那道)
+      receipt.fail(errMsg(e, '保存公司失败'), { label: '重试', run: () => void submitCompany(name) })
     }
   }
-  async function confirmDelete() {
-    const d = dlg.value
-    if (d?.type !== 'delco') return
+  /** 真删(onDeleteCompany 问过之后;失败回执的「重试」也走这里,不再问一遍)。 */
+  async function confirmDelete(t: FinCompany) {
     try {
-      await companyApi.remove(Number(d.company.id))
-      dlg.value = null
-      const gone = companyId.value === d.company.id
+      await companyApi.remove(Number(t.id))
+      const gone = companyId.value === t.id
       companies.value = await companyApi.list()
       // 删的是当前选中那家 → 左栏还得有个落点(原来退回整屏选择器,那一层已经没有了)
       if (gone) {
@@ -468,7 +493,10 @@ export function useFinStatementScreen(opts: {
         if (companies.value.length) await pickCompany(companies.value[0].id)
       }
     } catch (e) {
-      alert((e as { message?: string })?.message ?? '删除公司失败')
+      // 409 = 名下还有台账 / 报表 / 催缴单(CompanyService.delete 不带 force 时拒删)。这里不带 force,
+      // 重试永远 409,所以不给「重试」;后端那句「确认请再删一次」在这里也不成立,换成本地的真话。
+      if ((e as { code?: number })?.code === 409) receipt.fail(`「${t.name}」名下还有台账、报表或催缴单，删不掉。`)
+      else receipt.fail(errMsg(e, '删除公司失败'), { label: '重试', run: () => void confirmDelete(t) })
     }
   }
 
@@ -480,9 +508,15 @@ export function useFinStatementScreen(opts: {
   /** 「导入」按钮:草稿会在导入后被整期替换掉(见下方 onImport 里的 cancelEdit),
    *  所以确认必须前移到**打开弹窗之前** —— 原先那句丢弃发生在文件已解析、导入已落库之后,
    *  用户走到那一步已经没有回头路了,等于无声吞掉整期录入。 */
-  function requestImport() {
-    if (dirty.value > 0 &&
-        !window.confirm(`本期有 ${dirty.value} 处修改尚未保存。\n导入会整期替换本期数据,这些修改将丢失。\n\n仍要导入?`)) return
+  async function requestImport() {
+    if (dirty.value > 0) {
+      const ok = await ask({
+        title: '导入会整期替换本期数据',
+        body: `本期有 ${dirty.value} 处改动还没保存，导入后会丢失。`,
+        action: '仍要导入',
+      })
+      if (!ok || !edit.value) return   // 问的这会儿编辑权可能被接管走了:答完再自守一次
+    }
     importing.value = true
   }
   async function onImport(picks: { label?: string; records: ImportRec[] }[], fileName: string) {
@@ -496,7 +530,8 @@ export function useFinStatementScreen(opts: {
       await loadPeriod()                           // 刷新本期(本公司若在导入名单则见新值)
       await loadYear()
     } catch (e) {
-      alert((e as { message?: string })?.message ?? '导入失败')
+      // 不带「重试」:期、编辑态这会儿可能都变了,重放一次导入会整期盖掉别的东西
+      receipt.fail(errMsg(e, '导入失败'))
     }
   }
 
@@ -510,7 +545,7 @@ export function useFinStatementScreen(opts: {
     pickCompany, pickCell, backToMatrix, addEarlier, addLater, removeYear,
     loadYear, loadMatrix, loadPeriod,
     enterEdit, onTaken, lockedBy, evictedBy, heldByOther, lockScope, requestCancel, saveConfirm, finishEdit, save, onDiscard,
-    onNewCompany, onEditCompany, onDeleteCompany, submitCompany, confirmDelete,
+    onNewCompany, onEditCompany, onDeleteCompany, submitCompany,
     importing, importResult, importSummary, onImport, requestImport,
   }
 }

@@ -32,7 +32,8 @@ const yearRows = (): DetailRow[] => [
 
 const mountTable = (rows: DetailRow[] = monthRows(), gran: 'month' | 'year' = 'month') =>
   mount(PvDetailTable, { props: { rows, gran } })
-const cells = (tr: ReturnType<ReturnType<typeof mountTable>['findAll']>[number]) => tr.findAll('td').map(td => td.text())
+// 行末空列 .fp-fill(余宽落那里)不算格子
+const cells = (tr: ReturnType<ReturnType<typeof mountTable>['findAll']>[number]) => tr.findAll('td:not(.fp-fill)').map(td => td.text())
 
 describe('PvDetailTable(B12)', () => {
   it('❗切外观不用重挂载:高于上沿那行的琥珀字跟着换成暗色 --warn-text(页签在 KeepAlive 里常驻)', async () => {
@@ -46,11 +47,16 @@ describe('PvDetailTable(B12)', () => {
     } finally { resolvedTheme.value = 'light' }
   })
 
-  it('五列表头与列宽 108 / 104 / 84 / 96 / 余宽;可见 8 行 = 表头 24 + 8 × 32 = 280 内滚', () => {
+  // 破坏验证:备注 th 的宽删掉(改回吸收余宽)→ 红;删掉表头 / 行里的 .fp-fill → 红
+  it('五列表头与列宽 108 / 104 / 84 / 96 / 备注按最长一条(88),余宽归行末空列;可见 8 行 = 表头 24 + 8 × 32 = 280 内滚', () => {
     const w = mountTable()
     const th = w.findAll('th')
-    expect(th.map(t => t.text())).toEqual(['日期', '当日发电 度', '比值', '在不在范围内', '备注'])
-    expect(th.map(t => t.attributes('style') ?? '')).toEqual(['width: 108px;', 'width: 104px;', 'width: 84px;', 'width: 96px;', ''])
+    expect(th.map(t => t.text())).toEqual(['日期', '当日发电 度', '比值', '在不在范围内', '备注', ''])
+    // 夹具最长「连续第 5 天」= 汉字 4 + 半角 3 × 0.6 = 5.8em × 12px → 70 + 余量 2 + 内边距 16;空列不给宽
+    expect(th.map(t => t.attributes('style') ?? '')).toEqual(['width: 108px;', 'width: 104px;', 'width: 84px;', 'width: 96px;', 'width: 88px;', ''])
+    expect(th.at(-1)!.classes()).toContain('fp-fill')
+    expect(th.at(-1)!.attributes('aria-hidden')).toBe('true')
+    expect(w.findAll('tbody tr').every(tr => tr.findAll('td').at(-1)!.classes().includes('fp-fill'))).toBe(true)
     expect(w.find('.scroll').attributes('style')).toContain('max-height: 280px')
     expect(w.findAll('tbody tr')).toHaveLength(28)
   })

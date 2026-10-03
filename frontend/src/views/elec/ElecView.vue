@@ -7,6 +7,7 @@
 import { ref, computed, onMounted , watch} from 'vue'
 import { useRoute } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
+import { ask } from '@/utils/ask'
 import { useDeepPeriod } from '@/composables/useDeepPeriod'
 import { periodOf } from '@/nav/deepLink'
 import FPToast from '@/components/fp/FPToast.vue'
@@ -91,7 +92,11 @@ const {
   clear: {
     call: elecApi.clearImported,
     // 本屏例外:清空跨 energy+basic 两类,不看当前视图的导入行数,文案固定
-    confirm: () => confirm('确认清空本年全部导入数据(电量电费 + 基本电费)?手动/种子行不受影响。'),
+    confirm: () => ask({
+      title: '清空本年的全部导入数据？',
+      body: '电量电费和基本电费两类的导入行都会删掉,手动 / 种子行不受影响。',
+      action: '清空本年导入', danger: true,
+    }),
   },
 })
 
@@ -223,7 +228,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
           :review-keys="reviewKeys"
           @back="goGate"
           @toggle-edit="edit = !edit"
-         :show-import="true" @import="importing = true">
+         :show-import="true" @import="importing = true" :dirty="drawer || importing ? 1 : 0" dirty-approx>
           <template #edit-actions>
             <Button variant="outline" size="sm" @click="drawer = true">
               <template #leading><component :is="iconFor('plus')" :size="14" /></template>

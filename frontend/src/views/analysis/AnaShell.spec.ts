@@ -11,7 +11,7 @@ vi.mock('@/analysis/anaData', () => ({
   fetchAvailableMonths: () => Promise.resolve({ months: ['2025-01', '2025-06', '2025-10'], sources: {} }),
 }))
 
-import AnaShell from './AnaShell.vue'
+import AnaShell, { periodNote } from './AnaShell.vue'
 import type { VueWrapper } from '@vue/test-utils'
 
 // ds/DatePicker 是泛型组件,findComponent(组件) 的类型推不出 VueWrapper;按名字找
@@ -155,5 +155,48 @@ describe('AnaShell KPI 占位瓦', () => {
     const w = mount({ components: { AnaShell }, template: `<AnaShell><template #kpis><template v-if="false"><i /></template></template></AnaShell>` })
     await flushPromises()
     expect(w.findAll('.anx-kpi-hold')).toHaveLength(0)
+  })
+})
+
+// 画布 06-D 中格:整页期间回退不用满宽横条,贴在期间选择旁(实现规范 §1.5)。
+describe('AnaShell #period-note:整页回退标签贴在期间选择旁', () => {
+  it('❗插槽内容渲染在 .anx-period 里、步进钮之后,不进正文', async () => {
+    const w = mount(AnaShell, { slots: { 'period-note': '<span class="probe-note">显示 2025-06 · 10 月无数据</span>', default: '<div class="probe" />' } })
+    await flushPromises()
+    const note = w.find('.anx-period .probe-note')
+    expect(note.exists(), '回退标签没贴在期间选择旁').toBe(true)
+    expect(note.element.previousElementSibling?.classList.contains('anx-nav'), '标签不在步进钮右侧').toBe(true)
+    expect(w.find('.anx-body .probe-note').exists(), '回退标签跑进正文了').toBe(false)
+  })
+
+  it('periodMode=none 没有期间选择,标签也不出', async () => {
+    const w = mount(AnaShell, { props: { periodMode: 'none', scopeChip: '主数据快照' }, slots: { 'period-note': '<span class="probe-note">x</span>' } })
+    await flushPromises()
+    expect(w.find('.probe-note').exists()).toBe(false)
+  })
+
+  it('❗标签的字:同年只写月;跨年把年写上;按年选的写年', () => {
+    expect(periodNote('2026-09', '2026-08')).toBe('显示 2026-08 · 9 月无数据')
+    expect(periodNote('2026-01', '2025-12')).toBe('显示 2025-12 · 2026 年 1 月无数据')
+    expect(periodNote('2026年', '2025-12')).toBe('显示 2025-12 · 2026 年无数据')
+  })
+})
+
+// 浏览器自带的 title 小框换成悬停说明(十件 ⑩,实现规范 §1.3)
+describe('AnaShell 悬停说明', () => {
+  type TipEl = HTMLElement & { _tip?: { text: string } }
+  it('❗设置钮与不支持的对比项走 v-tip,不再挂原生 title', async () => {
+    const w = mount(AnaShell, { props: { compare: ['mom'] } })
+    await flushPromises()
+    const set = w.find('.anx-icobtn')
+    expect(set.attributes('title')).toBeUndefined()
+    expect((set.element as TipEl)._tip?.text).toBe('目标与阈值')
+    expect(set.attributes('aria-label'), '图标钮没有可读文字,要补 aria-label').toBe('目标与阈值')
+    const yoy = w.findAll('.anx-cmp button').find((b) => b.text() === '同比')!
+    expect(yoy.attributes('disabled')).toBeDefined()
+    expect(yoy.attributes('title')).toBeUndefined()
+    expect((yoy.element as TipEl)._tip?.text).toBe('本屏不支持同比(2024 无月度数据)')
+    const mom = w.findAll('.anx-cmp button').find((b) => b.text() === '环比')!
+    expect((mom.element as TipEl)._tip, '支持的项不该有说明').toBeUndefined()
   })
 })

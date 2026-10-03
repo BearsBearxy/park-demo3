@@ -1,24 +1,29 @@
 <script setup lang="ts">
-// 抄表电子表格(METER-V5-SPEC §7 v5.1):FPLedgerTable 范式 1:1 手法——双级表头(rowspan+colspan)/
-// sticky offset 列宽累加/tfoot sticky bottom/34px 行高/mono 右对齐空值'–'/透明格内 input。
-// 行窗口化虚拟滚动(§7 6.5):组 flatten→显示列表,只渲染可视±12 行,前后 spacer tr 撑高,
-// passive scroll+rAF 节流;窗口纯函数 buildWindow/offsetOf 在 useMeterWorkbench(带单测)。
-// 列模型(METER-LOC-MEMBER-SPEC §A.1,对齐原册「一期园区电」形状):
-// fixedLeft=楼层·方位/用途 | 中部=房号/租户/表号/编码/倍率/上月行至组/本月行至组 | fixedRight=用量/状态;
-// 稳定标识(楼层→方位→房号)锁在左侧固定列,易变的租户名降为普通列(仍可点开抽屉/带待核徽标)。
-// 电表两组各 5 列(总/尖/峰/平/谷)常驻,水表各 1 列(总)。无分页:wrap overflow:auto 充满卡高。
-// 表体按楼栋首现序分组,组末插「{楼栋名} · 总用电量」汇总行(§7.6,tenant+share 口径,随 draft 实时)。
-// 草稿式编辑:编辑态「本月行至」全格透明 input(上月行至只读基准,没有底数的行开放录入起始底数),draft 归属父层 MeterView,
-// 本组件只读取草稿+emit cell-edit;用量列/页脚按草稿实时重算;校验红显不拦保存(§7.4)。
-// 键盘流(§7.3):Tab 走原生 DOM 序(行内横向),Enter 显式跳下一格,行尾进下一行首格(底数格不进这条序)。
-import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+// 抄表电子表格(METER-V5-SPEC §7 v5.1;2026-10-01 按画布 04-A / 04-B / 04-C 重排):
+// 列 = 位置 / 用途 / 房号 / 租户 / 表号 / 编码 / 倍率 / 上月行至 / 本月行至 / [尖 峰 平 谷] / 用量 / 状态。
+// - 「区域」列删了:楼栋是组头(兼小计、点它收起,datagrid「分组行兼小计」);「位置」= 楼层·方位(原册那一格本来就写「四楼西侧」)。
+// - 上月 / 本月各一列总数。尖峰平谷按比例出列(touMode,datagrid「按比例出列」):没有分时表 → 不出列也不出开关;
+//   少数 → 默认不出列,分时表那一行 › 点开看或录;过半 → 默认在「本月行至」后出 尖 / 峰 / 平 / 谷 四列。开关记住上次选择。
+// - 状态列只写不正常的,已抄留空;倒走写「比上月少 X」。停用的表收在组尾「另有 N 块已停用 · 显示」。
+// - 用量是钱那一列(规范 §2 第 29 条):加粗 + 浅蓝底 + 表头下蓝线,字不用蓝。行高 40、正文 14、表头 12、读数两位小数。
+// 固定列走 useWideTable(LIST-PAGE §9,07-C 园区抄表行):用途 → 用量 → 位置 → 状态;按表格区可见宽退列,不按屏幕档。
+// 列宽按全量行算(numW / textW,不量 DOM):窗口化只渲染可视行,量 DOM 会随滚动变。同一份行集里只增不减。
+// 行窗口化虚拟滚动(§7 6.5):显示列表(flattenGroups)只渲染可视±12 项,前后 spacer tr 撑高,passive scroll+rAF 节流。
+// 草稿式编辑:编辑态「本月行至」是输入格(没有底数的行「上月行至」开放录入底数),draft 归属父层 MeterView,
+// 本组件只读取草稿 + emit cell-edit;用量 / 组小计 / 合计按草稿实时重算;校验红显不拦保存(§7.4)。
+// 键盘流(§7.3):Enter 总 →(尖)→ 峰 → 平 → 谷 → 下一块表的总;Tab 走原生 DOM 序。
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, type Ref } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import { useViewport } from '@/composables/useViewport'
+import { useWideTable, numW, textW, minTableH, type WideCol, type HeightDims } from '@/composables/useWideTable'
+import { touMode, loadTouPref, saveTouPref } from '@/utils/touColumns'
+import FPTableTools from '@/components/fp/FPTableTools.vue'
+import FPMark from '@/components/fp/FPMark.vue'
 import {
   STATUS_META, statusDims, bookTip, effVal, serverVal, baseOpen, rowUsage, draftRowIssues, gridFooter, groupByBuilding, groupUsage,
-  flattenGroups, buildWindow, offsetOf,
-  type WorkbenchRow, type MeterDraft, type CurrField, type PrevField, type DraftField, type PrevSegs, type BuildingGroup,
-  type RowWindow,
+  flattenGroups, buildWindow, offsetOf, segRowUsage, SEG_FIELDS, ROW_H,
+  type WorkbenchRow, type MeterDraft, type DraftField, type BuildingGroup, type RowWindow, type SegLine, type SegKey,
+  type DisplayItem,
 } from '@/composables/useMeterWorkbench'
 import { ownershipLabel } from '@/utils/meterSplit'
 import type { MeterLoc } from '@/utils/meterGroup'
@@ -32,6 +37,10 @@ const props = defineProps<{
   draft: Map<number, MeterDraft>    // 草稿归属 MeterView(§7.2)
   buildingNameById: Map<number, string>
   emptyText: string
+  /** 按比例出列的分母:这一期区、这一表类的全部行(不随状态页签 / 搜索变 —— 否则切页签尖峰平谷列会跳)。缺省用 rows */
+  touBase?: WorkbenchRow[]
+  /** 筛选本身就在找停用表(已停用 / 本月有变化):停用的表直接排进组里,不收进组尾「另有 N 块已停用」 */
+  retiredOpen?: boolean
 }>()
 const emit = defineEmits<{
   open: [meterId: number]
@@ -39,100 +48,85 @@ const emit = defineEmits<{
 }>()
 
 const ChevronRight = iconFor('chevron-right')
-const FACTOR_TITLE = '有读数=当月录入时倍率快照;无读数=档案倍率。历史读数按录入时快照计用量,改档案倍率只影响之后新录'
-
-// ── 列模型:电表组内 总/尖/峰/平/谷 5 列,水表仅 总 1 列(§7.1) ──
-interface SegDef { lab: string; c: CurrField; p: keyof PrevSegs | null; pf: PrevField }
-const ALL_SEGS: SegDef[] = [
-  { lab: '总', c: 'currTotal', p: null, pf: 'prevTotal' },
-  { lab: '尖', c: 'currSharp', p: 'sharp', pf: 'prevSharp' },
-  { lab: '峰', c: 'currPeak', p: 'peak', pf: 'prevPeak' },
-  { lab: '平', c: 'currFlat', p: 'flat', pf: 'prevFlat' },
-  { lab: '谷', c: 'currValley', p: 'valley', pf: 'prevValley' },
-]
-// ⚠ 这里的列数随 kind 变,**不是** LAYOUT-STABILITY-SPEC §1 要治的那种位移,别照 2026-08-29
-//   PoolLedgerView/LossLedgerView 那次(切期区改列数)的修法套过来 —— 已经有人提过一次了。
-//   三条理由:
-//   ① METER-SPEC §69 明文「水表仅 总 两列」、§7「水表单行表头」,源工作簿本身就是这个形状;
-//   ② 水没有分时费率。给水表加尖/峰/平/谷是**量纲错误**,不是「有列无数据」——
-//      与「一期是平价制的电、四段同量纲只是没分段计量」根本不同,那种才该显「–」;
-//   ③ 表格在 .mlg-wrap(flex + overflow:auto)里,盒子尺寸由布局定、与表宽无关:
-//      左右 sticky 列位置不动,变的只有中间可滚动区;且切 kind 本就是「另一张表」
-//      (见 MeterView 筛选维度处的注释),没有共同的行要用户重新找。
-const segDefs = computed(() => (props.kind === 'elec' ? ALL_SEGS : ALL_SEGS.slice(0, 1)))
-// 非分时列 9 列:楼层·方位/用途/房号/租户/表号/编码/倍率 + 用量/状态
-const colCount = computed(() => 10 + segDefs.value.length * 2)
-
-// sticky offset 列宽累加(FPLedgerTable 手法):左=楼层·方位(left:0)←用途(left:FLOOR_W) 正向累加;
-// 右=状态←用量 反向累加。改列宽必须同步改 offset,否则固定列错位。
-// 分隔线用 border 而非 box-shadow(§7 6.5:去阴影绘制成本;th/td 已 border-box 不占额外宽)
-// AREA_W 76→100、SUB_W 70→84(2026-08-15 实测 2024-02 抄表屏滚全表 115 个格,3 个截断:
-// 区域「A座自装总电表」需 100、「三期项目工地」需 92;表号「电表①新表」需 80)。
-// 与字体无关 —— 这三串都是汉字为主,汉字从来走系统回退,Roboto Mono 子集里根本没有 CJK;
-// 是原先按短名(「A座」「电表①」)量的宽度没覆盖到长尾。sticky offset 由这两个常量推导
-// (fixFloor/fixUse/tableW 都引用它们),改常量即自动跟上,不必手工同步。
-const AREA_W = 100
-// TEN_W 130→180(2026-08-14 用户报障「电表的租户列都看不见了」):该格并排放名字 + 待核/存疑徽标
-// + 归属徽标(非租户表)+ 悬停箭头。130px 里徽标 nowrap 先占满(「园区公摊」≈54px + 箭头/间距/padding
-// ≈45px),名字只剩 30px ⇒ 一个字加省略号。同刀去掉了非租户行的名字(与「用途」列重复,见 tenName),
-// 所以不必按「名字+归属徽标」并存来配宽 —— 两类行各自的需求:
-//   非租户行 = 只有徽标:最长「计度寄存器」5 全角 ≈64 + 箭头间距 padding 38 = 102px
-//   租户行   = 档案名 + 可能的待核徽标:实测 400 块租户表里 3/4 字占 353 块(296+57),
-//              6 字以下共 384 块;长尾 18 字 12 块(曼克维全称)、14 字 6 块 —— 那 20 块截断后
-//              悬停有全名。按 8 全角 100px + 待核 40 + 箭头间距 padding 38 = 178,取 180。
-const FLOOR_W = 96, USE_W = 160, ROOM_W = 72, TEN_W = 180, SUB_W = 84, CODE_W = 118, FAC_W = 56
-const SEG_W = 96, USAGE_W = 104, ST_W = 88
-const w = (px: number) => ({ width: px + 'px', minWidth: px + 'px', maxWidth: px + 'px' })
-// 表总宽=全列宽之和(colgroup+table-layout:fixed 用):窗口化每帧换行,auto 布局会按可见内容
-// 逐帧重算列宽 → 快速滚动列抖动(2026-08-04 用户报障);fixed+colgroup 后列宽与内容彻底解耦
-const tableW = computed(() =>
-  AREA_W + FLOOR_W + USE_W + ROOM_W + TEN_W + SUB_W + CODE_W + FAC_W
-  + segDefs.value.length * 2 * SEG_W + USAGE_W + ST_W)
-// RESPONSIVE-LAYOUT-SPEC §5.3 S 档查看优先:sticky 收敛到首列(区域)+表头——左三右二共 5 根
-// sticky 合计 540px,在 390px 视口比屏还宽;其余四根**原位退成普通列**(colgroup/列宽/列序一根不动)。
-// sticky 是内联 style(offset 按列宽常量累加),CSS 媒体块盖不住内联,档位判定只能进 JS:
-// 走 useViewport 单例派生 computed(FPLedgerTable 同范式;jsdom/SSR 无 matchMedia 恒 xl → 桌面档与既有测试零变化)。
+const ChevronDown = iconFor('chevron-down')
+const FACTOR_TIP = '有读数=当月录入时倍率快照;无读数=档案倍率。历史读数按录入时快照计用量,改档案倍率只影响之后新录'
+const PENDING_TIP = '企业名称原文未匹配到租户档案,点击在抽屉「合同绑定」页签挂租户'
+const SHADOW_TIP = '疑似重复建档:本表区域/位置/企业名称/编码全空,且与同栋同类的另一块档案完整的表同月上下期示数与倍率完全相等,很可能是同一块物理表的第二份档案。该表用量暂不计入楼栋分表Σ;认对后请补齐档案(在抽屉保存一次即解除存疑)'
+const INC_TIP = '档案不全:区域/位置/企业名称/编码全空,但配不到重复对手,按真表处理 —— 用量照常计入楼栋分表Σ。请补齐档案(在抽屉保存一次即解除提示)'
 const { tier } = useViewport()
-const sTier = computed(() => tier.value === 's')
-// 退级列的 class 也要一起摘:.mlg-fix 带 z-index:3 + 不透明背景,留着会盖住仅存的 sticky 首列
-// (FPLedgerTable 模板同注);S 档表头/表脚退级格回落各自基础规则,竖向 sticky 不受影响。
-const fixCls = computed(() => (sTier.value ? undefined : 'mlg-fix'))
-const fixThCls = computed(() => (sTier.value ? undefined : 'mlg-fix-th mlg-fix'))
-// 区域(原册 B 列)在最左:区块带头虽然也是楼栋名,但原册每行都写,逐行显才能跟原册一行一行对
-// S 档分隔线挪到仅存 sticky 内沿(区域右缘)——内沿以 sticky 集合为准(FPLedgerTable 同款)
-const fixArea = computed(() => (sTier.value
-  ? { ...w(AREA_W), left: '0px', borderRight: '1px solid var(--border-subtle)' }
-  : { ...w(AREA_W), left: '0px' }))
-const fixFloor = computed(() => (sTier.value ? w(FLOOR_W) : { ...w(FLOOR_W), left: AREA_W + 'px' }))
-// 分隔线落在最外侧固定列(用途)右缘
-const fixUse = computed(() => (sTier.value ? w(USE_W)
-  : { ...w(USE_W), left: AREA_W + FLOOR_W + 'px', borderRight: '1px solid var(--border-subtle)' }))
-const fixUsage = computed(() => (sTier.value ? w(USAGE_W)
-  : { ...w(USAGE_W), right: ST_W + 'px', borderLeft: '1px solid var(--border-subtle)' }))
-const fixSt = computed(() => (sTier.value ? w(ST_W) : { ...w(ST_W), right: '0px' }))
-// 汇总行标签格 colspan 跨 区域~倍率 8 列:sticky left 但不锁宽(列宽由表头定)
-const fixGrpLbl = { left: '0px', borderRight: '1px solid var(--border-subtle)' }
 
-// ── 楼栋分组(§7.6):首现序稳定分组 ──
-// 分组/排序只由 rows 决定,**不传 draft**:否则编辑态每敲一个数字都要重分组+逐组重排序
-// (draft 是 reactive Map,一次 set 就打翻整条 groups→displayList→visItems 计算链)。
+// ── 按比例出列(画布 04-C):分母是这一期区这一表类的全部行,水表没有分时 → 'none' ──
+const tm = computed(() => {
+  const base = props.touBase ?? props.rows
+  return touMode(base.filter(x => x.tou).length, base.length)
+})
+const touPref = ref(loadTouPref('meter'))
+const colsOn = computed(() => tm.value !== 'none' && (touPref.value ?? tm.value === 'cols'))
+function setTou(on: boolean) { touPref.value = on; saveTouPref('meter', on) }
+const rowMode = computed(() => tm.value !== 'none' && !colsOn.value)   // 分时表那一行 › 点开
+const TOU_COLS = (['sharp', 'peak', 'flat', 'valley'] as SegKey[]).map(k => ({ k, ...SEG_FIELDS[k] }))
+const touCols = computed(() => (colsOn.value ? TOU_COLS : []))
+
+// ── 列菜单(卡内「列」):中间四列可藏;位置 / 用途 / 租户 / 读数 / 用量 / 状态常驻 ——
+//    租户不许藏:租户格是打开这块表详情抽屉(表档案 / 历史读数 / 合同绑定 / 在册状态)的唯一入口(对抗复查 regress-3)
+const MID = [
+  { key: 'room', label: '房号' }, { key: 'ten', label: '租户' }, { key: 'sub', label: '表号' },
+  { key: 'code', label: '编码' }, { key: 'fac', label: '倍率' },
+] as const
+type MidKey = typeof MID[number]['key']
+const hidden = ref<string[]>([])
+const toolCols = computed(() => MID.filter(c => c.key !== 'ten')
+  .map(c => ({ key: c.key, label: c.key === 'room' && props.zone === 'dorm' ? '宿舍单元' : c.label })))
+const show = computed(() =>
+  Object.fromEntries(MID.map(c => [c.key, c.key === 'ten' || !hidden.value.includes(c.key)])) as Record<MidKey, boolean>)
+const nMid = computed(() => MID.filter(c => show.value[c.key]).length)
+/** 位置 用途 上月 本月 用量 状态 = 6,+ 中间列 + 尖峰平谷 + 最右空列 1(spacer / 空态行跨满整行) */
+const colCount = computed(() => 7 + nMid.value + touCols.value.length)
+
+// ── 楼栋分组(§7.6):首现序稳定分组;组头小计随 draft 实时(敲键只重算这一层,不重分组) ──
 const groups = computed(() => groupByBuilding(props.rows, props.buildingNameById))
-// 组末汇总(tenant+share,随 draft 实时)叠在分组结果之上:敲键只重算这一层
 const grpUsage = computed(() =>
   new Map(groups.value.map(g => [g.key, groupUsage(g.rows, props.draft)] as const)))
 const usageOf = (g: BuildingGroup) => grpUsage.value.get(g.key)!
+const grpSegTip = (g: BuildingGroup) => {
+  if (props.kind !== 'elec') return undefined
+  const u = usageOf(g)
+  return `尖 ${f2(u.sharp)} 峰 ${f2(u.peak)} 平 ${f2(u.flat)} 谷 ${f2(u.valley)}`
+}
 
-// ── 行窗口化虚拟滚动(§7 6.5):组 flatten 成显示列表,只渲染可视±12 行,前后 spacer 撑高 ──
+// 收起的组 / 显示了停用表的组 / 点开分时段的表:都不记忆(规范 §2 第 25 条),换视图清空
+const collapsed = ref(new Set<string>())
+const showRetired = ref(new Set<string>())
+const expanded = ref(new Set<number>())
+function flip<T>(s: Ref<Set<T>>, k: T) {
+  const n = new Set(s.value)
+  if (n.has(k)) n.delete(k)
+  else n.add(k)
+  s.value = n
+}
+const toggleGroup = (key: string) => flip(collapsed, key)
+const toggleRetired = (key: string) => flip(showRetired, key)
+const toggleRow = (id: number) => flip(expanded, id)
+
+// ── 行窗口化虚拟滚动(§7 6.5) ──
 const wrapEl = ref<HTMLElement | null>(null)
-const displayList = computed(() => flattenGroups(groups.value))
+const displayList = computed(() => flattenGroups(groups.value, {
+  collapsed: collapsed.value, showRetired: showRetired.value,
+  expanded: rowMode.value ? expanded.value : undefined, edit: props.editMode, retiredOpen: props.retiredOpen,
+}))
 const win = ref<RowWindow>({ start: 0, end: 0, topPad: 0, bottomPad: 0 })
-// x/g 二择一展平(x=数据行/g=汇总行),di=显示列表全局索引(键盘流寻址用)
+const itemKey = (it: DisplayItem) => (it.type === 'row' ? it.x.m.id
+  : it.type === 'seg' ? `s${it.x.m.id}-${it.seg.keys.join()}` : `${it.type}-${it.g.key}`)
+// 类型展平给模板用(di=显示列表全局索引,键盘流寻址用)
 const visItems = computed(() => {
   const { start, end } = win.value
   return displayList.value.slice(start, end).map((it, i) => ({
-    di: start + i,
-    x: it.type === 'row' ? it.x : null,
-    g: it.type === 'bsum' ? it.g : null,
+    di: start + i, t: it.type, key: itemKey(it),
+    x: it.type === 'row' || it.type === 'seg' ? it.x : null,
+    seg: it.type === 'seg' ? it.seg : null,
+    g: it.type === 'ghead' || it.type === 'retired' ? it.g : null,
+    n: it.type === 'ghead' || it.type === 'retired' ? it.n : 0,
+    on: it.type === 'ghead' ? it.open : it.type === 'retired' ? it.shown : false,
   }))
 })
 
@@ -159,54 +153,56 @@ onBeforeUnmount(() => {
   ro?.disconnect()
   if (rafId) cancelAnimationFrame(rafId)
 })
-// 回顶只认视图身份,不认数组引用(WRITE-KEEP-CONTEXT-SPEC 铁律一)。
-// 改前两件事写在一个 watch 里:rows 是新数组就回顶。但 buildRows/filterRows 每次都产新数组,
-// 「换了另一张表」与「同一张表重载」在 Object.is 眼里没区别 —— 于是抽屉 7 个 emit('reload')、
-// 草稿批量保存、KeepAlive 回页全部把用户打回第 0 行,在 200-400 行的视图里重新找刚改的那块表
-// (用户报障:「点完直接刷新页面,然后需要从头开始滚动找到对应电表」;停用/退场账期那两格最典型
-// —— 停用行照旧产行、位置分毫未变,却整表回顶)。
-// 换筛选/账期/电水/分区仍照旧回顶:那些维度都在 viewKey 里,变了就是另一张表(铁律一即此判据)。
-// ⚠ 不变式(反方向,与下面那条注释配对):**凡进 viewKey 的维度,必须也是 gridRows 的依赖**。
-// 现在 8 个维度条条成立(ym 经 meters/readings 按月重拉,其余 7 项经 filterRows),所以 viewKey 一变
-// 必产新 rows、rows watch 必在同一 flush 跟着跑。但哪天塞进一个「不改行集」的维度(排序开关、
-// 只读展示模式),回顶后就没有 rows watch 兜底重建窗口 ⇒ 永久白屏顶。故这里自己也重建一次:
-// 此刻 props.rows 已是新值(props 先于 watch 回调更新),重复调一次 syncWindow 无副作用。
+// 回顶只认视图身份,不认数组引用(WRITE-KEEP-CONTEXT-SPEC 铁律一):抽屉 reload、草稿批量保存、KeepAlive 回页
+// 都产新 rows 数组,却是同一张表 —— 不许把人打回第 0 行。换筛选/账期/电水/分区都在 viewKey 里,变了才回顶。
+// 此刻 props.rows 已是新值(props 先于 watch 回调更新),这里自己也重建一次窗口,不靠下面那条 watch 兜底。
 watch(() => props.viewKey, () => {
   if (wrapEl.value) wrapEl.value.scrollTop = 0
+  collapsed.value = new Set()
+  showRetired.value = new Set()
+  expanded.value = new Set()
   syncWindow(true)
 })
-// 行集变化只重建窗口:重拉后行数可能变(新增/删除),spacer 高度与 [start,end) 要跟上,但不动 scrollTop。
-// draft 键入不动 rows 引用,不受影响。
-// nextTick 二次同步:watch 默认 pre-flush,此刻读到的是 **DOM 更新前**的 scrollTop。行集一次变短
-// ≥12 行(超出缓冲)且用户正停在底部时,浏览器会把 scrollTop 同步夹紧,而窗口是按夹紧前的值算的
-// ⇒ [start,end) 整体落在视口上方,顶部留一条空白要等下次滚动才自愈。DOM 落位后再算一次即消。
-watch(() => props.rows, () => {
+// 显示列表变了(重拉 / 收起组 / 显示停用 / 点开分时段 / 进出编辑态)只重建窗口,不动 scrollTop。draft 键入不动它。
+// nextTick 二次同步:watch 默认 pre-flush,此刻读到的是 DOM 更新前的 scrollTop;列表一次变短 ≥12 行
+// 且用户停在底部时浏览器会夹紧 scrollTop,DOM 落位后再算一次,顶部不留空白。
+watch(displayList, () => {
   syncWindow(true)
   nextTick(() => syncWindow(true))
 })
-const grpLabel = (g: BuildingGroup) => `${g.label} · 总用${props.kind === 'water' ? '水' : '电'}量`
-const grpSegTitle = (g: BuildingGroup) => {
-  if (props.kind !== 'elec') return undefined
-  const u = usageOf(g)
-  return `尖 ${fmt(u.sharp)} 峰 ${fmt(u.peak)} 平 ${fmt(u.flat)} 谷 ${fmt(u.valley)}`
-}
 
-// ── 行派生(草稿实时):用量+校验红显;页脚合计 ──
+// ── 行派生(草稿实时):用量 + 校验红显 + 状态格;页脚合计 ──
+interface StCell { text: string; cls: string; neg: boolean }
+// 状态列只写不正常的(datagrid「格内写法」);倒走按草稿实时写「比上月少 X」(画布 04-B 联塑精铟)
+function stCell(x: WorkbenchRow, d: MeterDraft | undefined): StCell | null {
+  const p = effVal(x, d, 'prevTotal')
+  const c = effVal(x, d, 'currTotal')
+  if (p != null && c != null) {
+    if (c < p) return { text: `比上月少 ${f2(p - c)}`, cls: 'bad', neg: true }
+    if (x.status === 'negative') return null           // 草稿把倒走改好了
+  }
+  if (x.status === 'read') return null
+  const s = STATUS_META[x.status]
+  return { text: s.label, cls: s.cls, neg: false }
+}
 const drv = computed(() => {
-  const m = new Map<number, { usage: number | null; issues: string[] }>()
+  const m = new Map<number, { usage: number | null; issues: string[]; st: StCell | null }>()
   for (const x of props.rows) {
     const d = props.draft.get(x.m.id)
-    m.set(x.m.id, { usage: rowUsage(x, d), issues: draftRowIssues(x, d) })
+    m.set(x.m.id, { usage: rowUsage(x, d), issues: draftRowIssues(x, d), st: stCell(x, d) })
   }
   return m
 })
 const foot = computed(() => gridFooter(props.rows, props.draft))
 
 // ── 展示辅助 ──
-const fmt = (v: number | null | undefined) =>
-  v == null ? '–' : v.toLocaleString('en-US', { maximumFractionDigits: 2 })
-const prevOf = (x: WorkbenchRow, s: SegDef) => (s.p ? x.prevSegs[s.p] : x.prevTotal)
-const currOf = (x: WorkbenchRow, s: SegDef) => effVal(x, props.draft.get(x.m.id), s.c)
+// 读数、用量两位小数千分位(03-C)。格式器建一次:toLocaleString 每调一次新建一个 Intl 格式器,
+// 列宽要按全量行逐格算,编辑态每敲一键几千次,慢到能感觉出来
+const NF2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const NFAC = new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 })
+const f2 = (v: number | null | undefined) => (v == null ? '–' : NF2.format(v))
+const fmtFac = (v: number) => NFAC.format(v)
+const cur = (x: WorkbenchRow, f: DraftField) => effVal(x, props.draft.get(x.m.id), f)
 // input 值=草稿原文>服务器值,防重渲染吞输入
 function inputVal(x: WorkbenchRow, f: DraftField): string {
   const d = props.draft.get(x.m.id)?.[f]
@@ -214,14 +210,10 @@ function inputVal(x: WorkbenchRow, f: DraftField): string {
   const v = serverVal(x, f)
   return v == null ? '' : String(v)
 }
-// V74 结构化位置三列后端 MeterDTO 已出,前端 MeterDTO 待 A3 刀补进;先经 MeterLoc 视图读取
-// (MeterDTO 补齐后本处无需再改)。楼栋不成列——它是区块带头/汇总行的分组维度。
 const locOf = (x: WorkbenchRow) => x.m as MeterLoc
-// 「楼层·方位」合成一列(原册那一格本身就写成「四楼西侧」),与公共电核算屏 poolFloorSide 同款话术
-// V77 §G3:缺段要说出来。结构化楼层方位 > spot 原文(解析不出楼层的照原文显示) >
-// 有区域却什么都没录 → 占位「(位置未录)」(与后端 AllocService.LOC_TODO 同话术);
-// 区域也空的园区级/跨栋表不适用,仍显 '–'。清单见 scripts/meter-loc-todo.tsv。
-// P2-SHARE-LAYER-SPEC §8:非租户表(share/park/ops/infra)位置本可空,豁免催录,显 '–'。
+// 「位置」= 楼层·方位(原册那一格本身就写成「四楼西侧」),与公共电核算屏同款话术。V77 §G3:缺段要说出来 ——
+// 结构化楼层方位 > spot 原文 > 有区域却什么都没录 → 占位「(位置未录)」(同后端 AllocService.LOC_TODO);
+// 区域也空的园区级/跨栋表、非租户表(P2-SHARE-LAYER-SPEC §8 豁免催录)显 '–'。
 const LOC_TODO = '(位置未录)'
 const LOC_EXEMPT = new Set(['share', 'park', 'ops', 'infra'])
 function floorSide(x: WorkbenchRow): string {
@@ -230,48 +222,121 @@ function floorSide(x: WorkbenchRow): string {
     || x.m.spot?.trim()
     || (x.m.area?.trim() && !LOC_EXEMPT.has(x.m.ownership) ? LOC_TODO : '–')
 }
-// dorm 回退:宿舍单元「1-309」(栋-房号)在导入时已随位置原文落 spot(如「三楼 1-309」),正则直读;
-// 无单元的宿舍表(总表/商铺/充电桩/分时子表)不命中,显 '–' 属预期。
-// 式子提到模块级:逐行渲染调用,不必每格新造一个 RegExp(无 g 标志,无 lastIndex 状态)
+const locTip = (x: WorkbenchRow) => (floorSide(x) === LOC_TODO
+  ? '这块表有区域但没录楼层方位,点开租户列的抽屉补「楼层/方位/房号」三格' : (x.m.spot ?? undefined))
+// dorm 回退:宿舍单元「1-309」在导入时已随位置原文落 spot(如「三楼 1-309」),正则直读
 const RE_DORM_UNIT = /\d+-\d{3,4}/
 const roomNo = (x: WorkbenchRow) =>
   locOf(x).roomNo?.trim()
   || (props.zone === 'dorm' ? x.m.spot?.match(RE_DORM_UNIT)?.[0] : undefined)
   || '–'
-// 「区域」=账册 B 列原文(A座/一车间/招商中心),已是不带期数的写法,直接取 meter.area 不做加工。
-// 区块带头虽然也是楼栋名,但原册每行都写满 —— 逐行显才对得上原册一行一行。
-const areaLabel = (x: WorkbenchRow) => x.m.area?.trim() ?? ''
 // 「用途」=账册「企业名称」列原文;公摊/基础设施表存的是用途描述,缺则回退标识名
 const useLabel = (x: WorkbenchRow) => x.m.tenantName ?? x.m.name
-// 非租户表(公摊/总表/园区自担/园区经营/寄存器)本来就没有租户,这一格只出归属徽标。
-// 改前它回落 `tenantName ?? name` —— 与「用途」列**逐字相同**(useLabel 同一个表达式),
-// 同一串话在一行里写两遍,还把格子挤到只剩一个字(2026-08-14 用户报障)。
-// 租户表照旧显档案名:那是 tenant.company_name,与「用途」的账册原文不是一回事
-// (原文「旭化成（男厕所）」↔ 档案「旭化成」),待核/绑定判定也挂在它上面,不能省。
-function tenName(x: WorkbenchRow): string {
-  return x.m.ownership === 'tenant' ? (x.tenantLabel ?? '—') : ''
+// 非租户表只出归属签(名字与「用途」逐字相同,不写两遍);租户表显档案名(待核/绑定判定挂在它上面)
+const tenName = (x: WorkbenchRow) => (x.m.ownership === 'tenant' ? (x.tenantLabel ?? '—') : '')
+const tenTip = (x: WorkbenchRow) =>
+  (x.m.ownership === 'tenant' ? (x.tenantLabel ?? x.m.tenantName ?? undefined) : undefined)
+// 表号「电表①新表」:「新表」拆成小签(画布 04-A 公共用电 / 旭化成那一行)
+const isNewSub = (x: WorkbenchRow) => !!x.m.subName?.trim().endsWith('新表')
+function subShort(x: WorkbenchRow): string {
+  const s = x.m.subName?.trim() ?? ''
+  return s.replace(/新表$/, '').trim() || (s ? '' : '–')
 }
-// 悬浮同理:非租户表不重复用途原文(那一列自己有 title)
-function tenTitle(x: WorkbenchRow): string | undefined {
-  return x.m.ownership === 'tenant' ? (x.tenantLabel ?? x.m.tenantName ?? undefined) : undefined
-}
+// 分时段行:单段显数(可录),合并的空段行全 '–'
+const segIn = (seg: SegLine) => props.editMode && seg.keys.length === 1
+const segF = (seg: SegLine) => SEG_FIELDS[seg.keys[0]]
+const segVal = (x: WorkbenchRow, seg: SegLine, side: 'p' | 'c') =>
+  (seg.keys.length === 1 ? cur(x, segF(seg)[side]) : null)
+const segUse = (x: WorkbenchRow, seg: SegLine) =>
+  (seg.keys.length === 1 ? segRowUsage(x, props.draft.get(x.m.id), seg.keys[0]) : null)
+
+// ── 列宽(datagrid「列宽」、07-C):按全量行估宽,不量 DOM;同一份行集里只增不减(编辑中变长才加宽) ──
+const FS = 14                                       // 正文
+const TEN_W = 180                                   // 租户格:名字 + 签,名字可省略(字可以省略,数字不行)
+const EXP_W = 28                                    // 位置格左边 › 的位子(row 模式)
+const TAG_W = 40                                    // 「新表」小签 + 间距
+const hd = (s: string) => textW([s], 12, 20)        // 表头 12
+const tx = (strs: string[], pad = 20) => textW(strs, FS, pad)
+const nv = (vals: (number | null)[], pad = 24) => numW(vals.map(f2), FS, pad)   // 读数格编辑态要放下输入框的边距
+// 文字列只随行集变;数字列随草稿变(编辑中数变长要跟上),分两层,敲键不重算文字列
+const textWs = computed(() => {
+  const R = props.rows
+  const retired = groups.value.map(g => g.rows.filter(x => x.retired).length).filter(n => n > 0)
+  return {
+    loc: Math.max(hd('位置'), tx(R.map(floorSide))) + (rowMode.value ? EXP_W : 0),
+    use: Math.max(hd('用途'), tx(R.map(useLabel)), ...(rowMode.value ? [textW(['平段 · 谷段'], 12, 54)] : []),
+      ...retired.map(n => tx([`另有 ${n} 块已停用 显示`], 28))),
+    room: Math.max(hd('宿舍单元'), tx(R.map(roomNo))),
+    ten: TEN_W,
+    sub: Math.max(hd('表号'), ...R.map(x => tx([subShort(x)]) + (isNewSub(x) ? TAG_W : 0))),
+    code: Math.max(hd('编码'), numW(R.map(x => x.m.code ?? '–'), FS, 20)),
+    fac: Math.max(hd('倍率'), numW(R.map(x => fmtFac(x.factor)), FS, 16)),
+  }
+})
+const numWs = computed(() => {
+  const R = props.rows
+  const segs = (side: 'p' | 'c') => R.flatMap(x => TOU_COLS.map(s => cur(x, s[side])))
+  const w: Record<string, number> = {
+    prev: Math.max(hd('上月行至'), nv([...R.map(x => cur(x, 'prevTotal')), ...(rowMode.value ? segs('p') : [])])),
+    curr: Math.max(hd('本月行至'), nv([...R.map(x => cur(x, 'currTotal')), ...(rowMode.value ? segs('c') : [])])),
+    usage: Math.max(hd('用量'), nv([
+      ...R.map(x => drv.value.get(x.m.id)!.usage), foot.value.usageSum, ...[...grpUsage.value.values()].map(u => u.total),
+      ...(rowMode.value ? R.flatMap(x => TOU_COLS.map(s => segRowUsage(x, props.draft.get(x.m.id), s.k))) : []),
+    ], 16)),
+    st: Math.max(hd('状态'), ...R.map(x => { const s = drv.value.get(x.m.id)!.st; return s ? textW([s.text], 11, 36) : 0 })),
+  }
+  for (const s of TOU_COLS) w[s.c] = Math.max(hd(s.lab), nv(R.map(x => cur(x, s.c))))
+  return w
+})
+const rawW = computed<Record<string, number>>(() => ({ ...textWs.value, ...numWs.value }))
+let wKey: unknown = null
+let wMax: Record<string, number> = {}
+const colW = computed(() => {
+  const raw = rawW.value
+  if (wKey !== props.rows) { wKey = props.rows; wMax = {} }
+  for (const k in raw) wMax[k] = Math.max(wMax[k] ?? 0, raw[k])
+  return { ...wMax }
+})
+
+// ── 固定列(LIST-PAGE §9、规范 §1.8 园区抄表):用途(名称列,rank 0)→ 用量 → 位置 → 状态 ──
+const wideCols = computed<WideCol[]>(() => [
+  { key: 'loc', side: 'L', w: colW.value.loc, rank: 2 },
+  { key: 'use', side: 'L', w: colW.value.use, rank: 0, name: true, minW: tx(['三个字']) },
+  { key: 'usage', side: 'R', w: colW.value.usage, rank: 1 },
+  { key: 'st', side: 'R', w: colW.value.st, rank: 3 },
+])
+// 表头一行 40、行 40、合计 50(04-A 合计行约 50 高);没有分组表头(grpH 0)。不够 8 行先让合计不贴底,再不够给表格区 min-height、整页往下滚
+const GRID_H: HeightDims = { grpH: 0, leafH: 40, rowH: ROW_H, footH: 50 }
+const { fix, hStage, sbH } = useWideTable(wrapEl, wideCols, GRID_H, () => props.rows)
+const W = computed(() => ({ ...colW.value, ...fix.value.w }))
+const S = computed(() => {
+  const s = fix.value.style
+  const at = (k: string) => (s[k] ? { ...s[k] } : undefined)
+  const use = at('use')
+  // 组头 / 合计的标签格:位置还固定就跨 位置+用途 两格一起钉在左边;位置退了只钉用途那一格(不许比仍固定的列宽)
+  return {
+    loc: at('loc'), use, usage: at('usage'), st: at('st'),
+    lbl: s.loc ? { position: 'sticky' as const, left: '0px', boxShadow: s.use?.boxShadow } : use,
+  }
+})
+const fixCls = (k: 'loc' | 'use' | 'usage' | 'st') => (fix.value.style[k] ? 'mlg-fix' : undefined)
+const w = (px: number) => ({ width: px + 'px' })
+const tableW = computed(() => {
+  const c = W.value
+  return c.loc + c.use + MID.reduce((s, m) => s + (show.value[m.key] ? c[m.key] : 0), 0)
+    + c.prev + c.curr + touCols.value.reduce((s, t) => s + c[t.c], 0) + c.usage + c.st
+})
+const showTools = computed(() => tier.value !== 's')   // 手机档不动(规范 §2 第 21 条),不多占一行
+// 3 级:表格区最少露 8 行,卡片撑高、整页往下滚(卡 = 工具条 44 + 表格区 + 上下边框 2)
+const cardSt = computed(() => (hStage.value === 3
+  ? { minHeight: (showTools.value ? 44 : 0) + minTableH(GRID_H) + 2 + sbH.value + 'px' } : undefined))
 
 function onInput(x: WorkbenchRow, f: DraftField, e: Event) {
   emit('cell-edit', { meterId: x.m.id, field: f, value: (e.target as HTMLInputElement).value })
 }
-// 底数格(SPEC §3.4 新表首月):Enter 在同一行里往右走,出了上月行至组进本月行至首格
-function onPrevEnter(e: KeyboardEvent) {
-  const t = e.target as HTMLInputElement
-  const k = Number(t.dataset.pi) + 1
-  const next = wrapEl.value?.querySelector<HTMLInputElement>(k < segDefs.value.length
-    ? `input.mlg-ni[data-di="${t.dataset.di}"][data-pi="${k}"]`
-    : `input.mlg-ni[data-di="${t.dataset.di}"][data-si="0"]`)
-  next?.focus()
-  next?.select()
-}
 
-// ── 键盘流(§7.3+6.5):Enter 跳下一编辑格(行内横向,行尾进下一数据行首格,汇总行跳过);
-//    目标行不在窗口=pending-focus:先 scrollTop 定位重建窗口,渲染后 nextTick 聚焦 ──
+// ── 键盘流(§7.3+6.5):Enter 跳下一编辑格 —— 同一行下一格(按比例出列的尖峰平谷),行尾进下一个有输入格的项
+//    (数据行或分时段行,组头 / 组尾跳过);目标不在窗口=pending-focus:先 scrollTop 定位重建窗口,渲染后 nextTick 聚焦 ──
 function focusCell(di: number, si: number): boolean {
   const el = wrapEl.value?.querySelector<HTMLInputElement>(
     `input.mlg-ni[data-di="${di}"][data-si="${si}"]`)
@@ -280,253 +345,356 @@ function focusCell(di: number, si: number): boolean {
   el.select()
   return true
 }
+// 底数格(SPEC §3.4 新表首月):Enter 进同一行的本月格
+function onPrevEnter(e: KeyboardEvent) {
+  focusCell(Number((e.target as HTMLElement).dataset.di), 0)
+}
+const hasInput = (it: DisplayItem) => it.type === 'row' || (it.type === 'seg' && it.seg.keys.length === 1)
 function onEnter(e: KeyboardEvent) {
   const t = e.target as HTMLInputElement
   let di = Number(t.dataset.di)
-  let si = Number(t.dataset.si) + 1
   if (!Number.isFinite(di)) return
-  if (si >= segDefs.value.length) {                      // 行尾→下一数据行首格(bsum 无 input 跳过)
-    si = 0
-    const list = displayList.value
-    do { di++ } while (di < list.length && list[di].type !== 'row')
-    if (di >= list.length) return
-  }
-  if (focusCell(di, si)) return
+  if (focusCell(di, Number(t.dataset.si) + 1)) return
+  const list = displayList.value
+  do { di++ } while (di < list.length && !hasInput(list[di]))
+  if (di >= list.length) return
+  if (focusCell(di, 0)) return
   const wrap = wrapEl.value
   if (!wrap) return
-  wrap.scrollTop = offsetOf(displayList.value, di)       // 目标行落 sticky 表头下沿
+  wrap.scrollTop = offsetOf(list, di)                    // 目标行落 sticky 表头下沿
   syncWindow(true)
-  nextTick(() => focusCell(di, si))
+  nextTick(() => focusCell(di, 0))
 }
 </script>
 
 <template>
-  <div ref="wrapEl" class="mlg-wrap" @scroll.passive="onScroll">
-    <table class="mlg-table" :style="{ width: tableW + 'px' }">
-      <!-- 交互稳定性(LIST-PAGE-SPEC §零布局位移):colgroup 钉死每列宽,配合 table-layout:fixed,
-           滚动换行时浏览器不再按可见单元格内容重算列宽 -->
-      <colgroup>
-        <col :style="w(AREA_W)" /><col :style="w(FLOOR_W)" /><col :style="w(USE_W)" />
-        <col :style="w(ROOM_W)" /><col :style="w(TEN_W)" /><col :style="w(SUB_W)" />
-        <col :style="w(CODE_W)" /><col :style="w(FAC_W)" />
-        <col v-for="s in segDefs" :key="'gp' + s.c" :style="w(SEG_W)" />
-        <col v-for="s in segDefs" :key="'gc' + s.c" :style="w(SEG_W)" />
-        <col :style="w(USAGE_W)" /><col :style="w(ST_W)" />
-      </colgroup>
-      <thead>
-        <tr>
-          <th rowspan="2" class="mlg-grp-th mlg-fix-th mlg-fix" :style="fixArea"
-              title="原册 B 列:楼栋/车间(不带期数)">区域</th>
-          <!-- S 档退级列(§5.3):class 随 fixThCls/fixCls 走,区域列恒 sticky -->
-          <th rowspan="2" class="mlg-grp-th" :class="fixThCls" :style="fixFloor">楼层·方位</th>
-          <th rowspan="2" class="mlg-grp-th" :class="fixThCls" :style="fixUse">用途</th>
-          <th rowspan="2" class="mlg-grp-th" :style="w(ROOM_W)">{{ zone === 'dorm' ? '宿舍单元' : '房号' }}</th>
-          <th rowspan="2" class="mlg-grp-th" :style="w(TEN_W)">租户</th>
-          <th rowspan="2" class="mlg-grp-th" :style="w(SUB_W)">表号</th>
-          <th rowspan="2" class="mlg-grp-th" :style="w(CODE_W)">编码</th>
-          <th rowspan="2" class="mlg-grp-th" :style="w(FAC_W)" :title="FACTOR_TITLE">倍率</th>
-          <th :colspan="segDefs.length" class="mlg-grp-th">上月行至</th>
-          <th :colspan="segDefs.length" class="mlg-grp-th">本月行至</th>
-          <th rowspan="2" class="mlg-grp-th" :class="fixThCls" :style="fixUsage">用量</th>
-          <th rowspan="2" class="mlg-grp-th" :class="fixThCls" :style="fixSt">状态</th>
-        </tr>
-        <tr>
-          <th v-for="s in segDefs" :key="'p' + s.c" class="mlg-leaf-th" :style="w(SEG_W)">{{ s.lab }}</th>
-          <th v-for="s in segDefs" :key="'c' + s.c" class="mlg-leaf-th" :style="w(SEG_W)">{{ s.lab }}</th>
-        </tr>
-      </thead>
-      <tbody>
-        <!-- 窗口化(§7 6.5):顶/底 spacer 撑出全表滚动高度,中间只渲染 [start,end) -->
-        <tr v-if="win.topPad > 0" class="mlg-spacer" aria-hidden="true">
-          <td :colspan="colCount" :style="{ height: win.topPad + 'px' }"></td>
-        </tr>
-        <template v-for="v in visItems" :key="v.x ? v.x.m.id : 'bs-' + v.g!.key">
-        <!-- 存疑行(V75 §E3/§F1 两级):shadow=疑似重复建档,整行浅红底,不计入楼栋分表Σ;
-             incomplete=档案不全但配不到重复对手,浅黄底,**照常计入Σ** —— 只是催人补档案 -->
-        <tr v-if="v.x" :class="{ 'mlg-sus': v.x.m.suspect === 'shadow', 'mlg-inc': v.x.m.suspect === 'incomplete' }">
-          <!-- 区域 / 楼层·方位 / 用途(sticky 左):稳定标识,横滚常驻 -->
-          <td class="mlg-fix" :style="fixArea">
-            <span class="mlg-txt" :class="{ dim: !areaLabel(v.x) }">{{ areaLabel(v.x) || '–' }}</span>
-          </td>
-          <td :class="fixCls" :style="fixFloor">
-            <span
-              class="mlg-txt" :class="{ dim: floorSide(v.x) === '–' || floorSide(v.x) === LOC_TODO }"
-              :title="floorSide(v.x) === LOC_TODO ? '这块表有区域但没录楼层方位,点开租户列的抽屉补「楼层/方位/房号」三格' : (v.x.m.spot ?? undefined)"
-            >{{ floorSide(v.x) }}</span>
-          </td>
-          <td :class="fixCls" :style="fixUse">
-            <span class="mlg-txt" :title="useLabel(v.x)">{{ useLabel(v.x) }}</span>
-          </td>
-          <td><span class="mlg-txt" :class="{ dim: roomNo(v.x) === '–' }">{{ roomNo(v.x) }}</span></td>
-          <!-- 租户(普通列):click 开抽屉;待核 coral 名+徽标(§7.1) -->
-          <td>
-            <span
-              class="mlg-tname" :class="{ coral: v.x.pending && !v.x.retired && !v.x.off, dim: v.x.placeholder || v.x.retired || !!v.x.off }"
-              :title="tenTitle(v.x)" @click="emit('open', v.x.m.id)"
+  <div class="mlg-wrap" :style="cardSt">
+    <!-- 卡内工具条(画布 04-A 右上「分时列 · 列」):没有分时表不出开关(04-C 宿舍) -->
+    <FPTableTools
+      v-if="showTools" class="mlg-tools" :mode="tm" switch-label="分时列" :tou="colsOn"
+      :columns="toolCols" :hidden="hidden" @update:tou="setTou" @update:hidden="hidden = $event"
+    />
+    <div ref="wrapEl" class="mlg-scroll" @scroll.passive="onScroll">
+      <table class="mlg-table" :class="{ 'hs-foot': hStage >= 2 }" :style="{ width: tableW + 'px' }">
+        <!-- 交互稳定性(LIST-PAGE-SPEC §零布局位移):colgroup 钉死每列宽,配合 table-layout:fixed,
+             滚动换行时浏览器不再按可见单元格内容重算列宽。
+             最后一根 <col> 不给宽 = 最右空列(LIST-PAGE §4 列宽铁律):表格区比各列合计宽时,余宽全落在它身上 -->
+        <colgroup>
+          <col :style="w(W.loc)" /><col :style="w(W.use)" />
+          <template v-for="c in MID" :key="c.key"><col v-if="show[c.key]" :style="w(W[c.key])" /></template>
+          <col :style="w(W.prev)" /><col :style="w(W.curr)" />
+          <col v-for="s in touCols" :key="s.c" :style="w(W[s.c])" />
+          <col :style="w(W.usage)" /><col :style="w(W.st)" /><col />
+        </colgroup>
+        <thead>
+          <tr>
+            <th :class="[fixCls('loc'), { gut: rowMode }]" :style="S.loc">位置</th>
+            <th :class="fixCls('use')" :style="S.use">用途</th>
+            <th v-if="show.room">{{ zone === 'dorm' ? '宿舍单元' : '房号' }}</th>
+            <th v-if="show.ten">租户</th>
+            <th v-if="show.sub">表号</th>
+            <th v-if="show.code">编码</th>
+            <th v-if="show.fac" class="r" v-tip="FACTOR_TIP">倍率</th>
+            <th class="r vl">上月行至</th>
+            <th class="r vl">本月行至</th>
+            <th v-for="s in touCols" :key="s.c" class="r">{{ s.lab }}</th>
+            <th class="r mlg-money" :class="[fixCls('usage'), { vl: !S.usage }]" :style="S.usage">用量</th>
+            <th :class="fixCls('st')" :style="S.st">状态</th>
+            <th class="fp-fill" aria-hidden="true"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- 窗口化(§7 6.5):顶/底 spacer 撑出全表滚动高度,中间只渲染 [start,end) -->
+          <tr v-if="win.topPad > 0" class="mlg-spacer" aria-hidden="true">
+            <td :colspan="colCount" :style="{ height: win.topPad + 'px' }"></td>
+          </tr>
+          <template v-for="v in visItems" :key="v.key">
+            <!-- 组头兼小计(画布 04-A「A座 13 块 144,183.58」):点它收起;块数不算停用的 -->
+            <tr v-if="v.t === 'ghead'" class="mlg-ghead">
+              <td v-if="!S.loc"></td>
+              <td :colspan="S.loc ? 2 : 1" class="mlg-fix" :style="S.lbl">
+                <button type="button" class="mlg-gbtn" :aria-expanded="v.on" @click="toggleGroup(v.g!.key)">
+                  <component :is="ChevronDown" :size="14" class="ch" />{{ v.g!.label }}<span class="n">{{ v.n }} 块</span>
+                </button>
+              </td>
+              <td v-if="nMid" :colspan="nMid"></td>
+              <td class="vl"></td><td class="vl"></td>
+              <td v-for="s in touCols" :key="s.c"></td>
+              <td class="mlg-money" :class="[fixCls('usage'), { vl: !S.usage }]" :style="S.usage">
+                <span class="mlg-sumc" v-tip="grpSegTip(v.g!)">{{ f2(usageOf(v.g!).total) }}</span>
+              </td>
+              <td :class="fixCls('st')" :style="S.st"></td>
+              <td class="fp-fill" aria-hidden="true"></td>
+            </tr>
+            <!-- 存疑行(V75 §E3/§F1 两级):shadow=疑似重复建档,整行浅红底,不计入楼栋分表Σ;
+                 incomplete=档案不全但配不到重复对手,浅黄底,**照常计入Σ** —— 只是催人补档案 -->
+            <tr
+              v-else-if="v.t === 'row'"
+              :class="{ 'mlg-sus': v.x!.m.suspect === 'shadow', 'mlg-inc': v.x!.m.suspect === 'incomplete' }"
             >
-              <span class="nm">{{ tenName(v.x) }}</span>
-              <!-- 本月册子没有(SPEC §10.4):挤了先缩它、最后只剩那颗点,名字不让位;悬停看是哪一段、从哪来 -->
-              <span v-if="bookTip(v.x)" class="mlg-book" :title="bookTip(v.x)!"><span>本月册子没有</span></span>
-              <!-- 停用 / 不在册的行不飘待核红:本月不在服务中,待核无意义(2026-08-05 用户报障) -->
-              <span v-if="v.x.pending && !v.x.retired && !v.x.off" class="mlg-st coral sm" title="企业名称原文未匹配到租户档案,点击在抽屉「合同绑定」页签挂租户">待核</span>
-              <span
-                v-if="v.x.m.suspect === 'shadow'" class="mlg-st bad sm"
-                title="疑似重复建档:本表区域/位置/企业名称/编码全空,且与同栋同类的另一块档案完整的表同月上下期示数与倍率完全相等,很可能是同一块物理表的第二份档案。该表用量暂不计入楼栋分表Σ;认对后请补齐档案(在抽屉保存一次即解除存疑)"
-              >存疑·疑似重复</span>
-              <span
-                v-else-if="v.x.m.suspect === 'incomplete'" class="mlg-st amber sm"
-                title="档案不全:区域/位置/企业名称/编码全空,但配不到重复对手,按真表处理 —— 用量照常计入楼栋分表Σ。请补齐档案(在抽屉保存一次即解除提示)"
-              >档案不全</span>
-              <span v-if="v.x.m.ownership !== 'tenant'" class="mt-own" :class="'own-' + v.x.m.ownership">{{ ownershipLabel(v.x.m.ownership, v.x.m.kind) }}</span>
-              <component :is="ChevronRight" :size="13" class="ch" />
-            </span>
-          </td>
-          <td><span class="mlg-txt" :title="v.x.m.subName ?? undefined">{{ v.x.m.subName ?? '–' }}</span></td>
-          <td><span class="mlg-txt mono" :class="{ dim: !v.x.m.code }" :title="v.x.m.code ?? undefined">{{ v.x.m.code ?? '–' }}</span></td>
-          <td><span class="mlg-nv" :title="FACTOR_TITLE">{{ v.x.factor }}</span></td>
-          <!-- 上月行至:只读基准;这一行没有底数(新表首月 / 读数没带上月行至)时编辑态开放录入起始底数(SPEC §3.4)。
-               data-pi 不进 data-si 序:其余行的键盘流一格不变 -->
-          <td v-for="(s, pi) in segDefs" :key="'p' + s.c">
-            <input
-              v-if="editMode && baseOpen(v.x)" class="mlg-ni" type="number" step="any"
-              :value="inputVal(v.x, s.pf)" placeholder="底数"
-              :data-di="v.di" :data-pi="pi"
-              @click.stop
-              @input="onInput(v.x, s.pf, $event)"
-              @keydown.enter.prevent="onPrevEnter($event)"
-            />
-            <span v-else class="mlg-nv" :class="{ empty: prevOf(v.x, s) == null }">{{ fmt(prevOf(v.x, s)) }}</span>
-          </td>
-          <!-- 本月行至:编辑态全格透明 input 点格直改(§7.2);@click.stop 不触发租户格外的行为;
-               data-di/si=显示列表索引/段序,键盘流跨窗寻址(§7 6.5) -->
-          <td v-for="(s, si) in segDefs" :key="'c' + s.c">
-            <input
-              v-if="editMode" class="mlg-ni" type="number" step="any"
-              :value="inputVal(v.x, s.c)" placeholder="–"
-              :data-di="v.di" :data-si="si"
-              @click.stop
-              @input="onInput(v.x, s.c, $event)"
-              @keydown.enter.prevent="onEnter($event)"
-            />
-            <span v-else class="mlg-nv" :class="{ empty: currOf(v.x, s) == null }">{{ fmt(currOf(v.x, s)) }}</span>
-          </td>
-          <!-- 用量(sticky 右,派生蓝):校验红显+title(倒走/时段不符,§7.4) -->
-          <td :class="fixCls" :style="fixUsage">
-            <span
-              class="mlg-sumc" :class="{ bad: drv.get(v.x.m.id)!.issues.length > 0 }"
-              :title="drv.get(v.x.m.id)!.issues.join(' · ') || undefined"
-            >{{ fmt(drv.get(v.x.m.id)!.usage) }}</span>
-          </td>
-          <td class="ct" :class="fixCls" :style="fixSt">
-            <span class="mlg-st" :class="STATUS_META[v.x.status].cls" :title="statusDims(v.x)">{{ STATUS_META[v.x.status].label }}</span>
-          </td>
-        </tr>
-        <!-- 楼栋分组汇总行(§7.6):兼作分隔;无 input,键盘流自然跳过;行至/状态列空 -->
-        <tr v-else class="mlg-bsum">
-          <td colspan="8" class="mlg-fix" :style="fixGrpLbl">
-            <span class="mlg-bsum-lbl" :title="grpLabel(v.g!)">{{ grpLabel(v.g!) }}</span>
-          </td>
-          <td :colspan="segDefs.length * 2"></td>
-          <td :class="fixCls" :style="fixUsage">
-            <span class="mlg-bsum-v" :title="grpSegTitle(v.g!)">{{ fmt(usageOf(v.g!).total) }}</span>
-          </td>
-          <td :class="fixCls" :style="fixSt"></td>
-        </tr>
-        </template>
-        <tr v-if="win.bottomPad > 0" class="mlg-spacer" aria-hidden="true">
-          <td :colspan="colCount" :style="{ height: win.bottomPad + 'px' }"></td>
-        </tr>
-        <tr v-if="rows.length === 0">
-          <td class="mlg-noro" :colspan="colCount">{{ emptyText }}</td>
-        </tr>
-      </tbody>
-      <!-- tfoot sticky 底(§7.1):合计|本月行至组=已抄/未抄|用量=Σ当前筛选行;行至列不做列合计 -->
-      <tfoot>
-        <tr>
-          <th class="mlg-fix" :style="fixArea"><span class="mlg-foot-lbl">合　计</span></th>
-          <th :class="fixCls" :style="fixFloor"></th>
-          <!-- 用途列也是 sticky:tfoot 同样要给它固定格,否则横滚时页脚露出下层内容 -->
-          <th :class="fixCls" :style="fixUse"></th>
-          <th colspan="5"></th>
-          <th :colspan="segDefs.length"></th>
-          <th :colspan="segDefs.length"><span class="mlg-foot-rd">已抄 {{ foot.read }} / 未抄 {{ foot.missing }}</span></th>
-          <th :class="fixCls" :style="fixUsage"><span class="mlg-foot-v">{{ fmt(foot.usageSum) }}</span></th>
-          <th :class="fixCls" :style="fixSt"></th>
-        </tr>
-      </tfoot>
-    </table>
+              <td :class="fixCls('loc')" :style="S.loc">
+                <span class="mlg-loc">
+                  <button
+                    v-if="rowMode && v.x!.tou" type="button" class="mlg-exp" :aria-expanded="expanded.has(v.x!.m.id)"
+                    :aria-label="expanded.has(v.x!.m.id) ? '收起尖峰平谷' : '展开尖峰平谷'"
+                    @click="toggleRow(v.x!.m.id)"
+                  ><component :is="ChevronDown" :size="14" /></button>
+                  <i v-else-if="rowMode" class="mlg-gut" />
+                  <span
+                    class="mlg-txt" :class="{ dim: floorSide(v.x!) === '–' || floorSide(v.x!) === LOC_TODO }"
+                    v-tip="locTip(v.x!)"
+                  >{{ floorSide(v.x!) }}</span>
+                </span>
+              </td>
+              <td :class="fixCls('use')" :style="S.use">
+                <span class="mlg-txt" v-tip="useLabel(v.x!)">{{ useLabel(v.x!) }}</span>
+              </td>
+              <td v-if="show.room"><span class="mlg-txt" :class="{ dim: roomNo(v.x!) === '–' }">{{ roomNo(v.x!) }}</span></td>
+              <!-- 租户(普通列):click 开抽屉;非租户表只出归属签;待核 coral 名+签(§7.1) -->
+              <td v-if="show.ten">
+                <span
+                  class="mlg-tname"
+                  :class="{ coral: v.x!.pending && !v.x!.retired && !v.x!.off, dim: v.x!.placeholder || v.x!.retired || !!v.x!.off }"
+                  @click="emit('open', v.x!.m.id)"
+                >
+                  <span class="nm" v-tip="tenTip(v.x!)">{{ tenName(v.x!) }}</span>
+                  <span v-if="v.x!.m.ownership !== 'tenant'" class="mlg-tag">{{ ownershipLabel(v.x!.m.ownership, v.x!.m.kind) }}</span>
+                  <!-- 停用 / 不在册的行不飘待核红:本月不在服务中,待核无意义(2026-08-05 用户报障) -->
+                  <span v-if="v.x!.pending && !v.x!.retired && !v.x!.off" class="mlg-st coral sm" v-tip="PENDING_TIP">待核</span>
+                  <span v-if="v.x!.m.suspect === 'shadow'" class="mlg-st bad sm" v-tip="SHADOW_TIP">存疑·疑似重复</span>
+                  <span v-else-if="v.x!.m.suspect === 'incomplete'" class="mlg-st amber sm" v-tip="INC_TIP">档案不全</span>
+                  <!-- 本月册子没有(SPEC §10.4,就地标记 ①):挤了先缩它、最后只剩那颗点,名字不让位;悬停看是哪一段、从哪来 -->
+                  <FPMark v-if="bookTip(v.x!)" tone="warn" class="mlg-book" v-tip="bookTip(v.x!)"><span>本月册子没有</span></FPMark>
+                  <component :is="ChevronRight" :size="13" class="ch" />
+                </span>
+              </td>
+              <td v-if="show.sub">
+                <span class="mlg-txt mlg-sub"><span>{{ subShort(v.x!) }}</span><span v-if="isNewSub(v.x!)" class="mlg-tag">新表</span></span>
+              </td>
+              <td v-if="show.code"><span class="mlg-txt mono" :class="{ dim: !v.x!.m.code }">{{ v.x!.m.code ?? '–' }}</span></td>
+              <td v-if="show.fac"><span class="mlg-nv">{{ fmtFac(v.x!.factor) }}</span></td>
+              <!-- 上月行至:只读基准;没有底数(新表首月 / 读数没带上月行至)时编辑态开放录入底数(SPEC §3.4)。
+                   data-pi 不进 data-si 序:其余行的键盘流一格不变 -->
+              <td class="vl" :class="{ 'mlg-ic': editMode && baseOpen(v.x!) }">
+                <input
+                  v-if="editMode && baseOpen(v.x!)" class="mlg-ni" type="number" step="any"
+                  :value="inputVal(v.x!, 'prevTotal')" placeholder="底数" :data-di="v.di" data-pi="0"
+                  @click.stop @input="onInput(v.x!, 'prevTotal', $event)" @keydown.enter.prevent="onPrevEnter($event)"
+                />
+                <span v-else class="mlg-nv" :class="{ empty: v.x!.prevTotal == null }">{{ f2(v.x!.prevTotal) }}</span>
+              </td>
+              <!-- 本月行至:编辑态输入格;倒走红框(画布 04-B 99.8);data-di/si=显示列表索引/格序,键盘流跨窗寻址 -->
+              <td class="vl" :class="{ 'mlg-ic': editMode }">
+                <input
+                  v-if="editMode" class="mlg-ni" :class="{ bad: drv.get(v.x!.m.id)!.st?.neg }" type="number" step="any"
+                  :value="inputVal(v.x!, 'currTotal')" placeholder="–" :data-di="v.di" data-si="0"
+                  @click.stop @input="onInput(v.x!, 'currTotal', $event)" @keydown.enter.prevent="onEnter($event)"
+                />
+                <span v-else class="mlg-nv" :class="{ empty: cur(v.x!, 'currTotal') == null }">{{ f2(cur(v.x!, 'currTotal')) }}</span>
+              </td>
+              <!-- 按比例出列打开时:本月 尖 / 峰 / 平 / 谷(04-C 二期卡) -->
+              <td v-for="(s, i) in touCols" :key="s.c" :class="{ 'mlg-ic': editMode }">
+                <input
+                  v-if="editMode" class="mlg-ni" type="number" step="any"
+                  :value="inputVal(v.x!, s.c)" placeholder="–" :data-di="v.di" :data-si="i + 1"
+                  @click.stop @input="onInput(v.x!, s.c, $event)" @keydown.enter.prevent="onEnter($event)"
+                />
+                <span v-else class="mlg-nv" :class="{ empty: cur(v.x!, s.c) == null }">{{ f2(cur(v.x!, s.c)) }}</span>
+              </td>
+              <!-- 用量(钱那一列):时段不符红显 + 悬停说明(§7.4) -->
+              <td class="mlg-money" :class="[fixCls('usage'), { vl: !S.usage }]" :style="S.usage">
+                <span
+                  class="mlg-sumc" :class="{ bad: drv.get(v.x!.m.id)!.issues.some(s => s.startsWith('时段不符')) }"
+                  v-tip="drv.get(v.x!.m.id)!.issues.join(' · ') || undefined"
+                >{{ f2(drv.get(v.x!.m.id)!.usage) }}</span>
+              </td>
+              <!-- 状态:只写不正常的,已抄留空 -->
+              <td :class="fixCls('st')" :style="S.st">
+                <span
+                  v-if="drv.get(v.x!.m.id)!.st" class="mlg-st" :class="drv.get(v.x!.m.id)!.st!.cls"
+                  v-tip="drv.get(v.x!.m.id)!.st!.neg ? undefined : statusDims(v.x!)"
+                >{{ drv.get(v.x!.m.id)!.st!.text }}</span>
+              </td>
+              <td class="fp-fill" aria-hidden="true"></td>
+            </tr>
+            <!-- 分时段行(04-A A座总电 ⌄ 峰段/平段/谷段):编辑态出本月段输入格(04-B),回车 总→峰→平→谷 -->
+            <tr v-else-if="v.t === 'seg'" class="mlg-segr">
+              <td :class="fixCls('loc')" :style="S.loc"></td>
+              <td :class="fixCls('use')" :style="S.use"><span class="mlg-seglbl">{{ v.seg!.label }}</span></td>
+              <td v-if="nMid" :colspan="nMid"></td>
+              <td class="vl" :class="{ 'mlg-ic': segIn(v.seg!) && baseOpen(v.x!) }">
+                <input
+                  v-if="segIn(v.seg!) && baseOpen(v.x!)" class="mlg-ni" type="number" step="any"
+                  :value="inputVal(v.x!, segF(v.seg!).p)" placeholder="底数" :data-di="v.di" data-pi="0"
+                  @click.stop @input="onInput(v.x!, segF(v.seg!).p, $event)" @keydown.enter.prevent="onPrevEnter($event)"
+                />
+                <span v-else class="mlg-nv" :class="{ empty: segVal(v.x!, v.seg!, 'p') == null }">{{ f2(segVal(v.x!, v.seg!, 'p')) }}</span>
+              </td>
+              <td class="vl" :class="{ 'mlg-ic': segIn(v.seg!) }">
+                <input
+                  v-if="segIn(v.seg!)" class="mlg-ni" type="number" step="any"
+                  :value="inputVal(v.x!, segF(v.seg!).c)" placeholder="–" :data-di="v.di" data-si="0"
+                  @click.stop @input="onInput(v.x!, segF(v.seg!).c, $event)" @keydown.enter.prevent="onEnter($event)"
+                />
+                <span v-else class="mlg-nv" :class="{ empty: segVal(v.x!, v.seg!, 'c') == null }">{{ f2(segVal(v.x!, v.seg!, 'c')) }}</span>
+              </td>
+              <td v-for="s in touCols" :key="s.c"></td>
+              <td class="mlg-money" :class="[fixCls('usage'), { vl: !S.usage }]" :style="S.usage">
+                <span class="mlg-sumc">{{ f2(segUse(v.x!, v.seg!)) }}</span>
+              </td>
+              <td :class="fixCls('st')" :style="S.st"></td>
+              <td class="fp-fill" aria-hidden="true"></td>
+            </tr>
+            <!-- 组尾(METER-TIMELINE-SPEC §6,画布 04-A):停用的表收在这一行,点「显示」才进列表 -->
+            <tr v-else class="mlg-retr">
+              <td :class="fixCls('loc')" :style="S.loc"></td>
+              <td :class="fixCls('use')" :style="S.use">
+                <span class="mlg-ret">
+                  {{ v.on ? `${v.n} 块已停用` : `另有 ${v.n} 块已停用` }}
+                  <button type="button" class="mlg-link" @click="toggleRetired(v.g!.key)">{{ v.on ? '收起' : '显示' }}</button>
+                </span>
+              </td>
+              <td v-if="nMid" :colspan="nMid"></td>
+              <td class="vl"></td><td class="vl"></td>
+              <td v-for="s in touCols" :key="s.c"></td>
+              <td class="mlg-money" :class="[fixCls('usage'), { vl: !S.usage }]" :style="S.usage"></td>
+              <td :class="fixCls('st')" :style="S.st"></td>
+              <td class="fp-fill" aria-hidden="true"></td>
+            </tr>
+          </template>
+          <tr v-if="win.bottomPad > 0" class="mlg-spacer" aria-hidden="true">
+            <td :colspan="colCount" :style="{ height: win.bottomPad + 'px' }"></td>
+          </tr>
+          <tr v-if="rows.length === 0">
+            <td class="mlg-noro" :colspan="colCount">{{ emptyText }}</td>
+          </tr>
+        </tbody>
+        <!-- 合计(§7.1):用量 = Σ当前筛选行(草稿实时);不写已抄 / 未抄(04-A) -->
+        <tfoot>
+          <tr>
+            <th v-if="!S.loc"></th>
+            <th :colspan="S.loc ? 2 : 1" class="mlg-fix" :style="S.lbl"><span class="mlg-foot-lbl">合计</span></th>
+            <th v-if="nMid" :colspan="nMid"></th>
+            <th class="vl"></th><th class="vl"></th>
+            <th v-for="s in touCols" :key="s.c"></th>
+            <th class="mlg-money" :class="[fixCls('usage'), { vl: !S.usage }]" :style="S.usage"><span class="mlg-foot-v">{{ f2(foot.usageSum) }}</span></th>
+            <th :class="fixCls('st')" :style="S.st"></th>
+            <th class="fp-fill" aria-hidden="true"></th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
   </div>
 </template>
 
 <style scoped>
-/* ── 宽表(双级表头+左右固定列+合计页脚)—— 1:1 手法自 FPLedgerTable.vue ── */
-.mlg-wrap { flex:1 1 auto; min-height:0; overflow:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--surface-white); }
+/* ── 卡:工具条 + 表格区(画布 04-A);表格区 overflow:auto 是 useWideTable 量宽高的那一层 ── */
+.mlg-wrap { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--surface-white); overflow:hidden; }
+.mlg-tools { flex:0 0 auto; }
+.mlg-scroll { flex:1 1 auto; min-height:0; overflow:auto; }
 /* table-layout:fixed(零布局位移):列宽只由 colgroup 决定,窗口化换行不触发列宽重算;
-   min-width:100% 容器更宽时按比例摊余量,与数据内容无关,同样稳定 */
-.mlg-table { border-collapse:separate; border-spacing:0; table-layout:fixed; min-width:100%; font-family:var(--font-sans); }
+   min-width:100%:容器更宽时余量全落进最后那根不给宽的 <col>(最右空列 .fp-fill),各列宽一个像素不动。
+   表格样式(03-C / 04):正文 14、表头 12、行高 40、字左数右、无字距 */
+/* 钱那一列的两种底(03-A / 04-A / 05-A 同形,三屏同一组式子,moneyCol.spec 钉三份一致):
+   数据格与合计格 = 浅蓝 60% 叠白 ≈ 画布 (241,247,254);组头那一格再叠 60% 卡片灰 ≈ (246,248,252) */
+.mlg-table { --money-cell:color-mix(in srgb, var(--accent-blue) 60%, var(--surface-white)); --money-cell-grp:color-mix(in srgb, var(--money-cell) 40%, var(--surface-card)); border-collapse:separate; border-spacing:0; table-layout:fixed; min-width:100%; font-family:var(--font-sans); font-size:var(--fs-body); letter-spacing:0; color:var(--text-primary); }
 /* 窗口化 spacer(§7 6.5):撑出未渲染区高度;不参与 hover/分隔线 */
 .mlg-table tbody tr.mlg-spacer td { padding:0; border:none; background:var(--surface-white); }
 .mlg-table tbody tr.mlg-spacer:hover td { background:var(--surface-white); }
 .mlg-table th, .mlg-table td { border-bottom:1px solid var(--divider); box-sizing:border-box; padding:0; }
-.mlg-table thead th { position:sticky; background:var(--surface-card); color:var(--text-muted); font-size:11.5px; font-weight:var(--fw-semibold); text-align:center; padding:0 8px; z-index:4; }
-.mlg-grp-th { top:0; height:34px; }
-.mlg-leaf-th { top:34px; height:38px; line-height:1.25; white-space:normal; }
-.mlg-fix-th { top:0; z-index:6; vertical-align:middle; }
-/* 固定表头单元格须盖过横向滚动的分组/子列表头 */
-.mlg-table thead th.mlg-fix-th { z-index:8; }
-.mlg-table tbody td { height:34px; background:var(--surface-white); vertical-align:middle; }
+.mlg-table thead th { position:sticky; top:0; z-index:4; height:40px; padding:0 10px; background:var(--surface-card); color:var(--text-muted); font-size:var(--fs-label); font-weight:var(--fw-regular); text-align:left; white-space:nowrap; }
+.mlg-table thead th.r { padding:0 8px; text-align:right; }
+.mlg-table thead th.gut { padding-left:38px; }
+.mlg-table thead th.mlg-fix { z-index:8; }
+.mlg-table tbody td { height:40px; background:var(--surface-white); vertical-align:middle; }
 .mlg-table tbody tr:hover td { background:var(--surface-card); }
 .mlg-fix { position:sticky; z-index:3; background:var(--surface-white); }
 .mlg-table tbody tr:hover .mlg-fix { background:var(--surface-card); }
-td.ct { text-align:center; }
+/* 列组之间的整高竖线(规范 §2 第 28 条):倍率 | 上月行至 | 本月行至 | 用量;用途右缘是固定列阴影 */
+.mlg-table .vl { border-left-width:1px; border-left-style:solid; border-left-color:var(--divider); }   /* 长写:jsdom 解析不了带 var() 的简写 */
+
+/* 位置格:row 模式左边留一个 › 的位子,有分时的表放按钮 */
+.mlg-loc { display:flex; align-items:center; min-width:0; }
+.mlg-loc .mlg-txt { flex:1 1 auto; min-width:0; }
+.mlg-exp, .mlg-gut { flex:0 0 24px; height:24px; margin-left:4px; }
+.mlg-exp { display:grid; place-items:center; padding:0; border:none; border-radius:var(--radius-sm); background:none; color:var(--text-muted); cursor:pointer; }
+.mlg-exp:hover { background:var(--bg-hover); color:var(--text-primary); }
+.mlg-exp[aria-expanded="false"] svg { transform:rotate(-90deg); }
 
 /* 租户格:点击开抽屉;hover 出 chevron;待核 coral/占位 dim */
-.mlg-tname { display:inline-flex; align-items:center; gap:5px; padding:0 10px; font-size:12.5px; font-weight:var(--fw-semibold); color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; max-width:100%; }
-.mlg-tname:hover .nm { color:var(--hue-blue); }
-/* 名字吃剩余宽、徽标不许被压(改前 .nm 与徽标同为 flex:0 1 auto,而徽标 nowrap 压不动,
-   于是全部收缩都落在名字上 —— 列一窄名字就只剩一个字。min-width:0 是让 ellipsis 生效的前提) */
+.mlg-tname { display:inline-flex; align-items:center; gap:6px; padding:0 10px; color:var(--text-primary); white-space:nowrap; overflow:hidden; cursor:pointer; max-width:100%; box-sizing:border-box; }
+.mlg-tname:hover .nm { color:var(--text-link); }
+/* 名字吃剩余宽、签不许被压(min-width:0 是让 ellipsis 生效的前提) */
 .mlg-tname .nm { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
-.mlg-tname .mlg-st { flex:0 0 auto; }
-/* 本月册子没有(SPEC §10.4):橙点 + 字,点同催缴单「档案现归 X」那颗。格子挤了由它让:字先省略、
-   最后只剩点(min-width = 点 7 + 间距 4),名字要等它缩到头才开始让。收缩比例按宽度加权分摊,
-   999 时名字仍分到零点零几像素,已足以让名字末字变成省略号(浏览器实测 74.986 < 75),故取 99999 */
-.mlg-tname .mlg-book { flex:0 99999 auto; min-width:11px; display:inline-flex; align-items:center; gap:4px; font-size:var(--fs-micro); font-weight:var(--fw-regular); color:var(--warn-text); cursor:help; }
-.mlg-book::before { content:''; flex:0 0 7px; height:7px; border-radius:var(--radius-full); background:var(--hue-orange); }
+.mlg-tname .mlg-st, .mlg-tname .mlg-tag { flex:0 0 auto; }
+/* 本月册子没有(SPEC §10.4):FPMark 橙点 + 字。格子挤了由它让:字先省略、最后只剩点(min-width = 点 6 + 间距 4 + 1),
+   名字要等它缩到头才开始让。收缩比例按宽度加权分摊,999 时名字仍分到零点零几像素,故取 99999 */
+.mlg-tname .mlg-book { flex:0 99999 auto; min-width:11px; cursor:help; }
 .mlg-book > span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .mlg-tname.coral .nm { color:var(--coral-text); }
-.mlg-tname.dim .nm { color:var(--text-disabled); font-weight:var(--fw-regular); }
+.mlg-tname.dim .nm { color:var(--text-disabled); }
 .mlg-tname .ch { opacity:0; flex:0 0 auto; color:var(--text-disabled); transition:opacity var(--dur-fast); }
 .mlg-table tbody tr:hover .mlg-tname .ch { opacity:1; }
-/* 触屏(RESPONSIVE-LAYOUT-SPEC §6.1):hover 显形的行内箭头常显(半透明弱化,不可不可达);
-   iPad 外接鼠标 hover:hover 恢复显形,由媒体查询自动跟随 */
+/* 触屏(RESPONSIVE-LAYOUT-SPEC §6.1):hover 显形的行内箭头常显(半透明弱化) */
 @media (hover: none) {
   .mlg-tname .ch { opacity:.55; }
 }
+/* 归属签 / 新表签(04-A):灰底小签,不分色 */
+.mlg-tag { display:inline-block; font-size:var(--fs-micro); line-height:18px; padding:0 6px; border-radius:var(--radius-sm); color:var(--text-secondary); background:var(--bg-sunken); white-space:nowrap; }
+.mlg-sub { display:flex; align-items:center; gap:6px; }
 
-/* mono 右对齐数值(空值'–' dim)/左对齐文本 */
-.mlg-nv { display:block; text-align:right; font-size:12px; padding:0 8px; color:var(--text-secondary); font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* 文字左、数字右;读数两位小数、不省略(数字列宽按整列最长的值算) */
+.mlg-nv { display:block; text-align:right; padding:0 8px; color:var(--text-primary); font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .mlg-nv.empty { color:var(--text-disabled); }
-.mlg-txt { display:block; text-align:left; font-size:12px; padding:0 10px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mlg-txt { display:block; text-align:left; padding:0 10px; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .mlg-txt.dim { color:var(--text-disabled); }
-.mlg-txt.mono { font-family:var(--font-mono); font-size:11.5px; font-variant-numeric:tabular-nums; }
+.mlg-txt.mono { font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
 
-/* 用量(派生蓝,校验红显) */
-.mlg-sumc { display:block; text-align:right; font-weight:var(--fw-semibold); color:var(--hue-blue); font-size:12px; padding:0 8px; font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.mlg-sumc.bad { color:var(--hue-red); cursor:help; }
+/* 钱那一列(用量,规范 §2 第 29 条):加粗 + 整列浅蓝底 + 表头下蓝线,字不用蓝 */
+.mlg-sumc { display:block; text-align:right; padding:0 8px; font-weight:var(--fw-semibold); color:var(--text-primary); font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.mlg-sumc.bad { color:var(--delta-down-text); cursor:help; }
+.mlg-table thead th.mlg-money { border-bottom-width:2px; border-bottom-color:var(--hue-blue); color:var(--text-secondary); }
+.mlg-table tbody tr > td.mlg-money, .mlg-table tbody tr:hover > td.mlg-money { background:var(--money-cell); }
 
-/* 透明格内 input(focus 蓝底) */
-.mlg-ni { width:100%; box-sizing:border-box; border:1px solid transparent; background:transparent; text-align:right; font-size:12px; padding:3px 6px; outline:none; color:var(--text-primary); font-family:var(--font-mono); border-radius:var(--radius-sm); }
+/* 格内输入(编辑态):白底细框,聚焦蓝;倒走红框(画布 04-B) */
+.mlg-table td.mlg-ic { padding:0 4px; }
+.mlg-ni { width:100%; height:28px; box-sizing:border-box; padding:0 6px; border:1px solid var(--border-control); border-radius:var(--radius-sm); background:var(--surface-white); outline:none; text-align:right; font-family:var(--font-mono); font-size:var(--fs-body); color:var(--text-primary); }
 .mlg-ni:focus { background:var(--accent-blue); border-color:var(--hue-blue); }
+.mlg-ni.bad { border-color:var(--hue-red); }
 .mlg-ni::-webkit-outer-spin-button, .mlg-ni::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
 
-/* 状态徽标(语义色迁自旧 MeterGrid):已抄绿/未抄amber/倒走·时段不符红/待核·待绑定coral/占位灰 */
-.mlg-st { display:inline-block; font-size:var(--fs-micro); font-family:var(--font-sans); font-weight:var(--fw-regular); border-radius:var(--radius-full); padding:2px 9px; cursor:help; white-space:nowrap; }
+/* 状态签(只写不正常的):未抄 amber / 倒走·时段不符 红 / 待核·待绑定 coral / 占位·停用 灰 */
+.mlg-st { display:inline-block; margin-left:8px; font-size:var(--fs-micro); font-family:var(--font-sans); font-weight:var(--fw-regular); border-radius:var(--radius-full); padding:2px 9px; cursor:help; white-space:nowrap; }
+.mlg-tname .mlg-st { margin-left:0; }
 .mlg-st.sm { padding:1px 7px; }
 .mlg-st.ok { color:var(--ok-text); background:var(--ok-soft); }
 .mlg-st.amber { color:var(--caution-text); background:rgb(255, 244, 214); }
 .mlg-st.bad { color:var(--hue-red); background:var(--danger-soft); }
 .mlg-st.coral { color:var(--coral-text); background:rgb(255, 235, 228); }
 .mlg-st.dim { color:var(--text-muted); background:var(--bg-sunken); }
+
+/* 组头兼小计(画布 04-A):浅灰底,点它收起 */
+.mlg-table tbody tr.mlg-ghead td { background:var(--surface-card); }
+.mlg-table tbody tr.mlg-ghead > td.mlg-money { background:var(--money-cell-grp); }
+/* 组小计:次要色、常规字重 —— 比数据行的用量轻一档(04-A「144,183.58」) */
+.mlg-table tbody tr.mlg-ghead .mlg-sumc { font-weight:var(--fw-regular); color:var(--text-secondary); }
+.mlg-gbtn { display:inline-flex; align-items:center; gap:6px; height:40px; padding:0 10px; border:none; background:none; cursor:pointer; font:inherit; font-weight:var(--fw-semibold); color:var(--text-primary); white-space:nowrap; }
+.mlg-gbtn .n { font-size:var(--fs-label); font-weight:var(--fw-regular); color:var(--text-muted); }
+.mlg-gbtn .ch { flex:none; color:var(--text-muted); transition:transform var(--dur-fast); }
+.mlg-gbtn[aria-expanded="false"] .ch { transform:rotate(-90deg); }
+
+/* 分时段行(32 高):位置/用途白底,其余浅灰;字 12 灰,用量不加粗不上蓝 */
+.mlg-table tbody tr.mlg-segr td { height:32px; }
+.mlg-table tbody tr.mlg-segr > td:nth-child(n+3) { background:var(--surface-card); }
+.mlg-seglbl { display:block; padding:0 10px 0 34px; font-size:var(--fs-label); color:var(--text-muted); white-space:nowrap; }
+.mlg-seglbl::before { content:'–'; margin-right:8px; color:var(--text-disabled); }
+.mlg-segr .mlg-nv, .mlg-segr .mlg-sumc { font-size:var(--fs-label); font-weight:var(--fw-regular); color:var(--text-secondary); }
+.mlg-segr .mlg-ni { height:24px; font-size:var(--fs-label); }
+
+/* 组尾「另有 N 块已停用 · 显示」:字可以溢进右边的空格子 */
+.mlg-ret { display:flex; align-items:center; gap:8px; padding:0 10px; color:var(--text-muted); white-space:nowrap; }
+.mlg-link { padding:0; border:none; background:none; font:inherit; color:var(--text-link); cursor:pointer; }
+.mlg-link:hover { text-decoration:underline; }
 
 /* 存疑行(V75 §E3/§F1):shadow 浅红底(已被踢出Σ)/ incomplete 浅黄底(仍在Σ内,只是档案没填全);
    sticky 固定列同步上色(否则横滚露白) */
@@ -539,19 +707,15 @@ td.ct { text-align:center; }
 :root[data-theme="dark"] .mlg-st.coral { background:var(--danger-bg); }
 :root[data-theme="dark"] .mlg-table tbody tr.mlg-inc:hover td, :root[data-theme="dark"] .mlg-table tbody tr.mlg-inc:hover td.mlg-fix { background:color-mix(in srgb, var(--caution-soft), var(--ink-900) 8%); }
 
-/* 楼栋分组汇总行(§7.6,2026-07-28 加强):Excel 同款重分隔带——加高 40px+深底+上下 2px 粗边;
-   sticky 格背景同步,横滚不露馅 */
-.mlg-table tbody tr.mlg-bsum td { height:40px; background:var(--surface-sunken); border-top:2px solid var(--border-strong); border-bottom:2px solid var(--border-strong); }
-.mlg-bsum-lbl { display:block; padding:0 10px; text-align:left; font-size:13px; font-weight:var(--fw-semibold); letter-spacing:.02em; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.mlg-bsum-v { display:block; text-align:right; padding:0 8px; font-size:13px; font-weight:var(--fw-semibold); font-family:var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-primary); }
-
 /* 空态行(表头保留,电子表格观感) */
 .mlg-noro { text-align:center; padding:40px 16px; color:var(--text-disabled); font-size:var(--fs-label); }
 
-/* 合计页脚(sticky bottom,纯色) */
-.mlg-table tfoot th { position:sticky; bottom:0; z-index:5; height:40px; font-weight:var(--fw-semibold); background:var(--surface-white); border-top:2px solid var(--border-strong); font-family:var(--font-mono); color:var(--text-primary); }
+/* 合计(sticky bottom,浅灰底);不够 8 行时(hStage ≥ 2)不贴底、跟在最后一行后面 */
+.mlg-table tfoot th { position:sticky; bottom:0; z-index:5; height:50px; font-weight:var(--fw-semibold); text-align:left; background:var(--surface-card); border-top:2px solid var(--border-strong); color:var(--text-primary); }
+.mlg-table.hs-foot tfoot th { bottom:auto; }
 .mlg-table tfoot th.mlg-fix { z-index:7; }
-.mlg-foot-lbl { display:block; padding:0 10px; text-align:left; font-family:var(--font-sans); font-size:12.5px; color:var(--text-primary); }
-.mlg-foot-v { display:block; text-align:right; padding:0 8px; font-size:12px; font-variant-numeric:tabular-nums; color:var(--brand-deep); }
-.mlg-foot-rd { font-size:12px; color:var(--text-secondary); font-variant-numeric:tabular-nums; }
+.mlg-table tfoot th.mlg-money { background:var(--money-cell); }   /* 合计那一格同数据格 */
+.mlg-foot-lbl { display:block; padding:0 10px; }
+/* 合计数 16(04-A「2,892,034.93」),合计行 50 高,与 GRID_H.footH 同步 */
+.mlg-foot-v { display:block; text-align:right; padding:0 8px; font-family:var(--font-mono); font-size:16px; font-variant-numeric:tabular-nums; color:var(--text-primary); }
 </style>

@@ -13,6 +13,7 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
 import DatePicker from '@/components/ds/DatePicker.vue'
 import { iconFor } from '@/components/ds/icon'
 import { fnum, hues, inkA, STATUS, type AnaStatusLevel } from '@/components/ana/anaFmt'
@@ -51,7 +52,8 @@ const stations = ref<CpStationDTO[]>([])
 const readings = ref<CpReadingDTO[]>([])
 const usage = ref<CpPowerUsageDTO[]>([])
 const loading = ref(true)
-const failed = ref(false)
+/** 没读到的那一年(null = 没失败)。记年不记布尔:失败卡留着时用户换了年,卡上的字仍说失败的那一年 */
+const failed = ref<number | null>(null)
 /** 屏上画着的那一年。year 是下拉回显、立刻变;这个等数据一起换 —— 标题 / 结论句 / 下钻链接跟它走,
  *  换年在途时不拿新年的字配旧年的图(C5-02 ①)。null = 还没有任何数据,骨架门只认这一种 */
 const loadedYear = ref<number | null>(null)
@@ -61,10 +63,10 @@ const staleShown = useDeferredFlag(loading)
 let seq = 0
 /** silent = 回签那一趟(动效稿 C1-06):读屏切回来是「恢复现场」,旧内容留屏、到数原地瞬换 ——
  *  不置 loading(整区转圈 = 把恢复现场做成重进一次),失败也不翻成错误卡(屏上那份数据还是真的)。
- *  首进与换年照旧置 loading。 */
+ *  首进与换年照旧置 loading。失败卡只在成功分支清:点「重试」在途时失败卡留在原地,不先闪回旧年内容。 */
 async function load(y: number, silent = false) {
   const my = ++seq
-  if (!silent) { loading.value = true; failed.value = false }
+  if (!silent) loading.value = true
   try {
     const [sts, rds, pus] = await Promise.all([
       stations.value.length ? Promise.resolve(stations.value) : cpMeterApi.stations(),
@@ -76,9 +78,9 @@ async function load(y: number, silent = false) {
     readings.value = rds
     usage.value = pus
     loadedYear.value = y
-    failed.value = false   // 静默重取成功 → 清掉上一趟的失败卡
+    failed.value = null   // 静默重取成功 → 清掉上一趟的失败卡
   } catch {
-    if (my === seq && !silent) failed.value = true
+    if (my === seq && !silent) failed.value = y
   } finally {
     if (my === seq) loading.value = false
   }
@@ -347,7 +349,8 @@ const lossOpt = computed<object>(() => ({
       </div>
     </div>
     <!-- skel:end -->
-    <AnaEmpty v-else-if="failed" label="数据加载失败" hint="请刷新重试" />
+    <!-- 加载失败(画布 06-D 右格):换掉内容区,带重试;重试走同一个 load(首进 / 换年共用) -->
+    <FPLoadError v-else-if="failed" sub="屏上不显示别的年份的数字" @retry="load(year)">{{ failed }} 年的充电桩数据没读到</FPLoadError>
     <!-- 换年在途:旧内容留在原地退让(C5-02),data-stale-host 常挂 —— 类摘掉后退场也是 200,不挂就是硬切 -->
     <div v-else class="ak-page" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown">
       <div class="ak-head">

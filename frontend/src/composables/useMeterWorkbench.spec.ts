@@ -5,8 +5,8 @@ import {
   segUsage, segCheck, buildingTotals, groupByBuilding,
   effVal, draftRowDirty, draftDirtyIds, rowUsage, draftRowIssues, draftReq, gridFooter, healRows, baseOpen,
   bindQueueBucket, bindReason, autoLinkEstimate, statusDims, bookTip, bookGapText, bookLine, BOOK_REDO,
-  flattenGroups, buildWindow, offsetOf, ROW_H, BSUM_H, floorRankOf,
-  type WorkbenchRow, type WorkbenchFilter, type MeterDraft, type BuildingGroup, type DisplayItem,
+  flattenGroups, buildWindow, offsetOf, touSegLines, ROW_H, GHEAD_H, SEG_H, RETIRED_H, floorRankOf,
+  type WorkbenchRow, type WorkbenchFilter, type MeterDraft, type DisplayItem,
 } from './useMeterWorkbench'
 import type { MeterLoc } from '@/utils/meterGroup'
 import type { MeterDTO, MeterReadingDTO, MeterBindingRowDTO } from '@/api/meters'
@@ -683,58 +683,121 @@ describe('bindQueueBucket / autoLinkEstimate — v4 meterBindQueue 口径并入'
   })
 })
 
-describe('flattenGroups / offsetOf / buildWindow — 行窗口化虚拟滚动(§7 6.5)', () => {
-  // 类型字符拼列表:r=数据行(34) b=汇总行(40);buildWindow/offsetOf 只读 type
-  const mkList = (pat: string): DisplayItem[] =>
-    [...pat].map(ch => ch === 'b'
-      ? { type: 'bsum', g: {} as BuildingGroup }
-      : { type: 'row', x: {} as WorkbenchRow })
+describe('flattenGroups — 组头在前、分时段行、组尾停用行(P4-C5,画布 04-A / 04-C)', () => {
+  const names = new Map([[11, 'A座'], [12, 'B座']])
+  // 2 块在用 + 1 块停用(04-A「A座 13 块」+「另有 3 块已停用 · 显示」的缩样)
+  const fixture = () => {
+    const a = mkM({ buildingId: 11, ownership: 'tenant', tenantId: 1, floorLabel: '一楼' })
+    const b = mkM({ buildingId: 11, ownership: 'share', floorLabel: '二楼' })
+    const off = mkM({ buildingId: 11, ownership: 'share', floorLabel: '三楼', status: 'retired', statusFrom: '2024-03' })
+    const rows = buildRows([a, b, off], [mkR(a.id, { prevTotal: 1, currTotal: 2, usageTotal: 1 })], [], null)
+    return { a, b, off, gs: groupByBuilding(rows, names, new Map()) }
+  }
 
-  it('flattenGroups:组内行原序展平,每组末尾插 bsum 项', () => {
-    const names = new Map([[11, 'A栋']])
-    const a = mkM({ buildingId: 11 }), b = mkM({ buildingId: 11 }), c = mkM({ buildingId: null })
-    const rows = buildRows([a, b, c], [], [], null)
-    const list = flattenGroups(groupByBuilding(rows, names, new Map()))
-    expect(list.map(it => it.type)).toEqual(['row', 'row', 'bsum', 'row', 'bsum'])
-    expect(list[0].type === 'row' && list[0].x.m.id).toBe(a.id)
-    expect(list[2].type === 'bsum' && list[2].g.label).toBe('A栋')
-    expect(list[4].type === 'bsum' && list[4].g.key).toBe('none')
+  it('默认:组头 → 在用的行 → 组尾;组头块数不算停用的', () => {
+    const { gs } = fixture()
+    const list = flattenGroups(gs, {})
+    expect(list.map(it => it.type)).toEqual(['ghead', 'row', 'row', 'retired'])
+    expect(list[0].type === 'ghead' && list[0].n).toBe(2)
+    expect(list[3].type === 'retired' && [list[3].n, list[3].shown]).toEqual([1, false])
+  })
+
+  it('点「显示」:停用的表排到这一组末尾,组尾还在(改写「收起」用)', () => {
+    const { gs, off } = fixture()
+    const list = flattenGroups(gs, { showRetired: new Set([gs[0].key]) })
+    expect(list.filter(it => it.type === 'row')).toHaveLength(3)
+    expect(list.map(it => it.type)).toEqual(['ghead', 'row', 'row', 'row', 'retired'])
+    expect(list[3].type === 'row' && list[3].x.m.id).toBe(off.id)
+  })
+
+  // 状态「已停用」/「本月有变化」:筛选本身就在找停用表,再收进组尾就成了「A座 0 块」+ 逐组点「显示」(对抗复查 regress-2)
+  // 破坏验证:live / retired 不认 retiredOpen → 第一条红
+  it('retiredOpen:停用的表照常排进组里、算进块数,不出组尾', () => {
+    const { gs, off } = fixture()
+    const list = flattenGroups(gs, { retiredOpen: true })
+    expect(list.map(it => it.type)).toEqual(['ghead', 'row', 'row', 'row'])
+    expect(list[0].type === 'ghead' && list[0].n).toBe(3)
+    expect(list.some(it => it.type === 'row' && it.x.m.id === off.id)).toBe(true)
+  })
+
+  it('收起的组只剩组头(组尾也收);别的组不受影响', () => {
+    const { gs } = fixture()
+    const c = mkM({ buildingId: 12 })
+    const gs2 = groupByBuilding([...gs[0].rows, ...buildRows([c], [], [], null)], names, new Map())
+    const list = flattenGroups(gs2, { collapsed: new Set([gs2[0].key]) })
+    expect(list.map(it => it.type)).toEqual(['ghead', 'ghead', 'row'])
+    expect(list[0].type === 'ghead' && list[0].open).toBe(false)
+  })
+
+  // 04-C 一期卡:A座总电 峰段有数,平段 · 谷段空 → 合成一行;尖段空不出
+  const touRow = (p: Partial<MeterReadingDTO> = {}) => {
+    const m = mkM({ buildingId: 11, ownership: 'infra' })
+    return buildRows([m], [mkR(m.id, { prevTotal: 1138.26, currTotal: 1209.09, prevPeak: 335.88, currPeak: 357.5, ...p })], [], null)
+  }
+
+  it('点开的分时表:浏览态有值的段各一行、空段合成一行、空尖段不出;编辑态逐段一行', () => {
+    const rows = touRow()
+    const gs = groupByBuilding(rows, names, new Map())
+    const id = rows[0].m.id
+    expect(rows[0].tou, '前提:带分段读数的电表是分时表').toBe(true)
+    const segs = (edit: boolean) => flattenGroups(gs, { expanded: new Set([id]), edit })
+      .flatMap(it => (it.type === 'seg' ? [it.seg.label] : []))
+    expect(segs(false)).toEqual(['峰段', '平段 · 谷段'])
+    expect(segs(true)).toEqual(['峰段', '平段', '谷段'])
+    expect(flattenGroups(gs, {}).map(it => it.type), '没点开不出段行').toEqual(['ghead', 'row'])
+  })
+
+  it('touSegLines:尖段有数就单独一行排最前;四段都有数就逐段一行', () => {
+    const [x] = touRow({ prevSharp: 10, currSharp: 12 })
+    expect(touSegLines(x, true).map(l => l.label)).toEqual(['尖段', '峰段', '平段 · 谷段'])
+    const [y] = touRow({ prevFlat: 1, currFlat: 2, prevValley: 3, currValley: 4 })
+    expect(touSegLines(y, true).map(l => l.keys)).toEqual([['peak'], ['flat'], ['valley']])
+  })
+})
+
+describe('offsetOf / buildWindow — 行窗口化虚拟滚动(§7 6.5)', () => {
+  // 类型字符拼列表:g=组头 r=数据行 s=分时段行 t=组尾;buildWindow/offsetOf 只读 type
+  const T = { g: 'ghead', r: 'row', s: 'seg', t: 'retired' } as const
+  const mkList = (pat: string): DisplayItem[] =>
+    [...pat].map(ch => ({ type: T[ch as keyof typeof T] }) as unknown as DisplayItem)
+
+  it('行高:数据行 / 组头 / 组尾 40,分时段行 32(04 字距与行)', () => {
+    expect([ROW_H, GHEAD_H, RETIRED_H, SEG_H]).toEqual([40, 40, 40, 32])
   })
 
   it('offsetOf:混合行高前缀和;0 起点;越界夹紧到总高', () => {
-    const list = mkList('rrrrrbrrrrrb')                   // 10×34+2×40=420
+    const list = mkList('grrsssrt')                        // 5×40 + 3×32 = 296
     expect(offsetOf(list, 0)).toBe(0)
-    expect(offsetOf(list, 5)).toBe(5 * ROW_H)             // 170
-    expect(offsetOf(list, 6)).toBe(5 * ROW_H + BSUM_H)    // 210:跨过 bsum
-    expect(offsetOf(list, list.length)).toBe(420)
-    expect(offsetOf(list, 99)).toBe(420)                  // 越界=总高
+    expect(offsetOf(list, 3)).toBe(3 * ROW_H)
+    expect(offsetOf(list, 4)).toBe(3 * ROW_H + SEG_H)      // 跨过段行按 32 算
+    expect(offsetOf(list, list.length)).toBe(296)
+    expect(offsetOf(list, 99)).toBe(296)                   // 越界=总高
   })
 
   it('窗口边界:纯数据行,可视 10 行±buffer;部分行相交也计入', () => {
     const list = mkList('r'.repeat(30))
-    expect(buildWindow(list, 0, 340, 2))                  // 顶部:上缓冲夹紧 0
+    expect(buildWindow(list, 0, 10 * ROW_H, 2))
       .toEqual({ start: 0, end: 12, topPad: 0, bottomPad: 18 * ROW_H })
-    expect(buildWindow(list, 340, 340, 2))                // 中段:raw [10,20)±2
+    expect(buildWindow(list, 10 * ROW_H, 10 * ROW_H, 2))   // 中段:raw [10,20)±2
       .toEqual({ start: 8, end: 22, topPad: 8 * ROW_H, bottomPad: 8 * ROW_H })
-    expect(buildWindow(list, 17, 340, 2))                 // 半行相交:首尾部分可见行都渲染
+    expect(buildWindow(list, 20, 10 * ROW_H, 2))           // 半行相交:首尾部分可见行都渲染
       .toEqual({ start: 0, end: 13, topPad: 0, bottomPad: 17 * ROW_H })
   })
 
   it('混合行高窗口:pad=前后段真实高度和,invariant topPad+窗内+bottomPad=总高', () => {
-    const list = mkList('rrrrrbrrrrrb')
-    const w = buildWindow(list, 210, 100, 0)              // scrollTop 恰在 bsum 之后
-    expect(w).toEqual({ start: 6, end: 9, topPad: 210, bottomPad: 108 })
-    const winH = 3 * ROW_H
-    expect(w.topPad + winH + w.bottomPad).toBe(420)
+    const list = mkList('grrsssrt')
+    const w = buildWindow(list, 120, 2 * SEG_H, 0)         // scrollTop 恰在第一条段行顶上
+    expect(w).toEqual({ start: 3, end: 5, topPad: 120, bottomPad: SEG_H + 2 * ROW_H })
+    expect(w.topPad + 2 * SEG_H + w.bottomPad).toBe(296)
   })
 
   it('首尾夹紧:超滚到底渲染末段;buffer 超表长=整表;负 scrollTop 视 0', () => {
-    const list = mkList('rrrrrbrrrrrb')
-    expect(buildWindow(list, 100000, 340, 2))             // 尾:end 夹到 n
-      .toEqual({ start: 10, end: 12, topPad: 9 * ROW_H + BSUM_H, bottomPad: 0 })
-    expect(buildWindow(mkList('rrrrr'), 0, 68, 12))       // 短表:整表渲染,零 pad
+    const list = mkList('grrsssrt')
+    expect(buildWindow(list, 100000, 340, 2))              // 尾:end 夹到 n
+      .toEqual({ start: 6, end: 8, topPad: 3 * ROW_H + 3 * SEG_H, bottomPad: 0 })
+    expect(buildWindow(mkList('rrrrr'), 0, 68, 12))        // 短表:整表渲染,零 pad
       .toEqual({ start: 0, end: 5, topPad: 0, bottomPad: 0 })
-    expect(buildWindow(list, -50, 340, 2))                // iOS 弹性负滚
+    expect(buildWindow(list, -50, 340, 2))                 // iOS 弹性负滚
       .toEqual(buildWindow(list, 0, 340, 2))
   })
 
@@ -744,8 +807,8 @@ describe('flattenGroups / offsetOf / buildWindow — 行窗口化虚拟滚动(§
 
   it('验收锚点:220 行/40 行视口/默认 buffer=12 → 渲染 65 行,电表 16 列 <1200 格', () => {
     const list = mkList('r'.repeat(220))
-    const w = buildWindow(list, 2000, 40 * ROW_H)         // 默认 buffer=12
-    expect(w.end - w.start).toBe(65)                      // ~41 可视+24 缓冲
-    expect((w.end - w.start) * 16).toBeLessThan(1200)     // vs 全量 3409 格
+    const w = buildWindow(list, 2020, 40 * ROW_H)          // 默认 buffer=12;半行相交
+    expect(w.end - w.start).toBe(65)                       // 41 可视+24 缓冲
+    expect((w.end - w.start) * 16).toBeLessThan(1200)
   })
 })

@@ -1,6 +1,7 @@
 // 一处一个、没有同值令牌的浅色值(对抗复查 2026-09-20):浅色照原值写(浅色外观逐位不变,DARK-MODE-SPEC §4),
 // 紧跟一条 :root[data-theme="dark"] 的规则换成令牌 —— 否则暗色下就是一块白底 / 一行深字。
-// 另有几处「换令牌改了浅色值」的,改回了原值(遮罩 28% / 32%、提示条 80% 墨、改进胶囊的绿、身份漂移横幅)。
+// 另有几处「换令牌改了浅色值」的,改回了原值(命令面板遮罩 32%、提示条 80% 墨、改进胶囊的绿)。
+// 2026-10-01 S5:身份漂移横幅换成全令牌的居中弹窗(App.vue .app-dlg),右侧抽屉 FPSideDrawer 删掉,两条随之去掉。
 //
 // 做法同 kpiCards.spec:把组件自己的 <style> 原样塞进 document,读 getComputedStyle;令牌 jsdom 不求值,判据是令牌名本身。
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -10,9 +11,9 @@ import { join } from 'node:path'
 const SRC = join(__dirname, '..')
 const FILES = [
   'views/bills/BillNoticesView.vue', 'views/meters/MeterView.vue', 'views/meters/MeterLedgerGrid.vue', 'views/meters/meter-shared.css',
-  'views/params/ParamCenterView.vue', 'App.vue', 'components/ana/AnaPeriodBanner.vue', 'components/fp/FPToast.vue',
-  'components/fp/FPSideDrawer.vue', 'components/shell/CommandPalette.vue', 'components/shell/WhatsNewDialog.vue',
-  'views/buildings/BuildingCard.vue', 'views/bills/CompanyBookWindow.vue',
+  'views/params/ParamCenterView.vue', 'App.vue', 'components/fp/FPToast.vue',
+  'components/shell/CommandPalette.vue', 'components/shell/WhatsNewDialog.vue',
+  'views/buildings/BuildingCard.vue', 'views/bills/CompanyBookWindow.vue', 'components/fp/FPAlertChip.vue',
 ]
 const styles: HTMLStyleElement[] = []
 beforeAll(() => {
@@ -67,20 +68,17 @@ describe('一处一个的浅色值:浅色照旧,暗色换令牌', () => {
   it('❗楼栋卡「快到期」胶囊(行内样式挪进样式表才挂得上暗色)', () => {
     expect(look('<span class="bc-exp"></span>', 'span', 'color')).toEqual(['rgb(168,98,0)', 'var(--hue-orange)'])
   })
-  it('❗期间回退提示条:字 = --warn-text(同值),底浅色照旧、暗色 --warn-bg', () => {
-    expect(look('<div class="ana-pbanner"></div>', 'div', 'background')).toEqual(['rgb(250,238,218)', 'var(--warn-bg)'])   // #faeeda
-    expect(look('<div class="ana-pbanner"></div>', 'div', 'color')).toEqual(['var(--warn-text)', 'var(--warn-text)'])
+})
+
+describe('--hue-* 实底上的字引 --control-solid-text(DARK-MODE-SPEC)', () => {
+  it('❗入口胶囊筛选生效态:橙实底上的字两种外观都引 --control-solid-text(写白字的话暗色下浅橙底只剩约 2:1)', () => {
+    expect(look('<span class="fac on"></span>', 'span', 'color')).toEqual(['var(--control-solid-text)', 'var(--control-solid-text)'])
   })
 })
 
 describe('「换令牌」改了浅色值的,改回原值', () => {
-  it('❗身份漂移横幅:浅色 = master 上实际画出来的 #FAEDE7(那时 --warn-bg 没定义),暗色 --danger-bg', () => {
-    expect(look('<div class="app-drift"></div>', 'div', 'background')).toEqual(['rgb(250,237,231)', 'var(--danger-bg)'])   // #FAEDE7
-  })
-  it('❗遮罩:抽屉原 28%、命令面板原 32%,不跟着 --scrim 变成 34%', () => {
-    expect(look('<div class="fp-sdw-mask"></div>', 'div', 'background')[0]).toBe('color-mix(insrgb,var(--scrim)82.353%,transparent)')
+  it('❗遮罩:命令面板原 32%,不跟着 --scrim 变成 34%', () => {
     expect(look('<div class="fp-pal-backdrop"></div>', 'div', 'background')[0]).toBe('color-mix(insrgb,var(--scrim)94.118%,transparent)')
-    expect((0.34 * 82.353 / 100).toFixed(4)).toBe('0.2800')
     expect((0.34 * 94.118 / 100).toFixed(4)).toBe('0.3200')
   })
   it('❗底部提示条 FPToast:原 80% 墨(--ink-700),不是实黑', () => {

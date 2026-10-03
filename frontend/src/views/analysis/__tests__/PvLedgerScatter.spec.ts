@@ -91,6 +91,14 @@ describe('PvLedgerScatter 空态', () => {
     expect(w.find('.pls-note').text()).toBe('11 栋板数或单块标称功率未录，这些栋不画点。录几栋出几个点。')
   })
 
+  it('❗提示是块内提示件 FPNote(十件 ④):有栋没录 → 黄档;没点也没有未录的 → 蓝档', () => {
+    const w = mount(PvLedgerScatter, { props: { data: empty() } })
+    expect(w.find('.pls-note').classes()).toEqual(expect.arrayContaining(['fp-note', 'warn']))
+    const w2 = mount(PvLedgerScatter, { props: { data: { ...empty(), unrecorded: 0 } } })
+    expect(w2.find('.pls-note').classes()).toEqual(expect.arrayContaining(['fp-note', 'info']))
+    expect(w2.find('.pls-note').text()).toBe('还没有能画的点。')
+  })
+
   it('右栏三条说明按容差写,录入入口 emit record', async () => {
     const w = mount(PvLedgerScatter, { props: { data: { ...empty(), tolerance: 0.05 } } })
     expect(w.text()).toContain('灰带 = 相差 ±5% 以内')

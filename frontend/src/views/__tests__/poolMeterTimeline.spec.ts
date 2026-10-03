@@ -25,6 +25,7 @@ vi.mock('@/api/alloc', () => ({
   allocApi: {
     pools: vi.fn(() => Promise.resolve({ generated: false, rows: [] })),
     memberDiff: vi.fn(() => Promise.resolve([])),
+    meterDiff: vi.fn(() => Promise.resolve([])),
     rules: vi.fn(() => Promise.resolve([])),
     poolCandidates: vi.fn(() => Promise.resolve({ meters: [], tenants: [], tenantNote: null })),
     poolMonths: vi.fn(() => Promise.resolve([])),
@@ -59,6 +60,7 @@ vi.mock('@/api/review', () => ({
 
 import PoolLedgerView from '../alloc/PoolLedgerView.vue'
 import { metersApi } from '@/api/meters'
+import { askQueue, answer } from '@/utils/ask'
 
 const reading = (ym: string, usageTotal: number | null): MeterReadingDTO => ({
   id: 1, meterId: 11, ym, prevTotal: 0, currTotal: usageTotal, prevSharp: null, prevPeak: null, prevFlat: null,
@@ -99,7 +101,7 @@ beforeEach(() => {
 
 // 抽屉 Teleport 到 body:中途红了的用例若没走到 unmount,残留的行会被下一条的 bindRow 捡到 → 连坐。统一在这里收
 const mounted: VueWrapper[] = []
-afterEach(() => { mounted.splice(0).forEach(w => w.unmount()); document.body.innerHTML = '' })
+afterEach(() => { mounted.splice(0).forEach(w => w.unmount()); document.body.innerHTML = ''; askQueue.splice(0) })
 
 async function openPool() {
   useBillingPeriodStore().pick(2025, 3)
@@ -133,32 +135,31 @@ describe('池编辑 · 表按月看', () => {
     vi.mocked(metersApi.meterReadings).mockResolvedValue([
       reading('2024-02', 35), reading('2023-10', 120), reading('2024-01', 0),
     ])
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false)
     const w = await openPool()
     const box = bindRow('A座·西梯电表').querySelector('input') as HTMLInputElement
     box.click()
     await flushPromises()
     expect(metersApi.meterReadings).toHaveBeenCalledWith(12)
-    expect(confirm.mock.calls[0][0]).toContain('这 2 个月有读数(用量非零):2023-10、2024-02')
+    expect(askQueue[0].body).toContain('这 2 个月有读数（用量非零）：2023-10、2024-02。')
+    answer(false)
+    await flushPromises()
     expect((w.vm as unknown as Vm).form.meters.map(m => m.meterId)).toContain(12)
     expect(box.checked, '取消后勾选框要拨回').toBe(true)
     // 再点一次、这回确认 → 真的移出
-    confirm.mockReturnValueOnce(true)
     box.click()
     await flushPromises()
+    answer(true)
+    await flushPromises()
     expect((w.vm as unknown as Vm).form.meters.map(m => m.meterId)).not.toContain(12)
-    confirm.mockRestore()
   })
 
   it('没有读数的表移出不问', async () => {
     vi.mocked(metersApi.meterReadings).mockResolvedValue([reading('2024-01', 0)])
-    const confirm = vi.spyOn(window, 'confirm')
     const w = await openPool()
     ;(bindRow('A座·西梯电表').querySelector('input') as HTMLInputElement).click()
     await flushPromises()
-    expect(confirm).not.toHaveBeenCalled()
+    expect(askQueue).toHaveLength(0)
     expect((w.vm as unknown as Vm).form.meters.map(m => m.meterId)).not.toContain(12)
-    confirm.mockRestore()
   })
 
   // 破坏验证:offText 去掉 `metersYm.value === ym.value ?` 那层(直接查 meterById)→ 切月重拉失败后

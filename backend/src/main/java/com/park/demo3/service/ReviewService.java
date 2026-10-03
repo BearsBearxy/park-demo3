@@ -6,9 +6,12 @@ import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.DataHomeOverviewDTO;
 import com.park.demo3.dto.ReviewDtos.PendingItemDTO;
+import com.park.demo3.dto.ReviewDtos.ReturnedItemDTO;
 import com.park.demo3.dto.ReviewDtos.ReviewRowDTO;
+import com.park.demo3.entity.AuthUser;
 import com.park.demo3.entity.ReviewLog;
 import com.park.demo3.entity.ReviewState;
+import com.park.demo3.mapper.AuthUserMapper;
 import com.park.demo3.mapper.ElecCostEntryMapper;
 import com.park.demo3.mapper.ReviewLogMapper;
 import com.park.demo3.mapper.ReviewStateMapper;
@@ -83,12 +86,16 @@ public class ReviewService {
     private final ElecCostEntryMapper elecCostEntries;
     private final com.park.demo3.mapper.ReportAmountMapper amounts;
     private final UserPermissionCache cache;
+    private final NoticeService bell;      // 通过 / 撤销 → 铃铛「有结果了」(V133)
+    private final AuthUserMapper users;    // 铃铛行第二行的显示名(「李出纳交」「李审：理由」)
 
     public ReviewService(ReviewStateMapper states, ReviewLogMapper logs, DataHomeService dataHome,
                          ElecCostEntryMapper elecCostEntries,
-                         com.park.demo3.mapper.ReportAmountMapper amounts, UserPermissionCache cache) {
+                         com.park.demo3.mapper.ReportAmountMapper amounts, UserPermissionCache cache,
+                         NoticeService bell, AuthUserMapper users) {
         this.states = states; this.logs = logs; this.dataHome = dataHome;
         this.elecCostEntries = elecCostEntries; this.amounts = amounts; this.cache = cache;
+        this.bell = bell; this.users = users;
     }
 
     // ══ 读侧 ═════════════════════════════════════════════════════════════════
@@ -229,18 +236,53 @@ public class ReviewService {
      *   那是流程问题不是列表问题。真长了先加上限再说。
      */
     public List<PendingItemDTO> pendingList() {
-        return states.selectList(new QueryWrapper<ReviewState>()
-                .eq("status", "submitted").orderByDesc("submitted_at"))
-            .stream()
-            .map(r -> {
-                ReviewKey k = ReviewKey.parse(r.getReviewKey());
-                return new PendingItemDTO(r.getReviewKey(), r.getKind(), r.getScope(),
-                    r.getPeriod(), k.human() + scopeSuffix(k), r.getSubmittedBy(), r.getSubmittedAt());
-            })
+        List<ReviewState> rows = states.selectList(new QueryWrapper<ReviewState>()
+                .eq("status", "submitted").orderByDesc("submitted_at"));
+        Map<String, String> names = displayNames(rows.stream().map(ReviewState::getSubmittedBy).toList());
+        return rows.stream()
+            .map(r -> new PendingItemDTO(r.getReviewKey(), r.getKind(), r.getScope(),
+                    r.getPeriod(), labelOf(ReviewKey.parse(r.getReviewKey())), r.getSubmittedBy(), r.getSubmittedAt(),
+                    nameOf(names, r.getSubmittedBy())))
             .toList();
     }
 
-    /** 「2024-02 月度台账」后面那截。台账按公司、附10 按期区、附13/14 按办公/三期 —— 不带就分不清是哪一格。 */
+    /**
+     * 我交的、被退回的表(铃铛「等你处理」,06-E「逐张列出带理由」)。与 returnedCount 同一个判据,跨全部月。
+     * 只看本人的:交审人取自令牌,不收入参。
+     */
+    public List<ReturnedItemDTO> returnedList() {
+        List<ReviewState> rows = states.selectList(new QueryWrapper<ReviewState>()
+            .eq("status", "returned").eq("submitted_by", me()).orderByDesc("reviewed_at"));
+        Map<String, String> names = displayNames(rows.stream().map(ReviewState::getReviewedBy).toList());
+        return rows.stream()
+            .map(r -> new ReturnedItemDTO(r.getReviewKey(), r.getKind(), r.getScope(), r.getPeriod(),
+                labelOf(ReviewKey.parse(r.getReviewKey())), r.getReviewedBy(), nameOf(names, r.getReviewedBy()),
+                r.getReviewedAt(), r.getReason()))
+            .toList();
+    }
+
+    /**
+     * 铃铛里一张表的人话名:「月度台账 2026-08 · 公司 7」—— 表名在前、月在后,照 06-F
+     * (「月度台账 2026-08 等你审」「你交的园区抄表 2026-08 被退回」)。待审、退回、消息标题共用这一个。
+     */
+    private static String labelOf(ReviewKey k) {
+        return k.kind().label() + " " + k.period() + scopeSuffix(k);
+    }
+
+    /** 用户名 → 显示名,一趟查回。没有显示名的回用户名。 */
+    private Map<String, String> displayNames(List<String> usernames) {
+        List<String> want = usernames.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        if (want.isEmpty()) return Map.of();
+        return users.selectList(new QueryWrapper<AuthUser>().in("username", want)).stream()
+            .collect(java.util.stream.Collectors.toMap(AuthUser::getUsername,
+                u -> u.getDisplayName() == null ? u.getUsername() : u.getDisplayName(), (a, b) -> a));
+    }
+
+    private static String nameOf(Map<String, String> names, String username) {
+        return username == null ? null : names.getOrDefault(username, username);
+    }
+
+    /** 「月度台账 2026-08」后面那截。台账按公司、附10 按期区、附13/14 按办公/三期 —— 不带就分不清是哪一格。 */
     private static String scopeSuffix(ReviewKey k) {
         if (k.scope() == null) return "";
         return switch (k.kind().scopeShape()) {
@@ -258,9 +300,8 @@ public class ReviewService {
      * 重新交审时 submit() 会把 status 翻回 submitted(那句「重新交审要把上一轮退回的痕迹清掉」),
      * 这个数自己就掉下去了,不需要「已读位」。
      *
-     * ⚠ **撤销不在内,且做不到**:withdraw 是删行(见它的头注:不留 returned,理由进 review_log),
-     *   submitted_by 随行一起没了,没有任何列能反查「这张表原来是谁交的」。
-     *   要发撤销提醒就得加列或加每人一份的已读位 —— 超出 R2 该付的代价,记在 spec §12。
+     * ⚠ **撤销不在内**:withdraw 是删行,这里数不到。撤销提醒走铃铛「有结果了」(V133 user_notice)——
+     *   withdraw 在删行**之前**读出交审人 / 原审核人,给他们各写一条 review_withdrawn。
      */
     public int returnedCount(String user) {
         return Math.toIntExact(states.selectCount(new QueryWrapper<ReviewState>()
@@ -304,7 +345,7 @@ public class ReviewService {
     @NoReviewGuard(reason = "审核动作本身:守卫拦的就是审核态,再挂一次会让已交审的表连撤销都做不了(状态机在 requireStatus)")
     public void approve(String rawKey) {
         ReviewKey key = ReviewKey.parse(rawKey);
-        requireStatus(key, "submitted", "通过");
+        ReviewState s = requireStatus(key, "submitted", "通过");
 
         Map<String, ReviewState> rows = rowsOf(key.period(), batchOf(key));
         List<String> missing = missingUpstream(key, rows);
@@ -315,6 +356,8 @@ public class ReviewService {
         setCols(key, Map.of("status", "approved", "reviewed_by", me(), "reviewed_at", LocalDateTime.now()),
                 List.of("reason"));
         log(key, "approve", null);
+        // 自己交自己审的,add 自己跳过
+        bell.add(s.getSubmittedBy(), NoticeService.Kind.review_approved, labelOf(key) + " 审核通过", null, key.raw());
     }
 
     @Transactional
@@ -337,7 +380,8 @@ public class ReviewService {
     @NoReviewGuard(reason = "审核动作本身:守卫拦的就是审核态,再挂一次会让已交审的表连撤销都做不了(状态机在 requireStatus)")
     public void withdraw(String rawKey, String reason) {
         ReviewKey key = ReviewKey.parse(rawKey);
-        requireStatus(key, "approved", "撤销");
+        // 交审人 / 原审核人只在这一行上:下面删行之后就没处查了,所以在这里先读住
+        ReviewState s = requireStatus(key, "approved", "撤销");
 
         String batch = batchOf(key);
         Map<String, ReviewState> rows = rowsOf(batch, BillNoticeService.noticeYmOf(batch));
@@ -352,6 +396,9 @@ public class ReviewService {
 
         states.deleteById(key.raw());
         log(key, "withdraw", reason);
+        // 交审人与原审核人各一条;同一人只发一次,撤销人自己由 add 跳过
+        for (String to : new java.util.LinkedHashSet<>(java.util.Arrays.asList(s.getSubmittedBy(), s.getReviewedBy())))
+            bell.add(to, NoticeService.Kind.review_withdrawn, labelOf(key) + " 的审核被撤销", reason, key.raw());
     }
 
     /**

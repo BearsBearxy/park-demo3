@@ -14,6 +14,8 @@ import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import DatePicker from '@/components/ds/DatePicker.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
+import { askLeave } from '@/utils/ask'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import FPUnitPicker from '@/components/fp/FPUnitPicker.vue'
 import { selectedAreaSums, prefillRentArea } from '@/components/fp/fpUnitPicker'
@@ -42,6 +44,8 @@ const emit = defineEmits<{ close: []; created: []; saved: [ContractDTO] }>()
 
 const mode = computed<'new' | 'edit' | 'renew'>(() =>
   props.renewFrom ? 'renew' : props.initial ? 'edit' : 'new')
+const title = computed(() =>
+  mode.value === 'edit' ? '编辑合同' : mode.value === 'renew' ? (linkType.value === 'escalation' ? '合同递增' : '续签合同') : '新增合同')
 
 // 下拉候选(ds/Select):值一律字符串,数字字段进出各转一道
 const STATUS_OPTS = [
@@ -112,16 +116,29 @@ const inputRef = ref<HTMLInputElement | null>(null)
 // 界面与「这份合同本来就没录计费行」长得一模一样,用户改个备注保存就把全部计费行删光、月租金归零、
 // 单元解绑,无二次确认无撤销。故必须把「没取到」和「本来就没有」分成两态。新增/续签无详情可取,天然到位。
 const detailLoaded = ref(props.initial == null)
-const DETAIL_FAIL = '计费明细加载失败,请关闭重开——此时保存会清空该合同的计费行'
-// 遮罩误点会丢整份录入(标的段/费用行/免租期);dirty 由弹窗内任一输入/勾选冒上来置位,不做深比较
-const dirty = ref(false)
-// 填过东西 = 在编辑:登记进 auth.editors —— 页签条不把这一格换掉、关浏览器先确认(TAB-BAR-SPEC §2)
+const DETAIL_FAIL = '计费明细还没读到,这时保存会清空该合同的计费行'
+// 清单 / 计费明细没读到:换掉整张表单,带重试(LAYOUT-STABILITY §3)。表单不出,也就填不了、存不了
+const loadErr = ref<'' | 'lists' | 'detail'>('')
+// 改动数(画布 02-A「这页有 N 处改动」):碰过几个字段算几处,同一字段改几遍算一处;不做深比较,改回原值也照算。
+// 原生输入 / 勾选由弹窗根上的 capture 收,按所在那一行记(picker 里的搜索框和它选出的值是同一个字段,
+// 带 data-f 的按那个名记,其余按这一行在弹窗里排第几记 —— 不拿元素本身当键,重渲染换了节点也还是同一处);
+// ds 下拉、日期格、单元 chip 是按钮,不派发原生事件,手动记一笔;加删段 / 行每次算一处。
+const touched = ref(new Set<unknown>())
+const dirtyCount = () => touched.value.size
+function touch(k: unknown = Symbol()) { if (!touched.value.has(k)) touched.value = new Set(touched.value).add(k) }
+const FIELD = '[data-f], .ct-bl-row, .ct-bl-cond, .ct-bl-seghd, .ct-rf-row, .ct-field'
+function onNative(e: Event) {
+  const el = e.target instanceof Element ? e.target.closest(FIELD) : null
+  if (!el) return touch()
+  touch(el.getAttribute('data-f') ?? 'n' + [...(e.currentTarget as Element).querySelectorAll(FIELD)].indexOf(el))
+}
+// 填过东西 = 在编辑:登记进 auth.editors(带改动数)—— 页签条不把这一格换掉、关浏览器先确认(TAB-BAR-SPEC §2)
 const auth = useAuthStore()
 // 带输入的居中弹卡 → S 档全屏 sheet(styles/form-sheet.css)
 const sheet = useFormSheet()
 const meId = Symbol('contract-dialog')
 const screen = useScreen()
-watch(dirty, (on) => { if (on) auth.openEditor(meId, screen); else auth.closeEditor(meId) })
+watch(() => dirtyCount() > 0, (on) => { if (on) auth.openEditor(meId, screen, dirtyCount); else auth.closeEditor(meId) })
 
 // ─── 标的段(CONTRACT-CARD-SPEC §1/§6.2):段=物业类型+位置;段内费用行由类型钉死组决定 ──────
 type SegRow = { id: number | null; feeKey: FeeKey; area: number | null; areaShared: number | null; unitPrice: number | null; coeff: number | null; roomCount: number | null; amountOverride: number | null; autoArea?: boolean }
@@ -159,8 +176,8 @@ function newRow(feeKey: FeeKey): SegRow {
 function buildSegment(pt: PropertyType): Segment {
   return { propertyType: pt, location: '', rows: PINNED_FEES[pt].map(newRow), unitIds: [] }
 }
-function addSegment(pt: PropertyType) { segments.value.push(buildSegment(pt)); showTypeMenu.value = false; err.value = ''; applyUnitAreaPrefill() }
-function removeSegment(i: number) { segments.value.splice(i, 1) }
+function addSegment(pt: PropertyType) { segments.value.push(buildSegment(pt)); showTypeMenu.value = false; err.value = ''; applyUnitAreaPrefill(); touch() }
+function removeSegment(i: number) { segments.value.splice(i, 1); touch() }
 
 // 其他费用独立标的(2026-08-07 旭化成裁定):单行一笔杂费,location=收费项目名,金额直填;
 // 与物业段平级,不带段类型;非金额字段原样透传保证存量往返无损
@@ -168,9 +185,9 @@ type OtherItem = SegRow & { location: string; billMode: string | null }
 const otherItems = ref<OtherItem[]>([])
 function addOtherItem() {
   otherItems.value.push({ ...newRow('other'), location: '', billMode: 'per_month' })
-  showTypeMenu.value = false; err.value = ''
+  showTypeMenu.value = false; err.value = ''; touch()
 }
-function removeOtherItem(i: number) { otherItems.value.splice(i, 1) }
+function removeOtherItem(i: number) { otherItems.value.splice(i, 1); touch() }
 
 // 钉死行(按 PINNED 序渲染;编辑态遗留合同若缺行,groupLines 已补齐)
 function pinnedRows(seg: Segment): SegRow[] {
@@ -197,7 +214,7 @@ function extraRows(seg: Segment): SegRow[] {
   const known = new Set<FeeKey>([...PINNED_FEES[seg.propertyType], ...COND_FEES[seg.propertyType], ...OPTIONAL_FEES])
   return seg.rows.filter(r => !known.has(r.feeKey))
 }
-function removeRow(seg: Segment, row: SegRow) { seg.rows = seg.rows.filter(r => r !== row) }
+function removeRow(seg: Segment, row: SegRow) { seg.rows = seg.rows.filter(r => r !== row); touch() }
 
 const isSqm = (k: FeeKey) => defaultBillMode(k) === 'per_sqm_month'
 const isRoom = (k: FeeKey) => { const m = defaultBillMode(k); return m === 'per_room_year' || m === 'per_room_month' }
@@ -209,7 +226,7 @@ function rowMonthly(row: SegRow): string {
   return '待录'
 }
 
-onMounted(async () => {
+onMounted(() => {
   inputRef.value?.focus()
   if (props.renewFrom) {
     // 续签:租户/楼栋/单元锁定;合同号/日期留空,租金/押金/面积预填可改;计费行由后端继承原合同。
@@ -219,14 +236,22 @@ onMounted(async () => {
     status.value = 'active'
     return
   }
-  // 这一路挂了会让下面整段回填不执行,弹窗变成一片空白。detailLoaded 保持 false 已经挡住了删数据,
-  // 但用户看不出为什么空——补一条提示,别让人对着空表单猜。
+  void load()
+})
+// 失败时表单整张换成 FPLoadError(用户改不了东西),重试把回填从头再走一遍不会盖掉任何录入。
+// detailLoaded 保持 false 照旧挡住「拿空计费行整组替换」。错误只在成功那一支清;seq 防重试时旧回包回写
+let loadSeq = 0
+async function load() {
+  const my = ++loadSeq
+  let lists: [TenantDTO[], BuildingDTO[]]
   try {
-    ;[tenants.value, buildings.value] = await Promise.all([tenantApi.list(), buildingApi.list()])
+    lists = await Promise.all([tenantApi.list(), buildingApi.list()])
   } catch {
-    err.value = '租户/楼栋清单加载失败,请关闭重开' + (props.initial ? '——此时保存会清空该合同的计费行' : '')
+    if (my === loadSeq) loadErr.value = 'lists'
     return
   }
+  if (my !== loadSeq) return
+  ;[tenants.value, buildings.value] = lists
   loadAllUnits()   // 不阻塞:chips 在候选到位后自动解析,缺档期间以「未知单元」可见
   const c = props.initial
   if (c) {
@@ -250,6 +275,7 @@ onMounted(async () => {
     // 计费行:详情端点带出(按 propertyType,location,seq 排序),分组进可编辑标的段
     try {
       const d = await contractApi.detail(c.id)
+      if (my !== loadSeq) return
       // 其他费用独立标的:propertyType 空的 other 行不入段;段内 other(存量导入)照旧走遗留行
       const isIndepOther = (l: BillingLineDTO) => l.feeKey === 'other' && l.propertyType == null
       otherItems.value = d.billingLines.filter(isIndepOther).map(l => ({
@@ -263,12 +289,14 @@ onMounted(async () => {
       unitSel.value = c.unitId != null ? [c.unitId, ...extra] : [...extra]
       detailLoaded.value = true   // 只有整段赋值走完才算到位,中途抛错一律留 false
     } catch {
-      err.value = DETAIL_FAIL   // 提交闸门 + 保存按钮置灰都盯这一态
+      if (my === loadSeq) loadErr.value = 'detail'   // 提交闸门 + 保存按钮置灰盯 detailLoaded
+      return
     }
   } else if (props.presetBuildingId != null) {
     buildingId.value = props.presetBuildingId
   }
-})
+  loadErr.value = ''
+}
 
 // 全楼栋单元候选(跨栋可选;后端无全量单元端点,并发逐栋 detail——S15 后端零改约束)
 async function loadAllUnits() {
@@ -318,6 +346,7 @@ function applyUnitAreaPrefill() {
 }
 function onUnitSelChange() {
   err.value = ''
+  touch('units')
   applyUnitAreaPrefill()
   // 合同层面取消的单元不能继续留在段绑定里(会绑到一个本合同已经不占的单元上)
   for (const s of segments.value) s.unitIds = s.unitIds.filter(u => unitSel.value.includes(u))
@@ -331,7 +360,7 @@ const unitLabel = (id: number) => {
 function toggleSegUnit(seg: Segment, unitId: number) {
   const i = seg.unitIds.indexOf(unitId)
   if (i >= 0) seg.unitIds.splice(i, 1); else seg.unitIds.push(unitId)
-  dirty.value = true
+  touch(seg.unitIds)
   err.value = ''
 }
 
@@ -376,8 +405,8 @@ function monthlyTotal(): number {
 }
 
 // ─── F2 免租期行编辑 ──────────────────────────────────────
-function addRentFreeRow() { rentFreeRows.value.push({ start: '', end: '', note: '' }) }
-function removeRentFreeRow(i: number) { rentFreeRows.value.splice(i, 1) }
+function addRentFreeRow() { rentFreeRows.value.push({ start: '', end: '', note: '' }); touch() }
+function removeRentFreeRow(i: number) { rentFreeRows.value.splice(i, 1); touch() }
 // 免租期区间的上下限 = 合同起止;合同起止本身倒着填时不设限,否则 42 格全灰、打字全红,又没有一句话解释
 // (选完之后 rowWarn 会写出「早于合同开始日期 / 晚于合同结束日期」)
 const rfBounds = computed(() => (startDate.value && endDate.value && startDate.value > endDate.value
@@ -395,7 +424,7 @@ const num = (v: number | null) => (typeof v === 'number' && !Number.isNaN(v) ? v
 const numOrNull = (v: number | null) => (isNum(v) ? v : null)
 
 // Esc 关闭:与 TenantNewDialog 同一套(window keydown;picker 浮层的 Esc 已在组件内 stopPropagation)
-function onKey(e: KeyboardEvent) { if (e.key === 'Escape') emit('close') }
+function onKey(e: KeyboardEvent) { if (e.key === 'Escape') void tryClose() }
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => {
   // 撤登记时顺带结束授权:这是最后一个编辑态的话,授权不该留到 30 分钟到期(还有别的在编辑时它自己不作为)
@@ -406,14 +435,13 @@ onBeforeUnmount(() => {
   document.removeEventListener('mousedown', onTypeMenuDoc, true)
   document.removeEventListener('keydown', onTypeMenuKey, true)
 })
-// 遮罩误点:本弹窗表单体量大(标的段/费用行/免租期),已有录入时先确认再丢
-function onMaskDown() {
-  if (dirty.value && !confirm('弹窗内已有未保存的录入,关闭将全部丢失。确认关闭?')) return
-  emit('close')
+// 遮罩误点 / Esc:本弹窗表单体量大(标的段/费用行/免租期),有改动先问再丢(画布 02-A 离开确认)
+async function tryClose() {
+  if (await askLeave({ page: title.value, count: dirtyCount() })) emit('close')
 }
 
 async function submit() {
-  if (submitting.value) return
+  if (submitting.value || loadErr.value) return
   // 详情未到位就走编辑提交 = 拿空计费行做整组替换,等于删光该合同的计费行
   if (mode.value === 'edit' && !detailLoaded.value) { err.value = DETAIL_FAIL; return }
   if (!contractNo.value.trim()) { err.value = '请输入合同号'; return }
@@ -524,18 +552,21 @@ async function submit() {
 
 <template>
   <Teleport to="body">
-    <div class="ct-mask" :class="{ 'fp-fsheet': sheet }" @mousedown="onMaskDown">
-      <!-- dirty 靠 capture 阶段收弹窗内所有原生输入/勾选(含 picker 内部),不逐字段挂标记 -->
+    <div class="ct-mask" :class="{ 'fp-fsheet': sheet }" @mousedown="tryClose">
+      <!-- 改动数靠 capture 阶段收弹窗内所有原生输入/勾选(含 picker 内部),按字段记(见 onNative) -->
       <div class="ct-dlg" role="dialog" aria-modal="true" @mousedown.stop
-           @input.capture="dirty = true" @change.capture="dirty = true">
+           @input.capture="onNative" @change.capture="onNative">
         <div class="ct-dlg-h">
-          <h3>{{ mode === 'edit' ? '编辑合同' : mode === 'renew' ? (linkType === 'escalation' ? '合同递增' : '续签合同') : '新增合同' }}</h3>
+          <h3>{{ title }}</h3>
           <!-- 续签当时新一期已起租才把原合同标已续签(ContractService.renew,2026-07-28 裁定);没起租的原合同照常在租,之后也不会自动改标 -->
           <p v-if="mode === 'renew'">为「{{ renewFrom?.contractNo }}」{{ linkType === 'escalation' ? '建下一个价格档,不算续签' : '创建下一期' }},租户/楼栋/单元沿用原合同。新一期起租日不晚于今天的,原合同标记为{{ linkType === 'escalation' ? '已递增' : '已续签' }};晚于今天的,原合同照常在租。</p>
           <p v-else-if="mode === 'edit'">修改该合同的字段并保存(全量提交)。</p>
           <p v-else>录入一份租赁合同。执行中/即将到期的合同将计入月租金、占用所选单元并派生楼栋出租率。</p>
         </div>
         <div class="ct-dlg-b fp-fsheet-bd">
+          <FPLoadError v-if="loadErr === 'lists'" sub="读到之前选不了租户和楼栋" @retry="load">租户和楼栋清单没读到</FPLoadError>
+          <FPLoadError v-else-if="loadErr === 'detail'" sub="读到之前不能保存:这时保存会清空它的计费行" @retry="load">这份合同的计费明细没读到</FPLoadError>
+          <template v-else>
           <div class="ct-grid">
             <!-- 续签态:新段记成续签换约还是递增段(link_type),默认续签 -->
             <div v-if="mode === 'renew'" class="ct-field ct-field-wide">
@@ -555,15 +586,15 @@ async function submit() {
             </div>
             <div class="ct-field">
               <div class="lab">状态 <i>*</i></div>
-              <!-- ds/Select 的选项是 button,不派发原生 change,收不进上面的 @change.capture → dirty 手动置位 -->
+              <!-- ds/Select 的选项是 button,不派发原生 change,收不进上面的 @change.capture → 手动记一笔 -->
               <Select :options="STATUS_OPTS" :model-value="status" :disabled="mode === 'renew'"
-                      @update:model-value="status = $event; dirty = true" />
+                      @update:model-value="status = $event; touch('status')" />
             </div>
-            <div class="ct-field">
+            <div class="ct-field" data-f="tenant">
               <div class="lab">租户 <i>*</i></div>
               <input v-if="mode === 'renew'" class="ct-in" :value="renewFrom?.tenantName" disabled />
               <FPTenantPicker v-else v-model="tenantId" :tenants="tenantOptions"
-                              :invalid="err === '请选择租户'" @update:model-value="err = ''" />
+                              :invalid="err === '请选择租户'" @update:model-value="err = ''; touch('tenant')" />
             </div>
             <div class="ct-field">
               <div class="lab">楼栋 <i>*</i></div>
@@ -572,10 +603,10 @@ async function submit() {
                       :invalid="err === '请选择楼栋'"
                       :model-value="buildingId == null ? '' : String(buildingId)"
                       :disabled="mode === 'new' && presetBuildingId != null"
-                      @update:model-value="buildingId = +$event; onBuildingChange(); dirty = true" />
+                      @update:model-value="buildingId = +$event; onBuildingChange(); touch('building')" />
             </div>
             <!-- 单元多选(S15 §2 FPUnitPicker):全楼栋分组候选,跨栋可选;首个=主单元(★可换主),其余=附加单元 -->
-            <div class="ct-field ct-field-wide">
+            <div class="ct-field ct-field-wide" data-f="units">
               <div class="lab">单元 · 可跨栋多选,首个为主单元(★可换主)</div>
               <input v-if="mode === 'renew'" class="ct-in" :value="renewFrom?.floorInfo || '未指定单元'" disabled />
               <FPUnitPicker v-else v-model="unitSel" :units="unitOptions" :loading="unitsLoading"
@@ -584,10 +615,10 @@ async function submit() {
             <!-- 建筑面积 → 面积分类(计费行汇总只读,S15 §3);月租金/租金单价并入下方标的段,不双录入 -->
             <div class="ct-field">
               <div class="lab">建筑面积 ㎡</div>
-              <input v-if="mode === 'renew'" class="ct-in" :value="renewFrom?.buildingArea ?? '—'" disabled title="续签继承原合同" />
+              <input v-if="mode === 'renew'" class="ct-in" :value="renewFrom?.buildingArea ?? '—'" disabled v-tip="'续签继承原合同'" />
               <input v-else class="ct-in" type="number" min="0" v-model.number="buildingArea"
                      :placeholder="bldAreaHint != null ? `留空=${bldAreaHint.toLocaleString('en-US')}(非宿舍×0.8)` : '留空=非宿舍租赁面积×0.8'"
-                     title="可清空:留空保存后自动=租赁面积(非宿舍)×0.8 重算;显式填值则尊重填值"
+                     v-tip="'可清空:留空保存后自动=租赁面积(非宿舍)×0.8 重算;显式填值则尊重填值'"
                      @input="err = ''" @keydown.enter="submit" />
             </div>
             <div class="ct-field">
@@ -595,13 +626,13 @@ async function submit() {
               <input v-if="mode === 'renew'" class="ct-in" type="number" min="0" v-model.number="rentArea" placeholder="0"
                      @input="err = ''" @keydown.enter="submit" />
               <input v-else class="ct-in" disabled placeholder="按非宿舍标的段租金面积汇总"
-                     title="租赁面积(非宿舍)=各标的段建筑类租金面积之和(宿舍段除外),面积只在标的段内录入"
+                     v-tip="'租赁面积(非宿舍)=各标的段建筑类租金面积之和(宿舍段除外),面积只在标的段内录入'"
                      :value="rentAreaShow != null ? rentAreaShow.toLocaleString('en-US') : ''" />
             </div>
             <div v-if="mode !== 'renew' && dormAreaSum != null" class="ct-field">
               <div class="lab">宿舍面积 ㎡ · 自动汇总</div>
               <input class="ct-in" disabled
-                     title="宿舍面积=各宿舍段租金行面积之和,不计入租赁面积(非宿舍)与建筑面积换算"
+                     v-tip="'宿舍面积=各宿舍段租金行面积之和,不计入租赁面积(非宿舍)与建筑面积换算'"
                      :value="dormAreaSum.toLocaleString('en-US')" />
             </div>
             <div v-if="mode === 'renew'" class="ct-field">
@@ -619,7 +650,7 @@ async function submit() {
               <div class="ct-field">
                 <div class="lab">用电分类</div>
                 <Select :options="POWER_TYPE_OPTS" :model-value="powerType"
-                        @update:model-value="powerType = $event; onPowerTypeChange(); dirty = true" />
+                        @update:model-value="powerType = $event; onPowerTypeChange(); touch('powerType')" />
               </div>
               <div class="ct-field">
                 <div class="lab">配电容量 KVA</div>
@@ -638,7 +669,7 @@ async function submit() {
                     <input class="ct-in ct-bl-loc" v-model="seg.location" maxlength="255"
                            placeholder="位置(如:E座3-4层 / 宿舍楼 / 空地一 / 主)" @input="err = ''" />
                     <span v-if="segArea(seg) != null" class="ct-seg-area">{{ segArea(seg)!.toLocaleString('en-US') }} ㎡</span>
-                    <button type="button" class="ct-rf-del" title="删除标的段" @click="removeSegment(si)">
+                    <button type="button" class="ct-rf-del" v-tip="'删除标的段'" @click="removeSegment(si)">
                       <component :is="iconFor('trash-2')" :size="14" />
                     </button>
                   </div>
@@ -647,7 +678,7 @@ async function submit() {
                        候选只列本合同已选的单元:段是合同的一部分,绑到合同外的单元没有意义。 -->
                   <div v-if="unitSel.length" class="ct-bl-bind">
                     <span class="ct-bl-bindlab"
-                          title="该段的租金面积算在哪几个单元上;不选=按整栋面积口径参与公摊分摊">面积落在</span>
+                          v-tip="'该段的租金面积算在哪几个单元上;不选=按整栋面积口径参与公摊分摊'">面积落在</span>
                     <button v-for="u in unitSel" :key="u" type="button" class="ct-bl-uchip"
                             :class="{ on: seg.unitIds.includes(u) }" @click="toggleSegUnit(seg, u)">
                       {{ unitLabel(u) }}
@@ -660,11 +691,11 @@ async function submit() {
                     <template v-if="isSqm(row.feeKey)">
                       <input class="ct-in ct-bl-n" :class="{ 'auto-area': row.autoArea }" type="number" min="0" step="0.01"
                              v-model.number="row.area" placeholder="面积"
-                             :title="row.autoArea ? '来自单元档案,可改' : ''"
+                             v-tip="row.autoArea ? '来自单元档案,可改' : ''"
                              @input="err = ''; row.autoArea = false" />
                       <!-- 公摊面积(S5 §1/§4):仅租金行;填了=左侧面积为建筑面积,分摊按两者之和;留空=面积已含公摊 -->
                       <input v-if="isRentKey(row.feeKey)" class="ct-in ct-bl-n" type="number" min="0" step="0.01" v-model.number="row.areaShared"
-                             placeholder="公摊(选填)" title="填了公摊 = 面积格为建筑面积,公摊分摊按 面积+公摊 之和;留空 = 面积已含公摊" @input="err = ''" />
+                             placeholder="公摊(选填)" v-tip="'填了公摊 = 面积格为建筑面积,公摊分摊按 面积+公摊 之和;留空 = 面积已含公摊'" @input="err = ''" />
                       <input class="ct-in ct-bl-n" type="number" min="0" step="0.0001" v-model.number="row.unitPrice" placeholder="单价" @input="err = ''" />
                       <input class="ct-in ct-bl-n" type="number" min="0" step="0.01" v-model.number="row.coeff" placeholder="系数1" @input="err = ''" />
                     </template>
@@ -705,7 +736,7 @@ async function submit() {
                     <span class="ct-bl-feename">{{ FEE_NAME[row.feeKey] }} <em>遗留</em></span>
                     <input class="ct-in ct-bl-n" type="number" min="0" step="0.01" v-model.number="row.amountOverride" placeholder="月额" @input="err = ''" />
                     <span class="ct-bl-mo mono" :class="{ pending: rowMonthly(row).includes('待') }">{{ rowMonthly(row) }}</span>
-                    <button type="button" class="ct-rf-del" title="删除该遗留费项" @click="removeRow(seg, row)">
+                    <button type="button" class="ct-rf-del" v-tip="'删除该遗留费项'" @click="removeRow(seg, row)">
                       <component :is="iconFor('x')" :size="14" />
                     </button>
                   </div>
@@ -718,7 +749,7 @@ async function submit() {
                            placeholder="收费项目(如:车位变更手续费)" @input="err = ''" />
                     <input class="ct-in ct-other-amt" type="number" min="0" step="0.01" v-model.number="o.amountOverride"
                            placeholder="金额 元/月" @input="err = ''" />
-                    <button type="button" class="ct-rf-del" title="删除该费用" @click="removeOtherItem(oi)">
+                    <button type="button" class="ct-rf-del" v-tip="'删除该费用'" @click="removeOtherItem(oi)">
                       <component :is="iconFor('trash-2')" :size="14" />
                     </button>
                   </div>
@@ -738,21 +769,21 @@ async function submit() {
                 </div>
               </div>
             </div>
-            <div class="ct-field">
+            <div class="ct-field" data-f="start">
               <div class="lab">开始日期</div>
-              <!-- ds/DatePicker 的格子是按钮,不派发原生 input,收不进 @input.capture → dirty 手动置位 -->
+              <!-- ds/DatePicker 的格子是按钮,不派发原生 input,收不进 @input.capture → 手动记一笔(与原生事件同名,不重算) -->
               <DatePicker class="ct-dp" :model-value="startDate" field-id="contract-start" clearable aria-label="开始日期"
-                          @update:model-value="startDate = $event; err = ''; dirty = true" @keydown.enter="submit" />
+                          @update:model-value="startDate = $event; err = ''; touch('start')" @keydown.enter="submit" />
             </div>
-            <div class="ct-field">
+            <div class="ct-field" data-f="end">
               <div class="lab">结束日期</div>
               <DatePicker class="ct-dp" :model-value="endDate" field-id="contract-end" clearable aria-label="结束日期" align="end"
-                          @update:model-value="endDate = $event; err = ''; dirty = true" @keydown.enter="submit" />
+                          @update:model-value="endDate = $event; err = ''; touch('end')" @keydown.enter="submit" />
             </div>
-            <div class="ct-field">
+            <div class="ct-field" data-f="sign">
               <div class="lab">签订日期</div>
               <DatePicker class="ct-dp" :model-value="signDate" field-id="contract-sign" clearable aria-label="签订日期"
-                          @update:model-value="signDate = $event; err = ''; dirty = true" @keydown.enter="submit" />
+                          @update:model-value="signDate = $event; err = ''; touch('sign')" @keydown.enter="submit" />
             </div>
             <!-- 期限原文三件套(V2-SPEC §6):白纸黑字留档,多段/相对表述的唯一事实源,不参与计费 -->
             <template v-if="mode !== 'renew'">
@@ -764,7 +795,7 @@ async function submit() {
               <div class="ct-field">
                 <div class="lab">期限类型</div>
                 <Select :options="TERM_TYPE_OPTS" :model-value="termType"
-                        @update:model-value="termType = $event; err = ''; dirty = true" />
+                        @update:model-value="termType = $event; err = ''; touch('termType')" />
               </div>
               <div class="ct-field">
                 <div class="lab">分年阶梯价(原文留档)</div>
@@ -780,10 +811,10 @@ async function submit() {
                   <div class="ct-rf-row">
                     <!-- 起止合成一个区间字段:下限 = 合同开始日,上限 = 合同结束日(DATE-PICKER-SPEC §5 第 1 节) -->
                     <DatePicker class="ct-dp ct-rf-dp" mode="range" :model-value="[r.start, r.end]" field-id="contract-rentfree"
-                                aria-label="免租期起止" :min="rfBounds.min" :max="rfBounds.max"
-                                @update:model-value="r.start = $event[0]; r.end = $event[1]; err = ''; dirty = true" />
+                                aria-label="免租期起止" :min="rfBounds.min" :max="rfBounds.max" :data-f="'rf' + i"
+                                @update:model-value="r.start = $event[0]; r.end = $event[1]; err = ''; touch('rf' + i)" />
                     <input class="ct-in ct-rf-note" v-model="r.note" maxlength="50" placeholder="备注,如:装修期" @input="err = ''" />
-                    <button type="button" class="ct-rf-del" title="删除该段" @click="removeRentFreeRow(i)">
+                    <button type="button" class="ct-rf-del" v-tip="'删除该段'" @click="removeRentFreeRow(i)">
                       <component :is="iconFor('x')" :size="14" />
                     </button>
                   </div>
@@ -804,12 +835,13 @@ async function submit() {
                      @input="err = ''" @keydown.enter="submit" />
             </div>
           </div>
-          <div class="ct-erm">{{ err }}</div>
+          <p class="fp-field-err"><template v-if="err">{{ err }}</template></p>
+          </template>
         </div>
         <div class="ct-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="emit('close')">取消</Button>
           <!-- 计费明细没到位时保存=清空计费行,按钮直接点不动(不只靠 submit 里 return) -->
-          <Button variant="filled" size="sm" :disabled="submitting || (mode === 'edit' && !detailLoaded)" @click="submit">
+          <Button variant="filled" size="sm" :disabled="submitting || !!loadErr || (mode === 'edit' && !detailLoaded)" @click="submit">
             <template #leading><component :is="iconFor('check')" :size="14" /></template>
             {{ mode === 'edit' ? '保存' : mode === 'renew' ? (linkType === 'escalation' ? '递增' : '续签') : '创建' }}
           </Button>
@@ -890,6 +922,7 @@ async function submit() {
 .ct-rf-del:hover { background:var(--bg-hover); color:var(--hue-red); }
 .ct-rf-warn { font-size:11.5px; line-height:14px; min-height:14px; color:rgb(168,98,0); margin-top:3px; }
 :root[data-theme="dark"] .ct-rf-warn { color:var(--hue-orange); }
-.ct-erm { font-size:11.5px; color:var(--hue-red); margin-top:8px; min-height:14px; }
+/* 表单底的字段报错行(十件 ⑤):占位高在 base.css .fp-field-err,这里只管和表单隔开 */
+.ct-grid + .fp-field-err { margin-top:8px; }
 .ct-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:16px 22px 20px; }
 </style>

@@ -8,6 +8,7 @@ import { booksApi } from '@/api/books'
 import { locksApi } from '@/api/locks'
 import Select from '@/components/ds/Select.vue'
 import { usePresenceStore } from '@/stores/presence'
+import { useAuthStore } from '@/stores/auth'
 import type { Book, BookDef, TemplateVersion } from '../../types/book'
 
 // 账册模板面板(BOOK-WORKBENCH-SPEC §3)。双模式:默认只读查看,canEdit 才能进编辑态。
@@ -151,17 +152,19 @@ describe('TemplateEditorPanel · 双模式', () => {
 })
 
 describe('TemplateEditorPanel · 历史版预览', () => {
-  it('点历史版:调 versionDefinition(bookId, ver),主区切该版列名 + 横幅;回到现行版还原', async () => {
+  it('点历史版:调 versionDefinition(bookId, ver),主区切该版列名 + 标题旁标签;回到现行版还原', async () => {
     vi.mocked(booksApi.versionDefinition).mockResolvedValue(histDef)
     const w = mountPanel()
     await w.findAll('.te-vitem')[1].trigger('click')
     await flushPromises()
     expect(booksApi.versionDefinition).toHaveBeenCalledWith(1, 2)
-    expect(w.find('.te-histbar').text()).toContain('正在查看 v2')
+    // 页面状态(十件 ⑥)贴在标题行里,主区顶上不再有横幅
+    expect(w.find('.te-titlerow .fp-state').text()).toBe('正在查看 v2（历史版）')
+    expect(w.find('.te-main .fp-state').exists(), '主区里不许再起一条').toBe(false)
     expect(w.findAll('.te-roname')[0].text()).toBe('旧租金')
     // 一键回现行版
-    await w.find('button.te-histback').trigger('click')
-    expect(w.find('.te-histbar').exists()).toBe(false)
+    await w.find('.te-titlerow button.te-histback').trigger('click')
+    expect(w.find('.te-titlerow .fp-state').exists()).toBe(false)
     expect(w.findAll('.te-roname')[0].text()).toBe('租金')
     w.unmount()
   })
@@ -172,7 +175,7 @@ describe('TemplateEditorPanel · 历史版预览', () => {
     await w.findAll('.te-vitem')[1].trigger('click')
     await flushPromises()
     await w.find('button.te-editbtn').trigger('click')
-    expect(w.find('.te-histbar').exists()).toBe(false)
+    expect(w.find('.te-titlerow .fp-state').exists()).toBe(false)
     expect((w.findAll('input.te-name')[0].element as HTMLInputElement).value).toBe('租金')
     w.unmount()
   })
@@ -435,6 +438,11 @@ describe('TemplateEditorPanel · 版本选择器', () => {
     expect(verTrigger(w).attributes('disabled')).toBeDefined()
     expect(w.find('.te-editbtn').attributes('disabled')).toBeDefined()
     expect(w.text()).toContain('已录入')
+    // 为什么灰:悬停说明(v-tip,十件 ⑩),不是浏览器 title
+    const pick = w.find('.te-verpick')
+    expect((pick.element as HTMLElement & { _tip?: { text: string } })._tip?.text)
+      .toBe('本月已录入,模板已定稿;清空本月数据后可改')
+    expect(pick.attributes('title')).toBeUndefined()
   })
 })
 
@@ -465,6 +473,18 @@ describe('模板面板 · 被接管时复制我的改动', () => {
     expect(tsv).toContain('新列')
     expect(tsv).toContain('删除\t')
     expect(tsv).toContain(String((removed as { label: string }).label))
+  })
+
+  it('❗改动数接进编辑登记表:刚进编辑态 0 处(关页签不弹),改一列名后 1 处', async () => {
+    // 不传第三参时 openEditor 按 1 算(宁可多问)—— 那样没改也弹离开确认,第一条断言就红
+    const w = await mountEdit()
+    await flushPromises()
+    const auth = useAuthStore()
+    expect(auth.editing, '前提:进了编辑态,登记表里有这一屏').toBe(true)
+    expect(auth.dirtyTotal).toBe(0)
+    await w.findAll('input.te-name')[0].setValue('改了的名字')
+    expect(auth.dirtyTotal).toBe(1)
+    w.unmount()
   })
 
   it('❗序列化器真的绑在被接管弹窗上 —— 只有函数没有绑定等于没接', () => {

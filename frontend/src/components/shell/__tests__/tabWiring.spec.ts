@@ -40,7 +40,7 @@ describe('页签模型接线', () => {
   ])('❗编辑态登记带上屏名:%s', (f) => {
     const s = src(f)
     expect(s).toContain('const screen = useScreen()')
-    expect(s).toContain('auth.openEditor(meId, screen)')
+    expect(s).toMatch(/auth\.openEditor\(meId, screen[,)]/)   // 第三参 dirty 可带可不带(T08)
     expect(s).not.toMatch(/openEditor\(meId\)/)
   })
 })

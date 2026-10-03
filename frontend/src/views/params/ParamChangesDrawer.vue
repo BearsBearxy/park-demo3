@@ -4,6 +4,8 @@ import { computed, ref, watch } from 'vue'
 import { paramsApi, type ParamChangeDTO } from '@/api/params'
 import Badge from '@/components/ds/Badge.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
 
 const props = defineProps<{ open: boolean; ym: string }>()
 const emit = defineEmits<{ close: [] }>()
@@ -12,17 +14,22 @@ const list = ref<ParamChangeDTO[] | null>(null)
 const err = ref('')
 const q = ref('')
 let seq = 0
-watch(() => [props.open, props.ym] as const, async ([o, ym]) => {
-  if (!o) return
+// 打开 / 重试共用。err 只在成功时清:重试在途时失败面不先消失(房内定型写法)
+async function load() {
   const my = ++seq
-  list.value = null; err.value = ''; q.value = ''
   try {
-    const d = await paramsApi.changes(ym)
-    if (my === seq) list.value = d
+    const d = await paramsApi.changes(props.ym)
+    if (my === seq) { list.value = d; err.value = '' }
   } catch (e) {
     if (my === seq) err.value = (e as { message?: string })?.message ?? '变更记录加载失败'
   }
+}
+watch(() => [props.open, props.ym] as const, ([o]) => {
+  if (!o) return
+  list.value = null; err.value = ''; q.value = ''
+  load()
 })
+const ymText = computed(() => `${props.ym.slice(0, 4)} 年 ${Number(props.ym.slice(5, 7))} 月`)
 
 const ACTION: Record<string, { text: string; tone: 'blue' | 'red' | 'cyan' | 'neutral' }> = {
   set: { text: '设置', tone: 'blue' }, delete: { text: '删除', tone: 'red' },
@@ -49,9 +56,9 @@ const effText = (c: ParamChangeDTO) => c.action === 'recalc' ? (c.ym ?? '')
       <input v-model="q" class="pc-q" type="text" placeholder="按参数 / 范围 / 备注筛选" />
       <span class="pc-cnt">{{ shown.length }} 条</span>
     </div>
-    <div v-if="err" class="pc-err">{{ err }}</div>
+    <FPLoadError v-if="err" :sub="err" @retry="load">{{ ymText }}的变更记录没读到</FPLoadError>
     <div v-else-if="!list" class="pc-empty">加载中…</div>
-    <div v-else-if="!shown.length" class="pc-empty">暂无变更记录。</div>
+    <FPEmpty v-else-if="!shown.length">{{ list.length ? '没有符合筛选的变更记录' : `${ymText}还没有变更记录` }}</FPEmpty>
     <div v-else class="pc-wrap">
     <table class="pc-tab">
       <colgroup><col style="width:132px" /><col style="width:64px" /><col style="width:72px" /><col style="width:150px" /><col style="width:140px" /><col style="width:110px" /><col style="width:120px" /><col /></colgroup>
@@ -78,7 +85,6 @@ const effText = (c: ParamChangeDTO) => c.action === 'recalc' ? (c.ym ?? '')
 .pc-q { flex: 1 1 auto; height: 32px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--border-control); border-radius: var(--radius-sm); font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-primary); outline: none; }
 .pc-q:focus { border-color: var(--hue-blue); }
 .pc-cnt { font-size: var(--fs-label); color: var(--text-muted); }
-.pc-err { color: var(--hue-red); font-size: var(--fs-label); }
 .pc-empty { color: var(--text-muted); font-size: var(--fs-label); }
 /* 表:auto 布局,列宽是下限;时间/人/动作/生效/变更 nowrap 不截;参数/作用范围/备注 换行;过宽横向滚动 */
 .pc-wrap { overflow-x: auto; }

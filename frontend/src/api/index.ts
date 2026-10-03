@@ -22,9 +22,20 @@ export function readUser(): string | null {
   return localStorage.getItem('username') ?? sessionStorage.getItem('username')
 }
 
-/** 401 的原因,由后端 X-Auth-Reason 给;登录页读它决定提示哪一句。 */
-export type AuthReason = 'relogin' | 'password' | 'disabled' | 'self'
+/** 401 的原因,由后端 X-Auth-Reason 给;登录页读它决定提示哪一句。
+ *  'expired' 是前端自己判的:令牌到点了(后端对过期令牌不带原因头),或路由守卫因过期拦回。 */
+export type AuthReason = 'relogin' | 'password' | 'disabled' | 'self' | 'expired'
 export const AUTH_REASON_KEY = 'authReason'
+
+/** 令牌的 exp 已经过了。解析不了按没过(交给后端判),口径同 stores/auth.ts 的 notExpired。
+ *  载荷是 base64url,先换回 atob 认的字母表 —— 不换的话载荷里碰上 - / _ 就解析失败,当成没过期。 */
+function tokenExpired(t: string | null): boolean {
+  if (!t) return false
+  try {
+    const { exp } = JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+    return typeof exp === 'number' && exp * 1000 <= Date.now()
+  } catch { return false }
+}
 
 // ── 跨标签页身份漂移守卫 ─────────────────────────────────────────────
 //
@@ -94,15 +105,16 @@ http.interceptors.response.use(
   },
   async (error) => {
     if (error.response?.status === 401) {
+      // 后端说明这张令牌为什么不认(X-Auth-Reason);没说、而本地令牌已经到点了,就是登录过期(06-E 登录页组)。
+      // 要在下面清令牌**之前**判。
+      const reason = error.response?.headers?.['x-auth-reason'] ?? (tokenExpired(readToken()) ? 'expired' : null)
       // permissions/navLayers/mustChangePassword 必须一起清:留在 storage 里,
       // 同一台机器下一个人登录会继承前一个人的权限(或被前一个人的改密标志拦住)
       for (const k of ['token', 'username', 'displayName', 'role', 'permissions', 'navLayers', 'mustChangePassword']) {
         localStorage.removeItem(k)
         sessionStorage.removeItem(k)
       }
-      // 后端说明这张令牌为什么不认(X-Auth-Reason)。存进 sessionStorage 是因为下一句是
-      // 整页跳转,内存里的任何东西都活不过去;登录页读完即删,不留痕。
-      const reason = error.response?.headers?.['x-auth-reason']
+      // 原因存进 sessionStorage 是因为下一句是整页跳转,内存里的任何东西都活不过去;登录页读完即删,不留痕。
       if (reason && reason !== 'self') sessionStorage.setItem(AUTH_REASON_KEY, String(reason))
       bindSession(null)   // 同步解绑,否则跳登录页后守卫还拿着已作废的旧身份比对
       // 整页跳转让 Pinia auth store 从（已清空的）localStorage 重新初始化为 null；

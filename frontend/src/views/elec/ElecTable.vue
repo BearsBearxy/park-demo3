@@ -8,7 +8,7 @@ import { useViewport } from '@/composables/useViewport'
 import FPWideCards, { type WideCard } from '@/components/fp/FPWideCards.vue'
 import { iconFor } from '@/components/ds/icon'
 import Segmented from '@/components/ds/Segmented.vue'
-import Button from '@/components/ds/Button.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
 import SchedNoteCell from '@/components/sched/SchedNoteCell.vue'
 import { rowLocked, ROW_LOCK_TIP } from '@/components/sched/reviewLock'
 import { phaseTint } from '@/components/sched/tints'
@@ -120,20 +120,14 @@ function card(r: ElecRecordDTO): WideCard {
     </div>
 
     <div class="e11-tablewrap">
-      <!-- 空年 / 空类引导态(jsx 401-412) -->
-      <div v-if="rows.length === 0" class="e11-empty">
-        <div class="e11-empty-ic"><component :is="iconFor(energy ? 'zap' : 'gauge')" :size="24" /></div>
-        <div class="e11-empty-t">{{ year }} 年暂无{{ energy ? '电量电费' : '基本电费' }}记录</div>
-        <div class="e11-empty-s">进入编辑模式可手动新增各期对外电费进项发票;记录自动归入对应年份与费用类型。</div>
-        <Button v-if="edit" variant="filled" @click="emit('add')">
-          <template #leading><component :is="iconFor('plus')" :size="16" /></template>
-          新增记账
-        </Button>
-        <Button v-else variant="filled" @click="emit('edit')">
-          <template #leading><component :is="iconFor('pencil')" :size="16" /></template>
-          编辑表格
-        </Button>
-      </div>
+      <!-- 空年 / 空类(十件 ⑦ 空状态,全站一种样子):占住表格区,一句 + 副句 + 一个按钮 -->
+      <FPEmpty
+        v-if="rows.length === 0"
+        class="e11-empty"
+        sub="进入编辑模式可手动新增各期对外电费进项发票;记录自动归入对应年份与费用类型。"
+        :action="edit ? '新增记账' : '编辑表格'"
+        @action="edit ? emit('add') : emit('edit')"
+      >{{ year }} 年暂无{{ energy ? '电量电费' : '基本电费' }}记录</FPEmpty>
 
       <!-- S 档查看态:一行一张卡(稿 §3 行5)。编辑态回落原表 —— 勾选框/行删除/整年合计
            在卡上没有位置,而 §5.3 写的是「查看不拦、编辑入口不藏」:手机上删一条记录
@@ -159,7 +153,7 @@ function card(r: ElecRecordDTO): WideCard {
                   class="e11-cb"
                   :checked="allSelected"
                   :disabled="rows.length === 0"
-                  title="全选"
+                  v-tip="'全选'"
                   @change="emit('selectAll', ($event.target as HTMLInputElement).checked)"
                 />
                 <span class="e11-th-name">记账月份</span>
@@ -176,6 +170,7 @@ function card(r: ElecRecordDTO): WideCard {
             <th><span class="e11-th"><span class="e11-th-name">价税合计</span><span class="e11-th-unit">元</span></span></th>
             <th class="l" style="min-width:150px"><span class="e11-th-name">备注</span></th>
             <th v-if="edit" class="e11-h-act"></th>
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </thead>
         <tbody>
@@ -197,6 +192,7 @@ function card(r: ElecRecordDTO): WideCard {
               <td class="e11-c-num e11-grp-tot e11-c-total">{{ num(g.total) }}</td>
               <td class="l"></td>
               <td v-if="edit"></td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
             <!-- 明细行(jsx 481-498) -->
             <tr v-for="r in g.rows" :key="r.id" class="e11-row">
@@ -207,7 +203,7 @@ function card(r: ElecRecordDTO): WideCard {
                     type="checkbox"
                     class="e11-cb"
                     :checked="selectedIds?.has(r.id) ?? false"
-                    title="选中以批量删除"
+                    v-tip="'选中以批量删除'"
                     :disabled="rowLocked(lockedMonths, r.acctMonth)"
                     @change="emit('toggleSelect', r)"
                   />
@@ -230,12 +226,13 @@ function card(r: ElecRecordDTO): WideCard {
               </td>
               <td v-if="edit">
                 <span class="e11-acts">
-                  <span v-if="rowLocked(lockedMonths, r.acctMonth)" class="e11-actlock" :title="ROW_LOCK_TIP"><component :is="iconFor('lock')" :size="14" /></span>
-                  <button v-else class="e11-actbtn del" title="删除" @click="emit('delete', r)">
+                  <span v-if="rowLocked(lockedMonths, r.acctMonth)" class="e11-actlock" v-tip="ROW_LOCK_TIP"><component :is="iconFor('lock')" :size="14" /></span>
+                  <button v-else class="e11-actbtn del" v-tip="'删除'" @click="emit('delete', r)">
                     <component :is="iconFor('trash-2')" :size="15" />
                   </button>
                 </span>
               </td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
           </template>
           <tr class="e11-filler" aria-hidden="true"><td :colspan="99"></td></tr>
@@ -251,6 +248,7 @@ function card(r: ElecRecordDTO): WideCard {
             <th class="e11-c-num">{{ num(total.total) }}</th>
             <th class="l"></th>
             <th v-if="edit"></th>
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </tfoot>
       </table>
@@ -267,7 +265,7 @@ function card(r: ElecRecordDTO): WideCard {
                   class="e11-cb"
                   :checked="allSelected"
                   :disabled="rows.length === 0"
-                  title="全选"
+                  v-tip="'全选'"
                   @change="emit('selectAll', ($event.target as HTMLInputElement).checked)"
                 />
                 <span class="e11-th-name">记账月份</span>
@@ -282,6 +280,7 @@ function card(r: ElecRecordDTO): WideCard {
             <th><span class="e11-th"><span class="e11-th-name">价税合计-基本用电</span><span class="e11-th-unit">元</span></span></th>
             <th class="l" style="min-width:150px"><span class="e11-th-name">备注</span></th>
             <th v-if="edit" class="e11-h-act"></th>
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </thead>
         <tbody>
@@ -302,6 +301,7 @@ function card(r: ElecRecordDTO): WideCard {
               <td class="e11-c-num e11-grp-tot e11-c-total">{{ num(g.total) }}</td>
               <td class="l"></td>
               <td v-if="edit"></td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
             <tr v-for="r in g.rows" :key="r.id" class="e11-row">
               <td class="l e11-c-acct">
@@ -311,7 +311,7 @@ function card(r: ElecRecordDTO): WideCard {
                     type="checkbox"
                     class="e11-cb"
                     :checked="selectedIds?.has(r.id) ?? false"
-                    title="选中以批量删除"
+                    v-tip="'选中以批量删除'"
                     :disabled="rowLocked(lockedMonths, r.acctMonth)"
                     @change="emit('toggleSelect', r)"
                   />
@@ -332,12 +332,13 @@ function card(r: ElecRecordDTO): WideCard {
               </td>
               <td v-if="edit">
                 <span class="e11-acts">
-                  <span v-if="rowLocked(lockedMonths, r.acctMonth)" class="e11-actlock" :title="ROW_LOCK_TIP"><component :is="iconFor('lock')" :size="14" /></span>
-                  <button v-else class="e11-actbtn del" title="删除" @click="emit('delete', r)">
+                  <span v-if="rowLocked(lockedMonths, r.acctMonth)" class="e11-actlock" v-tip="ROW_LOCK_TIP"><component :is="iconFor('lock')" :size="14" /></span>
+                  <button v-else class="e11-actbtn del" v-tip="'删除'" @click="emit('delete', r)">
                     <component :is="iconFor('trash-2')" :size="15" />
                   </button>
                 </span>
               </td>
+              <td class="fp-fill" aria-hidden="true"></td>
             </tr>
           </template>
           <tr class="e11-filler" aria-hidden="true"><td :colspan="99"></td></tr>
@@ -353,6 +354,7 @@ function card(r: ElecRecordDTO): WideCard {
             <th class="e11-c-num">{{ num(total.total) }}</th>
             <th class="l"></th>
             <th v-if="edit"></th>
+            <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </tfoot>
       </table>
@@ -371,7 +373,10 @@ function card(r: ElecRecordDTO): WideCard {
 .e11-count b { color:var(--text-secondary); font-weight:var(--fw-semibold); font-family:var(--font-mono); }
 
 .e11-tablewrap { flex:1 1 auto; min-height:0; overflow:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--surface-white); }
-.e11-table { border-collapse:separate; border-spacing:0; width:100%; min-width:1040px; height:100%; font-family:var(--font-sans); font-size:13px; color:var(--text-primary); }
+/* 不给表格 px 保底宽(2026-10-02):列都 nowrap、按内容撑,窄了照样横滚;保底宽比内容宽时多出来的全落进行末空列,横滚看到的是空白。
+   编辑态备注框按自身默认宽撑列:width:100% 的输入框不撑列,有了行末空列(.fp-fill)备注列会缩回表头的保底 150 */
+.e11-table { border-collapse:separate; border-spacing:0; width:100%; height:100%; font-family:var(--font-sans); font-size:13px; color:var(--text-primary); }
+.e11-table :deep(.lc-note-in) { width:auto; min-width:100%; }
 .e11-table tbody tr.e11-filler td { height:0; padding:0; line-height:0; font-size:0; border:none; background:var(--surface-white); }
 .e11-filler { height:100%; }
 .e11-table th, .e11-table td { padding:0 12px; box-sizing:border-box; white-space:nowrap; text-align:right; }
@@ -425,11 +430,8 @@ function card(r: ElecRecordDTO): WideCard {
 .e11-table tfoot .e11-c-num { color:var(--brand-deep); font-weight:var(--fw-semibold); }
 .e11-foot-lbl { text-align:left; font-size:13px; color:var(--text-primary); }
 
-/* 空 / 未来年份引导态 */
-.e11-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; height:100%; min-height:240px; padding:40px; text-align:center; }
-.e11-empty-ic { width:52px; height:52px; border-radius:16px; background:var(--surface-card); display:grid; place-items:center; color:var(--text-muted); }
-.e11-empty-t { font-size:15px; font-weight:var(--fw-semibold); color:var(--text-primary); }
-.e11-empty-s { font-size:13px; color:var(--text-muted); max-width:400px; line-height:1.5; }
+/* 空 / 未来年份:FPEmpty 撑满表格区(外形归 FPEmpty,这里只给高度) */
+.e11-empty { height:100%; }
 
 /* ── 响应式(RESPONSIVE-LAYOUT-SPEC §5.4 定宽表):列/min-width 一根不动,
    窄了在 .e11-tablewrap(overflow:auto,现成)内横滚;查看态迁移只动工具行与触屏可达性 ── */

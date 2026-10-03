@@ -114,7 +114,7 @@ const good = computed(() => props.delta != null && (props.invert ? props.delta <
     <div class="kc-v">
       <span v-if="loading" class="fp-shim kc-sk" aria-hidden="true"></span>
       <span v-else ref="numEl" class="kc-n" :class="{ s20: small }" :style="neg ? { color: 'var(--delta-down-text)' } : undefined"
-            :title="tip">
+            v-tip="tip">
         <slot>{{ parts[0] }}<span v-if="parts[1]" class="u">{{ parts[1] }}</span></slot>
       </span>
       <template v-if="delta != null">

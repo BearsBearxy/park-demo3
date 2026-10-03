@@ -10,6 +10,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
+import { useUiStore } from '@/stores/ui'
 import LedgerWideTable from '@/views/ledger/LedgerWideTable.vue'
 import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import type { Book, BookDef } from '@/types/book'
@@ -132,6 +133,20 @@ describe('台账审核闸(编辑入口的第三条路)', () => {
     await rs.ensureYear(2026)
     await flushPromises()
     expect(w.emitted('cancel'), '在编辑态里被审了 → 退出').toBeTruthy()
+    // 06-E 当场出现组:退出前报给 App 的居中弹窗。破坏验证:删掉 ui.reportEditStop(...) 那一句 → 红
+    expect(useUiStore().editStop).toMatchObject({ status: 'approved', by: '李审', what: '月度台账 · 甲公司 · 2026-09' })
+  })
+
+  // 破坏验证:删掉 LedgerWideTable 里 `k === wasK` → 红
+  it('❗编辑态里换到一个早已审过的月 → 照样退出,但不弹', async () => {
+    seedReview('approved')                         // 只有 2026-09 已审
+    const w = mk({ reviewKey: 'ledger:9:2026-08', edit: true })
+    await flushPromises()
+    expect(w.emitted('cancel')).toBeUndefined()
+    await w.setProps({ reviewKey: KEY })
+    await flushPromises()
+    expect(w.emitted('cancel')).toBeTruthy()
+    expect(useUiStore().editStop).toBeNull()
   })
 
   // ── 交审动作簇(per-screen-review §03-B2) ───────────────────────────

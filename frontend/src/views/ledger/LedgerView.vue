@@ -32,7 +32,6 @@ import { toBindOptions } from '@/components/fp/fpTenantPicker'
 import type { ImportResultDTO } from '@/types/import'
 import { FEE_KEYS } from '@/utils/ledgerColumns'
 import { parserProps, runImport } from '@/utils/importRegistry'
-import { iconFor } from '@/components/ds/icon'
 import LedgerNewCompanyDialog from './LedgerNewCompanyDialog.vue'
 import LedgerDeleteCompanyDialog from './LedgerDeleteCompanyDialog.vue'
 import BookRail from '@/components/fp/BookRail.vue'
@@ -40,8 +39,10 @@ import FPToast from '@/components/fp/FPToast.vue'
 import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
 import TemplateEditorPanel from '@/components/fp/TemplateEditorPanel.vue'
 import ColumnMapPanel, { type UnmatchedHeader, type ColDecision } from '@/components/fp/ColumnMapPanel.vue'
-import FPSideDrawer from '@/components/fp/FPSideDrawer.vue'
 import FPTenantIssuePanel, { type IssueGroup } from '@/components/fp/FPTenantIssuePanel.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import { ask, askLeave } from '@/utils/ask'
+import { receipt } from '@/utils/receipt'
 import LedgerWideTable from './LedgerWideTable.vue'
 import LedgerTenantDrawer from './LedgerTenantDrawer.vue'
 import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
@@ -186,6 +187,7 @@ function dirtyCount(): number {
   for (const r of draft.value) if (base.get(ledgerRowKey(r)) !== JSON.stringify(r)) n++
   return n
 }
+const dirtyN = computed(dirtyCount)
 const { note: deepNote } = useDeepPeriod({
   current: () => ({ p: month.value == null ? null : periodOf(year.value, month.value), co: companyId.value }),
   apply: (t) => { void applyDeep(t).catch(() => {}) },
@@ -239,7 +241,7 @@ async function loadMonthBook() {
     if (reqId === tplReq) monthBook.value = b
   } catch {
     // 失败不静默:列会退回链尾版,可能与本月的钱(archivedCols)对不上,得让人知道
-    if (reqId === tplReq) toastVer(`${y} 年 ${m} 月的模板版本没取到,当前按链尾版显示;请刷新重试`)
+    if (reqId === tplReq) receipt.fail(`${y} 年 ${m} 月的模板版本没取到,当前按链尾版显示;请刷新重试`)
   }
 }
 watch([activeBookId, year, month], loadMonthBook)
@@ -263,8 +265,9 @@ watch(activeBookId, async () => {
 
 // ── 状态迁移 ─────────────────────────────────────────────
 async function selectBook(id: number) {
-  // 左轨在编辑态也常驻可点:切册会丢弃编辑草稿,先确认(旧动线里编辑态没有切换入口,此为新暴露面)
-  if (edit.value && !window.confirm('正在编辑本月台账,切换账册将丢弃未保存的修改,继续?')) return
+  // 左轨在编辑态也常驻可点:切册会丢弃编辑草稿 —— 有改动先走离开确认(02-A),0 处直接切
+  const page = `月度台账 · ${companyName.value}${month.value != null ? ` · ${periodOf(year.value, month.value)}` : ''}`
+  if (!(await askLeave({ page, count: dirtyN.value, verb: '离开' }))) return
   activeBookId.value = id
   month.value = null; edit.value = false; drawerRowKey.value = null; issuesOpen.value = false
   monthDto.value = null; gateYears.value = null
@@ -364,7 +367,7 @@ async function createCompany(name: string) {
     const b = books.value.find(x => x.companyId === c.id)
     if (b) await selectBook(b.id)
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '新建账册失败')
+    receipt.fail((e as { message?: string })?.message ?? '新建账册失败')
   }
 }
 
@@ -393,9 +396,15 @@ async function removeCompany(bookId: number) {
       monthDto.value = null; gateYears.value = null; extraYears.value = []
     }
     await Promise.all([loadBooks(), loadCompanies()])
-    toastVer(`已删除「${b.name}」及其全部数据`)
+    // 删得掉的只有名下没有台账、报表、催缴单的公司(见下),所以没有「全部数据」可删:删的是公司和它的账册
+    // 收款账户、收款簿里指给它的收款项随公司级联删(V34 / V94),回执照实说
+    receipt.ok(`已删除「${b.name}」和它的账册、收款账户；收款簿里指给它的收款项已清掉`)
   } catch (e) {
-    toastVer((e as { message?: string })?.message ?? '删除失败')
+    // 409 = 名下还有台账 / 报表 / 催缴单(CompanyService.delete 不带 force 时拒删)。前端不带 force,
+    // 后端那句「确认请再删一次」再删也是 409,不成立,换成本地的真话(同 useFinStatementScreen.confirmDelete)。
+    // 弹窗失败时不关,再点「删除」就是重试,回执不另带按钮
+    if ((e as { code?: number })?.code === 409) receipt.fail(`「${b.name}」名下还有台账、报表或催缴单，删不掉。`)
+    else receipt.fail((e as { message?: string })?.message ?? '删除失败')
   } finally {
     deleting.value = false
   }
@@ -405,10 +414,6 @@ async function removeCompany(bookId: number) {
 const tplOpen = ref(false)
 const tplVersions = ref<TemplateVersion[]>([])
 const tplSaving = ref(false)
-const verToast = ref('')
-function toastVer(msg: string) {
-  verToast.value = msg
-}
 function patchBook(b: Book) {
   monthBook.value = b   // 保存/钉版回的是**本月生效**的那一版 → 列即时重算
   // 册清单里的行恒是链尾版。保存产出的新版就是链尾,顺手换上;钉旧版只抬 latestVer。
@@ -432,11 +437,11 @@ async function onTplSave(def: BookDef, note: string) {
   try {
     const res = await booksApi.saveTemplate(book.value.id, def, year.value, month.value, note || undefined)
     patchBook(res.book)
-    toastVer(`模板已升版 v${res.book.ver}(仅本月)`)
+    receipt.ok(`模板已升版 v${res.book.ver}(仅本月)`)
     tplOpen.value = false
     await loadMonth()   // 归档列/合计按新版重算
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '模板保存失败')
+    receipt.fail((e as { message?: string })?.message ?? '模板保存失败')
   } finally {
     tplSaving.value = false
   }
@@ -447,10 +452,10 @@ async function onTplPin(ver: number) {
   try {
     const b = await booksApi.pin(book.value.id, ver, year.value, month.value)
     patchBook(b)
-    toastVer(`本月已切到模板 v${b.ver}`)
+    receipt.ok(`本月已切到模板 v${b.ver}`)
     await loadMonth()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '切换模板版本失败')
+    receipt.fail((e as { message?: string })?.message ?? '切换模板版本失败', { label: '重试', run: () => void onTplPin(ver) })
   }
 }
 
@@ -483,11 +488,11 @@ async function onMapApply(decisions: ColDecision[]) {
     // map+create 合成一次 saveTemplate 持久化(P5:任何保存都升版,只把本月切过去)
     const res = await booksApi.saveTemplate(b.id, def, year.value, m, '导入列映射')
     patchBook(res.book)
-    toastVer(`模板已升版 v${res.book.ver}(仅本月)`)
+    receipt.ok(`模板已升版 v${res.book.ver}(仅本月)`)
     finishMap({ def: res.book.definition, ignore })
   } catch (e) {
     // 面板留着:用户可改决策重试或取消(取消 → resolve null → 导入按取消收场)
-    alert((e as { message?: string })?.message ?? '模板更新失败,请重试或取消导入')
+    receipt.fail((e as { message?: string })?.message ?? '模板更新失败,请重试或取消导入')
   }
 }
 
@@ -541,7 +546,7 @@ function cancelEdit() {
   deletedKeys.value = new Set()
 }
 async function save() {
-  if (companyId.value == null || month.value == null) return
+  if (companyId.value == null || month.value == null || !edit.value) return
   saving.value = true
   try {
     // PUT body:派生列省略后端重算;自定义列走 extraFees 整包替换(extractExtras 全键输出,缺失→null)。
@@ -571,19 +576,19 @@ async function save() {
     draft.value = []
     deletedKeys.value = new Set()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '保存失败')
+    receipt.fail((e as { message?: string })?.message ?? '保存失败', { label: '重试', run: () => void save() })
   } finally {
     saving.value = false
   }
 }
 async function copyFromPrev() {
-  if (companyId.value == null || month.value == null) return
+  if (companyId.value == null || month.value == null || !edit.value) return
   saving.value = true
   try {
     monthDto.value = flatMonth(await ledgerApi.copyFromPrev(companyId.value, year.value, month.value))
     snapshotDraft()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '从上月复制失败')
+    receipt.fail((e as { message?: string })?.message ?? '从上月复制失败', { label: '重试', run: () => void copyFromPrev() })
   } finally {
     saving.value = false
   }
@@ -611,7 +616,11 @@ async function onImport(recs: ImportRec[], fileName: string) {
   if (companyId.value == null || month.value == null) return
   const ym = recs[0]?.__ymDetected as { year: number; month: number } | undefined
   if (ym && (ym.year !== year.value || ym.month !== month.value)) {
-    if (!window.confirm(`文件标题识别为 ${ym.year}年${ym.month}月,当前导入目标是 ${year.value}年${month.value}月,仍导入到当前月吗?`)) return
+    if (!(await ask({
+      title: `导入到 ${year.value} 年 ${month.value} 月？`,
+      body: `文件标题识别为 ${ym.year} 年 ${ym.month} 月，当前导入目标是 ${year.value} 年 ${month.value} 月。`,
+      action: '仍导入到本月',
+    }))) return
   }
   importing.value = false
   await runLedgerImport(recs, fileName)
@@ -625,7 +634,11 @@ async function onImportSections(picks: SectionPick[], fileName: string) {
 
 async function runLedgerImport(recs: ImportRec[], fileName: string) {
   const n = overwriteTargets(monthDto.value?.rows ?? [], recs.map(r => r.tenantName as string | null | undefined))
-  if (n > 0 && !window.confirm(`本月已有 ${n} 家租户的台账数据,导入将覆盖这些租户文件中提供的列,继续?`)) return
+  if (n > 0 && !(await ask({
+    title: '导入会覆盖已有的台账数据',
+    body: `本月已有 ${n} 家租户的台账数据，文件里提供的列会被覆盖。`,
+    action: '仍要导入',
+  }))) return
   try {
     importResult.value = await runImport('ledger', recs,
       { companyId: companyId.value!, companyName: companyName.value, year: year.value, month: month.value! }, fileName)
@@ -633,7 +646,7 @@ async function runLedgerImport(recs: ImportRec[], fileName: string) {
     refreshDraftAfterImport()
     await afterImportIssues()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '导入失败')
+    receipt.fail((e as { message?: string })?.message ?? '导入失败')
   }
 }
 
@@ -645,7 +658,7 @@ async function runSectionsImport(picks: SectionPick[], fileName: string) {
     refreshDraftAfterImport()
     await afterImportIssues()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '导入失败')
+    receipt.fail((e as { message?: string })?.message ?? '导入失败')
   }
 }
 
@@ -657,8 +670,17 @@ function refreshDraftAfterImport() {
   deletedKeys.value = new Set()
 }
 
-// ── 未绑定问题抽屉(V105) ─────────────────────────────────
+// ── 未绑定问题面板(V105;贴着宽表工具条上「未绑定」胶囊的浮层,06-C 方案 A) ──
 const issuesOpen = ref(false)
+// FPAlertPanel 被 KeepAlive 停用时自己先收起 —— 子组件的停用钩子跑在本屏 onDeactivated 前面,
+// 那一下要是认了,上面记的 resume.issues 恒为 false,去租户管理再回来面板不复原。
+// 页面已不在文档里 = 是被收起的,不是用户关的:不认,由本屏 onDeactivated 记下再关。
+const lgwEl = ref<HTMLElement | null>(null)
+function onIssuesOpen(open: boolean) {
+  if (!open && !lgwEl.value?.isConnected) return
+  issuesOpen.value = open
+  if (open) ensureTenantsLoaded()
+}
 const router = useRouter()
 const tabs = useTabsStore()
 
@@ -673,14 +695,16 @@ async function afterImportIssues() {
   if ((monthDto.value?.rows ?? []).some(r => r.tenantId == null)) issuesOpen.value = true
 }
 
+// 绑定是写(走编辑模式门):失败回执的「重试」可能在退出编辑之后才点,开头自守
 async function onBindIssue(name: string, tenantId: number) {
+  if (!edit.value) return
   try {
     const res = await ledgerApi.bindTenant(name, tenantId)
     await refreshRowIdentity()
     if (res.conflicts > 0)
-      alert(`已绑定 ${res.bound} 行;另有 ${res.conflicts} 行因目标租户当月已有台账行而跳过,请到对应月份人工合并。`)
+      receipt.warn(`已绑定 ${res.bound} 行；另有 ${res.conflicts} 行因目标租户当月已有台账行而跳过，请到对应月份人工合并`)
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '绑定失败')
+    receipt.fail((e as { message?: string })?.message ?? '绑定失败', { label: '重试', run: () => void onBindIssue(name, tenantId) })
   }
 }
 
@@ -703,19 +727,21 @@ async function refreshRowIdentity() {
   }
 }
 async function onBindRow(rowId: number, tenantId: number | null, addAlias = false) {
+  if (!edit.value) return
   try {
     await ledgerApi.bindRow(rowId, tenantId, addAlias)
     await refreshRowIdentity()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '绑定失败')
+    receipt.fail((e as { message?: string })?.message ?? '绑定失败', { label: '重试', run: () => void onBindRow(rowId, tenantId, addAlias) })
   }
 }
 async function onRenameRow(rowId: number, tenantName: string) {
+  if (!edit.value) return
   try {
     await ledgerApi.renameRow(rowId, tenantName)
     await refreshRowIdentity()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '改名失败')
+    receipt.fail((e as { message?: string })?.message ?? '改名失败', { label: '重试', run: () => void onRenameRow(rowId, tenantName) })
   }
 }
 
@@ -734,7 +760,7 @@ function gotoTenants() {
 <template>
   <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.3/§5.6 迁移(左轨收 chips、宽表 S 档单 sticky、
        矩阵横滚圈在 .lgw-matrix 内),摘掉 base.css 的 M↓ 屏级地板——表内自滚,屏根不再触发双重横滚 -->
-  <div class="lgw fp-fluid">
+  <div ref="lgwEl" class="lgw fp-fluid">
     <!-- 左轨:本屏账册(账册即公司)常驻,一键切换;新增/删除公司入口走 company:manage(第15权限点) -->
     <aside class="lgw-rail">
       <div class="lgw-rail-t">台账账册</div>
@@ -763,12 +789,8 @@ function gotoTenants() {
       <!-- 载入中 -->
       <div v-if="!booksLoaded" class="page-loading"><span class="page-spin" /></div>
 
-      <!-- 未选册占位 -->
-      <div v-else-if="!book" class="lgw-empty">
-        <component :is="iconFor('book-open')" :size="28" />
-        <p class="t">从左侧选择账册</p>
-        <p class="s">每家记账公司一册 · 选册后按年份与月份进入宽表录入</p>
-      </div>
+      <!-- 未选册占位(空状态 ⑦:占住内容区) -->
+      <FPEmpty v-else-if="!book" sub="每家记账公司一册 · 选册后按年份与月份进入宽表录入">从左侧选择账册</FPEmpty>
 
       <!-- 矩阵态:账册头 + 全部年份纵排月卡(§5 明确选期门 v3,必点月卡进宽表;年份增删入口在组件内自渲染) -->
       <template v-else-if="month === null">
@@ -814,6 +836,8 @@ function gotoTenants() {
           :saving="saving"
           :addable-tenants="addableTenants"
           :issue-count="issueGroups.reduce((n, g) => n + g.count, 0)"
+          :issues-open="issuesOpen"
+          :dirty="dirtyN"
           :focus-tenant="focusTenant"
           :lock-scope="lockScope"
           :review-key="companyId != null && month != null
@@ -829,8 +853,20 @@ function gotoTenants() {
           @add-tenant="onAddTenantRow"
           @bulk-remove="onBulkRemove"
           @edit-template="openTemplate"
-          @open-issues="issuesOpen = true; ensureTenantsLoaded()"
-        />
+          @update:issues-open="onIssuesOpen"
+        >
+          <!-- 未绑定清单进问题面板的默认插槽(绑定走编辑模式门) -->
+          <template #issues>
+            <FPTenantIssuePanel
+              :groups="issueGroups"
+              :tenants="allTenants"
+              :can-act="edit && auth.can('entry:edit')"
+              act-hint="进入「编辑」模式后可在此绑定;浏览态仅查看。"
+              :on-bind="onBindIssue"
+              @goto-tenants="gotoTenants"
+            />
+          </template>
+        </LedgerWideTable>
         <LedgerTenantDrawer
           :row="drawerRow"
           :book="book"
@@ -858,17 +894,6 @@ function gotoTenants() {
           @import="onImport"
           @import-sections="onImportSections"
         />
-        <!-- 未绑定租户问题抽屉(V105:右侧滑出,边看表格边处理;绑定走编辑模式门) -->
-        <FPSideDrawer :open="issuesOpen" title="未绑定的租户行" @close="issuesOpen = false">
-          <FPTenantIssuePanel
-            :groups="issueGroups"
-            :tenants="allTenants"
-            :can-act="edit && auth.can('entry:edit')"
-            act-hint="进入「编辑」模式后可在此绑定;浏览态仅查看。"
-            :on-bind="onBindIssue"
-            @goto-tenants="gotoTenants"
-          />
-        </FPSideDrawer>
       </template>
 
       <!-- 过渡中(切册/切月,数据加载)兜底转圈,不闪空白(v-else 必须紧邻上方状态链) -->
@@ -921,8 +946,6 @@ function gotoTenants() {
     @confirm="removeCompany"
   />
 
-  <!-- 升版提示:收编进 FPToast(LAYOUT-STABILITY §4.1 反馈提示唯一组件,审查#31) -->
-  <FPToast v-model="verToast" placement="page" :duration="4000" />
   <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
 </template>
 
@@ -936,14 +959,6 @@ function gotoTenants() {
 }
 .lgw-rail-t { font-size:12px; font-weight:var(--fw-medium); color:var(--text-muted); padding:0 4px; }
 .lgw-main { flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; gap:16px; overflow-y:auto; }
-
-/* 未选册占位 */
-.lgw-empty {
-  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
-  color:var(--text-disabled);
-}
-.lgw-empty .t { margin:8px 0 0; font-size:15px; font-weight:var(--fw-semibold); color:var(--text-muted); }
-.lgw-empty .s { margin:0; font-size:12px; color:var(--text-disabled); }
 
 /* 矩阵态账册头 */
 .lgw-head { flex:0 0 auto; display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; }

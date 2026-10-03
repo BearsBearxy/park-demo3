@@ -211,6 +211,31 @@ export function poolSubtotal(
 // 电表行标签:sign=-1 前缀「−」(冲减);label 已是「区域·位置·用途·表号」全名
 export const lineLabel = (l: AllocPoolLineDTO) => (l.sign < 0 ? '−' : '') + l.label
 
+// ── 03-A「电表列只写表」:全称「A座·负一层·地下车库东侧照明·电表①」前三段和左边位置/用途重复,只留「电表①」,
+// 全称进悬停(lineLabel)。「新表」画成小签:这里剥掉,屏按 subName 以「新表」结尾自己画签。
+// 没录表号(subName 空)回落全称 —— 此时全称末段是用途,截出来会和用途列重复。
+export function lineShortLabel(l: Pick<AllocPoolLineDTO, 'label' | 'subName' | 'sign'>): string {
+  const s = (l.subName ?? '').trim().replace(/新表$/, '').trim()
+  return (l.sign < 0 ? '−' : '') + (s || l.label)
+}
+
+// ── 03-A「分摊方式」列只写方式(户对户 / 按面积 / 按层均摊…),基数已有「分摊基数」列,不再拼进来。
+// poolSemantics(带基数)只剩导出在用。method 收 string 的理由同 poolSemantics。
+export const poolMethodLabel = (r: { method: string }) =>
+  r.method === 'direct' ? '户对户' : ALLOC_METHOD_LABEL[r.method as AllocMethod] ?? r.method
+
+// ── 这一行(池行或逐表行)有没有分时读数:尖峰平谷任一段有值。0 也算(分时表当月没走字),平价表四段全 null。
+// touMode 的分子、row 模式「›」展开段行都按它判。
+export const hasTouQty = (x: Pick<AllocPoolLineDTO, 'qtySharp' | 'qtyPeak' | 'qtyFlat' | 'qtyValley'>) =>
+  x.qtySharp != null || x.qtyPeak != null || x.qtyFlat != null || x.qtyValley != null
+
+// ── 03-A 组头写组名:原册块名带着「合计：」尾巴(那一行原来就是小计行),组头本身就是小计,不再重复
+export const bandTitle = (label: string) => label.replace(/合计[:：]?$/, '')
+
+// ── 03-C 读数、金额一律两位小数(千分位;null 显 '–')
+export const fmtFixed2 = (v: number | null | undefined) =>
+  v == null ? '–' : v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
 // ── 刀I §I3 逐行身份:「楼层」「池名称」两列逐行取自本行电表(ROW-IDENTITY-SPEC) ──
 // 立法依据:原册 B(区域)/C(楼层)/D(企业名称)**永远逐行写,从不纵向合并**;真正纵向合并的只有
 // AA(系数)/AC(标准)/AE(已分摊)/AF(盈亏)/AG(备注)。一个池跨多个原册行时(A座天面四部梯 = 原册
@@ -253,14 +278,14 @@ export function poolSubtitle(
 
 // ── 刀I §I2 净额池:构成明细进主行 hover(那些表在原册分摊明细上没有行,不出逐表行) ──
 // 招商中心锚点:697.60+444.80−4.74−0−315.60−0−0−670 = 152.06。
-// 「冲减 N 表」的 N 只数电表(meterId 非空),账册扣度不是表。
+// 「冲减 N 表」的 N 只数电表(meterId 非空),账册扣度不是表。屏上电表格就写这一句(03-A「冲减 5 表」),「净额」二字进悬停。
 export function netSummary(r: Pick<AllocPoolRowDTO, 'netParts' | 'qtyTotal'>): { text: string; title: string } | null {
   const ps = r.netParts ?? []
   if (!ps.length) return null
   const minus = ps.filter(p => p.meterId != null && p.sign < 0).length
   const sgn = (v: number | null) => (v == null ? '–' : (v < 0 ? '−' : '+') + fmtN(Math.abs(v)))
   return {
-    text: `净额 · 冲减 ${minus} 表`,
+    text: `冲减 ${minus} 表`,
     title: ['净额构成:', ...ps.map(p => `${sgn(p.qty)}  ${p.label}`), `= ${fmtN(r.qtyTotal)} 度`].join('\n'),
   }
 }

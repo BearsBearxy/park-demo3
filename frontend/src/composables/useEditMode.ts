@@ -3,6 +3,9 @@ import { useAuthStore } from '@/stores/auth'
 import { useScreen } from '@/composables/useTabShells'
 import { useEditLock } from '@/composables/useEditLock'
 import { useReviewStore } from '@/stores/review'
+import { useUiStore } from '@/stores/ui'
+import { tabMeta } from '@/stores/tabs'
+import { LOCKING, periodOfKey } from '@/types/review'
 
 
 export interface EditModeOpts {
@@ -22,6 +25,11 @@ export interface EditModeOpts {
    * (光伏/充电桩分栋抄表、母册两屏)与不在审核范围内的十几屏一个字不改。
    */
   reviewKey?: () => string | string[] | null
+  /**
+   * 本屏此刻有几处没保存的改动(EDIT-MODE-SPEC §6.1)。关浏览器 / 关页签 / 退出登录按它问,0 处不拦。
+   * 不传 = 按 1 算(宁可多问)。同一个函数也递给底下的锁,auth 按函数去重,不会算成两倍。
+   */
+  dirty?: () => number
 }
 
 /**
@@ -77,7 +85,7 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
    * ⚠ 权限齐 ≠ 进得去。这是 P1 加的第二道闸 —— 在它之前，两个都有 entry:edit 的人
    *   同一秒进同一期，两边都成功，后保存的整片覆盖前一个，且两边都提示「保存成功」。
    */
-  const lock = useEditLock(() => exit())
+  const lock = useEditLock(() => exit(), undefined, opts.dirty)
   const { lockedBy, evictedBy } = lock
   /** 这一期此刻被谁占着（不用点按钮就知道）。自己不算。 */
   const heldByOther = lock.watchScope(() => opts.scope?.() ?? null)
@@ -86,7 +94,7 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
   // 用 watch 而不是在 toggle() 里加减：深链(?edit=1 / gotoDiff)会直接写 editMode.value = true，
   // 只在 toggle 里记的话那些路径进了编辑态却没登记，最后一个关掉时算不准。
   watch(editMode, (on) => {
-    if (on) auth.openEditor(meId, screen)
+    if (on) auth.openEditor(meId, screen, opts.dirty)
     else auth.closeEditor(meId)
   })
   /** 提权弹窗要补的权限点。非空即打开弹窗。 */
@@ -283,8 +291,23 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
   //   在 setup 期就跑一遍,而 reviewKey 闭包那时还没初始化(TDZ)。editMode 起手是 false,
   //   这个 getter 在 setup 期直接回 null,碰都不碰闭包。
   const reviewBlockWhileEditing = () => (editMode.value ? reviewBlock.value : null)
-  watch([editMode, missing, reviewBlockWhileEditing],
-        ([on, m, rb]) => { if (on && ((m as string[]).length || rb)) exit() })
+  // 键也关在编辑态里求值(同上)。拿它分辨「这张表在我手上被别人交审 / 审了」与「换到一个早已审过的月」——
+  // 后者键变了,不弹(他自己换的月,按钮位的药丸已经写着)。不在编辑态时它是 null,
+  // 所以「键没变」同时也说明上一拍就在编辑态里:深链直接落进已审的表,不弹。
+  const reviewKeyWhileEditing = () => (editMode.value ? String(opts.reviewKey?.() ?? '') : null)
+  const ui = useUiStore()
+  watch([editMode, missing, reviewBlockWhileEditing, reviewKeyWhileEditing],
+        ([on, m, rb, k], [, , wasRb, wasK]) => {
+          if (!on || !((m as string[]).length || rb)) return
+          // 06-E 当场出现组:同一把键在编辑态里被锁上 → 退出前报一声,App 的居中弹窗写谁交审 / 谁审过
+          if (rb && !wasRb && k === wasK) {
+            const row = (reviewKeys.value ?? []).map((x) => review.rowOf(x))
+              .find((r) => !!r && LOCKING.includes(r.status)) ?? null
+            ui.reportEditStop(row, auth.me,
+              [tabMeta(screen)?.page, periodOfKey(row?.key ?? null)].filter(Boolean).join(' · '))
+          }
+          exit()
+        })
 
   // 期一换,旧锁就不该再握着(CONCURRENCY-SPEC §3)。
   // 没有这一条时:编辑模式开着 → 换年月(顶栏下拉,或出账链的「换出账月」)→ editMode 与锁原地不动,

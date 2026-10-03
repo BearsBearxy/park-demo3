@@ -1,8 +1,8 @@
 // src/stores/update.ts — 版本更新(VERSION-UPDATE-SPEC)。
 // 管三件事:
 //   ① 这个账号看没看过当前这一版 → 顶栏 ✦ 的蓝点;还有没看过的功能更新 → 自动弹「本次更新」(小调整不弹);
-//   ② 服务器上是不是已经换了新版 → 底部「刷新提示条」;
-//   ③ 按需加载失败(发版后旧 hash 404,router/index.ts 的 onError)→ 同一条提示条的第二种文案。
+//   ② 服务器上是不是已经换了新版 → hasNewVersion,进铃铛「系统」一行(2026-09-30 改,原来是底部刷新提示条);
+//   ③ 按需加载失败(发版后旧 hash 404,router/index.ts 的 onError)→ 底部提示条「这一页属于新版本」(只剩这一种)。
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { APP_VERSION, CHANGELOG, cmpVersion, isFeatureVersion, noteOf } from '@/changelog'
@@ -114,26 +114,19 @@ export const useUpdateStore = defineStore('update', () => {
     hideCoach()
   }
 
-  // ── 刷新提示条 ──
+  // ── 新版本 / 刷新提示条 ──
   /** 服务器上的版本(轮询 /version.json 得到);还没问到时为 null。 */
   const serverVersion = ref<string | null>(null)
+  /** 服务器换了新版:铃铛「系统」出一行「已更新到 v… · 刷新」,刷新才消失,没有 ×(VERSION-UPDATE-SPEC §6)。 */
+  const hasNewVersion = computed(() => !!serverVersion.value && serverVersion.value !== version)
   /** 有按需加载失败过 —— 那时已经能确定就是「这一页属于新版本」。 */
   const blocked = ref(false)
-  /** 点过 × 的那个服务器版本:只压「有新版」,压不住 blocked。 */
-  const dismissed = ref<string | null>(null)
 
-  const barKind = computed<'blocked' | 'new' | null>(() => {
-    if (blocked.value) return 'blocked'
-    const sv = serverVersion.value
-    if (sv && sv !== version && dismissed.value !== sv) return 'new'
-    return null
-  })
+  /** 底部提示条只剩这一种:这一页打不开了,当场要说(06-E「当场出现」)。有新版不再走底部条。 */
+  const barKind = computed<'blocked' | null>(() => (blocked.value ? 'blocked' : null))
 
   function reportBlocked() { blocked.value = true }
-  function dismissBar() {
-    if (blocked.value) { blocked.value = false; return }
-    dismissed.value = serverVersion.value
-  }
+  function dismissBar() { blocked.value = false }
 
   /** 问一次服务器现在是哪个版本。拿不到(断网、404)就当没发生,不打扰。 */
   async function checkVersion() {
@@ -167,6 +160,6 @@ export const useUpdateStore = defineStore('update', () => {
     version, note, seen, unread, popupNote, popupDue, loadSeen,
     popupOpen, historyOpen, historyFromWhatsNew, scheduleFirstPopup, cancelScheduledPopup, markSeen, openHistory,
     coachOn, showCoachOnce, hideCoach,
-    serverVersion, blocked, barKind, reportBlocked, dismissBar, checkVersion, startPolling, stopPolling,
+    serverVersion, hasNewVersion, blocked, barKind, reportBlocked, dismissBar, checkVersion, startPolling, stopPolling,
   }
 })

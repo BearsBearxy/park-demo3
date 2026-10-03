@@ -2,6 +2,7 @@ package com.park.demo3.controller;
 
 import com.park.demo3.dto.ReviewDtos.PendingItemDTO;
 import com.park.demo3.dto.ReviewDtos.ReasonReq;
+import com.park.demo3.dto.ReviewDtos.ReturnedItemDTO;
 import com.park.demo3.dto.ReviewDtos.ReviewRowDTO;
 import com.park.demo3.service.ReviewService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -46,6 +47,10 @@ public class ReviewController {
     @Operation(summary = "待审明细(跨全部月;铃铛抽屉列清单用,只有个数的话人得逐月翻着找)")
     @GetMapping("/pending")
     public List<PendingItemDTO> pending() { return svc.pendingList(); }
+
+    @Operation(summary = "我交的、被退回的表(铃铛「等你处理」逐张带理由;跨全部月,本人取自令牌)")
+    @GetMapping("/returned")
+    public List<ReturnedItemDTO> returned() { return svc.returnedList(); }
 
     @Operation(summary = "交审(录入方;需该表的 edit 权,且清单行已做)")
     @PostMapping("/{key}/submit")

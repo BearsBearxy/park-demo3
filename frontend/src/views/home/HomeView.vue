@@ -14,6 +14,7 @@ import { CHAIN, chainStepsOf } from '@/nav/billingChain'
 import { fpBuildRoutes } from '@/nav/fpNav'
 import { iconFor } from '@/components/ds/icon'
 import { BRAND } from '@/brand'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -115,7 +116,7 @@ function onDragEnd() { dragFrom.value = -1; dragOver.value = -1 }
           role="button"
           tabindex="0"
           draggable="true"
-          :title="ROUTES[v]?.page"
+          v-tip="ROUTES[v]?.page"
           @click="go(v)"
           @keydown.enter.self="go(v)"
           @dragstart="onDragStart(i, $event)"
@@ -126,13 +127,11 @@ function onDragEnd() { dragFrom.value = -1; dragOver.value = -1 }
         >
           <span class="ti"><component :is="iconFor(ROUTES[v]?.icon ?? '')" :size="20" /></span>
           <span class="tl">{{ ROUTES[v]?.page }}</span>
-          <button type="button" class="tx" aria-label="取消收藏" title="取消收藏" @click.stop="favs.remove(v)">
+          <button type="button" class="tx" aria-label="取消收藏" v-tip="'取消收藏'" @click.stop="favs.remove(v)">
             <X :size="13" />
           </button>
         </div>
-        <div v-if="!favs.list.length" class="hm-empty">
-          还没有收藏。<br>在任意页面点顶栏页面名后面的 ☆，就会出现在这里
-        </div>
+        <FPEmpty v-if="!favs.list.length" class="hm-empty" sub="在任意页面点顶栏页面名后面的 ☆，就会出现在这里">还没有收藏</FPEmpty>
       </div>
     </section>
 
@@ -256,20 +255,7 @@ function onDragEnd() { dragFrom.value = -1; dragOver.value = -1 }
 .hm-tile .tx:hover { color: var(--text-primary); background: var(--ink-100); }
 @media (hover: none) { .hm-tile .tx { opacity: .55; } }
 
-.hm-empty {
-  grid-column: span 3;
-  height: 104px;
-  border-radius: var(--radius-lg);
-  border: 1.5px dashed var(--ink-300);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 16px;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--text-muted);
-  text-align: center;
-}
+.hm-empty { grid-column: 1 / -1; }
 
 .hm-rec { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
 .hm-rec-r {

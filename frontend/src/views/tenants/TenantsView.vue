@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, h } from 'vue'
+import { ref, computed, watch, onMounted, h, withDirectives } from 'vue'
+import { vTip } from '@/directives/tip'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
 import { onReactivated } from '@/composables/onReactivated'
 import { tenantApi } from '@/api/tenant'
 import { invalidateAnaCache } from '@/analysis/anaData'
@@ -25,6 +27,7 @@ import TenantDrawer from './TenantDrawer.vue'
 import TenantNewDialog from './TenantNewDialog.vue'
 import { iconFor } from '@/components/ds/icon'
 import { useAuthStore } from '@/stores/auth'
+import { textW } from '@/composables/useWideTable'
 
 const auth = useAuthStore()
 
@@ -108,15 +111,29 @@ const childCount = computed(() => {
   return m
 })
 
+// 企业名称列宽(列宽铁律 §4,2026-10-02):按全部租户估(不按当前页、不随筛选),翻页 / 搜索 / 切期别列不挪位;
+// 余宽落进行末空列。一格 = (子租户:缩进 16 + └ + 10)+ 头像 30 + 10 + max(名 14px [+ 6 + 「+N」签], 副行 11px),
+// 外包的 240 封顶照旧;左右内边距 32。数据没到(骨架)时给封顶宽。
+const nameColW = computed(() => {
+  let w = 0
+  for (const t of tenants.value) {
+    const kids = childCount.value.get(t.id) ?? 0
+    const line1 = textW([t.companyName], 14, 0) + (kids > 0 ? 6 + textW([`+${kids}`], 11, 12) : 0)
+    const line2 = textW([t.parentName ? `关联:${t.parentName}` : `FP-T-${1000 + t.id}`], 11, 0)
+    w = Math.max(w, (t.parentName != null ? 16 + textW(['└'], 14, 0) + 10 : 0) + 40 + Math.max(line1, line2))
+  }
+  return Math.min(240, w || 240) + 32
+})
+
 const TABLE_COLUMNS = computed(() => [
   {
-    key: 'companyName', header: '企业名称',
+    key: 'companyName', header: '企业名称', width: `${nameColW.value}px`,
     sortValue: (r: TenantDTO) => r.companyName,
     render: (r: TenantDTO) => {
       const isChild = r.parentName != null
       const kids = childCount.value.get(r.id) ?? 0
-      // 长名防撑宽:外包 max-width:240px 容器 + title 出全文(spec 表格溢出治理 §W1)
-      return h('span', { title: r.companyName, style: { display: 'flex', alignItems: 'center', gap: '10px', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: isChild ? '16px' : undefined } }, [
+      // 长名防撑宽:外包 max-width:240px 容器 + 悬停说明出全文(spec 表格溢出治理 §W1)
+      return withDirectives(h('span', { style: { display: 'flex', alignItems: 'center', gap: '10px', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: isChild ? '16px' : undefined } }, [
         // 子租户:「└」前缀+缩进,标出从属关系(spec §T2)
         isChild ? h('span', { style: { color: 'var(--text-disabled)', flex: '0 0 auto' } }, '└') : null,
         h(Avatar, { name: r.companyName, size: 30 }),
@@ -131,7 +148,7 @@ const TABLE_COLUMNS = computed(() => [
             ? h('span', { style: { fontSize: 'var(--fs-micro)', color: 'var(--text-disabled)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, `关联:${r.parentName}`)
             : h('span', { style: { fontSize: 'var(--fs-micro)', color: 'var(--text-disabled)', fontFamily: 'var(--font-mono)' } }, `FP-T-${1000 + r.id}`),
         ]),
-      ])
+      ]), [[vTip, r.companyName]])
     },
   },
   {
@@ -192,7 +209,7 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
       </div>
       <div style="display:flex;gap:8px">
         <!-- ponytail: 租户导入未实现,按钮显式 disabled(诚实),避免可点无响应 -->
-        <span title="导入开发中">
+        <span v-tip="'导入开发中'">
           <Button variant="outline" size="sm" disabled>
             <template #leading>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -224,7 +241,7 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
       <KpiCard
         label="园区出租率" :value="summary ? occPct(summary.occRate) : ''" :loading="!summary"
         :sub="summary && summary.occRate == null ? OCC_NULL_WHY : ''"
-        :title="summary && summary.occRate == null ? OCC_NULL_WHY : undefined" tint="sky"
+        v-tip="summary && summary.occRate == null ? OCC_NULL_WHY : undefined" tint="sky"
       >
         <template #icon><component :is="iconFor('building-2')" :size="16" /></template>
       </KpiCard>
@@ -286,9 +303,9 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
             </div>
           </template>
         </FPSortableTable>
+        <!-- ⚠ 必须带 summary:数据没到时 filtered 也是空的,不挡的话会先闪一下「没有匹配的租户」 -->
+        <FPEmpty v-if="summary && filtered.length === 0">没有匹配的租户</FPEmpty>
       </div>
-      <!-- ⚠ 必须带 summary:数据没到时 filtered 也是空的,不挡的话会先闪一下「没有匹配的租户」 -->
-      <div v-if="summary && filtered.length === 0" style="text-align:center;padding:40px;color:var(--text-disabled)">没有匹配的租户</div>
       <!-- 5. Pager(spec §5:.mx-pagerbar 贴卡片底边;0 行时整条隐藏,不留孤立分隔线) -->
       <div v-if="!summary || filtered.length > 0" class="mx-pagerbar">
         <FPPager

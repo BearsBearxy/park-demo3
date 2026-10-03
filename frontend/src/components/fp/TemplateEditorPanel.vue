@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 账册模板面板(BOOK-WORKBENCH-SPEC §3)。双模式:
 //  · 只读查看(默认):分组/列名/别名 chips/隐藏徽标/列宽纯展示;右栏版本链每项可点,
-//    点历史版 → booksApi.versionDefinition 取该版定义做只读预览(顶部横幅 + 一键回现行版)。
+//    点历史版 → booksApi.versionDefinition 取该版定义做只读预览(标题旁「正在查看」标签 + 一键回现行版)。
 //    唯一的读请求,其余仍纯受控:保存/切版全部 emit 给宿主。
 //  · 编辑模式:仅 canEdit(book-template:edit)且仅对现行版;头部「编辑模式」进入,
 //    「完成/取消」退回只读。正在看历史版时点「编辑模式」先切回现行版再进入。
@@ -23,6 +23,8 @@ import { S } from '@/utils/lockScopes'
 import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
 import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
+import FPStateTag from '@/components/fp/FPStateTag.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
 import type { Directive } from 'vue'
 import { X, Plus, ChevronUp, ChevronDown, Trash2 } from 'lucide-vue-next'
 import Button from '@/components/ds/Button.vue'
@@ -123,8 +125,9 @@ const lockScope = computed(() =>
   props.book && props.year != null && props.month != null
     ? S.bookTemplate(props.book.screen, props.book.id, props.year, props.month)
     : null)
+// 第三参 = 改动数(规范 §1.7):关页签 / 退出登录按它问,0 处改动不弹。templateDirty 在下面声明,闭包调用时已就绪
 const lock = useEditLock(() => { mode.value = 'view'; aliasEditId.value = null },
-                          () => props.canEdit)
+                          () => props.canEdit, () => templateDirty.value)
 const { lockedBy, evictedBy } = lock
 const heldByOther = lock.watchScope(() => lockScope.value)
 // 退出的路不止一条(点完成/取消/关面板/换账册),用 watch 兜住 —— 漏一条就是一把没人认领的锁
@@ -298,7 +301,14 @@ function fmtTime(s: string): string {
       <div class="te-dlg" role="dialog" aria-modal="true" @mousedown.stop>
         <header class="te-head">
           <div class="te-head-txt">
-            <h3>账册模板 — {{ book.name }}</h3>
+            <div class="te-titlerow">
+              <h3>账册模板 — {{ book.name }}</h3>
+              <!-- 页面状态(十件 ⑥):正在看历史版贴标题旁,不在主区顶上另起一条把列表往下推 -->
+              <template v-if="previewVer != null">
+                <FPStateTag tone="muted">正在查看 v{{ previewVer }}（历史版）</FPStateTag>
+                <button class="te-histback" @click="backToCurrent">回到现行版</button>
+              </template>
+            </div>
             <p v-if="mode === 'edit'">本月生效 v{{ book.ver }} · 保存将存成新版本(任何改动都升版),并只把本月切到新版;同册其他月份不动</p>
             <p v-else>本月生效 v{{ book.ver }} · 点右侧版本项可查看历史版定义(只读)</p>
           </div>
@@ -309,7 +319,7 @@ function fmtTime(s: string): string {
                   :disabled="monthHasData || !canSwitch || !!heldByOther"
                   :value="String(book.ver)"
                   :options="verOptions"
-                  :title="monthHasData ? frozenHint
+                  v-tip="monthHasData ? frozenHint
                           : heldByOther ? `${heldByOther.displayName} 正在改本月模板,改完才能切版本`
                           : '选择本月使用的账册版本'"
                   @change="(_e, v) => pickVer(v)" />
@@ -335,10 +345,6 @@ function fmtTime(s: string): string {
           <div class="te-main">
             <!-- 只读查看(默认;含历史版预览) -->
             <template v-if="mode === 'view'">
-              <div v-if="previewVer != null" class="te-histbar">
-                <span>正在查看 v{{ previewVer }}(历史版)</span>
-                <button class="te-histback" @click="backToCurrent">回到现行版</button>
-              </div>
               <div v-if="previewVer != null && !previewDef" class="te-loading">加载历史版定义…</div>
               <template v-else-if="shownDef">
                 <section v-for="g in shownDef.groups" :key="g.id" class="te-group">
@@ -353,7 +359,7 @@ function fmtTime(s: string): string {
                       <span v-if="!c.aliases.length" class="te-noalias">—</span>
                     </div>
                     <span class="te-slotro">{{ SLOT_LABELS[c.slot] }}</span>
-                    <span class="te-wro" title="列宽(px)">{{ c.w ?? '自动' }}</span>
+                    <span class="te-wro" v-tip="'列宽(px)'">{{ c.w ?? '自动' }}</span>
                   </div>
                 </section>
               </template>
@@ -377,20 +383,20 @@ function fmtTime(s: string): string {
                     <button v-else type="button" class="te-aliasadd" @click="aliasEditId = c.id">+ 别名</button>
                   </div>
                   <!-- 语义槽:标准列的槽只读(§6 分析层契约);自定义列可换槽(结构改动) -->
-                  <span v-if="c.std" class="te-slotro" title="标准列的语义槽固定,不可更换">{{ SLOT_LABELS[c.slot] }}</span>
+                  <span v-if="c.std" class="te-slotro" v-tip="'标准列的语义槽固定,不可更换'">{{ SLOT_LABELS[c.slot] }}</span>
                   <Select v-else class="te-slotsel" size="sm" :options="slotOpts"
                           :model-value="c.slot" @update:model-value="c.slot = $event as BookSlot" />
-                  <label class="te-hidewrap" title="隐藏列不出现在宽表与导入模板中">
+                  <label class="te-hidewrap" v-tip="'隐藏列不出现在宽表与导入模板中'">
                     <input v-model="c.hidden" type="checkbox" class="te-hide" />隐藏
                   </label>
-                  <input v-model.number="c.w" type="number" class="te-w" placeholder="宽" title="列宽(px),留空自动" />
+                  <input v-model.number="c.w" type="number" class="te-w" placeholder="宽" v-tip="'列宽(px),留空自动'" />
                   <div class="te-moves">
                     <button class="te-mv" aria-label="上移" :disabled="ci === 0" @click="moveCol(g, ci, -1)"><ChevronUp :size="14" /></button>
                     <button class="te-mv" aria-label="下移" :disabled="ci === g.cols.length - 1" @click="moveCol(g, ci, 1)"><ChevronDown :size="14" /></button>
                   </div>
                   <!-- 删除:仅自定义列;标准列不可删(§3),给「可隐藏」占位保持行宽一致 -->
                   <button v-if="!c.std" class="te-del" aria-label="删除该列" @click="removeCol(g, ci)"><Trash2 :size="14" /></button>
-                  <span v-else class="te-nodel" title="标准列不可删除,可改名/加别名/隐藏">可隐藏</span>
+                  <span v-else class="te-nodel" v-tip="'标准列不可删除,可改名/加别名/隐藏'">可隐藏</span>
                 </div>
                 <button class="te-addcol" @click="addCol(g)"><Plus :size="14" /> 添加自定义列</button>
               </section>
@@ -416,7 +422,7 @@ function fmtTime(s: string): string {
               <div class="te-vmeta">{{ v.createdBy }} · {{ fmtTime(v.createdAt) }}</div>
               <button v-if="mode === 'edit' && !v.current && canSwitch" class="te-adopt" @click.stop="emit('pin', v.ver)">切到此版</button>
             </div>
-            <div v-if="!versions.length" class="te-vempty">暂无版本记录</div>
+            <FPEmpty v-if="!versions.length" size="sm">暂无版本记录</FPEmpty>
           </aside>
         </div>
 
@@ -463,6 +469,7 @@ function fmtTime(s: string): string {
 
 .te-head { display: flex; align-items: flex-start; gap: 12px; padding: 20px 22px 12px; }
 .te-head-txt { flex: 1; min-width: 0; }
+.te-titlerow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .te-head h3 { margin: 0; font-size: var(--fs-h3); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .te-head p { margin: 6px 0 0; font-size: var(--fs-label); line-height: 1.5; color: var(--text-muted); }
 .te-editbtn, .te-donebtn { flex: 0 0 auto; }
@@ -483,15 +490,9 @@ function fmtTime(s: string): string {
 .te-body { flex: 1; min-height: 0; display: flex; border-top: 1px solid var(--border-subtle); }
 .te-main { flex: 1; min-width: 0; overflow-y: auto; padding: 14px 22px 18px; display: flex; flex-direction: column; gap: 12px; }
 
-/* 历史版预览横幅 */
-.te-histbar {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 12px; border-radius: var(--radius-sm);
-  background: var(--accent-blue); color: var(--brand-deep);
-  font-size: var(--fs-label);
-}
+/* 「回到现行版」:贴在标题旁的历史版标签后面,与标签同高 22 */
 .te-histback {
-  margin-left: auto; height: 24px; padding: 0 10px;
+  flex: none; height: 22px; padding: 0 10px;
   border: 1px solid var(--brand-blue); border-radius: 999px;
   background: var(--surface-white); font-size: var(--fs-micro);
   color: var(--brand-deep); cursor: pointer;
@@ -645,7 +646,6 @@ function fmtTime(s: string): string {
   transition: border-color var(--dur-fast) var(--ease-standard);
 }
 .te-adopt:hover { border-color: var(--hue-blue); color: var(--hue-blue); }
-.te-vempty { font-size: var(--fs-label); color: var(--text-muted); }
 
 /* 升版提示:恒占一行 */
 .te-verbumpline {

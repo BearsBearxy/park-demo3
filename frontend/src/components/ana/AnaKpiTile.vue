@@ -36,7 +36,7 @@ const good = computed(() => props.delta != null && (props.invert ? props.delta <
     <span class="l">{{ label }}</span>
     <span v-if="loading" class="fp-shim sk-v" aria-hidden="true"></span>
     <span v-else ref="numEl" class="v" :class="{ s16: small }" :style="neg ? { color: 'var(--delta-down-text)' } : undefined"
-          :title="tip">{{ parts[0] }}<span v-if="parts[1]" class="u">{{ parts[1] }}</span></span>
+          v-tip="tip">{{ parts[0] }}<span v-if="parts[1]" class="u">{{ parts[1] }}</span></span>
     <span v-if="loading" class="d"><span class="fp-shim sk-d" aria-hidden="true"></span></span>
     <span v-else-if="delta != null" class="d"><span class="dl" :style="{ color: good ? 'var(--delta-up-text)' : 'var(--delta-down-text)' }"><component :is="iconFor(delta >= 0 ? 'arrow-up-right' : 'arrow-down-right')" :size="12" />{{ sgn(delta, 1, unit) }}</span> <span v-if="kind" class="dk">{{ kind }}</span></span>
     <span v-else-if="note" class="d note" :class="{ warn: noteTone === 'warn' }">{{ note }}</span>
@@ -50,7 +50,7 @@ const good = computed(() => props.delta != null && (props.invert ? props.delta <
 .av2-kpi { box-sizing: border-box; height: 108px; min-width: 0; border-radius: var(--radius-md); padding: 12px; display: flex; flex-direction: column; gap: 4px; background: var(--accent-sky); }
 .av2-kpi:nth-child(even) { background: var(--accent-slate); }
 .av2-kpi .l { flex: 0 0 auto; height: 18px; font-size: var(--fs-label); line-height: 18px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* min-width:0 + 省略号:降到 16 还放不下才截断,悬停 title 看全 */
+/* min-width:0 + 省略号:降到 16 还放不下才截断,悬停看全(v-tip) */
 .av2-kpi .v { flex: 0 0 auto; height: 26px; min-width: 0; font-family: var(--font-mono); font-size: var(--fs-h2); line-height: 26px; font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; letter-spacing: var(--ls-tight); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .av2-kpi .v.s16 { font-size: var(--fs-h3); }
 .av2-kpi .v .u { font-family: var(--font-sans); font-size: var(--fs-body); font-weight: var(--fw-medium); }

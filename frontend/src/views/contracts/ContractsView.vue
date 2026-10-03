@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, h } from 'vue'
+import { ref, computed, watch, onMounted, onDeactivated, h, withDirectives } from 'vue'
+import { vTip } from '@/directives/tip'
 import { useRoute } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { contractApi } from '@/api/contract'
@@ -19,6 +20,11 @@ import FPSortableTable from '@/components/fp/FPSortableTable.vue'
 import { useFitRows } from '@/components/fp/useFitRows'
 import FPPager from '@/components/fp/FPPager.vue'
 import FPContractStatus from '@/components/fp/FPContractStatus.vue'
+import Popover from '@/components/ds/Popover.vue'
+import FPAlertChip from '@/components/fp/FPAlertChip.vue'
+import FPMark from '@/components/fp/FPMark.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import { receipt } from '@/utils/receipt'
 import ContractDrawer from './ContractDrawer.vue'
 import ContractNewDialog from './ContractNewDialog.vue'
 import { displayIds, chainOf } from './chain'
@@ -148,8 +154,11 @@ const lifecycleCounts = computed(() => {
 // 公共电核算生成时会报「有 N 份合同无租金计费行」「有 N 户缺起止日期」——过去只报数,
 // 用户要在 431 份里肉眼找那批。这两个筛选就是那两条告警的落点:一键列出该补的合同。
 // 含历史默认打开:缺口合同常是 renewed/expired 段,折叠到生效段会看不见要补的那份。
+// 2026-10-01 整条黄条撤掉(画布 01-B):入口收成工具条上的「待补档案 ▾」胶囊,点开列三项及件数,点一项就筛;
+// 筛选生效时胶囊变实底「缺起止日期 133 ×」,点 × 回全部。缺起止日期的那几行在列表上就地挂标记(01-A 卡1)。
+const noDate = (c: ContractDTO) => !c.startDate || !c.endDate
 const GAPS = [
-  { value: 'noDate', label: '缺起止日期', hit: (c: ContractDTO) => !c.startDate || !c.endDate,
+  { value: 'noDate', label: '缺起止日期', hit: noDate,
     tip: '判不出是否在租 → 不进自动在租名册,不参与公摊分摊' },
   { value: 'noLine', label: '无租金计费行', hit: (c: ContractDTO) => (c.billingLineCount ?? 0) === 0,
     tip: '分摊面积只能回退合同租赁面积,与逐行口径可能不符' },
@@ -165,11 +174,17 @@ const gapCounts = computed(() => {
   for (const g of GAPS) m[g.value] = contracts.value.filter(g.hit).length
   return m
 })
-function toggleGap(k: GapKey) {
-  const on = gap.value !== k
-  gap.value = on ? k : ''
-  if (on) showHistory.value = true   // 缺口合同常在历史段上,折叠会藏住它们
+const gapTotal = computed(() => GAPS.reduce((n, g) => n + gapCounts.value[g.value], 0))
+// 弹层只列有件数的那几项(01-A 卡2 只有两项时就两行)
+const gapRows = computed(() => GAPS.filter(g => gapCounts.value[g.value] > 0))
+const gapOpen = ref(false)
+function pickGap(k: GapKey) {
+  gap.value = k
+  showHistory.value = true   // 缺口合同常在历史段上,折叠会藏住它们
+  gapOpen.value = false
 }
+// 弹层不 Teleport,但切走页签时开着的话,切回来不该还开着
+onDeactivated(() => { gapOpen.value = false })
 
 // ─── filtered ─────────────────────────────────────────────
 const filtered = computed(() =>
@@ -196,13 +211,13 @@ const TABLE_COLUMNS = computed(() => [
       h('span', { style: { fontWeight: 'var(--fw-medium)', color: 'var(--text-primary)' } }, r.contractNo),
       // V59 整体承租徽标:批发性质,不计出租率/KPI
       r.kind === 'master_lease'
-        ? h('span', { title: '整体承租,不计出租率与月租金KPI', style: { fontSize: '10px', fontFamily: 'var(--font-sans)', padding: '1px 6px', borderRadius: '999px', background: 'rgba(214,138,42,0.12)', color: 'var(--hue-orange)' } }, '整租')
+        ? withDirectives(h('span', { style: { fontSize: '10px', fontFamily: 'var(--font-sans)', padding: '1px 6px', borderRadius: '999px', background: 'rgba(214,138,42,0.12)', color: 'var(--hue-orange)' } }, '整租'), [[vTip, '整体承租,不计出租率与月租金KPI']])
         : null,
       // 徽标按 linkType 区分(ESCALATION-SPLIT-SPEC §1):递增段≠续签换约
       hasHistoryIds.value.has(r.id)
         ? (r.linkType === 'escalation'
-          ? h('span', { title: '同约递增段,点开查看各档', style: { fontSize: '10px', fontFamily: 'var(--font-sans)', padding: '1px 6px', borderRadius: '999px', background: 'rgba(64,158,170,0.12)', color: 'var(--hue-cyan)' } }, '递增')
-          : h('span', { title: '有续签历史,点开查看', style: { fontSize: '10px', fontFamily: 'var(--font-sans)', padding: '1px 6px', borderRadius: '999px', background: 'rgba(24,134,254,0.12)', color: 'var(--hue-blue)' } }, '续'))
+          ? withDirectives(h('span', { style: { fontSize: '10px', fontFamily: 'var(--font-sans)', padding: '1px 6px', borderRadius: '999px', background: 'rgba(64,158,170,0.12)', color: 'var(--hue-cyan)' } }, '递增'), [[vTip, '同约递增段,点开查看各档']])
+          : withDirectives(h('span', { style: { fontSize: '10px', fontFamily: 'var(--font-sans)', padding: '1px 6px', borderRadius: '999px', background: 'rgba(24,134,254,0.12)', color: 'var(--hue-blue)' } }, '续'), [[vTip, '有续签历史,点开查看']]))
         : null,
     ]),
   },
@@ -296,7 +311,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(sortedFiltered.value.leng
 const safePage = computed(() => Math.min(page.value, pageCount.value))
 const paged = computed(() => sortedFiltered.value.slice((safePage.value - 1) * pageSize.value, safePage.value * pageSize.value))
 
-watch([statusFilter, phase, q, sort, activeOn, showHistory], () => { page.value = 1 })
+watch([statusFilter, phase, q, sort, activeOn, showHistory, gap], () => { page.value = 1 })
 
 // ─── 计费字段导入(BILL-FORWARD 刀1 二次返工,registry key 'billingTerms';按钮状态机遵9屏统一规范) ──
 const auth = useAuthStore()
@@ -308,7 +323,8 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
   try {
     importResult.value = await runImport('billingTerms', payload as never, importCtx, fileName)
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '导入失败')
+    const msg = (e as { message?: string })?.message
+    receipt.fail(msg ? `导入失败：${msg}` : '导入失败', { label: '重试', run: () => void onImport(payload, fileName) })
   }
   await reload()   // 条款不改列表行,但重拉保证抽屉再开时读到最新
 }
@@ -347,9 +363,25 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
     <div class="mx-toolbar mx-toolbar-top">
       <FPPhaseTabs v-model="statusFilter" :counts="lifecycleCounts" :tabs="LIFECYCLE" />
       <div class="mx-toolbar-right">
+        <!-- 待补档案(画布 01-B):不写总数,件数在弹层每一行上;没有缺口时静默态照样占位(LAYOUT-STABILITY §6) -->
+        <Popover :open="gapOpen" @open-change="gapOpen = $event && gapTotal > 0">
+          <template #trigger>
+            <FPAlertChip :count="gapDef ? gapCounts[gapDef.value] : gapTotal" :label="gapDef?.label ?? '待补档案'"
+                         quiet-label="无待补档案" :show-count="false" :active="!!gapDef"
+                         :aria-expanded="gapOpen" aria-haspopup="dialog"
+                         v-tip="gapDef ? { text: gapDef.tip, sub: '点开合同补齐后重新生成公共电核算' } : undefined"
+                         @clear="gap = ''" />
+          </template>
+          <div class="mx-gapmenu">
+            <button v-for="g in gapRows" :key="g.value" type="button" class="mx-gapitem" :class="{ on: gap === g.value }"
+                    v-tip="g.tip" @click="pickGap(g.value)">
+              <span>{{ g.label }}</span><span class="n">{{ gapCounts[g.value] }}</span>
+            </button>
+          </div>
+        </Popover>
         <DatePicker v-model="activeOn" variant="chip" icon="calendar-check" clearable align="end" placeholder="按某天查看"
                     field-id="contracts-asof" aria-label="按某天查看" title="只看某日期仍在执行中的合同" />
-        <label v-if="!activeOn" class="mx-hist-toggle" :class="{ on: showHistory }" title="显示被续签取代的历史期">
+        <label v-if="!activeOn" class="mx-hist-toggle" :class="{ on: showHistory }" v-tip="'显示被续签取代的历史期'">
           <input type="checkbox" v-model="showHistory" />
           含历史续签
         </label>
@@ -363,18 +395,6 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
       </div>
     </div>
 
-    <!-- 缺口筛选条:公共电核算「N 份合同无租金计费行 / N 户缺起止日期」两条告警的落点。
-         只在真有缺口时出现,补完自动消失 —— 平时不占地方,有活干时一眼看见还剩几份。 -->
-    <div v-if="GAPS.some(g => gapCounts[g.value] > 0)" class="mx-gapbar">
-      <component :is="iconFor('alert-triangle')" :size="14" />
-      <span class="mx-gaplbl">待补档案</span>
-      <button v-for="g in GAPS" :key="g.value" v-show="gapCounts[g.value] > 0" type="button"
-              class="mx-gapchip" :class="{ on: gap === g.value }" :title="g.tip" @click="toggleGap(g.value)">
-        {{ g.label }} <b>{{ gapCounts[g.value] }}</b>
-      </button>
-      <span v-if="gapDef" class="mx-gaphint">{{ gapDef.tip }} —— 点开合同补齐后重新生成公共电核算</span>
-    </div>
-
     <div class="mx-md">
       <!-- 左:合同列表 sidebar(紧凑列表项;详情占主区) -->
       <div class="mx-md-list">
@@ -385,13 +405,14 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
               <Avatar :name="c.tenantName" :size="30" />
               <div class="cl-main">
                 <div class="cl-l1">
-                  <span class="cl-name" :title="c.tenantName">{{ c.tenantName }}</span>
+                  <span class="cl-name" v-tip="c.tenantName">{{ c.tenantName }}</span>
                   <span class="cl-money">{{ fpMoney(c.monthlyRent) }}</span>
                 </div>
                 <div class="cl-l2">
-                  <span class="cl-no" :title="c.contractNo">{{ c.contractNo }}</span>
+                  <span class="cl-no" v-tip="c.contractNo">{{ c.contractNo }}</span>
                   <span v-if="tier === 's'" class="cl-no cl-range">{{ c.startDate ? `${c.startDate} → ${c.endDate}` : '待签约' }}</span>
-                  <span v-if="c.kind === 'master_lease'" class="cl-master" title="整体承租,不计出租率与月租金KPI">整租</span>
+                  <span v-if="c.kind === 'master_lease'" class="cl-master" v-tip="'整体承租,不计出租率与月租金KPI'">整租</span>
+                  <FPMark v-if="noDate(c)" tone="warn" class="cl-gapmark">缺起止日期</FPMark>
                   <FPContractStatus :status="c.status" />
                 </div>
               </div>
@@ -404,7 +425,7 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
                 <div class="cl-l2"><span class="fp-shim" style="display:block;width:38%;height:10px"></span></div>
               </div>
             </div>
-            <div v-if="summary && filtered.length === 0" class="cl-empty">没有匹配的合同</div>
+            <FPEmpty v-if="summary && filtered.length === 0">没有匹配的合同</FPEmpty>
           </div>
           <div v-if="!summary || filtered.length > 0" class="mx-pagerbar">
             <FPPager compact :page="safePage" :pageCount="pageCount" :total="filtered.length" @page="page = $event" />
@@ -424,10 +445,7 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
           @terminated="onTerminated"
           @deleted="onDeleted"
         />
-        <div v-else class="mx-md-empty">
-          <component :is="iconFor('file-text')" :size="40" />
-          <p>从左侧选择一份合同查看详情</p>
-        </div>
+        <FPEmpty v-else>从左侧选择一份合同查看详情</FPEmpty>
       </div>
     </div>
 
@@ -459,14 +477,13 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
 .mx-hist-toggle.on { border-color:var(--hue-blue); color:var(--hue-blue); }
 .mx-hist-toggle input { accent-color:var(--hue-blue); }
 
-/* 缺口筛选条(2026-08-14):橙色=有档案要补,不是错误;补完整条消失 */
-.mx-gapbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:7px 12px; border:1px dashed var(--hue-orange); border-radius:var(--radius-md); background:var(--caution-soft); color:var(--caution-text); font-size:12px; }
-.mx-gaplbl { font-weight:var(--fw-semibold); }
-.mx-gapchip { height:26px; padding:0 10px; border:1px solid rgba(138,97,0,.28); border-radius:var(--radius-full); background:var(--surface-white); font-size:12px; color:var(--caution-text); cursor:pointer; white-space:nowrap; }
-.mx-gapchip:hover { border-color:var(--hue-orange); }
-.mx-gapchip.on { background:var(--hue-orange); border-color:var(--hue-orange); color:var(--control-solid-text); }
-.mx-gapchip b { font-variant-numeric:tabular-nums; }
-.mx-gaphint { color:var(--text-muted); font-size:11.5px; }
+/* 待补档案弹层(画布 01-B):一行一项,左名右件数;生效的那项底色同悬停 */
+.mx-gapmenu { display:flex; flex-direction:column; gap:2px; }
+.mx-gapitem { display:flex; align-items:center; justify-content:space-between; gap:16px; height:36px; padding:0 10px; border:none; border-radius:var(--radius-sm); background:transparent; font-family:var(--font-sans); font-size:var(--fs-body); color:var(--text-primary); text-align:left; cursor:pointer; white-space:nowrap; }
+.mx-gapitem:hover, .mx-gapitem.on { background:var(--surface-sunken); }
+.mx-gapitem .n { font-family:var(--font-mono); font-size:var(--fs-label); color:var(--text-muted); }
+/* 就地标记(01-A 卡1):挤在合同号后面,状态照旧靠右 */
+.cl-gapmark { margin-right:auto; }
 
 /* M/S 档(≤960)工具条收纳(spec §5.1 M 行):与 BuildingsView 同一屏侧收纳块。
    不进全局 mx-list.css 的理由同——租户/系统用户两屏未迁、仍垫着地板,全局改会波及未验收屏。 */

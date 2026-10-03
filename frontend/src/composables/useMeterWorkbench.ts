@@ -470,14 +470,6 @@ export interface BuildingGroup {
   usage: BuildingGroupUsage   // 只汇 inSubSigma=tenant+share+park(infra 防重复/ops 非收费口径),随 draft 实时
 }
 
-// 段用量草稿口径同 rowUsage:该段被草稿改动按(本月−上月)×倍率,否则服务器派生
-const SEG_MAP = [
-  ['sharp', 'currSharp', 'usageSharp', 'prevSharp'],
-  ['peak', 'currPeak', 'usagePeak', 'prevPeak'],
-  ['flat', 'currFlat', 'usageFlat', 'prevFlat'],
-  ['valley', 'currValley', 'usageValley', 'prevValley'],
-] as const
-
 // draft 是可选的第三参:分组与排序压根不看草稿(只读 ownership/位置/sortNo),给了才顺带把
 // 组末汇总算上。MeterLedgerGrid 走「不给 draft + 单独调 groupUsage」两层,敲一个数字只重算
 // 汇总,不再全量重分组重排序(P2 渲染开销铁律)。
@@ -522,10 +514,7 @@ export function groupUsage(rows: WorkbenchRow[], draft: Map<number, MeterDraft>)
     if (!inSubSigma(x.m)) continue
     const d = draft.get(x.m.id)
     acc('total', rowUsage(x, d))
-    for (const [k, c, sv, p] of SEG_MAP) {
-      acc(k, d?.[c] != null || d?.[p] != null
-        ? segUsage(effVal(x, d, p), effVal(x, d, c), x.factor) : (x.r?.[sv] ?? null))
-    }
+    for (const k of SEG_KEYS) acc(k, segRowUsage(x, d, k))
   }
   // 累加后统一 round2 防浮点尾差(meterGroup 同法)
   for (const k of ['total', 'sharp', 'peak', 'flat', 'valley'] as const) {
@@ -588,26 +577,88 @@ export function compareRowInBuilding(a: WorkbenchRow, b: WorkbenchRow): number {
 
 // ── 行窗口化虚拟滚动(§7 6.5):flatten 组→显示列表;窗口范围纯函数,组件只渲染 [start,end) ──
 
-export const ROW_H = 34      // 数据行高(px,=MeterLedgerGrid tbody td 恒定行高)
-export const BSUM_H = 40     // 楼栋汇总行高
+// 行高(03-C / 04 字距与行):数据行、组头、组尾 40;分时段行 32(画布 04-A A座总电下 峰段/平段/谷段)
+export const ROW_H = 40      // 数据行高(px,=MeterLedgerGrid tbody td 恒定行高)
+export const GHEAD_H = 40    // 组头兼小计「A座 13 块 144,183.58」
+export const SEG_H = 32      // 分时段行
+export const RETIRED_H = 40  // 组尾「另有 N 块已停用 · 显示」
 
+// ── 分时段行(04-A、04-C 一期卡;实现规范 §2 第 19 条) ──
+export type SegKey = keyof PrevSegs
+export const SEG_FIELDS: Record<SegKey, { lab: string; c: CurrField; p: PrevField; u: 'usageSharp' | 'usagePeak' | 'usageFlat' | 'usageValley' }> = {
+  sharp: { lab: '尖', c: 'currSharp', p: 'prevSharp', u: 'usageSharp' },
+  peak: { lab: '峰', c: 'currPeak', p: 'prevPeak', u: 'usagePeak' },
+  flat: { lab: '平', c: 'currFlat', p: 'prevFlat', u: 'usageFlat' },
+  valley: { lab: '谷', c: 'currValley', p: 'prevValley', u: 'usageValley' },
+}
+const SEG_KEYS: SegKey[] = ['sharp', 'peak', 'flat', 'valley']
+export interface SegLine { keys: SegKey[]; label: string }
+
+// 一块分时表展开出哪几行:有值的段(上月或本月任一端有数)各一行;全空的段合成一行(「平段 · 谷段」一行 –)。
+// 尖段空着就不出(画布 04-A、04-C 都没画空的尖段 —— 多数表没有尖时段)。
+// 编辑态不合并:每段一格输入,回车 总→(尖)→峰→平→谷。按服务器值判,敲着字行不会增减。
+export function touSegLines(x: Pick<WorkbenchRow, 'r' | 'prevSegs'>, merge: boolean): SegLine[] {
+  const lines: SegLine[] = []
+  const empty: SegKey[] = []
+  for (const k of SEG_KEYS) {
+    const has = x.prevSegs[k] != null || x.r?.[SEG_FIELDS[k].c] != null
+    if (has || (!merge && k !== 'sharp')) lines.push({ keys: [k], label: `${SEG_FIELDS[k].lab}段` })
+    else if (k !== 'sharp') empty.push(k)
+  }
+  if (empty.length) lines.push({ keys: empty, label: empty.map(k => `${SEG_FIELDS[k].lab}段`).join(' · ') })
+  return lines
+}
+
+// 单段用量(草稿实时):该段被草稿改动按(本月−上月)×倍率,否则服务器派生(口径同 rowUsage)
+export function segRowUsage(x: DraftBase & Pick<WorkbenchRow, 'factor'>, d: MeterDraft | undefined, k: SegKey): number | null {
+  const f = SEG_FIELDS[k]
+  return d?.[f.c] != null || d?.[f.p] != null
+    ? segUsage(effVal(x, d, f.p), effVal(x, d, f.c), x.factor) : (x.r?.[f.u] ?? null)
+}
+
+// 显示列表(P4-C5,画布 04-A):组头(块数 + 组用量,点它收起)→ 数据行 → 点开的分时段行 → 组尾「另有 N 块已停用 · 显示」。
+// 停用的表默认不进列表,收在组尾一行(METER-TIMELINE-SPEC §6);点「显示」才排到这一组末尾。
+// 组头的块数不算停用的(04-A「A座 13 块」+「另有 3 块已停用」)。收起 / 显示 / 展开都不记忆(规范 §2 第 25 条)。
 export type DisplayItem =
+  | { type: 'ghead'; g: BuildingGroup; n: number; open: boolean }
   | { type: 'row'; x: WorkbenchRow }
-  | { type: 'bsum'; g: BuildingGroup }
+  | { type: 'seg'; x: WorkbenchRow; seg: SegLine }
+  | { type: 'retired'; g: BuildingGroup; n: number; shown: boolean }
 
-export function flattenGroups(groups: BuildingGroup[]): DisplayItem[] {
+export interface FlattenOpts {
+  collapsed?: ReadonlySet<string>     // 收起的组(key)
+  showRetired?: ReadonlySet<string>   // 点了「显示」的组
+  expanded?: ReadonlySet<number>      // 点开分时段的表(meter id);按比例出列的 row 模式才传
+  edit?: boolean                      // 编辑态:段不合并
+  /** 筛选本身就在找停用表(状态「已停用」「本月有变化」):停用的表照常排进组里、算进块数,不收进组尾 */
+  retiredOpen?: boolean
+}
+
+export function flattenGroups(groups: BuildingGroup[], o: FlattenOpts = {}): DisplayItem[] {
   const out: DisplayItem[] = []
+  const push = (x: WorkbenchRow) => {
+    out.push({ type: 'row', x })
+    if (x.tou && o.expanded?.has(x.m.id)) for (const seg of touSegLines(x, !o.edit)) out.push({ type: 'seg', x, seg })
+  }
   for (const g of groups) {
-    for (const x of g.rows) out.push({ type: 'row', x })
-    out.push({ type: 'bsum', g })
+    const live = o.retiredOpen ? g.rows : g.rows.filter(x => !x.retired)
+    const retired = o.retiredOpen ? [] : g.rows.filter(x => x.retired)
+    const open = !o.collapsed?.has(g.key)
+    out.push({ type: 'ghead', g, n: live.length, open })
+    if (!open) continue
+    const shown = !!o.showRetired?.has(g.key)
+    live.forEach(push)
+    if (shown) retired.forEach(push)
+    if (retired.length) out.push({ type: 'retired', g, n: retired.length, shown })
   }
   return out
 }
 
-const itemH = (it: DisplayItem) => (it.type === 'bsum' ? BSUM_H : ROW_H)
+const ITEM_H: Record<DisplayItem['type'], number> = { ghead: GHEAD_H, row: ROW_H, seg: SEG_H, retired: RETIRED_H }
+const itemH = (it: DisplayItem) => ITEM_H[it.type]
 
 // 第 i 项内容顶距(前缀高度和):跨窗聚焦时 scrollTop=此值,恰将该行置于 sticky 表头下沿
-// (thead 总高 72px 在文档流中占位=表头 sticky 高度,两者抵消)
+// (thead 高 40px 在文档流中占位=表头 sticky 高度,两者抵消)
 export function offsetOf(list: DisplayItem[], i: number): number {
   let acc = 0
   const n = Math.min(i, list.length)

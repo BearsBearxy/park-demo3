@@ -84,7 +84,9 @@ const spanStyle = computed(() => ({
 </script>
 
 <template>
-  <span :title="name" :style="spanStyle" v-bind="$attrs">
+  <!-- 不挂悬停说明:头像都摆在名字旁边,或包在 ShellTip / 父级的悬停说明里(在线条、图标轨、选期矩阵),
+       自己再挂一个就是两个气泡叠着出 -->
+  <span :style="spanStyle" v-bind="$attrs">
     <img
       v-if="src"
       :src="src"

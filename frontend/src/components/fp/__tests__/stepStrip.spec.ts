@@ -1,9 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
 import FPStepStrip, { type Step } from '@/components/fp/FPStepStrip.vue'
+import FPConfirmHost from '@/components/fp/FPConfirmHost.vue'
 import { useTabsStore } from '@/stores/tabs'
+import { useAuthStore } from '@/stores/auth'
+import { askQueue } from '@/utils/ask'
 
 /**
  * 链路条 / 期间条(2026-08-28 设计稿 §⑤)。
@@ -79,6 +82,43 @@ describe('FPStepStrip', () => {
     expect(push).not.toHaveBeenCalled()
   })
 
+  // 切账期 = 应用内离开(画布 02-A,EDIT-MODE-SPEC §6.1):判据是「有几处没保存」,不是「在不在编辑态」
+  describe('切账期走离开确认', () => {
+    afterEach(() => { askQueue.splice(0); document.body.innerHTML = '' })
+    const answerBtn = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('.fch-f button')].find((b) => b.textContent?.trim() === label)!
+
+    it('❗这屏有 3 处没保存:先出卡,点「继续编辑」期不变;点「放弃改动并离开」才换', async () => {
+      // 测试直挂不在页签壳里,useScreen() 是 '',编辑器按 '' 登记(和屏里 useEditMode 登记的是同一个名字)
+      useAuthStore().openEditor(Symbol('pool'), '', () => 3)
+      const host = mount(FPConfirmHost, { attachTo: document.body })
+      const w = mk()
+      await w.find('.fss-back').trigger('click')
+      await flushPromises()
+      expect(document.querySelector('.fch-b')?.textContent).toBe('这页有 3 处改动还没保存。')
+      answerBtn('继续编辑').click()
+      await flushPromises()
+      expect(w.emitted('back'), '继续编辑 = 期不变').toBeUndefined()
+
+      await w.find('.fss-back').trigger('click')
+      await flushPromises()
+      answerBtn('放弃改动并离开').click()
+      await flushPromises()
+      expect(w.emitted('back')).toHaveLength(1)
+      host.unmount()
+    })
+
+    it('❗在编辑态但 0 处改动:不出卡,直接换', async () => {
+      useAuthStore().openEditor(Symbol('pool'), '', () => 0)
+      const host = mount(FPConfirmHost, { attachTo: document.body })
+      const w = mk()
+      await w.find('.fss-back').trigger('click')
+      await flushPromises()
+      expect(document.querySelector('.fch-card')).toBeNull()
+      expect(w.emitted('back')).toHaveLength(1)
+      host.unmount()
+    })
+  })
+
   it('状态点按 state 上色,todo 不给点也占位 —— 有点没点尺寸一样', () => {
     const w = mk()
     const pips = w.findAll('.fss-step .fss-pip')
@@ -125,7 +165,7 @@ describe('FPStepStrip', () => {
         current: 'x', period: '2025',
       },
     })
-    expect(w.find('.fss-step').attributes('title')).toBe('附表1 租金损益')
+    expect((w.find('.fss-step').element as HTMLElement & { _tip?: { text: string } })._tip?.text).toBe('附表1 租金损益')
   })
 
   it('hideBack:上面本来就没有一层时不画返回钮 —— 一个点了不动的按钮比没有按钮更坏', () => {

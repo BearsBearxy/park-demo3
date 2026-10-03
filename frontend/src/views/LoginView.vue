@@ -57,6 +57,7 @@ onMounted(() => {
   kickedMsg.value = r === 'relogin' ? '你的账号在另一台设备登录，本设备已退出'
     : r === 'password' ? '密码已修改，请用新密码登录'
     : r === 'disabled' ? '账号已停用，请联系管理员'
+    : r === 'expired' ? '登录已过期，请重新登录'
     : ''
 })
 
@@ -76,6 +77,7 @@ async function submit() {
     // 落地页与 router 守卫共用 auth.landing(一律首页,TAB-BAR-SPEC §2)
     target = auth.mustChangePassword ? '/change-password' : ((route.query.redirect as string) || auth.landing)
   } catch (e: any) {
+    // 后端的一句照显:密码错「用户名或密码错误」;密码对、账号已停用「账号已停用，请联系管理员」(实现规范 §2 第 13 条)
     errorMsg.value = e?.msg || e?.message || '登录失败，请检查账号和密码'
     return
   } finally {

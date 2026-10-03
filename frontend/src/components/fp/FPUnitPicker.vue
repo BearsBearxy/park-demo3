@@ -83,14 +83,14 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDoc, true))
         :key="c.id"
         class="fp-up-chip"
         :class="{ main: i === 0, missing: c.missing }"
-        :title="c.missing ? '候选中无此单元(可能已删除或候选未加载),保存仍保留;移除请点 ×' : ''"
+        v-tip="c.missing ? '候选中无此单元(可能已删除或候选未加载),保存仍保留;移除请点 ×' : ''"
       >
         <button type="button" class="star" :disabled="disabled || i === 0"
-                :title="i === 0 ? '主单元' : '设为主单元'" @click="onMakePrimary(c.id)">
+                v-tip="i === 0 ? '主单元' : '设为主单元'" @click="onMakePrimary(c.id)">
           {{ i === 0 ? '★' : '☆' }}
         </button>
         <span class="lb">{{ c.label }}</span>
-        <button type="button" class="rm" :disabled="disabled" title="移除" @click="onRemove(c.id)">×</button>
+        <button type="button" class="rm" :disabled="disabled" v-tip="'移除'" @click="onRemove(c.id)">×</button>
       </span>
     </div>
 

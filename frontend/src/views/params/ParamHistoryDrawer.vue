@@ -1,10 +1,12 @@
 <script setup lang="ts">
 // 单键单作用域「历史」抽屉(S21-PARAM-CENTER-SPEC §5.4):版本时间轴(from 连续段 / month 单点)+ 变更日志(时间/人/动作/旧→新/备注)。
-// 打开即拉 GET /api/params/history;失败显错不阻断页面。
+// 打开即拉 GET /api/params/history;失败换成「没读到 + 重试」(FPLoadError),不阻断页面。
 import { ref, watch } from 'vue'
 import { paramsApi, type ParamChangeDTO, type ParamHistoryDTO, type ParamRowDTO } from '@/api/params'
 import Badge from '@/components/ds/Badge.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
 
 const props = defineProps<{ open: boolean; row: ParamRowDTO | null }>()
 const emit = defineEmits<{ close: [] }>()
@@ -12,16 +14,23 @@ const emit = defineEmits<{ close: [] }>()
 const data = ref<ParamHistoryDTO | null>(null)
 const err = ref('')
 let seq = 0
-watch(() => [props.open, props.row] as const, async ([o, r]) => {
-  if (!o || !r) return
+// 打开 / 重试共用。err 只在成功时清:重试在途时失败面不先消失(房内定型写法)
+async function load() {
+  const r = props.row
+  if (!r) return
   const my = ++seq
-  data.value = null; err.value = ''
   try {
     const d = await paramsApi.history(r.key, r.scope)
-    if (my === seq) data.value = d
+    if (my === seq) { data.value = d; err.value = '' }
   } catch (e) {
     if (my === seq) err.value = (e as { message?: string })?.message ?? '历史加载失败'
   }
+}
+// 换了一行是另一件事:旧行的结果与失败一起清掉
+watch(() => [props.open, props.row] as const, ([o, r]) => {
+  if (!o || !r) return
+  data.value = null; err.value = ''
+  load()
 })
 
 const ACTION_TEXT: Record<string, string> = { set: '设置', delete: '删除', recalc: '重算', migrate: '迁移基线' }
@@ -36,12 +45,12 @@ const longV = (c: ParamChangeDTO) => (c.oldText?.length ?? 0) + (c.newText?.leng
 <template>
   <FPDrawer :open="open && !!row" :title="row ? `${row.scopeLabel} · ${row.label}` : ''" subtitle="版本时间轴与变更记录"
             icon="history" :width="640" @close="emit('close')">
-    <div v-if="err" class="ph-err">{{ err }}</div>
+    <FPLoadError v-if="err" :sub="err" @retry="load">这项参数的历史没读到</FPLoadError>
     <div v-else-if="!data" class="ph-loading">加载中…</div>
     <template v-else>
       <section class="ph-sec">
         <h4 class="ph-h">版本（{{ data.versions.length }}）</h4>
-        <div v-if="!data.versions.length" class="ph-empty">本作用域没有专属版本，取值来自上级作用域。</div>
+        <FPEmpty v-if="!data.versions.length" size="sm" sub="取值来自上级作用域。">本作用域没有专属版本</FPEmpty>
         <div v-for="v in data.versions" :key="`${v.mode}|${v.acctMonth}`" class="ph-ver" :class="v.mode">
           <span class="ph-bar" />
           <Badge :tone="v.mode === 'month' ? 'orange' : 'blue'" :dot="false">{{ v.mode === 'month' ? '仅当月' : '长期' }}</Badge>
@@ -52,7 +61,7 @@ const longV = (c: ParamChangeDTO) => (c.oldText?.length ?? 0) + (c.newText?.leng
       </section>
       <section class="ph-sec">
         <h4 class="ph-h">变更记录（{{ data.changes.length }}）</h4>
-        <div v-if="!data.changes.length" class="ph-empty">暂无变更记录。</div>
+        <FPEmpty v-if="!data.changes.length" size="sm">还没有变更记录</FPEmpty>
         <table v-else class="ph-tab">
           <colgroup><col style="width:128px" /><col style="width:64px" /><col style="width:64px" /><col style="width:110px" /><col style="width:130px" /><col /></colgroup>
           <thead><tr><th>时间</th><th>人</th><th>动作</th><th>生效</th><th class="num">变更（旧 → 新）</th><th>备注</th></tr></thead>
@@ -73,8 +82,7 @@ const longV = (c: ParamChangeDTO) => (c.oldText?.length ?? 0) + (c.newText?.leng
 </template>
 
 <style scoped>
-.ph-err { color: var(--hue-red); font-size: var(--fs-label); }
-.ph-loading, .ph-empty { color: var(--text-muted); font-size: var(--fs-label); }
+.ph-loading { color: var(--text-muted); font-size: var(--fs-label); }
 .ph-sec { display: flex; flex-direction: column; gap: 8px; }
 .ph-h { margin: 0; font-size: 13px; font-weight: var(--fw-semibold); color: var(--text-secondary); }
 /* 时间轴行:左色条 from=连续蓝条 / month=橙色单点;备注换行不截 */

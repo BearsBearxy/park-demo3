@@ -222,7 +222,7 @@ const structOpt = computed<object>(() => {
             <div class="ft">
               <span class="l">{{ c.isExp ? '全年支出' : '全年损益' }}</span>
               <span class="v" :class="{ neg: !c.isExp && c.data.pnl < 0 }">{{ finMoney(c.isExp ? c.data.cost : c.data.pnl) }}</span>
-              <span class="lnk" title="进入附表" @click.stop="goSched(c.nav)"><component :is="iconFor('arrow-right')" :size="13" /></span>
+              <span v-tip="'进入附表'" class="lnk" @click.stop="goSched(c.nav)"><component :is="iconFor('arrow-right')" :size="13" /></span>
             </div>
           </button>
         </template>

@@ -36,6 +36,8 @@ function put<T>(c: T, props: Record<string, unknown> = {}, slots: Record<string,
 afterEach(() => { live.splice(0).forEach((w) => w.unmount()) })
 
 const css = (el: Element) => getComputedStyle(el)
+// 悬停看全走 v-tip(挂在元素的 _tip 上),不是原生 title
+const tipOf = (x: { element: Element }) => (x.element as HTMLElement & { _tip?: { text: string } })._tip?.text
 
 // 「放不下就降一档」按真宽度判(对抗复查 2026-09-20:原来按字数判,390 宽两列时 11 位的钱就被省略号截掉、还没有悬停)。
 // jsdom 不排版:把数字位的宽度假装成 mono 字宽 0.6em × 字数(连单位),给它的宽 = BOX;字号从吃到的样式读。
@@ -101,14 +103,15 @@ describe('列表大卡 KpiCard', () => {
       const a = put(KpiCard, { label: '营业收入', value: '¥123,456.78' }).find('.kc-n')   // 24 → 158,20 → 132
       await settle()
       expect(css(a.element).fontSize, '11 位在窄卡里放不下 24,原来按字数判不降').toBe('var(--fs-h2)')
-      expect(a.attributes('title')).toBeUndefined()
+      expect(tipOf(a)).toBeUndefined()
       const b = put(KpiCard, { label: '营业收入', value: '¥1,234,567.89' }).find('.kc-n')  // 20 → 156
       await settle()
-      expect([css(b.element).fontSize, b.attributes('title')], '20 还放不下却没有悬停').toEqual(['var(--fs-h2)', '¥1,234,567.89'])
+      expect([css(b.element).fontSize, tipOf(b)], '20 还放不下却没有悬停').toEqual(['var(--fs-h2)', '¥1,234,567.89'])
+      expect(b.attributes('title'), '不再用浏览器 title').toBeUndefined()
       BOX = 400
       const c = put(KpiCard, { label: '营业收入', value: '¥1,234,567.89' }).find('.kc-n')
       await settle()
-      expect([css(c.element).fontSize, c.attributes('title')], '宽卡放得下就照旧 24').toEqual(['var(--fs-h1)', undefined])
+      expect([css(c.element).fontSize, tipOf(c)], '宽卡放得下就照旧 24').toEqual(['var(--fs-h1)', undefined])
     } finally { undo() }
   })
 
@@ -275,11 +278,12 @@ describe('分析屏小卡 AnaKpiTile', () => {
       BOX = 126                               // 150 宽瓦 − 内边距 24
       const a = put(AnaKpiTile, { label: '当前合约租金', value: '¥1,234.5万/月' }).find('.v')   // 20 → 132,16 → 106
       await settle()
-      expect([css(a.element).fontSize, a.attributes('title')], '数只有 8 位、单位把它撑出去了').toEqual(['var(--fs-h3)', undefined])
+      expect([css(a.element).fontSize, tipOf(a)], '数只有 8 位、单位把它撑出去了').toEqual(['var(--fs-h3)', undefined])
       BOX = 60
       const b = put(AnaKpiTile, { label: '年度收入', value: '¥12,345.6万' }).find('.v')
       await settle()
-      expect([css(b.element).fontSize, b.attributes('title')]).toEqual(['var(--fs-h3)', '¥12,345.6万'])
+      expect([css(b.element).fontSize, tipOf(b)]).toEqual(['var(--fs-h3)', '¥12,345.6万'])
+      expect(b.attributes('title'), '不再用浏览器 title').toBeUndefined()
       BOX = 200
       const c = put(AnaKpiTile, { label: '园区利润', value: '−¥655.3万' }).find('.v')
       await settle()
@@ -310,11 +314,14 @@ describe('抽屉小卡 FPStat', () => {
       BOX = 110
       const a = put(FPStat, { label: '月租金', value: '¥123,456.78' }).find('.fs-n')          // 20 → 132,16 → 106
       await settle()
-      expect([css(a.element).fontSize, a.attributes('title')]).toEqual(['var(--fs-h3)', undefined])
+      // FPStat 的悬停说明走 v-tip(挂在元素的 _tip 上),不再是原生 title
+      const fsTip = (el: Element) => (el as HTMLElement & { _tip?: { text: string } })._tip?.text
+      expect([css(a.element).fontSize, fsTip(a.element)]).toEqual(['var(--fs-h3)', undefined])
       BOX = 80
       const b = put(FPStat, { label: '月租金', value: '¥123,456.78' }).find('.fs-n')
       await settle()
-      expect(b.attributes('title')).toBe('¥123,456.78')
+      expect(fsTip(b.element)).toBe('¥123,456.78')
+      expect(b.attributes('title')).toBeUndefined()
     } finally { undo() }
   })
 

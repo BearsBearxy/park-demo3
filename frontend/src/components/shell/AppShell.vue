@@ -4,14 +4,15 @@ import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useUiStore } from '@/stores/ui'
 import { usePresenceStore } from '@/stores/presence'
-import { useAuthStore } from '@/stores/auth'
 import { useTabsStore } from '@/stores/tabs'
 import { useUpdateStore } from '@/stores/update'
 import { useAppearanceStore } from '@/stores/appearance'
-import { BRAND } from '@/brand'
 import { useViewport } from '@/composables/useViewport'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
+import FPReceiptHost from '@/components/fp/FPReceiptHost.vue'
+import FPConfirmHost from '@/components/fp/FPConfirmHost.vue'
+import { receipt, receipts } from '@/utils/receipt'
 import IconRail from '@/components/shell/IconRail.vue'
 import SidebarPanel from '@/components/shell/SidebarPanel.vue'
 import TabStrip from '@/components/shell/TabStrip.vue'
@@ -112,8 +113,7 @@ onUnmounted(() => presence.stop())
 
 // ── 版本更新(VERSION-UPDATE-SPEC §3/§6) ──
 // 外壳是全站唯一常驻的组件,轮询与「首次打开弹一次」都挂这里:
-// 挂在屏上就要挂 48 遍,而且换屏会重来一次。
-const auth = useAuthStore()
+// 挂在屏上就要挂 48 遍,而且换屏会重来一次。有新版进铃铛「系统」(upd.hasNewVersion),不在这里出条。
 const upd = useUpdateStore()
 // 外观按账号记(DARK-MODE-SPEC §3):外壳挂载 = 刚登录进来,按这个人的选择再设一次
 const appearance = useAppearanceStore()
@@ -125,8 +125,12 @@ onMounted(() => {
 })
 onUnmounted(() => upd.stopPolling())
 
-// 提示条不止一条时往上让位:更新这条排在网络出错那条上面。
-const toastLift = computed(() => (ui.netError ? 1 : 0))
+// 断网 / 服务出错(PAGE-BEHAVIOR §5.2):走结果回执,不再自写一条。失败回执不自收,带「刷新」;
+// 每个失败请求都会报一遍,同一句只留一条 —— 去重在 utils/receipt 里。
+watch(() => ui.netError, (e) => { if (e) receipt.fail(e.msg, { label: '刷新', run: reloadPage }) })
+
+// 提示条不止一条时往上让位:更新这条排在回执上面,下面有几条回执就抬几格。
+const toastLift = computed(() => receipts.length)
 
 // 浮层里点条目导航成功后收起(与 MobileNavDrawer「点条目后关抽屉」同义——
 // 「看一眼」到点中目标即结束;SidebarPanel 不在本组件手里,以路由变化为信号)
@@ -193,21 +197,17 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
   <WhatsNewDialog v-if="upd.popupOpen" />
   <ChangelogDialog v-if="upd.historyOpen" @close="upd.historyOpen = false" />
 
-  <!-- 全局网络错误 toast(读路径加载失败的兜底提示,8s 自动消失) -->
+  <!-- 结果回执(十件 ⑧)与确认弹窗(十件 ⑨)的宿主:utils/receipt、utils/ask 往里推,全站只此一处 -->
+  <FPReceiptHost />
+  <FPConfirmHost />
+
   <Teleport to="body">
-    <div v-if="ui.netError" class="fp-net-toast" role="alert">
-      <span class="msg">{{ ui.netError }}</span>
-      <button class="act" @click="reloadPage">刷新</button>
-      <button class="act ghost" @click="ui.dismissNetError()">×</button>
-    </div>
-    <!-- 发新版了请刷新(VERSION-UPDATE-SPEC §6)。复用上面那套深色语言与位置;
-         不自动消失 —— 网络出错那条 8 秒自消,这条要等他处理。 -->
+    <!-- 这一页属于新版本(VERSION-UPDATE-SPEC §6 第 2 种)。深色提示条(.fp-net-toast 那套语言与位置);
+         不自动消失,这条要等他处理。「已更新到 v…」2026-09-30 起进铃铛「系统」,不再走这里。 -->
     <!-- 「本次更新」开着时先不出:提示档(400)盖在模态档(300)之上,会压住弹窗底部的按钮。
          关掉弹窗它立刻出现 —— 两件事一先一后说,不同时说。 -->
     <div v-if="upd.barKind && !upd.popupOpen" class="fp-net-toast fp-upd-toast" :style="{ '--lift': toastLift }" role="alert">
-      <span v-if="upd.barKind === 'blocked'" class="msg">这一页属于新版本，刷新后才能打开</span>
-      <span v-else-if="auth.editing" class="msg">{{ BRAND.name }}已更新到 v{{ upd.serverVersion }}。<span class="sub">你正在编辑，保存后再刷新</span></span>
-      <span v-else class="msg">{{ BRAND.name }}已更新到 v{{ upd.serverVersion }}，刷新后生效</span>
+      <span class="msg">这一页属于新版本，刷新后才能打开</span>
       <button class="act" @click="reloadPage">刷新</button>
       <button class="act ghost" @click="upd.dismissBar()">×</button>
     </div>
@@ -228,7 +228,7 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
   position: relative;
 }
 
-/* ── 全局网络错误 toast ── */
+/* ── 底部深色提示条(现在只剩「这一页属于新版本」那条用;断网已改走结果回执,有新版进铃铛) ── */
 .fp-net-toast { position:fixed; left:50%; bottom:28px; transform:translateX(-50%); z-index:400;
   display:flex; align-items:center; gap:10px; max-width:min(560px,90vw); padding:10px 14px;
   background:var(--toast-bg); color:var(--text-on-solid); border-radius:var(--radius-md); box-shadow:var(--shadow-toast); font-size:13px;
@@ -244,7 +244,6 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
 
 /* 版本更新提示条:永远在最上面一格。--lift 是它下面还有几条(0/1/2),一条 56px。 */
 .fp-upd-toast { bottom: calc(28px + var(--lift, 0) * 56px); }
-.fp-upd-toast .sub { color: color-mix(in srgb, var(--text-on-solid) 62%, transparent); }
 
 /* ── nav card ── */
 .fp-nav-card {

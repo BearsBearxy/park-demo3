@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, h } from 'vue'
+import { ref, computed, watch, onMounted, h, withDirectives } from 'vue'
+import { vTip } from '@/directives/tip'
+import { receipt } from '@/utils/receipt'
+import FPEmpty from '@/components/fp/FPEmpty.vue'
 import { onReactivated } from '@/composables/onReactivated'
 import { buildingApi } from '@/api/building'
 import { invalidateAnaCache } from '@/analysis/anaData'
@@ -25,6 +28,7 @@ import BuildingNewDialog from './BuildingNewDialog.vue'
 import { iconFor } from '@/components/ds/icon'
 import { useAuthStore } from '@/stores/auth'
 import { useViewport } from '@/composables/useViewport'
+import { textW } from '@/composables/useWideTable'
 
 const auth = useAuthStore()
 // M 档(601–960)只压列宽/表头写法,一列都不删(TabletContent §① 黄框)
@@ -56,6 +60,12 @@ onMounted(load)
 // 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
 onReactivated(() => { void load() })
 
+// 写失败报回执(十件 ⑧,不自收)带「重试」。重试钉住当时那栋楼的 id:回执挂着时抽屉可能已换了一栋
+function fail(what: string, e: unknown, run: () => void) {
+  const m = (e as { message?: string })?.message
+  receipt.fail(m ? `${what}：${m}` : what, { label: '重试', run })
+}
+
 // 新增楼栋
 const newDlg = ref(false)
 async function createBuilding(req: BuildingCreateReq) {
@@ -64,34 +74,40 @@ async function createBuilding(req: BuildingCreateReq) {
     newDlg.value = false
     await load()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '新建楼栋失败')
+    fail('新建楼栋失败', e, () => void createBuilding(req))
   }
 }
 
 // 编辑楼栋(抽屉「编辑楼栋」按钮打开泛化弹窗)
 const editDlg = ref(false)
 async function updateBuilding(req: BuildingUpdateReq) {
-  if (!openBuilding.value) return
+  if (openBuilding.value) await saveBuilding(openBuilding.value.id, req)
+}
+async function saveBuilding(id: number, req: BuildingUpdateReq) {
   try {
-    const updated = await buildingApi.update(openBuilding.value.id, req)
+    const updated = await buildingApi.update(id, req)
     editDlg.value = false
-    openBuilding.value = updated
-    drawerDetail.value = await buildingApi.detail(updated.id)
+    if (openBuilding.value?.id === id) {
+      openBuilding.value = updated
+      drawerDetail.value = await buildingApi.detail(id)
+    }
     await load()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '操作失败')
+    fail('保存楼栋失败', e, () => void saveBuilding(id, req))
   }
 }
 
-// 删除楼栋(抽屉内确认后上抛)
+// 删除楼栋(抽屉内 ask 答「删除楼栋」后上抛)
 async function deleteBuilding() {
-  if (!openBuilding.value) return
+  if (openBuilding.value) await removeBuilding(openBuilding.value.id)
+}
+async function removeBuilding(id: number) {
   try {
-    await buildingApi.remove(openBuilding.value.id)
-    onCloseDrawer()
+    await buildingApi.remove(id)
+    if (openBuilding.value?.id === id) onCloseDrawer()
     await load()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '操作失败')
+    fail('删除楼栋失败', e, () => void removeBuilding(id))
   }
 }
 
@@ -121,16 +137,23 @@ function OccBar(rate: number | null, h_px = 6) {
     ])
 }
 
+// 楼栋名列宽(列宽铁律 §4,2026-10-02):按全部楼栋估(不按当前页、不随筛选),翻页 / 搜索列不挪位;余宽落进行末空列。
+// 一格 = 图标 30 + 10 + max(名 14px, 类型副行 11px);左右内边距 32。数据没到时不给宽(按表头)。
+const nameColW = computed(() => (buildings.value.length
+  ? `${32 + 40 + Math.max(textW(buildings.value.map(b => b.name), 14, 0), textW(buildings.value.map(b => b.kind ?? ''), 11, 0))}px`
+  : undefined))
+
 const TABLE_COLUMNS = computed(() => [
   {
-    key: 'name', header: '楼栋',
+    key: 'name', header: '楼栋', width: nameColW.value,
     render: (b: BuildingDTO) => h('span', { style: { display: 'flex', alignItems: 'center', gap: '10px' } }, [
       h('span', { style: { width: '30px', height: '30px', borderRadius: '9px', background: 'var(--surface-card)', display: 'grid', placeItems: 'center', color: 'var(--text-secondary)', flex: '0 0 auto' } }, [
         h(iconFor(b.phase === 4 ? 'bed-double' : 'building-2'), { size: 16 }),
       ]),
       h('span', { style: { display: 'flex', flexDirection: 'column' } }, [
         h('span', { style: { fontWeight: 'var(--fw-medium)', color: 'var(--text-primary)', whiteSpace: 'nowrap' } }, b.name),
-        h('span', { style: { fontSize: 'var(--fs-micro)', color: 'var(--text-muted)' } }, b.kind),
+        // nowrap:名称列按内容定宽(余宽归最右空列),不压它就按最窄内容排,副行会折成竖排
+        h('span', { style: { fontSize: 'var(--fs-micro)', color: 'var(--text-muted)', whiteSpace: 'nowrap' } }, b.kind),
       ]),
     ]),
   },
@@ -154,12 +177,12 @@ const TABLE_COLUMNS = computed(() => [
     render: (b: BuildingDTO) => h('span', null, b.tenantBuildingArea ? b.tenantBuildingArea.toLocaleString('en-US') : '—') },
   {
     key: 'occRate', header: '出租率', width: '132px', sortValue: (b: BuildingDTO) => b.occRate,
-    // 本列有 render,FPSortableTable 的自动 title 不生效(c.render ? undefined : …),缺因 tooltip 得自己挂
-    render: (b: BuildingDTO) => h('span', { style: { display: 'flex', alignItems: 'center', gap: '9px' }, title: b.occRate == null ? OCC_NULL_WHY : undefined }, [
+    // 本列有 render,FPSortableTable 的自动悬停说明不生效,缺因得自己挂
+    render: (b: BuildingDTO) => withDirectives(h('span', { style: { display: 'flex', alignItems: 'center', gap: '9px' } }, [
       // 条 54 → 36(M 档,TabletContent §① delta 行6):只条变短,右侧 40px 数字列与百分数不动
       h('span', { style: { flex: '1', minWidth: tier.value === 'm' ? '36px' : '54px' } }, [OccBar(b.occRate, 5)]),
       h('span', { style: { fontFamily: 'var(--font-mono)', fontSize: '12px', fontWeight: 'var(--fw-semibold)', width: '40px', textAlign: 'right' } }, occPct(b.occRate)),
-    ]),
+    ]), [[vTip, b.occRate == null ? OCC_NULL_WHY : undefined]]),
   },
   { key: 'monthlyRent', header: '月租金', width: '104px', align: 'right' as const, mono: true, sortValue: (b: BuildingDTO) => b.monthlyRent,
     render: (b: BuildingDTO) => h('span', { style: { fontWeight: 'var(--fw-semibold)' } }, fpWan(b.monthlyRent)) },
@@ -203,7 +226,7 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
 
 // 出租率副标(§3 替代口径):按单元口径不依赖可租面积,主口径算不出来时它仍在,故两态都给。
 // 口径定义在 types/building.ts occByUnit(出租与楼栋屏同一句,§2 同名指标同源)。
-// 副标在 224px KPI 栏会被 ellipsis 截,缺因另挂卡片 title 兜底。
+// 副标在 224px KPI 栏会被 ellipsis 截,缺因另挂卡片悬停说明兜底。
 const occSub = computed(() => {
   const s = summary.value
   if (!s) return undefined
@@ -226,7 +249,7 @@ const occSub = computed(() => {
       </div>
       <div style="display:flex;gap:8px">
         <!-- ponytail: 楼栋导入未实现,按钮显式 disabled(诚实),避免可点无响应 -->
-        <span title="导入开发中">
+        <span v-tip="'导入开发中'">
           <Button variant="outline" size="sm" disabled>
             <template #leading><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></template>
             导入
@@ -253,7 +276,7 @@ const occSub = computed(() => {
       </KpiCard>
       <KpiCard
         label="园区出租率" :value="summary ? occPct(summary.occRate) : ''" :loading="!summary" :sub="occSub ?? ''" tint="blue"
-        :title="summary && summary.occRate == null ? OCC_NULL_WHY : undefined"
+        v-tip="summary && summary.occRate == null ? OCC_NULL_WHY : undefined"
       >
         <template #icon><component :is="iconFor('trending-up')" :size="16" /></template>
       </KpiCard>
@@ -292,7 +315,7 @@ const occSub = computed(() => {
       <!-- 卡片墙的骨架:复用 BuildingCard 自己的 .bd-card 盒子(它是 scoped 的,外面照抄迟早漂开)。
            8 张 = 卡片墙模式下的 pageSize 常量,与真数据落位后的张数一致。 -->
       <BuildingCard v-for="i in (summary ? 0 : 8)" :key="'sk-' + i" loading :building="({} as never)" />
-      <div v-if="summary && filtered.length === 0" style="grid-column:1/-1;text-align:center;padding:48px;color:var(--text-disabled)">没有匹配的楼栋</div>
+      <FPEmpty v-if="summary && filtered.length === 0" style="grid-column:1/-1">没有匹配的楼栋</FPEmpty>
     </div>
     <Card v-else surface="white" :padding="0" class="mx-listcard">
       <div ref="tableWrapEl" class="mx-tablewrap">
@@ -331,7 +354,7 @@ const occSub = computed(() => {
             </div>
           </template>
         </FPSortableTable>
-        <div v-if="summary && filtered.length === 0" style="padding:40px;text-align:center;color:var(--text-disabled)">没有匹配的楼栋</div>
+        <FPEmpty v-if="summary && filtered.length === 0">没有匹配的楼栋</FPEmpty>
       </div>
       <!-- 分页器停靠卡片底部(spec §5) -->
       <div v-if="!summary || filtered.length > 0" class="mx-pagerbar">

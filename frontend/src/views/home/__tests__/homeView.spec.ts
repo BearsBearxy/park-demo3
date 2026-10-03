@@ -73,12 +73,13 @@ describe('首页', () => {
     expect(tabs.tabs.map(t => t.value)).toEqual([HOME, 'ledger', 'data-home'])
   })
 
-  it('格子上的 × 去掉收藏,不触发跳转;去光了出虚线空态', async () => {
+  it('❗格子上的 × 去掉收藏,不触发跳转;去光了出空状态(FPEmpty,全站一种样子)', async () => {
     const w = mount(HomeView)
     await w.find('.hm-tile .tx').trigger('click')
     expect(r.push).not.toHaveBeenCalled()
     expect(useFavoritesStore().list).toEqual([])
-    expect(w.find('.hm-empty').text()).toContain('还没有收藏')
+    expect(w.find('.hm-empty.fp-empty .t').text()).toBe('还没有收藏')
+    expect(w.find('.hm-empty .sub').text()).toContain('点顶栏页面名后面的 ☆')
     expect(w.find('.hm-hint').exists()).toBe(false)
   })
 
