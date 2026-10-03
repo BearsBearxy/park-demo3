@@ -19,7 +19,7 @@
 > area / spot / tenant_name 等归属列按月一段一段记在 `meter_assign`，带月份的读取站在那个月取（METER-TIMELINE-SPEC §1 §2）。
 
 ### meter_reading 月度读数
-- `id、meter_id FK(删表由 409 挡,不级联)、ym CHAR(7)(YYYY-MM)、prev_total/curr_total、prev_sharp/peak/flat/valley、curr_sharp/peak/flat/valley(均 DECIMAL(14,2) NULL——水表只有 total,公共电表常只有 total)、factor_snap DECIMAL(10,2) NOT NULL(录入/导入时快照表倍率;之后改倍率不回溯历史,同 PV price_snap 口径)、note、source VARCHAR(12)(manual/import)、时间戳`
+- `id、meter_id FK(删表由 409 挡,不级联)、ym CHAR(7)(YYYY-MM)、prev_total/curr_total、prev_sharp/peak/flat/valley、curr_sharp/peak/flat/valley(均 DECIMAL(14,2) NULL——水表只有 total,公共电表常只有 total)、factor_snap DECIMAL(10,2) NOT NULL(录入/导入时快照表倍率;之后改倍率不回溯历史,同 PV price_snap 口径。PUT 改读数时月份不变则保持原快照,挪到别的月 = 在那个月新录一条、取表档案当前倍率 —— 2026-10-04 起,原来旧快照跟过去,可借挪月按旧倍率计新月的账)、note、source VARCHAR(12)(manual/import)、时间戳`
 - **唯一键 (meter_id, ym)**：一表一月一条；重复导入幂等覆盖（先删后插）。
 - **用量=派生不落库**：`(curr − prev) × factor_snap`（总与四段各自派生;缺读数=null）。后端 DTO 计算。
 - **异常标记=前端派生**（meterLogic.ts 纯函数,spec 锁定）：漏抄(curr_total 空)、倒走(总用量<0)、时段不符(四段齐全时 |Σ段用量−总用量| 超容差 max(1, 总量1%))。只标不拦——真实数据就长这样,拦了导不进。

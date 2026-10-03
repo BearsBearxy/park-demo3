@@ -810,7 +810,7 @@ public class MeterService {
         if (assign) timeline.writeAssign(rowAt(rs.assign(), m.getId(), ym), ctx);
     }
 
-    // PUT:改月份/读数/备注;meter 与 factor_snap 保持不变(快照语义)
+    // PUT:改月份/读数/备注;meter 不变。factor_snap:月份不变时保持原快照(快照语义),挪到别的月时取表档案当前倍率
     public MeterReadingDTO updateReading(Integer id, MeterReadingReq req) {
         MeterReading r = readings.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
@@ -821,6 +821,10 @@ public class MeterService {
             throw new BizException(ResultCode.CONFLICT, "该表该月已有读数");
         String oldYm = r.getYm();
         r.setYm(req.ym());
+        // 挪月 = 在新月份新录一条:快照照 createReading 取表档案当前倍率。原来旧快照原样跟过去 ——
+        // 档案倍率改过之后,删掉本月读数、把一条旧倍率的旧读数挪进本月填上本月的数,本月就按旧倍率计了
+        // (只要 meter-reading,2026-10-04 安全修复,F15 复查发现)。月份没变时改读数/备注不动计价口径。
+        if (!oldYm.equals(req.ym())) r.setFactorSnap(one(requireMeter(r.getMeterId()).getFactor()));
         fill(r, req);
         r.setSource("manual");
         readings.updateById(r);

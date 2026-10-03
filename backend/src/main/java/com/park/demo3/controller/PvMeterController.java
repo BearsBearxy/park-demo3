@@ -49,7 +49,7 @@ public class PvMeterController {
     @Operation(summary = "新增抄表记录(source=manual;price_snap=当时站单价;同站同日 409)") @PostMapping("/readings")
     public PvReadingDTO createReading(@Valid @RequestBody PvReadingReq req) { return svc.createReading(req); }
 
-    @Operation(summary = "编辑抄表记录(日期/三量/备注;price_snap 保持原快照不变)") @PutMapping("/readings/{id}")
+    @Operation(summary = "编辑抄表记录(日期/三量/备注;同月内改日期 price_snap 保持原快照,挪到别的月取站当前单价)") @PutMapping("/readings/{id}")
     public PvReadingDTO updateReading(@PathVariable Integer id, @Valid @RequestBody PvReadingReq req) {
         return svc.updateReading(id, req);
     }

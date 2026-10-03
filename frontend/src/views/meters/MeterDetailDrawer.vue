@@ -425,14 +425,15 @@ watch(() => m.value?.id, () => {
   loadHistory()
 }, { immediate: true })
 
-// 用量预览:(本月−上月)×倍率快照(编辑=原快照;新增=当前表倍率,保存时后端快照)
+// 用量预览:(本月−上月)×倍率。编辑且月份没改=原快照;新增或编辑时挪到别的月=当前表倍率(保存时后端照此快照)
+const editingRow = computed(() => (editId.value != null ? history.value?.find(r => r.id === editId.value) : undefined))
+const previewFactor = computed(() => (editingRow.value && form.value.ym === editingRow.value.ym
+  ? editingRow.value.factorSnap
+  : (m.value?.factor ?? 1)))
 const previewUsage = computed(() => {
   const p = numOrNull(form.value.prevTotal), c = numOrNull(form.value.currTotal)
   if (p == null || c == null) return '—'
-  const f = editId.value != null
-    ? (history.value?.find(r => r.id === editId.value)?.factorSnap ?? 1)
-    : (m.value?.factor ?? 1)
-  return fq((c - p) * f)
+  return fq((c - p) * previewFactor.value)
 })
 
 async function reloadAfterWrite(mm: MeterDTO) {
@@ -473,7 +474,7 @@ async function saveForm() {
     if (!ok || !editReading.value || m.value?.id !== mm.id) return
   }
   try {
-    // 新录快照当时表倍率;编辑改量不改快照(后端语义,同 PV 口径)
+    // 新录快照当时表倍率;编辑改量不改快照,挪到别的月按当前表倍率重新快照(后端语义)
     if (editId.value != null) await metersApi.updateReading(editId.value, req)
     else await metersApi.createReading(req)
     cancelForm()
@@ -731,7 +732,7 @@ const reasonText = computed(() => (bind.value && qb.value ? bindReason(qb.value,
                   <td class="l"><DatePicker v-model="form.ym" mode="month" variant="cell" aria-label="月份" /></td>
                   <td><input v-model="form.prevTotal" class="md-din num" type="number" step="0.01" placeholder="—" /></td>
                   <td><input v-model="form.currTotal" class="md-din num" type="number" step="0.01" placeholder="—" /></td>
-                  <td class="ro" v-tip="`按原倍率快照 ${r.factorSnap} 计`">{{ previewUsage }}</td>
+                  <td class="ro" v-tip="form.ym === r.ym ? `按原倍率快照 ${r.factorSnap} 计` : `挪到别的月份，按当前表倍率 ${previewFactor} 计`">{{ previewUsage }}</td>
                   <td class="l">
                     <button v-if="m?.kind === 'elec'" class="md-toulink" :class="{ on: touOpen }" @click="touOpen = !touOpen">尖峰平谷</button>
                     <span v-else class="md-dim">—</span>
