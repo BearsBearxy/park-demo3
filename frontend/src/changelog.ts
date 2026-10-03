@@ -27,6 +27,7 @@ export const CHANGELOG: ReleaseNote[] = [
   // 「报表底部说明」只讲三大报表(单位进卡头、口径挂净利润 / 总计 / 合计行);年份门的页底说明并进副标题,不在这句里。
   // 修复一行核实(对照 master):CoefBookWindow 的 .cb-unibar、PayBookWindow 的 .pb-unibar 在 editMode 时新增一整行,表格下移
   // (noInteractionLayoutShift.spec 原白名单两条即此)。
+  // 「表格展开收起」:utils/rowMotion.ts,全站 <table> 点击后行有增有留才动(用户 2026-10-03 要,压过动效稿 C5-04)。
   // 账册模板那行核实(对照 master):TemplateEditorPanel 在途时主区换成一行 .te-loading,弹窗按内容定高(max-height 88vh)又居中 → 实测 950→429→950。
   {
     version: '0.26.0',
@@ -44,6 +45,7 @@ export const CHANGELOG: ReleaseNote[] = [
       { icon: 'trending-up', title: '三大报表', desc: '原来公司在左栏，现在在期间条的下拉里；资产负债表左右两半合成一张表。', to: 'income-statement' },
       { icon: 'sliders-horizontal', title: '计费参数', desc: '原来一整页往下滚，现在左边目录、右边一区一张表，改值时贴着格子弹出。', to: 'params' },
       { icon: 'message-square', title: '页面提示', desc: '原来不少页面顶上会多出一整条提示，现在收进标题旁的小标签，或标在相关的那一行。' },
+      { icon: 'list', title: '表格展开收起', desc: '原来点开一组时下面的行一下子跳开，现在平滑让开，新出来的行淡入。' },
       { icon: 'table', title: '报表底部说明', desc: '原来页底一行写单位和算法，现在单位挪到表格上方，算法悬停在净利润、总计、合计行上。' },
     ],
     fixed: [
