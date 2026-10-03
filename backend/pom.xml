@@ -19,6 +19,9 @@
     <mybatis-plus.version>3.5.7</mybatis-plus.version>
     <jjwt.version>0.12.6</jjwt.version>
     <springdoc.version>2.6.0</springdoc.version>
+    <!-- Boot 3.3.5 自带 Tomcat 10.1.31:multipart 不限段数(CVE-2025-48988/48976),匿名 POST 登录口即可耗尽线程。
+         Boot 3.3.x 已出 OSS 支持期,升 Boot 另排期;先在同一版本线上覆盖到修复版(安全审计 G2a)。 -->
+    <tomcat.version>10.1.60</tomcat.version>
   </properties>
   <dependencies>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>

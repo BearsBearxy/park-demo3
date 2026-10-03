@@ -17,6 +17,11 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: false
+  servlet:
+    multipart:
+      # 全站没有文件上传端点(各导入都收 JSON)。开着的话 DispatcherServlet 会在找处理器之前就让 Tomcat
+      # 把 multipart 请求拆段解析 —— 匿名打登录口就能耗线程、刷临时文件(安全审计 G2a,另见 pom 的 tomcat.version)
+      enabled: false
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
@@ -31,7 +36,7 @@ app:
     # dev 默认见 application-dev.yml；此处无兜底，非 dev profile 缺环境变量即 fail-fast（prod 须给前端域名白名单，逗号分隔）
     allowed-origins: ${CORS_ALLOWED_ORIGINS}
   admin:
-    password: ${ADMIN_PASSWORD:}                 # 留空=保留种子默认(仅 dev)；设置则启动时重置 admin 口令
+    password: ${ADMIN_PASSWORD:}                 # 留空=保留种子默认(仅 dev)；设置且 admin 仍是种子口令时改成它，改过之后不再覆盖
   viewer:
     # 只读账号(viewer/GET-only)：留空=不创建，与 prod 一致；dev 默认见 application-dev.yml
     password: ${VIEWER_PASSWORD:}

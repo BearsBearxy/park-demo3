@@ -17,7 +17,7 @@ import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
-import { fint, fnum, hues, inkA } from '@/components/ana/anaFmt'
+import { esc, fint, fnum, hues, inkA } from '@/components/ana/anaFmt'
 import { anaPalette } from '@/components/ana/anaTheme'
 import { useViewport } from '@/composables/useViewport'
 import { fetchBuildings, fetchBuildingSummary, fetchContracts, fetchTenants } from '@/analysis/anaData'
@@ -122,7 +122,7 @@ const treemapOption = computed(() => ({
   tooltip: {
     formatter: (p: { name: string; value: number }) => {
       const r = rows.value.find((x) => x.name === p.name)
-      return `${p.name}<br/>月租 ¥${fnum(p.value, 1)}万` + (r ? ` · ${r.tenants} 户 · ${r.contracts} 份` : '')
+      return `${esc(p.name)}<br/>月租 ¥${fnum(p.value, 1)}万` + (r ? ` · ${r.tenants} 户 · ${r.contracts} 份` : '')
     },
   },
   series: [{
@@ -150,7 +150,7 @@ const bName = computed(() => new Map(buildings.value.map((b) => [b.id, b.name]))
 
 // ── 期区结构环(月租金额占比) ──
 const donutOption = computed(() => ({
-  tooltip: { formatter: (p: { name: string; value: number; percent: number }) => `${p.name}<br/>¥${fnum(p.value, 1)}万 · ${p.percent}%` },
+  tooltip: { formatter: (p: { name: string; value: number; percent: number }) => `${esc(p.name)}<br/>¥${fnum(p.value, 1)}万 · ${p.percent}%` },
   series: [{
     type: 'pie', radius: ['48%', '74%'], center: ['50%', '50%'],
     label: { fontSize: 11, formatter: '{b}\n{d}%' },
@@ -173,7 +173,7 @@ const scatterOption = computed(() => ({
   tooltip: {
     formatter: (p: { name: string; value: [number, number] }) => {
       const r = rows.value.find((x) => x.name === p.name)
-      return `${p.name}<br/>${p.value[0]} 户 · ¥${fnum(p.value[1], 1)}万` + (r ? `<br/>户均 ¥${fint(r.avgRent)}` : '')
+      return `${esc(p.name)}<br/>${p.value[0]} 户 · ¥${fnum(p.value[1], 1)}万` + (r ? `<br/>户均 ¥${fint(r.avgRent)}` : '')
     },
   },
   grid: { left: 48, right: 18, top: 16, bottom: 34 },
@@ -225,7 +225,7 @@ const areaBarOption = computed(() => ({
     formatter: (ps: { seriesName: string; name: string; value: number }[]) => {
       const name = ps[0]?.name ?? ''
       const r = areaRows.value.find((x) => x.name === name)
-      return `${name}<br/>` + ps.map((p) => `${p.seriesName} ${fnum(p.value, 0)}㎡`).join('<br/>')
+      return `${esc(name)}<br/>` + ps.map((p) => `${esc(p.seriesName)} ${fnum(p.value, 0)}㎡`).join('<br/>')
         + (r && r.rent > 0 ? `<br/>换算系数 ${fnum(r.building / r.rent, 2)}` : '')
     },
   },

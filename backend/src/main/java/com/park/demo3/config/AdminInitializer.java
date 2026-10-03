@@ -15,8 +15,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 /**
- * 启动时若提供 app.admin.password（prod 强制注入 ADMIN_PASSWORD），则把管理员口令重置为该值，
+ * 启动时若提供 app.admin.password（prod 强制注入 ADMIN_PASSWORD），且 admin 仍是种子口令，则把它改成该值，
  * 消除 V2 种子内众所周知的 admin/admin123 默认凭据。留空（dev）则保持种子默认，便于本地登录。
+ * admin 在系统里改过口令之后不再覆盖（2026-10-03 起；原来每次启动都改回 .env 里的值）。
  * 只读账号（V32 审计建议#8）：app.viewer.password 非空则创建/重置 viewer；
  * 留空则不创建——viewer 不走迁移种子，避免往任何新库塞已知口令。
  *
@@ -29,6 +30,8 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 public class AdminInitializer implements ApplicationRunner {
+    /** V2 种子口令。只有 admin 还是它的时候，app.admin.password 才生效。 */
+    static final String SEED_PASSWORD = "admin123";
     private final AuthUserMapper users;
     private final AuthUserRoleMapper userRoles;
     private final AuthRoleMapper roles;
@@ -60,6 +63,12 @@ public class AdminInitializer implements ApplicationRunner {
         AuthUser u = users.selectOne(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getUsername, adminUsername));
         if (u == null) { log.warn("admin user '{}' not found; skip password reset", adminUsername); return; }
         if (enc.matches(adminPassword, u.getPasswordHash())) return;    // 已是目标口令，幂等跳过
+        // 只覆盖种子口令(首次部署)。原来每次启动只要对不上就改回 .env 里的值 —— 管理员在系统里轮换过的口令
+        // (比如怀疑泄露之后),下一次合并即部署就被悄悄改回旧值(安全审计 F06)。改过一次之后 .env 这项只剩开机必填的作用。
+        if (!enc.matches(SEED_PASSWORD, u.getPasswordHash())) {
+            log.info("admin password was changed in-app; app.admin.password not applied");
+            return;
+        }
         u.setPasswordHash(enc.encode(adminPassword));
         users.updateById(u);
         log.info("admin password reset from app.admin.password");

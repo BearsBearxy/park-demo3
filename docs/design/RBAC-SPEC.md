@@ -377,7 +377,7 @@ JWT 有效期 120 分钟。权限烤进令牌 → 停用一个人他还能再用
 |------|------|------|
 | 台账屏能建租户、建/删公司 | `LedgerView.vue:166` `companyApi.remove`、`:177` `companyApi.create`、`:334` `tenantApi.create` | 这三个按钮按 `master:edit` 判；台账导入遇未登记租户时，无权者只给「跳过/关联已有」，不给「新建档案」 |
 | 删公司级联毁 entry + report | `CompanyService.delete` 同事务删 `monthly_ledger` + `report_amount` + `report_custom_row` + `report_account` | **加 service 守卫**：该公司存在台账/报表数据则 409，要求先清空。不发明新权限档 —— 这是缺守卫不是缺权限 |
-| 报表导入会静默建公司 | `ReportService.createCompany` 由 `importRows` 在遇到库里没有的公司名时调用 | 改成未匹配即报错并返回未匹配名单 |
+| 报表导入会静默建公司 | `ReportService.createCompany` 由 `importRows` 在遇到库里没有的公司名时调用 | 改成未匹配即报错并返回未匹配名单。**2026-10-03 已修**（安全审计 F16）：未匹配的段报错跳过，`createCompany` 已删 |
 | 单元面积是计费口径却只要 `master:edit` | `unit.area` 同时是 `per_sqm_month` 租金的面积来源与 area 法公摊池的分摊基数 | 面积改动写一条变更日志（§7）。**「面积污染」已经炸过一次**，见 `demo3_s15_fixes` |
 | 导入中心是全域写入口 | `importRegistry.ts` 16 类导入含 `billingTerms`（合同计费行）、`contractFull`（不在册的自动建档）、报表、预算 | 权限挂在 **import kind** 上而非导入中心这个屏：给 `ImportTypeEntry` 加 `module` 字段，`ImportCenterView` 按角色过滤磁贴 |
 

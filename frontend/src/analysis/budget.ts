@@ -1,7 +1,7 @@
 // 预算对比纯函数(BudgetView / Cockpit 预算达成卡 / 导入解析共用;单测 budget.spec.ts)。
 import type { PnlSummary } from './anaData'
 import type { PnlYearDTO } from '@/types/pnl'
-import { cmpBudget, fnum } from '@/components/ana/anaFmt'
+import { cmpBudget, esc, fnum } from '@/components/ana/anaFmt'
 
 // 2025 起「发生额」以 pnl 实时推算为单一事实源(spec:文件 2025 发生额列跳过不导)
 export const PNL_SOT_FROM_YEAR = 2025
@@ -122,7 +122,7 @@ export function bulletOption(years: string[], metrics: BulletMetric[]): Record<s
         if (a != null) parts.push(`实际 ${fnum(a, 1)}万`)
         if (b != null) parts.push(`预算 ${fnum(b, 1)}万`)      // 缺预算省略,不显「—」
         if (a != null && b != null && b !== 0) parts.push(`达成 ${(a / b * 100).toFixed(1)}%`)
-        return `${arr[0].name} · ${metrics[Math.floor(arr[0].seriesIndex / 2)].name}<br/>${parts.join(' · ')}`
+        return `${esc(arr[0].name)} · ${esc(metrics[Math.floor(arr[0].seriesIndex / 2)].name)}<br/>${parts.join(' · ')}`
       },
     },
     series,

@@ -71,7 +71,7 @@ public class ReportController {
         svc.deleteCustomRow(statement, id);
     }
 
-    @Operation(summary = "导入本期(多公司段,未匹配公司自动新建)") @PostMapping("/import")
+    @Operation(summary = "导入本期(多公司段,公司须已存在,未匹配的段报错跳过)") @PostMapping("/import")
     public ImportResultDTO importRows(@PathVariable String statement,
                                       @RequestParam @Min(2000) @Max(2100) int year,
                                       @RequestParam @Min(1) @Max(12) int month,

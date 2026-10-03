@@ -1,7 +1,7 @@
 // src/views/analysis/expiry.logic.ts — expiry 屏纯数据变换(v2 抽出,口径与 v1 一致,数值不变):
 // 合同快照统计 / 金额 Pareto(TopN 柱 + 累计占比线)/ Top10 集中度环 — ECharts option 纯函数。
 // 锚点(2026-07-08 dev 库):合同 282 份、月租合计 4,671,702.21、有租金 235、日期缺失 282、Top10 55.8%。
-import { hues, quantile } from '@/components/ana/anaFmt'
+import { esc, hues, quantile } from '@/components/ana/anaFmt'
 import { anaPalette } from '@/components/ana/anaTheme'
 import type { ContractDTO } from '@/types/contract'
 import { isInForce } from './TenantPeer.logic'
@@ -64,7 +64,7 @@ export function paretoOption(p: ParetoData): object {
     tooltip: {
       trigger: 'axis', axisPointer: { type: 'shadow' },
       formatter: (ps: { name: string; seriesName: string; value: number }[]) =>
-        ps[0].name + ps.map((x) => `<br/>${x.seriesName} ${x.seriesName === '累计占比' ? x.value + '%' : '¥' + x.value.toFixed(1) + '万'}`).join(''),
+        esc(ps[0].name) + ps.map((x) => `<br/>${esc(x.seriesName)} ${x.seriesName === '累计占比' ? x.value + '%' : '¥' + x.value.toFixed(1) + '万'}`).join(''),
     },
     legend: { top: 0, data: ['月租金', '累计占比'] },
     xAxis: {
@@ -126,7 +126,7 @@ export function wallOption(w: ExpiryWall): object {
     tooltip: {
       trigger: 'axis', axisPointer: { type: 'shadow' },
       formatter: (ps: { name: string; value: number; dataIndex: number }[]) =>
-        `${ps[0].name}<br/>¥${ps[0].value}万 · ${w.quarters[ps[0].dataIndex].count} 份合同`,
+        `${esc(ps[0].name)}<br/>¥${ps[0].value}万 · ${w.quarters[ps[0].dataIndex].count} 份合同`,
     },
     xAxis: { type: 'category', data: w.quarters.map((q) => q.label), axisLabel: { fontSize: 11 } },
     yAxis: { type: 'value', name: '万/月', axisLabel: { formatter: (v: number) => String(v) } },
@@ -143,7 +143,7 @@ export function concentrationOption(top10Sum: number, rentSum: number): object {
   const rest = Math.max(0, rentSum - top10Sum)
   const { blue, pale } = hues()
   return {
-    tooltip: { formatter: (p: { name: string; value: number; percent: number }) => `${p.name}<br/>¥${(p.value / 10000).toFixed(1)}万/月 · ${p.percent}%` },
+    tooltip: { formatter: (p: { name: string; value: number; percent: number }) => `${esc(p.name)}<br/>¥${(p.value / 10000).toFixed(1)}万/月 · ${p.percent}%` },
     series: [{
       type: 'pie', radius: ['58%', '80%'], center: ['50%', '50%'],
       label: { show: false }, labelLine: { show: false },

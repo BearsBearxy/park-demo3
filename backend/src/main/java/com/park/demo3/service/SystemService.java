@@ -43,14 +43,16 @@ public class SystemService {
     private final AuditQueryMapper auditQuery;
     private final SessionService sessions;
     private final NoticeService notices;
+    private final ElevationService elevation;
 
     public SystemService(AuthUserMapper users, AuthRoleMapper roles, AuthRolePermMapper rolePerms,
                          AuthUserRoleMapper userRoles, PasswordEncoder enc,
                          UserPermissionCache cache, AuditLogService audit, AuditQueryMapper auditQuery,
-                         SessionService sessions, NoticeService notices) {
+                         SessionService sessions, NoticeService notices, ElevationService elevation) {
         this.users = users; this.roles = roles; this.rolePerms = rolePerms;
         this.userRoles = userRoles; this.enc = enc; this.cache = cache;
         this.audit = audit; this.auditQuery = auditQuery; this.sessions = sessions; this.notices = notices;
+        this.elevation = elevation;
     }
 
     // ══════════ 操作日志时间线（RBAC-SPEC §7.2） ══════════
@@ -281,13 +283,16 @@ public class SystemService {
 
     /** 本人改密。改完清 mustChangePassword，放行进系统。 */
     @NoReviewGuard(reason = "同 resetPassword:只写 auth_user 的口令列,凭据不是期间数据。首登强制改密走的正是这条路,进审核等于新账号在审核员点头前一直登不进系统")
-    @Transactional
+    // noRollbackFor:旧口令错时 verifyOwnPassword 先写一条 .deny 审计再抛 —— 默认回滚会把这条审计一起抹掉。
+    // 抛 BizException 的分支都在任何业务写之前,不回滚它们不会留下半截数据。
+    @Transactional(noRollbackFor = BizException.class)
     public void changeOwnPassword(String currentPassword, String newPassword) {
         String me = currentUsername();
         AuthUser u = users.selectOne(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getUsername, me));
         if (u == null) throw new BizException(ResultCode.UNAUTHORIZED);
-        if (!enc.matches(currentPassword, u.getPasswordHash()))
-            throw new BizException(ResultCode.BAD_REQUEST, "当前密码不正确");
+        // 旧口令走与提权同一道门:按 ip|账号 5 次锁 15 分钟 + 失败审计。原来直接 enc.matches ——
+        // 拿到一张令牌就能不限次、不留痕地猜口令,而下面「新密码不能与当前相同」那句恰好告诉他猜中了(安全审计 F03)。
+        elevation.verifyOwnPassword(currentPassword, "user.change-password", "当前密码不正确");
         if (enc.matches(newPassword, u.getPasswordHash()))
             throw new BizException(ResultCode.BAD_REQUEST, "新密码不能与当前密码相同");
         u.setPasswordHash(enc.encode(newPassword));

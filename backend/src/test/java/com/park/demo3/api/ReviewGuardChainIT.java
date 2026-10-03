@@ -263,6 +263,20 @@ class ReviewGuardChainIT extends AbstractMysqlIT {
         assertThat(code(putJson("/api/reports/is/2/2031/8", "{\"cells\":[]}"))).isEqualTo(0);
     }
 
+    /**
+     * 导入认公司与审核闸必须同一口径(安全审计 F46)。原来闸用原样名、落库用 trim 后的名:
+     * 「公司名 」在闸里查不到 → 不闸,落库时又认成 1 号公司 → 已审月被清空重写。
+     * 破坏验证:把 ReportService 闸那段的 nameOf(sec) 换回 sec.companyName() → 这条拿到 0,红。
+     */
+    @Test
+    void report_import_paddedCompanyName_isStill423() throws Exception {
+        seedApproved("report-is:1:" + YM, "report-is", "1");
+        String name = jdbc.queryForObject("SELECT name FROM management_company WHERE id=1", String.class);
+        String body = "{\"sections\":[{\"companyName\":\"" + name + " \",\"cells\":"
+            + "[{\"rowKey\":\"1\",\"field\":\"cur\",\"amount\":1}]}]}";
+        assertThat(code(postJson("/api/reports/is/import?year=2031&month=8", body))).isEqualTo(423);
+    }
+
     /** 换个没审的月照样能存。 */
     @Test
     void report_anotherMonth_passes() throws Exception {

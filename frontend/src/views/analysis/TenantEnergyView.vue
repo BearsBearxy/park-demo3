@@ -23,7 +23,7 @@ import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import FPStateTag from '@/components/fp/FPStateTag.vue'
-import { NEG, WARN, fint, hues, inkA } from '@/components/ana/anaFmt'
+import { NEG, WARN, esc, fint, hues, inkA } from '@/components/ana/anaFmt'
 import { bandSeries } from '@/components/ana/anaTheme'
 import { PHASES } from '@/views/sales-income/layout'
 import { buildFamilyMap } from '@/analysis/anaFamily'
@@ -253,7 +253,7 @@ const scatterOption = computed<object>(() => {
       formatter: (p: { data?: { name?: string; value?: number[]; phase?: number } }) => {
         const d = p.data
         if (!d?.value) return ''
-        return `${d.name}<br/>月租 ${d.value[0]}万 · 本期${metricLabel.value} ${fint(d.value[1])} 元<br/>期区 ${phaseName(d.phase ?? 1)}`
+        return `${esc(d.name)}<br/>月租 ${d.value[0]}万 · 本期${metricLabel.value} ${fint(d.value[1])} 元<br/>期区 ${phaseName(d.phase ?? 1)}`
       },
     },
     xAxis: { type: xLog.value ? 'log' : 'value', name: '月租金(万)', nameLocation: 'middle', nameGap: 26 },

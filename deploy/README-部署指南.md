@@ -64,7 +64,13 @@ curl -sI http://localhost/ | grep -iE "x-frame-options|x-content-type|referrer-p
 若首次 up 偶发 backend 启动失败（与 MySQL 首次初始化竞速），再执行一次 `docker compose up -d` 即可（restart 策略平时会自动拉起）。
 
 浏览器打开 `https://atrilink.com`（2026-08-30 起走 HTTPS，见 §8）：
-- **admin / gen-env 生成的 ADMIN_PASSWORD**：管理员（可写），自己留用
+- **admin / gen-env 生成的 ADMIN_PASSWORD**：管理员（可写），自己留用。ADMIN_PASSWORD 只在 admin 还是种子口令（首次部署）时生效；之后在系统里改过的口令，重启、重新部署都不会被改回 .env 里的值，改 .env 也不再能重置它
+  - **忘了 admin 口令的应急办法**（系统里没有别的 system:edit 账号能替它重置时）：把 admin 的哈希改回种子哈希，再重启后端，启动时就会重新用上 .env 里的 ADMIN_PASSWORD：
+    ```
+    echo 'UPDATE auth_user SET password_hash="$2a$10$cTkukBimUqZWHxvDThP2qOs9fwm75iGjln8CKEcRBxtkZHpLnEywW" WHERE username="admin";' \
+      | docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" park_demo3'
+    docker compose restart backend
+    ```
 - **viewer / 生成的 VIEWER_PASSWORD**：只读账号，**发这个给测试者**（任何编辑/导入/删除会被拦截并提示）
 
 ~~⚠️ 测试期为明文 HTTP~~ —— 2026-08-30 已上 HTTPS（§8）。口令不再明文过网，`http://` 与裸 IP 均已关闭。

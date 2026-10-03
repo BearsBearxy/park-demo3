@@ -15,7 +15,7 @@ import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import FPStateTag from '@/components/fp/FPStateTag.vue'
 import { iconFor } from '@/components/ds/icon'
-import { fnum, hues, sgn, STATUS } from '@/components/ana/anaFmt'
+import { esc, fnum, hues, sgn, STATUS } from '@/components/ana/anaFmt'
 import { finWan } from '@/utils/finFmt'
 import { usePeriod } from '@/analysis/usePeriod'
 import {
@@ -323,8 +323,8 @@ const spreadOption = computed<object>(() => ({
   tooltip: {
     trigger: 'axis',
     formatter: (ps: { seriesName: string; value: number | null; axisValue: string; marker: string }[]) =>
-      ps[0].axisValue + ps.map((p) =>
-        `<br/>${p.marker}${p.seriesName} ${p.value == null ? '—' : p.seriesName.includes('价') ? p.value.toFixed(3) + ' 元/kWh' : (p.value < 0 ? '−' : '') + '¥' + fnum(Math.abs(p.value), 1) + '万'}`).join(''),
+      esc(ps[0].axisValue) + ps.map((p) =>
+        `<br/>${p.marker}${esc(p.seriesName)} ${p.value == null ? '—' : p.seriesName.includes('价') ? p.value.toFixed(3) + ' 元/kWh' : (p.value < 0 ? '−' : '') + '¥' + fnum(Math.abs(p.value), 1) + '万'}`).join(''),
   },
   legend: { top: 0 },
   grid: { left: 52, right: 52, top: 32, bottom: 26 },

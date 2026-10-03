@@ -177,7 +177,7 @@ describe('auth store', () => {
     s.setToken('t1')
     ;(api.post as unknown as { mockClear: () => void }).mockClear()
     s.logout()
-    expect(api.post).toHaveBeenCalledWith('/auth/logout')
+    expect(api.post).toHaveBeenCalledWith('/auth/logout', null, { headers: { Authorization: 'Bearer t1' } })
   })
 
   it('logout clears token + displayName + role + removes from localStorage', async () => {

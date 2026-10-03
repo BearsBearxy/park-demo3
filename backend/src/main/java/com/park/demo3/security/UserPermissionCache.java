@@ -138,11 +138,15 @@ public class UserPermissionCache {
      *
      * **为什么不复用 reload()**:reload 的第一件事是 {@code elevations.revokeAllUsers()} ——
      * 登录是高频动作,每次登录都清掉所有人的提权授权,等于随便谁登录一次全公司都要重新叫主管点头。
-     * 这里只换一个 entry,不碰提权,也不重查那四张表。
+     * 这里只换一个 entry,只清**这个人自己**的提权,也不重查那四张表。
      *
      * sid 传 null = 这个账号当前没有活着的会话(被踢/登出),此后它的令牌一律不认。
      */
     public synchronized void applySession(String username, int tokenVersion, String sessionId, String reason) {
+        // 授权跟着会话走(ELEVATION-SPEC:登出即结束授权)。登录、登出、改密都经过这里 —— 会话一换,
+        // 主管给的临时授权作废。原来授权按账号存、熬过登出与重登,只靠前端发一次即发即弃的
+        // DELETE /auth/elevate,而那一发根本没带令牌(安全审计 F88 / F01)。
+        elevations.revokeAll(username);
         UserAuth cur = snapshot.get(username);
         if (cur == null) return;   // 停用/不存在的账号不进快照,也就没有会话可言
         Map<String, UserAuth> next = new HashMap<>(snapshot);

@@ -350,12 +350,13 @@ class SystemApiIT extends AbstractMysqlIT {
             String tok = JsonPath.read(before, "$.data.token");
             assertThat((boolean) JsonPath.read(before, "$.data.mustChangePassword")).isTrue();
 
-            // 当前密码错 → 400
+            // 当前密码错 → 401(与提权口令错同一道门 ElevationService.verifyOwnPassword)
             String wrong = utf8(mvc.perform(post("/api/auth/change-password").header("Authorization", hdr(tok))
                     .contentType("application/json")
                     .content("{\"currentPassword\":\"nope-nope-1\",\"newPassword\":\"brand-new-123\"}")
             ).andExpect(status().isOk()).andReturn());
-            assertThat((int) JsonPath.read(wrong, "$.code")).isEqualTo(400);
+            assertThat((int) JsonPath.read(wrong, "$.code")).isEqualTo(401);
+            assertThat((String) JsonPath.read(wrong, "$.message")).isEqualTo("当前密码不正确");
 
             // 新旧相同 → 400
             String same = utf8(mvc.perform(post("/api/auth/change-password").header("Authorization", hdr(tok))
@@ -373,6 +374,41 @@ class SystemApiIT extends AbstractMysqlIT {
                     .content("{\"username\":\"" + uname + "\",\"password\":\"brand-new-123\"}")).andReturn());
             assertThat((int) JsonPath.read(after, "$.code")).isEqualTo(0);
             assertThat((boolean) JsonPath.read(after, "$.data.mustChangePassword")).isFalse();
+        } finally {
+            cleanup(uname);
+        }
+    }
+
+    /**
+     * 改密校验旧口令要限流、要留痕(安全审计 F03)。原来直接 enc.matches:一张令牌就能不限次猜口令,
+     * 「新密码不能与当前相同」那句还会告诉他猜中了,库里一行痕迹都没有。
+     * 破坏验证:① SystemService 改回 enc.matches → 第 6 次拿到的不是 429,红;
+     *          ② 去掉 changeOwnPassword 上的 noRollbackFor → .deny 审计随回滚消失,条数断言红。
+     */
+    @Test
+    void changeOwnPassword_wrongCurrent_isRateLimitedAndAudited() throws Exception {
+        String t = admin();
+        String uname = "it-pwdlock-" + System.nanoTime();
+        mvc.perform(post("/api/system/users").header("Authorization", hdr(t)).contentType("application/json")
+                .content("{\"username\":\"" + uname + "\",\"displayName\":\"改密限流\","
+                       + "\"password\":\"init-pass-123\",\"roleIds\":[]}")).andReturn();
+        try {
+            String tok = login(uname, "init-pass-123");
+            // 猜中的那一下用的就是「新旧相同」:锁之前它回「新密码不能与当前相同」,锁之后一律 429
+            for (int i = 1; i <= 5; i++) {
+                String r = utf8(mvc.perform(post("/api/auth/change-password").header("Authorization", hdr(tok))
+                        .contentType("application/json")
+                        .content("{\"currentPassword\":\"guess-" + i + "-xx\",\"newPassword\":\"guess-" + i + "-xx\"}"))
+                        .andReturn());
+                assertThat((int) JsonPath.read(r, "$.code")).as("第 %d 次猜错", i).isEqualTo(401);
+            }
+            String locked = utf8(mvc.perform(post("/api/auth/change-password").header("Authorization", hdr(tok))
+                    .contentType("application/json")
+                    .content("{\"currentPassword\":\"init-pass-123\",\"newPassword\":\"init-pass-123\"}"))
+                    .andReturn());
+            assertThat((int) JsonPath.read(locked, "$.code")).as("锁住后连猜中的也不回答").isEqualTo(429);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM auth_audit_log WHERE actor = ? AND action = ?",
+                Integer.class, uname, "user.change-password.deny")).isEqualTo(5);
         } finally {
             cleanup(uname);
         }

@@ -11,7 +11,7 @@ import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import FPStateTag from '@/components/fp/FPStateTag.vue'
-import { fnum, hues, inkA, mean, sgn } from '@/components/ana/anaFmt'
+import { esc, fnum, hues, inkA, mean, sgn } from '@/components/ana/anaFmt'
 import {
   buildEnergyMonths, fetchBudgetAll, fetchChargingYear, fetchElecYear, fetchPvAll, fetchS10Rows, fetchUtilitiesYear,
   type EnergyMonth,
@@ -171,8 +171,8 @@ const sankeyOption = computed(() => {
     tooltip: {
       formatter: (p: { dataType?: string; name?: string; value?: number; data?: { source?: string; target?: string; value?: number } }) =>
         p.dataType === 'edge'
-          ? `${p.data?.source} → ${p.data?.target}<br/>¥${fnum((p.data?.value ?? 0) / 10000, 1)}万`
-          : `${p.name}<br/>¥${fnum((p.value ?? 0) / 10000, 1)}万`,
+          ? `${esc(p.data?.source)} → ${esc(p.data?.target)}<br/>¥${fnum((p.data?.value ?? 0) / 10000, 1)}万`
+          : `${esc(p.name)}<br/>¥${fnum((p.value ?? 0) / 10000, 1)}万`,
     },
     series: [{
       type: 'sankey', left: 10, right: 96, top: 10, bottom: 10,

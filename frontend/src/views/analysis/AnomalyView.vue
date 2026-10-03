@@ -16,7 +16,7 @@ import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import { chartHeightFor } from '@/components/ana/anaChartHeight'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import { iconFor } from '@/components/ds/icon'
-import { STATUS, fint, fnum, hues } from '@/components/ana/anaFmt'
+import { STATUS, esc, fint, fnum, hues } from '@/components/ana/anaFmt'
 import { bandSeries } from '@/components/ana/anaTheme'
 import { anaSettings } from '@/analysis/anaSettings'
 import { buildAnomalies, fetchAnomalyInputs, type AnaAnomaly, type AnomalyInputs } from '@/analysis/anaData'
@@ -80,8 +80,8 @@ const energyOption = computed<object | null>(() => {
       trigger: 'axis',
       formatter: (ps: TipRow[]) => {
         const rows = ps.filter((p) => p.seriesName === '电费' || p.seriesName === '水费')
-        return (rows[0]?.axisValueLabel ?? '') + rows.map((p) =>
-          `<br/>${p.marker ?? ''}${p.seriesName} <b>¥${fint(Number(p.value ?? 0))}</b>`).join('')
+        return esc(rows[0]?.axisValueLabel) + rows.map((p) =>
+          `<br/>${p.marker ?? ''}${esc(p.seriesName)} <b>¥${fint(Number(p.value ?? 0))}</b>`).join('')
       },
     },
     xAxis: { type: 'category', data: t.months, axisLabel: { fontSize: 11 } },

@@ -402,4 +402,70 @@ class PresenceStoreTest {
             .as("空闲 ≥20 分钟 → 走「直接接管」，不必惊动主管")
             .isTrue();
     }
+
+    // ══════════ 资源上限(安全审计 G4a / G4b) ══════════
+
+    /**
+     * 一个人的座位有上限,超了挤掉他自己最久没心跳的那个。原来 sid 由客户端给、不设限:
+     * 换着 sid 刷 ping 就能把座位表撑满。破坏验证:删掉 ping 里那段挤座位的循环 → 座位数断言红。
+     */
+    @Test
+    void seatsPerUserAreCapped_oldestOfThatUserGoesFirst() {
+        store.ping("other", "lisi", "李四", null, "/x", null, null, clock.instant());
+        for (int i = 0; i < PresenceStore.SEATS_PER_USER + 5; i++) {
+            store.ping("s" + i, "zhangsan", "张三", null, "/x", null, null, clock.instant());
+            clock.advance(Duration.ofSeconds(1));
+        }
+        var online = store.online();
+        assertThat(online.stream().filter(x -> x.user().equals("zhangsan")).count())
+            .isEqualTo(PresenceStore.SEATS_PER_USER);
+        assertThat(online.stream().map(PresenceStore.Seat::sid))
+            .as("挤掉的是他自己最早的那几个,别人的座位不动")
+            .contains("other", "s" + (PresenceStore.SEATS_PER_USER + 4))
+            .doesNotContain("s0");
+    }
+
+    /** 已有的 sid 再 ping 不算新座位,不会把自己挤掉。 */
+    @Test
+    void repingingTheSameSeatDoesNotEvictIt() {
+        for (int i = 0; i < PresenceStore.SEATS_PER_USER; i++)
+            store.ping("s" + i, "zhangsan", "张三", null, "/x", null, null, clock.instant());
+        store.ping("s0", "zhangsan", "张三", null, "/y", null, null, clock.instant());
+        assertThat(store.online()).hasSize(PresenceStore.SEATS_PER_USER);
+    }
+
+    /**
+     * 一小时没心跳的锁在下一次有人占锁时被清掉;原来陈旧锁永不清理,随机 scope 能让锁表只增不减。
+     * 破坏验证:删掉 acquire 里的 removeIf → 第一条断言红。
+     */
+    @Test
+    void locksSilentForAnHourAreForgottenOnNextAcquire() {
+        assertThat(store.acquire("junk:1", "zhangsan", "张三")).isNull();
+        clock.advance(Duration.ofMinutes(61));
+        store.acquire(SCOPE, "lisi", "李四");
+        assertThat(store.heartbeat("junk:1", "zhangsan", clock.instant()))
+            .as("锁已从表里删掉:原持有人下一拍收到「锁没了」,不会被静默续回来")
+            .isEqualTo(new PresenceStore.Eviction("junk:1", null, null, null));
+    }
+
+    /** 陈旧但不满一小时的锁,原持有人的心跳照样能续回来(笔记本合盖几分钟再打开)。 */
+    @Test
+    void staleUnderAnHourStillRevivesForTheHolder() {
+        assertThat(store.acquire("a:1", "zhangsan", "张三")).isNull();
+        clock.advance(Duration.ofMinutes(10));
+        store.acquire(SCOPE, "lisi", "李四");
+        assertThat(store.heartbeat("a:1", "zhangsan", clock.instant())).isNull();
+    }
+
+    /** 活锁计数:不含陈旧的、不含本人重入的那一把,不含别人的。 */
+    @Test
+    void liveLocksOfCountsOnlyMyLiveOnes() {
+        store.acquire("a:1", "zhangsan", "张三");
+        store.acquire("a:2", "zhangsan", "张三");
+        store.acquire("b:1", "lisi", "李四");
+        assertThat(store.liveLocksOf("zhangsan", "x")).isEqualTo(2);
+        assertThat(store.liveLocksOf("zhangsan", "a:1")).as("重入同一把不算新占").isEqualTo(1);
+        clock.advance(Duration.ofMinutes(4));
+        assertThat(store.liveLocksOf("zhangsan", "x")).as("陈旧的不算").isZero();
+    }
 }

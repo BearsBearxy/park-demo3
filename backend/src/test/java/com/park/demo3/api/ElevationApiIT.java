@@ -220,6 +220,32 @@ class ElevationApiIT extends AbstractMysqlIT {
         } finally { cleanup(clerk); cleanup(boss); cleanupParams(); }
     }
 
+    /**
+     * 登出再登录,授权就没了(ELEVATION-SPEC:登出即结束授权)。原来授权按账号存、熬过登出与重登,
+     * 只靠前端即发即弃的 DELETE /auth/elevate —— 而那一发没带令牌(安全审计 F88 / F01)。
+     * 破坏验证:删掉 UserPermissionCache.applySession 里那句 elevations.revokeAll → 最后一句拿到 0,红。
+     */
+    @Test
+    void logoutAndReloginEndTheGrant() throws Exception {
+        String a = admin();
+        String clerk = mkUser(a, "it-elev-c9", "finance_clerk");
+        String boss  = mkUser(a, "it-elev-b9", "finance_manager");
+        try {
+            String ct = login(clerk, PASS);
+            mvc.perform(post("/api/auth/elevate").header("Authorization", hdr(ct))
+                .contentType("application/json")
+                .content("{\"perms\":[\"param-policy:edit\"],\"authorizer\":\"" + boss + "\",\"password\":\"" + PASS + "\"}"))
+               .andExpect(status().isOk());
+            assertCode(put("/api/params").header("Authorization", hdr(ct))
+                .contentType("application/json").content(POLICY_BODY), 0);
+
+            mvc.perform(post("/api/auth/logout").header("Authorization", hdr(ct))).andExpect(status().isOk());
+            String again = login(clerk, PASS);
+            assertCode(put("/api/params").header("Authorization", hdr(again))
+                .contentType("application/json").content(POLICY_BODY), 403);
+        } finally { cleanup(clerk); cleanup(boss); cleanupParams(); }
+    }
+
     // ══════════ 当场 / 远程分得出来(ELEVATION-SPEC §4.5,画布 08 ElevStates「远程批准」)══════════
     // 授权卡片写「hh:mm 授权」还是「远程批准 · hh:mm 批准」全看 source;时间行用 grantedAt,不再拿到期 − 30 分钟去推。
     // 破坏验证:decide 改记 ONSITE → 远程那段红;GrantDTO 的 grantedAt 填 expiresAt → 当场那段红
@@ -268,6 +294,77 @@ class ElevationApiIT extends AbstractMysqlIT {
             long e1 = ((Number) JsonPath.read(now, "$.data[0].expiresAt")).longValue();
             assertThat(g1).as("批准时刻 = 主管点批准那一下").isBetween(t2, t3);
             assertThat(e1 - g1).isEqualTo(TTL_MS);
+        } finally { cleanup(clerk); cleanup(boss); }
+    }
+
+    /**
+     * 批准那一刻复核批准人现在的权限(安全审计 F24)。请求发出后主管被摘了角色,他收件箱里那条还在 ——
+     * 原来照样批得出去,失了权的人还能把这项借出 30 分钟。
+     * 破坏验证:删掉 ApprovalService.decide 里那段复核 → 批准拿到 0、专员有授权,红。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void approverWhoLostThePermissionCannotApprove() throws Exception {
+        String a = admin();
+        String clerk = mkUser(a, "it-elev-c6", "finance_clerk");
+        String boss  = mkUser(a, "it-elev-b6", "finance_manager");
+        try {
+            String ct = login(clerk, PASS);
+            String bt = login(boss, PASS);
+            String req = body(mvc.perform(post("/api/auth/approvals").header("Authorization", hdr(ct))
+                .contentType("application/json")
+                .content("{\"perms\":[\"param-policy:edit\"],\"approver\":\"" + boss
+                       + "\",\"page\":\"计费参数\",\"action\":\"修改计费口径\"}"))
+                .andExpect(status().isOk()).andReturn());
+            String id = JsonPath.read(req, "$.data.id");
+
+            // 管理员把主管改成只读(改角色不踢会话,他手上的令牌照样能用)
+            String users = body(mvc.perform(get("/api/system/users").param("q", boss)
+                .header("Authorization", hdr(a))).andReturn());
+            int bossId = ((List<Integer>) JsonPath.read(users, "$.data[*].id")).get(0);
+            mvc.perform(put("/api/system/users/" + bossId).header("Authorization", hdr(a))
+                .contentType("application/json")
+                .content("{\"displayName\":\"提权测试\",\"roleIds\":[" + roleIdOf(a, "viewer") + "]}"))
+               .andExpect(status().isOk());
+
+            assertCode(post("/api/auth/approvals/" + id).header("Authorization", hdr(bt))
+                .contentType("application/json").content("{\"approve\":true,\"password\":\"" + PASS + "\"}"), 403);
+            String now = body(mvc.perform(get("/api/auth/elevate").header("Authorization", hdr(ct)))
+                .andExpect(status().isOk()).andReturn());
+            assertThat((List<Object>) JsonPath.read(now, "$.data")).as("专员没有拿到授权").isEmpty();
+        } finally { cleanup(clerk); cleanup(boss); }
+    }
+
+    /**
+     * 批准时也复核请求人(2026-10-03 对抗复查):发出请求后被改成只读,主管照样批的话,就等于给降了权的人发了 30 分钟授权。
+     * 破坏验证:删掉 ApprovalService.decide 里请求人那段复核 → 批准拿到 0,红。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void requesterWhoWasDemotedCannotBeApproved() throws Exception {
+        String a = admin();
+        String clerk = mkUser(a, "it-elev-c7", "finance_clerk");
+        String boss  = mkUser(a, "it-elev-b7", "finance_manager");
+        try {
+            String ct = login(clerk, PASS);
+            String bt = login(boss, PASS);
+            String req = body(mvc.perform(post("/api/auth/approvals").header("Authorization", hdr(ct))
+                .contentType("application/json")
+                .content("{\"perms\":[\"param-policy:edit\"],\"approver\":\"" + boss
+                       + "\",\"page\":\"计费参数\",\"action\":\"修改计费口径\"}"))
+                .andExpect(status().isOk()).andReturn());
+            String id = JsonPath.read(req, "$.data.id");
+
+            String users = body(mvc.perform(get("/api/system/users").param("q", clerk)
+                .header("Authorization", hdr(a))).andReturn());
+            int clerkId = ((List<Integer>) JsonPath.read(users, "$.data[*].id")).get(0);
+            mvc.perform(put("/api/system/users/" + clerkId).header("Authorization", hdr(a))
+                .contentType("application/json")
+                .content("{\"displayName\":\"提权测试\",\"roleIds\":[" + roleIdOf(a, "viewer") + "]}"))
+               .andExpect(status().isOk());
+
+            assertCode(post("/api/auth/approvals/" + id).header("Authorization", hdr(bt))
+                .contentType("application/json").content("{\"approve\":true,\"password\":\"" + PASS + "\"}"), 409);
         } finally { cleanup(clerk); cleanup(boss); }
     }
 

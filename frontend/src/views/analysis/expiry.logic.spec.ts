@@ -133,6 +133,19 @@ describe('wallOption', () => {
   })
 })
 
+describe('paretoOption tooltip', () => {
+  // 自定义 formatter 的返回值按 innerHTML 渲染;租户名是库里的文本,有主数据编辑权的人能写任何东西进去。
+  // 破坏验证:去掉 paretoOption formatter 里的 esc(ps[0].name) → 原样的 <img> 出现,红(2026-10-03 安全审计 F47)
+  it('❗租户名里的 HTML 被转义,不进 innerHTML', () => {
+    const opt = paretoOption({ tenants: [], ids: [], rents: [], cumPct: [] }) as {
+      tooltip: { formatter: (ps: { name: string; seriesName: string; value: number }[]) => string }
+    }
+    const html = opt.tooltip.formatter([{ name: '<img src=x onerror=alert(1)>', seriesName: '月租金', value: 1 }])
+    expect(html).not.toContain('<img')
+    expect(html.startsWith('&lt;img src=x onerror=alert(1)&gt;<br/>')).toBe(true)
+  })
+})
+
 describe('合约租金带(FORECAST §1.1)', () => {
   // a1 在 2025-12 在租、2026-09 已到期(保证两个锚点算出不同的锁定线);a2 历史续签命中;
   // a3 历史未续签(active 但早已到期、无后续合同);a4 全程覆盖两个视界,不进抽样池。

@@ -293,7 +293,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
-   * 结束授权。退出编辑模式 / 主动点「结束授权」/ 登出都走这里。
+   * 结束授权。退出编辑模式 / 主动点「结束授权」走这里;登出不走 —— 服务端 /auth/logout 自己结束授权(UserPermissionCache.applySession)。
    * force=true 跳过「还有别的编辑页开着」的判断 —— 用户在授权卡片上主动点「结束授权」那一下就是 force。
    */
   async function endElevation(force = false) {
@@ -343,13 +343,14 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function logout() {
-    // ⚠ 顺序:先发结束授权的请求,再清令牌。反过来的话请求没有令牌可带,直接 401 ——
-    // 授权就留在服务端了,同一台电脑下一个人登进来白捡 30 分钟。
-    // 不 await:登出不能被一个网络请求卡住;服务端 30 分钟 TTL 兜底。
-    if (grants.value.length) api.delete('/auth/elevate').catch(() => { /* TTL 兜底 */ })
     // V125:告诉服务端这张令牌作废。改前只清本地,服务端不知情 —— 那张令牌在剩下的
-    // 有效期里仍然能用(最多 120 分钟)。同样不 await,理由同上;失败了也只是等它自己过期。
-    if (token.value) api.post('/auth/logout').catch(() => { /* 过期兜底 */ })
+    // 有效期里仍然能用(最多 120 分钟)。服务端登出时一并结束主管给的临时授权(UserPermissionCache.applySession),
+    // 不用另发 DELETE /auth/elevate。
+    // ⚠ 令牌必须**显式**带上:请求拦截器是异步执行的,等它去 storage 里读令牌,下面几行早把令牌清掉了 ——
+    //   原来这一发是不带令牌出门的,服务端回 401,登出从来没生效过(2026-10-03 安全审计 F01)。
+    // 不 await:登出不能被一个网络请求卡住;失败了也只是等它自己过期。
+    if (token.value)
+      api.post('/auth/logout', null, { headers: { Authorization: `Bearer ${token.value}` } }).catch(() => { /* 过期兜底 */ })
     // 一并清页签 / 最近访问持久化,避免共享机器上残留上一用户的页面清单
     if (me.value) clearTabStorage(me.value)
     token.value = null

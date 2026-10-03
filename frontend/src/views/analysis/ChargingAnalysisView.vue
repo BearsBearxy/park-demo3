@@ -16,7 +16,7 @@ import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import DatePicker from '@/components/ds/DatePicker.vue'
 import { iconFor } from '@/components/ds/icon'
-import { fnum, hues, inkA, STATUS, type AnaStatusLevel } from '@/components/ana/anaFmt'
+import { esc, fnum, hues, inkA, STATUS, type AnaStatusLevel } from '@/components/ana/anaFmt'
 import { anaPalette } from '@/components/ana/anaTheme'
 import { resolvedTheme } from '@/stores/appearance'
 import { cpMeterApi, type CpPowerUsageDTO, type CpReadingDTO, type CpStationDTO } from '@/api/cpMeter'
@@ -213,7 +213,7 @@ const donutTop = computed(() => (donutTotal.value > 0 ? Math.round(donutRows.val
 const donutOpt = computed<object>(() => ({
   tooltip: {
     formatter: (p: { name?: string; value?: number; percent?: number }) =>
-      `${p.name}<br/>¥${fnum(p.value ?? 0, 0)}(${p.percent}%)`,
+      `${esc(p.name)}<br/>¥${fnum(p.value ?? 0, 0)}(${p.percent}%)`,
   },
   legend: { top: 0 },
   series: [{

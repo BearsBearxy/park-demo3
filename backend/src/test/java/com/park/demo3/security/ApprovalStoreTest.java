@@ -204,7 +204,13 @@ class ApprovalStoreTest {
         boss.setUsername("boss-a");
         boss.setDisplayName("王主管");
         when(users.selectOne(any())).thenReturn(boss);
-        ApprovalService svc = new ApprovalService(store, mock(PresenceStore.class), mock(UserPermissionCache.class),
+        // 批准时复核两头此刻的权限(安全审计 F24):批准人仍持有这些权限点、请求人仍能请求授权
+        UserPermissionCache cache = mock(UserPermissionCache.class);
+        when(cache.get("boss-a")).thenReturn(new UserPermissionCache.UserAuth("boss-a", java.util.Set.copyOf(PERMS),
+            List.of(), List.of(), 1, "s1", null));
+        when(cache.get("zhangsan")).thenReturn(new UserPermissionCache.UserAuth("zhangsan", java.util.Set.of(Perm.ELEVATE_REQUEST),
+            List.of(), List.of(), 1, "s2", null));
+        ApprovalService svc = new ApprovalService(store, mock(PresenceStore.class), cache,
             mock(ElevationStore.class), mock(ElevationService.class), mock(AuditLogService.class), users, bell);
         SecurityContextHolder.getContext().setAuthentication(
             new UsernamePasswordAuthenticationToken("boss-a", null, List.of()));

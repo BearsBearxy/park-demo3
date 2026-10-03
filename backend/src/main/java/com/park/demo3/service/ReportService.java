@@ -233,7 +233,7 @@ public class ReportService {
             .in("row_key", toDelete));
     }
 
-    // ── 导入本期:每公司一段,公司名匹配 management_company(未匹配自动新建);per 公司 clear+insert 本期 ──
+    // ── 导入本期:每公司一段,公司名匹配 management_company(未匹配报错跳过);per 公司 clear+insert 本期 ──
     @Transactional
     public ImportResultDTO importRows(String statement, int year, int month, ReportImportRequest req) {
         checkStatement(statement);
@@ -241,32 +241,33 @@ public class ReportService {
             .collect(Collectors.toMap(ManagementCompany::getName, ManagementCompany::getId, (a, b) -> a));
         // 审核闸:**逐家**判,不是「任一家已审就整体拒」—— 后者会让一家公司审完之后,
         // 别的公司这个月再也导不进来(同 LedgerService.rechain 那条裁定:审掉 1 月不该
-        // 连 5 月都录不进去)。未匹配到公司的段会自动新建公司,新公司不可能有已审月,自然放行。
+        // 连 5 月都录不进去)。未匹配到公司的段下面直接报错跳过、一格不落,不用闸。
         // 复用上面这份 byName,不另起一趟全表查(QueryHygieneTest 会红,而且本来就是同一份数据)。
+        // ⚠ 闸和落库必须用同一个 nameOf 认公司:闸曾用原样名、落库用 trim 后的名,
+        //   「园区A 」在闸里查不到 → 不闸,落库时又认成园区A → 已审月被清空重写(2026-10-03 安全审计 F46)。
         if (req != null && req.sections() != null)
             for (ReportImportRequest.CompanySection sec : req.sections()) {
-                Integer cid = sec == null ? null : byName.get(sec.companyName());
+                String n = nameOf(sec);
+                Integer cid = n == null ? null : byName.get(n);
                 if (cid != null) assertEditable(statement, cid, year, month);
             }
         int imported = 0;
         List<ImportError> errors = new ArrayList<>();
-        List<ImportError> notices = new ArrayList<>();
         List<ReportImportRequest.CompanySection> sections = req == null || req.sections() == null ? List.of() : req.sections();
         for (int i = 0; i < sections.size(); i++) {
             ReportImportRequest.CompanySection sec = sections.get(i);
-            String name = sec.companyName() == null ? null : sec.companyName().trim();
+            String name = nameOf(sec);
             if (name == null || name.isEmpty()) {
-                errors.add(new ImportError(i, sec.companyName(), "公司名称为空"));
+                errors.add(new ImportError(i, sec == null ? null : sec.companyName(), "公司名称为空"));
                 continue;
             }
             Integer companyId = byName.get(name);
             if (companyId == null) {
-                // RBAC-SPEC §5.6:自动建档是既有能力(报表里出现新公司是正常业务),问题在于它**是静默的** ——
-                // 公司名多打一个空格或写了简称,就凭空多出一条管理公司档案,绕过 master:edit,
-                // 而且它随后会出现在台账公司下拉、收款账户簿、催缴单收款指引里,档案岗不知道它哪来的。
-                // 所以不禁止,只是让它出声:落 notices(不是 errors —— 导入本身是成功的)。
-                companyId = createCompany(name, byName);
-                notices.add(new ImportError(i, name, "库里没有这家公司,已自动建档。若是公司名写错,请去主数据删掉它"));
+                // RBAC-SPEC §5.6 原定修法:未匹配即报错。原来这里自动建公司 —— 那等于只有 report:edit 的人
+                // 绕过 company:manage 建了一家公司,而且不走 CompanyService.create,建出来的公司没有账册
+                // (2026-10-03 安全审计 F16)。新公司走公司下拉的「新增公司」。
+                errors.add(new ImportError(i, name, "库里没有这家公司，这一段没有导入"));
+                continue;
             }
             clearPeriod(companyId, statement, year, month);
             List<ReportImportRequest.Cell> cells = sec.cells() == null ? List.of() : sec.cells();
@@ -282,7 +283,12 @@ public class ReportService {
                         a.rowKey(), a.parentKey(), a.code(), a.label(), a.level(), a.sortOrder());
             }
         }
-        return new ImportResultDTO(imported, errors.size(), errors, notices);
+        return new ImportResultDTO(imported, errors.size(), errors);
+    }
+
+    /** 导入段认公司用的名字。审核闸和落库共用这一个,两处口径不许分开(F46)。 */
+    private static String nameOf(ReportImportRequest.CompanySection sec) {
+        return sec == null || sec.companyName() == null ? null : sec.companyName().trim();
     }
 
     // ── helpers ──
@@ -316,17 +322,6 @@ public class ReportService {
         a.setLevel(level == null ? 0 : level);
         a.setSortOrder(sortOrder == null ? 0 : sortOrder);
         accounts.insert(a);
-    }
-
-    // 自动新建公司(short 派生复用 CompanyService.deriveShort 规则)
-    private int createCompany(String name, Map<String, Integer> cache) {
-        ManagementCompany c = new ManagementCompany();
-        c.setName(name);
-        c.setShortName(CompanyService.deriveShort(name));
-        c.setSortNo(0);
-        companies.insert(c);
-        cache.put(name, c.getId());
-        return c.getId();
     }
 
     private String nextCustomKey(int companyId, String statement) {

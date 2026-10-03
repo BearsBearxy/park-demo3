@@ -50,6 +50,7 @@ const ACTION: Record<string, string> = {
   // auth_audit_log.action
   'user.create': '新建账号', 'user.update': '改账号', 'user.enable': '启用账号',
   'user.disable': '停用账号', 'user.reset-password': '重置密码', 'user.change-password': '修改密码',
+  'user.change-password.deny': '修改密码·旧密码错', 'user.change-password.locked': '修改密码·已锁定',
   'role.create': '新建角色', 'role.update': '改角色权限', 'role.delete': '删除角色',
   'lock.takeover': '接管编辑锁', 'lock.force-release': '强制解锁',
   'meter.delete': '删表',

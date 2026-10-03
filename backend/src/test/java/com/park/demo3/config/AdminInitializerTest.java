@@ -40,6 +40,31 @@ class AdminInitializerTest {
         return u;
     }
 
+    // ── admin 口令只覆盖种子(安全审计 F06) ──
+
+    private AuthUser admin(String password) {
+        AuthUser u = new AuthUser();
+        u.setUsername("admin"); u.setStatus(1);
+        u.setPasswordHash(enc.encode(password));
+        return u;
+    }
+
+    @Test
+    void adminStillOnSeedPasswordGetsTheEnvPassword() {
+        when(users.selectOne(any())).thenReturn(admin(AdminInitializer.SEED_PASSWORD));
+        new AdminInitializer(users, userRoles, roles, cache, enc, "admin", "from-env-123", "").run(null);
+        verify(users).updateById(org.mockito.ArgumentMatchers.<AuthUser>argThat(
+                u -> enc.matches("from-env-123", u.getPasswordHash())));
+    }
+
+    /** 破坏验证:去掉 resetAdmin 里「不是种子口令就跳过」那句 → updateById 被调到,红。 */
+    @Test
+    void adminWhoRotatedInAppIsNotResetBackToTheEnvPassword() {
+        when(users.selectOne(any())).thenReturn(admin("rotated-in-app-1"));
+        new AdminInitializer(users, userRoles, roles, cache, enc, "admin", "from-env-123", "").run(null);
+        verify(users, never()).updateById(any(AuthUser.class));
+    }
+
     @Test
     void blankPasswordCreatesNothing() {
         init("").run(null);

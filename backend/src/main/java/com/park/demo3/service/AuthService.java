@@ -29,9 +29,12 @@ public class AuthService {
     }
         @NoReviewGuard(reason = "会话,不是数据录入。进审核等于登录要先过闸,而闸的判定本身要先登录")
 public LoginResp login(LoginReq req) {
-        String key = LoginRateLimiter.key(clientIp(), req.username());
-        if (limiter.isLocked(key)) throw new BizException(ResultCode.TOO_MANY_REQUESTS);
         AuthUser u = users.selectOne(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getUsername, req.username()));
+        // 先查人,再用库里那份**规范用户名**组限流键:auth_user.username 的排序规则不分重音与全半角,
+        // 「ádmin」「ａdmin」都查得到 admin 那一行 —— 按原样输入组键的话每换一种写法就换一个桶,
+        // 5 次锁定形同虚设(2026-10-03 安全修复对抗复查)。查无此人才用输入值,那种桶锁不住任何真账号。
+        String key = LoginRateLimiter.key(clientIp(), u != null ? u.getUsername() : req.username());
+        if (limiter.isLocked(key)) throw new BizException(ResultCode.TOO_MANY_REQUESTS);
         // 停用的账号也按它自己的哈希比:密码对了才说「账号已停用」(10-01 照画布 06-E,规范 §2 第 13 条)。
         // 密码错一律「用户名或密码错误」—— 拿不出密码的人从这里分不出账号是停用还是不存在,不给枚举口。
         boolean pwOk = enc.matches(req.password(), u != null ? u.getPasswordHash() : DUMMY_HASH);
@@ -70,8 +73,9 @@ public LoginResp login(LoginReq req) {
         return new MeResp(me, ua.perms().stream().sorted().toList(), ua.navLayers(), ua.roleNames());
     }
 
-    // 取 XFF 首段(nginx 用 $proxy_add_x_forwarded_for 透传)。首段是客户端自报值、可伪造,
-    // 所以 IP 只是尽力而为的分桶维度,不是身份。
+    // 取 XFF 首段。frontend/nginx.conf 只信 docker 内网(Caddy)给的 XFF,并把它重写成单个真实 IP 再转过来
+    // (2026-10-03 起;原来用 $proxy_add_x_forwarded_for 追加,首段是客户端自报值、可伪造)。
+    // 后端本身没有对外端口,所以这里看到的 XFF 一定是 nginx 写的。IP 仍只是尽力而为的分桶维度,不是身份。
     // ponytail: 上限——换 IP 就能换桶,分布式爆破挡不住;键里带 username 保证的是「同源刷同一账号」必被锁。
     //           要真正封住得上账号级锁定或验证码,但那会引入被人拿用户名锁真人的拒绝服务面,本轮不做。
     private String clientIp() {
