@@ -6,6 +6,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
+import { useViewGate } from '@/composables/useViewGate'
 import { onReactivated } from '@/composables/onReactivated'
 import { useViewport } from '@/composables/useViewport'
 import AnaShell from './AnaShell.vue'
@@ -38,7 +39,10 @@ const moreOpen = ref(false)
 
 const router = useRouter()
 // 到期清单点一行 → 合同管理定位这一份。页面里的链接 = 新页签紧挨本页右边(TAB-BAR-SPEC §2)
+// 整行点击没法置灰:没有目标屏的查看权,点了说一句原因不跳(RBAC v3)
+const { blocked } = useViewGate()
 function goContract(contractNo: string) {
+  if (blocked('/contracts')) return
   useTabsStore().open('contracts', { pin: true })
   router.push({ path: '/contracts', query: { contractNo } })
 }

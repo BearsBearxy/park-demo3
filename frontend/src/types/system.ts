@@ -1,11 +1,15 @@
 // 系统管理(RBAC-SPEC §10 P1)DTO —— 与后端 /api/system/** 契约一一对应。
 // 读也要管:GET 需 system:view,非 GET 需 system:edit(RBAC-SPEC §5.1)。
 
-/** 13 个权限点之一(顺序由后端 Perm.ALL 决定,前端不排序) */
+/** 权限点之一(顺序由后端 Perm.ALL 决定,前端不排序) */
 export interface PermDTO {
   key: string
   label: string
   hint: string
+  /** 所属模块(RBAC v3):master contract param meter billing entry salary report analysis system other。旧后端不带 → 按 other */
+  group?: string
+  /** view = 模块查看;edit = 模块编辑(包含查看);other = 不属于哪个模块的(审核、编辑锁、提权)。旧后端不带 → 按 other */
+  kind?: 'view' | 'edit' | 'other'
 }
 
 /** 3 个业务导航层:data / reports / analysis(与 fpNav.ts 的 NavLayer.id 同值) */

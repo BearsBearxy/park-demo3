@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-// ⚠ 必须是 GET。SecurityConfig 的「读全开」只覆盖 GET;换成 POST 会掉进
+// ⚠ 必须是 GET。读规则表里 /api/zones 任何已登录可读,只覆盖 GET;换成 POST 会掉进
 // PermissionRegistry 的 catch-all,拿到一个语义不对的写权限。
 @Tag(name = "期区")
 @RestController

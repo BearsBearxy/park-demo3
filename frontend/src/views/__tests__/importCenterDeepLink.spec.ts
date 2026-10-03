@@ -42,7 +42,8 @@ const vmOf = (w: { vm: unknown }) => w.vm as Vm
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['entry:edit']
+  // 后端给的是展开后的权限集(编辑隐含同组查看);「去查看」要目标屏的查看权,附表12 另要工资查看
+  useAuthStore().permissions = ['entry:edit', 'entry:view', 'salary:view']
   vi.clearAllMocks()
   for (const k of Object.keys(query)) delete query[k]
   vi.setSystemTime(new Date('2025-06-15T00:00:00'))
@@ -133,6 +134,17 @@ describe('导入中心 · 导后「去查看」', () => {
     await runVia(w, 'salary', {}, [{ year: 2025, month: 4, records: [] }], 'salary.xlsx')
     await footBtn(w, '去查看')!.trigger('click')
     expect(push).toHaveBeenLastCalledWith({ path: '/salary', query: { p: '2025-04' } })
+  })
+
+  // RBAC v3:财务专员有 entry:edit 能导工资,却没有工资查看(V134 只给系统管理员和财务主管)。
+  // 破坏验证:runEntry 里 canViewPage 那一判去掉 → 红(原来点了就落「无权查看」页)
+  it('❗看不了目标屏(导工资但没有工资查看)不给「去查看」,结果卡照旧', async () => {
+    useAuthStore().permissions = ['entry:edit', 'entry:view']
+    const w = await open()
+    await runVia(w, 'salary', {}, [{ year: 2025, month: 4, records: [] }], 'salary.xlsx')
+    expect(w.find('.irc').exists()).toBe(true)
+    expect(footBtn(w, '去查看')).toBeUndefined()
+    expect(footBtn(w, '知道了')).toBeTruthy()
   })
 
   it('期读不出来的类型(附13 平铺行)没有「去查看」,结果卡照旧', async () => {

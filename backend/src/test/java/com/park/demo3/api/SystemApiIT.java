@@ -127,13 +127,13 @@ class SystemApiIT extends AbstractMysqlIT {
     void cannotStripOwnSystemEdit() throws Exception {
         String t = admin();
         int adminRoleId = roleIdOf(t, "admin");
-        // 把 admin 角色的权限改成"只剩一项主数据" → 等于摘掉自己的 system:edit，保存后进不了这个页面
+        // 把 admin 角色的权限改成"只剩一项主数据" → 等于摘掉自己的 system:edit，保存后改不了账号和角色
         String body = utf8(mvc.perform(put("/api/system/roles/" + adminRoleId)
                 .header("Authorization", hdr(t)).contentType("application/json")
                 .content("{\"name\":\"系统管理员\",\"navLayers\":[\"data\"],\"perms\":[\"master:edit\"]}")
         ).andExpect(status().isOk()).andReturn());
         assertThat((int) JsonPath.read(body, "$.code")).isEqualTo(409);
-        assertThat((String) JsonPath.read(body, "$.message")).contains("再也进不了这个页面");
+        assertThat((String) JsonPath.read(body, "$.message")).contains("不能再改账号和角色");
     }
 
     @Test
@@ -212,7 +212,7 @@ class SystemApiIT extends AbstractMysqlIT {
                     .contentType("application/json").content("{}"))
                .andExpect(status().isForbidden());          // 没有 master:edit → 403
             mvc.perform(get("/api/tenants").header("Authorization", hdr(nt)))
-               .andExpect(status().isOk());                 // 读全开
+               .andExpect(status().isOk());                 // V134 给专员的 master:view
         } finally {
             cleanup(uname);
         }
@@ -231,7 +231,8 @@ class SystemApiIT extends AbstractMysqlIT {
         int id = JsonPath.read(created, "$.data.id");
         try {
             String victim = login(uname, "init-pass-123");
-            mvc.perform(get("/api/tenants").header("Authorization", hdr(victim)))
+            // 没挂角色 = 零权限,v3 起业务 GET 一律 403(读也默认拒绝);用任何已登录都能读的 /auth/me 当靶子
+            mvc.perform(get("/api/auth/me").header("Authorization", hdr(victim)))
                .andExpect(status().isOk());
 
             mvc.perform(post("/api/system/users/" + id + "/status").header("Authorization", hdr(t))
@@ -239,7 +240,7 @@ class SystemApiIT extends AbstractMysqlIT {
                .andExpect(status().isOk());
 
             // 同一个令牌，仍在有效期内 → 401
-            mvc.perform(get("/api/tenants").header("Authorization", hdr(victim)))
+            mvc.perform(get("/api/auth/me").header("Authorization", hdr(victim)))
                .andExpect(status().isUnauthorized());
         } finally {
             cleanup(uname);

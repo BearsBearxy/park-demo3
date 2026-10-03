@@ -111,6 +111,14 @@ describe('loadDeriveData — 并行管道 + 序列键', () => {
     expect(data['sal|base']?.[0]).toBe(1000)
   })
 
+  // RBAC v3:工资明细只给 salary:view(只有报表查看权的股东拿不到)。破坏验证:pnlDerive 里 opts.salary 的判断去掉 → 红
+  it('❗没有工资查看权:那 12 个请求不发,工资派生不出键,别的源照算', async () => {
+    const data = await loadDeriveData(2025, { salary: false })
+    expect(vi.mocked(salaryApi.records)).not.toHaveBeenCalled()
+    expect(data['sal|lunch']).toBeUndefined()
+    expect(data['office|elecAmt']?.[0]).toBe(500)
+  })
+
   it('某源 reject → 相关键缺失、其余源不受影响、不抛(allSettled)', async () => {
     vi.mocked(s10Api.yearSummary).mockRejectedValue(new Error('boom'))
     const data = await loadDeriveData(2025)

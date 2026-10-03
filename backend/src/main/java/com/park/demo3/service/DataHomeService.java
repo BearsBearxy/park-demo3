@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.park.demo3.dto.*;
 import com.park.demo3.entity.*;
 import com.park.demo3.mapper.*;
+import com.park.demo3.security.Perm;
+import com.park.demo3.security.SensitiveMask;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -122,7 +124,9 @@ public class DataHomeService {
             new DataHomeOverviewDTO.Period(year, month, year + "年" + month + "月"),
             months,
             buildBlockers(contractNoLine, paramStale, ps.staleSources()),
-            buildChain(ps.priceOk(), ps.priceTotal(), readings, pool, loss, notices.size(), noticeTotal, noticeWarn,
+            // 本月出账对数据层任一 view 开放,催缴单总额另按 billing:view 判:没有就只报张数(RBAC-SPEC §11 规则 5)
+            buildChain(ps.priceOk(), ps.priceTotal(), readings, pool, loss, notices.size(),
+                SensitiveMask.holds(Perm.BILLING_VIEW) ? noticeTotal : null, noticeWarn,
                 (nym.startsWith(ym.substring(0, 4)) ? "" : nym.substring(0, 4) + "年")   // 12 月那批的单在次年
                     + Integer.parseInt(nym.substring(5, 7)) + "月的单"),
             new DataHomeOverviewDTO.Schedules(done, 13, items));
@@ -338,7 +342,8 @@ public class DataHomeService {
             lossGenerated ? "" : "未生成",
             // noticeLabel =「9月的单」:本月读数出在下个月的单上,不写出来会被读成本月的单
             (noticeLabel == null ? "" : noticeLabel + " · ") + (noticeCount > 0
-                ? noticeCount + " 张 · ¥" + noticeTotal.setScale(2, RoundingMode.HALF_UP).toPlainString()
+                ? noticeCount + " 张" + (noticeTotal == null ? ""
+                    : " · ¥" + noticeTotal.setScale(2, RoundingMode.HALF_UP).toPlainString())
                   + (noticeWarn > 0 ? " · " + noticeWarn + " 张有警告" : "")
                 : "未生成"),
         };

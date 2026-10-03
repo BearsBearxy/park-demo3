@@ -12,7 +12,7 @@ export const booksApi = {
   // 带 year/month:current 标的是该月生效版,而不是链尾(否则面板头部下拉与右侧列表互相矛盾)
   versions: (bookId: number, year?: number, month?: number): Promise<{ versions: TemplateVersion[] }> =>
     http.get(`/books/${bookId}/template/versions`, { params: { year, month } }),
-  // 历史版本定义(只读预览列名与布局;GET 读全开,查看不需要 book-template:edit)
+  // 历史版本定义(只读预览列名与布局;GET 要 entry:view(RBAC v3),查看不需要 book-template:edit)
   versionDefinition: (bookId: number, ver: number): Promise<BookDef> =>
     http.get(`/books/${bookId}/template/versions/${ver}`),
   // 某月生效的模板(按 pin 解析:本月 → 最近更早月 → 链尾)

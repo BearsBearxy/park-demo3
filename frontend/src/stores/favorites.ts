@@ -5,6 +5,7 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { fpBuildRoutes } from '@/nav/fpNav'
+import { canViewPage } from '@/nav/navAccess'
 import { useAuthStore } from '@/stores/auth'
 
 /** 最多收藏几个:首页两行 × 6 格。 */
@@ -24,7 +25,8 @@ export const useFavoritesStore = defineStore('favorites', () => {
     const raw = localStorage.getItem(key(who))
     if (raw == null) {
       const home = auth.roleHome.slice(1)
-      list.value = ROUTES[home] ? [home] : []
+      // 预置的那一屏得看得了(RBAC v3):roleHome 只看导航层,不看查看权
+      list.value = ROUTES[home] && canViewPage(home, auth.can) ? [home] : []
       seeded.value = true
       save()
       return

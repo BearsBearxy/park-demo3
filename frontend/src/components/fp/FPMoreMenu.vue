@@ -11,7 +11,8 @@ import { MoreHorizontal } from 'lucide-vue-next'
 import Button from '@/components/ds/Button.vue'
 import { iconFor } from '@/components/ds/icon'
 
-export interface MoreItem { key: string; label: string; icon?: string; disabled?: boolean; danger?: boolean }
+/** tip:置灰时悬停写明为什么(比如缺哪一项权限) */
+export interface MoreItem { key: string; label: string; icon?: string; disabled?: boolean; danger?: boolean; tip?: string }
 
 const props = defineProps<{ items: MoreItem[]; label?: string; icon?: string }>()
 const emit = defineEmits<{ (e: 'select', key: string): void }>()
@@ -63,7 +64,7 @@ function pick(it: MoreItem) {
     </button>
     <div v-if="open" class="fp-more-pop" :class="{ start: !!props.label }" role="menu">
       <button v-for="it in props.items" :key="it.key" class="fp-more-item" :class="{ danger: it.danger }"
-              role="menuitem" :disabled="it.disabled" @click="pick(it)">
+              role="menuitem" :disabled="it.disabled" v-tip="it.tip ?? ''" @click="pick(it)">
         <component :is="iconFor(it.icon ?? 'circle')" v-if="it.icon" :size="props.label ? 16 : 14" />
         {{ it.label }}
       </button>

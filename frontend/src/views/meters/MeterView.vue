@@ -85,7 +85,7 @@ const isM = computed(() => tier.value === 'm')
 const isSM = computed(() => isS.value || isM.value)
 /** S 档底部面板:'filter' = 收进去的筛选件;'more' = 摘要行里值为 0 的那几样。 */
 const panel = ref<'' | 'filter' | 'more'>('')
-// RBAC v2(读全开写分权):抄读数与改表档案是两把权限,别一刀切 ——
+// RBAC 写分权(v3 读另由 meter:view 管):抄读数与改表档案是两把权限,别一刀切 ——
 // 读数(录入/导入/批量删本期)= meter-reading:edit;表档案(新增表/一键挂/抽屉里的倍率绑定删表)= meter-master:edit。
 // 无权只是不出写按钮,数据照常全显。
 const canReading = computed(() => auth.can('meter-reading:edit'))

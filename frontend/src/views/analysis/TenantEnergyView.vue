@@ -10,6 +10,7 @@ import { useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
+import { useViewGate } from '@/composables/useViewGate'
 import AnaShell, { periodNote } from './AnaShell.vue'
 import { usePeriod } from '@/analysis/usePeriod'
 import { anaSettings } from '@/analysis/anaSettings'
@@ -290,6 +291,8 @@ const selCompany = computed(() => {
   const rs = ledgerRows.value.filter((r) => r.tenantName === name)
   return rs.length ? rs[rs.length - 1].companyName : ''
 })
+// 跳到模块屏的入口:没有目标屏的查看权就置灰、悬停写明缺哪一项(RBAC v3)
+const { lack } = useViewGate()
 function goLedger() {
   if (!selRow.value || !ledgerYm.value) return
   tabs.openDeep('ledger')
@@ -458,8 +461,8 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
               <!-- §五策略2:所选期无台账 → 台账期回退,卡头标签(画布 06-D,禁静默) -->
               <span class="t">{{ selRow?.name ?? '—' }} · 应收 vs 实收<FPStateTag v-if="ledgerFallback" tone="muted" style="margin-left: 8px">显示 {{ ledgerYm }}</FPStateTag></span>
               <span class="te2-links">
-                <button class="te2-link" :disabled="!ledgerYm" @click="goLedger">查台账 →</button>
-                <button class="te2-link" :disabled="!curYm" @click="goS10">查附表10 →</button>
+                <button class="te2-link" :disabled="!ledgerYm || !!lack('/ledger')" v-tip="lack('/ledger')" @click="goLedger">查台账 →</button>
+                <button class="te2-link" :disabled="!curYm || !!lack('/sales-income')" v-tip="lack('/sales-income')" @click="goS10">查附表10 →</button>
               </span>
             </div>
             <template v-if="ledgerYms.length">

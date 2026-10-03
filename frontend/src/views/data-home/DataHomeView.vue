@@ -41,6 +41,7 @@ import { CHAIN, pipsOf, chainLabel, noticeYmOf } from '@/nav/billingChain'
 import { buildYearRows, inYearWindow } from '@/utils/matrixYears'
 import { rowsOf, closeChecks } from './monthClose.logic'
 import type { CloseRow, CloseChip } from './monthClose.logic'
+import { useViewGate } from '@/composables/useViewGate'
 
 
 const router = useRouter()
@@ -50,6 +51,8 @@ const period = useBillingPeriodStore()
 const presence = usePresenceStore()
 const review = useReviewStore()
 const CHAIN_VALUES = new Set(CHAIN.map(c => c.value))
+// RBAC v3:跳到没有查看权的屏 —— 行不显示成可点、悬停写缺哪一项;点了说一句原因、不跳(go / goEditor 里拦)
+const { lack, blocked } = useViewGate()
 
 /** **本标签页**正握着的出账链 / 抄表锁里的期。只用来判「要不要问」;问的时候写哪一页、几处改动由页签条给(titleOf / dirtyOf)。 */
 function myChainLockPeriods(): string[] {
@@ -88,7 +91,7 @@ const editors = computed(() => {
 // 落到目标屏的默认子视图,而那里恰恰没有人在编辑。⚠ co 照实传字符串,别转 number:
 // 转一道只会给非数字期区制造 NaN。
 async function goEditor(t: ReturnType<typeof scopeTarget>) {
-  if (!t || !(await confirmRebuild(t.v))) return
+  if (!t || blocked('/' + t.v) || !(await confirmRebuild(t.v))) return
   // 页面里的链接 = 新页签紧挨本页右边(TAB-BAR-SPEC §2),本月出账不被换掉
   tabsStore.openDeep(t.v)
   router.push(t.p ? periodLink(t.v, { p: t.p, co: t.co, extra: t.tab ? { tab: t.tab } : undefined }) : '/' + t.v)
@@ -163,6 +166,9 @@ function confirmRebuild(v: string): Promise<boolean> {
   return tabsStore.leaveOk(CHAIN_VALUES.has(v) ? [...CHAIN_VALUES] : [v], '重新打开')
 }
 async function go(v: string, tag = '', co?: number | 'all') {
+  // 清单行、当前步大卡、待处理面板、chip 都走这里:没有目标屏的查看权(比如没有「工资 · 查看」点附表12)
+  // 不送进「无权查看」页,就地说一句缺哪一项
+  if (blocked('/' + v)) return
   // 用户刚在下拉里选的月优先于服务端回包(回包在途时也按他选的走);没选过才用锚定月
   const ym = shownYm.value
   const p = ym ? { year: +ym.slice(0, 4), month: +ym.slice(5, 7) } : null
@@ -272,7 +278,8 @@ async function loadRecon(ym: string) {
   // 「新月已上屏、新回包还没到」这段空窗 —— 不清的话这一行会在整年 12 个月重跑核对的窗口里,
   // 挂着上一个月的 ✓/○,与已经换好月的其余行(链五步/附表)对不上。
   recon.value = null
-  if (!ym) return
+  // 收入核对归报表(RBAC v3):没有报表查看权就不发,这一行照 hasData 闸显「—」(同取数失败)
+  if (!ym || !auth.can('report:view')) return
   const year = +ym.slice(0, 4)
   const month = +ym.slice(5, 7)
   const res = await reconApi.overview(year).catch(() => null)
@@ -576,7 +583,8 @@ const bookingRows = computed(() => shown('booking'))
           <h3 class="dh-h3">出账链</h3>
           <ul class="dh-rows">
             <li v-for="r in billingRows" :key="r.key" class="dh-row dh-row-billing"
-                :class="{ 'dh-row-clickable': r.go }" :data-state="r.state" @click="r.go && go(r.go, r.tag)">
+                :class="{ 'dh-row-clickable': r.go && !lack('/' + r.go) }" v-tip="r.go ? lack('/' + r.go) : ''"
+                :data-state="r.state" @click="r.go && go(r.go, r.tag)">
               <span class="dh-rdot">{{ dotOf(r.state) }}</span>
               <span class="dh-rlabel">{{ r.label }}</span>
               <span v-if="r.tag" class="dh-rtag">{{ r.tag }}</span>
@@ -629,7 +637,8 @@ const bookingRows = computed(() => shown('booking'))
           <h3 class="dh-h3">附表录入 <span class="dh-h3n">{{ checks.byCol.booking.done }}/{{ checks.byCol.booking.total }}</span></h3>
           <ul class="dh-rows">
             <li v-for="r in bookingRows" :key="r.key" class="dh-row dh-row-booking"
-                :class="{ 'dh-row-clickable': r.go }" :data-state="r.state" @click="r.go && go(r.go, r.tag)">
+                :class="{ 'dh-row-clickable': r.go && !lack('/' + r.go) }" v-tip="r.go ? lack('/' + r.go) : ''"
+                :data-state="r.state" @click="r.go && go(r.go, r.tag)">
               <span class="dh-rdot">{{ dotOf(r.state) }}</span>
               <span class="dh-rlabel">{{ r.label }}</span>
               <span v-if="r.tag" class="dh-rtag">{{ r.tag }}</span>

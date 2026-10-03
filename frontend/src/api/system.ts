@@ -8,7 +8,7 @@ import type {
 // ⚠ 没有 DELETE /system/users —— 账号只停用不删除(§8):名下有导入记录、系数簿修改历史、
 //   审核痕迹,真删了这些记录成孤儿,追责链断掉。UI 上一律写「停用」。
 export const systemApi = {
-  /** GET /api/system/perms → 13 个权限点 + 3 个导航层的人话标签 */
+  /** GET /api/system/perms → 全部权限点(带模块键与查看 / 编辑种类)+ 3 个导航层的人话标签 */
   perms: (): Promise<PermsMetaDTO> => http.get('/system/perms'),
 
   /** GET /api/system/roles → 角色(含 userCount);builtin=1 的 6 个预置角色不可删 */

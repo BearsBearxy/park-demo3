@@ -9,6 +9,7 @@ import { useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
+import { useViewGate } from '@/composables/useViewGate'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
@@ -110,7 +111,12 @@ const empty = computed(() => !myReadings.value.length)
 // 图1 点桩柱:seriesName = 桩名 → 桩 id,dataIndex = 月;环图 / 费率图点的是运营商,没有桩也没有月 → 只发 mode + 年。
 // 改前裸 push 不带参(假下钻:到门为止)。openFresh 页签语义不变(spec §4.1)。
 const navValue = computed(() => (tab.value === 'ebike' ? 'ebike-charging' : 'car-charging'))
+// 跳到模块屏的入口:没有目标屏的查看权就置灰、悬停写明缺哪一项;图上的点、整行点击没法置灰,点了说一句原因不跳(RBAC v3)
+const { lack, blocked } = useViewGate()
+// 分桩明细是那一屏的 mode=meter,只认抄表查看权(nav/navAccess MODE_VIEW)
+const detailTo = computed(() => `/${navValue.value}?mode=meter`)
 function goDetail(p?: unknown): void {
+  if (blocked(detailTo.value)) return
   const e = p as { seriesName?: string; dataIndex?: number } | undefined
   const st = myStations.value.find((s) => s.name === e?.seriesName)
   const month = st && e?.dataIndex != null ? e.dataIndex + 1 : null
@@ -378,7 +384,7 @@ const lossOpt = computed<object>(() => ({
           <span v-for="(c, i) in conclusion" :key="i" class="ca-cs">
             <span class="dot" :style="{ background: STATUS[c.tone].color }"></span>{{ c.text }}
           </span>
-          <button class="ca-cs lk" @click="goDetail">查看分桩明细 →</button>
+          <button class="ca-cs lk" :disabled="!!lack(detailTo)" v-tip="lack(detailTo)" @click="goDetail">查看分桩明细 →</button>
         </div>
 
         <!-- 汽车 / 电动车是段控换档(2026-09-16 矩阵「切子屏」):两套不相干的桩,不做跨桩形变 ——
@@ -458,6 +464,7 @@ const lossOpt = computed<object>(() => ({
 .ca-cs .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 .ca-cs.lk { cursor: pointer; color: var(--text-link); }
 .ca-cs.lk:hover { text-decoration: underline; }
+.ca-cs.lk:disabled { color: var(--text-disabled); cursor: default; text-decoration: none; }
 
 /* S 档「更多分析」折叠条(只在 isS 时渲染,>600 没有这个节点)。
    字号回阶梯:标签 14(--fs-body)、说明与计数 12(--fs-label);min-height 44 = 触点。 */

@@ -46,7 +46,8 @@ const subOp = ([a, b]: (number | null)[]): number | null =>
   (a === null && b === null ? null : (a ?? 0) - (b ?? 0))
 
 // 按年懒加载入口(缓存由调用方 per year 持有,G6)
-export async function loadDeriveData(year: number): Promise<DeriveData> {
+// salary=false:调用者没有工资查看权(RBAC v3,工资明细只给 salary:view)—— 那 12 个请求不发,餐补那一项派生不显示
+export async function loadDeriveData(year: number, opts: { salary?: boolean } = {}): Promise<DeriveData> {
   const data: DeriveData = {}
   const jobs: Promise<void>[] = [
     // s10 年聚合:phase→colId→12月Σ 直通 s10|p{n}|{colId}
@@ -87,7 +88,7 @@ export async function loadDeriveData(year: number): Promise<DeriveData> {
       }
     }),
     // 工资 ×12 月并行:各字段月 Σ(取后端 total;无行月保持 null;MAP 只用 lunch)
-    ...Array.from({ length: 12 }, (_, m) => salaryApi.records(year, m + 1).then(dto => {
+    ...Array.from({ length: opts.salary === false ? 0 : 12 }, (_, m) => salaryApi.records(year, m + 1).then(dto => {
       if (!dto.rows?.length) return
       for (const [k, v] of Object.entries(dto.total ?? {}))
         if (typeof v === 'number') acc(data, `sal|${k}`, m, v)

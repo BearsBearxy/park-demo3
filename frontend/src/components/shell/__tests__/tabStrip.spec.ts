@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { useTabsStore, HOME, NEWTAB } from '@/stores/tabs'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
+import { ALL_VIEWS } from '@/test-utils/perms'
 
 const route = reactive({ meta: { value: 'ledger' } as Record<string, string>, path: '/ledger' })
 // push 桩 = 导航立刻落定:改路由 + 走一遍 afterEach(页签条只在导航落定后兑现登记)
@@ -61,7 +62,7 @@ beforeEach(() => {
   localStorage.clear()
   const auth = useAuthStore()
   auth.me = 'zhou'
-  auth.permissions = ['ledger:edit']
+  auth.permissions = ['ledger:edit', ...ALL_VIEWS]   // RBAC v3:没有查看权的屏不留在页签条上
   route.meta = { value: 'ledger' }
   route.path = '/ledger'
   push.mockClear()

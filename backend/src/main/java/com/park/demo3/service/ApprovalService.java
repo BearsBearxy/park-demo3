@@ -65,6 +65,8 @@ public class ApprovalService {
     /** 能批这几个权限点的同事。在线的排前面 —— 挑一个不在线的人等于白等两分钟。 */
     public List<AuthorizerDTO> candidates(List<String> perms) {
         List<String> want = clean(perms);
+        // 不可提权的点没人批得了;不拦的话这里就成了「谁有 salary:view」的花名册,任何已登录账号都能查
+        want.forEach(ApprovalService::requireElevatable);
         String me = me();
         Map<String, PresenceStore.Seat> seats = presence.online().stream()
             .collect(Collectors.toMap(PresenceStore.Seat::user, Function.identity(), (a, b) -> a));
@@ -91,12 +93,7 @@ public class ApprovalService {
         List<String> perms = clean(req.perms());
         for (String p : perms) {
             if (!Perm.exists(p)) throw new BizException(ResultCode.BAD_REQUEST, "未知权限点:" + p);
-            // 与当场授权同一张不可提权名单 —— 换条路径不该换规矩，
-            // 否则 system:* 就有了一个绕过去的后门。
-            if (!Perm.elevatable(p)) {
-                throw new BizException(ResultCode.FORBIDDEN,
-                    "「" + Perm.label(p) + "」不能靠授权获得，必须本人登录自己的账号去改。");
-            }
+            requireElevatable(p);
         }
         if (isBlank(req.approver())) throw new BizException(ResultCode.BAD_REQUEST, "没有选择授权人");
         if (req.approver().equals(me())) throw new BizException(ResultCode.CONFLICT, "不能请自己授权");
@@ -205,6 +202,14 @@ public void decide(String id, DecideReq req) {
     private static List<String> clean(List<String> perms) {
         if (perms == null || perms.isEmpty()) throw new BizException(ResultCode.BAD_REQUEST, "没有要授权的权限");
         return List.copyOf(new LinkedHashSet<>(perms));
+    }
+
+    /** 与当场授权同一张不可提权名单 —— 换条路径不该换规矩,否则 system:* 就有了一个绕过去的后门。 */
+    private static void requireElevatable(String p) {
+        if (Perm.exists(p) && !Perm.elevatable(p)) {
+            throw new BizException(ResultCode.FORBIDDEN,
+                "「" + Perm.label(p) + "」不能靠授权获得，必须本人登录自己的账号去改。");
+        }
     }
 
     private static boolean isBlank(String s) { return s == null || s.isBlank(); }

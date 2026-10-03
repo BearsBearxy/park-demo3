@@ -5,6 +5,8 @@ import com.park.demo3.common.BizException; import com.park.demo3.common.ResultCo
 import com.park.demo3.dto.*;
 import com.park.demo3.entity.*;
 import com.park.demo3.mapper.*;
+import com.park.demo3.security.Perm;
+import com.park.demo3.security.SensitiveMask;
 import com.park.demo3.security.NoReviewGuard;
 import com.park.demo3.security.ReviewGuard;
 import com.park.demo3.security.ReviewKind;
@@ -75,7 +77,8 @@ public class TenantService {
 
     @NoReviewGuard(reason = "tenant 表无 ym 列;parent_id(familyRoots)与 aliases(matchNames)只影响读侧现算与下一次 generate,已审月的 bill_notice_line.contract_id 是出账时的快照;改名后已审月台账按 tenant_id 关联显示新名而金额不动,是「改名就该到处生效」的正常语义")
     public TenantDTO update(Integer id, TenantUpdateReq req) {
-        if (tenants.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "租户不存在");
+        Tenant cur = tenants.selectById(id);
+        if (cur == null) throw new BizException(ResultCode.NOT_FOUND, "租户不存在");
         if (tenants.selectCount(new QueryWrapper<Tenant>()
                 .eq("company_name", req.companyName()).ne("id", id)) > 0)
             throw new BizException(ResultCode.CONFLICT, "租户名称已存在");
@@ -85,10 +88,13 @@ public class TenantService {
         // PUT 全量语义:可空字段允许清空,用 UpdateWrapper 显式 set(updateById 会跳过 null 字段)
         tenants.update(null, new UpdateWrapper<Tenant>().eq("id", id)
             .set("company_name", req.companyName()).set("business_type", req.businessType())
-            .set("contact_name", req.contactName()).set("contact_phone", req.contactPhone())
+            // 提交的是现值的掩码 = 没改(没有 master:view 的人表单里回填的就是掩码,RBAC-SPEC §11 规则 5)
+            .set("contact_name", SensitiveMask.keepIfMasked(req.contactName(), cur.getContactName(), SensitiveMask::name))
+            .set("contact_phone", SensitiveMask.keepIfMasked(req.contactPhone(), cur.getContactPhone(), SensitiveMask::phone))
             .set("category_id", req.categoryId()).set("phase", req.phase())
             .set("since", req.since()).set("remark", req.remark()).set("status", req.status())
-            .set("parent_id", req.parentId()).set("aliases", req.aliases()));
+            .set("parent_id", req.parentId())
+            .set("aliases", SensitiveMask.keepIfMasked(req.aliases(), cur.getAliases(), SensitiveMask::aliases)));
         List<Contract> cs = contracts.selectList(new QueryWrapper<Contract>().eq("tenant_id", id));
         Tenant saved = tenants.selectById(id);
         return buildTenantDto(saved, cs, bNameOf(cs), parentName(saved));
@@ -215,9 +221,17 @@ public class TenantService {
         BigDecimal monthly = current.stream().map(Contract::getMonthlyRent).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal area = current.stream().map(Contract::getRentArea).reduce(BigDecimal.ZERO, BigDecimal::add);
         String primary = current.isEmpty() ? "—" : bName.getOrDefault(current.get(0).getBuildingId(), "—");
-        return new TenantDTO(t.getId(), t.getCompanyName(), t.getContactName(), t.getContactPhone(),
+        // 四个出口(列表/详情/新建/编辑)共用这里:联系人是个人信息,没有 master:view 给掩码(RBAC-SPEC §11 规则 5)
+        boolean plain = SensitiveMask.holds(Perm.MASTER_VIEW);
+        // 别名里是老板个人姓名(V86 种的就是人名),但它也是抄表导入与台账对户的匹配键:
+        // 数据层任一查看给明文(导入要对得上),只有报表 / 分析查看的人逐项打码
+        boolean aliasPlain = plain || SensitiveMask.holdsAny(Perm.DATA_LAYER_VIEWS);
+        return new TenantDTO(t.getId(), t.getCompanyName(),
+            plain ? t.getContactName() : SensitiveMask.name(t.getContactName()),
+            plain ? t.getContactPhone() : SensitiveMask.phone(t.getContactPhone()),
             t.getBusinessType(), t.getStatus(), t.getCategoryId(), t.getPhase(), t.getSince(),
-            monthly, area, primary, cs.size(), t.getRemark(), t.getParentId(), parentName, t.getAliases());
+            monthly, area, primary, cs.size(), t.getRemark(), t.getParentId(), parentName,
+            aliasPlain ? t.getAliases() : SensitiveMask.aliases(t.getAliases()));
     }
 
     /** 匹配名集合=正名+别名(逗号/中文逗号分隔,V86):导入与挂号按名匹配时与正名同权。

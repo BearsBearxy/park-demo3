@@ -52,7 +52,7 @@ public class AuthController {
 
     // ══════════ 主管当场授权提权(ELEVATION-SPEC) ══════════
     // 三个端点的权限在 PermissionRegistry 里:POST 要 elevate:request(viewer/股东连问都不能问),
-    // DELETE 任何人可调(结束自己的授权,幂等)。GET 是读,走「读全开」。
+    // DELETE 任何人可调(结束自己的授权,幂等)。GET 是本人的授权,读规则表里 /api/auth/elevate 任何已登录可读。
 
     @io.swagger.v3.oas.annotations.Operation(summary = "请主管当场授权(30 分钟)")
     @PostMapping("/elevate")
@@ -68,8 +68,8 @@ public class AuthController {
 
     // 权限点字典。/api/system/perms 也返回同一份,但那条要 system:view ——
     // 而提权弹窗要给**财务专员**看「你缺的是哪几项」,他没有 system:view。
-    // 这是个纯静态目录(键+人话名+说明),零敏感信息,GET 走「读全开」。
-    // 前端据此渲染,不许自己硬编码这 14 项:加第 15 个时它要自动出现。
+    // 这是个纯静态目录(键+人话名+说明+模块键+种类),零敏感信息,读规则表里 /api/auth/perms 任何已登录可读。
+    // 前端据此渲染,不许自己硬编码权限点:加一个时它要自动出现。
     @io.swagger.v3.oas.annotations.Operation(summary = "权限点字典(任何已登录账号可读,提权弹窗用)")
     @GetMapping("/perms")
     public java.util.List<com.park.demo3.security.Perm.Meta> perms() {

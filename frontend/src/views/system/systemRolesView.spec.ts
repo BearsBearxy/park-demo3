@@ -1,7 +1,8 @@
-// 角色权限矩阵屏。钉三条会真出事的契约:
-// ① 权限点行数跟后端走(后端加第 14 个,前端自动多一行 —— 不许硬编码 13);
-// ② 读全开:无 system:edit 时矩阵照常显示当前配置,只是全部 disabled、没有保存/新建/删除;
-// ③ 删除只对自定义角色出现,且 userCount>0 时禁用(预置角色一律无删除按钮)。
+// 角色权限矩阵屏。钉四条会真出事的契约:
+// ① 权限点跟后端走(按后端给的 group / kind 排成模块行,后端加一个点前端自动多一格 —— 不许硬编码);
+// ② 无 system:edit 时矩阵照常显示当前配置,只是全部 disabled、没有保存/新建/删除;
+// ③ 删除只对自定义角色出现,且 userCount>0 时禁用(预置角色一律无删除按钮);
+// ④ RBAC v3 编辑包含查看:勾编辑自动带上同模块的查看,取消查看连带取消这个模块的编辑。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -10,11 +11,15 @@ import { askQueue, answer } from '@/utils/ask'
 
 const PERMS = {
   perms: [
-    { key: 'master:edit', label: '主数据', hint: '楼栋、单元、租户' },
-    { key: 'entry:edit', label: '月度录入', hint: '台账与附表' },
-    { key: 'system:view', label: '系统管理·查看', hint: '用户列表与角色配置' },
-    { key: 'system:edit', label: '系统管理·编辑', hint: '用户、角色、日志的管理' },
-    { key: 'lock:takeover', label: '授权接管编辑锁', hint: '授权别人接管' },
+    { key: 'master:view', label: '主数据 · 查看', hint: '楼栋、单元、租户', group: 'master', kind: 'view' },
+    { key: 'master:edit', label: '主数据', hint: '楼栋、单元、租户的档案维护', group: 'master', kind: 'edit' },
+    { key: 'company:manage', label: '公司/账册管理', hint: '新增与删除记账公司', group: 'master', kind: 'edit' },
+    { key: 'entry:view', label: '台账与附表 · 查看', hint: '月度台账与附表', group: 'entry', kind: 'view' },
+    { key: 'entry:edit', label: '事后录入', hint: '台账与附表', group: 'entry', kind: 'edit' },
+    { key: 'salary:view', label: '工资 · 查看', hint: '附表 12 工资明细', group: 'salary', kind: 'view' },
+    { key: 'system:view', label: '系统管理·查看', hint: '用户列表与角色配置', group: 'system', kind: 'view' },
+    { key: 'system:edit', label: '系统管理·编辑', hint: '用户、角色、日志的管理', group: 'system', kind: 'edit' },
+    { key: 'lock:takeover', label: '授权接管编辑锁', hint: '授权别人接管', group: 'other', kind: 'other' },
   ],
   navLayers: [
     { id: 'data', label: '数据中心' },
@@ -23,7 +28,7 @@ const PERMS = {
   ],
 }
 const ROLES = [
-  { id: 1, code: 'admin', name: '系统管理员', builtin: true, navLayers: ['data', 'reports', 'analysis'], perms: ['master:edit', 'system:view', 'system:edit'], userCount: 2, remark: null },
+  { id: 1, code: 'admin', name: '系统管理员', builtin: true, navLayers: ['data', 'reports', 'analysis'], perms: ['master:view', 'master:edit', 'company:manage', 'system:view', 'system:edit'], userCount: 2, remark: null },
   { id: 7, code: 'auditor', name: '外部审计', builtin: false, navLayers: ['reports'], perms: ['entry:edit'], userCount: 0, remark: null },
   { id: 8, code: 'clerk2', name: '兼职文员', builtin: false, navLayers: ['data'], perms: [], userCount: 3, remark: null },
 ]
@@ -57,21 +62,52 @@ beforeEach(() => {
   createRole.mockReset()
 })
 type TipEl = HTMLElement & { _tip?: { text: string } }
+type W = ReturnType<typeof mountWith>
+const box = (w: W, key: string) => w.find(`input[data-perm="${key}"]`)
+const on = (w: W, key: string) => (box(w, key).element as HTMLInputElement).checked
+/** 矩阵里全部复选框:模块行 + 其他 + 导航可见层 */
+const allBoxes = (w: W) => w.findAll('.sr-pane input[type="checkbox"]')
 
 describe('SystemRolesView', () => {
-  it('权限点行数跟后端返回走,不硬编码', async () => {
+  it('权限点跟后端返回走,按 group / kind 排成模块行,不硬编码', async () => {
     const w = mountWith(['system:view', 'system:edit'])
     await flushPromises()
-    // 5 个权限点 + 3 个导航层 = 8 个复选框
-    expect(w.findAll('.sr-row input[type="checkbox"]').length).toBe(8)
-    // 分组标题三段齐全(system:* 与 lock:* 各自成组)
-    expect(w.text()).toContain('业务写权限')
-    expect(w.text()).toContain('系统管理')
-    expect(w.text()).toContain('编辑锁')
+    // 9 个权限点 + 3 个导航层 = 12 个复选框,一个不少
+    expect(allBoxes(w).length).toBe(12)
+    // 模块行按契约顺序,只出后端给了的模块;不属于模块的进「其他」
+    expect(w.findAll('.sr-mx-r[data-module]').map(r => r.attributes('data-module'))).toEqual(['master', 'entry', 'salary', 'system'])
+    expect(w.findAll('.sr-mx-r[data-module="master"] .sr-mx-edits input').length, '主数据的编辑格有两项').toBe(2)
+    expect(w.find('.sr-mx-r[data-module="salary"] .sr-mx-edits').text(), '工资只有查看,编辑格是空的').toBe('—')
+    expect(w.text()).toContain('其他')
+    expect(box(w, 'lock:takeover').exists()).toBe(true)
     // 默认选中第一个角色,其已有权限勾上
-    const boxes = w.findAll('.sr-row input[type="checkbox"]')
-    expect((boxes[0].element as HTMLInputElement).checked).toBe(true)   // master:edit
-    expect((boxes[1].element as HTMLInputElement).checked).toBe(false)  // entry:edit
+    expect(on(w, 'master:edit')).toBe(true)
+    expect(on(w, 'entry:edit')).toBe(false)
+  })
+
+  // ❗破坏验证:toggleEdit 里那句 push(view) 删掉 → 红
+  it('❗勾编辑自动带上同模块的查看;取消编辑不动查看', async () => {
+    const w = mountWith(['system:view', 'system:edit'])
+    await flushPromises()
+    vi.spyOn(useAuthStore(), 'endElevation').mockResolvedValue()
+    expect([on(w, 'entry:view'), on(w, 'entry:edit')]).toEqual([false, false])
+    await box(w, 'entry:edit').trigger('change')
+    expect([on(w, 'entry:view'), on(w, 'entry:edit')], '编辑包含查看').toEqual([true, true])
+    await box(w, 'entry:edit').trigger('change')
+    expect([on(w, 'entry:view'), on(w, 'entry:edit')], '取消编辑,查看留着').toEqual([true, false])
+    expect(on(w, 'master:view'), '别的模块不动').toBe(true)
+  })
+
+  // ❗破坏验证:toggleView 里 drop 只放 view 一项(不带 edits)→ 红
+  it('❗取消查看连带取消这个模块的全部编辑,别的模块不动;再勾上查看不会把编辑勾回来', async () => {
+    const w = mountWith(['system:view', 'system:edit'])
+    await flushPromises()
+    vi.spyOn(useAuthStore(), 'endElevation').mockResolvedValue()
+    await box(w, 'master:view').trigger('change')
+    expect([on(w, 'master:view'), on(w, 'master:edit'), on(w, 'company:manage')]).toEqual([false, false, false])
+    expect([on(w, 'system:view'), on(w, 'system:edit')], '系统管理那一行不受影响').toEqual([true, true])
+    await box(w, 'master:view').trigger('change')
+    expect([on(w, 'master:view'), on(w, 'master:edit'), on(w, 'company:manage')]).toEqual([true, false, false])
   })
 
   it('❗有没保存的改动 = 在编辑:登记进 auth.editors(页签条不换掉这一格、关浏览器先问);改回去 / 卸载就撤', async () => {
@@ -93,10 +129,10 @@ describe('SystemRolesView', () => {
   it('无 system:edit:矩阵照显当前配置,但全部禁用且无写入口', async () => {
     const w = mountWith(['system:view'])
     await flushPromises()
-    const boxes = w.findAll('.sr-row input[type="checkbox"]')
-    expect(boxes.length).toBe(8)
+    const boxes = allBoxes(w)
+    expect(boxes.length).toBe(12)
     expect(boxes.every(b => (b.element as HTMLInputElement).disabled)).toBe(true)
-    expect((boxes[0].element as HTMLInputElement).checked).toBe(true)   // 读全开:配置照样看得见
+    expect(on(w, 'master:edit')).toBe(true)                              // 配置照样看得见
     expect(w.find('.sr-act').exists()).toBe(false)                      // 没有保存/取消
     expect(w.find('.sr-item.add').exists()).toBe(false)                 // 没有新建角色
     expect(w.text()).toContain('只读')
@@ -123,8 +159,11 @@ describe('SystemRolesView', () => {
     const auth = useAuthStore()
     vi.spyOn(auth, 'endElevation').mockResolvedValue()
     await w.find('.sr-name').setValue('改个名')
-    await w.findAll('.sr-row input[type="checkbox"]')[1].trigger('change')   // entry:edit 勾上
+    await box(w, 'lock:takeover').trigger('change')
     expect(auth.dirtyTotal).toBe(2)
+    // 勾编辑连带勾上的查看也是一处改动:屏上确实多勾了一格
+    await box(w, 'entry:edit').trigger('change')
+    expect(auth.dirtyTotal).toBe(4)
   })
 
   it('❗有改动时换角色走 askLeave:答「继续编辑」留在原角色、改动还在;答放弃才换', async () => {

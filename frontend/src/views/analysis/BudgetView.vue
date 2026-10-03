@@ -9,6 +9,7 @@ import { useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
+import { useViewGate } from '@/composables/useViewGate'
 import AnaShell from './AnaShell.vue'
 import AnaBullet from '@/components/ana/AnaBullet.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
@@ -144,7 +145,10 @@ const detail = computed(() => {
   })
 })
 // 深链走 openFresh(页签语义,spec §4.1);发链 periodLink(§4.2):年表屏只取年,p=YYYY(改前 ?y=,parsePeriod 仍认旧书签)
+// 整行点击没法置灰:没有目标屏的查看权,点了说一句原因不跳(RBAC v3)
+const { blocked } = useViewGate()
 function goSched(nav: string): void {
+  if (blocked('/' + nav)) return
   tabs.openDeep(nav)
   router.push(periodLink(nav, { p: periodOf(year.value, null) }))
 }

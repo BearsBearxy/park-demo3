@@ -4,7 +4,7 @@
 // ⚠ 全屏没有「删除账号」:账号只停用不删除(RBAC-SPEC §8)。删掉的账号名下有导入记录、
 //   系数簿修改历史、审核痕迹,真删了这些记录成孤儿,追责链断掉。后端也没有 DELETE /system/users。
 //
-// 读全开的唯一例外是 system 层(§0):无 system:edit 的人进得来、看得见全部账号与角色,
+// system 层的读门是 system:view(RBAC v3 起每个模块都有查看点):无 system:edit 的人进得来、看得见全部账号与角色,
 //   只是所有写按钮不渲染 —— 与其它屏「显示但不能改」同一口径。
 import { ref, computed, watch, onMounted, onBeforeUnmount, h, withDirectives } from 'vue'
 import { vTip } from '@/directives/tip'

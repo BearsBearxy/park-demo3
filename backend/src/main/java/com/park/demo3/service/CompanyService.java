@@ -21,6 +21,8 @@ import com.park.demo3.mapper.MonthlyLedgerMapper;
 import com.park.demo3.mapper.ReportAccountMapper;
 import com.park.demo3.mapper.ReportAmountMapper;
 import com.park.demo3.mapper.ReportCustomRowMapper;
+import com.park.demo3.security.Perm;
+import com.park.demo3.security.SensitiveMask;
 import com.park.demo3.security.NoReviewGuard;
 import com.park.demo3.security.ReviewGuard;
 import com.park.demo3.security.ReviewKind;
@@ -195,6 +197,10 @@ public class CompanyService {
         CompanyAccount a = accounts.selectById(id);
         if (a == null) throw new BizException(ResultCode.NOT_FOUND, "收款账户不存在");
         requireKind(req.kind());
+        // 个人卡改成别的类型:写回守卫把掩码户名还原成真名,回包又按新类型不打码 —— 没有主数据查看权的人
+        // (靠提权拿到 master:edit,查看不可提权)改一次类型就能读到收款人全名
+        if ("personal".equals(a.getKind()) && !"personal".equals(req.kind()) && !SensitiveMask.holds(Perm.MASTER_VIEW))
+            throw new BizException(ResultCode.FORBIDDEN, "把个人卡改成别的类型需要「" + Perm.label(Perm.MASTER_VIEW) + "」权限");
         apply(a, req);
         accounts.updateById(a);
         clearOtherDefaults(a);
@@ -206,8 +212,11 @@ public class CompanyService {
 
     private static void apply(CompanyAccount a, CompanyAccountReq req) {
         a.setKind(req.kind());
-        if (req.accountName() != null) a.setAccountName(blankToNull(req.accountName()));
-        if (req.accountNo() != null)   a.setAccountNo(blankToNull(req.accountNo()));
+        // 提交的是现值的掩码 = 没改(没有 master:view 的人表单里回填的就是掩码,RBAC-SPEC §11 规则 5)
+        if (req.accountName() != null) a.setAccountName(blankToNull(
+            SensitiveMask.keepIfMasked(req.accountName(), a.getAccountName(), SensitiveMask::name)));
+        if (req.accountNo() != null)   a.setAccountNo(blankToNull(
+            SensitiveMask.keepIfMasked(req.accountNo(), a.getAccountNo(), SensitiveMask::account)));
         if (req.bankName() != null)    a.setBankName(blankToNull(req.bankName()));
         if (req.isDefault() != null)   a.setIsDefault(req.isDefault() ? 1 : 0);
         if (req.sortNo() != null)      a.setSortNo(req.sortNo());
@@ -261,9 +270,13 @@ public class CompanyService {
             c.getFullName(), c.getStatus(), accts);
     }
 
+    // 账号(各 kind 一律,收款码标识可能就是手机号)与个人卡户名(就是收款人姓名)没有 master:view 给掩码;
+    // 对公 / 微信 / 支付宝的户名是公司名、开户行不打码(RBAC-SPEC §11 规则 5)
     private static CompanyAccountDTO toDTO(CompanyAccount a) {
-        return new CompanyAccountDTO(a.getId(), a.getCompanyId(), a.getKind(), a.getAccountName(),
-            a.getAccountNo(), a.getBankName(),
+        boolean plain = SensitiveMask.holds(Perm.MASTER_VIEW);
+        String name = plain || !"personal".equals(a.getKind()) ? a.getAccountName() : SensitiveMask.name(a.getAccountName());
+        return new CompanyAccountDTO(a.getId(), a.getCompanyId(), a.getKind(), name,
+            plain ? a.getAccountNo() : SensitiveMask.account(a.getAccountNo()), a.getBankName(),
             a.getIsDefault() != null && a.getIsDefault() == 1, a.getSortNo(), a.getRemark());
     }
 }

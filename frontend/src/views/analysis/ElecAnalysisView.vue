@@ -9,6 +9,7 @@ import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
+import { useViewGate } from '@/composables/useViewGate'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
@@ -128,7 +129,10 @@ const conclusion = computed(() =>
 
 // ── 深链电费成本第二本账(cost):ElecView 认 ?mode=(P0b),子屏 ElecCostView 认 ?p=YYYY-MM 落月(只有年 → 停在它的月门) ──
 // 改前发的是 view=cost —— 键名对不上,永远落在报送台账(假下钻)。openFresh 页签语义不变(spec §4.1)。
+// 跳到模块屏的入口:没有目标屏的查看权就置灰、悬停写明缺哪一项;图上的点、整行点击没法置灰,点了说一句原因不跳(RBAC v3)
+const { lack, blocked } = useViewGate()
 function goCost(month?: number): void {
+  if (blocked('/elec-cost')) return
   tabs.openDeep('elec-cost')
   void router.push(periodLink('elec-cost', { p: periodOf(loadedYear.value ?? year.value, month ?? null), extra: { mode: 'cost' } }))
 }
@@ -460,7 +464,7 @@ const spreadRead = computed(() => {
         <div class="av2-card ea-concl">
           <!-- 行尾那枚 › 只在 S 档出:这四句本来就是 button(点进成本总览),桌面上悬停有手型说明了
                这件事,手机上没有悬停,于是把已有的可点性写出来。不是新功能,也不改 @click。 -->
-          <button v-for="c in conclusion" :key="c.key" class="ea-cs" @click="goCost()">
+          <button v-for="c in conclusion" :key="c.key" class="ea-cs" :disabled="!!lack('/elec-cost')" v-tip="lack('/elec-cost')" @click="goCost()">
             <span class="dot" :style="{ background: STATUS[c.tone].color }"></span>{{ c.text }}<span class="ea-ar" aria-hidden="true">›</span>
           </button>
         </div>
@@ -514,6 +518,8 @@ const spreadRead = computed(() => {
 .ea-concl { display: flex; flex-wrap: wrap; align-items: center; column-gap: 20px; row-gap: 6px; margin-bottom: 12px; }
 .ea-cs { display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent; padding: 0; font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-primary); cursor: pointer; }
 .ea-cs:hover { text-decoration: underline; }
+.ea-cs:disabled { cursor: default; text-decoration: none; }
+.ea-cs:disabled .ea-ar { color: var(--text-disabled); }
 .ea-cs .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 /* 行尾 ›:桌面不出(那里有悬停手型),>600 连盒子都不占 */
 .ea-ar { display: none; }

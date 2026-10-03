@@ -68,6 +68,7 @@ import CoefBookWindow from './CoefBookWindow.vue'
 import CompanyBookWindow from './CompanyBookWindow.vue'
 import PayBookWindow from './PayBookWindow.vue'
 import ExportNoticeWindow from './ExportNoticeWindow.vue'
+import { lackText } from '@/composables/useViewGate'
 import ExportReconWindow from './ExportReconWindow.vue'
 import PaySlotGrid from '@/components/fp/PaySlotGrid.vue'
 import FPToast from '@/components/fp/FPToast.vue'
@@ -432,6 +433,10 @@ const coefOpen = ref(useRoute().query.coef === '1')
 const companyOpen = ref(false)
 const payBookOpen = ref(false)
 const expNoticeOpen = ref(false)
+// 通知单上印收款账号,账号明文只给「主数据」查看权(RBAC v3,服务端对别人打码)。没有就不让导 ——
+// 导出来是 ****1234,而这张单是要发给租户的。批量导出与单户导出同判。
+const noAcct = computed(() => !auth.can('master:view'))
+const noAcctTip = computed(() => (noAcct.value ? `印收款账号${lackText(['master:view'])}` : ''))
 const expReconOpen = ref(false)
 const exportBusy = ref(false)
 const exportResult = ref('')
@@ -978,7 +983,7 @@ const moreItems = computed(() => [
   { key: 'company', label: '收款公司', icon: 'building-2' },
   { key: 'paybook', label: '收款簿', icon: 'credit-card' },
   { key: 'coef', label: '系数簿', icon: 'sliders-horizontal' },
-  { key: 'expNotice', label: '导出通知单', icon: 'download', disabled: !rows.value?.length || exportBusy.value },
+  { key: 'expNotice', label: '导出通知单', icon: 'download', disabled: !rows.value?.length || exportBusy.value || noAcct.value, tip: noAcctTip.value },
   { key: 'expRecon', label: '导出对账表', icon: 'table', disabled: !rows.value?.length || exportBusy.value },
   // 批量确认原本长在筛选行上,它是动作不是筛选 —— S 档跟着动作一起进菜单。
   ...(canIssue.value && filtered.value.length ? [{ key: 'bulk', label: '批量确认', icon: 'list-todo' }] : []),
@@ -997,7 +1002,7 @@ const BOOK_ITEMS = [
   { key: 'company', label: '收款公司' }, { key: 'paybook', label: '收款簿' }, { key: 'coef', label: '系数簿' },
 ]
 const exportItems = computed(() => [
-  { key: 'expNotice', label: '导出通知单', disabled: exportBusy.value },
+  { key: 'expNotice', label: '导出通知单', disabled: exportBusy.value || noAcct.value, tip: noAcctTip.value },
   { key: 'expRecon', label: '导出对账表', disabled: exportBusy.value },
 ])
 function onMore(key: string) {
@@ -1714,8 +1719,8 @@ function onMore(key: string) {
         </template>
 
         <!-- 单户导出:与「导出通知单」窗口同一套版式(上表租金/下表水电),账户取该公司默认账户 -->
-        <Button variant="outline" size="sm" :disabled="dlgLoading || cardBusy || !dlgRow"
-                v-tip="'导出本户 Excel:一个文件,上表场地租金、下表水电费;跨收款公司按 sheet 分。账户取各公司的默认收款账户'"
+        <Button variant="outline" size="sm" :disabled="dlgLoading || cardBusy || !dlgRow || noAcct"
+                v-tip="noAcctTip || '导出本户 Excel:一个文件,上表场地租金、下表水电费;跨收款公司按 sheet 分。账户取各公司的默认收款账户'"
                 @click="onExportTenant">
           <template #leading><component :is="iconFor('download')" :size="14" /></template>
           {{ cardBusy ? '导出中…' : '导出本户 Excel' }}

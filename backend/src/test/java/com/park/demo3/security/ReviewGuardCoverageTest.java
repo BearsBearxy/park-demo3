@@ -95,7 +95,7 @@ class ReviewGuardCoverageTest {
     /** ①：controller 的类级前缀。**这条正则失配 = 分母塌成 0**，靠 scanFoundEnoughWriteMethods 兜。 */
     private static final Pattern CLASS_MAPPING =
         Pattern.compile("@RequestMapping\\s*\\(\\s*\"([^\"]*)\"\\s*\\)");
-    /** ②：非 GET 端点。GET 不进 —— 读全开，审核只锁写。 */
+    /** ②：非 GET 端点。GET 不进 —— 审核只锁写（读由查看点管，RBAC-SPEC §11）。 */
     private static final Pattern WRITE_MAPPING = Pattern.compile(
         "@(Post|Put|Patch|Delete)Mapping\\s*(?:\\(\\s*(?:value\\s*=\\s*)?\"([^\"]*)\"\\s*\\))?");
     private static final Pattern PUBLIC_SIG =

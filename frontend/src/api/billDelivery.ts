@@ -4,7 +4,7 @@ import type { CompanyDTO } from '@/types/ledger'
 // 催缴单交付链(S20-BILL-DELIVERY-SPEC)API — 收款公司/账户主数据 + 单据状态流转。
 // ⚠ 字段名与三刀共用契约逐字钉死(后端 dto/Company*/BillNotice*),不得各自改名。
 // 独立成文件而非扩 ledger.ts/billNotices.ts:S19/S20 三把刀并行,少碰一个既有文件少一次冲突。
-// GET 全员可读,写=ADMIN(后端 SecurityConfig 统一门)。
+// GET 按查看点放行(RBAC-SPEC §11.3,收款账号对没有主数据查看的人打码),写按 §5.2 映射表。
 
 export type AccountKind = 'bank' | 'wechat' | 'alipay' | 'personal' | 'other'
 export const ACCOUNT_KIND_LABEL: Record<AccountKind, string> = {

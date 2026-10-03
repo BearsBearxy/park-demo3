@@ -6,6 +6,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
+import { useViewGate } from '@/composables/useViewGate'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
@@ -51,8 +52,11 @@ function goLedger(tenant: string, company: string, ym: string) {
   tabs.openDeep('ledger')
   router.push(periodLink('ledger', { p: periodOf(+ym.slice(0, 4), +ym.slice(5, 7)), extra: { company, tenant } }))
 }
+// 跳到模块屏的入口:没有目标屏的查看权就置灰、悬停写明缺哪一项;图上的点、整行点击没法置灰,点了说一句原因不跳(RBAC v3)
+const { lack, blocked } = useViewGate()
 // 散点点点→该租户末期台账(spec §二.10 下钻)
 function onScatterClick(p: unknown) {
+  if (blocked('/ledger')) return
   const d = (p as { data?: { name?: string; company?: string } }).data
   if (d?.name && model.value) goLedger(d.name, d.company ?? '', model.value.lastYm)
 }
@@ -156,7 +160,7 @@ function onScatterClick(p: unknown) {
                 <tr v-for="c in model.churned" :key="c.name">
                   <td>{{ c.name }}</td>
                   <td class="mono">{{ wan(c.recv) }}</td>
-                  <td><button class="churn-link" @click="goLedger(c.name, c.company, model!.firstYm)">查台账 →</button></td>
+                  <td><button class="churn-link" :disabled="!!lack('/ledger')" v-tip="lack('/ledger')" @click="goLedger(c.name, c.company, model!.firstYm)">查台账 →</button></td>
                 </tr>
               </tbody>
             </table>
@@ -172,7 +176,7 @@ function onScatterClick(p: unknown) {
                 <tr v-for="t in detail" :key="t.name">
                   <td><span class="nm2">
                     <span class="rk" :style="{ background: tierBg(t.tier), color: tierColor(t.tier) }">{{ tierZh(t.tier) }}</span>
-                    <button class="churn-link" @click="goLedger(t.name, t.company, model!.lastYm)">{{ t.name }}</button>
+                    <button class="churn-link" :disabled="!!lack('/ledger')" v-tip="lack('/ledger')" @click="goLedger(t.name, t.company, model!.lastYm)">{{ t.name }}</button>
                   </span></td>
                   <td class="mono" :style="{ fontWeight: 600, color: tierColor(t.tier) }">{{ t.score }}</td>
                   <td class="mono mut">{{ t.payScore }}</td>
@@ -199,6 +203,9 @@ function onScatterClick(p: unknown) {
 <style scoped>
 .churn-link { color: inherit; text-decoration: none; border: none; background: transparent; padding: 0; font: inherit; cursor: pointer; }
 .churn-link:hover { color: var(--text-link); text-decoration: underline; }
+/* 没有台账查看权:租户名照常显示、只是点不动;单独一格的「查台账 →」置灰 */
+.churn-link:disabled { cursor: default; color: inherit; text-decoration: none; }
+td > .churn-link:disabled { color: var(--text-disabled); }
 .churn-scroll { max-height: 330px; overflow: auto; }
 .churn-scroll.tall { max-height: 420px; }
 /* tr::after = .ak-tbl 行末空列(ana.css),表头那一格跟着吸顶,否则滚动时表头右段露出底下的行 */

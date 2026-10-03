@@ -8,7 +8,7 @@
 账号密码；专员获得 30 分钟该权限；期间每一次修改的审计都同时记下**两个人**。
 
 **这条改动把权限从「墙」变成了「减速带 + 留痕」。** 这是有意的：现实里主管本来就会走过来
-点头。真正的硬墙只剩系统管理一道（见 §2 不可提权名单）。
+点头。真正的硬墙是系统管理、审核与全部查看权（见 §2 不可提权名单）。
 
 ## 1. 谁能请求提权
 
@@ -25,7 +25,10 @@
 
 ## 2. 什么权限不可提权
 
-`Perm.NOT_ELEVATABLE` = `system:view` / `system:edit` / `elevate:request` / `lock:takeover`
+`Perm.NOT_ELEVATABLE` = `system:view` / `system:edit` / `elevate:request` / `lock:takeover` / `review:approve`
+/ 全部 9 个模块查看点 `master:view` `contract:view` `param:view` `meter:view` `billing:view` `entry:view` `salary:view`
+`report:view` `analysis:view`（RBAC-SPEC §11.2 规则 6：查看借得到，「工资只给两个人看」就成了请主管授权 30 分钟的事）。
+可批人接口 `GET /api/auth/approvals/candidates` 遇到名单里的点同样 403。
 
 **`system:*` 必须留在名单里。** 能当场授权自己去建账号、改角色的话，提权就成了权限系统的
 后门 —— 一次 30 分钟的授权可以换来一个永久的管理员账号，整套 RBAC 当场作废。
@@ -93,8 +96,8 @@
 |---|---|---|---|
 | POST | `/api/auth/elevate` | `elevate:request` | `{perms[], authorizer, password}` → 授权 30 分钟。一次可补多个权限点（一个页面常同时要两三项，不该让主管输三遍密码） |
 | DELETE | `/api/auth/elevate` | 任何已登录 | 结束本人全部授权，幂等 |
-| GET | `/api/auth/elevate` | 读全开 | 刷新页面后恢复顶栏授权胶囊（§4.5） |
-| GET | `/api/auth/perms` | 读全开 | 权限点字典。`/api/system/perms` 要 `system:view`，而弹窗要给**没有它的财务专员**看「你缺哪几项」 |
+| GET | `/api/auth/elevate` | 任何已登录（RBAC-SPEC §11.3） | 刷新页面后恢复顶栏授权胶囊（§4.5） |
+| GET | `/api/auth/perms` | 任何已登录（RBAC-SPEC §11.3） | 权限点字典。`/api/system/perms` 要 `system:view`，而弹窗要给**没有它的财务专员**看「你缺哪几项」 |
 
 ## 4. 前端
 

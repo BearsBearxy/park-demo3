@@ -7,6 +7,11 @@
 
 ## 0. 核心模型（v2 一句话）
 
+> ⚠ **2026-10-04 用户拍板推翻了 v2 的拍板 #8「读全开」、#10「无权的屏除股东外一律显示」与 #11「工资全开」**。
+> 现行模型是 **v3「读写分开」**，见 [§11](#11-v3读写分开2026-10-04-用户拍板)。
+> 本节与 §1 的 #8 / #10 / #11 保留作历史；§2、§3、§4、§5.1、§5.4、§6 里凡是讲「读」的地方，
+> 各节开头都标了 v3 改了什么，读的规则一律以 §11 为准。写的规则（§5.2 映射表等）不变。
+
 > ## 读全开，写分权。
 
 | | 规则 |
@@ -54,14 +59,17 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 | 5 | 台账保存改成只提交 dirty 行 | **先不做** |
 | 6 | 强制接管门槛 | 见 CONCURRENCY-SPEC §4.3 |
 | 7 | 操作历史 | 高权限用户要能看。**接管事件**与**系数修改**必须留存 |
-| 8 | 园区股东「不看台账附表」是哪一种 | **导航层隐藏**。v2 下这就是全部含义 —— API 层本就全开 |
+| 8 | 园区股东「不看台账附表」是哪一种 | **导航层隐藏**。v2 下这就是全部含义 —— API 层本就全开。⚠ **v3 推翻**：股东只有 `analysis:view` + `report:view`，台账附表的接口对他 403（§11.2） |
 | 9 | 年度预算导入归谁 | **财务**（`entry:edit`） |
-| 10 | 无权的屏在导航里显示吗 | **除股东外一律显示**。v2 下点进去看到的是**完整数据**，只是不能改 |
-| 11 | 读要不要分权 | **不分。全部开放给所有账号可读可显示**，工资明细也全开。后续再分配留给客户自己配 |
+| 10 | 无权的屏在导航里显示吗 | **除股东外一律显示**。v2 下点进去看到的是**完整数据**，只是不能改。⚠ **v3 推翻**：没有查看权的屏导航不列，直接打开落「无权查看」页（§11.2） |
+| 11 | 读要不要分权 | **不分。全部开放给所有账号可读可显示**，工资明细也全开。后续再分配留给客户自己配。⚠ **v3 推翻**：每模块查看 / 编辑两项，工资单独 `salary:view`（§11） |
 
 ---
 
 ## 2. 权限点（18 个）
+
+> ⚠ **v3 已改**：加了 9 个查看点，总数 27；`system:view` 不再是「唯一的读权限点」。权威清单见 §11.1 与 `Perm.ALL`。
+> 下表是 v2 的 18 个点，含义不变；9 个查看点见 §11.1。
 
 **11 个业务模块的 `edit` + `system:view` + `system:edit` + `lock:takeover` + `elevate:request` + `company:manage` + `book-template:edit` + `book-template:switch` + `review:approve`。**
 
@@ -135,6 +143,9 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 
 预置 6 个系统角色（`builtin=1`，不可删）。客户可在此之上自建。
 
+> ⚠ **v3 已改（V134）**：下表补了 9 个查看点的行；园区股东只有 `analysis:view` + `report:view`，导航层加了账簿与报表；
+> 总经理 / 只读 / 园区股东三者**不再相同**。`RoleApiIT.presetRolesMatchSpec` 钉着这张表。
+
 | 权限点 | 系统管理员 | 财务主管 | 财务专员 | 总经理 | 园区股东 | 只读 |
 |--------|:---:|:---:|:---:|:---:|:---:|:---:|
 | master:edit | ✓ | ✓ | — | — | — | — |
@@ -150,13 +161,18 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 | system:view | ✓ | — | — | — | — | — |
 | system:edit | ✓ | — | — | — | — | — |
 | lock:takeover | ✓ | ✓ | — | — | — | — |
-| **导航可见层** | 全部 | 全部 | 全部 | 全部 | **仅经营分析** | 全部 |
+| master:view · contract:view · param:view · meter:view · billing:view · entry:view（v3） | ✓ | ✓ | ✓ | ✓ | — | ✓ |
+| salary:view（v3） | ✓ | ✓ | — | — | — | — |
+| report:view · analysis:view（v3） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **导航可见层** | 全部 | 全部 | 全部 | 全部 | **经营分析、账簿与报表**（v3；v2 是仅经营分析） | 全部 |
 
+> ⚠ 下面这段是 v2 的结论，v3 下不成立：股东少了 6 个模块的查看，总经理多了 `elevate:request`（ELEVATION-SPEC）。
+>
 > **总经理 / 园区股东 / 只读 三者在权限上完全相同**（一个 `edit` 都没有），
 > 差别**只在导航可见层**。这不是设计缺陷，是 v2 模型的直接结果 ——
 > 读全开之后，「只能看」的角色之间本来就没有权限差别，差别只在给他看什么入口。
 
-**第 7 个预置角色 `reviewer`「审核员」**（2026-09-03 拍板 D16，R1 的 V124 落库）：只有 `review:approve`，**零 `:edit`、无 `elevate:request`**，`nav_layers='data,reports,analysis'`。
+**第 7 个预置角色 `reviewer`「审核员」**（2026-09-03 拍板 D16，R1 的 V124 落库）：只有 `review:approve`，**零 `:edit`、无 `elevate:request`**，`nav_layers='data,reports,analysis'`。V134 起另带 8 个查看点（工资除外）。
 上面那张矩阵**六个既有角色一格都不改** —— 尤其财务主管默认**不带**审核权，录审分离靠角色分配保证；
 例外是 `admin`，它是「全部权限」角色（V101 起每个新权限点都给它），所以也持有 `review:approve`。
 系统不拦「同一账号既录又审」；客户若给主管勾了审核权，录审分离由客户自己负责。
@@ -176,6 +192,9 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 
 ## 4. 导航可见性
 
+> ⚠ **v3 已改**：导航是两道门叠在一起 —— 层看 `nav_layers`，屏看这一屏的查看权（`nav/navAccess.ts`）；
+> 没有查看权的屏不列，直接打开落「无权查看」页（`views/NoAccessView.vue`）。园区股东的 `nav_layers` 是 `analysis,reports`。
+
 **与权限脱钩**，角色表上单独一列 `nav_layers`，值是可见的业务层（`fpNav.ts` 的 `NavLayer.id` 已有这三个值）：
 
 ```
@@ -186,7 +205,7 @@ analysis  经营分析
 
 | 角色 | nav_layers | 效果 |
 |------|-----------|------|
-| 园区股东 | `['analysis']` | 左边只有「经营分析」一层，另两层的图标按钮不出现 |
+| 园区股东 | `['analysis']`（v3：`['analysis','reports']`） | 左边只有「经营分析」一层，另两层的图标按钮不出现（v3：多了账簿与报表） |
 | 其余 5 个 | `['data','reports','analysis']` | 全部可见 |
 
 **`system` 层不在这个字段里** —— 它的可见性直接跟 `system:view` 走。没有该权限一律不显示这一层，
@@ -195,6 +214,8 @@ analysis  经营分析
 
 客户可在角色权限屏勾选这三个层，**不用改代码**。
 
+> ⚠ v3 下这段不成立：有了「无权查看」页，见 §11.2 规则 8 的前端部分。
+>
 > v2 下**不需要「无权限」占位页**：能看到的屏都能进、都有完整数据。
 > 唯一进不去的是 `system` 层，而它压根不显示，也就点不到。手打 URL 兜底跳首页即可。
 
@@ -203,6 +224,9 @@ analysis  经营分析
 ## 5. 后端强制点
 
 ### 5.1 SecurityConfig 改动很小
+
+> ⚠ **v3 已改**：「读段」不再是任何已登录 —— `GET /api/**` 交给 `ReadAccessManager`，查 `PermissionRegistry.registerReads`，
+> 默认拒绝（§11.2 规则 2）。系统管理段不再是「唯一读也管的」，只是排在通用读规则前面先命中。
 
 ```
 放行段（必须在最前，否则容器健康检查拿 401，backend 永远 unhealthy）
@@ -216,7 +240,7 @@ analysis  经营分析
    /actuator/**（health 以外）                         → system:view
 
 读段
-   GET /api/**                                        → 任何已登录   ← 与现状完全一致，不用改
+   GET /api/**                                        → v3：ReadAccessManager 查读规则表，默认拒绝（v2 是任何已登录）
 
 写段
    非 GET /api/**                                     → 按 §5.2 映射表
@@ -358,11 +382,14 @@ PUT    /api/elec-cost/price-cfg → param-policy   （不得落 entry）
 PUT    /api/bills/paymap        → billing-issue  （不得落 billing-run）
 DELETE /api/salary/imported     ≠ POST /api/salary/import 的规则
 匿名   GET /actuator/health     → 200            （容器健康检查）
-GET    /api/ledger/** · /api/salary/**（用一个零 edit 权限的账号）→ 200
+GET    /api/salary/**（没有 salary:view 的账号，含只有分析 / 报表查看的股东）→ 403
+GET    分析白名单里的模块接口（只有 analysis:view 的账号）→ 200
 ```
 
-**最后一条是 v2 特有的，必须有**：读全开是个容易被"顺手收紧一下"破坏的设计决定，
-没有断言守着，半年后就会有人把它改回 v1，分析层当场打回原形。
+> ⚠ **v3 改写了最后两条**：v2 钉的是「零 edit 账号读台账与工资 → 200」（读全开）。v3 推翻读全开，
+> 改钉「工资只认 salary:view」与「分析独立放行」—— 后一条守的正是 v1 的失败（分析层被各模块查看权拦成空壳）。
+> 落点：`ReadPermissionIT.shareholder_readsAnalysisAndItsWhitelist_butNotModuleDetailOrSalary`、
+> `PermissionCoverageTest.everyReadEndpointIsMapped`（读端点也逐条覆盖，§11.3）。
 
 ### 5.5 权限解析：内存缓存，不烤进 JWT
 
@@ -385,6 +412,9 @@ JWT 有效期 120 分钟。权限烤进令牌 → 停用一个人他还能再用
 
 ## 6. 前端改造点
 
+> ⚠ **v3 已改**：前端也判 view —— 导航与搜索按查看权过滤、router 守卫把没有查看权的屏送到「无权查看」页、
+> 跨屏深链没有目标屏查看权时置灰写原因（`composables/useViewGate.ts`）。下表 `router/index.ts` 那行「只加 system 段的守卫」已不成立。
+>
 > v2 下前端**只判 `edit`**。没有 view 守卫、没有无权限页、没有深链拦截 —— 全都随读全开一起消失了。
 
 | 落点 | 改什么 |
@@ -527,3 +557,171 @@ JWT 有效期 120 分钟。权限烤进令牌 → 停用一个人他还能再用
 **待定**：改密后旧令牌不失效（内网 + 令牌 2 小时过期；要做需引入令牌版本号）。
 
 P0 做完权限已真在管用，只是还得用 SQL 加人。P1 做完客户彻底不用碰代码。
+
+---
+
+## 11. v3：读写分开（2026-10-04 用户拍板）
+
+> 用户原话：「可以做成读跟改分开的两个选项权限吗」。推翻 v2 拍板 #8（读全开）与 #11（工资全开）。
+
+### 11.1 模型
+
+**每个模块「查看 / 编辑」两项，编辑包含查看。** 新增 9 个查看点（`Perm` 常量 → 值），权限点总数 18 → 27：
+
+| 常量 | 值 | 模块 | 被谁隐含 |
+|---|---|---|---|
+| `MASTER_VIEW` | `master:view` | 主数据：楼栋、单元、租户、租户分类、公司与收款账户 | `master:edit`、`company:manage` |
+| `CONTRACT_VIEW` | `contract:view` | 合同 | `contract:edit` |
+| `PARAM_VIEW` | `param:view` | 计费参数：计费口径、月度电价、公摊规则、电价配置、系数簿 | `param-policy:edit`、`param-monthly:edit` |
+| `METER_VIEW` | `meter:view` | 抄表：园区抄表、光伏分栋、充电桩 | `meter-master:edit`、`meter-reading:edit` |
+| `BILLING_VIEW` | `billing:view` | 出账与催缴单：公共电核算/公摊、账单、催缴单 | `billing-run:edit`、`billing-issue:edit` |
+| `ENTRY_VIEW` | `entry:view` | 台账与附表：月度台账、附表 6/7/8/10/11/12、办公水电、预算、电费成本；**不含工资** | `entry:edit`、`book-template:edit`、`book-template:switch` |
+| `SALARY_VIEW` | `salary:view` | 工资 | **无**（`entry:edit` 不隐含） |
+| `REPORT_VIEW` | `report:view` | 报表：三大报表、损益附表、收入核对 | `report:edit` |
+| `ANALYSIS_VIEW` | `analysis:view` | 经营分析层 | **无** |
+
+`system:view` / `system:edit` 不动；按同一条规则，`system:edit` 隐含 `system:view`（见 §11.6 第 4 条）。
+
+**分组（`Perm.Meta.group` / `kind`）**，`/api/auth/perms` 与 `/api/system/perms` 原样返回，前端不硬编码权限点：
+模块键固定为 `master contract param meter billing entry salary report analysis system other`，
+`kind` 取 `view | edit | other`。每个业务组恰好一个 `view`，「编辑隐含查看」就是从这里推出来的（`Perm.IMPLIED_VIEW`）。
+
+- `book-template:edit` / `book-template:switch` 归 **entry**：账册清单与模板版本链（`/api/books/**`）只有月度台账、附表10、
+  导入中心与模板面板用，都是录入岗的屏。
+- `review:approve`、`lock:takeover`、`elevate:request` 归 **other**（`kind=other`）：跨模块，不隐含任何查看。
+
+### 11.2 规则
+
+1. **编辑隐含查看**：`UserPermissionCache` 装载快照时把隐含的 view 并进 perms（`Perm.withImplied`），**不落库**。
+   后端判定（authorities）、`/auth/me`、登录回包拿到的都是展开后的集合；角色屏存的仍是勾选的原样。
+   角色屏勾编辑自动勾查看、取消查看连带取消该模块的编辑（前端做）。
+2. **读也默认拒绝**：`SecurityConfig` 里 `GET /api/**` 走 `ReadAccessManager`（形状照 `WriteAccessManager`），
+   查 `PermissionRegistry.registerReads` 的读规则表 —— 同样按 `PathPattern`、首个命中生效、最长字面前缀在前；
+   表里没有的 GET 一律 403。`/api/system/**` 与 `/actuator/**` 的现有规则不变（排在前面先命中）。
+   GET 被拒的 403 文案写明缺哪一项、去找系统管理员（`ReadAccessManager.deniedMessage`），不再套写被拒那句「可查看」。
+3. **任何已登录都能读的**只限身份 / 会话 / 协作基础设施与不含业务数据的字典，**逐条精确登记、不用 `/**` 通配**：
+   `/api/auth/` 下 `me` `perms` `elevate` `approvals` `approvals/candidates`；`/api/notices` 与 `/api/notices/system-seen`；
+   `/api/review` 与 `/api/review/` 下 `states` `closed-months` `pending` `returned`；`/api/zones`；`/api/probe/ok` `/api/probe/boom`。
+   通配的话，这几个前缀下以后新加一个返回全员数据的 GET 会悄悄对所有账号开放、覆盖测试照绿；
+   逐条登记后新路径落默认拒绝，`everyReadEndpointIsMapped` 当场红，审过回包再登记。
+   可批人 `approvals/candidates` 遇到不可提权的点直接 403（`ApprovalService.requireElevatable`），
+   否则它就是「谁有 `salary:view`」的花名册。
+   （`/api/presence/**`、`/api/locks/**` 没有 GET 端点，不登记。）
+4. **分析独立**：`analysis:view` 放行 `/api/analysis/**`，以及分析层前端实际调用到的各模块读接口（白名单见 §11.3），
+   这些接口的读规则是「模块 view 或 analysis:view 任一」。**工资明细不对 `analysis:view` 放行**：
+   分析层一次都没调 `/api/salary/**`，只用损益附表5 与资产负债表里的汇总行。
+5. **敏感字段服务端打码**（`SensitiveMask`）：调用者没有字段所属模块的 view 时，回包给掩码，前端不靠隐藏。见 §11.4。
+6. **查看不可提权**：全部 `*:view` 进 `Perm.NOT_ELEVATABLE`；`ReadAccessManager` 不查 `ElevationStore`。
+   借得到的话「工资只给两个人看」就成了一句话的事 —— 请主管授权 30 分钟，整年工资就导走了。
+7. **迁移 V134**（`V134__rbac_view_perms.sql`，幂等）：除园区股东外的每个角色（内置与自建）勾上 8 个查看点（工资除外）；
+   `salary:view` 只给 `admin` 与 `finance_manager`；`shareholder` 只给 `analysis:view` + `report:view`，
+   `nav_layers` 设为 `'analysis,reports'`；第 ④ 段把 V101 / V124 种的角色备注里 V134 之后不成立的几句改掉
+   （股东「导航只有经营分析」、审核员「只有 review:approve」、总经理 / 只读「导航全部可见」），只改没被客户动过的原句。
+
+### 11.3 读规则表（从上到下首个命中生效）
+
+跨模块读一律按「**本模块 view ∪ 实际调用它的屏所属模块的 view**」放行。「数据层任一」= master / contract / param /
+meter / billing / entry / salary 任一 view（`/data-home` 的路由门）。
+
+| 路径 | 放行（任一） | 理由 |
+|---|---|---|
+| `/api/auth/me` `/perms` `/elevate` `/approvals` `/approvals/candidates`、`/api/notices` `/system-seen`、`/api/review` `/states` `/closed-months` `/pending` `/returned`、`/api/zones`、`/api/probe/ok` `/boom` | 任何已登录 | 规则 3，逐条精确登记 |
+| `/api/system/**` | system:view | 与 SecurityConfig 那一行同值；登记在这里是为了覆盖测试不开豁免名单 |
+| `/api/analysis/**` | analysis | 分析专用：months、s10-tenant-months、ledger-tenant-months |
+| `/api/tenants/summary` | master · analysis | 租户 KPI，驾驶舱的 Promise.all 无 catch。排在 `/{id}` 前 |
+| `/api/tenants/{id}` | master | 租户详情只有主数据屏用 |
+| `/api/tenants` | master · contract · param · meter · billing · entry · analysis | 跨模块字典（合同新建无 catch、抄表导入预取、台账对户、分析五屏）。电话 / 姓名打码；aliases 只对没有任何数据层查看的人打码（见 §11.4）；户名、remark 不打码 |
+| `/api/tenant-categories` | master | |
+| `/api/buildings/summary` | master · analysis | 排在 `/{id}` 前 |
+| `/api/buildings/{id}` | master · contract | 合同新建逐栋取单元 |
+| `/api/buildings` | master · contract · param · meter · billing · analysis | 跨模块楼栋字典，不含个人信息 |
+| `/api/companies` | master · billing · entry · report · analysis | 台账公司选择器、三大报表（无 catch）、催缴单收款簿、分析只用公司名。账号与个人卡户名打码 |
+| `/api/contracts/summary` | contract · analysis | 驾驶舱无 catch。排在 `/{id}` 前 |
+| `/api/contracts/{id}/terminate-preview` | contract | 终止确认框 |
+| `/api/contracts/{id}` | contract · analysis | TenantPeerView 只用 billingLines；租户快照里的联系人打码 |
+| `/api/contracts` | contract · billing · analysis | 催缴单对租户与合同；分析四屏 |
+| `/api/params/status` | 数据层任一 | 出账链矩阵 billingPeriod.ts 加载，不含金额。排在 `/**` 前 |
+| `/api/params` | param · billing · analysis | 核算 / 损耗 / 系数簿读系数；PvMeterAnaView 取 6 个 pv_* 判据键 |
+| `/api/params/**` `/api/price-cfg` | param | |
+| `/api/alloc/rules` | param · billing | 公摊规则归计费参数，核算与系数簿要读。排在 `/api/alloc/**` 前 |
+| `/api/alloc/cfg` | param | |
+| `/api/alloc/pool-months` `/loss-months`、`/api/bill-notices/months`、`/api/meters/months` | 数据层任一 | 出账链月索引，billingPeriod.ts:91 的 Promise.all 无 catch，少一条整屏「出账月数据加载失败」 |
+| `/api/alloc/**` `/api/bill-notices/**` `/api/bills/**` | billing | |
+| `/api/data-home/**` | 数据层任一 | 本月出账枢纽；催缴单那一步的金额另按 billing:view 去掉 |
+| `/api/meters/{id}/readings` | meter · billing | 核算看池内各表读数。三段，吞不掉 `readings/delete-preview` |
+| `/api/meters` | meter · billing · param | 核算与计费参数的表列 |
+| `/api/meters/**` | meter | |
+| `/api/pv-meter/stations` `/readings` | meter · analysis | PvMeterAnaView |
+| `/api/pv-meter/**` `/api/cp-meter/months` | meter | |
+| `/api/cp-meter/**` | meter · analysis | ChargingAnalysisView 四个都调 |
+| `/api/elec-cost/price-cfg` | param · entry · analysis | 4 个电价键归计费参数；ElecAnalysisView 12 个月一个 Promise.all 无 catch。排在 `/**` 前 |
+| `/api/elec-cost/meters` `/entries` `/metrics-year` | entry · analysis | |
+| `/api/elec-cost/**` | entry | |
+| `/api/budget/all` | entry · analysis | 预算归 entry（拍板 #9），读方只有分析层 |
+| `/api/books/**` `/api/ledger/**` `/api/s10/overview` | entry | 分析走 `/api/analysis/ledger-tenant-months`，不直接读台账 |
+| `/api/s10/**` | entry · report | 报表屏勾稽与派生对照 |
+| `/api/pv/records` `/api/charging/*/records` `/api/elec/records` `/api/utilities/*/records` | entry · report · analysis | 逐月台账；报表 pnlDerive 派生对照、分析白名单 |
+| `/api/pv/**` | entry · analysis | |
+| `/api/charging/**` `/api/elec/**` `/api/utilities/**` | entry | |
+| `/api/import-log/**` | 数据层任一 · report | 导入中心历史：文件名、行数、操作人，不含金额 |
+| `/api/salary/**` | **salary** | 不对 analysis / report 放行 |
+| `/api/pnl/*/overview` | report | 分析不调。排在 `/*/*` 前 |
+| `/api/pnl/*/*` | report · analysis | 附表5 的工资是汇总行，符合规则 4 |
+| `/api/reports/is/*/*/*` `/api/reports/bs/*/*/*` | report · analysis | 只放 is / bs 本期：科目余额表 tb 的科目名里有疑似银行账号片段，分析也不调 |
+| `/api/reports/**` `/api/recon/**` | report | |
+
+覆盖测试：`PermissionCoverageTest.everyReadEndpointIsMapped` 枚举全部 GET 映射（当前 121 条），每条都必须命中；
+`readRulesOnlyReferenceViewPerms` 保证读规则只引用 `kind=view` 的点。
+
+### 11.4 打码
+
+| 字段 | 出口 | 掩码 | 明文要 |
+|---|---|---|---|
+| `TenantDTO.contactPhone` | `GET /api/tenants`、`/{id}`、POST/PUT 回包（`TenantService.buildTenantDto`） | ≥ 11 位前 3 + `****` + 后 4（`138****5678`）；8–10 位只留后 4（`****6666`）；更短给 `****`。7–8 位座机套「前 3 后 4」等于全露 | master:view |
+| `TenantDTO.aliases` | 同上 | 逐项只留第一个字，半角逗号连（`宋**,冯*`）。别名里是老板个人姓名（V86），但它也是抄表导入与台账对户的匹配键，所以**数据层任一查看就给明文**，只有报表 / 分析查看的人（股东）拿掩码 | master:view 或数据层任一 view |
+| `TenantDTO.contactName` | 同上 | 只留第一个字（`王**`） | master:view |
+| `ContractDetailDTO.tenant.contactPhone / contactName` | `GET /api/contracts/{id}`（取 tenant 表现值，归 master） | 同上 | master:view |
+| `CompanyAccountDTO.accountNo` | `GET /api/companies`、增改账户回包（`CompanyService.toDTO`），所有 kind | 只留后 4 位（`****5678`） | master:view |
+| `CompanyAccountDTO.accountName` | 同上，只对 `kind=personal` | 只留第一个字 | master:view |
+| `data-home` 催缴单那一步的 detail | `GET /api/data-home/overview` | 去掉「 · ¥总额」，只留「N 张」 | billing:view |
+| 工资写接口回包整行 | `POST /api/salary/records`、`PATCH /records/{id}/note` | 只回 id，其余为空 | salary:view |
+
+**写回守卫**：`PUT /api/tenants/{id}`（联系人、电话、别名）、`PUT /api/company-accounts/{id}` 收到的值等于「现值的掩码」时当作没改
+（`SensitiveMask.keepIfMasked`）。靠提权拿到编辑权的人（查看不可提权）表单里回填的是掩码，不拦的话一保存就把真号码冲掉。
+null 与空串原样返回；打码只看本人角色给的点（含隐含），不看提权。
+没有 master:view 的人不许把个人卡改成别的类型（403）：写回守卫会把掩码户名还原成真名，回包又按新类型不打码，改一次就换出收款人全名。
+
+### 11.5 和 v1 失败的区别
+
+v1（§0.1）也是每模块 view / edit，失败在**分析层依赖各模块的查看权**：股东只有 `analysis:view`，
+分析层 15 屏共用的取数层要调 pnl / report / tenant / contract / building / pv… 全被拦，账号做出来是空壳，12 处深链撞墙。
+
+v3 的两处不同：
+
+1. **分析独立放行**：分析屏实际调到的模块读接口（§11.3 带 analysis 的那些行）对 `analysis:view` 放行，
+   不要求各模块的查看权；股东 = `analysis:view` + `report:view` 就能把分析层与报表看全。
+   深链跳到没有查看权的模块屏时，前端置灰并写明原因，而不是点过去撞墙。
+2. **放宽的代价由服务端打码兜住**：跨模块与分析放行让更多人读得到租户与公司列表，联系人电话、姓名、收款账号
+   按 master:view 打码（§11.4），工资明细不放行。v1 当年「`/api/analysis/*-tenant-months` 本来就返回逐户明细，
+   view 的隔离根本不成立」—— v3 不追求隔离逐户金额，只隔离个人信息、资金账户与工资。
+
+### 11.6 留给用户定的四件事（实现按默认做法）
+
+1. **催缴单导出会印收款账号。** 有 billing 权限但没有 master:view 的角色导出的单上是 `****1234`，而这张单要发给租户。
+   V134 之后现有角色都有 master:view，只有今后新建的角色会遇到。默认：这类账号的导出按钮置灰并写明「印收款账号需要
+   主数据 · 查看」（前端）。另一做法：让 billing:view 也看得到账号明文。
+2. **工资写入权要不要收紧。** 财务专员没有 salary:view 但有 entry:edit，仍能经导入中心写工资（看不见内容也能写）。
+   默认：写入仍挂 entry:edit，只把写接口回包里的行内容去掉。另一做法：工资写入同时要求 salary:view。
+3. **损益附表「餐补费」派生**要用 `/api/salary/records` 的月合计，只有 report:view 的人（如股东）拿不到。
+   默认：没有 salary:view 时前端不发这 12 个请求，这一项派生不显示。另一做法：新增只回月合计的工资汇总接口。
+4. **`system:edit` 隐含 `system:view`。** 默认隐含（统一规则，后端展开与角色屏联动不写特例）。
+   内置角色不受影响；只有自建角色勾了 system:edit 没勾 system:view 时会多出系统管理的查看权。
+
+### 11.7 落点
+
+后端：`Perm`（9 常量、ALL 27、NOT_ELEVATABLE、META 加 group / kind、`IMPLIED_VIEW` / `withImplied`）·
+`PermissionRegistry.registerReads` / `resolveRead` · `ReadAccessManager` · `SecurityConfig` · `UserPermissionCache` ·
+`SensitiveMask` + 五个 service 的打码挂点 · `V134__rbac_view_perms.sql`。
+测试：`PermissionCoverageTest`（读覆盖、读规则只引用查看点、读路由回归、查看不可提权、隐含表与设计 / META 一致）·
+`ReadPermissionIT`（缺查看 403 与文案、股东、打码与写回、本月出账金额、工资、编辑隐含查看）·
+`RbacViewPermsMigrationIT`（V134 重放幂等与第 7 条分配）。

@@ -13,6 +13,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { grantViews } from '@/test-utils/perms'
 import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Component } from 'vue'
@@ -502,6 +503,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date(2026, 8, 16, 12, 0, 0))
   setActivePinia(createPinia())
   localStorage.clear()
+  grantViews()   // RBAC v3:导航按查看权滤,这里给全部业务查看权
   __resetPeriodForTest()      // 模块级单例:不复位的话上一屏选的期会带进下一屏
   __resetCompareForTest()
   rejections.length = 0

@@ -11,6 +11,7 @@ import { onReactivated } from '@/composables/onReactivated'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
+import { useViewGate } from '@/composables/useViewGate'
 import AnaShell, { periodNote } from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
@@ -298,7 +299,10 @@ const phaseOption = computed<object | null>(() => {
     series: d.series.map((s) => ({ name: s.name, type: 'bar', stack: 'ph', data: s.data, barMaxWidth: 30 })),
   }
 })
+// 跳到模块屏的入口:没有目标屏的查看权就置灰、悬停写明缺哪一项;图上的点没法置灰,点了说一句原因不跳(RBAC v3)
+const { lack, blocked } = useViewGate()
 function onPhaseClick(p: unknown): void {
+  if (blocked('/sales-income')) return
   const e = p as EcClick
   const s = ps.value?.series.find((x) => x.name === e.seriesName)
   if (!s || !e.name) return
@@ -639,7 +643,7 @@ const conclusion = computed(() => buildConclusion(
           <span class="hint">规则引擎跑真数据<span class="hint-desk"> · 点击查看</span><span class="hint-touch"> · 点条看详情</span></span>
         </div>
         <div v-if="anomTop.length" class="cv2-anoms">
-          <button v-for="a in anomTop" :key="a.id" class="cv2-anom" @click="goAnom(a)">
+          <button v-for="a in anomTop" :key="a.id" class="cv2-anom" :disabled="!!lack(a.link)" v-tip="lack(a.link)" @click="goAnom(a)">
             <span class="dot" :style="{ background: STATUS[a.sev].color }"></span>
             <span class="tt">{{ a.title }}</span>
             <span class="vv" :style="{ color: STATUS[a.sev].color }">{{ a.value }}</span>
@@ -741,7 +745,7 @@ const conclusion = computed(() => buildConclusion(
               <td class="mono">¥{{ fint(r.recv) }}</td>
               <td class="mono">¥{{ fint(r.coll) }}</td>
               <td class="mono" style="color: var(--hue-red)">¥{{ fint(r.arr) }}</td>
-              <td><button class="cv2-link" @click="goLedger(r.name, r.company, arrModal!)">查台账 →</button></td>
+              <td><button class="cv2-link" :disabled="!!lack('/ledger')" v-tip="lack('/ledger')" @click="goLedger(r.name, r.company, arrModal!)">查台账 →</button></td>
             </tr>
           </tbody>
         </table>
@@ -769,6 +773,7 @@ const conclusion = computed(() => buildConclusion(
 .cv2-anoms { display: flex; flex-direction: column; gap: 6px; }
 .cv2-anom { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: var(--surface-card); border-radius: 8px; padding: 9px 10px; cursor: pointer; font-family: var(--font-sans); text-align: left; transition: background var(--dur-fast) var(--ease-standard); }
 .cv2-anom:hover { background: var(--bg-hover); }
+.cv2-anom:disabled { opacity: 0.55; cursor: default; background: var(--surface-card); }
 /* C2-08 按压:按下换深一档 0ms 瞬到,松开走上面那条 120 回弹。 */
 .cv2-anom:active { background: var(--ink-100); transition-duration: 0ms; }
 .cv2-anom .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
@@ -787,6 +792,7 @@ const conclusion = computed(() => buildConclusion(
 .cv2-modal-h .x:hover { background: var(--bg-hover); color: var(--text-primary); }
 .cv2-link { border: none; background: transparent; color: var(--text-link); font-size: var(--fs-micro); cursor: pointer; font-family: var(--font-sans); }
 .cv2-link:hover { text-decoration: underline; }
+.cv2-link:disabled { color: var(--text-disabled); cursor: default; text-decoration: none; }
 .cv2-arr-sum { margin: 10px 0 0; font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono); }
 
 /* ── 手机档零件(分析屏手机体验稿 ④ 经营驾驶舱,2026-09-20) ──

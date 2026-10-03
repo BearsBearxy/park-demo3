@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
+import { grantViews } from '@/test-utils/perms'
 import IconRail from '@/components/shell/IconRail.vue'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
@@ -19,7 +20,7 @@ const layerBtn = (w: ReturnType<typeof mountRail>, short: string) =>
   w.findAll('button').find(b => b.text().includes(short))
 
 describe('IconRail · 层切换语义(§4.1)', () => {
-  beforeEach(() => { setActivePinia(createPinia()); localStorage.clear(); push.mockClear() })
+  beforeEach(() => { setActivePinia(createPinia()); localStorage.clear(); push.mockClear(); grantViews() })
 
   it('点当前层:不 push、不动页签', async () => {
     const w = mountRail()

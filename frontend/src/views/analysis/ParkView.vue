@@ -24,12 +24,14 @@ import { fetchBuildings, fetchBuildingSummary, fetchContracts, fetchTenants } fr
 import { buildBuildingRows, buildPhaseRows, liveContracts, splitLogPoints } from './park.logic'
 import { iconFor } from '@/components/ds/icon'
 import { canReach } from '@/nav/navAccess'
+import { useViewGate } from '@/composables/useViewGate'
 import { useAuthStore } from '@/stores/auth'
 import { occByUnit, occPct, OCC_NULL_WHY, type BuildingDTO, type BuildingSummaryDTO } from '@/types/building'
 import { RENT_AREA_FACTOR, type ContractDTO } from '@/types/contract'
 import type { TenantDTO } from '@/types/tenant'
 
 const auth = useAuthStore()
+const { lack } = useViewGate()
 
 // S 档(≤600)几何分支:TreeMap 并块 / 明细表换行卡 / 三块进折叠,都只在这一档生效,>600 原样。
 // 判视口而不判容器宽:真版式与骨架是同一处 v-if 的两支,容器要挂载之后才量得到 ——
@@ -483,8 +485,10 @@ const areaBarOption = computed(() => ({
             <div v-if="bSummary?.occRate == null" class="s">{{ OCC_NULL_WHY }}</div>
             <div class="s">{{ byUnit.text }} · {{ occPct(byUnit.rate) }}</div>
             <!-- 跨层引导:楼栋管理属数据层,园区股东看不见那一层 —— 给他这条链接等于把他送进一个自己回不来的屏 -->
-            <RouterLink v-if="bSummary?.occRate == null && canReach('/buildings', auth.navLayers, auth.can('system:view'))"
+            <!-- 没有楼栋的查看权(RBAC v3):不藏,置灰并悬停写明缺哪一项 -->
+            <RouterLink v-if="bSummary?.occRate == null && canReach('/buildings', auth.navLayers, auth.can)"
                         class="pk-go" to="/buildings">去补录可租面积 →</RouterLink>
+            <span v-else-if="bSummary?.occRate == null && lack('/buildings')" class="pk-go off" v-tip="lack('/buildings')">去补录可租面积 →</span>
           </div>
         </div>
 
@@ -543,6 +547,7 @@ const areaBarOption = computed(() => ({
 /* 与 AnaEmpty 的 .go 同形态:那份样式是 scoped 的,跨组件拿不过来 */
 .pk-go { display: inline-block; margin-top: 8px; font-size: 12px; color: var(--text-link); text-decoration: none; }
 .pk-go:hover { text-decoration: underline; }
+.pk-go.off { color: var(--text-disabled); cursor: default; text-decoration: none; }
 .pk-area-body { display: flex; gap: 20px; align-items: stretch; }
 .pk-area-metrics { flex: 0 0 216px; display: flex; flex-direction: column; gap: 14px; justify-content: center; }
 .pk-am .v { font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }

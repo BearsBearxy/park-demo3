@@ -11,6 +11,7 @@ import { PanelLeft, Star, Search, History, Sparkles } from 'lucide-vue-next'
 import { useUpdateStore } from '@/stores/update'
 import { useFavoritesStore, MAX_FAVS } from '@/stores/favorites'
 import { fpBuildRoutes, fpFindLayer } from '@/nav/fpNav'
+import { layerEntry } from '@/nav/navAccess'
 import ShellTip from '@/components/shell/ShellTip.vue'
 import NotifyBell from '@/components/shell/NotifyBell.vue'
 import FPElevChip from '@/components/fp/FPElevChip.vue'
@@ -43,11 +44,13 @@ const crumbPage  = computed(() => meta.value.page ?? '')
 const tabs = useTabsStore()
 const activeValue = computed(() => meta.value.value ?? '')
 /** 首页 / 新标签页:面包屑只写页名,不出期间与 ☆(TAB-BAR-SPEC §5.6)。 */
-const homeLike = computed(() => activeValue.value === 'home' || activeValue.value === 'newtab')
+// 不是页签的页(「无权查看」页这类,路由没有 value)同样处理:没有可收藏的屏,☆ 点了也收不进去
+const homeLike = computed(() => !activeValue.value || activeValue.value === 'home' || activeValue.value === 'newtab')
 
 // ── 面包屑第一段(TAB-BAR-SPEC §6.2):不在这一层第一屏时能点,点了当前页签回第一屏 ──
 const ROUTES = fpBuildRoutes()
-const layerHome = computed(() => fpFindLayer(activeValue.value).home)
+// 层首页看不了(RBAC v3)就回这一层第一块看得了的屏,与图标栏同一个 layerEntry
+const layerHome = computed(() => layerEntry(fpFindLayer(activeValue.value), auth.can))
 const crumbLink = computed(() => !homeLike.value && !!activeValue.value && activeValue.value !== layerHome.value)
 const crumbTip = computed(() => `回到 ${crumbGroup.value} · ${ROUTES[layerHome.value]?.page ?? ''}`)
 /**

@@ -13,6 +13,8 @@ import com.park.demo3.dto.SalaryYearMonthDTO;
 import com.park.demo3.dto.SalaryYearMonthDTO.Total;
 import com.park.demo3.entity.SalaryRecord;
 import com.park.demo3.mapper.SalaryRecordMapper;
+import com.park.demo3.security.Perm;
+import com.park.demo3.security.SensitiveMask;
 import com.park.demo3.security.ReviewGuard;
 import com.park.demo3.security.ReviewKind;
 import org.springframework.stereotype.Service;
@@ -117,7 +119,7 @@ public class SalaryService {
         r.setNote(blankToNull(req.note()));
         r.setSource("manual");
         records.insert(r);
-        return toDTO(records.selectById(r.getId()));
+        return visible(toDTO(records.selectById(r.getId())));
     }
 
     // ── import:重导=替换本月导入行 —— 先删该 acctMonth 的 source='import' 行,再逐行 insert(source='import')。
@@ -199,7 +201,17 @@ public class SalaryService {
         assertSalaryEditable(r.getAcctMonth());
         r.setNote(blankToNull(note));
         records.updateById(r);
-        return toDTO(records.selectById(id));
+        return visible(toDTO(records.selectById(id)));
+    }
+
+    /**
+     * 写接口回包按 salary:view 收(RBAC-SPEC §11 规则 5)。写入挂的是 entry:edit,而它不隐含 salary:view ——
+     * 不收的话只有 entry:edit 的人对任意 id 改一次备注,就能读到那一行的姓名和工资。没有就只回 id。
+     */
+    private static SalaryRecordDTO visible(SalaryRecordDTO d) {
+        if (SensitiveMask.holds(Perm.SALARY_VIEW)) return d;
+        return new SalaryRecordDTO(d.id(), null, null, null, null, null, null, null, null, null, null, null,
+            null, null, null, null, null, null, null, null, null, null, null, null, null, null, false, null, null);
     }
 
     // ── delete(id;不存在 → 404;seed 同等可删) ──

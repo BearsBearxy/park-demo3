@@ -8,6 +8,7 @@ import { nextTick, reactive } from 'vue'
 import { useTabsStore } from '@/stores/tabs'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
+import { ALL_VIEWS } from '@/test-utils/perms'
 import { useUpdateStore } from '@/stores/update'
 import { tipState } from '../ShellTip.vue'
 import FPReceiptHost from '@/components/fp/FPReceiptHost.vue'
@@ -52,7 +53,7 @@ beforeEach(() => {
   setActivePinia(createPinia())
   const auth = useAuthStore()
   auth.me = 'zhou'
-  auth.permissions = ['ledger:edit']
+  auth.permissions = ['ledger:edit', ...ALL_VIEWS]   // RBAC v3:没有查看权的屏不留在页签条上
   at('tenants', '租户管理', '数据中心')
   push.mockClear()
   tipState.lastHide = 0

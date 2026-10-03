@@ -1,5 +1,7 @@
+import { watch } from 'vue'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { fpBuildRoutes } from '@/nav/fpNav'
+import { canViewPage } from '@/nav/navAccess'
 import { useAuthStore } from '@/stores/auth'
 import { useTabsStore } from '@/stores/tabs'
 import { useUiStore } from '@/stores/ui'
@@ -10,6 +12,7 @@ const PlaceholderView = () => import('@/views/PlaceholderView.vue')
 const Gallery = () => import('@/views/Gallery.vue')
 const LoginView = () => import('@/views/LoginView.vue')
 const ChangePasswordView = () => import('@/views/ChangePasswordView.vue')
+const NoAccessView = () => import('@/views/NoAccessView.vue')
 // 首页与新标签页:同一个组件,按 route.meta.value 分两种点击规则(TAB-BAR-SPEC §5.5)
 const HomeView = () => import('@/views/home/HomeView.vue')
 // 充电桩两屏(汽车/电动车)共用同一参数化 View
@@ -109,6 +112,8 @@ const router = createRouter({
     // 不进导航:首次登录强制改密的落点,也可自行访问改密
     { path: '/change-password', component: ChangePasswordView },
     { path: '/_gallery', component: Gallery },
+    // 没有查看权的屏落这里(守卫见下);不带 meta.value —— 不进页签条、不进最近打开
+    { path: '/no-access', component: NoAccessView, meta: { page: '无权查看' } },
     ...Object.values(navRoutes).map((meta): RouteRecordRaw => ({
       path: `/${meta.value}`,
       component: VIEWS[meta.value] ?? PlaceholderView,
@@ -122,7 +127,12 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to) => {
+// 升级到 v3 后第一次打开:本地存的还是 v2 登录时那份权限(一个 :view 都没有)。拿它判,所有人停着的屏
+// 都先被送进「无权查看」页、图标栏一层不剩,等 App 的 refreshMe 回来才各自弹回去;refreshMe 失败就一直停着。
+// 所以这种「旧快照」先重取一次再判。只试一次:真有零查看权的账号,不该每跳一次都打一发 /auth/me。
+let staleChecked = false
+
+router.beforeEach(async (to) => {
   // ponytail: useAuthStore() called inside guard so pinia is already active
   const auth = useAuthStore()
   // 置位要在鉴权分支之前:返回重定向对象时本次导航仍会被最终导航的 afterEach 复位,不会漏关
@@ -144,11 +154,15 @@ router.beforeEach((to) => {
   if (auth.isAuthed && to.path === '/login') {
     return { path: auth.landing }
   }
-  // 系统管理层是**全站唯一读也管的一段**(RBAC-SPEC §4/§5.1):无 system:view 一律兜回首页。
-  // 其余 47 屏刻意不拦 —— 读全开,无权也进得去、数据照显,只是没有写入口。
-  // 不拦的话手打地址能进到一个「后端 403、页面只剩报错」的屏,看着像系统坏了。
-  if (auth.isAuthed && (to.meta as Record<string, unknown>).layer === 'system' && !auth.can('system:view')) {
-    return { path: auth.landing }
+  // RBAC v3「读写分开」(用户 2026-10-04 拍板,推翻 v2 的读全开):每一屏都有查看权限,没有就落「无权查看」页,
+  // 写明缺哪一项、去找系统管理员开。不拦的话手打地址能进到一个「后端 403、页面只剩报错」的屏,看着像系统坏了。
+  // 判 fullPath 而不是 path:光伏 / 充电桩带 ?mode=meter 的深链只认抄表查看权(nav/navAccess.viewPermsOf)。
+  if (auth.isAuthed && !staleChecked && !auth.permissions.some((p) => p.endsWith(':view'))) {
+    staleChecked = true
+    await auth.refreshMe()
+  }
+  if (auth.isAuthed && !canViewPage(to.fullPath, auth.can)) {
+    return { path: '/no-access', query: { to: to.fullPath } }
   }
 })
 
@@ -205,5 +219,16 @@ function prefetchRouteChunks() {
 
 // 等首次导航解析完再开始,别和首屏关键请求抢带宽;首次导航就失败时不预热也不再多抛一次未捕获拒绝
 void router.isReady().then(prefetchRouteChunks, () => {})
+
+// RBAC v3(读写分开):新权限到了(刷新后 App 挂载时的 refreshMe、管理员改了我的角色),停着的这一屏要是已经看不了,
+// 换成「无权查看」页 —— 守卫只在导航时判,停在原地的屏不会自己走开。反方向(拿到了权限)由「无权查看」页
+// 自己回原地址(views/NoAccessView.vue)。等首次导航落定再挂:那时 pinia 早已装好。
+void router.isReady().then(() => {
+  const auth = useAuthStore()
+  watch(() => auth.permissions, () => {
+    const at = router.currentRoute.value.fullPath
+    if (auth.isAuthed && !canViewPage(at, auth.can)) void router.replace({ path: '/no-access', query: { to: at } })
+  })
+}, () => {})
 
 export default router

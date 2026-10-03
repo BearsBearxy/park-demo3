@@ -10,7 +10,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 「写端点 → 权限点」映射表(RBAC-SPEC v2 §5.2)。只管非 GET —— 读全开。
+ * 「写端点 → 权限点」映射表(RBAC-SPEC v2 §5.2),以及 v3(2026-10-04)起的「读端点 → 查看点」映射表
+ * (RBAC-SPEC §11,见 {@link #resolveRead})。两张表各管各的,三条铁律对两张表都成立。
  *
  * 三条铁律(每条都是查证过会踩的坑,改这个文件前先读 RBAC-SPEC §5.2):
  *  1. **按 path segment 匹配,不是字符串前缀**。用 PathPattern,不是 startsWith。
@@ -20,7 +21,7 @@ import java.util.List;
  *  2. **最长字面前缀优先**:表是有序的,首个命中生效,具体规则必须排在 catch-all 之前。
  *  3. **默认拒绝**:表里没有的写路径一律 403(resolve 返回 null → SecurityConfig 拒)。
  *
- * ⚠ 唯一一条 URL 判不了的规则:PUT /api/params 的 13 个 monthlyCheck 月度键归 param-monthly,
+ * ⚠ 唯一一条 URL 判不了的规则:PUT /api/params 的 14 个 monthlyCheck 月度键归 param-monthly,
  *   其余键归 param-policy。URL 层放行「两者任一」,细分在 ParamService 里按 cfg_key 判。
  */
 @Component
@@ -32,7 +33,15 @@ public class PermissionRegistry {
     private record Rule(HttpMethod method, PathPattern pattern, List<String> anyOf) {}
 
     private final List<Rule> rules = new ArrayList<>();
+    private final List<Rule> readRules = new ArrayList<>();
     private final PathPatternParser parser = PathPatternParser.defaultInstance;
+
+    /**
+     * 「本月出账」枢纽与出账链月索引的放行面:数据层任一查看(不含 report / analysis)。
+     * billingPeriod.ts 的 Promise.all 没有 catch,计费参数、抄表、核算、损耗、催缴单、本月出账任一屏
+     * 少了这几条月索引就整屏「出账月数据加载失败」,所以它们跟着路由 /data-home 的门走,而不是各归各模块。
+     */
+    private static final String[] DATA_LAYER = Perm.DATA_LAYER_VIEWS.toArray(String[]::new);
 
     public PermissionRegistry() {
         // ═══ 任意已登录可写 ═══
@@ -149,7 +158,7 @@ public class PermissionRegistry {
         add(HttpMethod.POST, "/api/budget/import", Perm.ENTRY_EDIT);
 
         // ═══ 账册模板写端点(第16点 book-template:edit,2026-08-24 拍板):
-        //     模板改动独立于事后录入——录入员没这点就只能看不能改模板;GET 读全开 ═══
+        //     模板改动独立于事后录入——录入员没这点就只能看不能改模板;GET 走读规则表(entry:view) ═══
         add(HttpMethod.PUT,  "/api/books/*/template",          Perm.BOOK_TEMPLATE_EDIT);
         // 换版本走第17点 book-template:switch(2026-08-26 拍板):换一套别人的列、和在本月微调列名,
         // 是两种风险,故分权。第16点不蕴含第17点 —— 只勾模板编辑的人切不了版。
@@ -159,7 +168,7 @@ public class PermissionRegistry {
         //     submit 要哪个权限点取决于 key 里的 kind(params 是 policy|monthly 两档、其余多为 entry),
         //     URL 层判不出来 —— 照 PUT /api/params 那条既有例外:这里放行「任一相关 edit 权」,
         //     真正的 kind→perm 判定下沉到 ReviewService.submit(表在 ReviewKind.perms())。
-        //     GET /api/review 不登记:本表只管非 GET,读全开。
+        //     GET /api/review 不在这张写表里,在读规则表(任何已登录可读)。
         add(HttpMethod.POST, "/api/review/*/submit",
             Perm.PARAM_POLICY_EDIT, Perm.PARAM_MONTHLY_EDIT, Perm.METER_READING_EDIT,
             Perm.BILLING_RUN_EDIT, Perm.ENTRY_EDIT);
@@ -212,6 +221,143 @@ public class PermissionRegistry {
         // ═══ 系统管理(P1 才有实体端点,先把规则占住,免得将来裸奔) ═══
         add(null, "/api/system",    Perm.SYSTEM_EDIT);
         add(null, "/api/system/**", Perm.SYSTEM_EDIT);
+
+        registerReads();
+    }
+
+    /**
+     * 读规则表(RBAC-SPEC §11,v3「读写分开」)。只管 GET;**默认拒绝**,首个命中生效,具体规则排在 catch-all 前。
+     *
+     * 跨模块读一律是「本模块 view ∪ 实际调用它的屏所属模块的 view」;分析层用到的模块接口再并上 analysis:view
+     * (分析独立放行,v1 让分析依赖各模块查看权,股东账号成了空壳)。放宽不泄露个人信息:
+     * 联系人电话 / 姓名、收款账号由服务端按 master:view 打码(SensitiveMask)。
+     * 每条为什么给这几个点,见 RBAC-SPEC §11.3 的表 —— 改这里先改那张表。
+     */
+    private void registerReads() {
+        // ═══ 任意已登录可读:身份 / 会话 / 协作基础设施,与不含业务数据的字典(规则 3) ═══
+        // 逐条精确路径,不用 /** 通配:这几个前缀下以后新加的 GET 落到默认拒绝,覆盖测试当场红,
+        // 审过回包再登记 —— 通配的话一个返回全员数据的新接口会悄悄对所有账号开放
+        addRead("/api/auth/me",                    ANY_AUTHENTICATED);   // 本人权限集(已展开隐含查看)
+        addRead("/api/auth/perms",                 ANY_AUTHENTICATED);   // 权限点字典 Perm.META
+        addRead("/api/auth/elevate",               ANY_AUTHENTICATED);   // 本人当前的提权
+        addRead("/api/auth/approvals",             ANY_AUTHENTICATED);   // 本人待批
+        addRead("/api/auth/approvals/candidates",  ANY_AUTHENTICATED);   // 可批人;不可提权的点 403(ApprovalService)
+        addRead("/api/notices",                    ANY_AUTHENTICATED);   // 本人铃铛
+        addRead("/api/notices/system-seen",        ANY_AUTHENTICATED);
+        addRead("/api/review",                     ANY_AUTHENTICATED);   // 审核状态与退回理由,不含金额;全站编辑闸与铃铛依赖它
+        addRead("/api/review/states",              ANY_AUTHENTICATED);
+        addRead("/api/review/closed-months",       ANY_AUTHENTICATED);
+        addRead("/api/review/pending",             ANY_AUTHENTICATED);
+        addRead("/api/review/returned",            ANY_AUTHENTICATED);
+        addRead("/api/zones",                      ANY_AUTHENTICATED);   // 期区字典
+        addRead("/api/probe/ok",                   ANY_AUTHENTICATED);   // 探针,回包固定
+        addRead("/api/probe/boom",                 ANY_AUTHENTICATED);
+
+        // ═══ 系统管理:与 SecurityConfig 那一行同值(那行先命中);登记在这里是为了覆盖测试不开豁免名单 ═══
+        addRead("/api/system/**", Perm.SYSTEM_VIEW);
+
+        // ═══ 经营分析专用 ═══
+        addRead("/api/analysis/**", Perm.ANALYSIS_VIEW);
+
+        // ═══ 主数据(/summary 必须排在 /{id} 前面) ═══
+        addRead("/api/tenants/summary", Perm.MASTER_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/tenants/{id}",    Perm.MASTER_VIEW);
+        addRead("/api/tenants",         Perm.MASTER_VIEW, Perm.CONTRACT_VIEW, Perm.PARAM_VIEW, Perm.METER_VIEW,
+                                        Perm.BILLING_VIEW, Perm.ENTRY_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/tenant-categories", Perm.MASTER_VIEW);
+        addRead("/api/buildings/summary", Perm.MASTER_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/buildings/{id}",    Perm.MASTER_VIEW, Perm.CONTRACT_VIEW);
+        addRead("/api/buildings",         Perm.MASTER_VIEW, Perm.CONTRACT_VIEW, Perm.PARAM_VIEW, Perm.METER_VIEW,
+                                          Perm.BILLING_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/companies",         Perm.MASTER_VIEW, Perm.BILLING_VIEW, Perm.ENTRY_VIEW, Perm.REPORT_VIEW,
+                                          Perm.ANALYSIS_VIEW);
+
+        // ═══ 合同 ═══
+        addRead("/api/contracts/summary",                Perm.CONTRACT_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/contracts/{id}/terminate-preview", Perm.CONTRACT_VIEW);
+        addRead("/api/contracts/{id}",                   Perm.CONTRACT_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/contracts",                        Perm.CONTRACT_VIEW, Perm.BILLING_VIEW, Perm.ANALYSIS_VIEW);
+
+        // ═══ 计费参数(/status 必须排在 /** 前面) ═══
+        addRead("/api/params/status", DATA_LAYER);
+        addRead("/api/params",        Perm.PARAM_VIEW, Perm.BILLING_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/params/**",     Perm.PARAM_VIEW);
+        addRead("/api/price-cfg",     Perm.PARAM_VIEW);
+
+        // ═══ 出账链:公摊规则与配置归计费参数,月索引归数据层任一,其余归 billing ═══
+        addRead("/api/alloc/rules",        Perm.PARAM_VIEW, Perm.BILLING_VIEW);
+        addRead("/api/alloc/cfg",          Perm.PARAM_VIEW);
+        addRead("/api/alloc/pool-months",  DATA_LAYER);
+        addRead("/api/alloc/loss-months",  DATA_LAYER);
+        addRead("/api/alloc/**",           Perm.BILLING_VIEW);
+        addRead("/api/bill-notices/months", DATA_LAYER);
+        addRead("/api/bill-notices/**",    Perm.BILLING_VIEW);
+        addRead("/api/bills/**",           Perm.BILLING_VIEW);
+        // 本月出账枢纽:催缴单那一步的金额另按 billing:view 去掉(DataHomeService)
+        addRead("/api/data-home/**",       DATA_LAYER);
+
+        // ═══ 抄表(/months 与 /{id}/readings 必须排在 /** 前面;后者三段,吞不掉 readings/delete-preview) ═══
+        addRead("/api/meters/months",        DATA_LAYER);
+        addRead("/api/meters/{id}/readings", Perm.METER_VIEW, Perm.BILLING_VIEW);
+        addRead("/api/meters",               Perm.METER_VIEW, Perm.BILLING_VIEW, Perm.PARAM_VIEW);
+        addRead("/api/meters/**",            Perm.METER_VIEW);
+        addRead("/api/pv-meter/stations",    Perm.METER_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/pv-meter/readings",    Perm.METER_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/pv-meter/**",          Perm.METER_VIEW);
+        addRead("/api/cp-meter/months",      Perm.METER_VIEW);
+        addRead("/api/cp-meter/**",          Perm.METER_VIEW, Perm.ANALYSIS_VIEW);
+
+        // ═══ 电费成本:price-cfg 是计费参数的 4 个键,必须排在 /** 前面(与写表同一条铁律) ═══
+        addRead("/api/elec-cost/price-cfg",    Perm.PARAM_VIEW, Perm.ENTRY_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/elec-cost/meters",       Perm.ENTRY_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/elec-cost/entries",      Perm.ENTRY_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/elec-cost/metrics-year", Perm.ENTRY_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/elec-cost/**",           Perm.ENTRY_VIEW);
+
+        // ═══ 台账与附表(不含工资)。逐月台账 records 另给 report(pnlDerive 派生对照)与 analysis ═══
+        addRead("/api/budget/all",             Perm.ENTRY_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/books/**",               Perm.ENTRY_VIEW);
+        addRead("/api/ledger/**",              Perm.ENTRY_VIEW);
+        addRead("/api/s10/overview",           Perm.ENTRY_VIEW);
+        addRead("/api/s10/**",                 Perm.ENTRY_VIEW, Perm.REPORT_VIEW);
+        addRead("/api/pv/records",             Perm.ENTRY_VIEW, Perm.REPORT_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/pv/**",                  Perm.ENTRY_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/charging/*/records",     Perm.ENTRY_VIEW, Perm.REPORT_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/charging/**",            Perm.ENTRY_VIEW);
+        addRead("/api/elec/records",           Perm.ENTRY_VIEW, Perm.REPORT_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/elec/**",                Perm.ENTRY_VIEW);
+        addRead("/api/utilities/*/records",    Perm.ENTRY_VIEW, Perm.REPORT_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/utilities/**",           Perm.ENTRY_VIEW);
+        // 导入中心的历史:文件名、行数、操作人,覆盖全部导入类型(含报表导入)
+        addRead("/api/import-log/**",          Perm.MASTER_VIEW, Perm.CONTRACT_VIEW, Perm.PARAM_VIEW, Perm.METER_VIEW,
+                                               Perm.BILLING_VIEW, Perm.ENTRY_VIEW, Perm.SALARY_VIEW, Perm.REPORT_VIEW);
+
+        // ═══ 工资:只给 salary:view。不对 analysis / report 放行(分析层只用损益附表5 里的汇总行) ═══
+        addRead("/api/salary/**", Perm.SALARY_VIEW);
+
+        // ═══ 报表。is / bs 的本期给分析;科目余额表 tb 不给(科目名里有疑似银行账号片段,分析层也不调) ═══
+        addRead("/api/pnl/*/overview",     Perm.REPORT_VIEW);
+        addRead("/api/pnl/*/*",            Perm.REPORT_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/reports/is/*/*/*",   Perm.REPORT_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/reports/bs/*/*/*",   Perm.REPORT_VIEW, Perm.ANALYSIS_VIEW);
+        addRead("/api/reports/**",         Perm.REPORT_VIEW);
+        addRead("/api/recon/**",           Perm.REPORT_VIEW);
+    }
+
+    private void addRead(String pattern, String... anyOf) {
+        readRules.add(new Rule(HttpMethod.GET, parser.parse(pattern), List.of(anyOf)));
+    }
+
+    /**
+     * 解析一个**读请求(GET)**需要的查看点。语义同 {@link #resolve}:
+     * {@code [ANY_AUTHENTICATED]} = 任何已登录可读;{@code null} = 表里没这条路径 → **拒绝**。
+     */
+    public List<String> resolveRead(String path) {
+        PathContainer pc = PathContainer.parsePath(path);
+        for (Rule r : readRules) {
+            if (r.pattern().matches(pc)) return r.anyOf();
+        }
+        return null;
     }
 
     /**

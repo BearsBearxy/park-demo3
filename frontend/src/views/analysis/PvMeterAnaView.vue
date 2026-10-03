@@ -14,6 +14,7 @@
 import { computed, onDeactivated, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
+import { useViewGate } from '@/composables/useViewGate'
 import AnaShell from './AnaShell.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
@@ -257,12 +258,15 @@ const foot = computed(() => (snap.value ? critFoot(snap.value, selId.value) : nu
 
 // 「去改」落计费参数「光伏分栋判据」区(section=pv,S21 §5.7)。adopt=YYYY-12 只在会话还没有出账月时认领(常数存 12 月的约定,PvAnalysis §01);
 // 已选期的会话不动 —— 它不是选月,不能用 p= / ym=(那两个是显式深链,会覆盖组级期;2026-09-03 P0a 复查 P0A-2)。
+// 跳到模块屏的入口:没有目标屏的查看权就置灰、悬停写明缺哪一项;图上的点、整行点击没法置灰,点了说一句原因不跳(RBAC v3)
+const { lack, blocked } = useViewGate()
 function gotoParams() {
   tabs.openDeep('params')
   void router.push({ path: '/params', query: { adopt: `${year.value}-12`, section: 'pv' } })
 }
 /** 板数与单块标称功率在分栋运营账里录(光伏发电屏的 meter 那本;不带 mode 会落到本机记住的那本,默认汇总本) */
 function goMeter(): void {
+  if (blocked('/pv-income?mode=meter')) return
   tabs.openDeep('pv-income')
   void router.push({ path: '/pv-income', query: { mode: 'meter' } })
 }
@@ -523,7 +527,7 @@ onDeactivated(() => { drawerOpen.value = false })
         <div v-if="foot" class="pma-b2">
           <div class="pma-b2-r">
             <span v-for="c in foot.items" :key="c.key">{{ c.text }}</span>
-            <button class="pma-lk" @click="gotoParams">去改</button>
+            <button class="pma-lk" :disabled="!!lack('/params')" v-tip="lack('/params')" @click="gotoParams">去改</button>
           </div>
           <div class="pma-b2-r">
             <span v-tip="foot.baseNote" class="base">{{ foot.baseNote }}</span>
@@ -727,6 +731,7 @@ onDeactivated(() => { drawerOpen.value = false })
   color: var(--text-link); font-size: 11px; white-space: nowrap;
 }
 .av2-card-h .pma-lk { margin-left: auto; }
+.pma-lk:disabled { color: var(--text-disabled); cursor: default; }
 
 @media (max-width: 1100px) {
   .pma-sec { min-height: 0; }

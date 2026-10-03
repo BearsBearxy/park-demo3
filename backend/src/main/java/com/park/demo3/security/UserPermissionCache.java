@@ -120,7 +120,9 @@ public class UserPermissionCache {
             // 由 applySession 定点写进来。reload 拿不到就给 null —— 见 applySession 的注释。
             int tv = u.getTokenVersion() == null ? 0 : u.getTokenVersion();
             String sid = liveSid.get(u.getUsername());
-            next.put(u.getUsername(), new UserAuth(u.getUsername(), Set.copyOf(perms), List.copyOf(layers),
+            // 编辑隐含同组查看(RBAC-SPEC §11 规则 1):在这里展开、不落库 —— 后端判定(authorities)、
+            // /auth/me 与登录回包拿到的都是展开后的集合,角色屏存的仍是勾选的原样
+            next.put(u.getUsername(), new UserAuth(u.getUsername(), Set.copyOf(Perm.withImplied(perms)), List.copyOf(layers),
                                                    List.copyOf(roleNames), tv, sid, reason.get(u.getUsername())));
         }
         snapshot = Map.copyOf(next);

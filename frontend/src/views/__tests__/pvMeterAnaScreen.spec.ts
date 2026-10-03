@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { defineComponent, h, KeepAlive, ref, type Component } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
+import { grantViews } from '@/test-utils/perms'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -204,6 +205,7 @@ async function pickFirstFolded(w: VueWrapper): Promise<string> {
 const boot = () => {
   while (mounted.length) mounted.pop()!.unmount()
   setActivePinia(createPinia())
+  grantViews()   // RBAC v3:导航按查看权滤,这里给全部业务查看权
   vi.clearAllMocks()
   __resetCompareForTest()
   location.hash = ''

@@ -4,6 +4,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick, reactive } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
+import { grantViews } from '@/test-utils/perms'
+import { useAuthStore } from '@/stores/auth'
 import { useTabsStore } from '@/stores/tabs'
 
 const route = reactive({ meta: { value: 'data-home' } as Record<string, string>, path: '/data-home' })
@@ -39,6 +41,7 @@ const rowByText = (w: VueWrapper, text: string) =>
 beforeEach(() => {
   localStorage.clear()
   setActivePinia(createPinia())
+  grantViews()   // RBAC v3:导航按查看权滤,这里给全部业务查看权
   route.meta = { value: 'data-home' }
   route.path = '/data-home'
   push.mockClear()
@@ -158,6 +161,22 @@ describe('SidebarPanel · 点击语义(§4.1)', () => {
     await rowByText(w, '园区抄表')!.trigger('click', { shiftKey: true })
     expect(tabs.epochOf('meters')).toBe(1)
     expect(push).toHaveBeenCalledWith('/meters')
+  })
+})
+
+describe('SidebarPanel · 按查看权隐藏(RBAC v3)', () => {
+  // 破坏验证:sections 改回 activeLayer.value.sections.map(...)(不过 visibleSections)→ 红
+  it('❗只有台账与附表的查看权:档案、出账两组整组不出,工资不列;本月出账、台账、导入中心照常', async () => {
+    useAuthStore().permissions = ['entry:view']
+    const w = mountPanel()
+    const titles = () => w.findAll('button.fp-sbnav-title').map(b => b.text())
+    expect(titles().some(t => t.startsWith('档案'))).toBe(false)
+    expect(titles().some(t => t.startsWith('出账'))).toBe(false)
+    for (const t of w.findAll('button.fp-sbnav-title')) if (t.attributes('aria-expanded') === 'false') await t.trigger('click')
+    expect(rows(w)).toEqual(expect.arrayContaining(['本月出账', '月度台账', '附表10 销售收入', '导入中心']))
+    expect(rows(w)).not.toContain('附表12 工资明细')
+    expect(rows(w)).not.toContain('租户管理')
+    expect(rows(w)).not.toContain('计费参数')
   })
 })
 

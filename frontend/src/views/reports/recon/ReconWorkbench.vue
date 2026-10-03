@@ -16,6 +16,7 @@ import { iconFor } from '@/components/ds/icon'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
 import FPStateTag from '@/components/fp/FPStateTag.vue'
 import { receipt } from '@/utils/receipt'
+import { useViewGate } from '@/composables/useViewGate'
 
 const props = defineProps<{
   year: number
@@ -29,6 +30,8 @@ const emit = defineEmits<{
 
 const router = useRouter()
 const tabs = useTabsStore()
+// RBAC v3:「去改台账 / 附表10」要目标屏的查看权。园区股东(只有分析与报表查看)进得来这一屏,没有台账查看 → 置灰写原因
+const { lack } = useViewGate()
 
 // ── 左清单状态 ──
 const seg = ref<ReconSeg>('all')
@@ -329,8 +332,8 @@ async function confirmMark(e = selected.value, n = note.value.trim() || null) {
             <div class="rc-pop-amt"><span class="k">差额</span><span class="v" :style="{ color: dlgVals.state === 'miss' ? 'var(--hue-red)' : dlgVals.state === 'diff' ? 'var(--hue-orange)' : 'var(--hue-blue)' }">{{ signed(dlgVals.d) }}</span></div>
           </div>
           <div class="rc-pop-jumps">
-            <button class="rc-pop-btn" @click="jumpLedger"><component :is="iconFor('arrow-right')" :size="12" />去改台账</button>
-            <button class="rc-pop-btn" @click="jumpS10"><component :is="iconFor('arrow-right')" :size="12" />去改附表10</button>
+            <button class="rc-pop-btn" :disabled="!!lack('/ledger')" v-tip="lack('/ledger')" @click="jumpLedger"><component :is="iconFor('arrow-right')" :size="12" />去改台账</button>
+            <button class="rc-pop-btn" :disabled="!!lack('/sales-income')" v-tip="lack('/sales-income')" @click="jumpS10"><component :is="iconFor('arrow-right')" :size="12" />去改附表10</button>
           </div>
           <textarea v-model="note" :disabled="selected.marked" placeholder="核对备注(可选):说明差异原因与处理方式…"></textarea>
           <button class="rc-pop-confirm" :class="{ undo: selected.marked }" :disabled="busy" @click="confirmMark()">
@@ -478,6 +481,7 @@ async function confirmMark(e = selected.value, n = note.value.trim() || null) {
 .rc-pop-jumps { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 9px; }
 .rc-pop-btn { height: 30px; border-radius: var(--radius-sm); border: 1px solid var(--border-control-strong); background: var(--surface-white); cursor: pointer; font: inherit; font-size: var(--fs-micro); font-weight: var(--fw-medium); color: var(--text-primary); display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
 .rc-pop-btn:hover { background: var(--surface-card); }
+.rc-pop-btn:disabled { opacity: .55; cursor: not-allowed; background: var(--surface-white); }
 .rc-pop textarea { width: 100%; box-sizing: border-box; min-height: 52px; resize: vertical; border: 1px solid var(--border-control-strong); border-radius: 9px; padding: 8px 10px; font: inherit; font-size: var(--fs-label); color: var(--text-primary); outline: none; margin-bottom: 11px; background: var(--surface-white); }
 .rc-pop textarea:focus { border-color: var(--text-primary); }
 .rc-pop textarea:disabled { background: var(--surface-sunken); color: var(--text-muted); }

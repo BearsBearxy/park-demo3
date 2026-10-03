@@ -361,7 +361,7 @@ public class BookService {
         return toDTOAt(b, req.year(), req.month());
     }
 
-    /** 历史版本定义(只读预览:非编辑态点版本看当时的列名与布局;GET 读全开,无权限门)。 */
+    /** 历史版本定义(只读预览:非编辑态点版本看当时的列名与布局;GET 要 entry:view,不要模板编辑权)。 */
     public com.fasterxml.jackson.databind.JsonNode versionDefinition(Integer bookId, int ver) {
         LedgerBook b = books.selectById(bookId);
         if (b == null) throw new BizException(ResultCode.NOT_FOUND, "账册不存在");

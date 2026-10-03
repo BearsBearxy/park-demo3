@@ -11,7 +11,7 @@ import { LogOut, Sparkles, SunMoon } from 'lucide-vue-next'
 import { useUpdateStore } from '@/stores/update'
 import { APPEARANCE_OPTIONS, useAppearanceStore } from '@/stores/appearance'
 import { fpFindLayer, type NavLayer } from '@/nav/fpNav'
-import { visibleLayers } from '@/nav/navAccess'
+import { visibleLayers, visibleSections, layerEntry } from '@/nav/navAccess'
 import { buildAllPages } from '@/components/shell/paletteFilter'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
@@ -26,10 +26,10 @@ const router = useRouter()
 const tabs = useTabsStore()
 const auth = useAuthStore()
 
-// 与 IconRail 同口径:按角色 navLayers 过滤,'system' 层跟 system:view 走
-const layers = computed(() => visibleLayers(auth.navLayers, auth.can('system:view')))
+// 与 IconRail 同口径:按角色 navLayers 与各屏查看权过滤('system' 层不进 navLayers)
+const layers = computed(() => visibleLayers(auth.navLayers, auth.can))
 
-// 当前屏属不可见层时(读全开,深链能进)不展开那一层的目录,退回第一个可见层(SidebarPanel 同款兜底)
+// 当前屏属不可见层时(有查看权、只是层不在导航里,深链能进)不展开那一层的目录,退回第一个可见层(SidebarPanel 同款兜底)
 const activeLayer = computed(() => {
   const L = fpFindLayer((route.meta as Record<string, string>).value ?? '')
   return layers.value.includes(L) ? L : (layers.value[0] ?? L)
@@ -37,7 +37,9 @@ const activeLayer = computed(() => {
 const activeValue = computed(() => (route.meta as Record<string, string>).value ?? '')
 
 // 最近打开:与命令面板同口径 —— 不可见层的屏不进列表
-const allPages = computed(() => buildAllPages(auth.navLayers, auth.can('system:view')))
+const allPages = computed(() => buildAllPages(auth.navLayers, auth.can))
+// 当前层目录:没有查看权的屏不列(与桌面 SidebarPanel 同一个 visibleSections)
+const sections = computed(() => visibleSections(activeLayer.value, auth.can))
 const recentItems = computed(() =>
   tabs.recent
     .map(v => allPages.value.find(p => p.value === v))
@@ -51,8 +53,9 @@ const recentItems = computed(() =>
 // 既高亮又点不动(整期复查实测)。
 function goLayer(layer: NavLayer) {
   if (layer.id === fpFindLayer(activeValue.value).id) return
-  tabs.openFresh(layer.home)
-  router.push('/' + layer.home)
+  const v = layerEntry(layer, auth.can)
+  tabs.openFresh(v)
+  router.push('/' + v)
 }
 
 // 目录条目与桌面侧栏同义:恢复现场(§4.1)。触屏没有修饰键,不做 Shift。
@@ -119,7 +122,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             </div>
             <div class="mnav-div" />
             <!-- ② 当前层目录(fpNav 同源,与桌面 SidebarPanel 1:1) -->
-            <template v-for="(sec, si) in activeLayer.sections" :key="si">
+            <template v-for="(sec, si) in sections" :key="si">
               <div v-if="sec.title" class="mnav-sec">{{ sec.title }}</div>
               <button
                 v-for="it in sec.items"

@@ -84,7 +84,7 @@ public class SystemService {
 
     public PermCatalog catalog() {
         return new PermCatalog(
-            Perm.META.stream().map(m -> new PermMeta(m.key(), m.label(), m.hint())).toList(),
+            Perm.META.stream().map(m -> new PermMeta(m.key(), m.label(), m.hint(), m.group(), m.kind())).toList(),
             List.of(new NavLayerMeta("data", "数据中心"),
                     new NavLayerMeta("reports", "账簿与报表"),
                     new NavLayerMeta("analysis", "经营分析")));
@@ -333,7 +333,7 @@ public class SystemService {
                 .eq(AuthRolePerm::getRoleId, r).eq(AuthRolePerm::getPerm, Perm.SYSTEM_EDIT))) > 0);
         if (!elsewhere)
             throw new BizException(ResultCode.CONFLICT,
-                "这一步会摘掉你自己的「系统管理 · 管理」权限，保存后你就再也进不了这个页面了。"
+                "这一步会摘掉你自己的「系统管理 · 管理」权限，保存后你就不能再改账号和角色了。"
               + "如果确实要收回，请先让另一位管理员操作。");
     }
 

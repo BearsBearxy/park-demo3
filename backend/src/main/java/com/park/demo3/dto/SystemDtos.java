@@ -9,7 +9,8 @@ public final class SystemDtos {
     private SystemDtos() {}
 
     // ── 权限点字典(角色矩阵屏渲染用;前端不硬编码) ──
-    public record PermMeta(String key, String label, String hint) {}
+    // group / kind 原样转自 Perm.Meta(v3):角色屏矩阵按模块分行、按「查看 / 编辑」分列
+    public record PermMeta(String key, String label, String hint, String group, String kind) {}
     public record NavLayerMeta(String id, String label) {}
     public record PermCatalog(List<PermMeta> perms, List<NavLayerMeta> navLayers) {}
 

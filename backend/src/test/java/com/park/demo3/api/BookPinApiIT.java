@@ -429,7 +429,7 @@ class BookPinApiIT extends AbstractMysqlIT {
 
     @Test
     void perm17_isRegisteredAndRenderedInMatrix() {
-        assertThat(com.park.demo3.security.Perm.ALL).hasSize(18)
+        assertThat(com.park.demo3.security.Perm.ALL).hasSize(27)   // v3(V134)加了 9 个查看点
             .contains(com.park.demo3.security.Perm.BOOK_TEMPLATE_SWITCH);
         assertThat(com.park.demo3.security.Perm.META.stream()
             .map(com.park.demo3.security.Perm.Meta::key))
