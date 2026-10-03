@@ -14,6 +14,8 @@ const WINDOW_MS = 1000
 type Snap = { rows: Map<Element, number>; at: number }
 const snaps = new WeakMap<HTMLTableElement, Snap>()
 const observers = new WeakMap<HTMLTableElement, MutationObserver>()
+/** 每行上一段还在跑的动画:连点打断时先停掉它再量新位置 */
+const running = new WeakMap<Element, Animation>()
 
 const bodyRows = (t: HTMLTableElement) => Array.from(t.querySelectorAll<HTMLElement>(':scope > tbody > tr'))
 const reduced = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
@@ -45,23 +47,29 @@ function settle(t: HTMLTableElement) {
   if (kept.length === now.length && kept.length === s.rows.size) return   // 行集合没变:接着等窗口里真正的增减
   done(t)
   if (!kept.length) return   // 一行都没留下 = 整片换数据,不是展开
+  // 连点打断(2026-10-03 实测一帧跳 80px):旧位置是点下去那一刻屏上的样子(含在跑的位移,对);
+  // 新位置要的是布局位置 —— 先把上一段没跑完的动画停掉再量,否则把它的位移算进去,新一段起点差一整段。
+  // 先全部停、再全部量、最后全部起,读写不交错;都在同一拍里做完,停掉那一下不会画到屏上。
+  for (const r of now) { running.get(r)?.cancel(); running.delete(r) }
   const top = t.getBoundingClientRect().top
   const vh = window.innerHeight
   const dur = parseFloat(token('--dur-base', '200ms')) || 200
   const move = token('--ease-both', 'ease-in-out')
   const enter = token('--ease-out', 'ease-out')
+  const plan: [HTMLElement, Keyframe[], string][] = []
   for (const r of now) {
     if (typeof r.animate !== 'function') continue
     const rc = r.getBoundingClientRect()
     if (rc.bottom < -vh || rc.top > 2 * vh) continue
     const old = s.rows.get(r)
     if (old === undefined) {
-      r.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], { duration: dur, easing: enter })
+      plan.push([r, [{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], enter])
     } else {
       const dy = Math.round(old - (rc.top - top))
-      if (Math.abs(dy) >= 1) r.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: dur, easing: move })
+      if (Math.abs(dy) >= 1) plan.push([r, [{ transform: `translateY(${dy}px)` }, { transform: 'none' }], move])
     }
   }
+  for (const [r, frames, easing] of plan) running.set(r, r.animate(frames, { duration: dur, easing }))
 }
 
 /** 装上全站监听(捕获阶段,先于表格里的点击处理);返回卸载函数(测试用) */
