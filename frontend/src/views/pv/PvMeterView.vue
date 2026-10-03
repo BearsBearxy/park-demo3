@@ -14,8 +14,8 @@ import { onReactivated } from '@/composables/onReactivated'
 import { useDeepPeriod } from '@/composables/useDeepPeriod'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { pvMeterApi, type PvStationDTO } from '@/api/pvMeter'
-import type { ImportResultDTO } from '@/types/import'
-import type { ImportRec } from '@/components/import/FpImportModal.vue'
+import type { ImportPayload } from '@/components/import/FpImportModal.vue'
+import { importBusy, settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
 import { useAuthStore, approxDirty } from '@/stores/auth'
 import { useFormSheet } from '@/composables/useFormSheet'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
@@ -40,7 +40,6 @@ import Input from '@/components/ds/Input.vue'
 import FPPhaseTabs from '@/components/fp/FPPhaseTabs.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FpImportModal from '@/components/import/FpImportModal.vue'
-import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 // Wave2-B 并行契约:registry key 'pvMeter' + 模板/月度导出(buildPvMeterTemplate/exportPvMeterMonth)
 import { buildPvMeterTemplate, exportPvMeterMonth } from '@/utils/pvMeterExcel'
@@ -73,7 +72,7 @@ const editReading = computed(() => editMode.value && !loadErr.value && canReadin
 // 切页签复位浮层,防浏览态残留写入口(同 ElecCostView)。
 // ⚠ openSt 必须一起收:FPDrawer 是这屏唯一 `Teleport to body` 的浮层,
 //   子树随 KeepAlive 消失时它**留在 body 上飘着**,盖在下一个屏上(照 MeterView.vue:71 的 openId)。
-onDeactivated(() => { stationDlg.value = false; importing.value = false; openSt.value = null })
+onDeactivated(() => { stationDlg.value = false; if (!importBusy.value) importing.value = false; openSt.value = null })   // 在跑的导入窗不收(D14)
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const num = (s: string) => { const n = Number(s); return isFinite(n) ? n : 0 }
@@ -381,7 +380,7 @@ watch(editMode, v => {
   cancelForm()
   cellErr.value = null
   stationDlg.value = false
-  importing.value = false
+  if (!importBusy.value) importing.value = false   // 在跑的导入窗不收(D14)
 })
 
 async function saveForm() {
@@ -451,19 +450,13 @@ async function submitStation() {
 
 // ── 导入(registry 闭环:解析→预览→确认→入库→import_log)/模板/导出 ──
 const importing = ref(false)
-const importResult = ref<ImportResultDTO | null>(null)
 // charging/pvMeter 模式:解析期行级错误暂存 ctx._parseErrors,run 时并入结果——
 // parserProps 与 runImport 必须同一 ctx 引用;每次解析整体覆写,无陈旧残留
 const importCtx: ImportCtx = {}
-async function onImport(payload: ImportRec[] | { label?: string; records: ImportRec[] }[], fileName: string) {
-  importing.value = false
-  if (!editReading.value) return
-  try {
-    importResult.value = await runImport('pvMeter', payload as never, importCtx, fileName)
-    await reloadAfterWrite()
-  } catch (e) {
-    receipt.fail((e as { message?: string })?.message ?? '导入失败')
-  }
+// 导入弹窗的 runner(UI-OVERLAY-SPEC §8):弹窗不关,写 + 记 import_log → 刷新;失败交给弹窗的失败卡(不走回执)。
+async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
+  if (!editReading.value) return null
+  return settle(await runImport('pvMeter', payload as never, { ...importCtx, _run: p }, fileName), p, reloadAfterWrite)
 }
 
 // ── 模拟填充(编辑态;照 CpMeterView:确认→POST→回执→重载):按附表6 phase 月度汇总推导当前年分栋抄表记录 ──
@@ -874,11 +867,9 @@ async function onTemplate() {
       :title="`导入 光伏抄表明细`"
       sub="上传/粘贴分栋抄表长表(期数|楼栋|日期|发电总量|自消纳|上网|备注);楼栋按电站名精确匹配,(站,日期)重复导入自动覆盖"
       v-bind="parserProps('pvMeter', importCtx)"
+      :runner="onImport"
       @close="importing = false"
-      @import="onImport"
-      @import-sections="onImport"
     />
-    <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
     <FPElevateDialog
       :page="`光伏分栋抄表 · ${year} 年`" :action="'修改电站档案 / 抄表记录'" :perms="asking" what="维护光伏表档案" @close="cancelAsk" @elevated="onElevated" />
     <FPLockDialogs :locked-by="lockedBy" :evicted-by="evictedBy" :scope="lockScope()"

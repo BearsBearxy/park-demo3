@@ -9,7 +9,7 @@ import { periodLink, periodOf } from '@/nav/deepLink'
 import { loadHomeData, defaultPeriod, type HomeData } from '@/reports/reportsHome'
 import { iconFor } from '@/components/ds/icon'
 import Segmented from '@/components/ds/Segmented.vue'
-import Badge from '@/components/ds/Badge.vue'
+import FPStateTag from '@/components/fp/FPStateTag.vue'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
 import DatePicker from '@/components/ds/DatePicker.vue'
@@ -71,8 +71,13 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
   <div v-if="data" class="rh fp-fluid">
     <div class="rh-head">
       <div>
-        <h2 class="rh-title">报表中心</h2>
-        <p class="rh-sub">核算输出 · 单一事实来源 — 所有报表读取已录入的台账数据自动生成</p>
+        <!-- 期间视图:「n / m 项已平」是标题旁的页面状态签(横条盘点 ReportsHomeView:149,2026-10-03:
+             原来是一张块级描边卡 .rh-period-hero 常驻在期间视图顶上,把勾稽卡往下推),说明并进副句 -->
+        <div class="rh-tl">
+          <h2 class="rh-title">报表中心</h2>
+          <FPStateTag v-if="view === '期间'" :tone="okCount === data.tieout.length ? 'muted' : 'warn'">{{ okCount }} / {{ data.tieout.length }} 项已平</FPStateTag>
+        </div>
+        <p class="rh-sub">{{ view === '期间' ? '先锁定期间,检查三大报表与各附表之间是否勾稽一致,再逐表查看' : '核算输出 · 单一事实来源 — 所有报表读取已录入的台账数据自动生成' }}</p>
       </div>
       <div class="rh-actions">
         <!-- F7 禁用占位(import-center 先例) -->
@@ -144,17 +149,8 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
       </div>
     </template>
 
-    <!-- ── 期间视图:期间 hero + 勾稽检查表 + 本期报表列表 ── -->
+    <!-- ── 期间视图:勾稽检查表 + 本期报表列表(已平项数在标题旁状态签) ── -->
     <template v-else>
-      <div class="rh-period-hero">
-        <span class="rh-hero-ic"><component :is="iconFor('calendar-check')" :size="24" /></span>
-        <div style="flex:1;min-width:0">
-          <div class="rh-hero-t">{{ data.year }}年{{ data.month }}月 · 期间核算</div>
-          <div class="rh-sub" style="margin:2px 0 0">先锁定期间,检查三大报表与各附表之间是否勾稽一致,再逐表查看</div>
-        </div>
-        <Badge :tone="okCount === data.tieout.length ? 'blue' : 'orange'" dot>{{ okCount }} / {{ data.tieout.length }} 项已平</Badge>
-      </div>
-
       <Card surface="white" :padding="0">
         <div class="rh-card-h">勾稽检查</div>
         <!-- §5.4:窄了不动列,在包裹层内横滚(列结构任何档位不变) -->
@@ -213,6 +209,7 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
 /* 1:1 移植 screen-reports-home.jsx RhStyles(token 已是 demo3 系)。本组件独享。 */
 .rh { display:flex; flex-direction:column; gap:20px; max-width:1640px; margin:0 auto; width:100%; }
 .rh-head { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+.rh-tl { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .rh-title { margin:0; font-size:var(--fs-h2); font-weight:var(--fw-semibold); color:var(--text-primary); }
 .rh-sub { margin:5px 0 0; font-size:var(--fs-label); color:var(--text-muted); }
 .rh-actions { display:flex; gap:8px; align-items:center; }
@@ -238,9 +235,6 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
 .rh-tie { display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:var(--fw-semibold); }
 
 /* 期间视图 */
-.rh-period-hero { display:flex; align-items:center; gap:16px; padding:18px 20px; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--surface-card); flex-wrap:wrap; }
-.rh-hero-ic { width:46px; height:46px; border-radius:var(--radius-md); background:var(--surface-white); border:1px solid var(--border-subtle); display:grid; place-items:center; color:var(--hue-blue); flex:0 0 auto; }
-.rh-hero-t { font-size:var(--fs-h4); font-weight:var(--fw-semibold); color:var(--text-primary); }
 .rh-card-h { padding:14px 16px; border-bottom:1px solid var(--divider); font-size:var(--fs-h4); font-weight:var(--fw-semibold); color:var(--text-primary); }
 /* 勾稽表横滚外框(§5.4):桌面表宽 ≤ 容器时不产生滚动条,零变化;窄档滚它不滚整页 */
 .rh-tie-wrap { overflow-x:auto; }

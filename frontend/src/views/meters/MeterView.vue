@@ -37,8 +37,8 @@ import DatePicker from '@/components/ds/DatePicker.vue'
 import { buildMeterTemplate, exportMeterMonth } from '@/utils/meterExcel'
 import { OWNERSHIP_LABEL, ownershipLabel } from '@/utils/meterSplit'
 import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
-import type { ImportResultDTO } from '@/types/import'
-import type { ImportRec } from '@/components/import/FpImportModal.vue'
+import type { ImportPayload } from '@/components/import/FpImportModal.vue'
+import { importBusy, settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
 import { useAuthStore } from '@/stores/auth'
 import { useFormSheet } from '@/composables/useFormSheet'
 import { useZonesStore } from '@/stores/zones'
@@ -59,9 +59,9 @@ import Button from '@/components/ds/Button.vue'
 import Input from '@/components/ds/Input.vue'
 import Select from '@/components/ds/Select.vue'
 import Segmented from '@/components/ds/Segmented.vue'
+import Popover from '@/components/ds/Popover.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import FpImportModal from '@/components/import/FpImportModal.vue'
-import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import SaveConfirmDialog from '@/components/import/SaveConfirmDialog.vue'
 import MeterLedgerGrid from './MeterLedgerGrid.vue'
 import MeterDetailDrawer from './MeterDetailDrawer.vue'
@@ -110,7 +110,8 @@ const { editMode, canEnter, missing: lockedPerms, asking, askFor, cancelAsk, onE
 const importing = ref(false)
 const openId = ref<number | null>(null)
 onDeactivated(() => {
-  importing.value = false; openId.value = null
+  if (!importBusy.value) importing.value = false   // 导入窗不 Teleport,随页签藏起;在跑的不收(D14)
+  openId.value = null
   saveConfirm.value = false; delPreview.value = null; asking.value = null
   panel.value = ''
 })
@@ -230,7 +231,7 @@ watch(editMode, v => {
   if (v) return
   draft.clear()
   saveConfirm.value = false
-  importing.value = false
+  if (!importBusy.value) importing.value = false   // 在跑的导入窗不收(D14):跑完由人关,再导由 onImport 写口自守挡
   meterDlg.value = false
   delPreview.value = null
 })
@@ -325,13 +326,11 @@ watch(ym, () => {
   if (period.picked) { loadMeters(); loadReadings(); loadBinding() }
 })
 
-// 写后统一重载(读数/档案/绑定/出账月矩阵)
+// 写后统一重载(读数/档案/绑定/出账月矩阵)。返回读数与档案都落位的那一刻(导入的结果卡要知道本页刷没刷上)
 function reloadAll() {
-  loadMeters()
-  loadReadings()
-  loadBinding()
   // 抄了原本空的月 → 矩阵上那一格的「抄表」点要亮起来(换出账月时立刻看得见)
   void period.reloadChain().catch(() => { /* 矩阵刷新失败不阻断本屏 */ })
+  return Promise.all([loadMeters(), loadReadings(), loadBinding()])
 }
 
 // ── 筛选状态(§1 筛选条)+统计卡(点卡=状态筛选互斥切换) ──
@@ -374,7 +373,7 @@ function cardClick(k: StatusFilter) {
   status.value = status.value === k ? 'all' : k
 }
 // 不在册那两批的说明:按状态段说话(SPEC §6),说清「列的是什么」+「怎么回到册上」。
-// 宽档挂在「已拆」「未在册」页签的悬停说明上(计划 §1.1);S/M 档没有页签,仍是选中后表格上方那条(§2 第 21 条)
+// 宽档挂在「已拆」「未在册」页签的悬停说明上(计划 §1.1);S/M 档没有页签也没有悬停,收成摘要行里一枚签,点开看全文(smNotes)
 const HIDDEN_HINT = {
   removed: '列出本月已拆、不在册上的表;自哪个月起已拆,悬停状态列可见。'
     + '误标的:点开这一行,在「档案变更」的「在册状态」里撤回「已拆」那一行;拆除前的月份不受影响。',
@@ -397,6 +396,15 @@ const kindZoneRows = computed(() =>
 const cards = computed(() => cardCounts(kindZoneRows.value))
 // SPEC §10.4:这个期区 × 表类这个月一笔册子记录都没有 → 不逐行打标,表格上方一句
 const bookGap = computed(() => bookGapText(kindZoneRows.value))
+// S/M 档的两句说明(2026-10-03 横条收尾):原来是表格上方两条满宽说明条(.mt-hidbar / .mt-bookbar),
+// 一出现就把表往下推。现在收成一枚状态签,S 档在摘要行、M 档在筛选条,点开看全文 —— 手机上没有悬停。
+// 「本月没导册子」整月没读数时让位给空状态(同宽档标题旁那枚)。
+const smNotes = computed(() => [
+  ...(bookGap.value && readings.value?.length ? [{ k: 'book', tone: 'warn' as const, tag: '本月没导册子', text: bookGap.value }] : []),
+  ...(hiddenHint.value ? [{ k: 'hidden', tone: 'muted' as const, tag: '怎么回到册上',
+    text: hiddenHint.value + (editMode.value ? '' : '先点右上「编辑模式」才能改。') }] : []),
+])
+const smNoteOpen = ref('')
 const progressPct = computed(() =>
   cards.value.tenant > 0 ? Math.round((cards.value.read / cards.value.tenant) * 100) : 0)
 // 「只看存疑」(V75 §E3/§F1):独立开关,叠在筛选链之后 —— 存疑是档案质量维度,与抄表状态互不排斥。
@@ -636,17 +644,13 @@ async function confirmDelete() {
 }
 
 // ── 导入(registry 'meter')/模板/导出当月(v4 原样) ──
-const importResult = ref<ImportResultDTO | null>(null)
 const importCtx: ImportCtx = {}
-async function onImport(payload: ImportRec[] | { label?: string; records: ImportRec[] }[], fileName: string) {
-  importing.value = false
-  if (!editMode.value || !canReading.value) return
-  try {
-    importResult.value = await runImport('meter', payload as never, importCtx, fileName)
-    reloadAll()
-  } catch (e) {
-    receipt.fail((e as { message?: string })?.message ?? '导入失败')
-  }
+// 导入弹窗的 runner(UI-OVERLAY-SPEC §8):弹窗不关,写 + 记 import_log → 刷新;结果卡(含表档案改动)在弹窗里,失败交给失败卡(不走回执)。
+// 三个 load 自己吞错改 metersErr / readErr:刷完看 loadErr,照实报「本页没刷新上」
+async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
+  if (!editMode.value || !canReading.value) return null
+  return settle(await runImport('meter', payload as never, { ...importCtx, _run: p }, fileName), p,
+    () => reloadAll().then(() => { if (loadErr.value) throw new Error('本页没读到') }))
 }
 async function onTemplate() {
   try { await buildMeterTemplate(ym.value, zones.list) }
@@ -905,6 +909,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDelEsc, true))
           <span class="val">{{ moreSegs.length }}</span>
         </button>
       </div>
+      <Popover v-for="n in smNotes" :key="n.k" :open="smNoteOpen === n.k" align="end" :width="280"
+               @open-change="smNoteOpen = $event ? n.k : ''">
+        <template #trigger><button type="button" class="mt5-note"><FPStateTag :tone="n.tone">{{ n.tag }}</FPStateTag></button></template>
+        <p class="mt5-note-t">{{ n.text }}</p>
+      </Popover>
       <!-- 审核态:不另画一颗徽标 —— FPReviewActions 是全站唯一那份(它自己的铁律),
            再写一份「已审核 · 谁 · 何时」就是第 16 份。整簇挪到摘要行右端。 -->
       <FPReviewActions :keys="reviewKeys" :label="reviewLabel" :can-edit="canEnter" :edit="editMode" />
@@ -945,6 +954,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDelEsc, true))
         <component :is="iconFor('sliders-horizontal')" :size="18" />
         <span v-if="filterCount > 0" class="n">{{ filterCount }}</span>
       </button>
+      <!-- M 档没有摘要行,两句说明的状态签放在筛选钮旁(S 档在摘要行,见上) -->
+      <template v-if="isM">
+        <Popover v-for="n in smNotes" :key="n.k" :open="smNoteOpen === n.k" align="start" :width="280"
+                 @open-change="smNoteOpen = $event ? n.k : ''">
+          <template #trigger><button type="button" class="mt5-note"><FPStateTag :tone="n.tone">{{ n.tag }}</FPStateTag></button></template>
+          <p class="mt5-note-t">{{ n.text }}</p>
+        </Popover>
+      </template>
       <!-- M 档的 2 个主动作(§5.10「M 档:主动作留 2 个」,规范点名这两件)。
            S 档这里一件都不画:编辑模式在顶栏,导出当月在「⋯」里。 -->
       <template v-if="isM">
@@ -999,19 +1016,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDelEsc, true))
       </div>
     </div>
 
-    <!-- 隐藏表出口的说明条(只剩 S/M 档;宽档挂在「已拆」「未在册」页签的悬停说明上):
-         这两批平时不产行,列出来是为了改回去,所以得直说改哪一格 -->
-    <div v-if="isSM && hiddenHint" class="mt-hidbar">
-      <component :is="iconFor('info')" :size="14" />
-      <span>{{ hiddenHint }}</span>
-      <span v-if="!editMode" class="mt-hidbar-em">先点右上「编辑模式」才能改。</span>
-    </div>
-    <!-- 本月册子(SPEC §10.4):只剩 S/M 档(宽档是标题旁「本月没导册子」);整月没读数时让位给空状态,不叠两条 -->
-    <div v-if="isSM && bookGap && readings.length" class="mt-bookbar">
-      <component :is="iconFor('info')" :size="14" />
-      <span>{{ bookGap }}</span>
-    </div>
-
     <!-- 这里原来是「建议在桌面端操作」的常驻预留位(§5.3/§11.2)。2026-09-21 用户拍板撤掉:
          它只能常驻(用的时候才冒出来会把整张表顶走,LAYOUT-STABILITY §1),于是浏览态也吃
          20px + 一道 14 的 gap = 34px —— 正好一行表。撤掉后表从 8 行回到 9 行。
@@ -1056,11 +1060,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDelEsc, true))
       title="导入 园区抄表 · 水电表读数"
       sub="上传整册抄表工作簿(各期区×电/水 sheet,标题行含年月),识别 sheet 逐段勾选;表自动建档并按企业名称匹配租户/楼栋/归属,同表同月重复导入自动覆盖;缺本月读数照收并标「未抄」"
       v-bind="parserProps('meter', { ...importCtx, year, month })"
+      :runner="onImport"
       @close="importing = false"
-      @import="onImport"
-      @import-sections="onImport"
     />
-    <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
 
     <!-- S/M 档底部面板(§5.10「其余进底部面板,面板里一件不少」)。
          壳复用 styles/form-sheet.css 的 .fp-fsheet 全屏 sheet(§4.4)——
@@ -1268,12 +1270,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDelEsc, true))
 /* 状态页签里的计数灰字(字 + 灰色计数,实现规范 §1.9);标签是 TabLabel 渲染的,不带本组件的 scope 属性 */
 .mt-tabs :deep(.mt-tab-n) { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
-/* 隐藏表出口说明条(只剩 S/M 档):蓝调=这不是错误,是「你正在看平时不显示的那批」 */
-.mt-hidbar, .mt-bookbar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; border: 1px solid rgb(206, 223, 252); border-radius: var(--radius-md); background: rgb(238, 244, 255); font-size: 12px; color: rgb(28, 84, 168); }
-:root[data-theme="dark"] .mt-hidbar, :root[data-theme="dark"] .mt-bookbar { border-color: color-mix(in srgb, var(--hue-blue) 35%, transparent); background: var(--info-soft); color: var(--hue-blue); }
-.mt-hidbar-em { font-weight: var(--fw-semibold); }
-/* 一句话较长:字跟图标同一行、在自己那一格里折行(不整段掉到图标下面) */
-.mt-bookbar > span { flex: 1 1 0; min-width: 0; }
+/* S/M 档说明签(smNotes):签本身是 FPStateTag,外面这层只把它变成可点的按钮 */
+.mt5-note { flex: none; display: inline-flex; padding: 0; border: none; background: none; cursor: pointer; }
+.mt5-note-t { margin: 4px; font-size: var(--fs-label); line-height: 1.6; color: var(--text-primary); }
 /* 首载失败占满 gate 的位置(与 .page-loading 同为整页态,顶部起排不居中) */
 .mt-gate-fail { padding: 24px 0; max-width: 1600px; margin: 0 auto; width: 100%; box-sizing: border-box; }
 

@@ -72,7 +72,7 @@ public List<GrantDTO> elevate(ElevateReq req) {
         AuthUser boss = verifyAuthorizer(req.authorizer(), req.password(), perms, "elevate");
 
         // ── 5. 发放 ──
-        store.grant(me, perms, boss.getUsername());
+        store.grant(me, perms, boss.getUsername(), ElevationStore.ONSITE);
         audit.logAuthorized("elevate.grant", "perm:" + String.join(",", perms), boss.getUsername(),
             "授权 " + (ElevationStore.TTL_SECONDS / 60) + " 分钟:"
             + String.join("、", perms.stream().map(ElevationService::label).toList()));
@@ -170,7 +170,8 @@ public List<GrantDTO> elevate(ElevateReq req) {
     public List<GrantDTO> current() {
         return store.active(currentUsername()).stream()
             .map(g -> new GrantDTO(g.perm(), label(g.perm()), g.authorizer(),
-                                   authorizerName(g.authorizer()), g.expiresAt().toEpochMilli()))
+                                   authorizerName(g.authorizer()), g.expiresAt().toEpochMilli(),
+                                   g.grantedAt().toEpochMilli(), g.source()))
             .toList();
     }
 

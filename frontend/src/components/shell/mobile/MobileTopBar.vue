@@ -6,6 +6,7 @@ import { useRoute } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
 import { Menu, Search } from 'lucide-vue-next'
 import NotifyBell from '@/components/shell/NotifyBell.vue'
+import FPElevChip from '@/components/fp/FPElevChip.vue'
 
 const emit = defineEmits<{ 'open-drawer': []; 'open-command': [] }>()
 
@@ -29,6 +30,8 @@ const ui = useUiStore()
       <component :is="ui.topBarAction.icon" v-if="ui.topBarAction.icon" :size="18" />
       <span class="mtb-act-t">{{ ui.topBarAction.label }}</span>
     </button>
+    <!-- 临时授权(画布 08 ElevStates 手机档):只留钥匙圆钮,页名让位截断;卡片贴顶栏下占满宽,时间写在卡里 -->
+    <FPElevChip variant="mobile" />
     <button class="mtb-btn" aria-label="搜索" @click="emit('open-command')">
       <Search :size="20" />
     </button>

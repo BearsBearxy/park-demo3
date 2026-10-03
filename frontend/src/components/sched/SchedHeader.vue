@@ -65,6 +65,9 @@ const props = withDefaults(defineProps<{
    *   接上去等于一个月审了就把整年 12 行一起锁死。所以 reviewBlock 那几条仍只读 reviewKey。
    */
   reviewKeys?: string[] | null
+  /** 重编辑屏(损益附表、附表12 工资):≤600 在编辑签后面带「 · 建议桌面」(§5.3/§11.2 荐桌面,
+   *  原来是表格上方单独一行)。不传不带 —— 其余年表屏不改 */
+  deskHint?: boolean
 }>(), { showImport: false, importDisabled: false, dirty: 0, dirtyApprox: false, importKeepsManual: false, scope: null, reviewKey: null, reviewKeys: null })
 
 const emit = defineEmits<{ back: []; 'toggle-edit': [forced?: boolean]; import: [] }>()
@@ -86,7 +89,7 @@ const screen = useScreen()
 // 页头与下面的锁各登记一条,**必须是同一个函数** —— auth 按函数去重,两个函数就算成 2 倍。
 // dirtyApprox 是屏的固定属性,建组件时读一次就够。
 const dirtyCount = props.dirtyApprox ? approxDirty(() => props.dirty) : () => props.dirty
-watch(() => props.edit, (on) => { if (on) auth.openEditor(meId, screen, dirtyCount); else auth.closeEditor(meId) })
+watch(() => props.edit, (on) => { if (on) auth.openEditor(meId, screen, dirtyCount, [props.perm]); else auth.closeEditor(meId) })
 onUnmounted(() => auth.closeEditor(meId))
 
 // ── 编辑锁(CONCURRENCY-SPEC §4) ──
@@ -278,7 +281,8 @@ async function onImport() {
     </div>
     <div class="lc-head-actions">
       <span class="lc-yearbadge"><component :is="iconFor('calendar')" :size="14" />{{ year }} 年</span>
-      <span v-if="edit" class="lc-editbadge"><component :is="iconFor('pencil')" :size="13" />编辑模式</span>
+      <!-- ≤600 荐桌面(§5.3/§11.2)并在这枚签里,不另占一行(原损益附表 / 附表12 的 s-hint 行;deskHint 的屏才带) -->
+      <span v-if="edit" class="lc-editbadge"><component :is="iconFor('pencil')" :size="13" />编辑模式<span v-if="deskHint" class="lc-edit-s"> · 建议桌面</span></span>
       <slot v-if="edit" name="edit-actions" />
       <!-- 导入 = 写操作,收进编辑态(EDIT-MODE-SPEC v2 §1「浏览态一切写入口隐藏」)。
            改前是 `v-if="!edit"` 的 #idle-actions 插槽,依据是 2026-07-11 的旧决定「导入常驻非编辑态」,
@@ -345,6 +349,9 @@ async function onImport() {
 .lc-head-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .lc-yearbadge { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:var(--radius-full); background:var(--accent-blue); color:var(--hue-blue); font-size:12.5px; font-weight:var(--fw-semibold); font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .lc-editbadge { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:var(--radius-full); background:var(--warn-bg); color:var(--hue-orange); font-size:12.5px; font-weight:var(--fw-medium); white-space:nowrap; }
+/* 荐桌面只在手机档出(宽档规则在前) */
+.lc-edit-s { display:none; white-space:pre; }
+@media (max-width: 600px) { .lc-edit-s { display:inline; } }
 /* 锁位:三态同宽 —— 「编辑模式」/「张三 编辑中」/「张三 空闲 23 分」/「完成」换文案不挪版 */
 .lc-lockbtn { min-width:150px; justify-content:center; }
 /* 审核药丸:逐项对齐 ds/Button 的 size="sm"(SIZES.sm = height 28 / padding 0 12px / fs-label),

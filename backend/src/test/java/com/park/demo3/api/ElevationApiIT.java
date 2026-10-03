@@ -220,6 +220,59 @@ class ElevationApiIT extends AbstractMysqlIT {
         } finally { cleanup(clerk); cleanup(boss); cleanupParams(); }
     }
 
+    // ══════════ 当场 / 远程分得出来(ELEVATION-SPEC §4.5,画布 08 ElevStates「远程批准」)══════════
+    // 授权卡片写「hh:mm 授权」还是「远程批准 · hh:mm 批准」全看 source;时间行用 grantedAt,不再拿到期 − 30 分钟去推。
+    // 破坏验证:decide 改记 ONSITE → 远程那段红;GrantDTO 的 grantedAt 填 expiresAt → 当场那段红
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void grantCarriesSourceAndGrantedAt() throws Exception {
+        String a = admin();
+        String clerk = mkUser(a, "it-elev-c5", "finance_clerk");
+        String boss  = mkUser(a, "it-elev-b5", "finance_manager");
+        try {
+            String ct = login(clerk, PASS);
+            String bt = login(boss, PASS);
+
+            // ① 当场:主管在专员的电脑上输自己的账号密码
+            long t0 = System.currentTimeMillis();
+            String onsite = body(mvc.perform(post("/api/auth/elevate").header("Authorization", hdr(ct))
+                .contentType("application/json")
+                .content("{\"perms\":[\"param-policy:edit\"],\"authorizer\":\"" + boss + "\",\"password\":\"" + PASS + "\"}"))
+                .andExpect(status().isOk()).andReturn());
+            long t1 = System.currentTimeMillis();
+            assertThat((List<String>) JsonPath.read(onsite, "$.data[*].source")).containsExactly("onsite");
+            long g0 = ((Number) JsonPath.read(onsite, "$.data[0].grantedAt")).longValue();
+            long e0 = ((Number) JsonPath.read(onsite, "$.data[0].expiresAt")).longValue();
+            assertThat(g0).as("授权时刻 = 这一次请求的时刻").isBetween(t0, t1);
+            assertThat(e0 - g0).isEqualTo(TTL_MS);
+            mvc.perform(delete("/api/auth/elevate").header("Authorization", hdr(ct))).andExpect(status().isOk());
+
+            // ② 远程:专员发请求,主管在自己电脑上用自己的密码批
+            String req = body(mvc.perform(post("/api/auth/approvals").header("Authorization", hdr(ct))
+                .contentType("application/json")
+                .content("{\"perms\":[\"param-policy:edit\"],\"approver\":\"" + boss
+                       + "\",\"page\":\"计费参数\",\"action\":\"修改计费口径\"}"))
+                .andExpect(status().isOk()).andReturn());
+            String id = JsonPath.read(req, "$.data.id");
+            long t2 = System.currentTimeMillis();
+            mvc.perform(post("/api/auth/approvals/" + id).header("Authorization", hdr(bt))
+                .contentType("application/json").content("{\"approve\":true,\"password\":\"" + PASS + "\"}"))
+               .andExpect(status().isOk());
+            long t3 = System.currentTimeMillis();
+            String now = body(mvc.perform(get("/api/auth/elevate").header("Authorization", hdr(ct)))
+                .andExpect(status().isOk()).andReturn());
+            assertThat((List<String>) JsonPath.read(now, "$.data[*].source")).containsExactly("remote");
+            assertThat((List<String>) JsonPath.read(now, "$.data[*].authorizer")).containsExactly(boss);
+            long g1 = ((Number) JsonPath.read(now, "$.data[0].grantedAt")).longValue();
+            long e1 = ((Number) JsonPath.read(now, "$.data[0].expiresAt")).longValue();
+            assertThat(g1).as("批准时刻 = 主管点批准那一下").isBetween(t2, t3);
+            assertThat(e1 - g1).isEqualTo(TTL_MS);
+        } finally { cleanup(clerk); cleanup(boss); }
+    }
+
+    private static final long TTL_MS = com.park.demo3.security.ElevationStore.TTL_SECONDS * 1000;
+
     // ══════════ helpers ══════════
 
     private String login(String user, String pass) throws Exception {

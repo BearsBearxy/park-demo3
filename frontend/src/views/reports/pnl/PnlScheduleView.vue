@@ -20,7 +20,8 @@ import { loadDeriveData, deriveRow, compareRow, fillRow, generateMissingRows, is
 import { parserProps, runImport } from '@/utils/importRegistry'
 import type { PnlOverviewDTO, PnlYearDTO, PnlRowDTO, PnlKind } from '@/types/pnl'
 import type { ImportResultDTO } from '@/types/import'
-import type { ImportRec } from '@/components/import/FpImportModal.vue'
+import type { ImportRec, ImportPayload } from '@/components/import/FpImportModal.vue'
+import { settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
@@ -32,7 +33,6 @@ import FPToast from '@/components/fp/FPToast.vue'
 import SchedHeader from '@/components/sched/SchedHeader.vue'
 import SaveConfirmDialog from '@/components/import/SaveConfirmDialog.vue'
 import FpImportModal from '@/components/import/FpImportModal.vue'
-import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import PnlTable from './PnlTable.vue'
 import { receipt } from '@/utils/receipt'
 import { ask } from '@/utils/ask'
@@ -346,25 +346,22 @@ function discard() {
 }
 
 // ── 导入(registry pnl_s{n}:整年 clear+insert;年优先取识别年,失败回退当前年槽) ──
+// 导入弹窗的 runner(UI-OVERLAY-SPEC §8):弹窗不关,写 + 记 import_log → 刷新;失败交给弹窗的失败卡(不走回执,「返回修改」再导)。
 const importing = ref(false)
-const importResult = ref<ImportResultDTO | null>(null)
-async function onImport(recs: ImportRec[], fileName: string) {
-  if (year.value == null) return
-  importing.value = false
-  try {
-    const res = await runImport('pnl_' + config.schedule, recs, { year: year.value }, fileName)
-    importResult.value = res
-    // 实际落库年(run 回传 __usedYear)≠ 当前年 → 切到该年再刷新
-    const used = (res as ImportResultDTO & { __usedYear?: number }).__usedYear
-      ?? (recs[0]?.__yearDetected as number | null) ?? year.value
-    resetEdit()
-    if (used !== year.value) year.value = used
+async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
+  if (year.value == null) return null
+  const recs = payload as ImportRec[]
+  const res = await runImport('pnl_' + config.schedule, recs, { year: year.value, _run: p }, fileName)
+  // 实际落库年(run 回传 __usedYear)≠ 当前年 → 切到该年再刷新
+  const used = (res as ImportResultDTO & { __usedYear?: number }).__usedYear
+    ?? (recs[0]?.__yearDetected as number | null) ?? year.value
+  resetEdit()
+  if (used !== year.value) year.value = used
+  return settle(res, p, async () => {
     void loadDerive(used)   // 导入可能切年,派生跟随(缓存命中则瞬时)
     await loadYear(used)
     await reloadOverview()
-  } catch (e) {
-    receipt.fail(errMsg(e, '导入失败'), { label: '重试', run: () => void onImport(recs, fileName) })
-  }
+  })
 }
 
 // ── 导出 xlsx(适配层内部懒加载 exceljs,列序对齐屏表:分组|科目细分|12月|本年合计|备注) ──
@@ -435,6 +432,7 @@ const { note: deepNote } = useDeepPeriod({
           :year="year"
           :edit="edit"
           perm="report:edit"
+          desk-hint
           @back="goGate"
           @toggle-edit="toggleEdit"
          :show-import="true" @import="importing = true" :import-disabled="saving" :dirty="dirty"
@@ -464,13 +462,7 @@ const { note: deepNote } = useDeepPeriod({
           </template>
         </SchedHeader>
 
-        <!-- ≤600 宽表行内编辑提示(§5.3/§11.2 荐桌面):预留位——行常驻定高,文案仅编辑态显,
-             显隐不挪表格(LAYOUT-STABILITY §2;条件挂行内 span,不进流内块门禁;
-             参照 LedgerView .lgw-s-hint)。编辑不拦不藏 -->
-        <div class="pnl-s-hint">
-          <span v-if="edit">编辑模式 · 小屏可录入,建议在桌面端操作</span>
-        </div>
-
+        <!-- ≤600 荐桌面(§5.3/§11.2)并进 SchedHeader 的编辑签「编辑模式 · 建议桌面」,这一行还给表格 -->
         <PnlTable
           :year="year"
           :rows="displayRows"
@@ -485,11 +477,8 @@ const { note: deepNote } = useDeepPeriod({
           @add="openAdd"
           @fill="onFill"
         />
-
-        <p class="pnl-foot">
-          <component :is="iconFor('info')" :size="13" />
-          单位:元 · 「–」为未录(区分 0) · 本年合计为客户端派生不落库 · 小计/损益/合计行存文件原值,编辑明细不自动重算
-        </p>
+        <!-- 原页底 ⓘ 说明行删掉(LIST-PAGE-SPEC §2.1):单位本来就在副标题里;「–」与本年合计的口径挂在「本年合计」表头,
+             小计 / 损益 / 合计行存原值那句挂在这些行的名称上(PnlTable) -->
       </div>
     </template>
 
@@ -545,11 +534,9 @@ const { note: deepNote } = useDeepPeriod({
     :title="`导入 ${config.title} · ${year}年`"
     sub="从年度统计母册导入该附表(整年替换);上传含该 sheet 的工作簿或粘贴该表,年份从标题自动识别,识别不到按当前年导入"
     v-bind="parserProps('pnl_' + config.schedule)"
+    :runner="onImport"
     @close="importing = false"
-    @import="onImport"
   />
-
-  <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
 
   <!-- 期间深链被草稿挡下时的页内提示(§4.2) -->
   <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
@@ -557,14 +544,6 @@ const { note: deepNote } = useDeepPeriod({
 
 <style scoped>
 .pnl-page { display:flex; flex-direction:column; gap:14px; height:100%; min-height:0; box-sizing:border-box; }
-.pnl-foot { flex:0 0 auto; margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
-
-/* S 档编辑提示行:桌面档不存在(display:none 不占位不占 gap),窄档媒体块内再显——
-   宽档规则在前(§1);定高 20px 常驻 = 预留位,进出编辑只换文案不挪表格 */
-.pnl-s-hint { display:none; }
-@media (max-width: 600px) { /* S */
-  .pnl-s-hint { display:flex; align-items:center; flex:0 0 20px; height:20px; font-size:12px; color:var(--hue-orange); }
-}
 
 /* 新增行弹窗(基准 SchedYearGate .sm-ymask/.sm-ydlg) */
 .pnl-mask { position:fixed; inset:0; background:var(--scrim); z-index:140; display:grid; place-items:center; }

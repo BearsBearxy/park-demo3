@@ -11,6 +11,7 @@ import { useReviewStore } from '@/stores/review'
 import { rowLocked } from '@/components/sched/reviewLock'
 import { receipt } from '@/utils/receipt'
 import { ask } from '@/utils/ask'
+import { importBusy } from '@/components/import/importRun'
 
 /** 台账行的共同形状:id 用于勾选/批删,source 用于「本期导入」计数,acctMonth 用于按月上锁(D18) */
 export interface SchedRow {
@@ -75,7 +76,8 @@ export function useSchedScreen<R extends SchedRow>(opts: {
   // ⚠ 编辑态转假(被接管/提权到期/换期)关掉写浮层 —— 抽屉/导入窗的 v-if 只判自己的 ref,
   //   失锁后「保存」「导入」照样落库(后端写口不校验锁)。附表12 修过的这一课,
   //   下沉到这里让附表族全体屏一次吃上。
-  watch(edit, v => { if (!v) { drawer.value = false; importing.value = false } })
+  //   导入窗在跑就不收(D14):收了 runner 照样写完,只是人看不到写进去多少;跑完由人关,失锁后再导由 runner 写口自守挡。
+  watch(edit, v => { if (!v) { drawer.value = false; if (!importBusy.value) importing.value = false } })
 
   // ── 审核闸:按月份行上锁(D18) ───────────────────────────
   // 取数走闸道(GET /api/review/states?year=,不跑首页聚合)—— 一屏一年一趟。

@@ -35,6 +35,7 @@ import { useEditLock } from '@/composables/useEditLock'
 import { S } from '@/utils/lockScopes'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
+import FPElevChip from '@/components/fp/FPElevChip.vue'
 import { ask, askLeave } from '@/utils/ask'
 import { receipt } from '@/utils/receipt'
 
@@ -97,7 +98,7 @@ async function onTaken() {
 //   而本窗口退出时又会被别的页面挡住结束不了。
 const meId = Symbol('coef-book')
 const screen = useScreen()
-watch(editMode, (on) => { if (on) auth.openEditor(meId, screen, dirtyN); else auth.closeEditor(meId) })
+watch(editMode, (on) => { if (on) auth.openEditor(meId, screen, dirtyN, ['param-policy:edit']); else auth.closeEditor(meId) })
 onUnmounted(() => auth.closeEditor(meId))
 const stash = ref<CoefStash>(new Map())
 
@@ -392,11 +393,37 @@ async function onClose() {
   <FPDrawer :open="open" title="系数簿" icon="sliders-horizontal" :width="1080" :fixed-height="true"
             :subtitle="`批量修改租户系数 · 版本语义与计费参数页一致:自生效月起前滚,历史账期不动`"
             @close="onClose">
+    <!-- 遮罩盖住了顶栏:临时授权的胶囊挂一枚在弹窗头(画布 08 ElevStates) -->
+    <template #badge><FPElevChip variant="dialog" /></template>
     <!-- 已失败时不换成「加载中…」:重试在途失败件留在原地,到数才退场 -->
     <div v-if="loading && !loadErr" class="cb-empty">加载中…</div>
     <template v-else>
-      <!-- 控制行:期页签+搜索 | 系数下拉+生效月 -->
-      <div class="cb-controls">
+      <!-- 工具条一行两态,不另起一行、表格不往下挪(横条盘点 2026-10-03):
+           浏览态 = 期页签+搜索 | 系数下拉+生效月;编辑态右半换成统一修改条(v3 唯一改值入口),期页签+搜索留着挑户。
+           编辑中系数和生效月不换 —— 暂存绑在它们上面,编辑锁的键就是生效月;写在下面那行说明里,要换先退出编辑。
+           输错的红字压在说明那一行的位置上(absolute),也不多占一行。 -->
+      <div v-if="editMode" class="cb-controls cb-unibar">
+        <Segmented :options="PHASE_OPTS" :model-value="phase" size="sm" @update:model-value="setPhase" />
+        <input v-model="q" class="cb-search" type="text" placeholder="搜租户名" />
+        <span style="flex:1"></span>
+        <span>已选 <b>{{ selected.size }}</b> 户</span>
+        <span class="cb-sep">·</span>
+        <span>统一修改为</span>
+        <!-- 值控件按注册表 valueKind:枚举(损耗基数形态)→字典 Select;其余数字输入 -->
+        <div v-if="curMeta.enumOptions" style="width:240px">
+          <Select :options="enumOpts" :model-value="uni" size="sm" :disabled="clearMode"
+                  :placeholder="clearMode ? '清除(空值)' : '请选择'" @update:model-value="uni = $event" />
+        </div>
+        <input v-else v-model="uni" class="cb-uni-in" :disabled="clearMode"
+               :placeholder="clearMode ? '清除(空值)' : curMeta.unit" @keydown.enter.prevent="applyUni" />
+        <Button variant="outline" size="sm" :disabled="selected.size === 0" @click="applyUni">应用到选中</Button>
+        <label v-tip="'清除模式:应用空值=删除该生效月版本,回退上一版本/默认(层份=回按楼层自动分)'" class="cb-chk">
+          <input type="checkbox" v-model="clearMode" />
+          清除模式
+        </label>
+        <p class="fp-field-err cb-uni-err"><template v-if="uniErr">{{ uniErr }}</template></p>
+      </div>
+      <div v-else class="cb-controls">
         <Segmented :options="PHASE_OPTS" :model-value="phase" size="sm" @update:model-value="setPhase" />
         <input v-model="q" class="cb-search" type="text" placeholder="搜租户名" />
         <span style="flex:1"></span>
@@ -412,7 +439,10 @@ async function onClose() {
         </div>
       </div>
       <!-- 位置常驻(LAYOUT-STABILITY-SPEC §4.2):切系数时提示有无都占一行,不许把下面的表格顶走 -->
-      <div class="cb-hint"><template v-if="curMeta.hint">{{ curMeta.hint }}</template></div>
+      <div class="cb-hint">
+        <template v-if="editMode && !uniErr">改的是「{{ curMeta.label }}」· 自 {{ effYm }} 起生效<template v-if="curMeta.hint"> · {{ curMeta.hint }}</template></template>
+        <template v-else-if="!editMode && curMeta.hint">{{ curMeta.hint }}</template>
+      </div>
 
       <!-- 加载失败换掉表格(不再弹窗关窗):期页签 / 系数 / 生效月照常可切,重试接上 load -->
       <FPLoadError v-if="loadErr" :sub="loadErr" @retry="load">{{ effYear }} 年 {{ effMonth }} 月的系数没读到</FPLoadError>
@@ -420,27 +450,6 @@ async function onClose() {
       <FPEmpty v-else-if="floorLocked" sub="请切到「二期」页签查看与编辑。">层份类系数(电梯 / 消防)只在二期开放</FPEmpty>
 
       <template v-else>
-        <!-- 统一修改条(v3 唯一改值入口):勾选租户→输一个值→应用到选中;清除模式=应用空值回退 -->
-        <div v-if="editMode" class="cb-unibar">
-          <span>已选 <b>{{ selected.size }}</b> 户</span>
-          <span class="cb-sep">·</span>
-          <span>统一修改为</span>
-          <!-- 值控件按注册表 valueKind:枚举(损耗基数形态)→字典 Select;其余数字输入 -->
-          <div v-if="curMeta.enumOptions" style="width:300px">
-            <Select :options="enumOpts" :model-value="uni" size="sm" :disabled="clearMode"
-                    :placeholder="clearMode ? '清除(空值)' : '请选择'" @update:model-value="uni = $event" />
-          </div>
-          <input v-else v-model="uni" class="cb-uni-in" :disabled="clearMode"
-                 :placeholder="clearMode ? '清除(空值)' : curMeta.unit" @keydown.enter.prevent="applyUni" />
-          <Button variant="outline" size="sm" :disabled="selected.size === 0" @click="applyUni">应用到选中</Button>
-          <label v-tip="'清除模式:应用空值=删除该生效月版本,回退上一版本/默认(层份=回按楼层自动分)'" class="cb-chk">
-            <input type="checkbox" v-model="clearMode" />
-            清除模式
-          </label>
-          <!-- 字段报错常驻占位一行(LAYOUT-STABILITY §4.2):字才是条件的 -->
-          <p class="fp-field-err cb-uni-err"><template v-if="uniErr">{{ uniErr }}</template></p>
-        </div>
-
         <!-- 租户表:楼栋分组;列=☑|租户|楼栋|当前生效值·生效自(例外徽标)|暂存新值(只读+撤销,无逐行输入框) -->
         <div class="cb-wrap">
           <table class="cb-table">
@@ -547,18 +556,18 @@ async function onClose() {
 <style scoped>
 .cb-empty { padding: 40px 12px; text-align: center; color: var(--text-disabled); font-size: var(--fs-label); }
 
-/* 控制行 */
-.cb-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* 工具条:浏览 / 编辑两态同一行同高 */
+.cb-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 32px; }
 .cb-lbl { font-size: 12px; color: var(--text-muted); }
 .cb-search { width: 180px; height: 32px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--border-control); border-radius: var(--radius-full); font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); }
 .cb-search:focus { outline: none; border-color: var(--hue-blue); }
 .cb-hint { flex: 0 0 auto; margin-top: -14px; min-height: 16px; line-height: 16px; font-size: 11.5px; color: var(--text-muted); }
 
-/* 统一修改条(v3 唯一改值入口) */
-.cb-unibar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-card); font-size: 12.5px; color: var(--text-secondary); flex-wrap: wrap; }
+/* 统一修改条(编辑态的工具条):右半换成批量改值;红字压在下面说明行的位置(说明行 margin-top:-14 → 工具条下沿 +8) */
+.cb-unibar { position: relative; font-size: 12.5px; color: var(--text-secondary); }
 .cb-unibar b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .cb-sep { color: var(--text-disabled); }
-.cb-uni-err { flex: 0 0 100%; margin-top: -4px; }
+.cb-uni-err { position: absolute; left: 0; top: calc(100% + 8px); margin: 0; line-height: 16px; }
 .cb-uni-in { width: 120px; height: 30px; padding: 0 10px; box-sizing: border-box; border: 1px solid var(--border-control); border-radius: var(--radius-sm); text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); }
 .cb-uni-in:focus { outline: none; border-color: var(--hue-blue); }
 .cb-uni-in:disabled { background: var(--surface-sunken); color: var(--text-disabled); }

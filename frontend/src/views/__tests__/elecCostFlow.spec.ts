@@ -910,6 +910,27 @@ describe('电费成本总览 · 提示件(S4)', () => {
   })
 })
 
+describe('电费成本总览 · 点击范围放宽(2026-10-03 用户「不是非要点击箭头才打开」)', () => {
+  // 破坏验证:ElecCostView 费项名称格去掉 @click → 点名称不展开,红
+  it('❗点费项名称那一格就展开楼栋拆分;点箭头只切一次', async () => {
+    vi.mocked(elecCostApi.entries).mockResolvedValue([
+      ...ENTRIES,
+      { id: 21, meterId: 1, meterName: '园区总表', acctMonth: '2025-03', feeKey: 'tou_industrial', subKey: 'bg',
+        amount: 50, qty: 10, note: null, source: 'manual' },
+    ] satisfies ElecCostEntryDTO[] as never)
+    const w = await toTable()
+    const fee = () => w.findAll('td.lbl').find(td => td.find('.ec-chev').exists())!
+    expect(fee().exists(), '前提:有拆分的费项带箭头').toBe(true)
+    const n0 = w.findAll('td.lbl.lv2').length
+    await fee().trigger('click')
+    await flushPromises()
+    expect(w.findAll('td.lbl.lv2').length).toBeGreaterThan(n0)
+    await fee().find('.ec-chev').trigger('click')
+    await flushPromises()
+    expect(w.findAll('td.lbl.lv2').length, '点箭头只切一次').toBe(n0)
+  })
+})
+
 describe('电费成本总览 · 禁用钮的悬停说明', () => {
   it('❗失败态编辑钮被禁用 → 悬停说明挂在外层,停一会儿就出(禁用的钮自己收不到鼠标)', async () => {
     vi.mocked(elecCostApi.entries).mockRejectedValue(new Error('后端挂了'))

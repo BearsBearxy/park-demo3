@@ -107,7 +107,7 @@ const meId = Symbol('roles')
 const screen = useScreen()
 // 撤登记时顺带结束授权:这是最后一个编辑态的话,授权不该留到 30 分钟到期(还有别的在编辑时它自己不作为)
 function unregister() { auth.closeEditor(meId); void auth.endElevation() }
-watch(dirty, (on) => { if (on) auth.openEditor(meId, screen, () => dirtyCount.value); else unregister() })
+watch(dirty, (on) => { if (on) auth.openEditor(meId, screen, () => dirtyCount.value, ['system:edit']); else unregister() })
 onUnmounted(unregister)
 
 // 换角色 / 去新建会丢掉手上的改动:askLeave(0 处不弹)

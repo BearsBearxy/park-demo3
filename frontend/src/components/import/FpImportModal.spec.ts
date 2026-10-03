@@ -1,5 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { describe, it, expect, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import FpImportModal, { pickSheet, type ImportRec } from './FpImportModal.vue'
 
 // 模板列 + parseRow:租户 + 2 费用列;cells[0]=名(空跳过),cells[1..2]=数字。
@@ -30,8 +32,9 @@ describe('FpImportModal', () => {
     await w.find('textarea').setValue(lines.join('\n'))
     await w.find('.fpimp-ta + div button').trigger('click')    // 解析粘贴内容
 
-    // 条数提示:块内提示(十件 ④ FPNote 蓝档),不是自写的底色条
-    expect(w.find('.fp-note.info').text()).toBe('已识别 6 条有效记录,确认后写入。')
+    // 条数并进预览卡头(横条盘点 FpImportModal:314):预览上方不再有满宽蓝条
+    expect(w.find('.fpimp-preview-h').text()).toContain('预览 · 已识别 6 条有效记录')
+    expect(w.find('.fp-note.info').exists()).toBe(false)
     // 预览只渲染前 6 行
     const bodyRows = w.findAll('.fpimp-pvtable tbody tr')
     expect(bodyRows.length).toBe(6)
@@ -152,6 +155,14 @@ describe('FpImportModal', () => {
     await w.find('.fpimp-fb [data-k="2099-08"]').trigger('click')
     expect(parseWorkbook.mock.calls[1][1]).toMatchObject({ ym: '2099-08' })
     expect(w.find('.fpimp-fb .fp-note.warn').text()).toBe('按 2099-08 导入')
+  })
+
+  // 横条盘点 FpImportModal:290:消息槽恒占一条 FPNote 的整高(FPNote min-height 32),出一条提示时不把预览顶走
+  // 破坏验证:min-height 改回 18px → 红
+  it('❗消息槽常驻 32px(= 一条 FPNote 的高)', () => {
+    const src = readFileSync(join(__dirname, 'FpImportModal.vue'), 'utf8')
+    expect(src).toMatch(/\.fpimp-msgs \{[^}]*min-height:32px;[^}]*\}/)
+    expect(readFileSync(join(__dirname, '..', 'fp', 'FPNote.vue'), 'utf8')).toMatch(/min-height: 32px;/)
   })
 
   it('无 notice(标题齐全)不渲染补录条', async () => {

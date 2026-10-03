@@ -49,6 +49,7 @@ import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
+import FPElevChip from '@/components/fp/FPElevChip.vue'
 import FPStat from '@/components/fp/FPStat.vue'
 import FPMoreMenu from '@/components/fp/FPMoreMenu.vue'
 import { useViewport } from '@/composables/useViewport'
@@ -1263,6 +1264,8 @@ function onMore(key: string) {
       <!-- 状态进抽屉(照稿):今天只有列表那一列有,开着抽屉核对的人看不到核过没核过 -->
       <template v-if="dlgRow" #badge>
         <span class="bn-st" :class="statusOf(dlgRow.tenantId)">{{ ST_LABEL[statusOf(dlgRow.tenantId)] }}</span>
+        <!-- 遮罩盖住了顶栏:临时授权的胶囊挂一枚在弹窗头(画布 08 ElevStates) -->
+        <FPElevChip variant="dialog" />
       </template>
 
       <!-- 告警长在副标题行上,一类一个徽标,写明类名与条数。那一行本来就在 ⇒ 有告警没告警,抽屉高度一样。

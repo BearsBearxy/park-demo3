@@ -5,6 +5,7 @@
 import { flattenCols, type BookDef } from '../types/book'
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
+import { addResult, type ImportRunProgress } from '@/components/import/importRun'
 // 各域「导入行」契约:以前 run() 一律 `as never` 上抛,后端契约的键名一次都没被编译器对过(P5-5)
 import type { LedgerImportRow } from '@/types/ledger'
 import type { S10ImportRow, S10Fees } from '@/types/s10'
@@ -280,6 +281,10 @@ export interface ImportCtx {
   resolveUnmatched?: (unmatched: { header: string; sample?: string }[]) => Promise<{ def: BookDef; ignore: string[] } | null>
   _bfReport?: BillingReportRow[]   // 计费字段导入:解析期到户报告,导入成功后落 CSV(裁定⑤)
   _cfReport?: ContractReportRow[]  // 合同汇总册导入:解析期到户报告(与 rows 同序),导入后并入后端匹配结果落 CSV
+  // 导入弹窗的进度回调(components/import/importRun.ts 协议):附表10 逐段 —— 从 _run.from 段起发,每段写完报一次
+  _run?: ImportRunProgress
+  // 逐段导入每段发之前问一次还能不能写(附表10 传 () => edit):false = 已失锁(被接管 / 授权到期),停下不再发
+  _alive?: () => boolean
 }
 // 该类导入实际写进哪个模块(RBAC-SPEC §5.6:权限挂在 import kind 上,不挂导入中心这个屏)。
 // 取值须与后端 §5.2 写端点映射表对同一条 path 的判定一致 —— 前端只管磁贴显不显示,后端才是边界。
@@ -304,6 +309,18 @@ export function deriveStatus(res: ImportResultDTO): ImportStatus {
 
 // 空聚合器
 const zero = (): ImportResultDTO => ({ imported: 0, skipped: 0, errors: [] })
+
+// 三大报表:公司核对完(进度卡「核对公司 · 新建 n 家」,走到「写入」那步)再写。
+// 开跑前自动新建的公司是单独的请求,写入被整单拒(审核闸等)时不会跟着回滚 ——
+// 告诉导入弹窗的失败卡多写一句(UI-OVERLAY-SPEC §8「新建的 N 家公司已留下」)
+async function keptOnFail<T>(ctx: ImportCtx, made: number, fn: () => Promise<T>): Promise<T> {
+  ctx._run?.note('核对公司', `新建 ${made} 家`)
+  ctx._run?.stage('写入')
+  try { return await fn() } catch (e) {
+    if (made > 0) ctx._run?.kept(`新建的 ${made} 家公司已留下`)
+    throw e
+  }
+}
 
 // ── ImportRec → 各域导入行 DTO(P5-5)───────────────────────
 // 解析器产出的 ImportRec 是 `[k: string]: unknown` 袋子,以前一律 `as never` 上抛 —— 等于把整个后端契约
@@ -467,22 +484,31 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
         const companies = await companyApi.list()
         const byName = new Map(companies.map(c => [c.name.trim(), c.id]))
         const agg = zero()
-        for (const p of picks) {
-          const first = p.records[0]
-          if (!first) continue
-          const cname = String(first.__company ?? '').trim()
-          let companyId = ctx.companyId
-          if (cname) {
-            if (!byName.has(cname)) {
-              const created = await companyApi.create(cname)   // 未匹配自动新建
-              byName.set(cname, created.id)
+        // 逐公司一次请求:后面哪家失败,前面写进去的、自动新建的公司都不回滚 —— 报给导入弹窗的失败卡照实写
+        let made = 0
+        try {
+          for (const p of picks) {
+            const first = p.records[0]
+            if (!first) continue
+            const cname = String(first.__company ?? '').trim()
+            let companyId = ctx.companyId
+            if (cname) {
+              if (!byName.has(cname)) {
+                const created = await companyApi.create(cname)   // 未匹配自动新建
+                byName.set(cname, created.id)
+                made++
+              }
+              companyId = byName.get(cname)
             }
-            companyId = byName.get(cname)
+            const ym = first.__ym as { year: number; month: number } | undefined
+            const res = await ledgerApi.import(companyId!, ym?.year ?? ctx.year!, ym?.month ?? ctx.month!,
+              { rows: p.records.map(toLedgerRow) })
+            agg.imported += res.imported; agg.skipped += res.skipped; agg.errors.push(...res.errors)
+            ctx._run?.wrote(agg.imported)
           }
-          const ym = first.__ym as { year: number; month: number } | undefined
-          const res = await ledgerApi.import(companyId!, ym?.year ?? ctx.year!, ym?.month ?? ctx.month!,
-            { rows: p.records.map(toLedgerRow) })
-          agg.imported += res.imported; agg.skipped += res.skipped; agg.errors.push(...res.errors)
+        } catch (e) {
+          if (made > 0) ctx._run?.kept(`新建的 ${made} 家公司已留下`)
+          throw e
         }
         return agg
       }
@@ -515,10 +541,16 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
         phaseLayouts: layouts, nameLabels: ['租户名称', '租户'],
       }
     },
-    run: async (payload) => {
+    // 逐段:每段一个 (期,月) 槽一次请求,后端清本槽导入行再插(重发同一段 = 同样结果,S10ImportApiIT 重导用例)。
+    // 有 _run 时从 _run.from 段起发(「从第 k 段接着导」前面的段不重发),总数从 _run.base 起累计,导入记录记全量。
+    run: async (payload, ctx) => {
       const picks = payload as Pick[]
-      const agg = zero()
-      for (const p of picks) {
+      const seg = ctx._run
+      let agg = seg ? seg.base : zero()
+      for (let k = seg?.from ?? 0; k < picks.length; k++) {
+        // 后端写口不校验锁:失锁后接着发 = 无锁写别人手里的月。断在这一段,前面写完的照实算(失败卡 4xx 一类,只给「返回修改」)
+        if (ctx._alive && !ctx._alive()) throw new Error('已退出编辑，从这一段起没有再发')
+        const p = picks[k]
         const acctMonth = `${p.year}-${pad2(p.month!)}`
         // r 的运行时形状 = tenantName + 该版面 colId(colId 即 keyof S10Fees,见 layout.ts)
         const rows: S10ImportRow[] = p.records.map(r => {
@@ -534,7 +566,8 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
           return row as unknown as S10ImportRow
         })
         const res = await s10Api.importRows({ phase: p.phase!, acctMonth, rows })
-        agg.imported += res.imported; agg.skipped += res.skipped; agg.errors.push(...res.errors)
+        agg = addResult(agg, res)   // 各段的提示(未绑定租户)也并进来,结果卡「n 条提示」要用
+        seg?.segDone(k, res)
       }
       return agg
     },
@@ -827,6 +860,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
         const y = p.year ?? ctx.year!; const m = p.month ?? ctx.month ?? 1
         const res = await salaryApi.importRows(y, m, { rows: p.records.map(toSalaryRow) })
         agg.imported += res.imported; agg.skipped += res.skipped; agg.errors.push(...res.errors)
+        ctx._run?.wrote(agg.imported)   // 逐月一次请求:后面哪月被拒,前面的月不回滚
       }
       return agg
     },
@@ -841,7 +875,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       templateCols: ['月份', ...UTILITIES_COLUMN_MAP.map(c => c.label)],
       columnMap: UTILITIES_COLUMN_MAP, nameLabels: ['月份'],
     }),
-    run: async (payload: ImportRec[] | Pick[]) => {
+    run: async (payload: ImportRec[] | Pick[], ctx: ImportCtx) => {
       const recs = payload as ImportRec[]
       const byYear = new Map<number, OfficeImportRow[]>()
       const errors: ImportResultDTO['errors'] = []
@@ -861,6 +895,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       for (const rows of byYear.values()) {
         const res = await utilitiesApi.importRows(no, { rows })
         agg.imported += res.imported; agg.skipped += res.skipped; agg.errors.push(...res.errors)
+        ctx._run?.wrote(agg.imported)   // 逐年一次请求:后面哪年被拒,前面的年不回滚
       }
       return agg
     },
@@ -882,12 +917,14 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       const companies = await companyApi.list()
       const byName = new Map(companies.map(c => [c.name.trim(), c.id]))
       const sections: ReportCompanySection[] = []
+      let made = 0
       for (const p of picks) {
         const name = (p.label ?? '').trim()
         if (!name) continue
         if (!byName.has(name)) {
           const created = await companyApi.create(name)   // 未匹配自动新建
           byName.set(name, created.id)
+          made++
         }
         const cells: ReportCell[] = []
         for (const r of p.records) {
@@ -897,7 +934,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
         }
         sections.push({ companyName: name, cells })
       }
-      return reportApi.import('is', ctx.year!, ctx.month!, { sections })
+      return keptOnFail(ctx, made, () => reportApi.import('is', ctx.year!, ctx.month!, { sections }))
     },
     target: (ctx) => `${ctx.year}-${pad2(ctx.month!)}`,
   },
@@ -917,19 +954,21 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       const companies = await companyApi.list()
       const byName = new Map(companies.map(c => [c.name.trim(), c.id]))
       const sections: ReportCompanySection[] = []
+      let made = 0
       for (const p of picks) {
         const name = (p.label ?? '').trim()
         if (!name) continue
         if (!byName.has(name)) {
           const created = await companyApi.create(name)   // 未匹配自动新建
           byName.set(name, created.id)
+          made++
         }
         const cells: ReportCell[] = p.records.map(r => ({
           rowKey: String(r.rowKey), field: 'end', amount: Number(r.end) || 0,
         }))
         sections.push({ companyName: name, cells })
       }
-      return reportApi.import('bs', ctx.year!, ctx.month!, { sections })
+      return keptOnFail(ctx, made, () => reportApi.import('bs', ctx.year!, ctx.month!, { sections }))
     },
     target: (ctx) => `${ctx.year}-${pad2(ctx.month!)} · 资产负债表`,
   },
@@ -948,12 +987,14 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       const companies = await companyApi.list()
       const byName = new Map(companies.map(c => [c.name.trim(), c.id]))
       const sections: ReportCompanySection[] = []
+      let made = 0
       for (const p of picks) {
         const name = (p.label ?? '').trim()
         if (!name) continue
         if (!byName.has(name)) {
           const created = await companyApi.create(name)   // 未匹配自动新建
           byName.set(name, created.id)
+          made++
         }
         const accounts: ReportAccount[] = []
         const cells: ReportCell[] = []
@@ -968,7 +1009,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
         }
         sections.push({ companyName: name, accounts, cells })
       }
-      return reportApi.import('tb', ctx.year!, ctx.month!, { sections })
+      return keptOnFail(ctx, made, () => reportApi.import('tb', ctx.year!, ctx.month!, { sections }))
     },
     target: (ctx) => `${ctx.year}-${pad2(ctx.month!)} · 科目余额表`,
   },
@@ -1047,6 +1088,7 @@ export async function runImport(
   const res = await entry.run(payload, ctx, fileName)
   // 有行入库即让分析层缓存整体失效:空态→去导入→回分析屏立即见新数据(复审:缓存陈旧闭环)
   if (res.imported > 0) invalidateAnaCache()
+  ctx._run?.recording()   // 导入弹窗进度卡走到「记下这次导入」
   try {
     await importLogApi.record({
       dataType: entry.key, typeLabel: entry.label, fileName: fileName || '（粘贴）',

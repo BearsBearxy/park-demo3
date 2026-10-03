@@ -17,18 +17,29 @@
 
 | 件 | 路径 | 职责 |
 |---|---|---|
-| `FpImportModal` | `components/import/FpImportModal.vue` | 右滑抽屉:上传(.xlsx 懒加载 SheetJS / .csv) + 从 Excel 粘贴(TSV) → 二维数组 → 三种解析模式之一 → 预览/汇总 → emit |
+| `FpImportModal` | `components/import/FpImportModal.vue` | 右滑抽屉:上传(.xlsx 懒加载 SheetJS / .csv) + 从 Excel 粘贴(TSV) → 二维数组 → 三种解析模式之一 → 预览/汇总 → 交 `runner` 原地跑(全仓 17 处入口都给了 runner;不给仍 emit 只是兼容,新屏必须给) |
 | `importParse` | `utils/importParse.ts` | TSV/CSV → 二维数组(支持引号/CRLF/空行) |
 | `importHeaderMatch` | `utils/importHeaderMatch.ts` | **按表头名字匹配**(单段):定表头块→列名映射→**按数据内容定位关键列**→数据行 |
 | `importSections` | `utils/importSections.ts` | **智能整表拆段**(多段):按标题行拆段→识别年/月/期+版面→逐段 matchByHeader |
-| `ImportSummary` | `components/import/ImportSummary.vue` | 多段汇总确认屏(年/月/期可改+勾选) |
-| `ImportResultToast` | `components/import/ImportResultToast.vue` | 结果:导入/跳过/错误(可展开) |
+| `ImportSummary` | `components/import/ImportSummary.vue` | 多段汇总确认屏(年/月/期可改+勾选);段数写在表头那一行,表上方不另起蓝条 |
+| `ImportProgressCard` / `ImportResultCard` | `components/import/` | 点「导入」后弹窗不关,原地换进度卡 → 结果卡 / 失败卡(UI-OVERLAY-SPEC §8);接线协议在 `importRun.ts` 头注释 |
+| `ImportResultToast` | `components/import/ImportResultToast.vue` | **已没有屏挂它**(0.26.0 起结果都在导入弹窗里原地出,别再接);只剩它自己的测试和 `noInteractionLayoutShift.spec` 里两条豁免指着它,删组件时一起删 |
 | `SaveConfirmDialog` | `components/import/SaveConfirmDialog.vue` | 退出编辑保存确认 |
 
 **FpImportModal 三种模式**（按 props 选其一）：
 - `parseRow`（位置映射，最弱，仅简单表，台账在用）
 - `columnMap`（单段按名字匹配，扛多行表头/分类列/合计列）
 - `phaseLayouts`（智能整表，多段+多版面，附表10 在用）
+
+**点「导入」之后**（2026-10-03，UI-OVERLAY-SPEC §8）：屏给 `FpImportModal` 传 `:runner`(必须给),弹窗就不关,原地出进度、结果、失败。
+- runner = `runImport`(写 + 记导入记录)+ 刷新本页,收尾一律 `settle(res, p, refresh)`:刷新失败不算导入失败。错误**抛给弹窗**,别自己 `receipt.fail` —— 弹窗按错误分:网络断 / 5xx 与 4xx 写法不同。
+- 写口自守照旧:失锁了 runner 返回 `null`(弹窗回到选文件那一屏)。
+- 屏在编辑态转假的 watch、页签停用的 `onDeactivated` 里收导入窗,一律写 `if (!importBusy.value) importing.value = false`:在跑的不收(`importBusyGuard.spec` 扫全仓)。
+- 导完要跳到别的期(附表10 跳第一段的册 / 年月、附表12 跳首段年月)的,跳期放进 `@close` 的关窗函数,别放进 runner:锁按期的屏一换期就退出编辑,放在 runner 里会把人踢出编辑态。
+- 一次导入发多次请求的 run(工资逐月、水电逐年、台账整册逐公司)每写完一次调 `ctx._run?.wrote(累计写入数)`:后面那次失败时前面的不回滚,失败卡据此写「前面已写入 a 条」而不是「一条都没写进去」。
+- 进度回调 `p` 一律塞进 `ctx._run` 再调 `runImport`:写完它把步骤推到「记下这次导入」;三大报表 / 台账整册开跑前新建了公司、写入又被拒时,它让失败卡多写「新建的 N 家公司已留下」。
+- **逐段**(`segmented`,附表10):registry 的 run 认 `ctx._run`,从 `_run.from` 段起发、每段写完报 `_run.segDone`;断在网络 / 5xx 时用户点「从第 k 段接着导」只重发第 k 段起。新接逐段的类型,后端那一段的写法必须「重发同一段结果相同」(清本槽导入行再插 + 整段一个事务),否则不许开 `segmented`。屏有编辑锁的再传 `ctx._alive = () => edit`:每段发之前问一次,失锁就停(后端写口不校验锁)。
+- 用户看到的:进度卡(逐段画真进度,单次请求只画「还在动」不写百分比,200ms 内跑完不出卡)→ 结果卡(成功写入 / 跳过两格、分项明细、可展开的提示与未导入)→ 或失败卡(「第 k 段没导进去」/ 没回应时「第 k 段没等到服务器的结果」/「导入失败，这次一条都没写进去」/ 多次请求断在后面时「导入没做完，前面已写入 a 条」);导入中弹窗关不掉。
 
 **后端导入端点范式**（每子系统一个 `POST .../import`）：
 - **语义 = 清本槽导入行再插**：导入前 `delete where <slot>+source='import'`，再把 rows 全 `insert(source='import')`。重导干净、手动行不动。`@Transactional`。

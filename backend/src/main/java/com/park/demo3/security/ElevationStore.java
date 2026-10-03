@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 提权授权的内存台账（ELEVATION-SPEC §3）。
  *
- * 一次授权 = (被授权人, 权限点) → (授权人, 到期时刻)。30 分钟 TTL。
+ * 一次授权 = (被授权人, 权限点) → (授权人, 授权时刻, 到期时刻, 来源)。30 分钟 TTL。
  *
  * **为什么不落库**：授权是短命的会话态，落库要配清理任务、要处理陈旧行、重启还得读回来。
  * 掉一次授权的代价是重新叫主管点一下头 —— 比维护一张会一直长的表便宜得多。
@@ -30,16 +30,22 @@ public class ElevationStore {
     /** WriteAccessManager 靠提权放行时，把授权人塞进 request，供审计自动捡起。 */
     public static final String REQ_ATTR_AUTHORIZER = "elevation.authorizer";
 
-    public record Grant(String perm, String authorizer, Instant expiresAt) {}
+    /** 来源:主管在请求者电脑上当场输密码(ElevationService.elevate)/ 在自己电脑上远程批准(ApprovalService.decide)。
+     *  授权卡片据此写「hh:mm 授权」还是「远程批准 · hh:mm 批准」(ELEVATION-SPEC §4.5)。 */
+    public static final String ONSITE = "onsite";
+    public static final String REMOTE = "remote";
+
+    public record Grant(String perm, String authorizer, Instant grantedAt, Instant expiresAt, String source) {}
 
     /** username → (perm → Grant)。内层也用并发 Map：同一个人可能同时有多个权限点的授权。 */
     private final Map<String, Map<String, Grant>> byUser = new ConcurrentHashMap<>();
 
-    /** 授权 —— 同一权限点重复授权直接覆盖（续期）。 */
-    public void grant(String username, List<String> perms, String authorizer) {
-        Instant exp = Instant.now().plusSeconds(TTL_SECONDS);
+    /** 授权 —— 同一权限点重复授权直接覆盖（续期:授权时刻、到期时刻、来源一起换成这一次的）。 */
+    public void grant(String username, List<String> perms, String authorizer, String source) {
+        Instant now = Instant.now();
+        Instant exp = now.plusSeconds(TTL_SECONDS);
         Map<String, Grant> mine = byUser.computeIfAbsent(username, k -> new ConcurrentHashMap<>());
-        for (String p : perms) mine.put(p, new Grant(p, authorizer, exp));
+        for (String p : perms) mine.put(p, new Grant(p, authorizer, now, exp, source));
     }
 
     /** 本人当前有效的全部授权。顺带清掉过期项 —— 惰性清理，没有定时任务。 */

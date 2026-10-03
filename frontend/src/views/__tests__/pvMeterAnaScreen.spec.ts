@@ -564,7 +564,7 @@ describe('光伏分栋分析 · 主卡:刻度、事实句与判据脚', () => {
     expect(rows[1].element.lastElementChild!.textContent).toBe('未列出 ≠ 没问题')
     expect(b2.find('.pma-lk').text()).toBe('去改')
     await b2.find('.pma-lk').trigger('click')
-    expect(push).toHaveBeenCalledWith({ path: '/params', query: { adopt: '2026-12', section: 'constant' } })
+    expect(push).toHaveBeenCalledWith({ path: '/params', query: { adopt: '2026-12', section: 'pv' } })
     const q = (push.mock.calls[0][0] as { query: Record<string, string> }).query
     expect(q).not.toHaveProperty('ym')
     expect(q).not.toHaveProperty('p')

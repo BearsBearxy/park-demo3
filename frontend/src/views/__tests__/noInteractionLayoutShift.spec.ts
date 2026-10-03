@@ -129,10 +129,12 @@ const WHITELIST: Record<string, string> = {
   // 进编辑模式多出一整排工具（批量条、勾选列、操作列）必然改变布局。这是模式切换不是提示，
   // 用户预期就是换一副面孔。允许的前提：变化局限在编辑区自身、列宽行高两态不变、退出原样还原。
 
+  // 同一行两态（横条盘点 2026-10-03）：编辑态的统一修改条与浏览态工具条是 v-if / v-else 同一行，
+  // 不新增行、表格不下移（bookBatchBar.spec 钉住表格上方只有这一行）。本扫描不认 v-else 配对，只能走白名单。
   'views/bills/CoefBookWindow.vue .cb-unibar':
-    '§5 编辑态批量操作条（选中 N 户 → 批量改管理费/层份）：是编辑态的主体工作区，不是提示条',
+    '编辑态替换工具条（不新增行）：与浏览态 .cb-controls 是 v-if / v-else 同一行，同 min-height 32；输错红字 absolute 压在说明行上',
   'views/bills/PayBookWindow.vue .pb-unibar':
-    '§5 编辑态批量操作条（批量确认 / 批量改收款账户）：同上，编辑态的主体工作区',
+    '编辑态替换工具条（不新增行）：与浏览态 .pb-controls 是 v-if / v-else 同一行，同 min-height 32',
   'views/params/ParamCenterView.vue .pm-cardops':
     '§5 编辑态才出现的参数卡操作区（新增/删除行），长在卡片自己肚子里，不顶卡外的上下文',
 
@@ -142,8 +144,6 @@ const WHITELIST: Record<string, string> = {
 
   'views/reports/recon/ReconWorkbench.vue .rc-detail':
     'master-detail 右栏本体：左清单定宽不动，右栏 flex:1 恒定占位，变的是栏内内容',
-  'views/reports/recon/ReconWorkbench.vue .rc-banner':
-    '长在 .rc-detail 右栏内部，随 selected 整块重绘；栏外布局不受影响',
   'views/reports/recon/ReconWorkbench.vue .rc-cocard':
     '长在 .rc-detail 右栏内部，随 selected 整块重绘；栏外布局不受影响',
 }

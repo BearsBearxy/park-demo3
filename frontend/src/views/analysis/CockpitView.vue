@@ -548,7 +548,9 @@ const conclusion = computed(() => buildConclusion(
           <span class="hint">覆盖 {{ mc?.covered ?? 0 }} 期(万元)<span class="hint-desk">· 点击月柱切换期间 · 拖选缩放</span><span class="hint-touch">· 点月柱切期间</span> · 紫虚线=预算月均</span>
         </div>
         <!-- 未闭月护栏(FORECAST §2.7):该年含离群月(收入<0)时卡内一行提示(实现规范 §2 第 8 条),不写「已闭月」 -->
-        <FPNote v-if="outlierNoteText" tone="warn" style="margin-bottom: 8px">{{ outlierNoteText }}</FPNote>
+        <!-- 块内提示常驻 32px 预留位(LAYOUT-STABILITY §2 第 3 级):没有负收入月也空着占位 ——
+             骨架那枚占位 FPNote 换真版式时卡不缩,换年时出没也不推下面的图(2026-10-03 横条收尾) -->
+        <div class="cv2-onote"><FPNote v-if="outlierNoteText" tone="warn">{{ outlierNoteText }}</FPNote></div>
         <AnaEChart v-if="mainOption" :option="mainOption" :height="300" @chart-click="onMainClick" />
         <AnaEmpty v-else :label="year + ' 年无损益附表数据'" hint="收入/利润来自损益附表 1~5 园区总计带" to="/rent-pnl" to-text="去录入损益附表" />
         <!-- T2(design-boards 2026-09-11):读数句+参照系小字,纯函数返回值见 outlierReadout/outlierRefText -->
@@ -756,6 +758,8 @@ const conclusion = computed(() => buildConclusion(
 /* 工具条屏名(order:-1 置于期间控件前,不改 AnaShell) */
 .cv2-name { order: -1; display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-body); font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; }
 /* §A 经营结论条(av2-card 观感,单行 flex wrap;位于 grid 前) */
+/* 主图卡的负收入月提示位:常驻 32 + 下边 8(= 骨架那枚 FPNote 的高 + margin) */
+.cv2-onote { min-height: 32px; margin-bottom: 8px; }
 .cv2-concl { display: flex; flex-wrap: wrap; align-items: center; column-gap: 20px; row-gap: 6px; margin-bottom: 12px; }
 .cv2-cs { display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent; padding: 0; font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-primary); }
 .cv2-cs .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }

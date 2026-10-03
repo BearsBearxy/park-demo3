@@ -13,6 +13,7 @@ import { useFavoritesStore, MAX_FAVS } from '@/stores/favorites'
 import { fpBuildRoutes, fpFindLayer } from '@/nav/fpNav'
 import ShellTip from '@/components/shell/ShellTip.vue'
 import NotifyBell from '@/components/shell/NotifyBell.vue'
+import FPElevChip from '@/components/fp/FPElevChip.vue'
 import { useViewport } from '@/composables/useViewport'
 import { receipt } from '@/utils/receipt'
 
@@ -161,6 +162,8 @@ const ctxText = computed(() => {
         <!-- 看完「本次更新」后在这儿提示一次入口在哪,4 秒后自己收起 -->
         <span v-if="upd.coachOn" class="fp-upd-coach" role="status">更新记录随时在这里看</span>
       </span>
+      <!-- 临时授权(ELEVATION-SPEC §4.5,画布 08):有授权才出,钥匙 + 剩余 m:ss,点开看谁授权的、结束授权 -->
+      <FPElevChip />
       <!-- 通知(PAGE-BEHAVIOR-SPEC §5.3):红数字 / 蓝点只挂在这一个按钮上,面板也从它弹出 -->
       <NotifyBell />
     </div>

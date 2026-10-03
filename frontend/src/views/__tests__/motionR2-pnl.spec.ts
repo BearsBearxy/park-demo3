@@ -549,7 +549,9 @@ describe('期间回退:期间选择旁的标签 / 图卡里一行,不用满宽�
     const note = w.find('.av2-grid[data-stale-host] .av2-s8 .fp-note')
     expect(note.exists(), '离群月提示不在主图卡里').toBe(true)
     expect(note.text()).toBe('2026-03 收入为负,已计入年度营收/成本/利润与达成率')
-    expect(note.element.nextElementSibling?.classList.contains('stub-chart'), '提示不在图上方').toBe(true)
+    // 提示包在常驻 32px 的预留位里(.cv2-onote,2026-10-03 横条收尾),预留位紧贴在图上方
+    expect(note.element.parentElement!.classList.contains('cv2-onote')).toBe(true)
+    expect(note.element.parentElement!.nextElementSibling?.classList.contains('stub-chart'), '提示不在图上方').toBe(true)
   })
 
   it('❗费用与报销:选 2026-08 而附表5 只录到 7 月 → 期间旁「显示 2026-07 · 8 月无数据」;异动榜科目名悬停看全称', async () => {

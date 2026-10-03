@@ -7,7 +7,8 @@ import { useAuthStore } from '@/stores/auth'
 import { usePresenceStore } from '@/stores/presence'
 import { useUiStore } from '@/stores/ui'
 import { sessionState } from '@/api'
-import { receipt } from '@/utils/receipt'
+import { receipt, receipts } from '@/utils/receipt'
+import { grantBatches, LAST_MIN_MS } from '@/utils/elevation'
 import AppShell from './components/shell/AppShell.vue'
 import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
 import Button from '@/components/ds/Button.vue'
@@ -35,8 +36,9 @@ watch(() => auth.drifted, async (d) => {
   driftEl.value?.querySelector('button')?.focus()
 })
 
-// ── 提权横幅(ELEVATION-SPEC) ──
-// 刷新页面后授权在服务端还活着(30 分钟内存态),横幅要跟着回来 ——
+// ── 临时授权(ELEVATION-SPEC) ──
+// 胶囊和卡片在顶栏(components/fp/FPElevChip,2026-10-03 起替掉这里原来那条 fixed 满宽横条);这里只管取回授权和几句回执。
+// 刷新页面后授权在服务端还活着(30 分钟内存态),顶栏胶囊要跟着回来 ——
 // 否则用户以为授权没了,又去叫一次主管。
 // refreshMe:管理员改了我的角色,铃铛说「刷新后生效」,刷新了就得真的生效(06-E)
 onMounted(() => { void auth.refreshElevation(); void auth.refreshMe() })
@@ -45,24 +47,26 @@ onMounted(() => { void auth.refreshElevation(); void auth.refreshMe() })
 const presence = usePresenceStore()
 const ui = useUiStore()
 /**
- * 临时授权到期 / 被提前收回时底部那一句。靠这份授权编辑的屏会因权限不齐当场退出编辑(useEditMode / useEditLock 的守卫)。
+ * 临时授权到期 / 被提前收回时底部那一句(画布 08 ElevStates,EDIT-MODE §6.2 三句分开写)。
+ * 靠这份授权编辑的屏会因权限不齐当场退出编辑(useEditMode / useEditLock 的守卫)。
  * 「已退出编辑」只在**确实有屏退出了**时说:人在别的屏用自己的权限编辑,授权到期那张表什么都没退,
  * 照 auth.editing 判就成了假话(EDIT-MODE §6.2「编辑中」指靠这份授权编辑的那一屏)。
  * 所以比到期前后登记的编辑器个数:前一个在守卫跑之前数,后一个在守卫跑完之后数。
  */
-const expiredText = (editorsBefore: number) =>
-  (auth.editorCount < editorsBefore ? '授权已到期，已退出编辑' : '授权已到期')
-// 按时到期:授权掉出有效期。自己点「完成」「结束授权」、退出登录清掉的,到期时刻还没到,不说。
+const exitedSince = (editorsBefore: number) => (auth.editorCount < editorsBefore ? '，已退出编辑' : '')
+// 按时到期:授权掉出有效期。自己点「完成」「结束授权」、退出登录清掉的,到期时刻还没到,不说 —— 「完成」后胶囊消失、不出回执。
+// 全到期说「授权已到期」;多份里先到期一份说「「权限名」的授权已到期」,别的份还在。
 // 两拍:sync 那个在到期的同一刻(各屏 pre 级守卫还没跑)记下编辑器个数;post 那个等这一轮守卫都跑完再比、再说。
-// 只在真到期时记 —— 守卫退出编辑后 endElevation() 会再清一次 grants,那一下不能把记下的数冲掉。
-let expiredWith: number | null = null
+// 只在真到期时记 —— 守卫退出编辑后 endElevation() 会再清一次 grants,那一下没有到期的项,不会把记下的冲掉。
+let expired: { labels: string[]; all: boolean; editors: number } | null = null
 watch(() => auth.grants, (now, before) => {
-  if (now.length < before.length && before.some((g) => g.expiresAt <= Date.now())) expiredWith = auth.editorCount
+  const gone = before.filter((g) => g.expiresAt <= Date.now() && !now.includes(g))
+  if (gone.length) expired = { labels: [...new Set(gone.map((g) => g.permLabel))], all: !now.length, editors: auth.editorCount }
 }, { flush: 'sync' })
 watch(() => auth.grants, () => {
-  if (expiredWith == null) return
-  receipt.warn(expiredText(expiredWith))
-  expiredWith = null
+  if (!expired) return
+  receipt.warn((expired.all ? '授权已到期' : `「${expired.labels.join('、')}」的授权已到期`) + exitedSince(expired.editors))
+  expired = null
 }, { flush: 'post' })
 // 被系统提前收回:心跳从「还在」跳成「没了」,本页却还握着授权 → 清掉、说一句,各屏随之退出编辑。
 // 只认 true → false 这一跳:刚拿到授权时,在途的那一拍是授权之前发的,会带回 false,那不是收回。
@@ -71,16 +75,25 @@ watch(() => presence.elevated, (now, before) => {
   if (now !== false || before !== true || !auth.grants.length) return
   const n = auth.editorCount
   void auth.endElevation(true)
-  void nextTick(() => receipt.warn(expiredText(n)))
+  void nextTick(() => receipt.warn('授权提前失效了' + exitedSince(n)))
+})
+// 最后 1 分钟:每份授权进最后 1 分钟时说一次「授权还剩 1 分钟」(警告回执本就不自收)。
+// 没有哪份在最后 1 分钟了(到期了 / 结束了 / 点了完成)就把它收掉 —— 留着就成了假话。
+const LAST_MIN_TEXT = '授权还剩 1 分钟'
+const warnedLastMin = new Set<string>()
+watch(() => grantBatches(auth.grants).filter((b) => b.expiresAt - auth.nowMs <= LAST_MIN_MS).map((b) => b.key), (keys) => {
+  if (!keys.length) {
+    warnedLastMin.clear()
+    const r = receipts.find((x) => x.text === LAST_MIN_TEXT)
+    if (r) receipt.dismiss(r.id)
+    return
+  }
+  if (keys.some((k) => !warnedLastMin.has(k))) receipt.warn(LAST_MIN_TEXT)
+  keys.forEach((k) => warnedLastMin.add(k))
 })
 // 远程授权批下来时,请求者的弹窗可能已经关了(06-E「弹窗关着时批下来,本页不知道」):
 // 没人认领这次结果,横幅和写入口就都不知道。这里补拉一次;弹窗开着时它自己也拉,多拉一次无妨。
 watch(() => presence.outcome, (o) => { if (o?.approved) void auth.refreshElevation() })
-
-const elevMin = computed(() => Math.floor(auth.elevationLeftMs / 60000))
-const elevSec = computed(() => Math.floor((auth.elevationLeftMs % 60000) / 1000))
-const elevBy = computed(() => [...new Set(auth.grants.map((g) => g.authorizerName))].join('、'))
-const elevWhat = computed(() => auth.grants.map((g) => g.permLabel).join('、'))
 </script>
 
 <template>
@@ -112,15 +125,6 @@ const elevWhat = computed(() => auth.grants.map((g) => g.permLabel).join('、'))
   <!-- 正在编辑的表被别人交审 / 审核通过(06-E 当场出现组):各屏退出编辑前报到 ui.editStop,全站一个弹窗说谁做的 -->
   <FPEvictedDialog :eviction="null" :review="ui.editStop" @close="ui.editStop = null" />
 
-  <!-- 提权横幅：授权期间必须一直看得见 —— 谁授权的、还剩多久、怎么提前结束。
-       没有它,用户不知道自己正握着一份别人担责的权限。 -->
-  <div v-if="auth.elevationLeftMs > 0" class="app-elev" role="status">
-    <span class="app-elev-t">由 {{ elevBy }} 授权</span>
-    <span class="app-elev-d">可修改：{{ elevWhat }}</span>
-    <span class="app-elev-c">剩余 {{ elevMin }}:{{ String(elevSec).padStart(2, '0') }}</span>
-    <button type="button" class="app-elev-b" @click="auth.endElevation(true)">结束授权</button>
-  </div>
-
   <!-- /login 与 /change-password 各自拥有整屏布局 -->
   <router-view v-if="isBare" />
   <!-- all other routes render inside the two-card shell -->
@@ -142,7 +146,7 @@ const elevWhat = computed(() => auth.grants.map((g) => g.permLabel).join('、'))
 </template>
 
 <style>
-/* 身份漂移弹窗:形态同 FPEvictedDialog(居中卡片 + 遮罩)。z 照原横幅 9999,盖住下面的授权条与一切弹窗 */
+/* 身份漂移弹窗:形态同 FPEvictedDialog(居中卡片 + 遮罩)。z 照原横幅 9999,盖住一切弹窗 */
 .app-dlg-scrim {
   position: fixed; inset: 0; z-index: 9999;
   display: grid; place-items: center;
@@ -164,25 +168,6 @@ const elevWhat = computed(() => auth.grants.map((g) => g.permLabel).join('、'))
 }
 .app-dlg-b { margin: 0; padding: 14px 22px 4px; font-size: 13.5px; line-height: 1.65; color: var(--text-primary); }
 .app-dlg-f { display: flex; justify-content: flex-end; padding: 16px 22px 20px; }
-
-/* 提权横幅：和漂移横幅同一层，但语气不同 —— 那个是出事了，这个是「你现在有一份临时权限」。
-   用中性的蓝而不是警示色：它不是错误，只是一个必须一直看得见的状态。 */
-.app-elev {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  padding: 8px 18px; box-sizing: border-box;
-  background: var(--surface-subtle); border-bottom: 1px solid var(--hue-blue);
-  font-family: var(--font-sans); font-size: var(--fs-label);
-}
-.app-elev-t { font-weight: var(--fw-semibold); color: var(--hue-blue); }
-.app-elev-d { color: var(--text-secondary); }
-.app-elev-c { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-.app-elev-b {
-  margin-left: auto; border: 1px solid var(--hue-blue); background: var(--surface-white);
-  color: var(--hue-blue); border-radius: var(--radius-full); padding: 3px 14px;
-  font-family: var(--font-sans); font-size: var(--fs-label); cursor: pointer;
-}
-.app-elev-b:hover { background: var(--hue-blue); color: var(--surface-white); }
 
 #app {
   width: 100%;

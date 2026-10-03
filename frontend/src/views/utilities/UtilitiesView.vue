@@ -20,8 +20,8 @@ import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
 import SchedHeader from '@/components/sched/SchedHeader.vue'
-import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
-import ImportResultToast from '@/components/import/ImportResultToast.vue'
+import FpImportModal, { type ImportPayload } from '@/components/import/FpImportModal.vue'
+import { settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
 import { parserProps, runImport } from '@/utils/importRegistry'
 import UtilitiesTable from './UtilitiesTable.vue'
 import UtilitiesRecordDrawer from './UtilitiesRecordDrawer.vue'
@@ -69,7 +69,7 @@ async function reloadOverview() {
 }
 
 const {
-  year, edit, drawer, importing, importResult, selectedIds, importedCount, lockedMonths, reviewKeys,
+  year, edit, drawer, importing, selectedIds, importedCount, lockedMonths, reviewKeys,
   guard, refresh, pickYear, goGate, toggleSelect, selectAll, onBatchDelete, onClearImported,
 } = useSchedScreen({
   // 审核闸按月份行上锁(D18):本屏是年表屏,一屏 12 个月的行各审各的
@@ -116,14 +116,11 @@ onMounted(async () => {
 
 // ── 导入 Excel(按表头名字匹配,行身份=月份字符串) ──────────
 // 经 runImport(共享 registry:逐行 parseYearMonth 分年 + importRows + 记录 import_log)→ 刷新。
-async function onImport(recs: ImportRec[], fileName: string) {
-  importing.value = false
-  if (!edit.value) return   // 写口自守:editMode 会就地转假,浮层可能还挂着
-  if (year.value == null) return
-  await guard('导入失败', async () => {
-    importResult.value = await runImport('office_' + no.value, recs, {}, fileName)
-    await refresh()
-  })
+// 导入弹窗的 runner(UI-OVERLAY-SPEC §8):弹窗不关,写 + 记 import_log → 刷新;失败交给弹窗的失败卡(不走回执)。
+async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
+  if (!edit.value) return null   // 写口自守:editMode 会就地转假,浮层可能还挂着
+  if (year.value == null) return null
+  return settle(await runImport('office_' + no.value, payload, { _run: p }, fileName), p, refresh)
 }
 
 // 切子表 → 用对应 no 重载当前年 records
@@ -271,15 +268,14 @@ const onExport = () => guard('导出失败', async () => {
         :title="`导入 附表${no} · ${year}年${meta.name}`"
         sub="上传/粘贴逐月水电表,系统按表头名字识别列、按月份识别行,核对后导入本年"
         v-bind="parserProps('office_' + no)"
+        :runner="onImport"
         @close="importing = false"
-        @import="onImport"
       />
     </template>
 
     <!-- 切年 / 切子表过渡兜底转圈(fp-fluid:转圈不该被 800px 地板逼出横滚) -->
     <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 
-    <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
     <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
   </template>
 

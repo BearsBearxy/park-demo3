@@ -10,7 +10,6 @@ import { METER_KIND_LABEL } from '@/utils/meterExcel'
 import { rangeText, lockedText, EARLIEST, type AssignChoice } from './meterTimeline'
 import Button from '@/components/ds/Button.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
-import FPNote from '@/components/fp/FPNote.vue'
 
 const props = defineProps<{
   title: string
@@ -81,13 +80,11 @@ async function confirm() {
       >
         <span class="t">{{ o.title }}</span>
         <span class="s">影响 {{ rangeText(o.span.from, o.span.until) }}</span>
+        <!-- 换租时整月归谁:写在每个选项自己的副句里(原选项组下面那条满宽说明,选中才出、一出就推下面的勾选段) -->
+        <span v-if="tenantTo && o.span.from !== EARLIEST" class="s">水电按月抄表，{{ ymCn(o.span.from) }}月整月算给 {{ tenantTo }}。</span>
         <span v-if="o.span.locked.length" class="lk">这几个月不能改:{{ lockedText(o.span.locked) }}</span>
       </button>
     </div>
-
-    <FPNote v-if="tenantTo && chosen && chosen.span.from !== EARLIEST" tone="info">
-      水电按月抄表，{{ ymCn(chosen.span.from) }}月整月算给 {{ tenantTo }}。
-    </FPNote>
 
     <div v-if="siblings.length" class="ad-sibs">
       <span class="lab">同房间的表(站在 {{ ym }} 看同楼栋、同房号),一起改:</span>
