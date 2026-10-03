@@ -115,6 +115,8 @@ public class MeterService {
     }
 
     private static BigDecimal one(BigDecimal v) { return v == null ? BigDecimal.ONE : v; }
+    /** 给人看的倍率:80.0000 → 80。 */
+    private static String plain(BigDecimal v) { return v.stripTrailingZeros().toPlainString(); }
     private static String blankToNull(String s) { return s == null || s.isBlank() ? null : s.trim(); }
     private static boolean validKind(String s) { return "elec".equals(s) || "water".equals(s); }
     private static final java.util.regex.Pattern ZONE_RE = java.util.regex.Pattern.compile(ZoneService.ZONE_REGEX);
@@ -986,7 +988,8 @@ public class MeterService {
 
     // ── 导入(METER-IMPORT-SPEC §3):表身份走分层匹配管道 编码 → 位置 → 标识 → 新建,
     //   命中唯一才算命中,多候选=歧义不落库;读数按 (表,ym) upsert 覆盖(跨批重导=覆盖;同批同表同月读数不同=G6 行级错误)。
-    //   factor_snap = 行倍率(空则表档案倍率)。非法 kind/zone/ym、无从取名=行级错误跳过,不整批拦。
+    //   factor_snap = 行倍率(空则表档案倍率);导入人没有表档案权限而本行要动已有表的倍率时,档案不改、快照取系统里现有的(F15)。
+    //   非法 kind/zone/ym、无从取名=行级错误跳过,不整批拦。
     //   档案按月记(METER-TIMELINE-SPEC §3.2):每行只写导入月 M 那一行归属(和上一行一样也写),护栏 G1–G11 标在各处。 ──
     // 读数写入攒批(2026-08-11 审计 P3):500 行一条 upsert(MeterReadingMapper.upsertBatch),
     // 语义与原「先删后插」等价。攒批不影响任何判定 —— readByYm 每个 ym 只在**首次遇到**时从库装载一次,
@@ -1039,6 +1042,10 @@ public class MeterService {
         List<ImportError> notices = new ArrayList<>();
         List<MeterImportResultDTO.Match> matches = new ArrayList<>();
         List<MeterReading> pending = new ArrayList<>();   // 待落库读数,满 READING_BATCH 冲一次
+        // 倍率是表档案的口径(RBAC-SPEC §2:meter-master「表倍率」),导入只要 meter-reading(2026-10-03 安全审计 F15,用户选方案 1):
+        // 没有表档案权限的人导入时,已有表的倍率不改、本行读数按档案倍率记,只给提示。新建的表照取本行倍率 —— 那时档案里没有旧值可护。
+        // 一批只问一次,而且只在真有一行要动倍率时才问(绝大多数导入一行都不动)。
+        Boolean canFactor = null;
         int imported = 0, sortNo = meters.maxSortNo();
         List<MeterImportRequest.Row> rows = req.rows();
         // G10 判同码在册看的是同批别的表已经写到哪:编码栏「已拆」的行先走(换表的旧表先拆掉,新表那一行补在册才不被误拒),
@@ -1101,6 +1108,9 @@ public class MeterService {
             String g4 = removedMark(row) ? "removed" : retiredMark(row) ? "retired" : null;
             boolean read = hasReading(row);
             boolean applied = true;   // G11 冻结时档案不改
+            boolean factorDenied = false;   // F15:本行要动倍率、而导入人没有表档案权限
+            BigDecimal factorKept = null;   // 被拒时本行读数用的倍率(= 系统里现有的那个)
+            String factorNote = null;       // 被拒时的提示;等这一行确定落库再进 notices(G10 撞码整行拒时不该说「读数按 X 计」)
             MeterAt m;
             if (hit.meter == null) {   // 自动建档
                 m = new MeterAt();
@@ -1146,6 +1156,25 @@ public class MeterService {
             } else {           // 刷新描述字段(导入是档案的事实源;身份/人工资产字段不动,§3.2)
                 int id = hit.meter.getId();
                 Meter asset = assetById.get(id);
+                BigDecimal archived = one(asset.getFactor());
+                // 「系统里现有的倍率」= 这个月已有读数的快照(主管按 G7 存下的旧册倍率),没有读数才是档案倍率。
+                // 比的是它而不是档案:专员原样重导一本旧册(行倍率 = 已存快照)什么都没想改,不该把快照改成档案倍率。
+                MeterReading had = readOfYm.get(id);
+                BigDecimal current = had != null && had.getFactorSnap() != null ? had.getFactorSnap() : archived;
+                String lastYm = lastRead.get(id);
+                boolean movesArchive = row.factor() != null && (lastYm == null || ym.compareTo(lastYm) >= 0)
+                    && row.factor().compareTo(archived) != 0;                                    // G7 会写回档案
+                boolean movesSnap = row.factor() != null && row.factor().compareTo(current) != 0;
+                if (movesArchive || movesSnap) {
+                    if (canFactor == null) canFactor = perms.has(Perm.METER_MASTER_EDIT);
+                    if (!canFactor) {
+                        factorDenied = true;
+                        factorKept = current;
+                        factorNote = "表「" + hit.meter.getName() + "」本行倍率 " + plain(row.factor()) + " 与系统里现有的 "
+                            + plain(current) + " 不同:没有「" + Perm.label(Perm.METER_MASTER_EDIT) + "」权限,倍率没有改"
+                            + (read ? ",本行读数按 " + plain(current) + " 计" : "");
+                    }
+                }
                 List<MeterAssign> aRows = assignRows.computeIfAbsent(id, k -> new ArrayList<>());
                 List<MeterStatus> sRows = statusRows.computeIfAbsent(id, k -> new ArrayList<>());
                 // 底子 = 导入月 M 的样子(assignAt(M)),不是最新一行:册子只改 M 这一行(R1)
@@ -1170,6 +1199,7 @@ public class MeterService {
                     if (!diff.isEmpty() || !plan.isEmpty())
                         notices.add(new ImportError(i, name, "表「" + m.getName() + "」本行要改的档案波及冻结的月份("
                             + frozenText(frozen) + "):读数已写入,档案没有改(" + fieldsText(diff, plan) + ")"));
+                    if (factorNote != null) notices.add(new ImportError(i, name, factorNote));
                     m = hit.meter;
                 } else {
                     // G10 自愈补在册会让这块表与同码的另一块表同一个月都在册 → 行级错误,整行不写(同 G5)
@@ -1179,9 +1209,9 @@ public class MeterService {
                         continue;
                     }
                     for (String w : warns) notices.add(new ImportError(i, name, w));
+                    if (factorNote != null) notices.add(new ImportError(i, name, factorNote));
                     // G7:倍率只在 M 不早于这块表已有的最新读数月时写回;更早的旧册只进本行 factor_snap
-                    String last = lastRead.get(id);
-                    if (row.factor() != null && (last == null || ym.compareTo(last) >= 0)) m.setFactor(row.factor());
+                    if (!factorDenied && row.factor() != null && (lastYm == null || ym.compareTo(lastYm) >= 0)) m.setFactor(row.factor());
                     if (m.getFactor() == null) m.setFactor(BigDecimal.ONE);
                     idx.remove(hit.meter);
                     m.assetInto(asset);   // 资产列(编码/表类/倍率)不分月
@@ -1223,7 +1253,7 @@ public class MeterService {
             r.setPrevFlat(row.prevFlat()); r.setPrevValley(row.prevValley());
             r.setCurrSharp(row.currSharp()); r.setCurrPeak(row.currPeak());
             r.setCurrFlat(row.currFlat()); r.setCurrValley(row.currValley());
-            r.setFactorSnap(one(row.factor() == null ? m.getFactor() : row.factor()));
+            r.setFactorSnap(one(factorDenied ? factorKept : row.factor() == null ? m.getFactor() : row.factor()));
             r.setNote(blankToNull(row.note()));
             r.setSource("import");
             // 表档案两条分支(insert 新建 / 已在库)都已先于本行落库,FK fk_meter_reading_meter 冲批时必定有主

@@ -77,7 +77,7 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 | `param-policy:edit` | 计费口径：常量/规则/户级例外键、公摊规则与配置、电价配置、收款指引、**系数簿** |
 | `param-monthly:edit` | 月度计费录入：`paramRegistry` 里 `monthlyCheck=true` 的 **14** 个键 + 复制上月电价。**V104 起不再给财务专员**（电价决定每一户账单，收归主管级；专员每月请主管当场授权一次，见 ELEVATION-SPEC §5.1） |
 | `meter-master:edit` | 表档案：表倍率、表↔合同绑定、删表、光伏电站档案、充电桩桩库 |
-| `meter-reading:edit` | 抄表读数增删改、导入、按年 simulate |
+| `meter-reading:edit` | 抄表读数增删改、导入、按年 simulate。**导入时改已有表的倍率另要 `meter-master:edit`**（2026-10-03 安全审计 F15）：没有的话倍率不改、本行读数按档案倍率记，只给提示 |
 | `billing-run:edit` | 公摊生成、损耗、分摊结果、`params/recalc`、催缴单生成、单据备注 |
 | `billing-issue:edit` | 催缴单确认、签发、作废、标记已导出、收款公司槽 |
 | `entry:edit` | 月度台账、附表 6/7/8/10/11/12（含工资）、办公·三期水电、年度预算导入 |
@@ -301,7 +301,7 @@ POST /api/review/*/recall    → 同 submit（录入方撤自己交的，本人�
 ② **月度键（`monthlyCheck=true`，现为 14 个）的 PUT 归 `param-monthly`。**
 键清单以 `ParamRegistry` 里 `monthlyCheck=true` 为准，与前端 ① 区的 `Group.MONTHLY` 分组
 **一一对应**（`ParamPermissionSplitTest` 钉死；不对齐就会出现「界面有按钮点下去 403」或
-「界面藏了按钮 API 却放行」）。后端按 `cfg_key` 判 —— 这是表里**唯一一条要看请求体**的规则。
+「界面藏了按钮 API 却放行」）。后端按 `cfg_key` 判 —— 要看请求体的规则之一（另见：抄表导入改已有表倍率要 `meter-master:edit`，`MeterService.importRows` 按行判，2026-10-03 安全审计 F15）。
 
 > ⚠ **2026-08-22 修复**：这条规则此前**只写在注释里没有实现**。`PermissionRegistry` 给
 > `PUT /api/params` 登记的是「policy 或 monthly 任一」，而 `ParamService` 里没有细分判定 ——

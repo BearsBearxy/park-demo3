@@ -120,6 +120,7 @@ public class PermissionRegistry {
         add(null, "/api/meters/readings/**", Perm.METER_READING_EDIT);
         // ⚠ 抄表导入必须显式排在 /api/meters/** 之前,否则被 meter-master 吃掉 ——
         //   财务专员在导入中心看得见「园区抄表」磁贴、点下去 403(RBAC-SPEC §2:导入属 meter-reading)
+        //   导入里改已有表的倍率另要 meter-master,在 MeterService.importRows 里按行判(2026-10-03 安全审计 F15)
         add(HttpMethod.POST, "/api/meters/import", Perm.METER_READING_EDIT);
         // 表档案按月写(METER-TIMELINE-SPEC §3.3 §3.4):归属段、清人工标记、状态段 —— 与建表/改档案同一档。
         // 与下面的 /api/meters/** 同值;单列出来是钉住它们:哪天 /** 被拆细,这几条不会跟着掉进别的档。

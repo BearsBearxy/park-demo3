@@ -19,7 +19,9 @@
 import type { ReleaseNote } from '@/types/changelog'
 
 export const CHANGELOG: ReleaseNote[] = [
-  // 小调整(RELEASE-NOTES-SPEC §2.1 四问都否):2026-10-03 安全审计第一批。金额不变,取数与算法没动。
+  // 功能更新(RELEASE-NOTES-SPEC §2.1 第 2 问是):2026-10-03 安全审计第一批。没有新增,不写重点卡、不画配图。
+  // 用法变了的一条:抄表导入里改已有表的倍率另要表档案权限(F15,用户 2026-10-04 选方案 1)——
+  // 同一份册子,没有表档案权限的人导入,倍率不改、本行读数按档案倍率记、只给提示。已入库的读数与金额不回溯。
   // 用户看不见、只写进 PR 描述的:登出请求原来不带令牌(服务端从没真正注销)、登录 / 数值 / 在场 / 编辑锁的输入上限、
   // Tomcat 升级与关掉 multipart、nginx 只信内网给的来源 IP、报表导入后端不再替人建公司(界面导入器在调后端前已自己调建公司接口)、
   // 远程授权批准时复核批准人与请求人此刻的权限、报表导入公司名首尾空格绕过审核闸(界面导入器已 trim,只有直调接口踩得到)、
@@ -27,11 +29,12 @@ export const CHANGELOG: ReleaseNote[] = [
   // 修复核实(对照 master):① 授权按账号存、登出不清,前端那发 DELETE /auth/elevate 又不带令牌 —— 重登后授权还在;
   // ② SystemService.changeOwnPassword 直接 enc.matches,不限次;③ AdminInitializer 每次启动对不上就改回 ADMIN_PASSWORD。
   {
-    version: '0.26.1',
-    date: '2026-10-03',
-    headline: '退出登录时临时授权一并结束',
+    version: '0.27.0',
+    date: '2026-10-04',
+    headline: '抄表导入改倍率要权限，退出即结束授权',
     added: [],
     improved: [
+      { icon: 'gauge', title: '园区抄表', desc: '原来导入抄表册会改掉表的倍率，现在没有表档案权限的人导入，倍率不改，读数照原倍率算。', to: 'meters' },
       { icon: 'lock', title: '修改密码', desc: '原来当前密码输错可以一直重试，现在连错 5 次要等 15 分钟再试。' },
     ],
     fixed: [
