@@ -128,6 +128,12 @@ describe('numW / textW — 不量 DOM', () => {
     expect(textW(['A座'], 12, 0)).toBe(22)
     expect(textW(['联塑精锢', 'ABC有限公司'], 12.5, 20)).toBe(95)   // 5.8em×12.5=72.5 → 73+2+20
   })
+  // 2026-10-03 CI 红:电费成本「公式」列把一条缺 formulaText 的指标交进来,遍历 undefined 抛错,整张表渲染失败。
+  // 接口数据缺一个字段不该炸表 —— 空值按空串量(68 处调用一处兜住)。破坏验证:去掉 `?? ''` → 本条红
+  it('❗缺字段(null / undefined)按空串量,不抛错', () => {
+    expect(textW(['A座', undefined, null], 12, 0)).toBe(22)
+    expect(numW([null, '1,234.00', undefined])).toBe(numW(['1,234.00']))
+  })
 })
 
 // ── composable:RO 桩(按元素登记)+ clientWidth/clientHeight 桩,断言渲染出来的 left/right ──

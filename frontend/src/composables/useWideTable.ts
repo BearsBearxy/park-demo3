@@ -92,16 +92,18 @@ export function heightStage(availH: number, d: HeightDims): HeightStage {
 
 // 汉字与全角标点按 1em,其余 0.6em(Roboto Mono 一格 0.6em;正文字体的拉丁字母不会更宽)
 const WIDE = /[⺀-鿿豈-﫿︰-﹏＀-￯]/
-const widest = (strs: readonly string[], em: (s: string) => number): number =>
-  strs.reduce((m, s) => Math.max(m, em(s)), 0)
+// 接口数据里缺一个字段(null / undefined)按空串量,不让整张表的列宽计算抛错(2026-10-03 CI 红过一次)
+type Cell = string | null | undefined
+const widest = (strs: readonly Cell[], em: (s: string) => number): number =>
+  strs.reduce<number>((m, s) => Math.max(m, em(s ?? '')), 0)
 const px2 = (em: number, px: number, pad: number): number => Math.ceil(em * px) + 2 + pad
 
 /** 数字列宽:按整列最长的数(调用方把合计串也放进来),0.6em/字 + 2px 余量 + 左右内边距。不量 DOM。 */
-export const numW = (strs: readonly string[], px = 12, pad = 16): number =>
+export const numW = (strs: readonly Cell[], px = 12, pad = 16): number =>
   px2(widest(strs, s => s.length * 0.6), px, pad)
 
 /** 文字列宽:汉字 1em、其余 0.6em,取最长的一个。不量 DOM。 */
-export const textW = (strs: readonly string[], px = 12, pad = 16): number =>
+export const textW = (strs: readonly Cell[], px = 12, pad = 16): number =>
   px2(widest(strs, s => { let e = 0; for (const ch of s) e += WIDE.test(ch) ? 1 : 0.6; return e }), px, pad)
 
 /**
