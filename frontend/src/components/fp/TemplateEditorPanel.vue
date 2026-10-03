@@ -19,12 +19,14 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useEditLock } from '@/composables/useEditLock'
 import { useViewport } from '@/composables/useViewport'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import { S } from '@/utils/lockScopes'
 import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
 import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import FPStateTag from '@/components/fp/FPStateTag.vue'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
+import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import type { Directive } from 'vue'
 import { X, Plus, ChevronUp, ChevronDown, Trash2 } from 'lucide-vue-next'
 import Button from '@/components/ds/Button.vue'
@@ -95,13 +97,19 @@ const note = ref('')
 // 历史版预览(只读):previewVer 非空=正在看历史版;previewDef 为空=在加载
 const previewVer = ref<number | null>(null)
 const previewDef = ref<BookDef | null>(null)
+// 在途期间主区留着切换前那份(staleDef)原地退让,不换成一行「加载中」——
+// 弹窗按内容定高又居中,换成一行就整张卡缩下去、到了再撑开,像整页在闪(2026-10-03 用户报,实测 950→429→950)。
+// LAYOUT-STABILITY §7.1 换筛选档:内容不动 + 退让 + 顶边进度线,熬过 200ms 才亮。
+const staleDef = ref<BookDef | null>(null)
+const previewBusy = ref(false)
+const veil = useDeferredFlag(previewBusy)
 
 // 别名录入态:当前显示输入框的列 id(声明须在 immediate watcher 之前)
 const aliasEditId = ref<string | null>(null)
 
 // 只读主区展示的定义:历史版预览优先,否则现行版
 const shownDef = computed<BookDef | null>(() =>
-  previewVer.value != null ? previewDef.value : props.book?.definition ?? null)
+  previewVer.value != null ? previewDef.value ?? staleDef.value : props.book?.definition ?? null)
 
 // open(或宿主保存后换 book)时回到只读查看态;draft 深拷贝备着(纯数据,JSON 拷贝够用)。
 // 关了不清,避免关帧闪空。
@@ -112,6 +120,8 @@ watch(() => [props.open, props.book] as const, ([o, b]) => {
     mode.value = 'view'
     previewVer.value = null
     previewDef.value = null
+    staleDef.value = null
+    previewBusy.value = false
     aliasEditId.value = null
     versOpen.value = false
   }
@@ -197,19 +207,25 @@ async function viewVersion(v: TemplateVersion) {
   if (mode.value === 'edit' || !props.book) return
   versOpen.value = false   // 窄档:选完收起面板,不然预览被自己挡着(宽档 versOpen 恒 false,无影响)
   if (v.current) { backToCurrent(); return }
+  staleDef.value = shownDef.value   // 先记下屏上这份,再清 previewDef —— 顺序反了 shownDef 已经空了
   previewVer.value = v.ver
   previewDef.value = null
+  previewBusy.value = true
   try {
     const def = await booksApi.versionDefinition(props.book.id, v.ver)
     if (previewVer.value === v.ver) previewDef.value = def   // 竞态守卫:只收最后点的那版
   } catch {
     if (previewVer.value === v.ver) backToCurrent()
+  } finally {
+    if (previewVer.value === v.ver || previewVer.value == null) previewBusy.value = false
   }
 }
 
 function backToCurrent() {
   previewVer.value = null
   previewDef.value = null
+  staleDef.value = null
+  previewBusy.value = false
 }
 
 const slotOpts = BOOK_SLOTS.map(s => ({ value: s, label: SLOT_LABELS[s] }))
@@ -338,17 +354,18 @@ function fmtTime(s: string): string {
         </header>
 
         <div class="te-body">
+          <FPLoadBar :on="veil" />
           <!-- 窄档(≤960):版本链的入口折成一行摘要(§5.6 第 2 类)。两个数都来自组件数据:
                现行版 = book.ver(与头部那句同一个数)、共几版 = versions.length。宽档不渲染。 -->
           <button v-if="versSheet" type="button" class="te-versum" @click="versOpen = true">
             现行 v{{ book.ver }} · 共 {{ versions.length }} 版
           </button>
           <!-- 主区 -->
-          <div class="te-main">
-            <!-- 只读查看(默认;含历史版预览) -->
+          <!-- fp-stale 带 pointer-events:none:在途时旧列不许被点(base.css) -->
+          <div class="te-main" :class="{ 'fp-stale': veil }" :aria-busy="veil">
+            <!-- 只读查看(默认;含历史版预览)。在途时 shownDef 回退到切换前那份,不换成一行加载字 -->
             <template v-if="mode === 'view'">
-              <div v-if="previewVer != null && !previewDef" class="te-loading">加载历史版定义…</div>
-              <template v-else-if="shownDef">
+              <template v-if="shownDef">
                 <section v-for="g in shownDef.groups" :key="g.id" class="te-group">
                   <div class="te-gname-ro" :class="{ none: !g.label }">{{ g.label || '(无一级表头)' }}</div>
                   <div v-for="c in g.cols" :key="c.id" class="te-colrow ro" :class="{ hidden: c.hidden }">
@@ -483,7 +500,7 @@ function fmtTime(s: string): string {
 }
 .te-x:hover { background: var(--surface-card); color: var(--text-primary); }
 
-.te-body { flex: 1; min-height: 0; display: flex; border-top: 1px solid var(--border-subtle); }
+.te-body { position: relative; flex: 1; min-height: 0; display: flex; border-top: 1px solid var(--border-subtle); }
 .te-main { flex: 1; min-width: 0; overflow-y: auto; padding: 14px 22px 18px; display: flex; flex-direction: column; gap: 12px; }
 
 /* 「回到现行版」:贴在标题旁的历史版标签后面,与标签同高 22 */
@@ -494,7 +511,6 @@ function fmtTime(s: string): string {
   color: var(--brand-deep); cursor: pointer;
 }
 .te-histback:hover { background: var(--surface-card); }
-.te-loading { font-size: var(--fs-label); color: var(--text-muted); padding: 8px 2px; }
 
 /* 分组卡片 */
 .te-group {

@@ -169,6 +169,32 @@ describe('TemplateEditorPanel · 历史版预览', () => {
     w.unmount()
   })
 
+  // 2026-10-03 用户报:切版本时整张卡片缩到看不见、加载完再撑开,像整页在闪。
+  // 实测 1920 宽:弹窗高 950 → 429 → 950(加载那一帧主区只剩一行「加载历史版定义…」,弹窗按内容定高又居中)。
+  // 规矩(LAYOUT-STABILITY §7.1 换筛选档):内容不动,旧内容原地退让 + 顶边进度线,不换成一行加载字。
+  // 破坏验证:shownDef 在途时不回退 staleDef → 第一段「主区还是切换前那份」红
+  it('❗点历史版的在途期间:主区留着切换前的列,不缩成一行;熬过 200ms 才退让 + 顶边进度线;到了原地换', async () => {
+    let resolve!: (d: BookDef) => void
+    vi.mocked(booksApi.versionDefinition).mockReturnValue(new Promise<BookDef>((r) => { resolve = r }))
+    const w = mountPanel()
+    await w.findAll('.te-vitem')[1].trigger('click')
+    await flushPromises()
+    expect(w.find('.te-loading').exists(), '不许把列表换成一行加载字').toBe(false)
+    expect(w.findAll('.te-group')).toHaveLength(2)
+    expect(w.findAll('.te-roname')[0].text()).toBe('租金')
+    expect(w.find('.te-main').classes(), '快响应全程静默').not.toContain('fp-stale')
+    await new Promise((r) => setTimeout(r, 250))
+    expect(w.find('.te-main').classes()).toContain('fp-stale')
+    expect(w.find('.te-main').attributes('aria-busy')).toBe('true')
+    expect(w.find('.te-body .fp-lb').exists()).toBe(true)
+    resolve(histDef)
+    await flushPromises()
+    expect(w.findAll('.te-roname')[0].text()).toBe('旧租金')
+    expect(w.find('.te-main').classes()).not.toContain('fp-stale')
+    expect(w.find('.te-body .fp-lb').exists()).toBe(false)
+    w.unmount()
+  })
+
   it('正在看历史版时点「编辑模式」:先切回现行版再进入编辑(编辑的是现行定义)', async () => {
     vi.mocked(booksApi.versionDefinition).mockResolvedValue(histDef)
     const w = mountPanel()

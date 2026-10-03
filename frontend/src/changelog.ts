@@ -27,6 +27,7 @@ export const CHANGELOG: ReleaseNote[] = [
   // 「报表底部说明」只讲三大报表(单位进卡头、口径挂净利润 / 总计 / 合计行);年份门的页底说明并进副标题,不在这句里。
   // 修复一行核实(对照 master):CoefBookWindow 的 .cb-unibar、PayBookWindow 的 .pb-unibar 在 editMode 时新增一整行,表格下移
   // (noInteractionLayoutShift.spec 原白名单两条即此)。
+  // 账册模板那行核实(对照 master):TemplateEditorPanel 在途时主区换成一行 .te-loading,弹窗按内容定高(max-height 88vh)又居中 → 实测 950→429→950。
   {
     version: '0.26.0',
     date: '2026-10-03',
@@ -47,6 +48,7 @@ export const CHANGELOG: ReleaseNote[] = [
     ],
     fixed: [
       '系数簿、收款簿：进编辑模式时，原来表格会被往下推一行',
+      '账册模板：点历史版本时，原来整张卡片会先缩下去再撑开',
     ],
   },
   // 功能更新(RELEASE-NOTES-SPEC §2.1 第 1、2 问是):通知统一进顶栏铃铛(新增,顶栏用法变了 → 写进 headline),
