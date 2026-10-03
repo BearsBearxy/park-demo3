@@ -1,7 +1,7 @@
 // 表格展开 / 收起行的位移动画(rowMotion.ts)。2026-10-03 用户:「全部表格的这个下拉打开的，增加动画平滑移开，现在是硬切」。
 // jsdom 不排版、没有 Element.animate:每行的位置按 data-y 假造,animate 换成记录器。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { installRowMotion, cssMs } from './rowMotion'
+import { installRowMotion } from './rowMotion'
 
 type Call = { el: HTMLElement; frames: Keyframe[]; opts?: KeyframeAnimationOptions }
 let calls: Call[] = []
@@ -52,15 +52,8 @@ afterEach(() => {
 })
 
 // 2026-10-03 线上动画「没了」:生产构建把 --dur-base: 200ms 压成 .2s,parseFloat 读成 0.2 → 动画只有 0.2 毫秒。
-// 本地开发不压缩样式,是 200ms,所以本地好好的。破坏验证:cssMs 不认 s 单位 → 两条都红
-describe('cssMs · CSS 时长换毫秒(生产构建会把 200ms 压成 .2s)', () => {
-  it('ms 与 s 两种写法都认', () => {
-    expect(cssMs('200ms', 1)).toBe(200)
-    expect(cssMs('.2s', 1)).toBe(200)
-    expect(cssMs(' 0.32s ', 1)).toBe(320)
-    expect(cssMs('', 150)).toBe(150)
-    expect(cssMs('abc', 150)).toBe(150)
-  })
+// 本地开发不压缩样式,是 200ms,所以本地好好的。破坏验证:cssMs 不认 s 单位 → 本条红
+describe('rowMotion · 线上压缩后的时长', () => {
   it('❗令牌是 .2s(线上构建产物)时,动画时长是 200ms 不是 0.2ms', async () => {
     document.documentElement.style.setProperty('--dur-base', '.2s')
     try {

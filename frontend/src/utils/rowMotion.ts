@@ -22,13 +22,8 @@ const reduced = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').
 const token = (name: string, fallback: string) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
 
-/** CSS 时长转毫秒。生产构建会把 `200ms` 压成 `.2s` —— 2026-10-03 线上动画「没了」就是 parseFloat 把 .2s 读成 0.2(毫秒);两种单位都要认 */
-export function cssMs(v: string, fallback: number): number {
-  const t = v.trim()
-  const n = parseFloat(t)
-  if (!Number.isFinite(n)) return fallback
-  return /ms$/i.test(t) ? n : /s$/i.test(t) ? n * 1000 : n
-}
+// 生产构建把 200ms 压成 .2s(2026-10-03 线上动画因此只剩 0.2ms),s / ms 都要认
+const cssMs = (v: string) => parseFloat(v) * (v.endsWith('ms') ? 1 : 1000)
 
 function snapshot(t: HTMLTableElement) {
   const top = t.getBoundingClientRect().top
@@ -61,7 +56,7 @@ function settle(t: HTMLTableElement) {
   for (const r of now) { running.get(r)?.cancel(); running.delete(r) }
   const top = t.getBoundingClientRect().top
   const vh = window.innerHeight
-  const dur = cssMs(token('--dur-base', '200ms'), 200)
+  const dur = cssMs(token('--dur-base', '200ms')) || 200
   const move = token('--ease-both', 'ease-in-out')
   const enter = token('--ease-out', 'ease-out')
   const plan: [HTMLElement, Keyframe[], string][] = []
