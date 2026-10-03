@@ -651,11 +651,11 @@ describe('电费成本总览 · 复查第二轮补钉', () => {
     let slow!: (v: unknown) => void
     vi.mocked(elecCostApi.metrics)
       .mockReturnValueOnce(new Promise(r => { slow = r }) as never)   // 第一笔:慢
-      .mockResolvedValueOnce([{ key: 'k', label: 'x', value: 222, formula: '', missing: [] }] as never)
+      .mockResolvedValueOnce([{ key: 'k', label: 'x', value: 222, formulaText: '', missing: [] }] as never)
     const p1 = vm.reloadMetrics()
     const p2 = vm.reloadMetrics()                                     // 第二笔:快,先落位
     await p2
-    slow([{ key: 'k', label: 'x', value: 111, formula: '', missing: [] }])
+    slow([{ key: 'k', label: 'x', value: 111, formulaText: '', missing: [] }])
     await p1
     expect((vm.metrics?.[0] as { value: number } | undefined)?.value, '旧回包盖了新指标').toBe(222)
   })
