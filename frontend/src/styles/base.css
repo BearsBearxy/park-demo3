@@ -181,6 +181,9 @@ input[type="password"] { font-family: var(--font-ui) !important; }
    要锁宽的列写 min-width。 */
 .fp-fill { width: 100%; padding: 0 !important; min-width: 0 !important; }
 
+/* 展开 / 收起放宽的点击范围(utils/rowToggle.ts):纯分组行整行、带数据的父行名称那一格 */
+.fp-rowtg { cursor: pointer; }
+
 /* ── 字段报错(十件 ⑤,画布 06-B ⑤;LAYOUT-STABILITY §4.2)──
    12px 红字,18px 常驻占位:元素本身不带 v-if,字才是条件的 ——
      <p class="fp-field-err"><template v-if="err">{{ err }}</template></p>

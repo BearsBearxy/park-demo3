@@ -351,6 +351,14 @@ describe('ParamCenterView 左目录 + 右当前区', () => {
     expect(trOf(w, 'tenant:7|green_rate').exists()).toBe(true)
     await trOf(w, 'tenant:5').find('button.xp').trigger('click')
     expect(trOf(w, 'tenant:5|mgmt_fee').exists()).toBe(false)
+    // 点击范围放宽(2026-10-03 用户):户头整行可点,点户名就展开 / 收起;点箭头只切一次(不和整行叠成两下)
+    // 破坏验证:户头 tr 去掉 @click → 点户名不展开,红
+    await trOf(w, 'tenant:5').find('.t').trigger('click')
+    expect(trOf(w, 'tenant:5|mgmt_fee').exists()).toBe(true)
+    await trOf(w, 'tenant:5').find('td:nth-child(3)').trigger('click')
+    expect(trOf(w, 'tenant:5|mgmt_fee').exists()).toBe(false)
+    await trOf(w, 'tenant:5').find('button.xp').trigger('click')
+    expect(trOf(w, 'tenant:5|mgmt_fee').exists(), '点箭头只切一次').toBe(true)
     // 搜户名:只剩匹配的组,且展开
     await w.find('.pm-ch input').setValue('星州')
     expect(w.findAll('tr.pm-grp').map(t => t.find('.t').text())).toEqual(['星州'])

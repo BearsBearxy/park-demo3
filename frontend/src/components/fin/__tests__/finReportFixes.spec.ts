@@ -175,6 +175,19 @@ describe('资产负债表 · 段里一格数都没有的段头默认收起(稿 R
     expect(w.text()).toContain('长期借款')
   })
 
+  // 点击范围放宽(2026-10-03 用户):段头名称那一格整格可点,不必瞄箭头;点箭头只切一次
+  // 破坏验证:FinReportTable 的 fin-c1 去掉 @click → 点段名不展开,红
+  it('❗点段头名称「非流动负债」就展开,再点格子空白处收起;点箭头不会叠成两下', async () => {
+    const w = await openBody(BalanceSheetView)
+    const head = (t: string) => w.findAll('tbody td.fin-c1').find(c => c.find('.fin-lt').text() === t)!
+    await head('非流动负债').find('.fin-lt').trigger('click')
+    expect(w.text()).toContain('长期借款')
+    await head('非流动负债').trigger('click')
+    expect(w.text()).not.toContain('长期借款')
+    await head('非流动负债').find('.fin-caret').trigger('click')
+    expect(w.text()).toContain('长期借款')
+  })
+
   // 破坏验证:段头默认去掉 anyFilled(整期空也收)→ 五个段头全收着,红
   it('❗本月未录入(整期一格都没有):五个段头全展开 —— 进编辑要录的就是这些格', async () => {
     wire('bs', {})
@@ -228,7 +241,9 @@ describe('科目余额表 · 按权限预留列宽 + 挂空父级的科目按代
     const row = (t: string) => w.findAll('table.tb-table tbody tr').find(r => r.find('.tb-name').text() === t)!
     await row('应收账款').find('.tb-caret').trigger('click')
     expect(row('应收租金').find('.tb-kids').text()).toBe('2 个下级')
-    await row('应收租金').find('.tb-caret').trigger('click')
+    // 点击范围放宽(2026-10-03 用户):点科目名称那一格就展开下级,不必瞄箭头
+    // 破坏验证:TbTable 的 tb-n 去掉 @click → 名称点了不展开,红
+    await row('应收租金').find('.tb-name').trigger('click')
     expect(names(w)).toEqual(['现金', '应收账款', '应收租金', '佛山市新材料科技有限公司', '广东华成科技有限公司'])
     expect((row('佛山市新材料科技有限公司').find('.tb-label').element as HTMLElement).style.paddingLeft).toBe('40px')
   })

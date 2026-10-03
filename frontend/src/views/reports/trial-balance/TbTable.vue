@@ -7,6 +7,7 @@
 // 超 40% 从期末贷方先退(原地变普通列,滚到最右才露出来)。期末那一对一拆开,两层表头就并成一层,
 // 每列写全名(期初借方 … 期末借方)—— 分组表头横跨一根粘住、一根滚走的两列是画不出来的(画布 ReportTB-1366)。
 // 名称封顶 1/5 可见宽,超了省略号 + 悬停看全称;数字不截断。行序 = 父级 visibleRows 输出,原样渲染。
+import { rowToggle } from '@/utils/rowToggle'
 import { computed, ref, watch, onBeforeUnmount, type CSSProperties } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import { finSigned } from '@/utils/finFmt'
@@ -142,7 +143,8 @@ const codeBox = computed<CSSProperties>(() => ({ width: fix.value.w.code - 12 + 
               <span class="tb-code">{{ r.code ?? '' }}</span>
             </span>
           </td>
-          <td class="tb-n" :class="fc('name')" :style="st.name">
+          <td class="tb-n" :class="[fc('name'), { 'fp-rowtg': kids.has(r.rowKey) }]" :style="st.name"
+              @click="kids.has(r.rowKey) && rowToggle($event, () => emit('toggle', r.rowKey))">
             <span class="tb-label" :class="{ lv0: r.level === 0 }" :style="[{ paddingLeft: 12 + r.level * INDENT + 'px' }, nameBox ?? {}]">
               <button
                 v-if="kids.has(r.rowKey)"

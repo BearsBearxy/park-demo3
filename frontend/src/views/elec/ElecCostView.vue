@@ -6,6 +6,7 @@
 //   ② 派生指标:一行一指标,列=指标|本月值|公式|缺失数据源(缺源行置灰,值列「—」)。
 // 编辑模式(EDIT-MODE-SPEC v2):浏览态=完全只读,一切纯文本(DOM 无输入框);金额/备注行内输入、
 // 电表增删改、电价参数小节、导入、模拟填充全部收编辑态。viewer 永远浏览态。年月选择 years 数据驱动(同 PvMeterView)。
+import { rowToggle } from '@/utils/rowToggle'
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
 import { textW } from '@/composables/useWideTable'
 import { onReactivated } from '@/composables/onReactivated'
@@ -742,7 +743,8 @@ function fmtMetric(mt: ElecMetricDTO): string {
             </template>
             <!-- 费项行(缩进一级)/拆分子行·并存合计行(缩进两级) -->
             <template v-else>
-              <td class="lbl" :class="[r.t === 'fee' ? 'lv1' : 'lv2', { warn: r.t === 'dirty' }]">
+              <td class="lbl" :class="[r.t === 'fee' ? 'lv1' : 'lv2', { warn: r.t === 'dirty', 'fp-rowtg': r.chevron }]"
+                  @click="r.chevron && rowToggle($event, () => toggleOpen(r.m.id, r.feeKey))">
                 <button v-if="r.chevron" class="ec-chev" :class="{ open: r.open }"
                         v-tip="r.open ? '收起楼栋拆分' : '展开楼栋拆分'"
                         @click="toggleOpen(r.m.id, r.feeKey)">

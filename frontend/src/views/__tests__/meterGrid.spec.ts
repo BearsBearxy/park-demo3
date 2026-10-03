@@ -204,6 +204,23 @@ describe('P4-C5 · 组头兼小计、组尾停用行(表格接线)', () => {
     expect(segs[0].findAll('.mlg-nv').map(c => c.text())).toEqual(['335.88', '357.50'])
     expect(segs[0].find('.mlg-sumc').text()).toBe('32,430.00')
   })
+
+  // 点击范围放宽(2026-10-03 用户):分时表那一行点位置那一格就开合尖峰平谷;楼栋组头整行可点
+  // 破坏验证:位置格去掉 @click → 点位置不展开,红;组头 tr 去掉 @click → 点组头合计格不收,红
+  it('❗点分时表的位置格开合尖峰平谷;点组头整行(合计格)收起整组', async () => {
+    const ms = [mkM(), mkM(), mkM()]
+    const w = await mountGrid(buildRows(ms, [tou(ms[0]), flat(ms[1]), flat(ms[2])], [], null))
+    await w.findAll('tbody tr').find(r => r.find('.mlg-exp').exists())!.find('td .mlg-txt').trigger('click')
+    await flushPromises()
+    expect(w.findAll('tr.mlg-segr')).toHaveLength(3)
+    await w.find('.mlg-exp').trigger('click')
+    await flushPromises()
+    expect(w.findAll('tr.mlg-segr'), '点箭头只切一次').toHaveLength(0)
+    const rowsBefore = w.findAll('tbody tr').length
+    await w.find('tr.mlg-ghead td.mlg-money').trigger('click')
+    await flushPromises()
+    expect(w.findAll('tbody tr').length).toBeLessThan(rowsBefore)
+  })
 })
 
 describe('P4-C6 · 编辑态分时录入与倒走', () => {

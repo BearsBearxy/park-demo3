@@ -286,6 +286,16 @@ describe('P4-B3 分组行兼小计与逐行写法(03-A)', () => {
     expect(w.findAll('tr.pl-seg').map(tr => tr.findAll('td').map(td => td.text()).filter(Boolean).join(' ')))
       .toEqual(['峰段 300.50', '平段 400.20', '谷段 192.31'])
   })
+
+  // 点击范围放宽(2026-10-03 用户):浏览态点用途名那一格就开合分时段,不必瞄 ›;点 › 只切一次
+  // 破坏验证:pl-pname 浏览态不再走 rowToggle → 点名字不展开,红
+  it('❗浏览态点用途名开合分时段;点 › 不会叠成两下', async () => {
+    const w = await open()
+    await rowOf(w, '招商中心电1').find('.pl-pname .nm').trigger('click')
+    expect(w.findAll('tr.pl-seg')).toHaveLength(3)
+    await rowOf(w, '招商中心电1').find('button.pl-segtg').trigger('click')
+    expect(w.findAll('tr.pl-seg'), '点 › 只切一次').toHaveLength(0)
+  })
 
   // 04-C 一期卡:「峰段」一行有数,「平段 · 谷段」并成一行 –;尖段空着不出。和园区抄表 touSegLines 同一写法
   // 破坏验证:nil 不并(每个空段各出一行)→ 第二条多一行 → 红;空尖段照出 → 「平段」变「尖段 · 平段」→ 第一条红

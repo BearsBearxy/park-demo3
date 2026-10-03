@@ -7,6 +7,7 @@
 // 编辑态(EDIT-MODE-SPEC:浏览态零写入口;onDeactivated 复位):点值格 → 贴格 400 宽改值卡(ParamEditPopover)→ PUT /api/params
 // → 成功只 patch 该行(WRITE-KEEP-CONTEXT 铁律二);「待重算 / 其他月份受影响」走标题行「待处理」入口与问题面板(LAYOUT-STABILITY §6)。
 // 首载加载门(主数据也在门里,首进屏零位移)+ ++seq 竞态守卫;所有表行末一列 .fp-fill 吃余宽;公摊池在窄宽下固定「池 → 分摊基数」(LIST-PAGE §9.1)。
+import { rowToggle } from '@/utils/rowToggle'
 import { ref, computed, onMounted, onDeactivated, watch, nextTick, reactive } from 'vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import FPReviewActions from '@/components/fp/FPReviewActions.vue'
@@ -838,7 +839,7 @@ const FIXED_RULES = [
               <thead><tr><th>参数</th><th>范围</th><th class="r key gs">本月值</th><th class="gs">生效区间</th><th>来自</th><th class="hi"></th><th class="fp-fill" aria-hidden="true"></th></tr></thead>
               <tbody>
                 <template v-for="g in parkGroups" :key="g.key">
-                  <tr :id="`pm-grp-${g.key}`" class="pm-grp">
+                  <tr :id="`pm-grp-${g.key}`" class="pm-grp fp-rowtg" @click="rowToggle($event, () => { parkOpen[g.key] = !parkOpen[g.key] })">
                     <td class="nm"><span class="nmw">
                       <button type="button" class="xp" :class="{ open: parkOpen[g.key] }" :aria-expanded="parkOpen[g.key]" :aria-label="parkOpen[g.key] ? '收起' : '展开'"
                               @click="parkOpen[g.key] = !parkOpen[g.key]"><component :is="iconFor('chevron-right')" :size="13" /></button>
@@ -968,7 +969,7 @@ const FIXED_RULES = [
                 <thead><tr><th>户 / 参数</th><th class="r key gs">值</th><th class="gs">生效区间</th><th>覆盖了</th><th class="hi"></th><th class="hi"></th><th class="fp-fill" aria-hidden="true"></th></tr></thead>
                 <tbody>
                   <template v-for="g in tenShown" :key="g.scope">
-                    <tr :id="`pm-row-${g.scope}`" class="pm-grp" :class="{ 'pm-flash': flashOn(g.scope, '') }">
+                    <tr :id="`pm-row-${g.scope}`" class="pm-grp fp-rowtg" :class="{ 'pm-flash': flashOn(g.scope, '') }" @click="rowToggle($event, () => toggleTen(g.scope))">
                       <td class="nm"><span class="nmw">
                         <button type="button" class="xp" :class="{ open: tenIsOpen(g.scope) }" :aria-expanded="tenIsOpen(g.scope)" :aria-label="tenIsOpen(g.scope) ? '收起' : '展开'"
                                 @click="toggleTen(g.scope)"><component :is="iconFor('chevron-right')" :size="13" /></button>

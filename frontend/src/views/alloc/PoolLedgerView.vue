@@ -20,6 +20,7 @@
 // ③「楼层·方位」列归一为一格 floor_label(side 不再拼);④带尾出块合计行(口径同原册 SUM 区间)。
 // §H3:用了 2023 冻结参数的池(V83 的 alloc_cfg frozen_2023 默认行),「分摊标准」格加 ❄ 并在 title 里
 // 披露来源单元格与真实年月 —— 只披露不重算(重算会改动已出的实收,需用户单独拍板)。
+import { rowToggle } from '@/utils/rowToggle'
 import { ref, computed, nextTick, onMounted, onDeactivated, watch } from 'vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import FPReviewActions from '@/components/fp/FPReviewActions.vue'
@@ -1176,7 +1177,8 @@ async function delPool() {
                         </td>
                         <!-- 用途 = 本行电表的用途(原册 D 列);池名和备注在悬停里。编辑态点它开池配置 -->
                         <td class="pl-fix" :style="useSt">
-                          <span class="pl-pname" :class="{ click: editMode }" @click="editMode && openPoolDlg(r)">
+                          <span class="pl-pname" :class="{ click: editMode, 'fp-rowtg': !editMode && segTg(r, ln) }"
+                                @click="editMode ? openPoolDlg(r) : segTg(r, ln) && rowToggle($event, () => toggleSeg(segKey(r, ln)))">
                             <button v-if="segTg(r, ln)" type="button" class="pl-segtg" :aria-expanded="segsOf(r, ln).length > 0"
                                     v-tip="'看分时段用量'" @click.stop="toggleSeg(segKey(r, ln))">
                               <component :is="iconFor(segsOf(r, ln).length ? 'chevron-down' : 'chevron-right')" :size="14" />

@@ -10,6 +10,7 @@
 //   · 贴底行(foot,每边一行):不透明底;名称上挂口径悬停(footTip,D10:页底说明行删掉后口径挂这里);
 //     footMark 给就地标(「● 多 x」,只给点不给字 = '')。
 //   · 0 与空一律写「–」(D8)。
+import { rowToggle } from '@/utils/rowToggle'
 import { ref } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import { finSigned } from '@/utils/finFmt'
@@ -143,7 +144,7 @@ const headOf = (i: number) => props.heads?.[i] ?? '项　目'
               <td v-if="selectable" class="fin-ckcell" :class="trClass(r)">
                 <input v-if="canSelect(r)" class="fin-ck" type="checkbox" :checked="selected?.has(r.key)" @change="emit('toggleSelect', r)" />
               </td>
-              <td class="fin-c1" :class="[trClass(r), { 'fin-side2': si > 0 }]">
+              <td class="fin-c1" :class="[trClass(r), { 'fin-side2': si > 0, 'fp-rowtg': r.group }]" @click="r.group && rowToggle($event, () => toggle(r))">
                 <span class="fin-rowlabel" :class="{ strong: r.group || r.type === 'subtotal' }" :style="{ paddingLeft: 12 + r.level * 12 + 'px' }" v-tip="r.label">
                   <button v-if="r.group" type="button" class="fin-caret" :aria-label="isOpen(r) ? '收起' : '展开'"
                           @click="toggle(r)"><component :is="iconFor(isOpen(r) ? 'chevron-down' : 'chevron-right')" :size="14" /></button>
