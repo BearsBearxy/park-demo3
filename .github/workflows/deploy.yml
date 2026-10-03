@@ -1,0 +1,179 @@
+# 部署:构建镜像 → 发布到云服务器。2026-10-03 从 ci.yml 拆出来(用户要求):ci.yml 只管测试,PR 上不再挂两个「已跳过」。
+#
+# 两种触发:
+#   1. 自动:master 上的 push(合并 PR 也是)跑完 ci 且全绿 → 部署那一个提交。和拆之前一样,合并即上线。
+#   2. 手动:Actions → deploy → Run workflow,填提交号或分支名 → 重新部署 / 回滚到那一版。
+#      只许部署「master 上、至少有一次 ci 全绿」的提交;那一版的镜像 ghcr 里已有就不重建,直接发布(回滚几分钟内完成)。
+#      ⚠ 数据库迁移只进不退:回滚到比当前库结构旧的代码,要先确认那一版能跑在新库上。
+#
+# 部署的永远是「指定的那个提交」(ci 那次的 head_sha / 手填的),不是 master 最新 ——
+# ci 跑的那几分钟里又有人推了新提交,也不会把没测过的版本带上线。
+# 服务器上 compose 用 IMAGE_TAG 选镜像(docker-compose.yml),这里按提交号钉死;latest 同步指向这一版,手动 compose up 也是它。
+# 部署记录在 GitHub 的 Environments → production;要「合并后人工确认才上线」,在仓库设置里给 production 加 Required reviewers,不用改这里。
+name: deploy
+
+on:
+  workflow_run:
+    workflows: [ci]            # ⚠ 跟 ci.yml 的 name 一致
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 要部署的提交号或分支名(回滚就填那一版的提交号)
+        required: true
+        default: master
+
+# 串行:前一次没发完,后面的排队(连推几次只留最新的那次排着)
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  # 定下要部署哪个提交,并把关:自动触发只认本仓库 master 上 push 触发且成功的 ci;手动触发要求那个提交在 master 上、ci 跑通过
+  resolve:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read              # 手动触发时查那个提交的 ci 记录
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: sha
+        env:
+          REF: ${{ github.event.workflow_run.head_sha || inputs.ref }}   # 走环境变量,不直接拼进脚本
+          GH_TOKEN: ${{ github.token }}
+          MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          # 先按远端分支名解析(本地可能有过时的同名分支),不是分支再当提交号
+          SHA=$(git rev-parse --verify --quiet "origin/${REF}^{commit}" || git rev-parse --verify --quiet "${REF}^{commit}") \
+            || { echo "找不到提交或分支:$REF"; exit 1; }
+          if [ "$MANUAL" = "true" ]; then
+            git merge-base --is-ancestor "$SHA" origin/master || { echo "$SHA 不在 master 上,不部署"; exit 1; }
+            # 这个提交至少有一次 ci 全绿(同一份代码;推 master 那次偶发失败、重跑或推标签那次通过也算)
+            n=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci --commit "$SHA" --status success --json databaseId --jq length)
+            [ "${n:-0}" -gt 0 ] || { echo "$SHA 没有跑通过 ci,不部署"; exit 1; }
+          fi
+          echo "部署 $SHA"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+  # 镜像:在 runner 上编译并推 ghcr(2026-08-13 从服务器搬来 —— 2C4G 云主机跑 vue-tsc + maven 会内存耗尽)。
+  # 按提交号打 tag;这一版的镜像已经在了(回滚)就跳过构建。最后把 latest 指向这一版。
+  images:
+    needs: resolve
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write            # 推 ghcr 必需,GITHUB_TOKEN 默认只有 read
+    env:
+      SHA: ${{ needs.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      # ghcr 镜像名必须全小写,而 owner 是 BearsBearxy —— 直接用 github.repository 会被拒
+      - id: name
+        run: echo "prefix=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: have
+        name: 这一版的镜像在不在
+        env:
+          P: ${{ steps.name.outputs.prefix }}
+        run: |
+          if docker manifest inspect "$P-backend:$SHA" >/dev/null 2>&1 && docker manifest inspect "$P-frontend:$SHA" >/dev/null 2>&1; then
+            echo "hit=1" >> "$GITHUB_OUTPUT"; echo "镜像已在,不重建"
+          fi
+      - name: Build & push backend
+        if: steps.have.outputs.hit != '1'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ steps.name.outputs.prefix }}-backend:${{ needs.resolve.outputs.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+      - name: Build & push frontend
+        if: steps.have.outputs.hit != '1'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ steps.name.outputs.prefix }}-frontend:${{ needs.resolve.outputs.sha }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+      - name: latest 指向这一版
+        env:
+          P: ${{ steps.name.outputs.prefix }}
+        run: |
+          docker buildx imagetools create -t "$P-backend:latest" "$P-backend:$SHA"
+          docker buildx imagetools create -t "$P-frontend:latest" "$P-frontend:$SHA"
+
+  # 发布:整树替换(保留 .env,数据卷不动)——源码仍然上传,不为构建,
+  # 而是让服务器留一份可应急 --build 的底子 + compose/迁移文件与镜像同版本。
+  # 上一版留 /opt/demo3.prev 可手工回滚(mv demo3.prev demo3 && docker compose up -d);更省事的是上面的手动触发。
+  # 凭据:仓库 secrets DEPLOY_HOST / DEPLOY_SSH_KEY(专用部署密钥,公钥在服务器 authorized_keys)。
+  deploy:
+    needs: [resolve, images]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://atrilink.com/
+    permissions:
+      contents: read
+      packages: read             # 服务器要用这个 token 登 ghcr 拉私有镜像,缺了 pull 会 denied
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - name: Publish to server
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh && echo "$SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          tar --exclude=./.git -czf /tmp/demo3.tgz .
+          scp -i ~/.ssh/deploy /tmp/demo3.tgz root@"$HOST":/opt/demo3.tgz
+          # 脚本走 stdin(bash -s)而不是命令行:GITHUB_TOKEN 因此不进服务器的进程列表/history。
+          # keepalive 留着:pull 大层 + Flyway 迁移仍可静默数分钟。
+          # IMAGE_TAG 钉到这一版的提交号(compose 里镜像 tag 读它),不靠 latest。
+          ssh -i ~/.ssh/deploy -o ServerAliveInterval=30 -o ServerAliveCountMax=40 \
+              root@"$HOST" 'bash -s' <<'EOF'
+            set -e
+            echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+            cd /opt && rm -rf demo3.staging && mkdir demo3.staging
+            tar xzf demo3.tgz -C demo3.staging && rm demo3.tgz
+            cp demo3/.env demo3.staging/.env
+            rm -rf demo3.prev && mv demo3 demo3.prev && mv demo3.staging demo3
+            export IMAGE_TAG='${{ needs.resolve.outputs.sha }}'
+            cd demo3 && docker compose pull && docker compose up -d
+            docker logout ghcr.io
+            docker image prune -f          # 换版后的悬空层,2C4G 机器磁盘也不宽裕
+          EOF
+      # 查 https://<域名>/ 而不是 http://<DEPLOY_HOST>/(2026-08-30 上 Caddy 后改)。
+      # DEPLOY_HOST 是 IP,只用于 SSH —— SSH 不该依赖 DNS。但健康检查必须走域名:
+      # Caddy 的自动跳转层对所有 Host 生效,裸 IP 会拿到 308 跳 https://<IP>,
+      # 而证书只签了域名,握手直接失败。查 http://<IP> 永远等不到 200。
+      # 这里同时也验了证书有效(curl 默认校验),等于顺带看住了续期。
+      # ⚠ 域名改了要同步改 deploy/Caddyfile 和上面 environment.url。
+      - name: Health check (public)
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "https://atrilink.com/" || true)
+            [ "$code" = "200" ] && echo "site healthy" && exit 0
+            sleep 5
+          done
+          echo "site NOT healthy after deploy" && exit 1
