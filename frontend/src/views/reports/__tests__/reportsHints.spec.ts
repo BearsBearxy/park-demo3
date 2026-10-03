@@ -22,6 +22,7 @@ import IncomeStatementView from '@/views/reports/income-statement/IncomeStatemen
 import TrialBalanceView from '@/views/reports/trial-balance/TrialBalanceView.vue'
 import PnlScheduleView from '@/views/reports/pnl/PnlScheduleView.vue'
 import ReconWorkbench from '@/views/reports/recon/ReconWorkbench.vue'
+import FpImportModal from '@/components/import/FpImportModal.vue'
 import { companyApi } from '@/api/ledger'
 import { reportApi } from '@/api/report'
 import { pnlApi } from '@/api/pnl'
@@ -143,22 +144,30 @@ const FIN = [
 ] as const
 
 describe.each(FIN)('$name · 空状态与悬停说明', ({ name, view }) => {
-  it('❗一家公司都没有 → FPEmpty 占住主区:一句 + 副句', async () => {
+  // 2026-10-03 画布 09 ReportPickEmpty:左栏撤了,「新增公司」进空态(有 master:edit 才出)
+  it('❗一家公司都没有 → FPEmpty 占住内容区:一句 + 副句 + 「新增公司」;没有 master:edit 不出钮', async () => {
     wireFin([])
     const w = mount(view as never, { global: { stubs: STUBS } })
     await flushPromises()
-    const e = w.find('.finw-main .fp-empty')
-    expect(e.exists(), '主区该是 FPEmpty').toBe(true)
+    const e = w.find('.finw-empty .fp-empty')
+    expect(e.exists(), '内容区该是 FPEmpty').toBe(true)
     expect(e.find('.t').text()).toBe('还没有管理公司')
-    expect(e.find('.sub').text()).toBe(`在左栏底部「新增」建一家,${name} 按公司 × 年月分期`)
+    expect(e.find('.sub').text()).toBe(`${name} 按公司 × 年月分期`)
+    expect(e.find('.act').text()).toBe('新增公司')
+    await e.find('.act button').trigger('click')
+    expect((w.vm as unknown as { dlg: unknown }).dlg).toEqual({ type: 'company', mode: 'new' })
+
+    useAuthStore().permissions = ['report:edit']
+    await flushPromises()
+    expect(w.find('.finw-empty .fp-empty .act').exists(), '没有 master:edit 不出「新增公司」').toBe(false)
   })
 
-  it('❗返回钮是图标钮:悬停说明挂 v-tip,读屏拿到 aria-label(原生 title 已去掉)', async () => {
+  it('❗「换期」是带字的钮(期间条最左):不靠悬停说明,也没有原生 title', async () => {
     wireFin()
     const w = await openFin(view)
-    const back = w.find('.fin-back')
+    const back = w.find('.fpb-back')
+    expect(back.text()).toBe('换期')
     expect(back.attributes('title')).toBeUndefined()
-    expect(back.attributes('aria-label')).toBe('返回选期矩阵')
   })
 })
 
@@ -264,6 +273,39 @@ describe.each([
   })
 })
 
+// 2026-10-03 画布 11(ImportOne / ImportDone;UI-OVERLAY-SPEC §8):点导入后弹窗不关,内容区换进度,写完原地出结果卡。
+// 三屏接法逐字相同(:runner / :describe 都出自 useFinStatementScreen),这里钉的是「屏真把 runner 交给了弹窗」。
+// 破坏验证:任一屏把 :runner 换回 @import-sections → 该屏「导入中弹窗不关」与结果卡两句红
+describe.each([
+  { name: '资产负债表', view: BalanceSheetView, rec: { rowKey: '1', end: 5 }, detail: '1 项 · 1 格' },
+  { name: '利润表', view: IncomeStatementView, rec: { rowKey: '1', cur: 1, ytd: 2 }, detail: '1 项 · 2 格' },
+  { name: '科目余额表', view: TrialBalanceView, rec: { account: ACCOUNTS[0], amounts: { endDr: 5, openDr: 0 } }, detail: '1 科目 · 1 格' },
+] as const)('$name · 导入走弹窗的 runner', ({ view, rec, detail }) => {
+  it('❗点导入后弹窗不关;写完重读本期,弹窗里原地出结果卡(分公司明细 + 本期已刷新)', async () => {
+    wireFin()
+    let done!: (v: unknown) => void
+    vi.mocked(runImport).mockReturnValueOnce(new Promise(r => { done = r }) as never)
+    const w = await openFin(view, true)
+    await btn(w, '导入').trigger('click')
+    await flushPromises()
+    const modal = w.findComponent(FpImportModal)
+    ;(modal.vm as unknown as { onLabelConfirm: (p: unknown[]) => void }).onLabelConfirm([{ label: '物业公司', records: [rec] }])
+    await flushPromises()
+    expect(runImport).toHaveBeenCalledTimes(1)
+    expect(w.find('.fpimp-scrim').exists(), '导入中弹窗不关').toBe(true)
+    const before = vi.mocked(reportApi.period).mock.calls.length
+    done({ imported: 2, skipped: 0, errors: [] })
+    await flushPromises()
+    expect(vi.mocked(reportApi.period).mock.calls.length, '写完重读本期').toBe(before + 1)
+    expect(w.find('.fpimp-scrim').exists(), '结果卡在弹窗里,弹窗还开着').toBe(true)
+    const card = w.find('.irc')
+    expect(card.find('h4').text()).toBe('导入完成')
+    expect(card.find('.irc-meta').text()).toContain('本期已刷新')
+    expect([card.find('.irc-kv span').text(), card.find('.irc-kv b').text()]).toEqual(['物业公司', detail])
+    expect(receipts).toHaveLength(0)
+  })
+})
+
 describe('科目余额表 · 批量删除', () => {
   beforeEach(() => wireFin())
 
@@ -275,7 +317,7 @@ describe('科目余额表 · 批量删除', () => {
     await flushPromises()
     return w
   }
-  const countTag = (w: VueWrapper) => w.findAll('.fin-tag').map(t => t.text()).find(t => t.endsWith('项'))
+  const countTag = (w: VueWrapper) => w.findAll('.fin-count').map(t => t.text()).find(t => t.endsWith('项'))
 
   it('❗出 ask(删除类):件数按级联后的行数写;答「取消」科目一个不少,答「删除」连下级一起去掉', async () => {
     const w = await pick1002AndAsk()
@@ -327,10 +369,17 @@ const SchedHeaderStub = defineComponent({
     ])
   },
 })
+// 导入弹窗桩:点「导入这份」= 弹窗调屏给的 runner(真弹窗的进度卡 / 结果卡在 components/import 自己的 spec 里测)
+let stubRun: Promise<unknown> | null = null
 const ImportStub = defineComponent({
-  emits: ['import', 'close'],
-  setup(_, { emit }) {
-    return () => h('button', { class: 'imp-go', onClick: () => emit('import', [{ a: 1 }], '附表1.xlsx') }, '导入这份')
+  props: { runner: { type: Function, default: null } },
+  emits: ['close'],
+  setup(props) {
+    const p = {
+      from: 0, base: { imported: 0, skipped: 0, errors: [] },
+      segDone: vi.fn(), stage: vi.fn(), recording: vi.fn(), refreshing: vi.fn(), note: vi.fn(), kept: vi.fn(),
+    }
+    return () => h('button', { class: 'imp-go', onClick: () => { stubRun = props.runner?.([{ a: 1 }], '附表1.xlsx', p) ?? null } }, '导入这份')
   },
 })
 const PNL_ROWS: PnlRowDTO[] = [
@@ -403,17 +452,29 @@ describe('损益附表', () => {
     expect(pnlApi.save).toHaveBeenCalledTimes(2)
   })
 
-  it('❗导入失败 → 失败回执带「重试」,重试导的是同一份', async () => {
-    vi.mocked(runImport).mockRejectedValue(new Error('表头对不上'))
+  // 2026-10-03 起导入点下去弹窗不关(画布 11;UI-OVERLAY-SPEC §8):onImport 是弹窗的 runner;
+  // 失败在弹窗里原地出失败卡(「返回修改」再导),不再出回执。
+  // 破坏验证:FpImportModal 换回 @import(不给 :runner)→ stubRun 为空,resolves 那句红;
+  //          onImport 里留着 importing = false → 「导入中弹窗不关」红;settle 里不刷 → 「刷新本年」红;包回 try/catch + 回执 → rejects 红
+  it('❗导入是弹窗的 runner:跑着时弹窗不关,写完刷新本年再交结果;失败抛给弹窗,不出回执', async () => {
+    let done!: (v: unknown) => void
+    vi.mocked(runImport).mockReturnValueOnce(new Promise(r => { done = r }) as never)
     const w = await openPnl()
     await w.find('.sh-import').trigger('click')
     await w.find('.imp-go').trigger('click')
     await flushPromises()
-    expect(receipts[0]).toMatchObject({ tone: 'fail', text: '表头对不上' })
-    receipts[0].action!.run()
-    await flushPromises()
-    expect(runImport).toHaveBeenCalledTimes(2)
-    expect(vi.mocked(runImport).mock.calls[1]).toEqual(['pnl_s1', [{ a: 1 }], { year: 2025 }, '附表1.xlsx'])
+    expect(vi.mocked(runImport).mock.calls[0].slice(0, 2)).toEqual(['pnl_s1', [{ a: 1 }]])
+    expect(w.find('.imp-go').exists(), '导入中弹窗不关').toBe(true)
+    const before = vi.mocked(pnlApi.year).mock.calls.length
+    done({ imported: 2, skipped: 0, errors: [] })
+    await expect(stubRun).resolves.toMatchObject({ imported: 2, refreshed: true })
+    expect(vi.mocked(pnlApi.year).mock.calls.length, '写完刷新本年').toBe(before + 1)
+    expect(w.find('.imp-go').exists(), '结果卡在弹窗里,弹窗还开着').toBe(true)
+
+    vi.mocked(runImport).mockRejectedValueOnce(new Error('表头对不上'))
+    await w.find('.imp-go').trigger('click')
+    await expect(stubRun).rejects.toThrow('表头对不上')
+    expect(receipts, '失败交给弹窗的失败卡').toHaveLength(0)
   })
 
   it('❗导出失败 → 失败回执带「重试」', async () => {
@@ -466,7 +527,7 @@ describe('收入核对工作台', () => {
   it('❗标记失败 → 失败回执带「重试」;弹窗关了、换到别的户再点重试,标的还是原来那户、那句备注', async () => {
     vi.mocked(reconApi.mark).mockRejectedValueOnce(new Error('服务器没有响应')).mockResolvedValue(undefined)
     const w = mountWb([ent('甲公司'), ent('乙公司', { tenantId: 2 })])
-    await w.find('.rc-banner .bbtn').trigger('click')            // 甲公司(默认选中第一户)
+    await w.find('.rc-dtitle .bbtn').trigger('click')            // 甲公司(默认选中第一户)
     await w.find('.rc-pop textarea').setValue('甲的差额是押金')
     await w.find('.rc-pop-confirm').trigger('click')
     await flushPromises()
@@ -484,7 +545,7 @@ describe('收入核对工作台', () => {
   it('❗标记失败后期间条换了月(同一个工作台换 props):再点重试不标 —— 不往别的月上写', async () => {
     vi.mocked(reconApi.mark).mockRejectedValueOnce(new Error('服务器没有响应')).mockResolvedValue(undefined)
     const w = mountWb([ent('甲公司')])
-    await w.find('.rc-banner .bbtn').trigger('click')
+    await w.find('.rc-dtitle .bbtn').trigger('click')
     await w.find('.rc-pop-confirm').trigger('click')
     await flushPromises()
     await w.setProps({ month: 4 })
@@ -504,9 +565,10 @@ describe('收入核对工作台', () => {
 // 浏览器自带的弹框与 title 小框一个不留;原来那几句悬停说明一句不丢(搬到 v-tip 上)。
 const SRC = join(__dirname, '..', '..', '..')
 const FILES: Record<string, string[]> = {
-  'views/reports/balance-sheet/BalanceSheetView.vue': ['返回选期矩阵'],
-  'views/reports/income-statement/IncomeStatementView.vue': ['返回选期矩阵'],
-  'views/reports/trial-balance/TrialBalanceView.vue': ['返回选期矩阵'],
+  // 三大报表:标题旁那颗「← 返回选期矩阵」图标钮 2026-10-03 撤了,回矩阵走期间条最左的「‹ 换期」(带字,不要悬停)
+  'views/reports/balance-sheet/BalanceSheetView.vue': [],
+  'views/reports/income-statement/IncomeStatementView.vue': [],
+  'views/reports/trial-balance/TrialBalanceView.vue': [],
   'views/reports/trial-balance/TbTable.vue': ['选择科目(批量删除)', '收起下级', '展开下级', '删除科目(含下级)'],
   'views/reports/pnl/PnlScheduleView.vue': [],
   'views/reports/pnl/PnlTable.vue': ['选择该行(批量删除)', 'r.groupLabel', 'badges[r.rowKey].title', '从数据层派生值填入空格(不覆盖已录)'],

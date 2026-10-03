@@ -35,8 +35,9 @@ function collect(dir: string, out: string[] = []): string[] {
  *  两种写法:useEditMode 的 `reviewKey:`,与三大报表 useFinStatementScreen 的 `reviewKind: '…'`
  *  (2026-09-08 补:三个报表屏当初也没接 review-note,和这五屏是同一个漏,只是走的另一条编辑入口)。 */
 const DECLARES_KEY = /\breviewKey\s*:|\breviewKind:\s*'/
-/** 屏上那颗按钮。只认这一个组件 —— SchedHeader / LedgerWideTable 走的是自己的另一条路。 */
-const USES_BUTTON = /<FPEditModeButton\b/
+/** 屏上那颗按钮。只认这一个组件 —— SchedHeader / LedgerWideTable 走的是自己的另一条路。
+ *  三大报表(2026-10-03 起)按钮长在 FinHead 里,屏把 review-note 交给 FinHead,所以 <FinHead 也算。 */
+const USES_BUTTON = /<FPEditModeButton\b|<FinHead\b/
 
 describe('声明了审核键的屏,必须把审核状态传给编辑按钮', () => {
   const files = collect(join(SRC, 'views'))

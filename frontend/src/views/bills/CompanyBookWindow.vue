@@ -152,7 +152,7 @@ const meId = Symbol('company-book')
 const screen = useScreen()
 function unregister() { auth.closeEditor(meId); void auth.endElevation() }
 const dirtyN = () => (dirty.value ? 1 : 0) + (acctEdit.value != null ? 1 : 0)
-watch(() => dirty.value || acctEdit.value != null, (on) => { if (on) auth.openEditor(meId, screen, dirtyN); else unregister() })
+watch(() => dirty.value || acctEdit.value != null, (on) => { if (on) auth.openEditor(meId, screen, dirtyN, ['master:edit']); else unregister() })
 onUnmounted(unregister)
 const acctForm = ref<{ kind: AccountKind; accountName: string; accountNo: string; bankName: string; isDefault: boolean; remark: string }>(
   { kind: 'bank', accountName: '', accountNo: '', bankName: '', isDefault: false, remark: '' })

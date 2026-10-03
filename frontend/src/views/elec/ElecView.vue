@@ -17,7 +17,8 @@ import { exportElecYear } from '@/utils/elecExcel'
 import { parserProps, runImport } from '@/utils/importRegistry'
 import { useSchedScreen } from '@/composables/useSchedScreen'
 import type { ElecPhaseDTO, ElecOverviewDTO, ElecYearDTO, ElecRecordDTO, ElecRecordReq, ElecImportRow } from '@/types/elec'
-import type { ImportRec } from '@/components/import/FpImportModal.vue'
+import type { ImportPayload } from '@/components/import/FpImportModal.vue'
+import { settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
 import { loadViewMode, saveViewMode } from '@/utils/viewMode'
 import BookRailShell from '@/components/fp/BookRailShell.vue'
 import { iconFor } from '@/components/ds/icon'
@@ -25,7 +26,6 @@ import Button from '@/components/ds/Button.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
 import SchedHeader from '@/components/sched/SchedHeader.vue'
 import FpImportModal from '@/components/import/FpImportModal.vue'
-import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import ElecTable from './ElecTable.vue'
 import ElecRecordDrawer from './ElecRecordDrawer.vue'
 import ElecRowDrawer from './ElecRowDrawer.vue'
@@ -78,7 +78,7 @@ async function reloadOverview() {
 const rowDetail = ref<ElecRecordDTO | null>(null)
 
 const {
-  year, edit, drawer, importing, importResult, selectedIds, importedCount, lockedMonths, reviewKeys,
+  year, edit, drawer, importing, selectedIds, importedCount, lockedMonths, reviewKeys,
   guard, refresh, pickYear, goGate, toggleSelect, selectAll, onBatchDelete, onClearImported,
 } = useSchedScreen({
   // 审核闸按月份行上锁(D18):本屏是年表屏,一屏 12 个月的行各审各的
@@ -147,13 +147,10 @@ async function switchType(t: string) {
 
 // ── 导入 Excel(自定义解析:一(记账期,期)→ 多 energy + 大工业附 1 basic,扁平 records) ──
 // 确认后经 runImport(共享 registry 执行 + 记录 import_log)→ 刷新。
-async function onImport(recs: ImportRec[], fileName: string) {
-  importing.value = false
-  if (!edit.value) return   // 写口自守:editMode 会就地转假,浮层可能还挂着
-  await guard('导入失败', async () => {
-    importResult.value = await runImport('elec', recs, {}, fileName)
-    await refresh()
-  })
+// 导入弹窗的 runner(UI-OVERLAY-SPEC §8):弹窗不关,写 + 记 import_log → 刷新;失败交给弹窗的失败卡(不走回执)。
+async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
+  if (!edit.value) return null   // 写口自守:editMode 会就地转假,浮层可能还挂着
+  return settle(await runImport('elec', payload, { _run: p }, fileName), p, refresh)
 }
 
 const onCreate = (req: ElecRecordReq) => guard('新增记账失败', async () => {
@@ -289,15 +286,14 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
         :title="`导入 附表11 · ${year}年电费成本`"
         sub="上传/粘贴电费成本附表(两行表头),系统按(记账期,期)切分,产电量电费 + 大工业基本电费记录,核对后导入"
         v-bind="parserProps('elec')"
+        :runner="onImport"
         @close="importing = false"
-        @import="onImport"
       />
     </template>
 
     <!-- 切年/切类过渡兜底转圈(fp-fluid:转圈不该被 800px 地板逼出横滚) -->
     <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 
-    <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
     <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
   </template>
 

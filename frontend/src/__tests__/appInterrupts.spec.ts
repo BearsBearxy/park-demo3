@@ -1,6 +1,7 @@
 // App 级「当场出现、不进铃铛」的几件(PAGE-BEHAVIOR-SPEC §5.2,画布 06-E;S5 FE-APP):
 //   · 别的标签页退出或换了账号 → 居中弹窗,点外面、Esc 都不关,只有「刷新」(UI-OVERLAY-SPEC §3.5 例外)
-//   · 临时授权按时到期 / 被系统提前收回 → 底部一句「授权已到期」(编辑中再加「，已退出编辑」)
+//   · 临时授权按时到期 / 一份先到期 / 被系统提前收回 → 底部三句分开写(编辑中再加「，已退出编辑」);最后 1 分钟一句不自收的
+//     (画布 08 ElevStates,EDIT-MODE §6.2;满宽授权条已撤,胶囊在顶栏 FPElevChip)
 //   · 正在编辑的表被别人交审 / 审核通过 → 全站一个 FPEvictedDialog 读 ui.editStop
 //   · 远程授权批下来时弹窗已关 → App 补拉授权;挂载时 refreshMe
 // 「❗」开头的做过破坏验证。
@@ -112,19 +113,19 @@ describe('别的标签页退出或换了账号:居中弹窗,只有「刷新」',
 })
 
 describe('临时授权到期 / 被系统提前收回:底部一句', () => {
-  // 破坏验证:presence.elevated 那个 watch 里删掉 receipt.warn → 红;删掉 endElevation → 红
-  it('❗心跳从「还在」跳成「没了」:出「授权已到期」,本页授权清空', async () => {
+  // 破坏验证:presence.elevated 那个 watch 里删掉 receipt.warn → 红;删掉 endElevation → 红;写回「授权已到期」→ 红
+  it('❗心跳从「还在」跳成「没了」:出「授权提前失效了」,本页授权清空', async () => {
     const { auth, presence } = await elevated()
     presence.elevated = true
     await nextTick()
     presence.elevated = false
     await flushPromises()
-    expect(texts()).toEqual([['warn', '授权已到期']])
+    expect(texts()).toEqual([['warn', '授权提前失效了']])
     expect(auth.grants).toHaveLength(0)
   })
 
-  // 破坏验证:expiredText 恒回「授权已到期」→ 红
-  it('❗收回时靠这份授权编辑的屏退出了:那句是「授权已到期，已退出编辑」', async () => {
+  // 破坏验证:exitedSince 恒回空串 → 红
+  it('❗收回时靠这份授权编辑的屏退出了:那句是「授权提前失效了，已退出编辑」', async () => {
     const { auth, presence } = await elevated()
     const em = ledgerEditing()
     await nextTick()
@@ -134,10 +135,10 @@ describe('临时授权到期 / 被系统提前收回:底部一句', () => {
     presence.elevated = false
     await flushPromises()
     expect(em.editMode.value, '权限不齐,守卫退出了编辑').toBe(false)
-    expect(texts()).toEqual([['warn', '授权已到期，已退出编辑']])
+    expect(texts()).toEqual([['warn', '授权提前失效了，已退出编辑']])
   })
 
-  // 破坏验证:expiredText 改回按 auth.editing 判 → 红(人在别的屏用自己的权限编辑,什么都没退)
+  // 破坏验证:exitedSince 改回按 auth.editing 判 → 红(人在别的屏用自己的权限编辑,什么都没退)
   it('❗到期时在编辑的屏不靠这份授权:只说「授权已到期」,不说已退出编辑', async () => {
     vi.useFakeTimers()
     const { auth } = await elevated(2_000)
@@ -163,7 +164,7 @@ describe('临时授权到期 / 被系统提前收回:底部一句', () => {
     vi.useFakeTimers()
     await elevated(2_000)
     vi.advanceTimersByTime(1_000)
-    expect(texts()).toEqual([])
+    expect(texts(), '还没到期;只剩 2 秒,最后 1 分钟那句在').toEqual([['warn', '授权还剩 1 分钟']])
     vi.advanceTimersByTime(1_000)
     await nextTick()
     expect(texts()).toEqual([['warn', '授权已到期']])
@@ -196,6 +197,116 @@ describe('临时授权到期 / 被系统提前收回:底部一句', () => {
     await flushPromises()
     expect(texts()).toEqual([])
   })
+
+  // 破坏验证:sync 那个 watch 不看到期时刻、只看条数变少 → 红
+  it('❗点「完成」退出最后一个编辑页、授权一并结束:胶囊消失,不出回执', async () => {
+    const { auth } = await elevated()
+    const em = ledgerEditing()
+    await nextTick()
+    em.exit()                               // 「完成」:useEditMode.exit 出集合后 endElevation()
+    await flushPromises()
+    expect(auth.grants, '授权一并结束').toHaveLength(0)
+    expect(texts()).toEqual([])
+  })
+})
+
+describe('多份:一份先到期', () => {
+  const other = (leftMs: number): Grant =>
+    ({ perm: 'param-policy:edit', permLabel: '计费口径', authorizer: 'li', authorizerName: '李主管', expiresAt: Date.now() + leftMs })
+
+  // 破坏验证:post 那个 watch 不分全到期 / 一份先到期(都说「授权已到期」)→ 红
+  it('❗两份里先到期一份:「「月度台账」的授权已到期」,另一份还在', async () => {
+    vi.useFakeTimers()
+    serverGrants = [grant(2_000), other(1_800_000)]
+    mountApp()
+    await flushPromises()
+    const auth = useAuthStore()
+    expect(auth.grants).toHaveLength(2)
+    vi.advanceTimersByTime(2_000)
+    await nextTick()
+    expect(texts()).toEqual([['warn', '「月度台账」的授权已到期']])
+    expect(auth.grants.map((g) => g.permLabel)).toEqual(['计费口径'])
+  })
+
+  // 破坏验证:endElevation 去掉「到期那份还没摘 → 只摘到期的」那条 → 那屏是最后一个编辑器,退出时把计费口径那份一起清掉、DELETE → 红
+  it('❗先到期那份正被一屏用着:那屏退出编辑,句尾带「，已退出编辑」;另一份照留,不去服务端收回', async () => {
+    vi.useFakeTimers()
+    serverGrants = [grant(2_000), other(1_800_000)]
+    mountApp()
+    await flushPromises()
+    const auth = useAuthStore()
+    const em = ledgerEditing()
+    await nextTick()
+    vi.advanceTimersByTime(2_000)
+    await nextTick()
+    expect(em.editMode.value).toBe(false)
+    expect(texts()).toEqual([['warn', '「月度台账」的授权已到期，已退出编辑']])
+    await flushPromises()
+    expect(auth.grants.map((g) => g.permLabel), '没到期的那份还在').toEqual(['计费口径'])
+    expect(api.delete).not.toHaveBeenCalledWith('/auth/elevate')
+  })
+
+  // 破坏验证:store 里 post 那拍不摘到期的那份 → 之后的「完成」被当成到期踢出来的,剩下那份不结束 → 红
+  it('❗一份先到期之后,另一屏点「完成」退出最后一个编辑页:剩下那份一并结束', async () => {
+    vi.useFakeTimers()
+    serverGrants = [grant(2_000), other(1_800_000)]
+    mountApp()
+    await flushPromises()
+    const auth = useAuthStore()
+    vi.advanceTimersByTime(2_000)
+    await flushPromises()
+    expect(auth.grants.map((g) => g.permLabel), '前置:先到期那份掉了').toEqual(['计费口径'])
+    let em!: ReturnType<typeof useEditMode>
+    mount(defineComponent({ setup() { em = useEditMode(['param-policy:edit']); return () => h('div') } }))
+    em.editMode.value = true
+    await nextTick()
+    em.exit()
+    await flushPromises()
+    expect(auth.grants).toHaveLength(0)
+    expect(api.delete).toHaveBeenCalledWith('/auth/elevate')
+  })
+})
+
+describe('最后 1 分钟', () => {
+  // 破坏验证:LAST_MIN_MS 改成 30_000 → 红;warnedLastMin 不记(每秒推一次)→ 被收掉后又冒出来 → 红
+  it('❗进最后 1 分钟出一条「授权还剩 1 分钟」,不自收;每份只出一次(用户收掉了不再冒)', async () => {
+    vi.useFakeTimers()
+    await elevated(62_000)
+    vi.advanceTimersByTime(1_000)
+    await nextTick()
+    expect(texts(), '还剩 61 秒:不出').toEqual([])
+    vi.advanceTimersByTime(1_000)
+    await nextTick()
+    expect(texts()).toEqual([['warn', '授权还剩 1 分钟']])
+    vi.advanceTimersByTime(5_000)
+    await nextTick()
+    expect(receipts, '不叠第二条').toHaveLength(1)
+    receipts.splice(0)                      // 用户点了 ×
+    vi.advanceTimersByTime(5_000)
+    await nextTick()
+    expect(texts(), '同一份不再说第二次').toEqual([])
+  })
+
+  // 破坏验证:keys 为空时不收掉那句 → 红(到期后屏上同时挂着「还剩 1 分钟」和「已到期」)
+  it('❗到期:「还剩 1 分钟」收掉,换成「授权已到期」', async () => {
+    vi.useFakeTimers()
+    await elevated(30_000)
+    await nextTick()
+    expect(texts()).toEqual([['warn', '授权还剩 1 分钟']])
+    vi.advanceTimersByTime(30_000)
+    await nextTick()
+    expect(texts()).toEqual([['warn', '授权已到期']])
+  })
+
+  it('最后 1 分钟里点「结束授权」:那句也收掉,不出别的', async () => {
+    vi.useFakeTimers()
+    const { auth } = await elevated(30_000)
+    await nextTick()
+    expect(texts()).toEqual([['warn', '授权还剩 1 分钟']])
+    await auth.endElevation(true)
+    await nextTick()
+    expect(texts()).toEqual([])
+  })
 })
 
 describe('远程授权批下来、挂载时重取权限', () => {
@@ -218,7 +329,7 @@ describe('远程授权批下来、挂载时重取权限', () => {
     await flushPromises()
     expect(elevCalls()).toBe(before + 1)
     expect(auth.grants).toHaveLength(1)
-    expect(w.find('.app-elev').exists(), '授权条跟着出来').toBe(true)
+    expect(w.find('.app-elev').exists(), '满宽授权条已撤,胶囊在顶栏').toBe(false)
   })
 
   // 破坏验证:onMounted 里删掉 auth.refreshMe() → 红

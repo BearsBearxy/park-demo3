@@ -5,7 +5,6 @@
 import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
-import FPNote from '@/components/fp/FPNote.vue'
 import type { FinCompany } from './useFinStatementScreen'
 import { useFormSheet } from '@/composables/useFormSheet'
 
@@ -13,6 +12,8 @@ import { useFormSheet } from '@/composables/useFormSheet'
 const sheet = useFormSheet()
 
 // 单一 dlg 描述符,null = 不显示。company: 新建/重命名;addrow: 加子类。
+// addrow 的 hint 接在副标题后面(横条盘点 FinDialogs:104,2026-10-03:原来是弹窗底部一条满宽蓝条,
+// 前半句副标题已经写了,只多「可继续在子类下添加下一级」—— 只在新子类还能再挂一级时由屏传进来)。
 export type FinDialog =
   | { type: 'company'; mode: 'new' | 'edit'; company?: FinCompany }
   | { type: 'addrow'; parentLabel: string; heading?: string; placeholder?: string; hint?: string }
@@ -92,7 +93,7 @@ function submitRow() {
       <div v-else class="fin-dlg" role="dialog" aria-modal="true" @mousedown.stop>
         <div class="fin-dlg-h">
           <h3>{{ dlg.heading || '添加子类' }}</h3>
-          <p>在「<b style="color:var(--text-secondary)">{{ dlg.parentLabel }}</b>」下新增一个明细子类,金额随该子类逐期录入,父项自动汇总。</p>
+          <p>在「<b style="color:var(--text-secondary)">{{ dlg.parentLabel }}</b>」下新增一个明细子类,金额随该子类逐期录入,父项自动汇总。{{ dlg.hint }}</p>
         </div>
         <div class="fin-dlg-b fp-fsheet-bd">
           <div class="fin-field">
@@ -101,7 +102,6 @@ function submitRow() {
               @input="err = ''" @keydown.enter="submitRow" />
             <p class="fp-field-err"><template v-if="err">{{ err }}</template></p>
           </div>
-          <FPNote v-if="dlg.hint" tone="info">{{ dlg.hint }}</FPNote>
         </div>
         <div class="fin-dlg-f fp-fsheet-ft">
           <Button variant="gray" size="sm" @click="emit('close')">取消</Button>

@@ -12,6 +12,7 @@
 // 草稿式编辑:编辑态「本月行至」是输入格(没有底数的行「上月行至」开放录入底数),draft 归属父层 MeterView,
 // 本组件只读取草稿 + emit cell-edit;用量 / 组小计 / 合计按草稿实时重算;校验红显不拦保存(§7.4)。
 // 键盘流(§7.3):Enter 总 →(尖)→ 峰 → 平 → 谷 → 下一块表的总;Tab 走原生 DOM 序。
+import { rowToggle } from '@/utils/rowToggle'
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, type Ref } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import { useViewport } from '@/composables/useViewport'
@@ -410,7 +411,7 @@ function onEnter(e: KeyboardEvent) {
           </tr>
           <template v-for="v in visItems" :key="v.key">
             <!-- 组头兼小计(画布 04-A「A座 13 块 144,183.58」):点它收起;块数不算停用的 -->
-            <tr v-if="v.t === 'ghead'" class="mlg-ghead">
+            <tr v-if="v.t === 'ghead'" class="mlg-ghead fp-rowtg" @click="rowToggle($event, () => toggleGroup(v.g!.key))">
               <td v-if="!S.loc"></td>
               <td :colspan="S.loc ? 2 : 1" class="mlg-fix" :style="S.lbl">
                 <button type="button" class="mlg-gbtn" :aria-expanded="v.on" @click="toggleGroup(v.g!.key)">
@@ -432,7 +433,8 @@ function onEnter(e: KeyboardEvent) {
               v-else-if="v.t === 'row'"
               :class="{ 'mlg-sus': v.x!.m.suspect === 'shadow', 'mlg-inc': v.x!.m.suspect === 'incomplete' }"
             >
-              <td :class="fixCls('loc')" :style="S.loc">
+              <td :class="[fixCls('loc'), { 'fp-rowtg': rowMode && v.x!.tou }]" :style="S.loc"
+                  @click="rowMode && v.x!.tou && rowToggle($event, () => toggleRow(v.x!.m.id))">
                 <span class="mlg-loc">
                   <button
                     v-if="rowMode && v.x!.tou" type="button" class="mlg-exp" :aria-expanded="expanded.has(v.x!.m.id)"

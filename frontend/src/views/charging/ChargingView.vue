@@ -26,8 +26,8 @@ import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
 import SchedHeader from '@/components/sched/SchedHeader.vue'
-import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
-import ImportResultToast from '@/components/import/ImportResultToast.vue'
+import FpImportModal, { type ImportPayload } from '@/components/import/FpImportModal.vue'
+import { settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
 import ChargingTable from './ChargingTable.vue'
 import ChargingRecordDrawer from './ChargingRecordDrawer.vue'
 import CpMeterView from './CpMeterView.vue'
@@ -79,7 +79,7 @@ async function reloadOverview() {
 }
 
 const {
-  year, edit, drawer, importing, importResult, selectedIds, importedCount, lockedMonths, reviewKeys,
+  year, edit, drawer, importing, selectedIds, importedCount, lockedMonths, reviewKeys,
   guard, refresh, pickYear, goGate, toggleSelect, selectAll, onBatchDelete, onClearImported,
 } = useSchedScreen({
   // 审核闸按月份行上锁(D18):本屏是年表屏,一屏 12 个月的行各审各的
@@ -142,13 +142,10 @@ onMounted(async () => {
 
 // ── 导入 Excel(自定义解析:单表逐行,运营商下填,fee 按附表口径算好) ──
 // 确认导入 → runImport(共享 registry:customParse 已把解析期跳过暂存到 importCtx._parseErrors,run 合并 + 记录 import_log)。
-async function onImport(recs: ImportRec[], fileName: string) {
-  importing.value = false
-  if (!edit.value) return   // 写口自守:editMode 会就地转假,浮层可能还挂着
-  await guard('导入失败', async () => {
-    importResult.value = await runImport('charging_' + no.value, recs, importCtx, fileName)
-    await refresh()
-  })
+// 导入弹窗的 runner(UI-OVERLAY-SPEC §8):弹窗不关,写 + 记 import_log → 刷新;失败交给弹窗的失败卡(不走回执)。
+async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
+  if (!edit.value) return null   // 写口自守:editMode 会就地转假,浮层可能还挂着
+  return settle(await runImport('charging_' + no.value, payload, { ...importCtx, _run: p }, fileName), p, refresh)
 }
 
 const onCreate = (req: ChargingRecordReq) => guard('新增记账失败', async () => {
@@ -282,15 +279,14 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
           ? '上传/粘贴电动车充电桩损益明细,系统按运营商、按月份识别行(充电金额收入已扣手续费直取),核对后导入'
           : '上传/粘贴汽车充电桩收益汇总,系统按运营商、按月份识别行(fee=充电收入−手续费,聚合年/范围行跳过),核对后导入'"
         v-bind="parserProps('charging_' + no, importCtx)"
+        :runner="onImport"
         @close="importing = false"
-        @import="onImport"
       />
     </template>
 
     <!-- 切年过渡兜底转圈(fp-fluid:转圈不该被 800px 地板逼出横滚) -->
     <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 
-    <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
     <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
   </template>
 

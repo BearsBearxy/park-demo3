@@ -635,14 +635,50 @@ describe('METER-TIMELINE-SPEC §10.4 · 本月册子:整段零记录出一句,�
   const flow = (w: { find: (s: string) => { element: Element } }) =>
     [...w.find('.mt-page').element.children].map(c => c.className).filter(c => typeof c === 'string' && c !== '')
 
-  it('S 档 · 整段零记录:表格正上方多一句(原句),其余块序不动;一块都不打标', async () => {
+  // 2026-10-03 横条收尾:表格上方那条 .mt-bookbar 撤掉,收成摘要行里一枚签,点开看全文(手机上没有悬停)。
+  // 破坏验证:把 .mt-bookbar 加回来 / smNotes 里 book 那项删掉 → 红
+  it('❗S 档 · 整段零记录:摘要行里一枚「本月没导册子」签,点开是原句;表格上方不另起一行;一块都不打标', async () => {
     asS()
     vi.mocked(metersApi.list).mockResolvedValue(METERS.map(noBook))
     const w = await open()
-    expect(flow(w)).toEqual(['fss fss--s', 'mt5-sum', 'mt5-fbar', 'mt-bookbar', 'mlg-wrap'])
-    expect(w.find('.mt-bookbar').text()).toContain('这个月还没导入过一期的电表册子,这些表的档案都是沿用的')
+    expect(flow(w), '块序与没有说明时一样,不多一行').toEqual(['fss fss--s', 'mt5-sum', 'mt5-fbar', 'mlg-wrap'])
+    const tag = w.find('.mt5-sum .mt5-note')
+    expect(tag.text()).toBe('本月没导册子')
+    await tag.trigger('click')
+    expect(w.find('.mt5-sum .mt5-note-t').text()).toBe('这个月还没导入过一期的电表册子,这些表的档案都是沿用的。'
+      + '上线前的导入没有记下册子里有哪些表:把那个月的册子再导一次就能标上,值没变的档案不会被改。')
     expect(w.findAll('.mlg-tname'), '前提:三行都渲染了').toHaveLength(3)
     expect(w.findAll('.mlg-book')).toHaveLength(0)
+    w.unmount()
+  })
+
+  // 破坏验证:smNotes 的 isM 分支删掉 → 红
+  it('❗M 档 · 整段零记录:签在筛选条里(M 档没有摘要行),不另起一行', async () => {
+    asM()
+    vi.mocked(metersApi.list).mockResolvedValue(METERS.map(noBook))
+    const w = await open()
+    expect(flow(w)).not.toContain('mt-bookbar')
+    const tag = w.find('.mt5-fbar .mt5-note')
+    expect(tag.text()).toBe('本月没导册子')
+    await tag.trigger('click')
+    expect(w.find('.mt5-fbar .mt5-note-t').text()).toContain('这个月还没导入过一期的电表册子')
+    w.unmount()
+  })
+
+  // 破坏验证:smNotes 的 hidden 项删掉 / .mt-hidbar 加回来 → 红
+  it('❗S 档 · 选「已拆」:说明收成摘要行里「怎么回到册上」签,点开是原句 + 浏览态多一句编辑模式;不另起一行', async () => {
+    asS()
+    const w = await open()
+    const before = flow(w)
+    vmOf(w).status = 'removed'
+    await flushPromises()
+    expect(flow(w), '选中已拆不许多出一行').toEqual(before)
+    const tag = w.findAll('.mt5-sum .mt5-note').find(t => t.text() === '怎么回到册上')
+    expect(tag, '摘要行里要有「怎么回到册上」').toBeTruthy()
+    await tag!.trigger('click')
+    expect(w.find('.mt5-note-t').text()).toBe('列出本月已拆、不在册上的表;自哪个月起已拆,悬停状态列可见。'
+      + '误标的:点开这一行,在「档案变更」的「在册状态」里撤回「已拆」那一行;拆除前的月份不受影响。'
+      + '先点右上「编辑模式」才能改。')
     w.unmount()
   })
 

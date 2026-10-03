@@ -169,6 +169,32 @@ describe('TemplateEditorPanel · 历史版预览', () => {
     w.unmount()
   })
 
+  // 2026-10-03 用户报:切版本时整张卡片缩到看不见、加载完再撑开,像整页在闪。
+  // 实测 1920 宽:弹窗高 950 → 429 → 950(加载那一帧主区只剩一行「加载历史版定义…」,弹窗按内容定高又居中)。
+  // 规矩(LAYOUT-STABILITY §7.1 换筛选档):内容不动,旧内容原地退让 + 顶边进度线,不换成一行加载字。
+  // 破坏验证:shownDef 在途时不回退 staleDef → 第一段「主区还是切换前那份」红
+  it('❗点历史版的在途期间:主区留着切换前的列,不缩成一行;熬过 200ms 才退让 + 顶边进度线;到了原地换', async () => {
+    let resolve!: (d: BookDef) => void
+    vi.mocked(booksApi.versionDefinition).mockReturnValue(new Promise<BookDef>((r) => { resolve = r }))
+    const w = mountPanel()
+    await w.findAll('.te-vitem')[1].trigger('click')
+    await flushPromises()
+    expect(w.find('.te-loading').exists(), '不许把列表换成一行加载字').toBe(false)
+    expect(w.findAll('.te-group')).toHaveLength(2)
+    expect(w.findAll('.te-roname')[0].text()).toBe('租金')
+    expect(w.find('.te-main').classes(), '快响应全程静默').not.toContain('fp-stale')
+    await new Promise((r) => setTimeout(r, 250))
+    expect(w.find('.te-main').classes()).toContain('fp-stale')
+    expect(w.find('.te-main').attributes('aria-busy')).toBe('true')
+    expect(w.find('.te-body .fp-lb').exists()).toBe(true)
+    resolve(histDef)
+    await flushPromises()
+    expect(w.findAll('.te-roname')[0].text()).toBe('旧租金')
+    expect(w.find('.te-main').classes()).not.toContain('fp-stale')
+    expect(w.find('.te-body .fp-lb').exists()).toBe(false)
+    w.unmount()
+  })
+
   it('正在看历史版时点「编辑模式」:先切回现行版再进入编辑(编辑的是现行定义)', async () => {
     vi.mocked(booksApi.versionDefinition).mockResolvedValue(histDef)
     const w = mountPanel()
@@ -230,14 +256,18 @@ describe('TemplateEditorPanel · 编辑态', () => {
 
   // P5 版本不可变:轻/重改动的区分已废除,提示条不许再随改动种类变脸;
   // P4 只带走当前月:旧文案「历史月份同样按新版显示」与它恰好相反,不许回潮
-  it('升版提示恒在,写明存成「链尾+1」且只带走本月(P4/P5)', async () => {
+  // 2026-10-03 横条收尾:页脚上方那一行升版提示(.te-verbumpline)删掉,新版号并进标题下的副句。
+  // 破坏验证:副句里的 v{latestVer+1} 删掉 / .te-verbumpline 加回来 → 红
+  it('❗升版说明在副句里,写明存成「链尾+1」且只带走本月(P4/P5);页脚上方不再另起一行', async () => {
     const w = await mountEdit()
     // 什么都没改就已经说清楚(任何保存都升版);版本号是链尾+1,不是本月生效版+1
-    expect(w.find('.te-verbump').text()).toContain('v4')
-    expect(w.find('.te-verbump').text()).toContain('只把本月切过去')
-    // 旧口径的「轻改动」:提示条一字不变
+    const sub = () => w.find('.te-head-txt .te-sub-edit').text()
+    expect(sub()).toBe('本月生效 v3 · 保存将存成新版 v4(任何改动都升版),只把本月切过去;同册其他月份不动')
+    expect(w.find('.te-verbumpline').exists()).toBe(false)
+    expect(w.text().split('只把本月切过去'), '只说一遍').toHaveLength(2)
+    // 旧口径的「轻改动」:副句一字不变
     await w.findAll('input.te-name')[0].setValue('厂房租金合计')
-    expect(w.find('.te-verbump').text()).toContain('v4')
+    expect(sub()).toContain('v4')
     expect(w.text()).not.toContain('历史月份')
     w.unmount()
   })
@@ -245,7 +275,7 @@ describe('TemplateEditorPanel · 编辑态', () => {
   it('本月生效版落后于链尾时,提示条按链尾+1 报数', async () => {
     const w = mountPanel({ book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
     await w.find('button.te-editbtn').trigger('click')
-    expect(w.find('.te-verbump').text()).toContain('v5')
+    expect(w.find('.te-sub-edit').text()).toContain('存成新版 v5')
     w.unmount()
   })
 

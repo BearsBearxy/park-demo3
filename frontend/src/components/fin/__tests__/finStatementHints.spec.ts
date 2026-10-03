@@ -18,7 +18,6 @@ import { runImport } from '@/utils/importRegistry'
 import { useFinStatementScreen } from '@/components/fin/useFinStatementScreen'
 import { shellOf } from '@/composables/useTabShells'
 import FinDialogs from '@/components/fin/FinDialogs.vue'
-import FPNote from '@/components/fp/FPNote.vue'
 import type { CompanyDTO, YearMonthsDTO } from '@/types/ledger'
 import type { ReportPeriodDTO, ReportSaveRequest, ReportYearDTO } from '@/types/report'
 import type { ImportResultDTO } from '@/types/import'
@@ -88,6 +87,11 @@ async function editing(n: number, screen?: string): Promise<Screen> {
   return s
 }
 const last = () => receipts[receipts.length - 1]
+/** 导入弹窗交给 runner 的进度句柄(components/import/importRun.ts) */
+const fakeRun = () => ({
+  from: 0, base: { imported: 0, skipped: 0, errors: [] },
+  segDone: vi.fn(), stage: vi.fn(), recording: vi.fn(), refreshing: vi.fn(), note: vi.fn(), kept: vi.fn(), wrote: vi.fn(),
+})
 
 describe('三大报表 · 提示件(useFinStatementScreen)', () => {
   beforeEach(() => {
@@ -240,12 +244,72 @@ describe('三大报表 · 提示件(useFinStatementScreen)', () => {
     expect(s.dlg.value?.type).toBe('company')
   })
 
-  it('❗导入失败 → 失败回执,不带重试(期和编辑态这会儿可能都变了)', async () => {
+  // 2026-10-03 起导入点下去弹窗不关(画布 11;UI-OVERLAY-SPEC §8):onImport 是弹窗的 runner,失败在弹窗里原地出失败卡。
+  // 破坏验证:onImport 包回 try/catch + receipt.fail(吞掉错误)→ rejects 那句红
+  it('❗导入失败 → 错误原样抛给导入弹窗(失败卡照后端原句),不出回执', async () => {
     const s = await editing(0)
-    vi.mocked(runImport).mockRejectedValueOnce({ message: '第 3 行公司名为空' })
-    await s.onImport([{ label: '物业公司', records: [] }], '利润表.xlsx')
-    expect(last()).toMatchObject({ tone: 'fail', text: '第 3 行公司名为空' })
-    expect(last().action).toBeUndefined()
+    const gate = { code: 409, message: '2025-02 利润表 已审核(李审 2025-03-02),撤销审核后才能修改' }
+    vi.mocked(runImport).mockRejectedValueOnce(gate)
+    await expect(s.onImport([{ label: '物业公司', records: [] }], '利润表.xlsx')).rejects.toBe(gate)
+    expect(receipts).toHaveLength(0)
+  })
+
+  // 破坏验证:cellsOf 的 is 分支去掉 ×2 → count 那句红;steps 末步改回缺省「刷新本页」→ steps 那句红;importSecs 不滤空名 → 「2 家」红
+  it('❗进度卡:按格数(利润表每行本月 + 本年累计两格)、「n 家公司 · 年 月」、五步收在「刷新本期」;公司名空的段不计', async () => {
+    const s = await editing(0)
+    expect(s.describeImport([
+      { label: '物业公司', records: [{ rowKey: '1' }, { rowKey: '2' }] },
+      { label: ' ', records: [{ rowKey: '1' }] },
+    ])).toEqual({
+      count: 4, unit: '格', meta: '1 家公司 · 2025 年 2 月',
+      steps: ['读取文件', '核对公司', '写入 4 格', '记下这次导入', '刷新本期'],
+    })
+  })
+
+  // 破坏验证:去掉 settle(不走「刷新本期」)→ refreshing 那句红;detail 去掉 → detail 红;cancelEdit 那句删 → edit 那句红;
+  //          _run 不塞进 ctx → ctx 那句红(registry 就推不动「核对公司」「写入」两步)
+  it('❗写完:步骤走到「刷新本期」再重读本期,结果带分公司明细「n 项 · n 格」,编辑态退出', async () => {
+    const s = await editing(2)
+    vi.mocked(runImport).mockResolvedValueOnce({ imported: 4, skipped: 0, errors: [] })
+    const before = vi.mocked(reportApi.period).mock.calls.length
+    const p = fakeRun()
+    const out = await s.onImport([{ label: '物业公司', records: [{ rowKey: '1' }, { rowKey: '2' }] }], '利润表.xlsx', p)
+    expect(vi.mocked(runImport).mock.calls[0][2]).toMatchObject({ year: 2025, month: 2, _run: p })
+    expect(p.refreshing).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(reportApi.period).mock.calls.length, '写完重读本期').toBe(before + 1)
+    expect(out).toMatchObject({ imported: 4, refreshed: true, detail: [['物业公司', '2 项 · 4 格']] })
+    expect(s.edit.value, '导入 = 整期替换:草稿作废、退出编辑').toBe(false)
+    expect(receipts).toHaveLength(0)
+  })
+
+  // loadPeriod 自己吞错改 periodErr。破坏验证:去掉 `if (periodErr.value) throw` → refreshed 那句红
+  it('❗写进去了但本期没重读上 → refreshed:false(结果卡写「本期没刷新上」),不算导入失败', async () => {
+    const s = await editing(0)
+    vi.mocked(runImport).mockResolvedValueOnce({ imported: 2, skipped: 0, errors: [] })
+    vi.mocked(reportApi.period).mockRejectedValueOnce(new Error('timeout'))
+    const out = await s.onImport([{ label: '物业公司', records: [{ rowKey: '1' }] }], '利润表.xlsx', fakeRun())
+    expect(out).toMatchObject({ imported: 2, refreshed: false })
+  })
+
+  // 画布 ImportOne「读取工作簿 · 6 张余额表」/ ImportDone 左卡「创显 830 科目 · 2,542 格」。
+  // 破坏验证:tb 的 p.note(0, …) 删掉 → note 那句红;cellsOf 的 tb 分支改成按行数 → 「3 格」红
+  it('❗科目余额表:「读取工作簿 · n 张余额表」,格数只数非 0 金额字段,明细「n 科目 · n 格」', async () => {
+    let s!: Screen
+    mount(defineComponent({
+      setup() { s = useFinStatementScreen({ stmt: 'tb', reviewKind: 'report-tb', resetLocal: () => {} }); return () => h('div') },
+    }))
+    await flushPromises()
+    await s.pickCell(2025, 2)
+    const secs = [{ label: '物业公司', records: [
+      { account: { rowKey: '1001' }, amounts: { openDr: 5, endDr: 5, endCr: 0 } },
+      { account: { rowKey: '1002' }, amounts: { periodCr: 7 } },
+    ] }]
+    expect(s.describeImport(secs)).toMatchObject({ count: 3, steps: ['读取工作簿', '核对公司', '写入 3 格', '记下这次导入', '刷新本期'] })
+    vi.mocked(runImport).mockResolvedValueOnce({ imported: 3, skipped: 0, errors: [] })
+    const p = fakeRun()
+    const out = await s.onImport(secs, '余额表.xlsx', p)
+    expect(p.note).toHaveBeenCalledWith(0, '1 张余额表')
+    expect(out?.detail).toEqual([['物业公司', '2 科目 · 3 格']])
   })
 
   // 06-E 当场出现组「正在编辑的表被交审或审核通过」:改前静默退出编辑。
@@ -295,13 +359,16 @@ describe('FinDialogs · 字段报错贴在字段下面(06-B ⑤)', () => {
     expect(w.emitted('submitCompany')).toBeUndefined()
   })
 
-  it('❗加子类弹窗里的说明是块内提示 FPNote(蓝),不是自写的天蓝底条(06-B ④)', () => {
-    const w = mount(FinDialogs, {
-      props: { dlg: { type: 'addrow', parentLabel: '营业收入', hint: '这一类只在利润表里出现,资产负债表不跟着加' }, companies: [] },
+  // 横条盘点 FinDialogs:104(2026-10-03):弹窗底部那条满宽说明并进副标题,只多后半句
+  // 破坏验证:副标题里的 {{ dlg.hint }} 删掉 → 第一条红;FPNote 加回来 → 第二条红
+  it('❗加子类弹窗:说明接在副标题后面,底部不再有满宽提示条;不传 hint 时副标题只有前半句', () => {
+    const open = (hint?: string) => mount(FinDialogs, {
+      props: { dlg: { type: 'addrow', parentLabel: '营业收入', hint }, companies: [] },
       global: { stubs: { Teleport: true } },
     })
-    const note = w.getComponent(FPNote)
-    expect([note.props('tone'), note.text()]).toEqual(['info', '这一类只在利润表里出现,资产负债表不跟着加'])
-    expect(w.find('.fin-dlg-note').exists()).toBe(false)
+    const w = open('可继续在子类下添加下一级。')
+    expect(w.get('.fin-dlg-h p').text()).toBe('在「营业收入」下新增一个明细子类,金额随该子类逐期录入,父项自动汇总。可继续在子类下添加下一级。')
+    expect(w.find('.fp-note').exists(), '底部那条满宽提示条该撤了').toBe(false)
+    expect(open().get('.fin-dlg-h p').text()).toBe('在「营业收入」下新增一个明细子类,金额随该子类逐期录入,父项自动汇总。')
   })
 })

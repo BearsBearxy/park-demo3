@@ -88,7 +88,8 @@ function submit() {
           <h2 class="sm-gate-title">
             <span class="ic"><component :is="iconFor(icon)" :size="18" /></span>{{ title }}
           </h2>
-          <p class="sm-gate-sub">{{ sub }}</p>
+          <!-- 页底说明(footer)并进副标题,不再是年卡下面带 ⓘ 的一行(LIST-PAGE-SPEC §2.1);prop 不变 -->
+          <p class="sm-gate-sub">{{ footer ? `${sub}。${footer}` : sub }}</p>
         </div>
       </div>
     </div>
@@ -138,7 +139,6 @@ function submit() {
         <span class="t">新增年份</span>
       </div>
     </div>
-    <p v-if="footer" class="sm-foot"><component :is="iconFor('info')" :size="13" />{{ footer }}</p>
 
     <!-- 新增年份弹窗 -->
     <div v-if="dlg" class="sm-ymask" @mousedown="dlg = false">
@@ -217,7 +217,6 @@ function submit() {
 .sm-ynew:hover .ic { background:var(--surface-white); }
 .sm-ynew .t { font-size:13.5px; font-weight:var(--fw-semibold); }
 
-.sm-foot { flex:0 0 auto; margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
 
 /* 新增年份弹窗 */
 .sm-ymask { position:fixed; inset:0; background:var(--scrim); z-index:140; display:grid; place-items:center; }

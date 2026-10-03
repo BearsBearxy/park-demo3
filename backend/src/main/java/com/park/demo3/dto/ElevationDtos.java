@@ -13,7 +13,9 @@ public final class ElevationDtos {
                              @NotBlank String authorizer,
                              @NotBlank String password) {}
 
-    /** expiresAt 用毫秒时间戳:前端直接减 Date.now() 出倒计时,不必解析时区。 */
+    /** expiresAt / grantedAt 用毫秒时间戳:前端直接减 Date.now() 出倒计时,不必解析时区。
+     *  source = onsite(当场授权)| remote(远程批准),见 ElevationStore.ONSITE / REMOTE。 */
     public record GrantDTO(String perm, String permLabel,
-                           String authorizer, String authorizerName, long expiresAt) {}
+                           String authorizer, String authorizerName, long expiresAt,
+                           long grantedAt, String source) {}
 }

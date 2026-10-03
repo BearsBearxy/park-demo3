@@ -114,6 +114,21 @@ describe('SchedHeader 编辑锁', () => {
   })
 })
 
+// ELEVATION-SPEC §4.5「结束前先问」只问靠这份授权编辑的屏:页头登记时带上 perm
+// 破坏验证:openEditor 不带 [props.perm] → 自己角色有 entry:edit 也被列进那一问 → 第一条断言红
+describe('SchedHeader 登记带权限点', () => {
+  it('❗自己角色给的 perm:结束授权不退它,那一问不列;换成靠授权就列', async () => {
+    const w = mk({ edit: false, scope: null, dirty: 2 })
+    await w.setProps({ edit: true })
+    const auth = useAuthStore()
+    expect(auth.dirtyTotal, '前置:登记上了').toBe(2)
+    expect(auth.dirtyScreens()).toEqual([])
+    auth.permissions = []
+    expect(auth.dirtyScreens().map((d) => d.count)).toEqual([2])
+    w.unmount()
+  })
+})
+
 describe('SchedHeader 强制退出带 forced 标(收口复查)', () => {
   it('❗换期强退 emit 的是 toggle-edit(true) —— 脏检查屏必须无条件退', async () => {
     // 附表10/损益表把 @toggle-edit 绑在带脏检查的函数上:普通 emit 在 dirty>0 时

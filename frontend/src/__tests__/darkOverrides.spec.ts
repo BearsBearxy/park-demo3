@@ -48,9 +48,9 @@ describe('一处一个的浅色值:浅色照旧,暗色换令牌', () => {
     expect(look('<table class="bn-table"><tbody><tr class="sel"><td>x</td></tr></tbody></table>', 'td', 'background'))
       .toEqual(['rgb(238,244,255)', 'var(--row-selected)'])
   })
-  it('❗表视图选中的表卡 / 隐藏条', () => {
+  // 隐藏条(.mt-hidbar)2026-10-03 横条收尾撤掉了,收成 FPStateTag(全令牌),这里只剩表卡
+  it('❗表视图选中的表卡', () => {
     expect(look('<div class="mt5-card on"></div>', 'div', 'background')).toEqual(['rgb(240,246,255)', 'var(--row-selected)'])
-    expect(look('<div class="mt-hidbar"></div>', 'div', 'color')).toEqual(['rgb(28,84,168)', 'var(--hue-blue)'])
   })
   it('❗抄表台账 / 表格共用:琥珀 / 珊瑚状态胶囊的底', () => {
     expect(look('<i class="mlg-st amber"></i>', 'i', 'background')).toEqual(['rgb(255,244,214)', 'var(--caution-soft)'])

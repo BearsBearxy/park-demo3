@@ -36,8 +36,9 @@ interface MonthCell {
    */
   pips?: boolean[]
   /**
-   * 徽标自由文案（三大报表在这个位置显本期净额）。给了就压过 rowCount ——
+   * 徽标自由文案（useMonthGate 的 badgeOf）。给了就压过 rowCount ——
    * "N 行" 只是它的一个特例，没理由让别的屏为了显一句话去凑一个行数。
+   * 三大报表 2026-10-03 起不传（画布 09 ReportPickAmount 选 A：月卡不放金额）。
    */
   badge?: string
   /** 参数或抄表改动晚于快照 → 屏上数字是旧的。只换底色，不加边框（布局稳定铁律）。 */
@@ -89,9 +90,12 @@ const props = withDefaults(defineProps<{
    * 代价是一屏只看到 4 个整月 —— 所以必须有下面那段把当前月滚进视野，否则比改之前更差。
    */
   scrollRow?: boolean
+  /** 空月卡里那个字。三大报表写「–」（画布 09 ReportPickEmpty），别的宿主照旧「空」。 */
+  blank?: string
 }>(), {
   manageYears: true,
   scrollRow: false,
+  blank: '空',
 })
 
 // 只标编辑态(设计稿 §04):标记要回答的只有「我点进去改得了吗」,别人在看不挡你。
@@ -191,7 +195,7 @@ watchPostEffect(() => {
             </span>
             <span v-else-if="m.hasData && m.badge" class="bmm-count">{{ m.badge }}</span>
             <span v-else-if="m.hasData && m.rowCount != null" class="bmm-count">{{ m.rowCount }} 行</span>
-            <span v-else-if="!m.hasData" class="bmm-none">空</span>
+            <span v-else-if="!m.hasData" class="bmm-none">{{ blank }}</span>
           </button>
         </div>
         <!-- 移除槽常驻占宽:hover 行且 removable 才显,不挤动月卡网格 -->

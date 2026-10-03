@@ -255,11 +255,11 @@ function pickStation(id: number) {
 // ── B2 判据脚(§3.3)──────────────────────────────────────────────────
 const foot = computed(() => (snap.value ? critFoot(snap.value, selId.value) : null))
 
-// 「去改」落计费参数的常数区。adopt=YYYY-12 只在会话还没有出账月时认领(常数存 12 月的约定,PvAnalysis §01);
+// 「去改」落计费参数「光伏分栋判据」区(section=pv,S21 §5.7)。adopt=YYYY-12 只在会话还没有出账月时认领(常数存 12 月的约定,PvAnalysis §01);
 // 已选期的会话不动 —— 它不是选月,不能用 p= / ym=(那两个是显式深链,会覆盖组级期;2026-09-03 P0a 复查 P0A-2)。
 function gotoParams() {
   tabs.openDeep('params')
-  void router.push({ path: '/params', query: { adopt: `${year.value}-12`, section: 'constant' } })
+  void router.push({ path: '/params', query: { adopt: `${year.value}-12`, section: 'pv' } })
 }
 /** 板数与单块标称功率在分栋运营账里录(光伏发电屏的 meter 那本;不带 mode 会落到本机记住的那本,默认汇总本) */
 function goMeter(): void {

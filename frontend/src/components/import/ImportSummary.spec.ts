@@ -20,8 +20,9 @@ function mountSummary(secs = sections) {
 describe('ImportSummary', () => {
   it('每段一行,识别户数显示', () => {
     const w = mountSummary()
-    // 段数说明是块内提示(十件 ④ FPNote 蓝档)
-    expect(w.find('.fp-note.info').text()).toBe('识别到 2 段，请核对年/月/期后勾选导入')
+    // 段数并进表头那一行(横条盘点 ImportSummary:126),表上方不再有满宽蓝条
+    expect(w.find('.isum-table .isum-cap').text()).toBe('识别到 2 段核对年/月/期后勾选导入')
+    expect(w.find('.fp-note').exists()).toBe(false)
     const rows = w.findAll('.isum-row')
     expect(rows.length).toBe(2)
     expect(rows[0].find('.isum-col-n').text()).toContain('2')
@@ -82,9 +83,9 @@ describe('ImportSummary', () => {
         ],
       },
     })
-    // 段数说明同样是块内提示的蓝档(info),不是黄档
-    expect(w.find('.isum-note').classes()).toEqual(expect.arrayContaining(['fp-note', 'info']))
-    expect(w.find('.isum-note').text()).toBe('识别到 2 段，请勾选导入')
+    // 同上(横条盘点 ImportSummary:100):段数在表头那一行
+    expect(w.find('.isum-table .isum-cap').text()).toBe('识别到 2 段勾选后导入')
+    expect(w.find('.fp-note').exists()).toBe(false)
     const rows = w.findAll('.isum-row.label-only')
     expect(rows.length).toBe(2)
     expect(rows[0].find('.isum-col-label').text()).toBe('一期光伏')

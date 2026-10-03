@@ -8,7 +8,6 @@ import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import type { FPTenantOption } from '@/components/fp/fpTenantPicker'
 import Button from '@/components/ds/Button.vue'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
-import FPNote from '@/components/fp/FPNote.vue'
 import { iconFor } from '@/components/ds/icon'
 import { finMoney } from '@/utils/finFmt'
 
@@ -23,7 +22,9 @@ const props = defineProps<{
   groups: IssueGroup[]
   tenants: { id: number; companyName: string; parentId?: number | null; aliases?: string | null; status?: number }[]
   canAct: boolean          // 编辑模式才允许绑定;false 时写入口整体不渲染(EDIT-MODE §1)
-  actHint?: string         // canAct=false 时的提示文案
+  /** canAct=false 时每张卡在「绑定」那个位置写的字(如「编辑模式下可绑定」);不传不写。
+   *  2026-10-03 横条收尾:原来是清单上方一条满宽蓝条,进编辑态就消失、卡片整体上移 */
+  actHint?: string
   /** 绑定动作(评审A4:必须回传 Promise,busy 锁才锁得住整个请求在途期) */
   onBind: (name: string, tenantId: number) => Promise<void>
 }>()
@@ -63,7 +64,6 @@ async function doBind(name: string, tenantId: number) {
         以下账面名没有对上租户档案,<b>数据已照常导入</b>,不影响合计;绑定后即可参与按租户的汇总与核对。
         绑定按账面名生效:<b>其他月份/公司的同名未绑定行会一并挂上</b>。
       </p>
-      <FPNote v-if="!canAct && actHint" tone="info">{{ actHint }}</FPNote>
 
       <div v-for="g in groups" :key="g.name" class="tip-card">
         <div class="tip-head">
@@ -86,6 +86,9 @@ async function doBind(name: string, tenantId: number) {
           <Button v-if="canAct" size="sm" variant="ghost" :disabled="busy === g.name"
                   @click="doBind(g.name, c.id)">绑定为它</Button>
         </div>
+
+        <!-- 浏览态:绑定入口不渲染(EDIT-MODE §1),这个位置写一句怎么才能绑 -->
+        <div v-if="!canAct && actHint" class="tip-ro">{{ actHint }}</div>
 
         <!-- ③ 手动兜底(仅编辑态渲染) -->
         <div v-if="canAct" class="tip-manual">
@@ -137,6 +140,7 @@ async function doBind(name: string, tenantId: number) {
 .tip-manual { display: flex; align-items: center; gap: 8px; }
 .tip-manual > :first-child { flex: 1 1 auto; min-width: 0; }
 .tip-none { font-size: 12px; line-height: 1.6; color: var(--text-muted); }
+.tip-ro { font-size: 12px; color: var(--text-muted); }
 .tip-goto {
   align-self: flex-start;
   display: inline-flex; align-items: center; gap: 6px;

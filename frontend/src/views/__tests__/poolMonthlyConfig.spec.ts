@@ -185,7 +185,7 @@ describe('池按月配置 · 抽屉', () => {
     expect(document.querySelector('.pl-otherbox')!.textContent).not.toContain('四舍五入位数')
     ;(ro.querySelector('button') as HTMLButtonElement).click()
     await flushPromises()
-    expect(push).toHaveBeenCalledWith({ path: '/params', query: { ym: '2024-02', zone: 'p1', section: 'constant', rule: '15' } })
+    expect(push).toHaveBeenCalledWith({ path: '/params', query: { ym: '2024-02', zone: 'p1', section: 'constant', rule: '15', key: 'round_scale' } })
   })
 
   // 破坏验证:roRoundLine 的 inherit 分支改成 `${c.full}` → 出「未设置」而不说几位 → 红

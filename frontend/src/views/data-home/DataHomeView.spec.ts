@@ -69,10 +69,6 @@ vi.mock('@/api/review', () => ({
   },
 }))
 
-// 铃铛 store 换成桩:这屏只用它的 openPanel(「待批授权 N」点开的是铃铛面板,PAGE-BEHAVIOR-SPEC §5.1)。
-// 真 store 一开面板就去取三份明细、标已看 —— 那是 bell.spec 的事,这里只钉「点了开的是它」。
-const bell = vi.hoisted(() => ({ open: false, openPanel: vi.fn() }))
-vi.mock('@/stores/bell', () => ({ useBellStore: () => bell }))
 
 import DataHomeView from './DataHomeView.vue'
 
@@ -132,20 +128,35 @@ async function mountWith(patch: Partial<DataHomeOverviewDTO> = {}, opts: { perms
 }
 
 describe('数据中心首页 · 两段式工作台', () => {
-  it('blockers 为空时前置条整条不渲染', async () => {
+  // 2026-10-03 横条收尾:前置条(年份条下的满宽 .dh-blocker)撤掉,进标题行的「待处理」入口。
+  // 破坏验证:把 FPAlertPanel 的 v-if 改成 v-if="ov?.blockers.length" → 红(零问题时入口要在位写「无待处理」)
+  it('❗没有前置问题:标题行的待处理入口在位写「无待处理」,没有满宽条', async () => {
     const w = await mountWith({ blockers: [] })
     expect(w.find('.dh-blocker').exists()).toBe(false)
+    expect(w.find('.dh-head .fac').text()).toBe('无待处理')
     expect(w.text()).not.toContain('去补档')
   })
 
-  it('blockers 非空时才出现,且带 CTA', async () => {
-    const w = await mountWith({ blockers: [BLOCKER_CONTRACT] })
-    expect(w.find('.dh-blocker').exists()).toBe(true)
-    expect(w.text()).toContain('219 份合同无租金计费行')
-    expect(w.text()).toContain('去补档')
-    // 年份条(裁定 6)必须读在前置条上面 —— 否则用户看到一条按 ym 算的警告却不知道说的是哪个月(F5)
-    const h = w.html()
-    expect(h.indexOf('dh-ystrip')).toBeLessThan(h.indexOf('dh-blocker'))
+  // 破坏验证:把满宽 .dh-blocker 加回来 / 组头动作换成别的 go → 红
+  it('❗前置问题进标题行「待处理」入口:胶囊计数、组标题与原文逐字、组头按钮深链照旧', async () => {
+    const STALE = { kind: 'param-stale' as const, text: '计费参数改过还没重算，屏上数字还是改之前算的', cta: '去重算', go: 'params' }
+    const w = await mountWith({ blockers: [BLOCKER_CONTRACT, STALE] })
+    expect(w.find('.dh-blocker').exists(), '满宽前置条不许回来').toBe(false)
+    // 面板没开时正文不占版面
+    expect(w.text()).not.toContain('219 份合同无租金计费行')
+    const chip = w.find('.dh-head .fac')
+    expect(chip.text()).toBe('待处理 2')
+    await chip.trigger('click')
+    const panel = w.find('.fap')
+    expect(panel.findAll('.fap-tg .t').map(e => e.text())).toEqual(['合同缺计费行', '待重算'])
+    expect(panel.findAll('.fap-desc')[0].text()).toBe('219 份合同无租金计费行，会让公摊/催缴单算不准')
+    await panel.findAll('.fap-g')[1].find('.fap-tg').trigger('click')   // 第二组默认收起
+    expect(w.findAll('.fap-desc')[1].text()).toBe('计费参数改过还没重算，屏上数字还是改之前算的')
+    const btns = w.findAll('.fap-gh button').filter(b => !b.classes('fap-tg'))
+    expect(btns.map(b => b.text())).toEqual(['去补档', '去重算'])
+    await btns[0].trigger('click')
+    await flushPromises()
+    expect(push).toHaveBeenLastCalledWith('/contracts')
   })
 
   it('当前步出大卡,且全页只有一个主 CTA', async () => {
@@ -176,12 +187,13 @@ describe('数据中心首页 · 两段式工作台', () => {
     expect(w.findComponent({ name: 'BookMonthMatrix' }).exists()).toBe(false)
   })
 
-  it('零写权限:主 CTA 改「查看」,前置条的写操作按钮隐藏', async () => {
+  it('零写权限:主 CTA 改「查看」,待处理面板里的写操作按钮隐藏', async () => {
     const w = await mountWith({ blockers: [BLOCKER_CONTRACT] }, { perms: [] })
     expect(w.text()).toContain('查看')
     expect(w.text()).not.toContain('去处理')
-    // 前置条文案照出(他该知道有缺口),但「去补档」是写操作,不给点
-    expect(w.text()).toContain('219 份合同无租金计费行')
+    // 面板文案照出(他该知道有缺口),但「去补档」是写操作,不给点
+    await w.find('.dh-head .fac').trigger('click')
+    expect(w.find('.fap').text()).toContain('219 份合同无租金计费行')
     expect(w.text()).not.toContain('去补档')
   })
 
@@ -845,50 +857,45 @@ describe('数据中心首页 · 主管条(P2 T6)', () => {
              perms: ['x'], permLabels: ['x'], page: 'x', action: 'x', impact: null, leftMs: 60_000 }
   }
 
-  it('主管条:无 lock:takeover 也无 system:view → 整条不渲染', async () => {
+  /** 「谁在编辑」收在标题行一颗胶囊里,点开才列人(2026-10-03 横条收尾) */
+  async function openEditors(w: ReturnType<typeof mount>) {
+    await w.find('.dh-head .dh-edpill').trigger('click')
+    return w.findAll('.dh-edrow')
+  }
+
+  it('主管:无 lock:takeover 也无 system:view → 标题行没有「在编辑」胶囊', async () => {
     const w = await mountWith({}, { perms: ['entry:edit'] })
-    expect(w.find('.dh-sup').exists()).toBe(false)
+    expect(w.find('.dh-edpill').exists()).toBe(false)
   })
 
-  it('主管条:有权限但零待批 —— 条还在,显「暂无待批」,不是 v-if 消失', async () => {
-    // 32px 定高常驻(spec §5.2)。写成 v-if="approvals.length" 门禁不会红(零位移那份的
-    // 交互态词表里没有 approvals),只有这条能守住。
-    const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
-    expect(w.find('.dh-sup').exists()).toBe(true)
-    expect(w.find('.dh-sup').isVisible(), '不许被 display:none 之类藏掉(候选9)').toBe(true)
-    expect(w.find('.dh-sup').text()).toContain('暂无待批')
-  })
-
-  it('主管条:零在编辑时 chips 容器仍在 —— 同样不许 v-if 数据', async () => {
-    const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'system:view'] })
-    expect(w.find('.dh-sup-who').exists()).toBe(true)
-    expect(w.findAll('.dh-sup-chip')).toHaveLength(0)
-  })
-
-  // 破坏验证:按钮改回 @click="inbox = true"(自挂抽屉)→ 红
-  it('❗主管条:待批 N 条显数字,点开的是铃铛面板,不再自挂抽屉', async () => {
-    bell.openPanel.mockImplementation(() => { bell.open = true })
-    bell.open = false
+  // 破坏验证:把「待批授权 N」那颗加回来 / 主管条那一行加回来 → 红
+  it('❗主管:单独一行的主管条撤掉,「待批授权」不再出(铃铛已有),标题行只多一颗「在编辑」胶囊', async () => {
     const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
     usePresenceStore().approvals = [pending('a'), pending('b')]
     await w.vm.$nextTick()
-    expect(w.find('.dh-sup-inbox').text()).toBe('待批授权 2')
-    await w.find('.dh-sup-inbox').trigger('click')
-    await flushPromises()
-    expect(bell.openPanel).toHaveBeenCalledTimes(1)
-    expect(bell.open).toBe(true)
-    expect(w.findComponent({ name: 'FPApprovalDrawer' }).exists()).toBe(false)
-    bell.openPanel.mockReset()
+    expect(w.find('.dh-sup').exists(), '主管条那一行不许回来').toBe(false)
+    expect(w.text()).not.toContain('待批授权')
+    expect(w.text()).not.toContain('暂无待批')
+    expect(w.find('.dh-head .dh-edpill').text()).toBe('没有别人在编辑')
   })
 
-  it('主管条:「谁在编辑」chip 点跳带上锁串的第二维(公司/期区/tab),不止带期(fix-brief FA)', async () => {
+  // 破坏验证:胶囊改成 v-if="editors.length" → 红(零在编辑也要在位)
+  it('主管:零在编辑时胶囊仍在位,点开写「现在没有别人在编辑」', async () => {
+    const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'system:view'] })
+    expect(w.find('.dh-edpill').isVisible()).toBe(true)
+    expect(await openEditors(w)).toHaveLength(0)
+    expect(w.find('.dh-edempty').text()).toBe('现在没有别人在编辑')
+  })
+
+  it('主管:「谁在编辑」chip 点跳带上锁串的第二维(公司/期区/tab),不止带期(fix-brief FA)', async () => {
     // 锁串本身带着第二维:ledger:{co}:{ym} 的 co 是公司。改前 goEditor 只发 periodLink(v,{p}),
     // 目标屏收到的 co 是 null,落到默认子视图(首册)—— 那里恰恰没有人在编辑(2026-09-06 复查坐实)。
     const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
     await landNav('/data-home')                           // 路由落在本月出账
     usePresenceStore().users = [seatEditor('张三', ['ledger:3:2025-06'])]
     await w.vm.$nextTick()
-    const chip = w.find('.dh-sup-chip')
+    expect(w.find('.dh-edpill').text()).toBe('别人在编辑 1')
+    const chip = (await openEditors(w))[0]
     expect(chip.text()).toBe('张三 · 月度台账 · 2025-06')
     await chip.trigger('click')
     expect(push).toHaveBeenLastCalledWith({ path: '/ledger', query: { p: '2025-06', co: '3' } })
@@ -898,31 +905,32 @@ describe('数据中心首页 · 主管条(P2 T6)', () => {
     expect(useTabsStore().tabs.map(t => t.value)).toEqual(['home', 'data-home', 'ledger'])
   })
 
-  it('主管条:chip 文案的屏名读座位自带的 label,与跳转目标是两个不同的源(fix-brief FB)', async () => {
+  it('主管:chip 文案的屏名读座位自带的 label,与跳转目标是两个不同的源(fix-brief FB)', async () => {
     // 出账链共占锁下(billing-chain)四分之三时间握锁的人不在「计费参数」屏 —— 文案该读
     // AppShell 按 route.path 实时写的 label(此刻真的在哪一屏),目的地仍读 scopeTarget(哪把锁)。
     const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
     usePresenceStore().users = [seatEditor('张三', ['billing-chain:2025-06'], '数据 · 催缴单')]
     await w.vm.$nextTick()
-    const chip = w.find('.dh-sup-chip')
+    const chip = (await openEditors(w))[0]
     expect(chip.text()).toBe('张三 · 数据 · 催缴单 · 2025-06')
     await chip.trigger('click')
     expect(push).toHaveBeenLastCalledWith({ path: '/params', query: { p: '2025-06' } })
   })
 
-  it('主管条:一人握两把锁只出一枚 chip(取 editScopes[0])', async () => {
+  it('主管:一人握两把锁只出一枚 chip(取 editScopes[0])', async () => {
     // 32px 定高装不下 N 人 × M 锁;这条要回答的是「谁卡在哪」,一行一个人。
     const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
     usePresenceStore().users = [seatEditor('张三', ['billing-chain:2025-06', 'ledger:3:2025-06'])]
     await w.vm.$nextTick()
-    expect(w.findAll('.dh-sup-chip')).toHaveLength(1)
+    const rows = await openEditors(w)
+    expect(rows).toHaveLength(1)
     // 取位(候选8):两把锁反查出不同 nav(billing-chain→params,ledger→ledger),
     // 钉住取的是 editScopes[0] 那把 —— 换成 .at(-1) 这条也要翻脸。
-    await w.find('.dh-sup-chip').trigger('click')
+    await rows[0].trigger('click')
     expect(push).toHaveBeenLastCalledWith({ path: '/params', query: { p: '2025-06' } })
   })
 
-  it('主管条:同一个人开两个标签页只出一枚 chip(按 user 去重,不是按 sid)(fix-brief FC)', async () => {
+  it('主管:同一个人开两个标签页只出一枚 chip(按 user 去重,不是按 sid)(fix-brief FC)', async () => {
     // presence 的单位是座位不是人(presence.ts:52)——张三在标签页 A/B 各开一屏编辑态,
     // 两个 sid 若都保留就是两枚一模一样的 chip,主管读成两个人在抢。
     const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
@@ -931,10 +939,10 @@ describe('数据中心首页 · 主管条(P2 T6)', () => {
       { ...seatEditor('张三', ['ledger:3:2025-06']), sid: 's-b' },
     ]
     await w.vm.$nextTick()
-    expect(w.findAll('.dh-sup-chip')).toHaveLength(1)
+    expect(await openEditors(w)).toHaveLength(1)
   })
 
-  it('主管条:「谁在编辑」只数编辑态的别人 —— 自己不占位,mode=view 的不算(候选13)', async () => {
+  it('主管:「谁在编辑」只数编辑态的别人 —— 自己不占位,mode=view 的不算(候选13)', async () => {
     const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
     usePresenceStore().users = [
       { ...seatEditor('张三', ['ledger:3:2025-06']), self: true },
@@ -942,21 +950,33 @@ describe('数据中心首页 · 主管条(P2 T6)', () => {
       seatEditor('王五', ['ledger:7:2025-06']),
     ]
     await w.vm.$nextTick()
-    const chips = w.findAll('.dh-sup-chip')
+    expect(w.find('.dh-edpill').text(), '胶囊的数和下拉同口径:只数别人').toBe('别人在编辑 1')
+    const chips = await openEditors(w)
     expect(chips).toHaveLength(1)
     expect(chips[0].text()).toBe('王五 · 月度台账 · 2025-06')
   })
 
+  // 四面复查(2026-10-03):主管自己在另一个页签编辑计费参数,胶囊写「无人在编辑」、下拉写「现在没有别人在编辑」,一个控件两种口径。
+  // 破坏验证:胶囊空态改回「无人在编辑」→ 红
+  it('❗主管:只有自己在编辑时胶囊不说「无人」,和下拉一样写「没有别人在编辑」', async () => {
+    const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
+    usePresenceStore().users = [{ ...seatEditor('我', ['billing-chain:2025-06']), self: true }]
+    await w.vm.$nextTick()
+    expect(w.find('.dh-edpill').text()).toBe('没有别人在编辑')
+    expect(await openEditors(w)).toHaveLength(0)
+    expect(w.find('.dh-edempty').text()).toBe('现在没有别人在编辑')
+  })
+
   // 破坏验证(Step 6)实测坐实的空白:goEditor 去掉 confirmRebuild 调用后,既有 6 条一条不红——
   // 补这一条钉住 chip 跳转与 go() 共用同一份确认(裁定 5:两者都走 openFresh,风险一模一样)。
-  it('主管条:chip 跳转复用 confirmRebuild —— 本标签页在目标屏那把锁底下持锁时点 chip 也先确认', async () => {
+  it('主管:chip 跳转复用 confirmRebuild —— 本标签页在目标屏那把锁底下持锁时点 chip 也先确认', async () => {
     const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
     const presence = usePresenceStore()
     presence.users = [seatEditor('张三', ['billing-chain:2025-06'])]
     presence.holdLock('billing-chain:2025-06', () => {})   // 本标签页在 params 屏那把锁底下持锁
     useAuthStore().openEditor(Symbol('params'), 'params', () => 1)
     await w.vm.$nextTick()
-    await w.find('.dh-sup-chip').trigger('click')
+    await (await openEditors(w))[0].trigger('click')
     expect(askQueue, 'chip 跳转不能绕开 go() 同款的确认').toHaveLength(1)
     answer(false)
     await flushPromises()
@@ -966,17 +986,17 @@ describe('数据中心首页 · 主管条(P2 T6)', () => {
 
   // 破坏验证(Step 6)实测坐实的空白:主管条整块挪进 <template v-else>(真版式分支)里,
   // 既有 7 条一条不红 —— 补这一条钉住裁定 1(渲染在两个分支之外,不跟 ov 走)。
-  it('主管条:ov 未到(骨架态)时已经在 —— 不等 ov 落位才出现(裁定 1)', async () => {
+  it('主管:ov 未到(骨架态)时「在编辑」胶囊已经在 —— 不等 ov 落位才出现(裁定 1)', async () => {
     localStorage.setItem('permissions', JSON.stringify([...EDITOR_PERMS, 'lock:takeover']))
     setActivePinia(createPinia())
     let resolve!: (v: DataHomeOverviewDTO) => void
     getOverview.mockReturnValue(new Promise<DataHomeOverviewDTO>((r) => { resolve = r }))
     const w = mount(DataHomeView)
     await flushPromises()
-    expect(w.find('.dh-sup').exists(), '骨架态(ov 还没到)时主管条也该在').toBe(true)
+    expect(w.find('.dh-head .dh-edpill').exists(), '骨架态(ov 还没到)时胶囊也该在').toBe(true)
     resolve(overview())
     await flushPromises()
-    expect(w.find('.dh-sup').exists(), '落位之后主管条仍在').toBe(true)
+    expect(w.find('.dh-head .dh-edpill').exists(), '落位之后胶囊仍在').toBe(true)
   })
 })
 
@@ -1315,24 +1335,27 @@ describe('审核条(R2 T7)', () => {
   })
 
   // 破坏验证:把 isReviewer 改成恒真 → 红
-  it('❗没有 review:approve 的人看不到审核条', async () => {
+  it('❗没有 review:approve 的人看不到审核员的筛选胶囊与计数', async () => {
     const w = await mountReview(reviewFixture(), EDITOR_PERMS)
-    expect(w.find('.dh-rvbar').exists()).toBe(false)
+    expect(w.find('.dh-rvpill').exists()).toBe(false)
+    expect(w.find('.dh-rvcount').exists()).toBe(false)
   })
 
-  // 破坏验证:把审核条那个 v-if 改成 v-else-if 挂在主管条上 → 红
-  it('❗admin 两个身份都有 → 主管条与审核条各占各的,不合并', async () => {
+  // 破坏验证:把审核员胶囊的 v-if 改成 v-else-if 挂在主管胶囊上 / 审核条那一行加回来 → 红
+  it('❗admin 两个身份都有 → 两颗胶囊都在标题行,不再各占一行', async () => {
     const w = await mountReview(reviewFixture(),
       [...EDITOR_PERMS, 'review:approve', 'lock:takeover'])
-    expect(w.findAll('.dh-sup').length, '两条各一行,合成一条会让 admin 少看见一半').toBe(2)
-    expect(w.find('.dh-rvbar').exists()).toBe(true)
+    expect(w.find('.dh-sup').exists(), '单独一行的主管条 / 审核条不许回来').toBe(false)
+    expect(w.find('.dh-head .dh-rvpill').exists()).toBe(true)
+    expect(w.find('.dh-head .dh-rvcount').exists()).toBe(true)
+    expect(w.find('.dh-head .dh-edpill').exists()).toBe(true)
   })
 
   // 破坏验证:把「暂无待审」那支删掉(改成 v-if="reviewCounts.pending") → 红。
-  // 32px 定高常驻是 P2 裁定 1/2:零待审也要占位,不许整条塌掉。
-  it('❗零待审时按钮仍在位,写「暂无待审」', async () => {
+  // P2 裁定 1/2:零待审也要占位。
+  it('❗零待审时胶囊仍在位,写「暂无待审」', async () => {
     const w = await mountReview(reviewFixture(), [...EDITOR_PERMS, 'review:approve'])
-    expect(w.find('.dh-rvbar .dh-sup-inbox').text()).toBe('暂无待审')
+    expect(w.find('.dh-head .dh-rvpill').text()).toBe('暂无待审')
   })
 
   it('待审核条数与「本月已审 n/总」都从渲染出来的行算', async () => {
@@ -1341,7 +1364,7 @@ describe('审核条(R2 T7)', () => {
       [`meters:${YM}`]: { status: 'submitted' },
       [`pv:${YM}`]: { status: 'approved' },
     }), [...EDITOR_PERMS, 'review:approve'])
-    expect(w.find('.dh-rvbar .dh-sup-inbox').text()).toBe('待审核 2')
+    expect(w.find('.dh-head .dh-rvpill').text()).toBe('待审核 2')
     // 分母 = 有审核键的行数(导入中心 / 收入核对 / 本月锁账不算)
     const bar = w.find('.dh-rvcount').text()
     expect(bar).toMatch(/^本月已审 1\/\d+$/)
@@ -1363,7 +1386,9 @@ describe('审核条(R2 T7)', () => {
       [`params:${YM}`]: { status: 'submitted' },
     }), [...EDITOR_PERMS, 'review:approve'])
     const before = w.findAll('.dh-row').length
-    await w.find('.dh-rvbar .dh-sup-inbox').trigger('click')
+    await w.find('.dh-rvpill').trigger('click')
+    expect(w.find('.dh-rvpill').attributes('data-on')).toBe('true')
+    expect(w.text(), '筛选生效不再另起一句说明').not.toContain('只看待审 · 点上面那颗取消')
     const after = w.findAll('.dh-row')
     expect(after.length, '只剩待审核那一行').toBe(1)
     expect(after[0].text()).toContain('计费参数')
@@ -1372,7 +1397,7 @@ describe('审核条(R2 T7)', () => {
     expect(w.text()).toContain('出账链')
     expect(w.text()).toContain('附表录入')
 
-    await w.find('.dh-rvbar .dh-sup-inbox').trigger('click')
+    await w.find('.dh-rvpill').trigger('click')
     expect(w.findAll('.dh-row').length).toBe(before)
   })
 })

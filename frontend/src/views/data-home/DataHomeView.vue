@@ -15,6 +15,8 @@ import { onReactivated } from '@/composables/onReactivated'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
+import FPAlertPanel, { type AlertGroup } from '@/components/fp/FPAlertPanel.vue'
+import Popover from '@/components/ds/Popover.vue'
 import { receipt } from '@/utils/receipt'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
@@ -31,7 +33,6 @@ import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
 import FPReviewDialog from '@/components/fp/FPReviewDialog.vue'
 import { useBillingPeriodStore, YM } from '@/stores/billingPeriod'
 import { usePresenceStore } from '@/stores/presence'
-import { useBellStore } from '@/stores/bell'
 import { useReviewStore } from '@/stores/review'
 import type { ReviewRow } from '@/types/review'
 import { NAV_SCOPE_PREFIX, scopeTarget } from '@/utils/lockScopes'
@@ -58,11 +59,10 @@ function myChainLockPeriods(): string[] {
     .map(sc => sc.slice(sc.indexOf(':') + 1))
 }
 
-// 主管条(P2 T6,任务书六条裁定):数据源是 presence + auth,跟 ov 有没有到无关 ——
-// 渲染位置见模板,在两个 v-if="!ov"/v-else 分支之外。
-// 「待批授权 N」点开的是顶栏铃铛面板(PAGE-BEHAVIOR-SPEC §5.1),不再自己挂一个抽屉 ——
-// 授权请求只在一处处理,批完那条在铃铛和这里同时消失。
-const bell = useBellStore()
+// 主管的「谁在编辑」(P2 T6):数据源是 presence + auth,跟 ov 有没有到无关 —— 标题行在两个
+// v-if="!ov"/v-else 分支之外,骨架态就在。2026-10-03 横条收尾:原先单独一行 32px 的主管条撤掉,
+// 「待批授权 N」与顶栏铃铛重复(点开的就是铃铛面板)整颗删;「谁在编辑」收成标题行一颗胶囊,点开列人。
+const editorsOpen = ref(false)
 const isSupervisor = computed(() => auth.can('lock:takeover') || auth.can('system:view'))
 
 // 「谁在编辑」—— 一人一枚 chip,取 editScopes[0](裁定 4:32px 定高装不下 N 人 × M 把锁,
@@ -246,6 +246,17 @@ const curStep = computed(() => {
   return c && c.currentIndex >= 0 ? c.steps[c.currentIndex] : null
 })
 
+// 前置问题(合同缺计费行 / 参数待重算)进标题行的「待处理」入口(LAYOUT-STABILITY-SPEC §6),
+// 不再是年份条下面出没的满宽条 —— 那条一出现就把两栏往下推(2026-10-03 横条收尾)。
+// 一条 blocker = 面板里一组;组头动作就是原来条上的按钮,深链照旧走 go()。
+// 只读账号不给动作:去补档 / 去重算都是写操作,文案照出(他该知道有缺口)。
+const BLOCKER_TITLE: Record<string, string> = { 'contract-gap': '合同缺计费行', 'param-stale': '待重算' }
+const alertOpen = ref(false)
+const alertGroups = computed<AlertGroup[]>(() => (ov.value?.blockers ?? []).map(b => ({
+  key: b.kind, title: BLOCKER_TITLE[b.kind] ?? b.cta, desc: b.text, items: [],
+  action: auth.isReadonly ? undefined : { label: b.cta, run: () => { alertOpen.value = false; void go(b.go) } },
+})))
+
 // 收入核对元数据(P2 T3,2026-09-06 改由 shownYm 驱动)。
 // 首载仍然**串行**:pickedYm 是 null,年只能从 overview 回包的 ov.period 派生;并发就只能传
 // undefined,后端会取「两本账有数据的最大年」,与首页锚定月的年大概率不是同一年 —— 形状对、数字张冠李戴。
@@ -427,8 +438,8 @@ async function onDialogConfirm(reason: string) {
     d.action === 'return' ? review.returnAll(ks, reason) : review.withdrawAll(ks, reason))
   dialog.value = null
 }
-// ── 审核条(§7.5:审核员落地位) ───────────────────────────
-// 主管条与审核条**各占各的 32px,不合并** —— admin 两个身份都有,合成一条会让他少看见一半。
+// ── 审核员的筛选胶囊(§7.5:审核员落地位) ─────────────────
+// 2026-10-03 横条收尾:原先单独一行 32px 的审核条并进标题行 ——「待审核 N」是筛选胶囊,「本月已审 a/b」是计数。
 const isReviewer = computed(() => auth.can('review:approve'))
 /** 「只看待审」筛选。审核员一个月要过 19 把键,不给筛选就得自己在 15 行里数。 */
 const onlyPending = ref(false)
@@ -464,39 +475,51 @@ const bookingRows = computed(() => shown('booking'))
   <div class="dh fp-fluid">
     <!-- 换期重取的唯一信号(加载态设计稿 §08)。宿主 .dh 已设 position: relative。 -->
     <FPLoadBar :on="veil" />
-    <!-- 主管条(P2 T6):数据源 presence + auth,与 ov 无关 —— 渲染在两个骨架/真版式分支**之外**,
-         骨架与真版式不靠人记得同步(T3 漏 .dh-cols、T4 漏 .dh-ystrip 都是分两份写漏的)。
-         外层唯一允许的 v-if 是权限判(有没有这个角色),数据 v-if 一律禁 —— 32px 定高常驻,
-         零待批显「暂无待批」、零在编辑 chips 容器仍在,不许 v-if 掉整条或子容器(裁定 1/2)。 -->
-    <div v-if="isSupervisor" class="dh-sup">
-      <button class="dh-sup-inbox" @click="bell.openPanel()">
-        {{ presence.approvals.length ? `待批授权 ${presence.approvals.length}` : '暂无待批' }}
-      </button>
-      <div class="dh-sup-who">
-        <button v-for="e in editors" :key="e.sid" class="dh-sup-chip" @click="goEditor(e.target)">{{ e.note }}</button>
+    <!-- 标题行在骨架 / 真版式两个分支**之外**,只写一份(T3 漏 .dh-cols、T4 漏 .dh-ystrip 都是分两份写漏的)。
+         右侧胶囊的外层 v-if 只许是权限判(有没有这个角色),数据 v-if 一律禁 —— 零待审显「暂无待审」、
+         零在编辑显「无人在编辑」,胶囊照样在位(P2 裁定 1/2)。 -->
+    <div class="dh-head">
+      <div class="dh-period">
+        <span class="dh-title">本月出账</span>
+        <div v-if="!ov" class="dh-mnow"><span class="fp-shim" style="display:block;width:72px;height:14px;border-radius:4px"></span></div>
+        <!-- 在途时三处一起压暗(.fp-stale:opacity+blur+pointer-events:none,不改高度):
+             月名、计数、两栏板子都还是**上一个月**的数,而年份条的描边已经挪到新月上了 ——
+             不压暗就是同屏两处对同一件事说反话。年份条本身不压:它是你正在点的那个控件。
+             data-stale-host 常挂(动效稿 C5-02 ⑧):类摘掉后仍有 transition-property,退场才是 200 —— 不挂就是硬切。 -->
+        <div v-else-if="ov.period" class="dh-mnow" data-stale-host :class="{ 'fp-stale': veil }" :aria-busy="veil">{{ ov.period.label }}</div>
+        <!-- 待处理入口:合同缺计费行 / 参数待重算(原年份条下的满宽前置条)。排在左组最后,出现时不挪别的东西 -->
+        <FPAlertPanel v-if="ov?.period" v-model:open="alertOpen" :count="alertGroups.length" :groups="alertGroups" />
       </div>
-    </div>
-    <!-- 审核条(R2 T7):与主管条同款 32px 定高常驻。外层唯一的 v-if 是权限判 ——
-         零待审显「暂无待审」,筛选钮与计数照样在位,不许 v-if 掉子容器(P2 裁定 1/2)。 -->
-    <div v-if="isReviewer" class="dh-sup dh-rvbar">
-      <button class="dh-sup-inbox" :data-on="onlyPending" @click="onlyPending = !onlyPending">
-        {{ reviewCounts.pending ? `待审核 ${reviewCounts.pending}` : '暂无待审' }}
-      </button>
-      <span v-if="onlyPending" class="dh-rvfilter">只看待审 · 点上面那颗取消</span>
-      <span class="dh-rvcount">本月已审 {{ reviewCounts.approved }}/{{ reviewCounts.total }}</span>
+      <div class="dh-hright">
+        <span v-if="!ov" class="fp-shim" style="display:block;width:150px;height:12px"></span>
+        <span v-else-if="ov.period" class="dh-counts" data-stale-host :class="{ 'fp-stale': veil }" :aria-busy="veil">
+          出账 {{ checks.byCol.billing.done }}/{{ checks.byCol.billing.total }} ·
+          附表 {{ checks.byCol.booking.done }}/{{ checks.byCol.booking.total }}
+        </span>
+        <template v-if="isReviewer">
+          <button class="dh-pill dh-rvpill" :data-on="onlyPending"
+                  v-tip="onlyPending ? '再点一下看全部行' : '只看待审核的行'"
+                  @click="onlyPending = !onlyPending">
+            {{ reviewCounts.pending ? `待审核 ${reviewCounts.pending}` : '暂无待审' }}
+          </button>
+          <span class="dh-rvcount">本月已审 {{ reviewCounts.approved }}/{{ reviewCounts.total }}</span>
+        </template>
+        <Popover v-if="isSupervisor" v-model="editorsOpen" align="end" :width="280">
+          <template #trigger>
+            <!-- editors 只数别人(presence.others 不含自己):胶囊与下拉同一口径写「别人」,自己在编辑时不说「无人」 -->
+            <button class="dh-pill dh-edpill">{{ editors.length ? `别人在编辑 ${editors.length}` : '没有别人在编辑' }}</button>
+          </template>
+          <p v-if="!editors.length" class="dh-edempty">现在没有别人在编辑</p>
+          <button v-for="e in editors" :key="e.sid" class="dh-edrow"
+                  @click="editorsOpen = false; goEditor(e.target)">{{ e.note }}</button>
+        </Popover>
+      </div>
     </div>
     <FPReviewDialog v-if="dialog" :target="dialog.label" :action="dialog.action"
                     :busy="!!acting"
                     @close="dialog = null" @confirm="onDialogConfirm" />
 
     <template v-if="!ov">
-      <div class="dh-head">
-        <div class="dh-period">
-          <span class="dh-title">本月出账</span>
-          <div class="dh-mnow"><span class="fp-shim" style="display:block;width:72px;height:14px;border-radius:4px"></span></div>
-        </div>
-        <span class="fp-shim" style="display:block;width:150px;height:12px"></span>
-      </div>
       <!-- 年份条骨架(P2 T4):年份数在数据到达前不可知,骨架给一年(78px≈62px 卡+行距);
            真版式若是多年,这一块会长高 —— 同轴同序的增高,不是版式塌(T3 修的是轴向从单列跳成两栏)。 -->
       <div class="dh-ystrip"><span class="fp-shim" style="display:block;height:78px;border-radius:8px"></span></div>
@@ -532,22 +555,6 @@ const bookingRows = computed(() => shown('booking'))
     </template>
 
     <template v-else>
-    <!-- 顶部唯一总览行:月份 + 两个进度数字。改版前这里是 4 个 KPI 卡,其中 3 个与下方重复 -->
-    <div class="dh-head">
-      <div class="dh-period">
-        <span class="dh-title">本月出账</span>
-        <!-- 在途时三处一起压暗(.fp-stale:opacity+blur+pointer-events:none,不改高度):
-             月名、计数、两栏板子都还是**上一个月**的数,而年份条的描边已经挪到新月上了 ——
-             不压暗就是同屏两处对同一件事说反话。年份条本身不压:它是你正在点的那个控件。
-             data-stale-host 常挂(动效稿 C5-02 ⑧):类摘掉后仍有 transition-property,退场才是 200 —— 不挂就是硬切。 -->
-        <div v-if="ov.period" class="dh-mnow" data-stale-host :class="{ 'fp-stale': veil }" :aria-busy="veil">{{ ov.period.label }}</div>
-      </div>
-      <span v-if="ov.period" class="dh-counts" data-stale-host :class="{ 'fp-stale': veil }" :aria-busy="veil">
-        出账 {{ checks.byCol.billing.done }}/{{ checks.byCol.billing.total }} ·
-        附表 {{ checks.byCol.booking.done }}/{{ checks.byCol.booking.total }}
-      </span>
-    </div>
-
     <!-- 年份条(P2 T4):取代月份下拉。manage-years=false —— 首页这条是导航不是账册管理,
          「添加次年」在总览屏不产生任何数据,接了线也没有语义(裁定 5)。 -->
     <div v-if="ov.period" class="dh-ystrip">
@@ -561,15 +568,6 @@ const bookingRows = computed(() => shown('booking'))
     <FPEmpty v-if="!ov.period" action="从园区抄表开始 →" @action="go('meters')">还没开始出账</FPEmpty>
 
     <template v-else>
-      <!-- 前置条:blockers 为空则整条不渲染。没问题的东西不该占版面 —— 这是「有主次」的关键,
-           和合同屏「待补档案」条同一原则(那条也是 v-if 有缺口才出现,补完自动消失) -->
-      <div v-for="b in ov.blockers" :key="b.kind" class="dh-blocker">
-        <component :is="iconFor('alert-triangle')" :size="14" />
-        <span class="dh-bt">{{ b.text }}</span>
-        <!-- viewer 只读:去补档/去重算都是写操作,隐藏而不是让他点了弹 403 -->
-        <Button v-if="!auth.isReadonly" variant="outline" size="sm" @click="go(b.go)">{{ b.cta }}</Button>
-      </div>
-
       <!-- 两栏清单(P2 T3,monthClose.logic §5.2):出账列 7 行 / 记账列 8 行,行是常驻的 ——
            状态用 :data-state 属性驱动样式,na(源缺)的行照样渲染,状态位显「—」,不 v-if 掉整行。 -->
       <div class="dh-cols" data-stale-host :class="{ 'fp-stale': veil }" :aria-busy="veil">
@@ -678,39 +676,29 @@ const bookingRows = computed(() => shown('booking'))
    没有定位祖先会跑到外壳上去(组件头注写明它不替宿主设,包一层 div 会碰本仓的定高链)。 */
 .dh { position: relative; display: flex; flex-direction: column; gap: 20px; padding: 24px; }
 
-/* 主管条(P2 T6):32px 定高常驻 —— 不是 min-height,人多了裁掉不许把条撑高(裁定 2)。 */
-.dh-sup { height: 32px; flex: 0 0 auto; display: flex; align-items: center; gap: 10px; }
-.dh-sup-inbox {
-  flex: 0 0 auto; font-size: var(--fs-label); color: var(--text-primary);
-  background: var(--surface-card); border: 1px solid var(--border-control);
-  border-radius: var(--radius-full); padding: 4px 12px; cursor: pointer;
-}
-.dh-sup-who { flex: 1; min-width: 0; overflow: hidden; display: flex; align-items: center; gap: 6px; }
-/* 审核条:复用主管条的定高与胶囊,只把计数推到右边 */
-.dh-rvbar .dh-rvcount { margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text-secondary); }
-.dh-rvfilter { font-size: var(--fs-micro); color: var(--text-muted); }
-.dh-sup-inbox[data-on="true"] { border-color: var(--hue-orange); color: var(--hue-orange); background: var(--warn-soft); }
-.dh-sup-chip {
-  flex: 0 0 auto; font-size: var(--fs-micro); color: var(--text-secondary);
-  background: var(--surface-card); border: 1px solid var(--border-control);
-  border-radius: var(--radius-full); padding: 2px 10px; cursor: pointer; white-space: nowrap;
-}
-
-.dh-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+/* min-height 28 = 待处理胶囊高:数据到了胶囊才出现,标题行不能因此长高把下面推下去 */
+.dh-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 28px; }
 .dh-period { display: flex; align-items: center; gap: 12px; }
+.dh-hright { display: flex; align-items: center; gap: 10px; }
+/* 标题行胶囊(审核员的「待审核」筛选、主管的「在编辑」):28 高,与待处理胶囊同高 */
+.dh-pill {
+  flex: 0 0 auto; height: 28px; box-sizing: border-box; font-size: var(--fs-label); color: var(--text-primary);
+  background: var(--surface-card); border: 1px solid var(--border-control);
+  border-radius: var(--radius-full); padding: 0 12px; cursor: pointer; white-space: nowrap;
+}
+.dh-pill[data-on="true"] { border-color: var(--hue-orange); color: var(--hue-orange); background: var(--warn-soft); }
+.dh-rvcount { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text-secondary); white-space: nowrap; }
+.dh-edempty { margin: 4px 8px; font-size: var(--fs-label); color: var(--text-muted); }
+.dh-edrow {
+  display: block; width: 100%; text-align: left; padding: 8px; border: none; border-radius: var(--radius-sm);
+  background: transparent; font-size: var(--fs-label); color: var(--text-primary); cursor: pointer;
+}
+.dh-edrow:hover { background: var(--surface-sunken); }
 .dh-title { font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .dh-mnow { font-size: var(--fs-label); color: var(--text-secondary); }
 .dh-counts { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text-secondary); }
 .dh-ystrip { margin-bottom: 4px; }
 
-
-.dh-blocker {
-  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
-  background: color-mix(in srgb, var(--hue-orange) 8%, var(--surface-white));
-  border: 1px solid color-mix(in srgb, var(--hue-orange) 24%, var(--surface-white));
-  border-radius: var(--radius-sm); color: var(--hue-orange);
-}
-.dh-bt { flex: 1; font-size: var(--fs-label); color: var(--text-primary); }
 
 .dh-sec { display: flex; flex-direction: column; gap: 12px; }
 .dh-h3 { font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text-primary); margin: 0; }
@@ -789,13 +777,13 @@ const bookingRows = computed(() => shown('booking'))
 }
 
 /* ── S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5;宽档规则在前)──
-   .dh-rows 一行一条,天生不需要 flex-wrap;横幅 .dh-bt(flex:1 无 nowrap)中文逐字换行,也不用另写。
+   .dh-rows 一行一条,天生不需要 flex-wrap。
    只有三个 space-between 行在 390 视口(内容区 ~310)会被撑破,放开换行:
-   - head:标题+月份选择(~218px)+ 进度数字(~150px)装不进一行 → 数字落到第二行;
+   - head:标题+月份+待处理(~300px)+ 进度数字与胶囊装不进一行 → 右组落到第二行,右组自己也可折;
    - cur 大卡:骨架 shim 定宽 196px + 按钮 104px > 卡内宽 → 按钮落下一行(数据态同理);
    - empty 空态:文案 + CTA 同题。
    换行由视口宽度决定、同一视口内确定不变——不违反同视口交互零位移(§7)。 */
 @media (max-width: 600px) {
-  .dh-head, .dh-cur { flex-wrap: wrap; }
+  .dh-head, .dh-hright, .dh-cur { flex-wrap: wrap; }
 }
 </style>

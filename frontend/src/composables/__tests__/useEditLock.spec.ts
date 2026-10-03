@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { defineComponent, h, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
@@ -409,6 +411,43 @@ describe('握着锁 = 这一屏在编辑(auth.editors)', () => {
     expect(auth.editingOn(screen)).toBe(true)
     expect(auth.dirtyOn(screen), '没透传 = 缺省按 1').toBe(0)
     lock.release()
+  })
+
+  // 只在锁上登记的宿主(三大报表 / 账册模板 / 台账宽表)靠第四参把权限点带进 auth.editors
+  // 破坏验证:acquire 登记不透传 perms → 自己角色有 entry:edit 的这一屏也被列进「结束授权」那一问 → 红
+  it('❗acquire 登记时带上第四参 perms:全是自己角色给的 → 结束授权那一问不列;靠授权就列', async () => {
+    const screen = `lock-screen-${++n}`
+    let lock!: ReturnType<typeof useEditLock>
+    const Host = defineComponent({ setup() { lock = useEditLock(undefined, undefined, () => 3, ['entry:edit']); return () => null } })
+    mount(defineComponent({ render: () => h(shellOf(`${screen}:0`, Host)) }))
+    const auth = useAuthStore()
+    auth.permissions = ['entry:edit']
+    vi.mocked(api.post).mockResolvedValueOnce(GRANTED as never)
+    await lock.acquire(SCOPE)
+    expect(auth.dirtyOn(screen), '前置:登记上了').toBe(3)
+    expect(auth.dirtyScreens()).toEqual([])
+    auth.permissions = []
+    expect(auth.dirtyScreens()).toEqual([{ screen, count: 3, approx: false }])
+    lock.release()
+  })
+
+  // 那三处宿主真的递了(挂载太重,源码钉)。破坏验证:任一处删掉第四参 → 那一条红
+  it.each([
+    ['components/fin/useFinStatementScreen.ts', 'report:edit'],
+    ['components/fp/TemplateEditorPanel.vue', 'book-template:edit'],
+    ['views/ledger/LedgerWideTable.vue', 'entry:edit'],
+  ])('❗%s 的 useEditLock 带 [%s]', (rel, perm) => {
+    const src = readFileSync(join(__dirname, '../..', rel), 'utf8')
+    expect(src).toMatch(new RegExp(`useEditLock\\([\\s\\S]{0,200}?\\['${perm}'\\]\\)`))
+  })
+  // 不握锁、自己登记的三处同理
+  it.each([
+    ['views/bills/CompanyBookWindow.vue', 'master:edit'],
+    ['views/contracts/ContractNewDialog.vue', 'contract:edit'],
+    ['views/system/SystemRolesView.vue', 'system:edit'],
+  ])('❗%s 的 openEditor 带 [%s]', (rel, perm) => {
+    const src = readFileSync(join(__dirname, '../..', rel), 'utf8')
+    expect(src).toMatch(new RegExp(`auth\\.openEditor\\(meId, screen, [^\\n]{0,60}?\\['${perm}'\\]\\)`))
   })
 
   // useEditMode 把 dirty 同时交给自己那条登记和底下的锁:任一处漏传,缺省的 1 会加进来 → 3。

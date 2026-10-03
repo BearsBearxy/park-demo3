@@ -68,6 +68,7 @@ export interface ParamChangeDTO {
   acctMonth: string; mode: ParamMode; oldValue: number | null; newValue: number | null
   oldText: string | null; newText: string | null; note: string | null
   ym?: string | null          // recalc 动作的账期
+  authorizer?: string | null  // 提权授权人(param_change_log.authorizer;本人有权 = null;后端 2026-10-03 起下发)
 }
 export interface ParamHistoryDTO { versions: ParamVersionDTO[]; changes: ParamChangeDTO[] }
 

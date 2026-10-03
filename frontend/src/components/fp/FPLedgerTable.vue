@@ -14,6 +14,8 @@ const props = defineProps<{
   rows: LedgerRowDTO[]
   edit: boolean
   selected?: Set<number>   // 传入即启用编辑态选择列(勾选 ledgerRowKey,批量删除用)
+  /** 「合计」两个字上的悬停说明 = 这张表的口径(原页底 ⓘ 说明行,LIST-PAGE-SPEC §2.1);不传不出 */
+  footTip?: string
 }>()
 
 // V105:行身份从 tenantId 换 ledgerRowKey(id ?? -tenantId)——未绑定行 tenantId 为 null,
@@ -192,7 +194,7 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
         <tr>
           <th v-if="selectable" class="lg-fix lg-selc" :style="{ position: 'sticky', left: '0px' }"></th>
           <th v-for="(c, i) in columns.fixedLeft" :key="c.key" :class="fixedKeys.has(c.key) && 'lg-fix'" :style="cellStyles[c.key]">
-            <span v-if="i === 0" class="lg-foot-lbl">合　计</span>
+            <span v-if="i === 0" class="lg-foot-lbl" v-tip="footTip">合　计</span>
             <span v-else class="lg-foot-v">{{ lgFmt(sums[c.key]) }}</span>
           </th>
           <th v-for="c in leaves" :key="c.key" :style="cellStyles[c.key]">

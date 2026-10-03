@@ -28,11 +28,11 @@ describe('FinReportTable', () => {
     const ths = w.findAll('thead th').map((t) => t.text())
     // 末尾空格 = 行末空列 .fp-fill(余宽落在那里,不归项目列)
     expect(ths).toEqual(['项　目', '行次', '本月金额', '本年累计金额', ''])
-    // 3 行渲染,小计行带 sub.strong,自定义行 custom(行次列空)
+    // 3 行渲染,小计行带 sub(上边线 + 加粗,2026-10-03 画布 09 不再铺底色),自定义行 custom(行次列空)
     const trs = w.findAll('tbody tr')
     expect(trs.length).toBe(3)
     expect(trs[2].classes()).toContain('sub')
-    expect(trs[2].classes()).toContain('strong')
+    expect(trs[2].find('td.fin-c1').classes()).toContain('sub')
     // 自定义行行次列为空
     expect(trs[1].findAll('.fin-no')[0].text()).toBe('')
     // 常驻叶子行行次 = 1
@@ -71,8 +71,8 @@ describe('FinReportTable', () => {
     ]
     const w = mount(FinReportTable, { props: { rows: autoRows, columns, valueOf, editable: true } })
     const trs = w.findAll('tbody tr')
-    // 父行有 chip「1 子类」,且是 calc 只读(非 input)
-    expect(trs[0].find('.chip').text()).toContain('1')
+    // 父行有 chip「1 个子类 · 自动合计」,且是 calc 只读(非 input)
+    expect(trs[0].find('.chip').text()).toBe('1 个子类 · 自动合计')
     expect(trs[0].find('input.fin-ni').exists()).toBe(false)
     expect(trs[0].findAll('.fin-nv.calc').length).toBe(2)
     // 自定义子类可加子(addchild) + 可删(custom-x)

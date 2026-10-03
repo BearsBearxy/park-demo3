@@ -1,24 +1,24 @@
 // 三大报表(利润表 is / 资产负债表 bs / 科目余额表 tb)共用的屏状态机。
 //
-// 动线(2026-08-29 改,设计稿 §3.2a):**左栏常驻公司 + 选期矩阵 → 正文**,两层。
-// 改前是四层串行:整屏选公司 → 年份门 → 月历 → 正文,而且换个公司看要退回第一屏重走三道门
-// (BOOK-WORKBENCH-SPEC §7-2 原文要求实体切换在左栏)。年份门 + 月历合成一张
-// BookMonthMatrix,就是 2026-08-24 拍板的「选期矩阵 v3 取代年份 tab」,当时没推到报表层。
-// 结果与月度台账、附表10 一模一样:选公司(左栏,常驻)→ 点月格 → 正文。
+// 动线:**公司下拉 + 选期矩阵 → 正文**,两层。
+// 2026-08-29 从四层串行(整屏选公司 → 年份门 → 月历 → 正文)收成「左栏常驻公司 + 矩阵」;
+// 2026-10-03(画布 09,BOOK-WORKBENCH-SPEC §7-2 三大报表例外)左栏撤掉,公司选择收进
+// 期间条「‹ 换期 年-月 [公司 ▾]」与矩阵标题「利润表 • [公司 ▾]」那一颗下拉(FinCompanyMenu)。
+// 换公司仍是一步,不回头重走门。
 //
 // 三屏动线完全同构;此前各抄一份,
 // 一个竞态/加载门的修法要改三处,漏一处就出现「利润表修好了、资产负债表还闪旧数据」。
 // 这里只收敛「搬运」部分:公司增删改、年历/本期加载(含竞态守卫)、状态迁移、编辑草稿与 dirty、
-// 保存外壳、导入接线。行定义/取值口径/KPI/表格/保存载荷/导出仍留在各屏——数值计算一格都不在这里。
+// 保存外壳、导入接线。行定义/取值口径/表格/保存载荷/导出仍留在各屏——数值计算一格都不在这里。
 import { ref, computed, watch, onMounted, type Ref } from 'vue'
 import { companyApi } from '@/api/ledger'
 import { reportApi } from '@/api/report'
 import type { CompanyDTO, YearMonthsDTO } from '@/types/ledger'
 import type { ReportPeriodDTO, ReportSaveRequest } from '@/types/report'
-import type { ImportResultDTO } from '@/types/import'
 import type { FinDialog } from '@/components/fin/FinDialogs.vue'
-import type { RailItem } from '@/components/fp/BookRail.vue'
-import type { ImportRec } from '@/components/import/FpImportModal.vue'
+import type { ImportPayload, SectionPick } from '@/components/import/FpImportModal.vue'
+import { settle, n0, type ImportDescribe, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
+import { TB_FIELDS } from '@/reports/trialBalance'
 import { loadExtraYears, saveExtraYears, buildYearRows } from '@/utils/matrixYears'
 import { REPORT_STEPS, periodLabel } from '@/nav/reportPeriod'
 import { periodOf, type DeepPeriod } from '@/nav/deepLink'
@@ -26,13 +26,13 @@ import { useDeepPeriod } from '@/composables/useDeepPeriod'
 import { maxSelectableYear } from '@/utils/yearGate'
 import { S } from '@/utils/lockScopes'
 import { useEditLock } from '@/composables/useEditLock'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import { useReviewStore } from '@/stores/review'
 import { useUiStore } from '@/stores/ui'
 import { tabMeta } from '@/stores/tabs'
 import { useScreen } from '@/composables/useTabShells'
 import type { ReviewStatus } from '@/types/review'
 import { runImport } from '@/utils/importRegistry'
-import { finMoney } from '@/utils/finFmt'
 import { useAuthStore } from '@/stores/auth'
 import { ask, askLeave } from '@/utils/ask'
 import { receipt } from '@/utils/receipt'
@@ -40,8 +40,8 @@ import { receipt } from '@/utils/receipt'
 /** 公司的最小形状。原先长在 FinCompanyPicker 上,那个整屏选择器已随四层动线退场。 */
 export interface FinCompany { id: number | string; name: string; short?: string }
 
-/** 一个月格:有没有数据 + 一行小字(净额预览)。原先长在 FinMonthGrid 上。 */
-export interface FinMonthMeta { month: number; hasData: boolean; preview?: string }
+/** 一个月格:有没有数据。2026-10-03 起不放金额(画布 09 ReportPickAmount 用户选 A:格子只说有没有数、审到哪)。 */
+export interface FinMonthMeta { month: number; hasData: boolean }
 
 // BookMonthMatrix 的 book 只是「有没有选中的东西」一个比特(见该组件 prop 注释)。
 // 模块级常量而非每次渲染新建 {}:身份稳定,不白白触发子组件重渲。
@@ -57,8 +57,6 @@ export function useFinStatementScreen(opts: {
   reviewKind: 'report-is' | 'report-bs' | 'report-tb'
   // 清屏内私有草稿态(选集;tb 还有科目增删计数与科目树回滚)。进出编辑、切月、保存后都走它。
   resetLocal: () => void
-  // 零值预览抑制:bs/tb 不存 'cur',后端 netPreview 恒 0,月卡显 ¥0.00 是误导 → 只标「已录入」。
-  zeroPreviewHidden?: boolean
   // 本期(读取或保存)到手后的屏内派生:tb 拷科目树工作副本。
   onPeriod?: (p: ReportPeriodDTO) => void
   // 切月时额外要清的屏内视图态(tb 的折叠集与搜索词);不随进出编辑清,故不并入 resetLocal。
@@ -68,10 +66,12 @@ export function useFinStatementScreen(opts: {
 }) {
   const { stmt } = opts
 
-  // 三大报表的录入 = report(RBAC §2)。无权时 L3 正文与 KPI 照常显示,只是没有「编辑模式」入口。
-  // 公司增删改是 master 的活,不在这里判 —— 左栏管理区那三个按钮由各屏按 master:edit 自判。
+  // 三大报表的录入 = report(RBAC §2)。无权时正文照常显示,只是没有「编辑模式」入口。
+  // 公司增删改写的是 management_company,归 master 不归 report(RBAC §5.6:删公司同事务级联删
+  // 该公司 monthly_ledger + report_*)—— 公司下拉底部那三颗与空态「新增公司」吃 canManageCo。
   const auth = useAuthStore()
   const canEdit = computed(() => auth.can('report:edit'))
+  const canManageCo = computed(() => auth.can('master:edit'))
 
   // ── 状态机 ───────────────────────────────────────────────
   // null 只在公司清单到手前存在(空库也可能一直是 null);'all' → 全部汇总(只读)
@@ -89,6 +89,7 @@ export function useFinStatementScreen(opts: {
   const yearMetas = ref(new Map<string, FinMonthMeta[]>())  // 分年月格缓存,键 `${公司}:${年}`
   const extraYears = ref<number[]>([])                  // 手工年(localStorage,屏+公司键)
   const period = ref<ReportPeriodDTO | null>(null)      // L3 服务端本期快照(读态源)
+  const periodErr = ref(false)                          // 本期没读到(画布 09 ReportStates):正文换 FPLoadError
   const draft = ref<Record<string, number>>({})         // L3 编辑草稿:key=`${rowKey}|${field}`
   const dlg = ref<FinDialog | null>(null)
   const dirty = computed(() => Object.keys(draft.value).length + (opts.extraDirty?.value ?? 0))
@@ -99,15 +100,12 @@ export function useFinStatementScreen(opts: {
   const finCompanies = computed<FinCompany[]>(() =>
     companies.value.map(c => ({ id: c.id, name: c.name, short: c.short })),
   )
-  /** 左栏的项:「全部汇总」置顶 + 各公司。公司没有版本,徽标位给「全部汇总」标家数。 */
-  const railItems = computed<RailItem[]>(() => [
-    { id: 'all', name: '全部汇总', tag: `${companies.value.length} 家` },
-    ...companies.value.map(c => ({ id: c.id, name: c.name })),
-  ])
+  /** 本月录没录:库里这一期一格金额都没有(画布 09「本月未录入」签;标题行只剩导出 + 编辑)。 */
+  const entered = computed(() => !!period.value && Object.keys(period.value.amounts ?? {}).length > 0)
 
   // ── 载入公司 ─────────────────────────────────────────────
-  // 进屏自动选中第一家:左栏常驻,「选公司」不再是一道门,没理由让人对着空占位再点一下。
-  // 不默认「全部汇总」——那一档要按公司数发 N 倍请求,当默认落点太贵;它在左栏第一项,一点即到。
+  // 进屏自动选中第一家:「选公司」不是一道门,没理由让人对着空占位再点一下。
+  // 不默认「全部汇总」——那一档要按公司数发 N 倍请求,当默认落点太贵;它在公司下拉第一项,一点即到。
   //
   // 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM&co=<公司 id | all> 从报表中心 / 期间条过来时直落那一期,跳过矩阵;
   // 只有年的链接(从损益附表跳回来就是这样)→ 停在矩阵,年份照样落到它说的那年;缓存实例停在正文时回矩阵。矩阵仍是**直接从侧栏进屏**时的门。
@@ -154,41 +152,27 @@ export function useFinStatementScreen(opts: {
   }
 
   // ── L2 载入年历 ──────────────────────────────────────────
-  // 单公司:reportApi.year;全部汇总:各公司 year 合并(hasData 取或,预览取和)。竞态守卫。
-  const showPreview = (v: number) => !opts.zeroPreviewHidden || !!v
+  // 单公司:reportApi.year;全部汇总:各公司 year 合并(hasData 取或)。竞态守卫。
+  // 月格不放金额(画布 09 ReportPickAmount 选 A):netPreview 不读,悬停也不出。
   const metaKey = (y: number) => `${String(companyId.value)}:${y}`
   /** 当前公司当前年的 12 格 —— 正文态回矩阵时它已就绪。 */
   const yearMonths = computed<FinMonthMeta[] | null>(
     () => yearMetas.value.get(metaKey(year.value)) ?? null)
 
-  /** 取某一年的 12 格。单公司直查;全部汇总跨公司合并(hasData 取或,预览取和)。 */
+  /** 取某一年的 12 格。单公司直查;全部汇总跨公司合并(hasData 取或)。 */
   async function fetchYear(y: number): Promise<FinMonthMeta[]> {
-    if (isAll.value) {
-      const all = await Promise.all(companies.value.map(c => reportApi.year(stmt, c.id, y)))
-      return Array.from({ length: 12 }, (_, i) => {
-        const m = i + 1
-        let hasData = false, preview = 0
-        for (const yy of all) {
-          const mm = yy.months.find(x => x.month === m)
-          if (mm?.hasData) { hasData = true; preview += mm.netPreview }
-        }
-        return { month: m, hasData, preview: hasData && showPreview(preview) ? finMoney(preview) : undefined }
-      })
-    }
-    const yy = await reportApi.year(stmt, companyId.value as number, y)
-    return Array.from({ length: 12 }, (_, i) => {
-      const m = i + 1
-      const mm = yy.months.find(x => x.month === m)
-      return {
-        month: m, hasData: !!mm?.hasData,
-        preview: mm?.hasData && showPreview(mm.netPreview) ? finMoney(mm.netPreview) : undefined,
-      }
-    })
+    const all = isAll.value
+      ? await Promise.all(companies.value.map(c => reportApi.year(stmt, c.id, y)))
+      : [await reportApi.year(stmt, companyId.value as number, y)]
+    return Array.from({ length: 12 }, (_, i) => ({
+      month: i + 1,
+      hasData: all.some(yy => !!yy.months.find(x => x.month === i + 1)?.hasData),
+    }))
   }
 
   // 竞态守卫:快速切公司时丢弃先发出但后到达的过期响应
   let yearReq = 0
-  /** 只刷当前年(保存 / 导入后用:hasData 与预览会变)。 */
+  /** 只刷当前年(保存 / 导入后用:hasData 会变)。 */
   async function loadYear() {
     if (companyId.value == null) return
     const reqId = ++yearReq
@@ -224,7 +208,7 @@ export function useFinStatementScreen(opts: {
 
   // ── 矩阵年份行(数据年 ∪ 当前年 ∪ 手工年,连续补满;与台账同一套 utils/matrixYears) ──
   const EXTRA_SCREEN = `report-${stmt}`
-  interface MatrixCell { month: number; hasData: boolean; badge?: string; cur?: boolean
+  interface MatrixCell { month: number; hasData: boolean; cur?: boolean
                          review?: ReviewStatus | null }
   const matrixYears = computed(() => {
     if (companyId.value == null) return []
@@ -236,8 +220,7 @@ export function useFinStatementScreen(opts: {
       const months: MatrixCell[] = Array.from({ length: 12 }, (_, i) => {
         const mm = metas?.[i]
         // 空月不喂角标由 BookMonthMatrix 自己拦(v-if="m.hasData && m.review"),这里不重复判
-        return { month: i + 1, hasData: !!mm?.hasData, badge: mm?.preview,
-                 review: cellReview(r.year, i + 1) }
+        return { month: i + 1, hasData: !!mm?.hasData, review: cellReview(r.year, i + 1) }
       })
       return {
         year: r.year,
@@ -276,7 +259,8 @@ export function useFinStatementScreen(opts: {
   }, { immediate: true })
 
   // ── 期间条(设计稿 §3.2c):九张报表横跳不换期。与出账链链路条同一个组件 ──
-  const periodSteps = REPORT_STEPS
+  // 「全部汇总」只画三大报表三步(画布 09 ReportStates):附表 1–5 与收入核对没有「全部公司」这一档。
+  const periodSteps = computed(() => (isAll.value ? REPORT_STEPS.slice(0, 3) : REPORT_STEPS))
   const stripLabel = computed(() =>
     periodLabel(year.value, month.value, isAll.value ? '全部汇总' : companyName.value))
   /** 带着走的那一包(periodLink 形状,§4.2):p=YYYY-MM(矩阵态只有年)、co=公司 id | all;目标屏认得几个用几个,不认的原样传回来。 */
@@ -293,29 +277,54 @@ export function useFinStatementScreen(opts: {
     opts.onPeriod?.(data)
   }
   let periodReq = 0
+  // 本期在途(期间条换公司 / 重试 / 子类增删后重读):旧内容原地退让 + 顶边进度线(LAYOUT-STABILITY §7.1 换筛选档),
+  // 屏上 .fp-stale 与 FPLoadBar 都吃 veil(熬过 200ms 才亮)。
+  const periodBusy = ref(false)
+  const veil = useDeferredFlag(periodBusy)
+  /** 读本期。没读到 → periodErr(正文换 FPLoadError,屏上不显示上一次读到的数字)。 */
   async function loadPeriod() {
     if (companyId.value == null || month.value == null) return
     const reqId = ++periodReq
-    const data = isAll.value
-      ? await reportApi.allPeriod(stmt, year.value, month.value)
-      : await reportApi.period(stmt, companyId.value as number, year.value, month.value)
-    if (reqId === periodReq) setPeriod(data)
+    periodBusy.value = true
+    try {
+      const data = isAll.value
+        ? await reportApi.allPeriod(stmt, year.value, month.value)
+        : await reportApi.period(stmt, companyId.value as number, year.value, month.value)
+      if (reqId === periodReq) { periodErr.value = false; setPeriod(data) }
+    } catch {
+      if (reqId === periodReq) { period.value = null; periodErr.value = true }
+    } finally {
+      if (reqId === periodReq) periodBusy.value = false
+    }
   }
 
-  // ── 状态迁移(两层:左栏选公司 → 矩阵点月格 → 正文) ────────
+  // ── 状态迁移(两层:公司下拉选公司 → 矩阵点月格 → 正文) ────────
   /** 离开确认里的「这页」:公司 · 期(屏名由屏自己给,这里不拼,见 reviewLabelOf 注释)。 */
   const pageLabel = () => [companyName.value, periodOf(year.value, month.value)].filter(Boolean).join(' · ')
-  /** 左栏点一项。'all' = 全部汇总(只读)。编辑态切公司会丢草稿,先问(0 处改动 askLeave 直接放行)。 */
-  async function pickCompany(id: number | string) {
+  /** 公司下拉点一项。'all' = 全部汇总(只读)。编辑态切公司会丢草稿,先问(0 处改动 askLeave 直接放行)。
+   *  keepPeriod:从**期间条**那颗下拉换公司 = 换公司不换期,直接落新公司的同一期(矩阵在后台照常刷);
+   *  矩阵标题那颗下拉不传,停在新公司的矩阵。
+   *  换公司不换期是「换筛选」档(LAYOUT-STABILITY §7.1):month / period 不清,旧表原地退让(veil)等新的一期到手,
+   *  不落 v-else 转圈 —— 改前整页(期间条 + 标题行 + 表)卸掉再装回,刚点的下拉跟着闪没。 */
+  async function pickCompany(id: number | string, keepPeriod = false) {
     if (id === companyId.value) return
     if (edit.value && !(await askLeave({ page: pageLabel(), count: dirty.value, verb: '离开' }))) return
     if (id === companyId.value) return   // 问的这会儿别处已经切过去了
+    const keep = keepPeriod && month.value != null
     companyId.value = (id === 'all' ? 'all' : Number(id))
-    month.value = null; edit.value = false; draft.value = {}; period.value = null
+    edit.value = false; draft.value = {}
+    if (!keep) { month.value = null; period.value = null; periodErr.value = false }
     opts.resetLocal()
     gateYears.value = null
     // 月格缓存按公司分键,不清 —— 切回看过的公司旧卡先显、到位原位翻牌
     extraYears.value = loadExtraYears(EXTRA_SCREEN, String(companyId.value))
+    if (keep) {
+      opts.onPickMonth?.()
+      const gates = loadGateYears().then(loadMatrix).catch(() => { /* 拉失败保持旧值 */ })
+      await loadPeriod()
+      await gates
+      return
+    }
     await loadGateYears()
     await loadMatrix()
   }
@@ -323,13 +332,13 @@ export function useFinStatementScreen(opts: {
   async function pickCell(y: number, m: number) {
     year.value = y; month.value = m; edit.value = false; draft.value = {}
     opts.resetLocal(); opts.onPickMonth?.()
-    period.value = null
+    period.value = null; periodErr.value = false
     await loadPeriod()
   }
   /** 正文态「换期」回矩阵。保存/导入可能让空月转有数据 → 顺手刷一遍。 */
   function backToMatrix() {
     if (edit.value) cancelEdit()
-    month.value = null
+    month.value = null; periodErr.value = false
     // 不 await:竞态守卫已有,旧卡先显后替不闪空
     loadGateYears().then(loadMatrix).catch(() => { /* 拉失败保持旧值,不抛 unhandledrejection */ })
   }
@@ -340,7 +349,7 @@ export function useFinStatementScreen(opts: {
   const lockScope = () => S.report(stmt, companyId.value, year.value, month.value)
   // 被接管时**只退编辑态,不清草稿** —— 他还要把没保存的东西复制走。
   // 改动数接进 auth.editors:页签橙点、关页签 / 退出登录的离开确认都按它(0 处不弹)
-  const lock = useEditLock(() => { edit.value = false }, () => canEdit.value, () => dirty.value)
+  const lock = useEditLock(() => { edit.value = false }, () => canEdit.value, () => dirty.value, ['report:edit'])
   const { lockedBy, evictedBy } = lock
   /** 这一期此刻被谁占着 —— 取自在场表，不用点按钮撞门（设计稿 C-2）。 */
   const heldByOther = lock.watchScope(lockScope)
@@ -425,7 +434,9 @@ export function useFinStatementScreen(opts: {
   // 保存:屏只给本期载荷(懒构造,与原先「先关确认再算 cells」的时序一致),
   // 其余(saving 闸 / 整期回写 / 清草稿 / 刷月历 / 失败提示)三屏一致。
   async function save(buildBody: () => ReportSaveRequest) {
-    if (companyId.value == null || month.value == null || isAll.value) return
+    // 本期没在手(编辑中重读失败 → period=null)不存:各屏载荷 = period 的值 + 草稿覆盖,period 为空时
+    // 没改的格全按 0 不进载荷,后端整期 clear+insert 会把这一期其余金额全删掉。标题行「保存」同时禁用。
+    if (companyId.value == null || month.value == null || isAll.value || !period.value) return
     saveConfirm.value = false
     saving.value = true
     try {
@@ -445,8 +456,7 @@ export function useFinStatementScreen(opts: {
   }
 
   // ── 公司增删改 ────────────────────────────────────────────
-  // 左栏管理区的三个动作。原先长在整屏选择器的公司卡上(行内 hover),
-  // 那一层退场后改为**作用于当前选中的那一家** —— 左栏高亮的就是它,没有歧义。
+  // 公司下拉底部的三个动作(画布 09 ReportIS),**作用于当前选中的那一家** —— 下拉里打勾的就是它,没有歧义。
   function onNewCompany() { dlg.value = { type: 'company', mode: 'new' } }
   function onEditCompany(c?: FinCompany) {
     const t = c ?? (company.value ? { id: company.value.id, name: company.value.name } : null)
@@ -487,7 +497,7 @@ export function useFinStatementScreen(opts: {
       await companyApi.remove(Number(t.id))
       const gone = companyId.value === t.id
       companies.value = await companyApi.list()
-      // 删的是当前选中那家 → 左栏还得有个落点(原来退回整屏选择器,那一层已经没有了)
+      // 删的是当前选中那家 → 下拉还得有个落点(原来退回整屏选择器,那一层已经没有了)
       if (gone) {
         companyId.value = null
         if (companies.value.length) await pickCompany(companies.value[0].id)
@@ -502,9 +512,9 @@ export function useFinStatementScreen(opts: {
 
   // ── 导入 Excel(合并多公司 → 逐公司段,未匹配公司自动新建)───────
   // 仅单公司 + 已选月可导入(isAll / 未选月由模板按钮禁用兜底)。目标期 = 当前 year/month。
+  // 点导入后弹窗不关(画布 11 ImportOne / ImportDone / ImportFail;UI-OVERLAY-SPEC §8):onImport 是弹窗的 runner,
+  // 单次请求 —— 进度卡只画「还在动」,写完原地出结果卡(分公司明细);失败抛给弹窗出失败卡(审核闸照后端原句),不走回执。
   const importing = ref(false)
-  const importResult = ref<ImportResultDTO | null>(null)
-  const importSummary = ref('')
   /** 「导入」按钮:草稿会在导入后被整期替换掉(见下方 onImport 里的 cancelEdit),
    *  所以确认必须前移到**打开弹窗之前** —— 原先那句丢弃发生在文件已解析、导入已落库之后,
    *  用户走到那一步已经没有回头路了,等于无声吞掉整期录入。 */
@@ -519,33 +529,50 @@ export function useFinStatementScreen(opts: {
     }
     importing.value = true
   }
-  async function onImport(picks: { label?: string; records: ImportRec[] }[], fileName: string) {
-    importing.value = false
-    if (month.value == null) return
-    try {
-      importResult.value = await runImport(`report_${stmt}`, picks, { year: year.value, month: month.value }, fileName)
-      importSummary.value = picks.map(p => `${p.label ?? ''}:${p.records.length} 行`).join('\n')
-      if (edit.value) cancelEdit()                 // 导入=整期替换:先退出编辑(未保存草稿作废)再重拉
+  /** 一家公司一段;公司名为空的段 registry 的 report_* run 直接跳过,这里同口径不计 */
+  const importSecs = (payload: ImportPayload) => (payload as SectionPick[]).filter(s => (s.label ?? '').trim())
+  /** 一段写几格 —— 照 registry report_* run 拼 cells 的口径:is 每行本月 + 本年累计两格;bs 每行一格;tb 八个金额字段非 0 才落 */
+  const cellsOf = (s: SectionPick) => stmt === 'is' ? s.records.length * 2
+    : stmt === 'bs' ? s.records.length
+    : s.records.reduce((a, r) => a + TB_FIELDS.filter(f => Number((r.amounts as Record<string, unknown> | undefined)?.[f.key])).length, 0)
+  /** 进度卡标题「正在导入 6,907 格」+「6 家公司 · 2025 年 10 月」,五步(画布 ImportOne;最后一步「刷新本期」→ 结果卡「本期已刷新」) */
+  function describeImport(payload: ImportPayload): ImportDescribe {
+    const secs = importSecs(payload)
+    const count = secs.reduce((a, s) => a + cellsOf(s), 0)
+    return {
+      count, unit: '格',
+      meta: `${secs.length} 家公司 · ${year.value} 年 ${month.value} 月`,
+      steps: [stmt === 'tb' ? '读取工作簿' : '读取文件', '核对公司', `写入 ${n0(count)} 格`, '记下这次导入', '刷新本期'],
+    }
+  }
+  async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
+    if (month.value == null) return null
+    const secs = importSecs(payload)
+    if (stmt === 'tb') p?.note(0, `${secs.length} 张余额表`)
+    // registry 核完公司调 p.note('核对公司') + p.stage('写入');整单被拒时 p.kept(「新建的 N 家公司已留下」)
+    const res = await runImport(`report_${stmt}`, payload, { year: year.value, month: month.value, _run: p }, fileName)
+    if (edit.value) cancelEdit()                   // 导入=整期替换:先退出编辑(未保存草稿作废)再重拉
+    const out = await settle(res, p, async () => {
       companies.value = await companyApi.list()   // 可能自动新建了公司
       await loadPeriod()                           // 刷新本期(本公司若在导入名单则见新值)
+      if (periodErr.value) throw new Error('本期没读到')   // loadPeriod 自己吞错:照实报「本期没刷新上」
       await loadYear()
-    } catch (e) {
-      // 不带「重试」:期、编辑态这会儿可能都变了,重放一次导入会整期盖掉别的东西
-      receipt.fail(errMsg(e, '导入失败'))
-    }
+    })
+    // 分公司明细(画布 ImportDone 左卡「创显 830 科目 · 2,542 格」):后端逐段 clear+insert,发几格写几格
+    return { ...out, detail: secs.map(s => [s.label!.trim(), `${n0(s.records.length)} ${stmt === 'tb' ? '科目' : '项'} · ${n0(cellsOf(s))} 格`]) }
   }
 
   return {
-    canEdit, reviewKey, reviewNote, reviewTip, reviewLabelOf,
+    canEdit, canManageCo, reviewKey, reviewNote, reviewTip, reviewLabelOf,
     companyId, year, month, edit, saving, maxYear,
-    companies, companiesLoaded, yearMonths, period, draft, dirty, dlg,
+    companies, companiesLoaded, yearMonths, period, periodErr, entered, draft, dirty, dlg,
     isAll, company, companyName, finCompanies,
-    railItems, matrixYears, matrixBook, gateYears,
+    matrixYears, matrixBook, gateYears,
     periodSteps, stripLabel, stripQuery, deepNote,
     pickCompany, pickCell, backToMatrix, addEarlier, addLater, removeYear,
-    loadYear, loadMatrix, loadPeriod,
+    loadYear, loadMatrix, loadPeriod, veil,
     enterEdit, onTaken, lockedBy, evictedBy, heldByOther, lockScope, requestCancel, saveConfirm, finishEdit, save, onDiscard,
     onNewCompany, onEditCompany, onDeleteCompany, submitCompany,
-    importing, importResult, importSummary, onImport, requestImport,
+    importing, onImport, describeImport, requestImport,
   }
 }
