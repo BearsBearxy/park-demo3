@@ -65,7 +65,7 @@ type Amounts = Record<string, Record<string, number>>
 const TIE_META = {
   bs:     { label: '资产负债表平衡', a: '资产总计',             b: '负债和权益总计' },
   tb:     { label: '试算平衡',       a: '期末借方合计',         b: '期末贷方合计' },
-  income: { label: '营业收入交叉',   a: '利润表·营业收入(本月)', b: '附表10·四期合计' },
+  income: { label: '营业收入交叉',   a: '利润表·营业收入(本月)', b: '附表10·各期区合计' },
   recon:  { label: '收入核对',       a: '月度台账',             b: '附表10' },
 } as const
 

@@ -205,7 +205,7 @@ onBeforeUnmount(() => listen(false))
         </div>
         <div>
           <div class="pe-lb">备注</div>
-          <input v-model="note" class="pe-ta" type="text" placeholder="来源锚点，如「2023-08 源册 一期园区损耗!D5 +8000」" @keydown.enter="submit" />
+          <input v-model="note" class="pe-ta" type="text" placeholder="来源说明，如:供电局 8 月账单" @keydown.enter="submit" />
         </div>
       </div>
       <div class="pe-f">

@@ -1132,12 +1132,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDelEsc, true))
             <FPTenantPicker v-model="mForm.tenantId" :tenants="tenantOpts" placeholder="选择租户(可空)" />
           </div>
           <div class="mt-dlg-row">
-            <Input v-model="mForm.name" label="标识名(内部键,同区同类唯一)" placeholder="如:一车间总电" size="sm" />
+            <Input v-model="mForm.name" label="标识名(内部键,同区同类唯一)" placeholder="如:1号楼总电" size="sm" />
             <Input v-model="mForm.subName" label="表名称(可空)" placeholder="如:电表①" size="sm" />
           </div>
           <div class="mt-dlg-row">
             <Input v-model="mForm.factor" label="倍率(留空=1)" placeholder="如:500" size="sm" type="number" />
-            <Input v-model="mForm.area" label="区域(可空,区块名)" placeholder="如:A座 / 六车间" size="sm" />
+            <Input v-model="mForm.area" label="区域(可空,区块名)" placeholder="如:1号楼 / 研发楼" size="sm" />
           </div>
           <!-- §A.4 位置四件套:楼层/方位/房号是稳定主数据(排序+公摊按层分份),位置原文另兼导入匹配键 -->
           <div class="mt-dlg-row">
@@ -1146,7 +1146,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDelEsc, true))
           </div>
           <div class="mt-dlg-row">
             <Input v-model="mForm.roomNo" label="房号(可空)" placeholder="如:101室" size="sm" />
-            <Input v-model="mForm.spot" label="位置原文(可空,导入匹配键)" placeholder="如:四楼西侧101室" size="sm" />
+            <Input v-model="mForm.spot" label="位置原文(可空,导入匹配键)" placeholder="如:3楼东侧301室" size="sm" />
           </div>
           <div class="mt-dlg-row">
             <Input v-model="mForm.code" label="表编码(可空,导入首选身份键)" size="sm" />

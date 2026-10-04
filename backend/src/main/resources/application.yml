@@ -15,7 +15,11 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    # 两条迁移链(2026-10-04 用户拍板:产品卖给别的园区,每园一个库;我园生产照旧,不用设任何变量):
+    #   默认 = 老链 db/migration(V1–V137,混着我园数据,已冻结)+ db/common(V138 起,两条链共用)
+    #   新园区部署设 FLYWAY_LOCATIONS=classpath:db/baseline,classpath:db/common —— 空库起步,只有表结构 + 通用行
+    #   见 db/common/README.md、deploy/README-部署指南.md「新园区上线」;MigrationLayoutTest 钉着这个默认值
+    locations: ${FLYWAY_LOCATIONS:classpath:db/migration,classpath:db/common}
     baseline-on-migrate: false
   servlet:
     multipart:
@@ -35,6 +39,10 @@ app:
   cors:
     # dev 默认见 application-dev.yml；此处无兜底，非 dev profile 缺环境变量即 fail-fast（prod 须给前端域名白名单，逗号分隔）
     allowed-origins: ${CORS_ALLOWED_ORIGINS}
+  flyway:
+    # 空库遇到老链(混着我园数据)就拒绝启动,见 config/FlywayChainGuard(2026-10-04 用户拍板每园一个库)。
+    # 新园区漏写 FLYWAY_LOCATIONS 时靠它拦住;确实要在空库上重建我园,显式设 FLYWAY_ALLOW_LEGACY_ON_EMPTY=true
+    allow-legacy-on-empty: ${FLYWAY_ALLOW_LEGACY_ON_EMPTY:false}
   admin:
     password: ${ADMIN_PASSWORD:}                 # 留空=保留种子默认(仅 dev)；设置且 admin 仍是种子口令时改成它，改过之后不再覆盖
   viewer:

@@ -7,7 +7,7 @@ import {
   rentRollRefText, rentRollSentence, simulateRenewalDraws, wallOption,
   priorityReadout, priorityRefText, simulateRenewalRate, renewalRateBand, renewalRateLineOption, renewalRateReadout,
   sensitivityFinalRent, sensitivityRows, neededRatePct, sensitivitySentence,
-  sensitivityGapSentence, MEDIAN_FACTORY_RENT, MEDIAN_FACTORY_RENT_ASOF, medianFactoryRent,
+  sensitivityGapSentence,
   type RentPriorityRow,
 } from './expiry.logic'
 
@@ -782,52 +782,33 @@ describe('sensitivityFinalRent / sensitivityRows / neededRatePct(T7,design-board
   })
 })
 
-// F1(修复轮1,design-boards):板上收尾行——「历史XX% · 缺口XX万/月,约等于XX户中型厂房」。
-// 「中型厂房」口径查库定(park_demo3,2026-09-11):103 份候选"纯厂房类"合同(billing_term 全部
-// property_type='factory')按 isInForce(日期区间,不读 status 列——F3 对抗复查坐实的缺陷)过滤后
-// 剩 54 份真在租,monthly_rent 中位数 = ¥11,448.50/月,SQL 与候选数据见 expiry.logic.ts 里
-// medianFactoryRent 上面那段注释。下面的断言把这个数钉死——谁不查库就改常量或候选数据,
-// 用常量算出的期望值会跟着变,测试跟着红,不查库不敢动它。
-describe('sensitivityGapSentence(F1,修复轮1):板上收尾行——历史续签率的缺口,折算成约等于几户中型厂房', () => {
-  it('❗MEDIAN_FACTORY_RENT 钉死查库结果,不许拍脑袋改(park_demo3 2026-09-11:103 份候选、54 份真在租的中位数)', () => {
-    expect(MEDIAN_FACTORY_RENT).toBe(11448.5)
-  })
-
-  // F3(对抗复查):缺的断言就是这条——「在租」判据必须是 isInForce(日期区间),不能退回读 status 列。
-  // fixture 里两份候选:A 的 status 列(固定传 'active')与日期都显示"在租",B 的 endDate 早于 asOf
-  // (已到期,但 status 列同样会显示 'active',镜像库里的真实情况)。旧实现(status IN (...))会把
-  // B 也算进中位数总体;isInForce 必须把它排除。
-  it('❗medianFactoryRent:end_date 早于 asOf 的候选不得进入中位数总体(status 列不可信,镜像 F3 坐实的库内状态)', () => {
-    const inForceRow: [number, string, string] = [1000, '2020-01-01', '2099-12-31']   // 覆盖 asOf,真在租
-    const expiredRow: [number, string, string] = [9999999, '2020-01-01', '2025-01-01']   // endDate 早于 asOf,已到期
-    // 只有一份在租 → 中位数就是那一份的值,不是 9999999(若 9999999 混进来,中位数会被它带偏)
-    expect(medianFactoryRent([inForceRow, expiredRow], '2026-09-11')).toBe(1000)
-    // 两份都在租 → 中位数是两者平均(quantile 线性插值,n=2 时就是均值)
-    const bothInForce: [number, string, string] = [2000, '2020-01-01', '2099-12-31']
-    expect(medianFactoryRent([inForceRow, bothInForce], '2026-09-11')).toBe(1500)
-    // 全部已到期 → 没有在租样本,返回 null(不能瞎编一个中位数)
-    expect(medianFactoryRent([expiredRow], '2026-09-11')).toBeNull()
-    expect(medianFactoryRent([], '2026-09-11')).toBeNull()
-  })
-
-  it('MEDIAN_FACTORY_RENT_ASOF 与 SQL 注释锚点一致(全局约束①:显式传入,不读系统时钟)', () => {
-    expect(MEDIAN_FACTORY_RENT_ASOF).toBe('2026-09-11')
-  })
-
+// F1(修复轮1,design-boards):板上收尾行——「历史XX% · 缺口XX万/月,按租金中位数约等于XX户」。
+// 折算用的中位租金由调用方传(ExpiryView 传同屏「租金中位数」瓦的数)。2026-10-04 起不再写死我园的
+// 厂房中位租金(产品卖给别的园区);下面沿用 11448.5 只是一个测试用的数。
+const MED = 11448.5
+describe('sensitivityGapSentence(F1,修复轮1):板上收尾行——历史续签率的缺口,按租金中位数折算成约等于几户', () => {
   it('缺口为正:今天3,122,000,历史档(20%)final=2,582,800 → finalRentWan 258.3,缺口54万,约47户', () => {
     // rows 复用上面 describe 里同一份 fixture 的算法(lockedLast 2,147,000 / expiringRentSum
     // 2,179,000 / todayRent 3,122,000 / historicalP 0.2),独立在这里重新构造,不依赖外层变量。
     const rows = sensitivityRows(2147000, 2179000, 3122000, 0.2)
     // gap = todayRent(3,122,000) − finalRentWan(258.3)×10000(2,583,000) = 539,000
     // gapWan = round(53.9) = 54;units = round(539000 / 11448.5) = round(47.08..) = 47
-    expect(sensitivityGapSentence(rows, 3122000)).toBe('历史20% · 缺口54万/月,约等于47户中型厂房')
+    expect(sensitivityGapSentence(rows, 3122000, MED)).toBe('历史20% · 缺口54万/月,约合47份合同的中位租金')
   })
 
-  it('❗户数下限钉在 1 户:缺口摆在(比"中型厂房"大得多的口径下)四舍五入会到 0 户也不说「约等于0户」', () => {
-    // 同一份 rows(gap=539,000),换一个夸张大的 medianFactoryRent(1e9)——不下限的话
-    // round(539000/1e9)=round(0.00054)=0,「约等于0户中型厂房」和「缺口0万」是同一类读不通。
+  it('❗户数下限钉在 1 户:中位租金比缺口大得多、四舍五入会到 0 户时也不说「约等于0户」', () => {
+    // 同一份 rows(gap=539,000),换一个夸张大的中位租金(1e9)——不下限的话
+    // round(539000/1e9)=round(0.00054)=0,「约等于0户」和「缺口0万」是同一类读不通。
     const rows = sensitivityRows(2147000, 2179000, 3122000, 0.2)
-    expect(sensitivityGapSentence(rows, 3122000, 1e9)).toBe('历史20% · 缺口54万/月,约等于1户中型厂房')
+    expect(sensitivityGapSentence(rows, 3122000, 1e9)).toBe('历史20% · 缺口54万/月,约合1份合同的中位租金')
+  })
+
+  it('❗拿不到中位租金(没传 / 0 / NaN):有缺口也整句不出,不拿别处的数折算', () => {
+    const rows = sensitivityRows(2147000, 2179000, 3122000, 0.2)
+    expect(sensitivityGapSentence(rows, 3122000)).toBeNull()
+    expect(sensitivityGapSentence(rows, 3122000, null)).toBeNull()
+    expect(sensitivityGapSentence(rows, 3122000, 0)).toBeNull()
+    expect(sensitivityGapSentence(rows, 3122000, NaN)).toBeNull()
   })
 
   it('❗缺口为负(续签足够守住今天):不许说「缺口 −X 万」这种读不通的话,改说已经守住', () => {
@@ -859,7 +840,8 @@ describe('sensitivityGapSentence(F1,修复轮1):板上收尾行——历史续�
 
   it('句子 ≤30 可见字、不含 p/q/σ/标准差/z分数/置信', () => {
     const rows = sensitivityRows(2147000, 2179000, 3122000, 0.2)
-    const s = sensitivityGapSentence(rows, 3122000)
+    const s = sensitivityGapSentence(rows, 3122000, MED)
+    expect(s).not.toBeNull()
     expect([...(s as string)].length).toBeLessThanOrEqual(30)
     expect(s).not.toMatch(/[pq]|σ|标准差|z\s*分数|置信/)
   })

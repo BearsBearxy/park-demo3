@@ -36,7 +36,7 @@ ssh root@<IP> "cd /opt && tar xzf demo3.tgz && rm demo3.tgz"
 ```bash
 cd /opt/demo3
 bash deploy/server-setup.sh          # 装 Docker+Compose+镜像加速+swap(一次性)
-bash deploy/gen-env.sh <公网IP>      # 生成 .env:随机 DB/JWT/admin/viewer 口令,prod profile
+bash deploy/gen-env.sh <公网IP>      # 生成 .env:随机 DB/JWT/admin 口令,prod profile,迁移走起点链(新园区空库起步,见 §9)
 docker compose up -d --build         # 构建+启动三容器
 ```
 
@@ -55,8 +55,8 @@ docker compose up -d --build         # 构建+启动三容器
 
 ```bash
 docker compose ps        # 三个服务 STATUS 应为 healthy(mysql 初始化约 1-2 分钟)
-docker compose logs backend | grep -E "Migrating|viewer|Started"
-# 应看到: Flyway 迁移到 v32 / "viewer (read-only) user created" / "Started Demo3Application"
+docker compose logs backend | grep -E "Migrating|Started"
+# 应看到: Flyway 迁移到最新版本(新园区从 "137 - baseline" 起,见 §9) / "Started Demo3Application"
 curl -sI http://localhost/ | grep -iE "x-frame-options|x-content-type|referrer-policy|content-security"
 # 应看到四个安全响应头(nginx 下发,防点击劫持/MIME 嗅探/来源泄露/外链脚本注入)
 ```
@@ -71,13 +71,13 @@ curl -sI http://localhost/ | grep -iE "x-frame-options|x-content-type|referrer-p
       | docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" park_demo3'
     docker compose restart backend
     ```
-- **viewer / 生成的 VIEWER_PASSWORD**：只读账号，**发这个给测试者**（任何编辑/导入/删除会被拦截并提示）
+- **viewer**：2026-10-04 起 gen-env 不再生成 `VIEWER_PASSWORD`，新部署不建只读账号 ——建在客户库里就是一个客户不知道、口令在我们手里的账号。我园服务器 `.env` 里原有的那一行照旧生效
 
 ~~⚠️ 测试期为明文 HTTP~~ —— 2026-08-30 已上 HTTPS（§8）。口令不再明文过网，`http://` 与裸 IP 均已关闭。
 仍建议口令一对一私发：HTTPS 保护的是传输链路，保护不了发错人。
 
-数据说明：全新库由 Flyway 自动建表并灌入**演示数据**（演示楼栋/租户/合同/台账），测试者开箱即有数据可点。
-不是你本机的真实数据——真实数据涉及 313 户租户财务明细，放公网前需单独决策（见第 7 节）。
+数据说明：gen-env 生成的 `.env` 走起点链，全新库只有表结构 + 通用行（见 §9），没有任何楼栋 / 租户数据。
+老链 `db/migration` 灌进去的**不是演示数据，是我园的真实数据**（楼栋、租户、电表、单价、台账、工资），只给我园自己的环境用；空库遇到老链默认拒绝启动（`FlywayChainGuard`，2026-10-04）。
 
 ## 5.5 自动发布（CD，2026-07-13 起启用；2026-08-13 改为镜像分发）
 
@@ -112,12 +112,14 @@ docker compose exec mysql sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" park_
 ```
 
 故障排查一则：如果改过/重生成过 `.env` 里的 `DB_PASSWORD`，MySQL 数据卷里还是旧口令，backend 会连不上库。
-测试期数据可弃时用 `docker compose down -v && docker compose up -d` 重置（**-v 会清空全部数据**，重新灌演示种子）。
+测试期数据可弃时用 `docker compose down -v && docker compose up -d` 重置（**-v 会清空全部数据**；之后按 `.env` 里的迁移链重新起库：起点链 = 空库，老链在空库上默认拒绝启动）。
 
 ## 7. 将来"正式给很多人用"之前的清单（测试期不用做）
 
 按顺序：
-1. **拆 Flyway 演示种子**（审计已立项：seed 与 schema 同目录，正式库会混入演示数据）——上真实数据前必修
+1. ~~**拆 Flyway 演示种子**（审计已立项：seed 与 schema 同目录，正式库会混入演示数据）——上真实数据前必修~~ ——
+   **2026-10-04 已拆，见 §9**。做法与当初设想不同：老链 `db/migration`（V1–V137，混着我园数据）原样冻结、我园生产继续跑它；
+   新园区从 `db/baseline/V137__baseline.sql`（只有表结构 + 通用行）空库起步；V138 起的迁移写在 `db/common`，两条链共用
 2. 真实数据迁移：本机 `mysqldump` → scp → 导入（此时不再走演示种子）
 3. ~~域名 + HTTPS~~ —— **2026-08-30 已完成，见 §8**。实际与当初设想有两处不同：
    本机在香港地域，**免 ICP 备案**，买完域名当天就切完；HSTS 最终下在 Caddy 而非 `frontend/nginx.conf`
@@ -192,3 +194,35 @@ cd /opt/demo3 && cp .env.bak .env && docker compose --profile https rm -sf caddy
   跑稳几周后再考虑。
 - CD 的健康检查（`ci.yml`）查 `https://atrilink.com/`，`curl` 默认校验证书，因此顺带看住了续期 ——
   续期挂了会在下次部署暴露，而不是等用户报错。
+
+## 9. 新园区上线（每园一个库，2026-10-04 起）
+
+用户 2026-10-04 拍板：产品卖给别的园区，程序跑在我们的服务器上，客户只用浏览器；**每个园区一个自己的库**，
+客户能读到库里的一切。所以新园区的库**不能跑老迁移链**（`db/migration` 里混着我园的楼栋、租户、电表、单价、台账、工资），
+要从起点链空库起步。我园自己的生产什么都不用改（`.env` 里不写 `FLYWAY_LOCATIONS` = 老链，和以前一样）。
+
+| 迁移链 | `FLYWAY_LOCATIONS` | 起步后库里有什么 |
+|---|---|---|
+| 老链（我园生产、开发、测试） | 不写（默认 `classpath:db/migration,classpath:db/common`） | 我园全部历史数据，照旧 |
+| 起点链（新园区） | `classpath:db/baseline,classpath:db/common` | 全部表结构 + 内置角色/权限 + 一个 admin + 光伏判据线默认值；其余业务表全空。程序首次启动会自动建账册：每个管理公司一本台账册、附表10 四本期区册（一期厂房 / 二期厂房 / 三期厂房 / 宿舍区）和「台账通用模板」 |
+
+步骤（在 §4 的基础上多一步，**必须在第一次 `up` 之前**）：
+
+```bash
+bash deploy/gen-env.sh <该园区的域名或IP>       # 生成 .env(随机 DB/JWT/admin 口令,已写好起点链 FLYWAY_LOCATIONS,不建只读账号)
+grep FLYWAY_LOCATIONS .env                      # 确认是 classpath:db/baseline,classpath:db/common
+docker compose up -d                             # mysql 卷是新的 = 空库
+docker compose logs backend | grep -E "Migrating schema|Successfully applied|admin password"
+# 应看到: Migrating schema ... to version "137 - baseline" / Successfully applied 1 migration(以后会多出 V138+)
+#         admin password reset from app.admin.password
+```
+
+- **库必须是空的**（新建的 database，一张表都没有）。客户自己开的云数据库（RDS）同理：建一个空库给我们，后端连过去。
+  ⚠ 现在的 compose 把 `DB_HOST/DB_PORT/DB_USER` 写死为同机的 mysql 容器、库名用默认 `park_demo3`，连外部 RDS 要先改 compose 转这几项。
+- **`.env` 里没有起点链就 `up` 了**（手写的 `.env`、或删掉了那一行）：空库遇到老链，后端拒绝启动，日志里是「空库不能跑老迁移链」，库里什么都没写 —— 补上 `FLYWAY_LOCATIONS` 再 `up` 即可（`FlywayChainGuard`）。
+  拦截只认空库。万一绕过了拦截（设过 `FLYWAY_ALLOW_LEGACY_ON_EMPTY=true`）把老链灌了进去：同机 mysql 卷用 `docker compose down -v` 清掉重来；**外部 RDS 一旦灌入就视为已泄露** —— 快照、binlog、自动备份都在客户手里，删库收不回来，按数据泄露处理。
+- **首次登录**：`admin` / `.env` 里的 `ADMIN_PASSWORD`（起点脚本里的种子口令 admin123 在首次启动时被换掉），显示名「管理员」。
+  进系统后从「系统管理」建该园区的账号和角色，从「楼栋 / 租户 / 合同 / 表档案」开始录数据或走导入中心。
+- 检查库是干净的：`echo 'SELECT COUNT(*) FROM building; SELECT COUNT(*) FROM tenant;' | docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" park_demo3'` 都应是 0。
+- 以后的迁移只写进 `backend/src/main/resources/db/common`（V138 起），两条链都会跑，**不许写任何园区的数据**；
+  `db/migration` 和 `db/baseline` 都冻结了（见各目录 README，`MigrationLayoutTest` 会查）。

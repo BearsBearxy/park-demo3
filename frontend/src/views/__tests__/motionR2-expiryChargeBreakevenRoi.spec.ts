@@ -322,7 +322,7 @@ describe('盈亏平衡与敏感性', () => {
 })
 
 // ── 光伏投资回收 ─────────────────────────────────────────────────────
-const PHASES: PvPhaseDTO[] = [{ id: 'p1', name: '一期', short: '一期', online: '2024-01' }]
+const PHASES: PvPhaseDTO[] = [{ id: 'p1', name: '一期', short: '一期', online: '2024-01', cost: 14_786_883.99 }]
 const rec = (i: number, fee: number): PvRecordDTO => ({
   id: i, phase: 'p1', phaseName: '一期', acctMonth: `2025-0${i}`, occurMonth: `2025-0${i}`,
   selfKwh: 1000, selfAmt: fee * 0.6, gridKwh: 500, gridAmt: fee * 0.4, gen: 1500, fee, note: null, source: 'manual',
@@ -397,6 +397,25 @@ describe('光伏投资回收', () => {
     expect(w.find('.roi2-bar-fill').element, '进度条被重挂了').toBe(fill)
     expect(fill.style.getPropertyValue('--pct')).toBe('54.0%')
     charts(w).forEach((el, i) => expect(el, `第 ${i} 张图被卸载重挂了`).toBe(before[i]))
+    saveAnaSettings({ pvInvestment: invest })
+    w.unmount()
+  })
+
+  // 2026-10-04 用户拍板产品卖给别的园区:投资额不再写死我园 1478.7 万 —— 没填取各期工程成本合计,两样都没有出空态
+  it('❗投资额没填:取各期工程成本合计;各期也没有成本就出空态,不按 0 算回收', async () => {
+    const invest = anaSettings.pvInvestment
+    saveAnaSettings({ pvInvestment: 0 })
+    vi.mocked(fetchPvPhases).mockResolvedValue([{ ...PHASES[0], cost: 10_000_000 }])
+    let w = mount(PvRoiView, STUBS)
+    await flushPromises()
+    // 累计 270 万 ÷ 各期成本合计 1000 万
+    expect((w.find('.roi2-bar-fill').element as HTMLElement).style.getPropertyValue('--pct')).toBe('27.0%')
+    w.unmount()
+    vi.mocked(fetchPvPhases).mockResolvedValue([{ ...PHASES[0], cost: null }])
+    w = mount(PvRoiView, STUBS)
+    await flushPromises()
+    expect(w.find('.roi2-bar').exists(), '没有投资额还画了回收进度').toBe(false)
+    expect(w.text()).toContain('光伏投资额未填')
     saveAnaSettings({ pvInvestment: invest })
     w.unmount()
   })

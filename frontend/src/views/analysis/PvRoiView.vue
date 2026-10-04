@@ -37,7 +37,10 @@ onMounted(async () => {
   }
 })
 
-const invest = computed(() => anaSettings.pvInvestment * 10000) // 设置为万元 → 元
+// 设置为万元 → 元;没填(0)按各期工程成本合计。两样都没有 → 下面出空态,不按 0 算回收
+const invest = computed(() => (anaSettings.pvInvestment > 0
+  ? anaSettings.pvInvestment * 10000
+  : phases.value.reduce((a, p) => a + (p.cost ?? 0), 0)))
 
 // ── 分期汇总(v1 rows 同口径)+ 全园合计 ──
 const rows = computed(() => phaseSummaries(phases.value, records.value))
@@ -146,7 +149,9 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
   <!-- §五:期间无关屏(全周期累计,pv_record 全月份),隐期间控件显口径徽章 -->
   <AnaShell period-mode="none" scope-chip="全周期累计">
     <template #kpis>
-      <AnaKpiTile label="工程总投资（含税）" :value="finWan(invest)" note="右上「目标与阈值」设置" />
+      <!-- 投资额两个来源:设了用设的,没设用各期工程成本合计(库里只记了成本,没记含不含税,标签不写「含税」) -->
+      <AnaKpiTile label="工程总投资" :value="finWan(invest)"
+        :note="anaSettings.pvInvestment > 0 ? '目标与阈值里设定' : '各期工程成本合计'" />
       <AnaKpiTile label="累计电费收益" :value="finWan(tot.cum)" :note="cumPts.length + ' 个记账月'" />
       <AnaKpiTile label="综合回收进度" :value="rpct(tot.recovery)" note="= 累计收益 ÷ 总投资" />
       <AnaKpiTile label="年化电费收益" :value="finWan(tot.annual)" note="按各期已记账月折算" />
@@ -214,6 +219,11 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
         hint="附表6 尚无逐月自消纳 / 上网电费记录,无法计算累计收益与回收进度"
         to="/pv-income"
         to-text="去录入光伏收益"
+      />
+      <AnaEmpty
+        v-else-if="!(invest > 0)"
+        label="光伏投资额未填"
+        hint="点右上角「目标与阈值」，填光伏投资（万元）后才能算回收进度；这个数只存在本浏览器"
       />
 
       <template v-else>

@@ -238,7 +238,7 @@ public class PvService {
     }
 
     private static PvPhaseDTO toPhaseDTO(PvPhase p) {
-        return new PvPhaseDTO(p.getId(), p.getName(), p.getShortName(), p.getOnline());
+        return new PvPhaseDTO(p.getId(), p.getName(), p.getShortName(), p.getOnline(), p.getCost());
     }
 
     private static PvRecordDTO toRecordDTO(PvRecord r, String phaseName) {

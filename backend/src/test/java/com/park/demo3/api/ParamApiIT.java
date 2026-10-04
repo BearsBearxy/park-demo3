@@ -144,14 +144,14 @@ class ParamApiIT extends AbstractMysqlIT {
         List<String> dec = jdbc.queryForList("select scope from alloc_cfg where cfg_key='extra_qty' and acct_month='2023-12'", String.class);
         if (!dec.isEmpty()) assertEquals(-1470.0, num(one(rows("2023-12", "all"), "extra_qty", dec.get(0)).get("value")));
         // 基数键池(A东侧货梯 base_key=elevator_area_base):不出可编辑分摊基数行,改只读行:值=那条面积基数参数的值(千分位+单位),
-        // 命中链末项「取自「A座电梯分摊面积基数」」,并按版本链取值
+        // 命中链末项「取自「电梯分摊面积基数」」(2026-10-04 标签去掉我园的「A座」),并按版本链取值
         String elev = "rule:" + jdbc.queryForObject("select id from alloc_rule where base_key='elevator_area_base' and zone='p1' order by id limit 1", Integer.class);
         Map<String, Object> e = one(rows("2024-02", "p1"), "coefficient", elev);
         assertEquals(false, e.get("editable"));
         assertEquals("12,487.04 ㎡", e.get("valueText"));
         assertEquals("2024-02 起长期", e.get("rangeText"));
         List<?> ec = (List<?>) e.get("sourceChain");
-        assertEquals("取自「A座电梯分摊面积基数」", ec.get(ec.size() - 1), ec.toString());
+        assertEquals("取自「电梯分摊面积基数」", ec.get(ec.size() - 1), ec.toString());
         assertEquals("一期:12,487.04 ㎡", ec.get(0));
         Map<String, Object> e08 = one(rows("2023-08", "p1"), "coefficient", elev);
         assertEquals("14,818.35 ㎡", e08.get("valueText"));

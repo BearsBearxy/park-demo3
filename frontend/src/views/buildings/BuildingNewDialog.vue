@@ -70,7 +70,7 @@ function submit() {
         <div class="lg-dlg-b fp-fsheet-bd">
           <div class="lg-dlg-lab">楼栋名称</div>
           <input ref="inputRef" class="lg-dlg-in" :class="{ err }" v-model="name"
-                 placeholder="如:三期 G 栋"
+                 placeholder="如:1号楼"
                  @input="err = ''" @keydown.enter="submit" />
           <div class="bnd-grid">
             <div>

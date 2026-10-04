@@ -19,6 +19,28 @@
 import type { ReleaseNote } from '@/types/changelog'
 
 export const CHANGELOG: ReleaseNote[] = [
+  // 功能更新(RELEASE-NOTES-SPEC §2.1 第 2 问是:新增记账的单价默认值变了;第 3 问是:到期缺口折出来的份数变了)。
+  // 起因:2026-10-04 用户拍板产品要卖给别的园区,新园区从干净的起点建库(db/baseline),客户看得见的地方不再带我园的名字和数。
+  // 我园用户看得见的只有下面四条;起点链、迁移守卫、FlywayChainGuard、部署指南 §9 是给部署的人看的,不写。
+  // 「办公水电」(侧栏名「办公·三期水电」带期区,changelog.spec 不许写,用屏内页签名):UtilitiesRecordDrawer 原来写死 0.8123/4.15、0.7965/3.85,现在取本年记账月最晚、单价大于 0 的那条(UtilitiesView.lastPrice)。
+  // 「到期墙与续约」:expiry.logic 删了 MEDIAN_FACTORY_RENT(¥11,448.50,只有我园的数),缺口改按同屏「租金中位数」瓦折算(buildExpiryStats.medRent)。
+  // 「计费参数」:ParamRegistry / paramRegistry.ts 的说明去掉租户名、楼栋名和月份(paramRegistry.spec 守卫)。
+  // 「催缴单」:billNoticeLogic.PACKAGE_LABEL 与悬浮(按 priceKey 渲染,已生成的单和导出也显新名);BillNoticeService 新生成行的备注同口径,
+  //   库里已有的旧备注不动。说明里不写旧名:更新记录每个客户都翻得到,旧名是我园用语(2026-10-04 文案复查)。
+  // 金额不变:只改说明、默认值和折算口径,收费算法没动。
+  {
+    version: '0.29.0',
+    date: '2026-10-04',
+    headline: '单价预填本年已录的价，缺口按中位租金折算',
+    added: [],
+    improved: [
+      { icon: 'plug', title: '办公水电', desc: '两个页签的新增记账，单价原来预填固定的数，现在取本年记账月最晚的电价和水价；没录过就空着。' },
+      { icon: 'calendar-clock', title: '到期墙与续约', desc: '「续签率变一档」的缺口原来按固定厂房租金折户数，现在按「租金中位数」折份数，份数会变。' },
+      { icon: 'sliders-horizontal', title: '计费参数', desc: '各参数的说明去掉了租户、楼栋、月份和具体数值，两个参数名也去掉了座号和年份。' },
+      { icon: 'file-check-2', title: '催缴单', desc: '包干那一行改叫「固定月额收取」了，悬浮说明也同步改了。' },
+    ],
+    fixed: [],
+  },
   // 小调整(RELEASE-NOTES-SPEC §2.1 四问都否):不改数的修复,不弹,只进铃铛「系统」一类。金额不变。
   // 修复核实(对照 master):SessionService.open 在提交前就把新 tv / sid 写进权限快照;同时跑的一次 UserPermissionCache.reload
   // (刚重启时 AdminInitializer 收尾那次、任何一次角色 / 账号保存)要是读到登录提交之前的库,就把 tv 改回旧的、sid 留新的,
@@ -229,7 +251,7 @@ export const CHANGELOG: ReleaseNote[] = [
   {
     version: '0.22.0',
     date: '2026-09-26',
-    headline: '池的电表和折入能按月改，二期合计会变',
+    headline: '池的电表和折入能按月改',
     feature: {
       icon: 'calendar-clock',
       title: '公共电核算的池能按月改',
@@ -240,7 +262,7 @@ export const CHANGELOG: ReleaseNote[] = [
     added: [],
     improved: [
       { icon: 'sliders-horizontal', title: '分摊标准小数位', desc: '原来在池的「高级」里改，现在到计费参数页改，能从某个月起改；新建池仍在「高级」里选。', to: 'params' },
-      { icon: 'sigma', title: '公共电核算的二期合计', desc: '五、六车间广告字灯池出应分摊，计入合计了。各月重新生成后才变，审过的月份和户的收费不变。', to: 'alloc' },
+      { icon: 'sigma', title: '公共电核算的期区合计', desc: '折给别的池的池也出应分摊，计入合计了。各月重新生成后才变，审过的月份和户的收费不变。', to: 'alloc' },
     ],
     fixed: [],
   },
@@ -306,7 +328,7 @@ export const CHANGELOG: ReleaseNote[] = [
   {
     version: '0.19.0',
     date: '2026-09-23',
-    headline: '楼栋损耗能填备注，一期多了一行总计',
+    headline: '楼栋损耗能填备注，多了一行对账总计',
     feature: {
       icon: 'pencil',
       title: '楼栋损耗',
@@ -315,7 +337,7 @@ export const CHANGELOG: ReleaseNote[] = [
       to: 'alloc-loss',
     },
     added: [
-      { icon: 'scale', title: '楼栋损耗的对账区', desc: '一期原来只对到 B–G 座，现在多一组含 A 座的总计。', to: 'alloc-loss' },
+      { icon: 'scale', title: '楼栋损耗的对账区', desc: '原来只对到共用供电的几栋，现在多一组全部楼栋的总计。', to: 'alloc-loss' },
     ],
     improved: [
       { icon: 'gauge', title: '公共电核算的用量单位', desc: '原来只有绑了多块表的池写单位，现在每个池都写：电「度」、水「吨」。', to: 'alloc' },
@@ -325,10 +347,10 @@ export const CHANGELOG: ReleaseNote[] = [
       { icon: 'siren', title: '园区抄表的期区', desc: '表的期区和它挂的楼栋对不上时，现在标「期区对不上」。', to: 'meters' },
     ],
     fixed: [
-      '楼栋损耗：一期的合计和对账行差一整栋，屏上没说为什么',
+      '楼栋损耗：合计和对账行差一整栋，屏上没说为什么',
       '公共电核算：只绑一块表的池，用量看不出是度还是吨',
       '公共电核算：下月才起租、或没有合同的租户，都被提示成「已退租」',
-      '园区抄表：一期的表里混进了一行二期二车间',
+      '园区抄表：一个期区的表里混进了别的期区的一行',
       '公共电核算：一楼租户被电梯池提示要加进去，加了也摊不到钱',
     ],
   },

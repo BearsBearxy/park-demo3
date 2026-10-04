@@ -700,7 +700,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       prefetchBillingContracts()
       return {
         title: '导入 合同计费行 · 月度租金工作簿',
-        sub: '上传月度租金工作簿(每租户一 sheet,含通知单块),每费项行 1:1 提取为计费行(位置×费项×计费方式)落到生效合同;银纳类多合同按位置自动路由(厂房/宿舍),同名多合同请勾选归属;流水账/无合同 sheet 须手录/须先建合同;导入后自动下载到户报告',
+        sub: '上传月度租金工作簿(每租户一 sheet,含通知单块),每费项行 1:1 提取为计费行(位置×费项×计费方式)落到生效合同;多合同户按位置自动路由(厂房/宿舍),同名多合同请勾选归属;流水账/无合同 sheet 须手录/须先建合同;导入后自动下载到户报告',
         templateCols: BILLING_TERM_TEMPLATE_COLS,
         parseWorkbook: (sheets: { name: string; matrix: string[][] }[]) => {
           const { sections, errors, report } = parseBillingTermsWorkbook(sheets, { contracts: billingContracts ?? [] })

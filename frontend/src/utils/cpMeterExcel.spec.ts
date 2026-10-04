@@ -64,17 +64,17 @@ describe('parseCpMeterRows — 表头别名/行级错误不整批拦', () => {
 })
 
 describe('buildCpMeterTemplateAoa — 模板结构', () => {
-  it('表头 + 两行示例(真实种子桩 快充1/万城万)', () => {
+  it('表头 + 两行示例(桩 快充1/慢充1)', () => {
     const aoa = buildCpMeterTemplateAoa()
     expect(aoa.length).toBe(3)
     expect(aoa[0]).toEqual(CP_METER_TEMPLATE_COLS)
     expect(aoa[1][1]).toBe('快充1')
-    expect(aoa[2][1]).toBe('万城万')
+    expect(aoa[2][1]).toBe('慢充1')
   })
   it('模板回导自洽:AOA 直接喂解析器 → 2 条零错误', () => {
     const { records, errors } = parseCpMeterRows(buildCpMeterTemplateAoa().map(r => r.map(String)))
     expect(errors).toEqual([])
-    expect(records.map(r => r.station)).toEqual(['快充1', '万城万'])
+    expect(records.map(r => r.station)).toEqual(['快充1', '慢充1'])
   })
 })
 

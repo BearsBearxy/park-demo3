@@ -508,7 +508,7 @@ const { note: deepNote } = useDeepPeriod({
         <label class="pnl-lbl">科目细分</label>
         <input
           class="pnl-in" :class="{ err: !!addErr }" v-model="addLabel"
-          placeholder="如:一期租金收入" @keydown.enter="submitAdd"
+          placeholder="如:厂房租金收入" @keydown.enter="submitAdd"
         />
         <div class="pnl-kind">识别为:<b>{{ KIND_TEXT[addKind] }}</b></div>
         <p class="fp-field-err"><template v-if="addErr">{{ addErr }}</template></p>

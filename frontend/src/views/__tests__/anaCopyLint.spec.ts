@@ -194,7 +194,7 @@ const READ_SLOTS: (string | null)[][] = [
   [priorityReadout(PRIORITY_SAMPLE, 2179000)],                                // ExpiryView.vue priorityRead 插值槽
   [renewalRateReadout(18, 90)],                                               // ExpiryView.vue renewalRateRead 插值槽
   [sensitivitySentence(SENSITIVITY_SAMPLE)],                                  // ExpiryView.vue sensitivityRead 插值槽
-  [sensitivityGapSentence(SENSITIVITY_SAMPLE, 3122000)],                      // ExpiryView.vue sensitivityGapRead 插值槽
+  [sensitivityGapSentence(SENSITIVITY_SAMPLE, 3122000, 11448.5)],             // ExpiryView.vue sensitivityGapRead 插值槽(第三参 = 同屏租金中位数)
   [unitRentReadout(28.11, PEER_SAMPLE, '期区一')],                             // TenantPeerView.vue readout 插值槽
   [phaseTableReadout(PHASE_TABLE_SAMPLE)],                                    // TenantPeerView.vue phaseTableRead 插值槽
   [elecTrapReadout(ELEC_SPREAD_SAMPLE)],                                      // TenantPeerView.vue elecRead 插值槽

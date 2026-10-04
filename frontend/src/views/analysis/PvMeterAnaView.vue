@@ -132,7 +132,8 @@ async function loadCrit(y: number): Promise<Criteria> {
       return typeof v === 'number' && isFinite(v) ? v : d
     }
     return {
-      anchorHours: n('pv_yield_anchor_h', DEFAULT_CRITERIA.anchorHours),
+      // 锚点没配 = 0 = 不判年等效(2026-10-04:默认 950 是我园实测,别的园区不能套),屏上写明没填
+      anchorHours: n('pv_yield_anchor_h', 0),
       coverMonth: n('pv_crit_cover_month', DEFAULT_CRITERIA.coverMonth),
       ledger: n('pv_crit_ledger', DEFAULT_CRITERIA.ledger),
       yieldRatio: n('pv_crit_yield_ratio', DEFAULT_CRITERIA.yieldRatio),
@@ -140,7 +141,8 @@ async function loadCrit(y: number): Promise<Criteria> {
       bandRun: n('pv_band_run', DEFAULT_CRITERIA.bandRun),
       minOnlineDays: DEFAULT_CRITERIA.minOnlineDays,
     }
-  } catch { return { ...DEFAULT_CRITERIA } /* 用默认值,屏照常出 */ }
+  // 接口失败:其余判据线用默认值、屏照常出;锚点照样按「没填」走 —— DEFAULT_CRITERIA 里的 950 是我园实测,不能套给别的园区
+  } catch { return { ...DEFAULT_CRITERIA, anchorHours: 0 } }
 }
 
 /** 上一年的抄表只有「绝对水平」档 A2 最右那列「比去年」要。别处不打这个接口。 */
@@ -559,7 +561,9 @@ onDeactivated(() => { drawerOpen.value = false })
                 <span class="hint">每千瓦装机一年发了多少度，比标杆多多少</span>
                 <span class="pma-badge">整年口径 · 与 {{ snap.year - 1 }} 比</span>
               </div>
-              <PvAnchorBars :data="anchor" :sel-id="selId" @pick="pickStation" />
+              <PvAnchorBars v-if="anchor.anchor > 0" :data="anchor" :sel-id="selId" @pick="pickStation" />
+              <AnaEmpty v-else label="年等效小时锚点没填" hint="在计费参数页填好「光伏年等效利用小时锚点」，这张图才画得出来"
+                        to="/params" to-text="去计费参数" />
             </div>
             <div v-if="ledgerSc" class="av2-card av2-s12">
               <div class="av2-card-h">

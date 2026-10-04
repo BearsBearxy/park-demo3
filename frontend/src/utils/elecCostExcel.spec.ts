@@ -108,14 +108,15 @@ describe('parseElecCostRows — 映射命中/月份双格式/行级错误不整�
 })
 
 describe('buildElecCostTemplateAoa — 模板结构与回导自洽', () => {
-  it('表头 + 示例行(真实种子表名),覆盖合计行/拆分行/电量可空', () => {
+  // 2026-10-04 用户拍板产品卖给别的园区:模板每个客户都下载得到,示例表名改中性的;拆分值域是我园四栋(暂缓),示例不演示拆分
+  it('表头 + 示例行(中性表名),覆盖合计行/电量可空,不演示拆分', () => {
     const aoa = buildElecCostTemplateAoa()
     expect(aoa[0]).toEqual(ELEC_COST_TEMPLATE_COLS)
     const meters = aoa.slice(1).map(r => r[0])
-    expect(meters).toContain('一期总表')
-    expect(meters).toContain('宿舍电表')
+    expect(meters).toContain('1号总表')
+    expect(meters).toContain('2号总表')
     expect(meters).toContain('水泵房')
-    expect(aoa.slice(1).some(r => r[2] !== '')).toBe(true)   // 至少一行拆分示例
+    expect(aoa.slice(1).every(r => r[2] === '')).toBe(true)
   })
   it('模板回导自洽:AOA 直接喂解析器 → 全行零错误', () => {
     const { records, errors } = parseElecCostRows(buildElecCostTemplateAoa().map(r => r.map(String)))

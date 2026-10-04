@@ -257,7 +257,7 @@ async function onClose() {
           <div class="cw-form">
             <label class="cw-f">
               <span>显示名 <em>*</em></span>
-              <input v-model="form.name" :class="{ bad: nameErr }" :disabled="!canEdit" placeholder="如:一泽" />
+              <input v-model="form.name" :class="{ bad: nameErr }" :disabled="!canEdit" placeholder="如:XX物业" />
               <span class="fp-field-err"><template v-if="nameErr">{{ nameErr }}</template></span>
             </label>
             <label class="cw-f">
@@ -266,7 +266,7 @@ async function onClose() {
             </label>
             <label class="cw-f wide">
               <span>法定全称</span>
-              <input v-model="form.fullName" :disabled="!canEdit" placeholder="如:佛山一泽科技有限公司;印在通知单落款与账户块" />
+              <input v-model="form.fullName" :disabled="!canEdit" placeholder="如:XX物业管理有限公司;印在通知单落款与账户块" />
             </label>
             <label class="cw-f chk">
               <input type="checkbox" :checked="form.status === 0" :disabled="!canEdit"
@@ -292,7 +292,7 @@ async function onClose() {
             </div>
 
             <FPEmpty v-if="(cur?.accounts?.length ?? 0) === 0 && acctEdit === null" size="sm"
-                     sub="没有账户的公司,通知单上整块账户信息省略(源册本来也有这种简化版)">还没有收款账户</FPEmpty>
+                     sub="没有账户的公司,通知单上整块账户信息省略">还没有收款账户</FPEmpty>
             <table v-else class="cw-table">
               <colgroup>
                 <col style="width:82px" /><col style="width:150px" /><col />

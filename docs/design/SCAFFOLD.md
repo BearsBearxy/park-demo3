@@ -51,7 +51,9 @@
 
 ### 2.4 数据库迁移
 
-- Flyway，文件放 `src/main/resources/db/migration/V<n>__<snake_case>.sql`。当前最大 V125，下一个是 **V126**。
+- Flyway，新迁移放 `src/main/resources/db/common/V<n>__<snake_case>.sql`，版本号从 **V138** 起（2026-10-04 拆成两条链：
+  `db/migration` 是我园生产的老链，冻结在 V137；新园区从 `db/baseline` 空库起步；`db/common` 两条链共用，
+  **不许写任何园区的数据**。见 `db/common/README.md`，`MigrationLayoutTest` 会查）。
 - 已经跑过的迁移不改；要改结构就加新版本。
 - Java 迁移只有 1 个（`src/main/java/db/migration/V35__Bill_pay_company_seed.java`），新迁移写 SQL。👁
 

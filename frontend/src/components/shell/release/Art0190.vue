@@ -1,20 +1,20 @@
 <script setup lang="ts">
 // 0.19.0 重点「楼栋损耗能填备注」的配图:表里两行的缩样,右边那格是备注输入框。
 // 字、色、几何照 LossLedgerView 抄(位置列 sans / 数字列 mono tabular-nums / 备注格 .ll-in),
-// 字号压到 12 / 11。数取 2024-02 一期真实形状(D座 13,771.20 / −42.40),不写「示例」。
+// 字号压到 12 / 11。数是真数据的形状,不写「示例」;楼名和数不用我园的(2026-10-04 用户拍板产品卖给别的园区,配图每个客户都看得到)。
 import { Pencil } from 'lucide-vue-next'
 </script>
 
 <template>
   <div class="hd"><span class="h1">位置</span><span class="h2">总表用电量</span><span class="h3">备注</span></div>
   <div class="rw">
-    <span class="nm">一期 D座</span>
-    <span class="nv">13,771.20</span>
+    <span class="nm">1号楼</span>
+    <span class="nv">8,426.40</span>
     <span class="in">表在门卫室，2 月已校</span>
   </div>
   <div class="rw">
-    <span class="nm">一期 E座</span>
-    <span class="nv">12,801.60</span>
+    <span class="nm">2号楼</span>
+    <span class="nv">7,315.20</span>
     <span class="in ph">点一下就能写</span>
   </div>
   <div class="ft"><Pencil :size="11" />进编辑模式后，只有备注这一格能改</div>

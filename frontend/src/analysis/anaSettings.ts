@@ -8,18 +8,19 @@ export interface AnaSettings {
   collectTarget: number        // 收缴率目标(%)
   churnTh: number              // 风险线(分;churn 流失预警 / anomaly 监控中心共用同款 40/30/30 评分模型)
   breakevenFixedRatio: number  // 固定成本占比系数(0~1)
-  pvInvestment: number         // 光伏工程总投资(万元,含税)
+  pvInvestment: number         // 光伏工程总投资(万元,含税);0 = 按各期工程成本合计(pv_phase.cost)
   spikeTh: number              // 能耗环比突变阈值(%;anomaly 监控中心红点/规则,v2 追加)
 }
 
-// 默认值:occ/collect/churn 承 ana-period DEFAULT_SETTINGS;fixedRatio 承 breakevenAt 0.62;
-// pvInvestment 承 schedule6 三期工程成本合计 ≈ 1478.7 万。
+// 默认值:occ/collect/churn 承 ana-period DEFAULT_SETTINGS;fixedRatio 承 breakevenAt 0.62。
+// pvInvestment 默认 0 = 按各期工程成本合计(PvRoiView)。2026-10-04 用户拍板产品卖给别的园区:原来写死我园三期合计
+// 1478.7 万,别的园区会按我们的投资额算回收;我园库里三期成本合计就是这个数,所以我园屏上不变。
 export const ANA_SETTINGS_DEFAULT: AnaSettings = {
   occTarget: 90,
   collectTarget: 96,
   churnTh: 60,
   breakevenFixedRatio: 0.62,
-  pvInvestment: 1478.7,
+  pvInvestment: 0,
   spikeTh: 40,   // 承规则引擎 ② ±40% 经验值
 }
 

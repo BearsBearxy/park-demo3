@@ -220,7 +220,7 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
             <div class="anx-fld"><label>固定成本占比</label>
               <input type="number" min="0" max="1" step="0.01" :value="anaSettings.breakevenFixedRatio" @change="onNum('breakevenFixedRatio', $event)" /></div>
             <div class="anx-fld"><label>光伏投资 (万)</label>
-              <input type="number" min="0" :value="anaSettings.pvInvestment" @change="onNum('pvInvestment', $event)" /></div>
+              <input type="number" min="0" :value="anaSettings.pvInvestment || ''" placeholder="按各期成本" @change="onNum('pvInvestment', $event)" /></div>
             <div style="display: flex; justify-content: space-between; margin-top: 4px">
               <button class="anx-link" @click="resetAnaSettings()">恢复默认</button>
               <button class="anx-link" style="color: var(--text-primary); font-weight: 600" @click="pop = false">完成</button>

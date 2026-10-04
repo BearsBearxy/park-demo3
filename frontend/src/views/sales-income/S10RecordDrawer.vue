@@ -38,7 +38,7 @@ function save() {
       <span class="s10d-flabel">租户名称</span>
       <input
         class="s10d-finput"
-        placeholder="如:华盛物流"
+        placeholder="如:XX物流"
         v-model="name"
         @keydown.enter="save"
       />

@@ -268,6 +268,13 @@ describe('critFoot', () => {
     expect(f.tail).toBe('未列出 ≠ 没问题')
     expect(critFoot(SNAP, null).baseNote).toBeNull()
   })
+  // 2026-10-04 用户拍板产品卖给别的园区:锚点没填(新园区库里没这条参数)就不判,写明没填,不套我园的 950
+  it('❗锚点没填(0):判据脚写「没填」,各栋不出年等效那条;对照:有锚点照常出', () => {
+    expect(SNAP_Y.facts.some(f => f.kind === 'yield')).toBe(true)
+    const none = buildSnapshot({ ...INPUT, gran: 'year', crit: { anchorHours: 0 } })
+    expect(none.facts.some(f => f.kind === 'yield')).toBe(false)
+    expect(critFoot(none, null).items.find(i => i.key === 'yield')!.text).toBe('年等效锚点没填，这条不判')
+  })
   it('❗估带窗口为凑样本放宽过的条件写进 baseNote;对照:没放宽不写', () => {
     const f = row('F座')
     const relaxed = { ...SNAP, board: SNAP.board.map(b => (b.id === f.id ? { ...b, base: { ...b.base!, relaxed: ['含并网初期', '不限变点之前'] } } : b)) }

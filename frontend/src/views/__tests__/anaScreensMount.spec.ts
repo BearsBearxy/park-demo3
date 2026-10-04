@@ -329,8 +329,8 @@ const ENERGY = [{
 
 // ── 光伏附表6 ──
 const PV_PHASES: PvPhaseDTO[] = [
-  { id: 'p1', name: '一期光伏', short: '一期', online: '2023-06' },
-  { id: 'p2', name: '二期光伏', short: '二期', online: '2024-03' },
+  { id: 'p1', name: '一期光伏', short: '一期', online: '2023-06', cost: 6_000_000 },
+  { id: 'p2', name: '二期光伏', short: '二期', online: '2024-03', cost: 6_000_000 },
 ]
 const PV: PvRecordDTO[] = YMS.flatMap((ym, mi) => PV_PHASES.map((p, k) => {
   const selfKwh = Math.round((40_000 + k * 15_000) * wave(mi + k))

@@ -111,9 +111,10 @@ const renewalBand = computed(() => renewalRateBand(rentRoll.value.renewalHits, r
 const sensitivity = computed(() =>
   sensitivityRows(rentRollLast.value.locked, rentRoll.value.expiringRentSum, rentRoll.value.months[0].locked, rentRoll.value.renewalP))
 const sensitivityRead = computed(() => sensitivitySentence(sensitivity.value))
-// F1(修复轮1,design-boards):板上收尾行——历史续签率下的缺口,折算成约等于几户中型厂房。
-// 见 sensitivityGapSentence 注释:「中型厂房」口径查库定,不是拍脑袋。
-const sensitivityGapRead = computed(() => sensitivityGapSentence(sensitivity.value, rentRoll.value.months[0].locked))
+// F1(修复轮1,design-boards):板上收尾行——历史续签率下的缺口,按同屏「租金中位数」瓦的数折算成约等于几户。
+// 2026-10-04 起不再用写死的我园厂房中位租金(产品卖给别的园区),见 sensitivityGapSentence 注释。
+const sensitivityGapRead = computed(() =>
+  sensitivityGapSentence(sensitivity.value, rentRoll.value.months[0].locked, stats.value?.medRent ?? null))
 
 const listed = computed(() => [...contracts.value].sort((a, b) => b.monthlyRent - a.monthlyRent))
 const maxRent = computed(() => listed.value[0]?.monthlyRent || 1)
@@ -221,7 +222,7 @@ function onParetoClick(p: unknown) {
           <div class="av2-card-h"><span class="t">续签率变一档</span><span class="hint">年末差多少</span></div>
           <div class="fp-shim" style="height: 182px"></div>
           <p class="ana-read"><span class="ana-hole">0档都守不住今天的租金</span></p>
-          <p class="ana-read"><span class="ana-hole">历史0% · 缺口00万/月,约等于00户中型厂房</span></p>
+          <p class="ana-read"><span class="ana-hole">历史0% · 缺口00万/月,约合00份合同的中位租金</span></p>
           <p class="ana-ref">与上方合约租金带同一份锁定线</p>
         </div>
         <div class="av2-card av2-s8 exp-pareto exp-more-skel">

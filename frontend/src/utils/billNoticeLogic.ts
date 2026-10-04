@@ -353,7 +353,8 @@ const shareTip = (l: FeeTitleLine): string | null =>
 // ── 孵化协议固定收取(包干)行:落库 fee_key 沿用 share_elec_floor / share_green_water(后端收款映射与
 // 损耗基数白名单都不动),所以行名/悬浮不能照 fee_key 说「楼层公共」——那是假话:这笔钱是协议月固定额,
 // 已经把被替掉的几项包住了。判据取 price_key(rule_branch='fixed' 还有别的行在用)。
-export const PACKAGE_LABEL = '孵化协议固定收取'
+// 行名/悬浮随催缴单发给租户;2026-10-04 用户拍板产品卖给别的园区,不写我园的「孵化协议」,只说固定月额这件事
+export const PACKAGE_LABEL = '固定月额收取'
 const PACKAGE_COVERS: Record<string, string> = {
   share_elec_fixed: '已包含楼层公共、电梯、路灯三项,不再另计',
   share_water_fixed: '已包含绿化水公摊,不再另计',
@@ -361,7 +362,7 @@ const PACKAGE_COVERS: Record<string, string> = {
 export const packageTip = (l: FeeTitleLine): string | null => {
   const covers = l.priceKey == null ? undefined : PACKAGE_COVERS[l.priceKey]
   return covers === undefined ? null
-    : `${PACKAGE_LABEL} —— 按协议每月固定 ${num(l.amount)} 元,${covers}`
+    : `${PACKAGE_LABEL} —— 每月固定 ${num(l.amount)} 元,${covers}`
 }
 export const isPackageLine = (l: FeeTitleLine): boolean => packageTip(l) !== null
 

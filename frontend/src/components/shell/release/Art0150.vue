@@ -5,7 +5,7 @@ import { Sparkles, SunMoon } from 'lucide-vue-next'
 </script>
 
 <template>
-  <div class="nm">周明</div>
+  <div class="nm">张会计</div>
   <div class="h"><SunMoon :size="12" />外观</div>
   <div class="seg"><span>浅色</span><span class="on">深色</span><span>跟随系统</span></div>
   <div class="row"><Sparkles :size="12" />版本更新<span class="ver">v0.15.0</span></div>

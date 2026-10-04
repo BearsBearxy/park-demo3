@@ -460,7 +460,7 @@ async function onSimulate() {
   }
   const ok = await ask({
     title: `模拟填充 ${year.value} 全年？`,
-    body: '按附表7/8 充电汇总（万城万 / 小桔 / 叮叮充 / 电信）推导各桩月末充电记录与电表用电量（小桔按 60/40 拆快充1 / 慢充1，通道费 = 收益 × 5%，均为假设口径）。只填空位与既有「模拟」灰标记录，不覆盖手工录入和导入的数据。',
+    body: '按附表7/8 各运营商的充电汇总推导各桩月末充电记录与电表用电量（一个运营商有几根桩时按假设比例拆，通道费 = 收益 × 5%，均为假设口径）。只填空位与既有「模拟」灰标记录，不覆盖手工录入和导入的数据。',
     action: `模拟填充 ${year.value} 全年`,
   })
   if (!ok || !editMode.value || !canRun.value) return
@@ -826,7 +826,7 @@ async function onTemplate() {
         <div class="cm-dlg-b fp-fsheet-bd">
           <Input v-model="stForm.name" label="桩名" placeholder="如:快充2" size="sm" />
           <div class="cm-dlg-row">
-            <Input v-model="stForm.operator" label="运营商" placeholder="如:小桔" size="sm" />
+            <Input v-model="stForm.operator" label="运营商" placeholder="如:XX充电" size="sm" />
             <div style="width:120px">
               <Select v-model="stForm.vehicleType" label="类型" :options="TYPE_OPTS" size="sm" />
             </div>
