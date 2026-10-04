@@ -19,6 +19,28 @@
 import type { ReleaseNote } from '@/types/changelog'
 
 export const CHANGELOG: ReleaseNote[] = [
+  // 小调整(RELEASE-NOTES-SPEC §2.1 四问都否):不改数的修复,不弹,只进铃铛「系统」一类。金额不变。
+  // 修复核实(对照 master):SessionService.open 在提交前就把新 tv / sid 写进权限快照;同时跑的一次 UserPermissionCache.reload
+  // (刚重启时 AdminInitializer 收尾那次、任何一次角色 / 账号保存)要是读到登录提交之前的库,就把 tv 改回旧的、sid 留新的,
+  // 刚签的令牌下一个请求 401、前端退回登录页(2026-10-04 实测:刚重启,新建的账号登进来调改密 401;一分钟后同样步骤不复现)。
+  // 现在 reload 取库与快照里较大的 tv;在事务里调的 reload 事务结束后再读一次库 —— 同一个窗口还会把刚建的号挤出快照,登录时新 sid 落空(SessionCacheRaceIT)。
+  // 改完密码换新令牌那一下同理,但「改完本机不掉线」是 0.28.0 才有的,不另写。
+  // headline 不写「不会再」、第一条修复只写实测过的「刚更新完」(2026-10-04 复查):另一位管理员保存账号 / 角色的那几毫秒里,他那次保存开始之后才建 / 才启用的号
+  // 登进来,新 sid 仍会落空、要再登一次(UserPermissionCache.reload 的 ponytail);在别处登录把这边挤掉是单会话的本意。
+  // 第二条修复核实(对照 master):SystemService 的 updateUser / setStatus / resetPassword / changeOwnPassword 都是整行
+  // users.updateById(u),u 是事务开头读的;停用在这之间提交,就被写回 status=1(AuthUserLostUpdateIT,改回整行写法即红)。
+  // 窗口:本人改密(验旧口令 + 算新哈希)、重置密码(算新哈希)是几百毫秒,编辑是毫秒级。
+  {
+    version: '0.28.1',
+    date: '2026-10-04',
+    headline: '更新后登录不再被退回，停用不再被改回启用',
+    added: [],
+    improved: [],
+    fixed: [
+      '登录：系统刚更新完就登进来，原来偶尔会马上被退回登录页',
+      '用户管理：停用的同一刻有人改它的密码或编辑它，原来会变回启用',
+    ],
+  },
   // 功能更新(RELEASE-NOTES-SPEC §2.1 第 1、2 问是):RBAC v3「读写分开」(用户 2026-10-04 拍板,推翻 v2 拍板 #8 读全开、#11 工资全开)。
   // 新增 9 个查看权限点 → 重点卡;左侧导航对一部分人变了(没有某模块查看权的人那几屏不列、园区股东多了报表层)→ 按 §4 第 5 条写进 headline。
   // 「只有系统管理员和财务主管能看、能录入工资」:V134 迁移第 ② 段(salary:view 给 admin、finance_manager)+ V136(同时有 entry:edit

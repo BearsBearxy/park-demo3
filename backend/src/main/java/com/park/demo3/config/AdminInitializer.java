@@ -69,8 +69,12 @@ public class AdminInitializer implements ApplicationRunner {
             log.info("admin password was changed in-app; app.admin.password not applied");
             return;
         }
-        u.setPasswordHash(enc.encode(adminPassword));
-        users.updateById(u);
+        // 只写口令列(2026-10-04):跑到这里时 Web 端口已经开了,整行写回会把这一刻读到的 status / token_version
+        // 盖回去 —— 同时有人登录、被停用就丢了(同 SystemService.updateUser)。
+        AuthUser patch = new AuthUser();
+        patch.setId(u.getId());
+        patch.setPasswordHash(enc.encode(adminPassword));
+        users.updateById(patch);
         log.info("admin password reset from app.admin.password");
     }
 
@@ -88,8 +92,10 @@ public class AdminInitializer implements ApplicationRunner {
             users.insert(u);
             log.info("viewer (read-only) user created from app.viewer.password");
         } else if (!enc.matches(viewerPassword, u.getPasswordHash())) {
-            u.setPasswordHash(enc.encode(viewerPassword));
-            users.updateById(u);
+            AuthUser patch = new AuthUser();   // 只写口令列,同 resetAdmin
+            patch.setId(u.getId());
+            patch.setPasswordHash(enc.encode(viewerPassword));
+            users.updateById(patch);
             log.info("viewer password reset from app.viewer.password");
         }
         ensureRole(u, "viewer");

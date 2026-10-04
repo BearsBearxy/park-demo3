@@ -257,8 +257,13 @@ public class SystemService {
         boolean rolesDiff = !self && rolesChanged(id, req.roleIds());   // 先判再改,改完就比不出来了
         if (rolesDiff) guardKeepsAnAdmin(u, true, safe(req.roleIds()));
         guardUserInRange(u, rolesDiff ? safe(req.roleIds()) : null);
-        u.setDisplayName(req.displayName());
-        users.updateById(u);
+        // 只写要改的列(2026-10-04)。整行 updateById(u) 会把事务开头读到的 status / token_version / 口令一起写回,
+        // 盖掉这期间别人已提交的停用、踢人:改名的同时另一位管理员停用了他,停用被悄悄撤销、版本号往回走(AuthUserLostUpdateIT)。
+        // 下面 setStatus / resetPassword / changeOwnPassword、AdminInitializer 同理。
+        AuthUser patch = new AuthUser();
+        patch.setId(id);
+        patch.setDisplayName(req.displayName());
+        users.updateById(patch);
         if (!self) replaceRoles(id, req.roleIds());   // 自己那行角色原样不动
         audit.log("user.update", "user:" + u.getUsername(),
             self ? "改显示名" : "角色 " + safe(req.roleIds()).size() + " 个");
@@ -279,8 +284,10 @@ public class SystemService {
         guardNotSelf(u, "不能停用自己。");
         guardKeepsAnAdmin(u, status == 1, null);
         guardUserInRange(u, null);
-        u.setStatus(status);
-        users.updateById(u);
+        AuthUser patch = new AuthUser();   // 只写 status,同 updateUser
+        patch.setId(id);
+        patch.setStatus(status);
+        users.updateById(patch);
         audit.log(status == 1 ? "user.enable" : "user.disable", "user:" + u.getUsername(), null);
         cache.reload();   // 停用后下一个请求即 401 —— 不必等令牌过期
         // 停用本来就立刻生效(快照里查不到)。这里再作废一次是为了让 auth_session
@@ -296,11 +303,13 @@ public class SystemService {
         AuthUser u = mustUser(id);
         guardUserInRange(u, null);   // 重置比自己大的账号的密码 = 拿到那个账号(F38)
         boolean self = u.getUsername().equals(currentUsername());
-        u.setPasswordHash(enc.encode(password));
+        AuthUser patch = new AuthUser();   // 只写口令两列,同 updateUser
+        patch.setId(id);
+        patch.setPasswordHash(enc.encode(password));
         // 给别人重置:管理员从此不知道任何人的密码,出事能说清是谁干的 → 本人下次登录必须改。
         // 给自己重置:密码是自己刚定的,不再逼自己改一遍(用户 2026-10-04:「重置密码后，到登录的时候又要强制改一遍」)。
-        u.setMustChangePassword(self ? 0 : 1);
-        users.updateById(u);
+        patch.setMustChangePassword(self ? 0 : 1);
+        users.updateById(patch);
         audit.log("user.reset-password", "user:" + u.getUsername(), null);
         cache.reload();
         // 放在 cache.reload() 之后:reload 重建整张快照,放前面会被它盖掉。
@@ -326,9 +335,18 @@ public class SystemService {
         elevation.verifyOwnPassword(currentPassword, "user.change-password", "当前密码不正确");
         if (enc.matches(newPassword, u.getPasswordHash()))
             throw new BizException(ResultCode.BAD_REQUEST, "新密码不能与当前密码相同");
-        u.setPasswordHash(enc.encode(newPassword));
-        u.setMustChangePassword(0);
-        users.updateById(u);
+        AuthUser patch = new AuthUser();   // 只写口令两列,同 updateUser
+        patch.setPasswordHash(enc.encode(newPassword));
+        patch.setMustChangePassword(0);
+        // 且只在还启用、口令还是刚验过的那个时写(2026-10-04):开头那一读到这里隔着验旧口令、算新哈希(几百毫秒),
+        // 这期间被停用,密码不该还改得成、审计里不该还多一条「本人修改」;这期间管理员重置了他的密码,拿旧口令改的这一下
+        // 不该把重置盖掉、换出一张能用的新令牌(两边写同一列,只写补丁挡不住)。
+        // 0 行 = 刚被停用或刚被重置,令牌已被那一边作废:答 401,他下一个请求就被踢回登录页。
+        // 改密页上那句按停用名单分(与下一个请求的 X-Auth-Reason 同一来源):停用的照登录页说;被重置的仍是默认那句。
+        if (users.update(patch, Wrappers.<AuthUser>lambdaUpdate().eq(AuthUser::getId, u.getId())
+                .eq(AuthUser::getStatus, 1).eq(AuthUser::getPasswordHash, u.getPasswordHash())) == 0)
+            throw cache.isDisabled(me) ? new BizException(ResultCode.UNAUTHORIZED, "账号已停用，请联系管理员")
+                                       : new BizException(ResultCode.UNAUTHORIZED, "这个账号的密码刚被改动，请重新登录");
         audit.log("user.change-password", "user:" + u.getUsername(), "本人修改");
         cache.reload();
         // 本机换一张新令牌接着用,手上这张旧的连同别处的当场作废(用户 2026-10-04 拍板,AuthService.reissueAfterPasswordChange)。
