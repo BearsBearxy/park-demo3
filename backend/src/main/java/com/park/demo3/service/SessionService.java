@@ -37,11 +37,14 @@ public class SessionService {
         this.users = users; this.sessions = sessions; this.cache = cache; this.jwt = jwt;
     }
 
-    /** 一次登录:作废旧会话 + 版本 +1 + 建新行。返回新会话 id 与新版本号,供签发令牌用。 */
+    /**
+     * 一次登录:作废旧会话 + 版本 +1 + 建新行。返回新会话 id 与新版本号,供签发令牌用。
+     * by = 被挤掉的那一方听到的理由:登录是 relogin;改了自己的密码、给这台设备换新令牌是 password(AuthService.reissueAfterPasswordChange)。
+     */
     @NoReviewGuard(reason = "会话,不是期间数据。与 AuthService.login 同一条路径,进审核等于登录要先请人审")
     @Transactional
-    public Issued open(AuthUser u, String clientIp, String userAgent) {
-        int kicked = revokeLive(u.getUsername(), "relogin");
+    public Issued open(AuthUser u, String clientIp, String userAgent, String by) {
+        int kicked = revokeLive(u.getUsername(), by);
         int tv = bump(u);
         String sid = UUID.randomUUID().toString().replace("-", "");
         AuthSession s = new AuthSession();
@@ -56,9 +59,9 @@ public class SessionService {
         s.setUserAgent(trim(userAgent, 255));
         sessions.insert(s);
         // 这个 reason 不是说给刚登进来的人听的 —— 他的令牌 tv 对得上,永远读不到它。
-        // 它是说给**刚被挤掉的那一方**听的:他下一个请求 401,靠它知道是“另一台设备登录了”
+        // 它是说给**刚被挤掉的那一方**听的:他下一个请求 401,靠它知道是“另一台设备登录了”(或“密码已修改”)
         // 而不是被默默踢回登录页。真踢掉了人才写,第一次登录不写。
-        cache.applySession(u.getUsername(), tv, sid, kicked > 0 ? "relogin" : null);
+        cache.applySession(u.getUsername(), tv, sid, kicked > 0 ? by : null);
         return new Issued(sid, tv);
     }
 

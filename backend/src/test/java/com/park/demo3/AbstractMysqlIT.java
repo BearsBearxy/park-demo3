@@ -99,6 +99,23 @@ public abstract class AbstractMysqlIT {
         return docker.listContainersCmd().withShowAll(true).withLabelFilter(Map.of(IT_LABEL, "mysql")).exec();
     }
 
+    @org.springframework.beans.factory.annotation.Autowired private com.park.demo3.mapper.AuthUserMapper itUsers;
+    @org.springframework.beans.factory.annotation.Autowired private com.park.demo3.security.UserPermissionCache itCache;
+
+    /**
+     * 用 API 建的号带着初始密码(must_change_password=1),服务端除改密页用到的几条外一律 403 / body.code 428
+     * (SecurityPaths.BEFORE_PASSWORD_CHANGE,用户 2026-10-04 拍板)。测的不是改密、又要以这个人身份调业务接口的用例,
+     * 建完号调这一句,当他已经改过。会 reload 权限快照 —— 要钉「建号后自己 reload 了没有」的,先断言再调。
+     * 走 mapper 不走 JdbcTemplate:@Transactional 的用例里同一个 MyBatis 会话会缓存 reload 里那条查询,
+     * 绕过 MyBatis 的写不清它,reload 读回来的还是改之前那份。
+     */
+    protected void passwordAlreadyChanged(String username) {
+        itUsers.update(null, com.baomidou.mybatisplus.core.toolkit.Wrappers.<com.park.demo3.entity.AuthUser>lambdaUpdate()
+            .set(com.park.demo3.entity.AuthUser::getMustChangePassword, 0)
+            .eq(com.park.demo3.entity.AuthUser::getUsername, username));
+        itCache.reload();
+    }
+
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry r) {
         r.add("spring.datasource.url", MYSQL::getJdbcUrl);

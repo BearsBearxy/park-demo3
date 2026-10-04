@@ -21,9 +21,21 @@ import type { ReleaseNote } from '@/types/changelog'
 export const CHANGELOG: ReleaseNote[] = [
   // 功能更新(RELEASE-NOTES-SPEC §2.1 第 1、2 问是):RBAC v3「读写分开」(用户 2026-10-04 拍板,推翻 v2 拍板 #8 读全开、#11 工资全开)。
   // 新增 9 个查看权限点 → 重点卡;左侧导航对一部分人变了(没有某模块查看权的人那几屏不列、园区股东多了报表层)→ 按 §4 第 5 条写进 headline。
-  // 「只有系统管理员和财务主管能看工资」:V134 迁移第 ② 段(admin、finance_manager);「股东多了账簿与报表」:V134 第 ③ 段 nav_layers='analysis,reports'。
+  // 「只有系统管理员和财务主管能看、能录入工资」:V134 迁移第 ② 段(salary:view 给 admin、finance_manager)+ V136(同时有 entry:edit
+  // 与 salary:view 的角色得「工资录入」salary:edit,种子里命中的也是这两个;财务专员从此录不了工资);「股东多了账簿与报表」:V134 第 ③ 段 nav_layers='analysis,reports'。
   // 「电话只露前 3 后 4 位、账号只露后 4 位」:后端按契约 maskRules 打码;V134 之后现有角色除园区股东外都有主数据查看权。
-  // 金额不变:只改谁能看,取数与算法没动。没有修复条目。
+  // 「催缴单导出照常印完整账号」:GET /api/companies/payees 有出账与催缴单查看就给明文(RBAC-SPEC §11.8),收款公司窗与别处照样打码。
+  // 同版并入用户 2026-10-04「按你推荐」三件(RBAC-SPEC §12、§13):
+  //   「自己能改密码」(新增):IconRail 头像菜单、手机 MobileNavDrawer 的「修改密码」;后半句照改密页副标题(AuthService.reissueAfterPasswordChange)。
+  //   「自己交的表要别人审」:ReviewService.guardNotOwnSubmission,系统管理员不拦(推翻 RBAC-SPEC D16「系统不拦同一账号既录又审」)。
+  //   「用户管理与角色权限」:SystemService 的 guardRoleInRange / guardUserInRange,系统管理员不拦。
+  //   不写的:最后一个启用的系统管理员停不了、摘不掉角色(只在误操作时碰到,报错自己说清);带初始密码的令牌在别的页签直接跳改密页(边界情况)。
+  // 腾条数:原「角色权限」一条(按模块排成查看、编辑两列)并进重点卡说明「在角色权限里按模块勾查看和编辑」。
+  // 重点卡原写「工资、经营分析只有查看一项」:工资多了「工资录入」(V136),改成只说经营分析,角色屏副标题与配图第三行同步。
+  // 修复核实(对照 master):① SystemService.changeOwnPassword 改完 revokeAll 连本机一起作废 —— 强制改密改完落到首页,紧接着又被弹回登录页;
+  // ② resetPassword 一律 mustChangePassword=1,给自己重置也逼下次登录再改。
+  // 分支里来回、对 master 没有净变化的不写:损益附表 5 餐补费照常显示、只有工资录入的角色也出交审钮。
+  // 金额不变:只改谁能看、谁能改,取数与算法没动。
   {
     version: '0.28.0',
     date: '2026-10-04',
@@ -31,17 +43,23 @@ export const CHANGELOG: ReleaseNote[] = [
     feature: {
       icon: 'shield-check',
       title: '管理员能按模块授权查看',
-      desc: '在角色权限里按模块勾查看和编辑，勾编辑自动带上查看；工资、经营分析只有查看一项。'
+      desc: '在角色权限里按模块勾查看和编辑，勾编辑自动带上查看；经营分析只有查看一项。'
         + '没有查看权的屏，导航、搜索和首页都不列；直接打开会写明缺哪一项。分析屏里跳不过去的按钮置灰。',
     },
-    added: [],
-    improved: [
-      { icon: 'wallet', title: '附表 12 工资明细', desc: '原来能进系统的人都看得到工资明细，现在默认只有系统管理员和财务主管能看。' },
-      { icon: 'pie-chart', title: '股东能看报表', desc: '原来园区股东的左侧导航只有经营分析，现在多了账簿与报表。' },
-      { icon: 'shield-check', title: '角色权限', desc: '系统管理员：原来一行一项权限，现在按模块排成查看、编辑两列。' },
-      { icon: 'users', title: '联系电话与收款账号', desc: '没有主数据查看权的人，看到的电话只露前 3 后 4 位、账号只露后 4 位了。' },
+    added: [
+      { icon: 'lock', title: '自己能改密码', desc: '点左下角头像，选「修改密码」；手机在导航菜单里。改完这台设备保持登录。' },
     ],
-    fixed: [],
+    improved: [
+      { icon: 'wallet', title: '附表 12 工资明细', desc: '原来能进系统的人都看得到工资明细，现在默认只有系统管理员和财务主管能看、能录入。' },
+      { icon: 'pie-chart', title: '股东能看报表', desc: '原来园区股东的左侧导航只有经营分析，现在多了账簿与报表。' },
+      { icon: 'badge-check', title: '自己交的表要别人审', desc: '原来有审核权的人能通过自己交的表，现在要由别人通过或退回；系统管理员不受限。' },
+      { icon: 'shield-check', title: '用户管理与角色权限', desc: '原来有管理权的人什么权限都能分，现在只能分自己有的；系统管理员账号只有系统管理员能改。' },
+      { icon: 'users', title: '联系电话与收款账号', desc: '没有主数据查看权的人，看到的电话只露前 3 后 4 位、账号只露后 4 位；催缴单导出照常印完整账号。' },
+    ],
+    fixed: [
+      '修改密码：改完初始密码，原来紧接着又被退回登录页',
+      '用户管理：给自己重置密码后，原来下次登录还要再改一遍',
+    ],
   },
   // 功能更新(RELEASE-NOTES-SPEC §2.1 第 2 问是):2026-10-03 安全审计第一批。没有新增,不写重点卡、不画配图。
   // 用法变了的一条:抄表导入里改已有表的倍率另要表档案权限(F15,用户 2026-10-04 选方案 1)——

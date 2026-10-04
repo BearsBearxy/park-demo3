@@ -66,10 +66,21 @@ public class CompanyService {
     private static final List<ReviewKind> COMPANY_SCOPED =
         List.of(ReviewKind.LEDGER, ReviewKind.REPORT_IS, ReviewKind.REPORT_BS, ReviewKind.REPORT_TB);
 
-    public List<CompanyDTO> list() {
+    public List<CompanyDTO> list() { return list(SensitiveMask.holds(Perm.MASTER_VIEW)); }
+
+    /**
+     * 催缴单上印的收款公司与账户(GET /api/companies/payees)。用户 2026-10-04 拍板「按你推荐」:通知单要发给租户付款,
+     * 有「出账与催缴单 · 查看」就给账号与个人卡户名的明文;别处(主数据、收款公司窗)仍按 master:view 打码。
+     * 读规则只放 billing:view,这里再判一次:哪天读规则被放宽,放进来的人拿到的也只是掩码。
+     */
+    public List<CompanyDTO> listForNotice() {
+        return list(SensitiveMask.holds(Perm.MASTER_VIEW) || SensitiveMask.holds(Perm.BILLING_VIEW));
+    }
+
+    private List<CompanyDTO> list(boolean plainAccounts) {
         Map<Integer, List<CompanyAccountDTO>> byCompany = accounts.selectList(
                 new QueryWrapper<CompanyAccount>().orderByAsc("sort_no", "id"))
-            .stream().map(CompanyService::toDTO)
+            .stream().map(a -> toDTO(a, plainAccounts))
             .collect(Collectors.groupingBy(CompanyAccountDTO::companyId,
                 LinkedHashMap::new, Collectors.toList()));
         return companies.selectList(new QueryWrapper<ManagementCompany>()
@@ -272,8 +283,9 @@ public class CompanyService {
 
     // 账号(各 kind 一律,收款码标识可能就是手机号)与个人卡户名(就是收款人姓名)没有 master:view 给掩码;
     // 对公 / 微信 / 支付宝的户名是公司名、开户行不打码(RBAC-SPEC §11 规则 5)
-    private static CompanyAccountDTO toDTO(CompanyAccount a) {
-        boolean plain = SensitiveMask.holds(Perm.MASTER_VIEW);
+    private static CompanyAccountDTO toDTO(CompanyAccount a) { return toDTO(a, SensitiveMask.holds(Perm.MASTER_VIEW)); }
+
+    private static CompanyAccountDTO toDTO(CompanyAccount a, boolean plain) {
         String name = plain || !"personal".equals(a.getKind()) ? a.getAccountName() : SensitiveMask.name(a.getAccountName());
         return new CompanyAccountDTO(a.getId(), a.getCompanyId(), a.getKind(), name,
             plain ? a.getAccountNo() : SensitiveMask.account(a.getAccountNo()), a.getBankName(),

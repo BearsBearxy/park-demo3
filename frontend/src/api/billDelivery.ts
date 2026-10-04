@@ -52,6 +52,9 @@ export interface UnconfirmResultDTO { reverted: number; skipped: number }
 
 export const companyBookApi = {
   list: (): Promise<CompanyFullDTO[]> => http.get('/companies'),
+  // 催缴单上印的收款账户:有「出账与催缴单 · 查看」就给账号明文(用户 2026-10-04 拍板 —— 单子要发给租户付款)。
+  // 只给催缴单屏与导出窗用;收款公司窗是维护账户的地方,仍走 list,没有主数据查看照旧打码
+  payees: (): Promise<CompanyFullDTO[]> => http.get('/companies/payees'),
   create: (req: CompanyReq): Promise<CompanyFullDTO> => http.post('/companies', req),
   update: (id: number, req: CompanyReq): Promise<CompanyFullDTO> => http.put(`/companies/${id}`, req),
   addAccount: (companyId: number, req: AccountReq): Promise<CompanyAccountDTO> =>

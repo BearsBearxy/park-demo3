@@ -12,7 +12,8 @@ import java.util.Set;
  * 客户在角色屏能随意配角色,但配不出这里没有的权限 —— 这条分工线是整套设计的核心。
  *
  * v3(2026-10-04 用户拍板,RBAC-SPEC §11)推翻了 v2 的「读全开」:每个模块「查看 / 编辑」两项,
- * 编辑隐含同组查看({@link #withImplied},装载快照时展开,不落库);工资与经营分析的查看不被任何编辑隐含。
+ * 编辑隐含同组查看({@link #withImplied},装载快照时展开,不落库);经营分析的查看不被任何编辑隐含,
+ * 工资的查看只被「工资录入」({@link #SALARY_EDIT})隐含 —— 事后录入不带出工资。
  * GET /api/** 默认拒绝,读规则表在 PermissionRegistry,判定在 ReadAccessManager。
  */
 public final class Perm {
@@ -32,7 +33,7 @@ public final class Perm {
     public static final String SYSTEM_EDIT         = "system:edit";
     public static final String LOCK_TAKEOVER       = "lock:takeover";
 
-    // ═══ v3 查看点(2026-10-04 用户拍板):编辑隐含同组查看;SALARY_VIEW / ANALYSIS_VIEW 不被任何编辑隐含 ═══
+    // ═══ v3 查看点(2026-10-04 用户拍板):编辑隐含同组查看;ANALYSIS_VIEW 不被任何编辑隐含,SALARY_VIEW 只被 SALARY_EDIT 隐含 ═══
     public static final String MASTER_VIEW   = "master:view";     // 楼栋、单元、租户、租户分类、公司与收款账户
     public static final String CONTRACT_VIEW = "contract:view";
     public static final String PARAM_VIEW    = "param:view";      // 计费口径、月度电价、公摊规则、电价配置、系数簿
@@ -42,6 +43,9 @@ public final class Perm {
     public static final String SALARY_VIEW   = "salary:view";     // 工资:entry:edit 不隐含它
     public static final String REPORT_VIEW   = "report:view";     // 三大报表、损益附表、收入核对
     public static final String ANALYSIS_VIEW = "analysis:view";   // 经营分析层,独立放行
+    // 工资录入(用户 2026-10-04 拍板「按你推荐」,RBAC-SPEC §11.8):工资的写从 entry:edit 拆出来。
+    // 之前写挂 entry:edit,看不见工资的财务专员照样能经导入中心写这张表。隐含 salary:view;不可提权(见 NOT_ELEVATABLE)
+    public static final String SALARY_EDIT   = "salary:edit";
 
     /** 数据层任一查看(不含 report / analysis):本月出账与出账链月索引的读门(PermissionRegistry),租户别名明文(TenantService)。 */
     public static final List<String> DATA_LAYER_VIEWS = List.of(
@@ -67,7 +71,7 @@ public final class Perm {
     public static final String REVIEW_APPROVE      = "review:approve";
 
     /**
-     * 全部 27 个,按模块分组排(与 META 同序)。角色屏的勾选矩阵按这个顺序渲染;
+     * 全部 28 个,按模块分组排(与 META 同序)。角色屏的勾选矩阵按这个顺序渲染;
      * 覆盖率测试也拿它校验映射表不引用不存在的权限。
      */
     public static final List<String> ALL = List.of(
@@ -77,7 +81,7 @@ public final class Perm {
         METER_VIEW, METER_MASTER_EDIT, METER_READING_EDIT,
         BILLING_VIEW, BILLING_RUN_EDIT, BILLING_ISSUE_EDIT,
         ENTRY_VIEW, ENTRY_EDIT, BOOK_TEMPLATE_EDIT, BOOK_TEMPLATE_SWITCH,
-        SALARY_VIEW,
+        SALARY_VIEW, SALARY_EDIT,
         REPORT_VIEW, REPORT_EDIT,
         ANALYSIS_VIEW,
         SYSTEM_VIEW, SYSTEM_EDIT,
@@ -101,11 +105,14 @@ public final class Perm {
      *
      * 全部 *:view 同理(v3 规则 6,2026-10-04):查看权借得到,「工资只给两个人看」就成了一句话的事 ——
      * 请主管授权 30 分钟,整年工资明细就导走了。ReadAccessManager 也不查 ElevationStore。
+     *
+     * salary:edit 同理(用户 2026-10-04 拍板「按你推荐」):它隐含 salary:view,工资的写拆出来就是为了
+     * 「看不见工资的人写不了工资」—— 借得到的话,财务专员请主管授权一次又能往看不见的表里导数。
      */
     private static final Set<String> NOT_ELEVATABLE = Set.of(
         SYSTEM_VIEW, SYSTEM_EDIT, ELEVATE_REQUEST, LOCK_TAKEOVER, REVIEW_APPROVE,
         MASTER_VIEW, CONTRACT_VIEW, PARAM_VIEW, METER_VIEW, BILLING_VIEW, ENTRY_VIEW,
-        SALARY_VIEW, REPORT_VIEW, ANALYSIS_VIEW);
+        SALARY_VIEW, REPORT_VIEW, ANALYSIS_VIEW, SALARY_EDIT);
 
     public static boolean elevatable(String perm) { return exists(perm) && !NOT_ELEVATABLE.contains(perm); }
 
@@ -119,7 +126,7 @@ public final class Perm {
     public record Meta(String key, String label, String hint, String group, String kind) {}
 
     public static final List<Meta> META = List.of(
-        new Meta(MASTER_VIEW,        "主数据 · 查看",   "楼栋、单元、租户、租户分类、公司与收款账户；没有这项时，租户联系人与收款账号显示为打码值", "master", "view"),
+        new Meta(MASTER_VIEW,        "主数据 · 查看",   "楼栋、单元、租户、租户分类、公司与收款账户；没有这项时，租户联系人与收款账号显示为打码值（催缴单导出除外，有「出账与催缴单 · 查看」就印完整账号）", "master", "view"),
         new Meta(MASTER_EDIT,        "主数据",          "楼栋、单元、租户、公司改名与收款账户的档案维护", "master", "edit"),
         new Meta(COMPANY_MANAGE,     "公司/账册管理",   "新增与删除记账公司（建司即建台账册；删除连同其全部台账、报表数据，不可恢复）", "master", "edit"),
         new Meta(CONTRACT_VIEW,      "合同 · 查看",     "合同列表、合同详情与租金计费行", "contract", "view"),
@@ -133,11 +140,12 @@ public final class Perm {
         new Meta(BILLING_VIEW,       "出账与催缴单 · 查看", "公共电核算与公摊、楼栋损耗、催缴单", "billing", "view"),
         new Meta(BILLING_RUN_EDIT,   "出账运行",        "公共电核算与损耗生成、重算、催缴单生成、单据备注", "billing", "edit"),
         new Meta(BILLING_ISSUE_EDIT, "催缴单签发",      "确认、签发、作废、标记已导出、改收款公司槽（对外不可逆动作）", "billing", "edit"),
-        new Meta(ENTRY_VIEW,         "台账与附表 · 查看", "月度台账、附表 6/7/8/10/11、办公三期水电、电费成本；附表 12 工资明细要另勾「工资 · 查看」", "entry", "view"),
-        new Meta(ENTRY_EDIT,         "事后录入",        "月度台账、附表 6/7/8/10/11/12、办公三期水电、年度预算导入", "entry", "edit"),
+        new Meta(ENTRY_VIEW,         "台账与附表 · 查看", "月度台账、附表 6/7/8/10/11、办公三期水电、电费成本；附表 12 工资明细的查看与录入在「工资」那一行另勾", "entry", "view"),
+        new Meta(ENTRY_EDIT,         "事后录入",        "月度台账、附表 6/7/8/10/11、办公三期水电、年度预算导入；不含附表 12 工资", "entry", "edit"),
         new Meta(BOOK_TEMPLATE_EDIT, "账册模板编辑",     "改列名/别名/列宽、增删自定义列、隐藏与列序（升版）、回滚版本；查看历史版本不需此权限", "entry", "edit"),
         new Meta(BOOK_TEMPLATE_SWITCH, "更换账册版本", "为某个月份切换使用哪一版账册模板;已录入数据的月份不可切", "entry", "edit"),
-        new Meta(SALARY_VIEW,        "工资 · 查看",     "逐人逐月工资明细；任何编辑权都不包含这一项，要单独勾", "salary", "view"),
+        new Meta(SALARY_VIEW,        "工资 · 查看",     "逐人逐月工资明细；勾「工资录入」会自动带上，别的编辑权都不包含这一项", "salary", "view"),
+        new Meta(SALARY_EDIT,        "工资录入",        "附表 12 工资明细的新增、改备注、删除与导入（含导入中心）；不能请主管当场授权", "salary", "edit"),
         new Meta(REPORT_VIEW,        "报表 · 查看",     "三大报表、损益附表 1–5、收入核对", "report", "view"),
         new Meta(REPORT_EDIT,        "账簿报表",        "三大报表、损益附表 1–5、收入核对的处置标记", "report", "edit"),
         new Meta(ANALYSIS_VIEW,      "经营分析 · 查看", "经营分析层各屏；不需要各模块的查看权，联系人电话与收款账号照样打码", "analysis", "view"),
@@ -149,7 +157,8 @@ public final class Perm {
 
     /**
      * 编辑 → 它隐含的查看(v3 规则 1)。从 META 推出:同 group 里 kind=edit 的点 → 该 group 的 view。
-     * salary / analysis 两组没有 edit,所以 salary:view、analysis:view 不被任何点隐含 —— 这正是设计要的。
+     * analysis 组没有 edit,所以 analysis:view 不被任何点隐含;salary 组只有 salary:edit,所以 salary:view
+     * 只被它隐含 —— entry:edit 不带出工资。这正是设计要的。
      * ⚠ 必须声明在 META 之后:静态初始化按源码顺序走。
      */
     public static final Map<String, String> IMPLIED_VIEW;

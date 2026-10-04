@@ -54,6 +54,17 @@ public class UserPermissionCache {
     /** status≠1 的账号名。不进 snapshot(那样就有权限了),单独记,只用来给 401 说理由。 */
     private volatile Set<String> disabled = Set.of();
 
+    /** 系统管理员角色的标识。预置、建后不可改、不可删(SystemService)。 */
+    public static final String SUPER_ADMIN_ROLE = "admin";
+    /**
+     * 持系统管理员角色的启用账号。系统管理分级与录审分离都放过他们 ——
+     * 用户 2026-10-04 拍板「我需要一个超级管理员的账号都能调试整个软件，录审不分离在超级管理，其他分离」。
+     * 按角色 code 认,不按权限点认:别人的角色可以被勾满全部权限,那也不等于系统管理员。
+     */
+    private volatile Set<String> superAdmins = Set.of();
+    /** 启用、且 must_change_password=1 的账号:除改密页要用的几条接口外一律拦(JwtAuthFilter)。跟着 reload 走,改完密码当场清。 */
+    private volatile Set<String> mustChange = Set.of();
+
     public UserPermissionCache(AuthUserMapper users, AuthUserRoleMapper userRoles,
                                AuthRoleMapper roles, AuthRolePermMapper rolePerms,
                                ElevationStore elevations) {
@@ -83,7 +94,9 @@ public class UserPermissionCache {
             .map(AuthUser::getUsername).collect(Collectors.toUnmodifiableSet());
         // 只装 status=1 的账号:停用的查不到 → 下一个请求就 401,不必等令牌过期
         List<AuthUser> active = users.selectList(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getStatus, 1));
-        if (active.isEmpty()) { snapshot = Map.of(); return; }
+        if (active.isEmpty()) { snapshot = Map.of(); superAdmins = Set.of(); mustChange = Set.of(); return; }
+        mustChange = active.stream().filter(u -> Integer.valueOf(1).equals(u.getMustChangePassword()))
+            .map(AuthUser::getUsername).collect(Collectors.toUnmodifiableSet());
 
         Map<Integer, AuthRole> roleById = roles.selectList(null).stream()
             .collect(Collectors.toMap(AuthRole::getId, r -> r, (a, b) -> a));
@@ -97,6 +110,7 @@ public class UserPermissionCache {
         }
 
         Map<String, UserAuth> next = new HashMap<>();
+        Set<String> admins = new HashSet<>();
         for (AuthUser u : active) {
             Set<String> perms = new HashSet<>();
             // 多角色是并集 —— 现实里有「主管兼管理员」。导航层同理取并集,否则兼岗的人会少看到东西。
@@ -105,6 +119,7 @@ public class UserPermissionCache {
             for (Integer rid : rolesByUser.getOrDefault(u.getId(), List.of())) {
                 perms.addAll(permsByRole.getOrDefault(rid, Set.of()));
                 AuthRole r = roleById.get(rid);
+                if (r != null && SUPER_ADMIN_ROLE.equals(r.getCode())) admins.add(u.getUsername());
                 if (r != null && r.getName() != null && !r.getName().isBlank()) roleNames.add(r.getName());
                 if (r != null && r.getNavLayers() != null) {
                     for (String s : r.getNavLayers().split(",")) {
@@ -126,11 +141,18 @@ public class UserPermissionCache {
                                                    List.copyOf(roleNames), tv, sid, reason.get(u.getUsername())));
         }
         snapshot = Map.copyOf(next);
+        superAdmins = Set.copyOf(admins);
         log.info("permission cache reloaded: {} active users", snapshot.size());
     }
 
     /** 找不到 = 账号不存在或已停用。 */
     public UserAuth get(String username) { return username == null ? null : snapshot.get(username); }
+
+    /** 还带着管理员给的密码、没改过。 */
+    public boolean mustChangePassword(String username) { return username != null && mustChange.contains(username); }
+
+    /** 启用且持系统管理员角色。 */
+    public boolean isSuperAdmin(String username) { return username != null && superAdmins.contains(username); }
 
     /** 这个账号存在且被停用了。只给「令牌签名有效」之后用 —— 拿它回答陌生人就成了枚举口。 */
     public boolean isDisabled(String username) { return username != null && disabled.contains(username); }

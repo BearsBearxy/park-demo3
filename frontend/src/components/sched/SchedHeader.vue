@@ -11,6 +11,7 @@ import { useReviewStore } from '@/stores/review'
 import { useUiStore } from '@/stores/ui'
 import { periodOfKey } from '@/types/review'
 import { ask } from '@/utils/ask'
+import { lackText } from '@/composables/useViewGate'
 
 import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
@@ -24,8 +25,11 @@ const props = withDefaults(defineProps<{
   year: number
   edit: boolean
   /** 本屏写权限键(RBAC-SPEC)。无此权限时编辑与导入按钮不渲染,数据照常显示。
-   *  必填 —— 7 个消费屏各传各的(附表族 entry:edit,损益附表 report:edit)。 */
+   *  必填 —— 7 个消费屏各传各的(附表族 entry:edit,附表12 salary:edit,损益附表 report:edit)。 */
   perm: string
+  /** perm 不可提权(附表12 的工资录入,用户 2026-10-04 拍板):没有它的人请主管也借不到 ——
+   *  编辑按钮置灰、写明缺哪一项,不弹授权窗;交审一并不画(后端交审附表12 也认这一项)。不传 = 照旧可请主管授权 */
+  noElevate?: boolean
   /** 本屏是否有导入能力。导入按钮由本组件统一渲染 —— 此前 7 屏各自往 #idle-actions 里
    *  塞了逐字相同的 5 行按钮,门控也就散成 7 份。 */
   showImport?: boolean
@@ -68,7 +72,7 @@ const props = withDefaults(defineProps<{
   /** 重编辑屏(损益附表、附表12 工资):≤600 在编辑签后面带「 · 建议桌面」(§5.3/§11.2 荐桌面,
    *  原来是表格上方单独一行)。不传不带 —— 其余年表屏不改 */
   deskHint?: boolean
-}>(), { showImport: false, importDisabled: false, dirty: 0, dirtyApprox: false, importKeepsManual: false, scope: null, reviewKey: null, reviewKeys: null })
+}>(), { noElevate: false, showImport: false, importDisabled: false, dirty: 0, dirtyApprox: false, importKeepsManual: false, scope: null, reviewKey: null, reviewKeys: null })
 
 const emit = defineEmits<{ back: []; 'toggle-edit': [forced?: boolean]; import: [] }>()
 
@@ -79,6 +83,8 @@ const emit = defineEmits<{ back: []; 'toggle-edit': [forced?: boolean]; import: 
 const auth = useAuthStore()
 const asking = ref<string[] | null>(null)
 const canAsk = computed(() => auth.can(props.perm) || auth.can('elevate:request'))
+/** 不可提权的写权限缺了时的一句原因(按钮置灰的 tip);有这项、或这项借得到时为 ''。 */
+const lackPerm = computed(() => (props.noElevate && !auth.can(props.perm) ? lackText([props.perm]) : ''))
 
 // ⚠ 必须登记进 auth.editors —— 本组件不走 useEditMode(编辑态由 7 个消费屏各自持有)。
 //   不登记的话守卫两头都失效:别的页面退出编辑时会以为"没人在编辑了",
@@ -305,7 +311,7 @@ async function onImport() {
         <component :is="iconFor('calendar-check')" :size="13" />{{ yearSpread }}
       </span>
       <FPReviewActions :keys="reviewKeyList" :label="reviewLabel" :year="reviewKeys ? year : null"
-                       :month-text="reviewMonthText" :can-edit="canAsk" :edit="edit" />
+                       :month-text="reviewMonthText" :can-edit="canAsk && !lackPerm" :edit="edit" />
       <!-- 文案与形态对齐 EDIT-MODE-SPEC §2 与抄表屏样板(MeterView.vue:583):
            浏览态 outline(编辑是次要动作) → 编辑态 filled(完成是主要动作)。
            改前这里恒 filled + 文案「编辑表格」,与 6 个抄表族屏的 outline +「编辑模式」两派并存。 -->
@@ -316,7 +322,8 @@ async function onImport() {
         <component :is="iconFor('lock')" :size="14" />{{ reviewNote }}
       </span>
       <Button v-else-if="canAsk" :variant="edit ? 'filled' : 'outline'" size="sm"
-              class="lc-lockbtn" :class="{ held: !!heldByOther }" @click="onToggleEdit">
+              class="lc-lockbtn" :class="{ held: !!heldByOther }" :disabled="!!lackPerm" v-tip="lackPerm"
+              @click="onToggleEdit">
         <template #leading>
           <span v-if="heldByOther && !edit" class="lc-lockav" :class="{ dim: heldByOther.idle }">{{ heldByOther.displayName.slice(0, 1) }}</span>
           <component v-else :is="iconFor(edit ? 'check' : 'pencil')" :size="14" />

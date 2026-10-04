@@ -14,7 +14,7 @@ vi.mock('@/api/pv', () => ({ pvApi: { records: vi.fn() } }))
 vi.mock('@/api/charging', () => ({ chargingApi: { records: vi.fn() } }))
 vi.mock('@/api/elec', () => ({ elecApi: { records: vi.fn() } }))
 vi.mock('@/api/utilities', () => ({ utilitiesApi: { records: vi.fn() } }))
-vi.mock('@/api/salary', () => ({ salaryApi: { records: vi.fn() } }))
+vi.mock('@/api/salary', () => ({ salaryApi: { lunchTotals: vi.fn() } }))
 
 // 1-based 月 → 值,其余月 null
 const months = (pairs: Record<number, number>) =>
@@ -55,9 +55,7 @@ function primeAll() {
   vi.mocked(utilitiesApi.records).mockResolvedValue({ rows: [
     { acctMonth: '2025-01', elecAmt: 500, waterAmt: 100 },
   ] } as never)
-  vi.mocked(salaryApi.records).mockImplementation(((_y: number, m: number) => (m <= 2
-    ? Promise.resolve({ rows: [{}], total: { lunch: m * 10, base: 1000 } })
-    : Promise.reject(new Error('no data')))) as never)
+  vi.mocked(salaryApi.lunchTotals).mockResolvedValue(months({ 1: 10, 2: 0 }))   // 二月录了、餐补合计 0
 }
 
 beforeEach(() => { vi.clearAllMocks(); primeAll() })
@@ -104,19 +102,13 @@ describe('loadDeriveData — 并行管道 + 序列键', () => {
     expect(data['office|elec+water']?.[0]).toBe(600)
   })
 
-  it('salary ×12 月并行:成功月 Σ 字段,失败月 null,不抛', async () => {
+  // 用户 2026-10-04 拍板:餐补只取后端的逐月合计(报表查看就能读,总经理也看得到),不再逐月拉逐人明细。
+  // 破坏验证:pnlDerive 里 `v !== null` 的判断去掉 → 三月起变成 0 → 红
+  it('❗餐补走逐月合计一个请求:有值的月(含 0)进 sal|lunch,null 月保持 null', async () => {
     const data = await loadDeriveData(2025)
-    expect(vi.mocked(salaryApi.records)).toHaveBeenCalledTimes(12)
-    expect(data['sal|lunch']?.slice(0, 3)).toEqual([10, 20, null])
-    expect(data['sal|base']?.[0]).toBe(1000)
-  })
-
-  // RBAC v3:工资明细只给 salary:view(只有报表查看权的股东拿不到)。破坏验证:pnlDerive 里 opts.salary 的判断去掉 → 红
-  it('❗没有工资查看权:那 12 个请求不发,工资派生不出键,别的源照算', async () => {
-    const data = await loadDeriveData(2025, { salary: false })
-    expect(vi.mocked(salaryApi.records)).not.toHaveBeenCalled()
-    expect(data['sal|lunch']).toBeUndefined()
-    expect(data['office|elecAmt']?.[0]).toBe(500)
+    expect(vi.mocked(salaryApi.lunchTotals)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(salaryApi.lunchTotals)).toHaveBeenCalledWith(2025)
+    expect(data['sal|lunch']?.slice(0, 4)).toEqual([10, 0, null, null])
   })
 
   it('某源 reject → 相关键缺失、其余源不受影响、不抛(allSettled)', async () => {

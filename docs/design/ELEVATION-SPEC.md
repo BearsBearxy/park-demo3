@@ -8,7 +8,7 @@
 账号密码；专员获得 30 分钟该权限；期间每一次修改的审计都同时记下**两个人**。
 
 **这条改动把权限从「墙」变成了「减速带 + 留痕」。** 这是有意的：现实里主管本来就会走过来
-点头。真正的硬墙是系统管理、审核与全部查看权（见 §2 不可提权名单）。
+点头。真正的硬墙是系统管理、审核、工资录入与全部查看权（见 §2 不可提权名单）。
 
 ## 1. 谁能请求提权
 
@@ -27,7 +27,9 @@
 
 `Perm.NOT_ELEVATABLE` = `system:view` / `system:edit` / `elevate:request` / `lock:takeover` / `review:approve`
 / 全部 9 个模块查看点 `master:view` `contract:view` `param:view` `meter:view` `billing:view` `entry:view` `salary:view`
-`report:view` `analysis:view`（RBAC-SPEC §11.2 规则 6：查看借得到，「工资只给两个人看」就成了请主管授权 30 分钟的事）。
+`report:view` `analysis:view`（RBAC-SPEC §11.2 规则 6：查看借得到，「工资只给两个人看」就成了请主管授权 30 分钟的事）
+/ 工资录入 `salary:edit`（2026-10-04 用户拍板，RBAC-SPEC §11.8：它隐含工资查看，借得到的话看不见工资的人请一次授权又能往工资表里导数）。
+附表 12 页头对没有 `salary:edit` 的人把编辑按钮置灰、写明缺哪一项，不弹授权窗（`SchedHeader` 的 `no-elevate`）。
 可批人接口 `GET /api/auth/approvals/candidates` 遇到名单里的点同样 403。
 
 **`system:*` 必须留在名单里。** 能当场授权自己去建账号、改角色的话，提权就成了权限系统的
@@ -36,6 +38,10 @@
 
 `ElevationApiIT.systemPermsCanNeverBeElevated` 钉死这条：拿 admin（本人**确实有**
 `system:edit`）去授权，仍然被拒 —— 所以拒绝理由只可能是「这一项不可提权」。
+
+拒绝的话分两种（`ElevationService.elevate`，2026-10-04 复查）：`system:*` 照旧讲上面那条理由
+（「…否则一次 30 分钟的授权就能换来一个永久管理员账号…」）；名单里其余各项只说去找谁 ——
+「「工资录入」不能靠当场授权获得，要请系统管理员在角色里开通。」永久管理员那句对审核、查看、工资录入不成立。
 
 ## 3. 服务端
 

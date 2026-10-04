@@ -1,4 +1,5 @@
 package com.park.demo3.service;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.DeleteResultDTO;
@@ -13,14 +14,13 @@ import com.park.demo3.dto.SalaryYearMonthDTO;
 import com.park.demo3.dto.SalaryYearMonthDTO.Total;
 import com.park.demo3.entity.SalaryRecord;
 import com.park.demo3.mapper.SalaryRecordMapper;
-import com.park.demo3.security.Perm;
-import com.park.demo3.security.SensitiveMask;
 import com.park.demo3.security.ReviewGuard;
 import com.park.demo3.security.ReviewKind;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
@@ -92,6 +92,20 @@ public class SalaryService {
         return new SalaryYearMonthDTO(year, month, dtos, total(rows));
     }
 
+    /**
+     * 某年餐补费的逐月合计,12 个数,不带任何人 —— 损益附表5「餐补费」派生对照用(GET /api/salary/lunch-totals)。
+     * 报表查看就能读(用户 2026-10-04 拍板「按你推荐」):总经理只有报表查看,原来这一项派生看不到;逐人明细仍只给工资查看。
+     * 该月一行工资都没有给 null,与「有行、餐补合计 0」分开 —— 对照不把没录的月当成 0。口径同 records() 的 total.lunch。
+     */
+    public List<BigDecimal> lunchTotals(int year) {
+        BigDecimal[] out = new BigDecimal[12];
+        for (SalaryRecord r : records.selectList(new QueryWrapper<SalaryRecord>().likeRight("acct_month", year + "-"))) {
+            int i = monthOf(r.getAcctMonth()) - 1;
+            out[i] = (out[i] == null ? BigDecimal.ZERO : out[i]).add(nz(r.getLunch()));
+        }
+        return Arrays.stream(out).map(v -> v == null ? null : r2(v)).toList();
+    }
+
     // ── create(source=manual) ──
     public SalaryRecordDTO create(SalaryRecordReq req) {
         assertSalaryEditable(req.acctMonth());
@@ -119,7 +133,7 @@ public class SalaryService {
         r.setNote(blankToNull(req.note()));
         r.setSource("manual");
         records.insert(r);
-        return visible(toDTO(records.selectById(r.getId())));
+        return toDTO(records.selectById(r.getId()));
     }
 
     // ── import:重导=替换本月导入行 —— 先删该 acctMonth 的 source='import' 行,再逐行 insert(source='import')。
@@ -201,17 +215,9 @@ public class SalaryService {
         assertSalaryEditable(r.getAcctMonth());
         r.setNote(blankToNull(note));
         records.updateById(r);
-        return visible(toDTO(records.selectById(id)));
-    }
-
-    /**
-     * 写接口回包按 salary:view 收(RBAC-SPEC §11 规则 5)。写入挂的是 entry:edit,而它不隐含 salary:view ——
-     * 不收的话只有 entry:edit 的人对任意 id 改一次备注,就能读到那一行的姓名和工资。没有就只回 id。
-     */
-    private static SalaryRecordDTO visible(SalaryRecordDTO d) {
-        if (SensitiveMask.holds(Perm.SALARY_VIEW)) return d;
-        return new SalaryRecordDTO(d.id(), null, null, null, null, null, null, null, null, null, null, null,
-            null, null, null, null, null, null, null, null, null, null, null, null, null, null, false, null, null);
+        // 回包给整行:写要 salary:edit,它隐含 salary:view 且不可提权,能写到这里的人本来就看得见
+        // (2026-10-04 之前写挂 entry:edit,这里按 salary:view 把行内容收掉过,拆权后那道收已无事可做,删了)
+        return toDTO(records.selectById(id));
     }
 
     // ── delete(id;不存在 → 404;seed 同等可删) ──

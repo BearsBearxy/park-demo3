@@ -87,9 +87,9 @@ public class SystemController {
         return svc.setStatus(id, req.status());
     }
 
-    @Operation(summary = "重置密码（重置后该账号下次登录须改密）")
+    @Operation(summary = "重置密码（别人的:该账号下次登录须改密;自己的:不用再改,回新令牌,别处的登录退出）")
     @PostMapping("/users/{id}/password")
-    public void resetPassword(@PathVariable Integer id, @Valid @RequestBody PasswordResetReq req) {
-        svc.resetPassword(id, req.password());
+    public PasswordChangedResp resetPassword(@PathVariable Integer id, @Valid @RequestBody PasswordResetReq req) {
+        return new PasswordChangedResp(svc.resetPassword(id, req.password()));
     }
 }

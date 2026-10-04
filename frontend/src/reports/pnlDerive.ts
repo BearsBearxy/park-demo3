@@ -1,6 +1,6 @@
 // 损益附表派生链接(P2-G)— 数据层聚合值 → 序列键 → DERIVE_MAP(spec §2 实证 35 行位) → 对照/填入。
 // loadDeriveData(year):Promise.allSettled 并行拉 6 源(s10 年聚合/光伏/充电桩7·8/电费energy·basic/
-// 办公水电13/工资×12月),统一成 Record<seriesKey,(number|null)[12]>;任一源失败相关键缺失不阻塞(G6)。
+// 办公水电13/餐补月合计),统一成 Record<seriesKey,(number|null)[12]>;任一源失败相关键缺失不阻塞(G6)。
 // 匹配 = (schedule, normalizeHeader(行标签)) 相等,分组无关(同标签多组各自命中);未映射行不显派生,不猜(G1)。
 // P2-G2:MAP 扩 group(母册分组) + generateMissingRows 生成缺失映射行(缺失判定 group+label 双 normalize)。
 import { s10Api } from '@/api/s10'
@@ -46,8 +46,7 @@ const subOp = ([a, b]: (number | null)[]): number | null =>
   (a === null && b === null ? null : (a ?? 0) - (b ?? 0))
 
 // 按年懒加载入口(缓存由调用方 per year 持有,G6)
-// salary=false:调用者没有工资查看权(RBAC v3,工资明细只给 salary:view)—— 那 12 个请求不发,餐补那一项派生不显示
-export async function loadDeriveData(year: number, opts: { salary?: boolean } = {}): Promise<DeriveData> {
+export async function loadDeriveData(year: number): Promise<DeriveData> {
   const data: DeriveData = {}
   const jobs: Promise<void>[] = [
     // s10 年聚合:phase→colId→12月Σ 直通 s10|p{n}|{colId}
@@ -87,12 +86,11 @@ export async function loadDeriveData(year: number, opts: { salary?: boolean } = 
         acc(data, 'office|waterAmt', i, r.waterAmt)
       }
     }),
-    // 工资 ×12 月并行:各字段月 Σ(取后端 total;无行月保持 null;MAP 只用 lunch)
-    ...Array.from({ length: opts.salary === false ? 0 : 12 }, (_, m) => salaryApi.records(year, m + 1).then(dto => {
-      if (!dto.rows?.length) return
-      for (const [k, v] of Object.entries(dto.total ?? {}))
-        if (typeof v === 'number') acc(data, `sal|${k}`, m, v)
-    })),
+    // 工资:MAP 只用餐补,取后端的餐补逐月合计(无工资行的月为 null,保持 null)。不取逐人明细 ——
+    // 合计报表查看就能读,总经理也看得到这一项派生;明细仍只给工资查看(用户 2026-10-04 拍板)
+    salaryApi.lunchTotals(year).then(ms => {
+      ms.forEach((v, m) => { if (v !== null) acc(data, 'sal|lunch', m, v) })
+    }),
   ]
   await Promise.allSettled(jobs)   // 单源失败 → 相关键缺失,不抛(G6)
 

@@ -14,6 +14,9 @@ public enum ResultCode {
     // 这两种下一步。仍走 BizException → HTTP 200 + body.code=423,与 TOO_MANY_REQUESTS(429) 同先例。
     LOCKED(423, "该表本月已审核或待审核，不能修改"),
     TOO_MANY_REQUESTS(429, "登录尝试过于频繁，请 15 分钟后再试"),   // 登录限流(LoginRateLimiter);仍走 BizException → HTTP 200 + body.code=429
+    // 带着管理员给的密码(新账号的初始密码 / 被别人重置的密码)还没改:改密页用不到的接口一律拦(JwtAuthFilter)。
+    // HTTP 403,body.code 与 403 分开 —— 前端见它就整页跳改密页,不报错、不退出(用户 2026-10-04 拍板)。
+    PASSWORD_CHANGE_REQUIRED(428, "请先修改初始密码，改完才能使用系统"),
 
     INTERNAL(500, "服务器内部错误");
     public final int code; public final String message;

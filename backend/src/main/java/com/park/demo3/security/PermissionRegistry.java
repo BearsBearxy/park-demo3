@@ -171,7 +171,7 @@ public class PermissionRegistry {
         //     GET /api/review 不在这张写表里,在读规则表(任何已登录可读)。
         add(HttpMethod.POST, "/api/review/*/submit",
             Perm.PARAM_POLICY_EDIT, Perm.PARAM_MONTHLY_EDIT, Perm.METER_READING_EDIT,
-            Perm.BILLING_RUN_EDIT, Perm.ENTRY_EDIT);
+            Perm.BILLING_RUN_EDIT, Perm.ENTRY_EDIT, Perm.SALARY_EDIT);
         //     撤回(R4)与 submit **同源**:同为录入方的动作,同样是「任一相关 edit 权」,
         //     kind→perm 与「只能撤自己交的」都下沉到 ReviewService.recall。故参数逐字同上一条。
         //     ⚠ 既有缺口,这里照抄就原样继承:两条都**没有 Perm.REPORT_EDIT**,而三大报表那三把键
@@ -181,7 +181,7 @@ public class PermissionRegistry {
         //     角色就会踩上。不在本期改(改的是 submit 的既有行为),记在 spec §12。
         add(HttpMethod.POST, "/api/review/*/recall",
             Perm.PARAM_POLICY_EDIT, Perm.PARAM_MONTHLY_EDIT, Perm.METER_READING_EDIT,
-            Perm.BILLING_RUN_EDIT, Perm.ENTRY_EDIT);
+            Perm.BILLING_RUN_EDIT, Perm.ENTRY_EDIT, Perm.SALARY_EDIT);
         add(HttpMethod.POST, "/api/review/*/approve",  Perm.REVIEW_APPROVE);
         add(HttpMethod.POST, "/api/review/*/return",   Perm.REVIEW_APPROVE);
         add(HttpMethod.POST, "/api/review/*/withdraw", Perm.REVIEW_APPROVE);
@@ -202,13 +202,19 @@ public class PermissionRegistry {
         add(null, "/api/contracts",    Perm.CONTRACT_EDIT);
         add(null, "/api/contracts/**", Perm.CONTRACT_EDIT);
 
-        // ═══ 事后录入:台账 + 附表6/7/8/10/11/12 + 办公三期水电 ═══
+        // ═══ 事后录入:台账 + 附表6/7/8/10/11 + 办公三期水电 ═══
         for (String p : new String[]{"/api/ledger", "/api/s10", "/api/pv", "/api/charging",
-                                     "/api/elec", "/api/salary", "/api/utilities"}) {
+                                     "/api/elec", "/api/utilities"}) {
                                      // /api/books 已摘除:模板写走第16点(上方方法级规则),其余写默认拒
             add(null, p, Perm.ENTRY_EDIT);
             add(null, p + "/**", Perm.ENTRY_EDIT);
         }
+
+        // ═══ 附表12 工资:写从 entry:edit 拆出来(用户 2026-10-04 拍板「按你推荐」,RBAC-SPEC §11.8)═══
+        //     挂 entry:edit 时,没有 salary:view 的财务专员能经导入中心写一张自己看不见的表。
+        //     整个前缀一档:新增 / 改备注 / 删 / 批删 / 导入 / 清空本期导入,一条不漏(salary_record 只有 SalaryService 写)
+        add(null, "/api/salary",    Perm.SALARY_EDIT);
+        add(null, "/api/salary/**", Perm.SALARY_EDIT);
 
         // ═══ 账簿与报表 ═══
         // ⚠ /api/pnl 是损益附表 1-5(pnl_row)归 report,/api/pv 是附表6 光伏(pv_record)归 entry。
@@ -271,6 +277,9 @@ public class PermissionRegistry {
                                           Perm.BILLING_VIEW, Perm.ANALYSIS_VIEW);
         addRead("/api/companies",         Perm.MASTER_VIEW, Perm.BILLING_VIEW, Perm.ENTRY_VIEW, Perm.REPORT_VIEW,
                                           Perm.ANALYSIS_VIEW);
+        // 催缴单上印的收款账户,账号与个人卡户名明文(用户 2026-10-04 拍板「按你推荐」):单子要发给租户付款。
+        // 只放 billing:view —— 上面那条 /api/companies 对别的查看点照旧打码
+        addRead("/api/companies/payees",  Perm.BILLING_VIEW);
 
         // ═══ 合同 ═══
         addRead("/api/contracts/summary",                Perm.CONTRACT_VIEW, Perm.ANALYSIS_VIEW);
@@ -333,6 +342,9 @@ public class PermissionRegistry {
                                                Perm.BILLING_VIEW, Perm.ENTRY_VIEW, Perm.SALARY_VIEW, Perm.REPORT_VIEW);
 
         // ═══ 工资:只给 salary:view。不对 analysis / report 放行(分析层只用损益附表5 里的汇总行) ═══
+        // 例外只有餐补逐月合计:12 个数,不带人,损益附表5「餐补费」派生对照用,报表查看就能读
+        // (用户 2026-10-04 拍板「按你推荐」)。必须排在 /** 前面(铁律 2)
+        addRead("/api/salary/lunch-totals", Perm.SALARY_VIEW, Perm.REPORT_VIEW);
         addRead("/api/salary/**", Perm.SALARY_VIEW);
 
         // ═══ 报表。is / bs 的本期给分析;科目余额表 tb 不给(科目名里有疑似银行账号片段,分析层也不调) ═══

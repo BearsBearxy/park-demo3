@@ -198,7 +198,7 @@ async function runEntry(payload: ImportPayload, fileName: string, p?: ImportRunP
   if (!activeKey.value) return null
   viewTo.value = null
   const res = await runImport(activeKey.value, payload, { ...ctx.value, _run: p }, fileName)
-  // 看不了目标屏就不出「去查看」(RBAC v3):财务专员有 entry:edit 能导工资,却没有 salary:view
+  // 看不了目标屏就不出「去查看」(RBAC v3):查看不可提权,请主管借到某类导入写权的人,不一定看得了它导进去的那一屏
   const link = viewLink(activeKey.value, ctx.value, payload as unknown[])
   viewTo.value = link && canViewPage(link.path, auth.can) ? link : null
   return settle(res, p, reload)

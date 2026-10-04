@@ -219,16 +219,27 @@ public class ReviewService {
     /** 任何月「整月锁账」所需键数的下限:固定键 5(出账链) + 1(附12) + 2(附13/14) + 1(附6) + 2(附7/8) + 1(附11)。 */
     private static final int MIN_MONTH_CLOSE_KEYS = 12;
 
-    /** ping 用:全库待审核条数。见 PresenceService。 */
-    public int pendingCount() {
-        return Math.toIntExact(states.selectCount(
-            new QueryWrapper<ReviewState>().eq("status", "submitted")));
+    /** ping 用:等 user 审的条数(全库待审核,减去他自己交的)。见 PresenceService。 */
+    public int pendingCount(String user) {
+        return Math.toIntExact(states.selectCount(pendingOf(user)));
+    }
+
+    /**
+     * 等 user 审的 = status='submitted',不是系统管理员时再去掉他自己交的(录审分离,guardNotOwnSubmission)。
+     * 铃铛的红数字与清单都从这里取:自己交的他审不了,列进「等你审」就成了一件永远办不完的事,
+     * 红点挂到别人审完为止(用户 2026-10-04 拍板「录审不分离在超级管理，其他分离」)。
+     * submitted_by 为 NULL(直接写库的种子行)不算谁交的,照列。
+     */
+    private QueryWrapper<ReviewState> pendingOf(String user) {
+        QueryWrapper<ReviewState> w = new QueryWrapper<ReviewState>().eq("status", "submitted");
+        if (!cache.isSuperAdmin(user)) w.and(q -> q.isNull("submitted_by").or().ne("submitted_by", user));
+        return w;
     }
 
     /**
      * 待审明细。铃铛点开的抽屉用 —— 只有个数的话,人得自己在年份条上逐月翻着找。
      *
-     * 与 pendingCount() 同一个判据(status='submitted'),**跨全部月**,按交审时间倒序。
+     * 与 pendingCount() 同一个判据(pendingOf:待审核、不是自己交的),**跨全部月**,按交审时间倒序。
      * 不按权限二次过滤:R1 定的是「有 review:approve 就能审全部键」(§7.3),
      * 没这项权限的人后端在 controller 那层就已经 403 了,进不到这里。
      *
@@ -236,8 +247,7 @@ public class ReviewService {
      *   那是流程问题不是列表问题。真长了先加上限再说。
      */
     public List<PendingItemDTO> pendingList() {
-        List<ReviewState> rows = states.selectList(new QueryWrapper<ReviewState>()
-                .eq("status", "submitted").orderByDesc("submitted_at"));
+        List<ReviewState> rows = states.selectList(pendingOf(me()).orderByDesc("submitted_at"));
         Map<String, String> names = displayNames(rows.stream().map(ReviewState::getSubmittedBy).toList());
         return rows.stream()
             .map(r -> new PendingItemDTO(r.getReviewKey(), r.getKind(), r.getScope(),
@@ -346,6 +356,7 @@ public class ReviewService {
     public void approve(String rawKey) {
         ReviewKey key = ReviewKey.parse(rawKey);
         ReviewState s = requireStatus(key, "submitted", "通过");
+        guardNotOwnSubmission(key, s);
 
         Map<String, ReviewState> rows = rowsOf(key.period(), batchOf(key));
         List<String> missing = missingUpstream(key, rows);
@@ -356,7 +367,7 @@ public class ReviewService {
         setCols(key, Map.of("status", "approved", "reviewed_by", me(), "reviewed_at", LocalDateTime.now()),
                 List.of("reason"));
         log(key, "approve", null);
-        // 自己交自己审的,add 自己跳过
+        // 系统管理员自己交自己审的,add 自己跳过
         bell.add(s.getSubmittedBy(), NoticeService.Kind.review_approved, labelOf(key) + " 审核通过", null, key.raw());
     }
 
@@ -364,7 +375,7 @@ public class ReviewService {
     @NoReviewGuard(reason = "审核动作本身:守卫拦的就是审核态,再挂一次会让已交审的表连撤销都做不了(状态机在 requireStatus)")
     public void returnBack(String rawKey, String reason) {
         ReviewKey key = ReviewKey.parse(rawKey);
-        requireStatus(key, "submitted", "退回");
+        guardNotOwnSubmission(key, requireStatus(key, "submitted", "退回"));
         setCols(key, Map.of("status", "returned", "reviewed_by", me(),
                             "reviewed_at", LocalDateTime.now(), "reason", reason), List.of());
         log(key, "return", reason);
@@ -500,6 +511,21 @@ public class ReviewService {
             .findFirst().orElse(List.of());
     }
 
+    /**
+     * 录审分离:自己交的表要由别人通过或退回(用户 2026-10-04 拍板「录审不分离在超级管理，其他分离」,
+     * 推翻 RBAC-SPEC D16 那句「系统不拦同一账号既录又审」)。系统管理员不拦 —— 他要一个人把整套流程跑通调试。
+     * 撤销审核不在这里:那是作废一次已经由别人做出的判断,交审人本来就审不了自己的表。
+     *
+     * me() 取不到时是空串、submitted_by 可能为 NULL(直接写库的种子行):按 me().equals(...) 写,反过来在这一列为空时 NPE(同 recall)。
+     *
+     * 409 不是 403:他有审核权,拦的是「这一张是自己交的」这条规矩(同 SystemService.guardNotSelf「不能停用自己」)。
+     * 前端两处审核入口给 403 冠「你没有这张表的权限：」—— 冠在这句前面就成了「没权限…是你自己交的」,前后打架。
+     */
+    private void guardNotOwnSubmission(ReviewKey key, ReviewState s) {
+        if (me().equals(s.getSubmittedBy()) && !cache.isSuperAdmin(me()))
+            throw new BizException(ResultCode.CONFLICT, key.human() + " 是你自己交的，要由别人通过或退回");
+    }
+
     private ReviewState requireStatus(ReviewKey key, String expect, String action) {
         ReviewState s = states.selectById(key.raw());
         String cur = s == null ? "entered" : s.getStatus();
@@ -515,7 +541,8 @@ public class ReviewService {
      * 真正的判定在这里,表在 ReviewKind.perms()。
      * 这一道是**承重的**:只有 entry:edit 的人能交附表的审,交不了 alloc 的审(撤回是同一道,recall 与 submit 同源)。
      *
-     * approve / return / withdraw 三个动作**没有**对应的 service 自守:URL 层挂的就是 review:approve,
+     * approve / return / withdraw 三个动作**没有**对应的权限自守(approve / return 另有一道「不是自己交的」,
+     * 判的是人不是权限,见 guardNotOwnSubmission):URL 层挂的就是 review:approve,
      * 每一条路径都过得了那道闸,且没有任何内部调用方 —— 再加一道恒为真的检查只会让人以为有两层保护
      * (同 BookService 里那句「一个永远为真的守卫比没有守卫更糟」)。哪天出现内部调用方,再在这里补。
      */

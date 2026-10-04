@@ -19,7 +19,7 @@ import { iconFor } from '@/components/ds/icon'
 import { useAuthStore } from '@/stores/auth'
 import { receipt } from '@/utils/receipt'
 import { useReviewStore } from '@/stores/review'
-import { periodOfKey, type ReviewRow, type ReviewStatus } from '@/types/review'
+import { ownSubmission, periodOfKey, SELF_REVIEW_TIP, type ReviewRow, type ReviewStatus } from '@/types/review'
 
 const props = withDefaults(defineProps<{
   /** 这一屏此刻**看得见**的那几把键。null / 空 = 整簇不渲染。
@@ -109,8 +109,14 @@ const inState = (...ss: ReviewStatus[]) =>
 // 每个动作各自作用于「此刻正处在对应态的那几把键」,不先把多键折成一个态再统一发。
 // 折的话公共电核算屏(alloc + alloc-loss)一把 entered 一把 submitted 时,submitAll 会把
 // 已交审的那把再交一次 —— 吃一个 409,而屏上看不出是哪把出的错。
-const toSubmit = computed(() => inState('entered', 'returned'))
-const toApprove = computed(() => (isReviewer.value ? inState('submitted') : []))
+// 交审只给宿主说能编辑这张表的人(canEdit):纯审核员、附表12 缺「工资录入」的人点下去后端恒 403
+// (ReviewKind.perms(),交审要这张表的录入权)。show 放审核员进来是为了通过 / 退回,不是为了交审。
+const toSubmit = computed(() => (props.canEdit ? inState('entered', 'returned') : []))
+const toReview = computed(() => (isReviewer.value ? inState('submitted') : []))
+// 自己交的那几把不发(录审分离,见 types/review ownSubmission);系统管理员照发
+const toApprove = computed(() => toReview.value.filter((k) => !ownSubmission(rowOf(k), auth.me, auth.superAdmin)))
+/** 待审的全是自己交的:「通过 / 退回」照画、按不动,悬停说为什么 —— 一颗都不画会让人以为审核按钮坏了 */
+const selfOnly = computed(() => toReview.value.length > 0 && !toApprove.value.length)
 const toWithdraw = computed(() => (isReviewer.value ? inState('approved') : []))
 /**
  * 撤回只对**自己交的**画(§07-③:别人交的表你撤不了,那是审核员的「退回」)。
@@ -272,12 +278,14 @@ onBeforeUnmount(() => {
         {{ actText('撤回', toRecall) }}
       </Button>
       <!-- 「通过」同样不预判上游前置:上游没审完时后端 409,回执原样报「先通过 计费参数 的审核…」。 -->
-      <Button v-if="toApprove.length" variant="filled" size="sm" :disabled="acting" @click="onApprove">
+      <Button v-if="toApprove.length || selfOnly" variant="filled" size="sm" :disabled="acting || selfOnly"
+              v-tip="selfOnly ? SELF_REVIEW_TIP : undefined" @click="onApprove">
         <template #leading><component :is="iconFor('check')" :size="14" /></template>
-        {{ actText('通过', toApprove) }}
+        {{ actText('通过', selfOnly ? toReview : toApprove) }}
       </Button>
-      <Button v-if="toApprove.length" variant="danger" size="sm" :disabled="acting" @click="dlg = 'return'">
-        {{ actText('退回', toApprove) }}
+      <Button v-if="toApprove.length || selfOnly" variant="danger" size="sm" :disabled="acting || selfOnly"
+              v-tip="selfOnly ? SELF_REVIEW_TIP : undefined" @click="dlg = 'return'">
+        {{ actText('退回', selfOnly ? toReview : toApprove) }}
       </Button>
       <Button v-if="toWithdraw.length" variant="danger" size="sm" :disabled="acting" @click="dlg = 'withdraw'">
         <template #leading><component :is="iconFor('rotate-ccw')" :size="14" /></template>

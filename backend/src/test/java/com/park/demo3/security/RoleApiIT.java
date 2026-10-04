@@ -64,7 +64,7 @@ class RoleApiIT extends AbstractMysqlIT {
      */
     @Test
     void perm18_reviewApprove_isRegisteredEverywhere() {
-        assertThat(Perm.ALL).hasSize(27).contains(Perm.REVIEW_APPROVE);   // v3(V134)加了 9 个查看点
+        assertThat(Perm.ALL).hasSize(28).contains(Perm.REVIEW_APPROVE);   // v3(V134)加了 9 个查看点,V136 加了工资录入
         assertThat(Perm.META.stream().map(Perm.Meta::key)).contains(Perm.REVIEW_APPROVE);
         assertThat(Perm.elevatable(Perm.REVIEW_APPROVE))
             .as("审核不是能当场借的权限(§7.3):借得到就等于录入方能请主管借一次权把自己录的东西审掉")
@@ -94,12 +94,12 @@ class RoleApiIT extends AbstractMysqlIT {
     void presetRolesMatchSpec() {
         // 钉住 RBAC-SPEC §3 的角色矩阵。改这里之前先改规范,别让代码和文档对不上。
         assertThat(permsOf("finance_manager"))
-            .as("财务主管 = 除 system 外的业务全部 + 授权接管 + 可请求提权 + 8 个查看点 + 工资(V134)")
+            .as("财务主管 = 除 system 外的业务全部 + 授权接管 + 可请求提权 + 8 个查看点 + 工资查看(V134)与录入(V136)")
             .containsExactlyInAnyOrderElementsOf(plusViews(
                 Perm.MASTER_EDIT, Perm.CONTRACT_EDIT, Perm.PARAM_POLICY_EDIT, Perm.PARAM_MONTHLY_EDIT,
                 Perm.METER_MASTER_EDIT, Perm.METER_READING_EDIT, Perm.BILLING_RUN_EDIT,
                 Perm.BILLING_ISSUE_EDIT, Perm.ENTRY_EDIT, Perm.REPORT_EDIT, Perm.LOCK_TAKEOVER,
-                Perm.ELEVATE_REQUEST, Perm.SALARY_VIEW));
+                Perm.ELEVATE_REQUEST, Perm.SALARY_VIEW, Perm.SALARY_EDIT));
 
         assertThat(permsOf("finance_clerk"))
             .as("财务专员 = 抄读数/台账附表录入/出账运行/报表。"
@@ -109,8 +109,8 @@ class RoleApiIT extends AbstractMysqlIT {
                 Perm.METER_READING_EDIT, Perm.BILLING_RUN_EDIT,
                 Perm.ENTRY_EDIT, Perm.REPORT_EDIT, Perm.ELEVATE_REQUEST));
         assertThat(permsOf("finance_clerk"))
-            .as("V134:专员能导入工资(entry:edit),但看不到工资 —— salary:view 只给 admin 与财务主管")
-            .doesNotContain(Perm.SALARY_VIEW);
+            .as("V134 + V136:专员看不到工资也录不了工资 —— 工资的查看与录入只给 admin 与财务主管")
+            .doesNotContain(Perm.SALARY_VIEW, Perm.SALARY_EDIT);
         assertThat(permsOf("finance_clerk"))
             .as("电价与计费口径都必须在专员手上之外 —— 这两项一起构成'账单数字'那道门")
             .doesNotContain(Perm.PARAM_MONTHLY_EDIT, Perm.PARAM_POLICY_EDIT);

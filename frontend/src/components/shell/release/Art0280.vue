@@ -2,7 +2,8 @@
 // 0.28.0 重点「管理员能按模块授权查看」的配图:角色权限屏模块矩阵的缩样 —— 表头「模块 / 查看 / 编辑」+ 三行。
 // 行照 views/system/SystemRolesView.vue 的 .sr-mx-r(三列网格、行间 divider)与 .sr-mx-h(表头 11px 灰字)抄;
 // 复选框是原生 checkbox 配 accent-color: var(--hue-blue),这里画成同色实心方块 + 白勾。字压到 12 / 11。
-// 三行讲三件事:主数据勾了编辑就带着查看;台账与附表只看不改;工资只有查看一格、这个角色没勾。
+// 三行讲三件事:主数据勾了编辑就带着查看;台账与附表只看不改;经营分析只有查看一格、这个角色没勾
+// (原来第三行画工资,2026-10-04 工资多了编辑格「工资录入」,只有查看的只剩经营分析)。
 // 编辑格的字是后端 Perm.META 的原名(主数据 / 事后录入),模块名照前端 MODULES。
 import { iconFor } from '@/components/ds/icon'
 </script>
@@ -20,7 +21,7 @@ import { iconFor } from '@/components/ds/icon'
     <span class="ed"><i class="cb" />事后录入</span>
   </div>
   <div class="r">
-    <span class="nm">工资</span>
+    <span class="nm">经营分析</span>
     <span><i class="cb" /></span>
     <span class="ed none">—</span>
   </div>

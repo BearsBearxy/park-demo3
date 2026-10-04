@@ -294,9 +294,12 @@ class PermissionCoverageTest {
         assertThat(reg.resolveRead("/api/reports/bs/3/2024/5")).containsExactly(Perm.REPORT_VIEW, Perm.ANALYSIS_VIEW);
         assertThat(reg.resolveRead("/api/reports/tb/all/2024/5")).containsExactly(Perm.REPORT_VIEW);
         assertThat(reg.resolveRead("/api/reports/is/3/2024")).containsExactly(Perm.REPORT_VIEW);
-        // 工资只认 salary:view —— 分析与报表都不放行
+        // 工资只认 salary:view —— 分析与报表都不放行;唯一例外是不带人的餐补逐月合计(报表派生对照用)
         assertThat(reg.resolveRead("/api/salary/records")).containsExactly(Perm.SALARY_VIEW);
         assertThat(reg.resolveRead("/api/salary/overview")).containsExactly(Perm.SALARY_VIEW);
+        assertThat(reg.resolveRead("/api/salary/lunch-totals")).containsExactly(Perm.SALARY_VIEW, Perm.REPORT_VIEW);
+        // 催缴单收款账户明文只给 billing:view(/api/companies 那条对别的查看点打码)
+        assertThat(reg.resolveRead("/api/companies/payees")).containsExactly(Perm.BILLING_VIEW);
         // 协作基础设施逐条精确登记:同前缀下新加的 GET 不许被「任何已登录」顺手放开,要落默认拒绝
         assertThat(reg.resolveRead("/api/notices")).containsExactly(PermissionRegistry.ANY_AUTHENTICATED);
         assertThat(reg.resolveRead("/api/review")).containsExactly(PermissionRegistry.ANY_AUTHENTICATED);
@@ -307,6 +310,28 @@ class PermissionCoverageTest {
         }
         // 默认拒绝
         assertThat(reg.resolveRead("/api/brand-new-endpoint")).isNull();
+    }
+
+    /**
+     * 工资的写一律 salary:edit(用户 2026-10-04 拍板「按你推荐」,RBAC-SPEC §11.8)。从 controller 源码枚举,
+     * 不手抄清单 —— 将来 /api/salary 下新加一个写端点,它自动进这条断言。
+     * 破坏验证:PermissionRegistry 把 "/api/salary" 放回事后录入那一组 → 本条红(那组排在前面,首个命中);
+     *          ReviewKind.SALARY 改回 ENTRY_EDIT → 交审那条红;NOT_ELEVATABLE 去掉 SALARY_EDIT → 最后一条红。
+     */
+    @Test
+    @DisplayName("工资的每一个写端点都只认 salary:edit;交审附表12 也只认它;它不可提权")
+    void everySalaryWriteNeedsSalaryEdit() throws IOException {
+        List<Endpoint> writes = scan().stream()
+            .filter(e -> e.method() != HttpMethod.GET && e.path().startsWith("/api/salary/")).toList();
+        assertThat(writes).as("SalaryController 的写端点:新增 / 改备注 / 删 / 导入 / 清空本期导入 / 批删").hasSize(6);
+        PermissionRegistry reg = new PermissionRegistry();
+        for (Endpoint e : writes) {
+            assertThat(reg.resolve(e.method(), e.path())).as(e.method() + " " + e.path()).containsExactly(Perm.SALARY_EDIT);
+        }
+        assertThat(ReviewKind.SALARY.perms()).containsExactly(Perm.SALARY_EDIT);
+        assertThat(reg.resolve(HttpMethod.POST, "/api/review/salary:2024-02/submit")).contains(Perm.SALARY_EDIT);
+        assertThat(reg.resolve(HttpMethod.POST, "/api/review/salary:2024-02/recall")).contains(Perm.SALARY_EDIT);
+        assertThat(Perm.elevatable(Perm.SALARY_EDIT)).as("借到它就能往看不见的工资表里写").isFalse();
     }
 
     @Test
@@ -330,6 +355,7 @@ class PermissionCoverageTest {
             Map.entry(Perm.ENTRY_EDIT, Perm.ENTRY_VIEW),
             Map.entry(Perm.BOOK_TEMPLATE_EDIT, Perm.ENTRY_VIEW), Map.entry(Perm.BOOK_TEMPLATE_SWITCH, Perm.ENTRY_VIEW),
             Map.entry(Perm.REPORT_EDIT, Perm.REPORT_VIEW),
+            Map.entry(Perm.SALARY_EDIT, Perm.SALARY_VIEW),   // 2026-10-04 用户拍板「按你推荐」:工资录入单列
             Map.entry(Perm.SYSTEM_EDIT, Perm.SYSTEM_VIEW));
         assertThat(Perm.IMPLIED_VIEW).containsExactlyInAnyOrderEntriesOf(design);
 
@@ -341,16 +367,16 @@ class PermissionCoverageTest {
             assertThat(meta.get(edit).group()).as(edit + " 与 " + view + " 同组").isEqualTo(meta.get(view).group());
         });
 
-        assertThat(Perm.IMPLIED_VIEW.values()).doesNotContain(Perm.SALARY_VIEW, Perm.ANALYSIS_VIEW);
+        assertThat(Perm.IMPLIED_VIEW.values()).doesNotContain(Perm.ANALYSIS_VIEW);
         assertThat(Perm.withImplied(List.of(Perm.ENTRY_EDIT)))
-            .as("录入工资的人不因此看得到工资").containsExactlyInAnyOrder(Perm.ENTRY_EDIT, Perm.ENTRY_VIEW);
+            .as("事后录入不带出工资").containsExactlyInAnyOrder(Perm.ENTRY_EDIT, Perm.ENTRY_VIEW);
     }
 
     @Test
     @DisplayName("META 与 ALL 同序同集；group 只用固定的 11 个模块键,kind 只用 view/edit/other")
     void metaGroupsAndKindsAreWellFormed() {
         assertThat(Perm.META.stream().map(Perm.Meta::key).toList()).containsExactlyElementsOf(Perm.ALL);
-        assertThat(Perm.ALL).hasSize(27).doesNotHaveDuplicates();
+        assertThat(Perm.ALL).hasSize(28).doesNotHaveDuplicates();
         Set<String> groups = Set.of("master", "contract", "param", "meter", "billing", "entry", "salary",
                                     "report", "analysis", "system", "other");
         assertThat(Perm.META).allSatisfy(m -> {

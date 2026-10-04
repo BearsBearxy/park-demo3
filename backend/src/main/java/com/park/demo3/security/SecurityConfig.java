@@ -60,8 +60,12 @@ public class SecurityConfig {
                 // 套通用文案会告诉他"你可以查看",而他点开只会得到又一个 403。
                 boolean system = req.getRequestURI() != null && req.getRequestURI().contains("/api/system/");
                 // 读被拒同理(v3):通用那句告诉他「可查看」,而他刚刚就是看不了。写明缺哪一项、去找谁
+                // system 段按权限点放行(上面两条 requestMatchers),不按角色:不写「仅对系统管理员开放」——
+                // 分级(RBAC-SPEC §12)之后「系统管理员」专指 admin 角色,有系统管理权的别的角色也进得来
                 String msg = system
-                    ? "无访问权限：账号与角色管理仅对系统管理员开放"
+                    ? "GET".equals(req.getMethod())
+                        ? ReadAccessManager.deniedMessage(java.util.List.of(Perm.SYSTEM_VIEW))
+                        : "无修改权限：需要「" + Perm.label(Perm.SYSTEM_EDIT) + "」，请联系系统管理员在角色里勾上"
                     : "GET".equals(req.getMethod())
                         ? ReadAccessManager.deniedMessage(req.getAttribute(ReadAccessManager.REQ_ATTR_NEED))
                         : ResultCode.FORBIDDEN.message;

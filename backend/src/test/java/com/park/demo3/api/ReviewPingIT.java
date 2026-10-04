@@ -183,6 +183,7 @@ class ReviewPingIT extends AbstractMysqlIT {
             .content("{\"username\":\"" + uname + "\",\"displayName\":\"ping测试\","
                    + "\"password\":\"" + PASS + "\",\"roleIds\":[" + ids.get(0) + "]}"))
            .andExpect(status().isOk());
+        passwordAlreadyChanged(uname);
         return uname;
     }
 

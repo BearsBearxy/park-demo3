@@ -17,8 +17,8 @@ import { iconFor } from '@/components/ds/icon'
 const route = useRoute()
 const tabs = useTabsStore()
 const auth = useAuthStore()
-// 自带整屏布局、不进外壳的两页:登录 + 强制改密
-// (改密是强制态,外壳的侧边栏点哪儿都被守卫弹回来,给了反而像页面坏了)
+// 自带整屏布局、不进外壳的两页:登录 + 改密
+// (强制态下外壳的侧边栏点哪儿都被守卫弹回来;自己来改的从账号菜单进,同样不进外壳,见 ChangePasswordView)
 const isBare = computed(() => route.path === '/login' || route.path === '/change-password')
 // 路由 value = tab value:path 恒为 '/'+value(router/index.ts)
 const routeValue = computed(() => route.path.slice(1))

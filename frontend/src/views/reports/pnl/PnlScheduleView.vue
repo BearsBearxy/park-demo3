@@ -35,7 +35,6 @@ import SaveConfirmDialog from '@/components/import/SaveConfirmDialog.vue'
 import FpImportModal from '@/components/import/FpImportModal.vue'
 import PnlTable from './PnlTable.vue'
 import { receipt } from '@/utils/receipt'
-import { useAuthStore } from '@/stores/auth'
 import { ask } from '@/utils/ask'
 
 const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
@@ -109,7 +108,7 @@ async function loadDerive(y: number) {
   deriveData.value = deriveCache.get(y) ?? null   // 同步切换,不串年
   if (deriveCache.has(y)) return
   try {
-    const d = await loadDeriveData(y, { salary: useAuthStore().can('salary:view') })
+    const d = await loadDeriveData(y)
     deriveCache.set(y, d)
     if (year.value === y) deriveData.value = d    // 迟到结果不覆盖已切走的年
   } catch { /* 失败静默:该年不显派生(G6) */ }

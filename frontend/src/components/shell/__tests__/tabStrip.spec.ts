@@ -427,6 +427,36 @@ describe('退出登录走离开确认(画布 02-A)', () => {
   })
 })
 
+// 用户 2026-10-04「现在自己改不了自己的密码」:账号菜单(桌面)与手机抽屉各一个入口。
+// 改密页不进外壳,去了外壳整个卸掉、各页签现场跟着没 —— 同退出登录,有改动的页先问。
+// 破坏验证:入口删掉 → find 失败红;onChangePassword 去掉 leaveOk → 「继续编辑」那段红
+describe('修改密码入口走离开确认', () => {
+  const rail = () => mount(IconRail, { global: { stubs: { Popover: { template: '<div><slot name="trigger" /><slot /></div>' }, Avatar: true } } })
+  const drawer = () => mount(MobileNavDrawer, { props: { open: true }, global: { stubs: { teleport: true } } })
+  it.each([
+    ['图标轨', rail, '.fp-user-pwd'],
+    ['手机抽屉', drawer, '.mnav-pwd'],
+  ] as const)('❗%s:「修改密码」去改密页;有改动的页先问,点「继续编辑」不去', async (_, mk, sel) => {
+    const tabs = setup(['meters'], 'meters')
+    tabs.setCtx('meters', { p: '2023-08' })
+    const n = editing('meters', 3)
+    mount(FPConfirmHost, { attachTo: document.body })
+    const w = mk()
+    expect(w.find(sel).text()).toBe('修改密码')
+    await w.find(sel).trigger('click')
+    await flushPromises()
+    expect(card()?.querySelector('.fch-t')?.textContent).toBe('离开「园区抄表 · 2023-08」？')
+    await answerLeave('继续编辑')
+    expect(push).not.toHaveBeenCalledWith('/change-password')
+
+    n.value = 0
+    await w.find(sel).trigger('click')
+    await flushPromises()
+    expect(card(), '0 处改动:不弹').toBeNull()
+    expect(push).toHaveBeenCalledWith('/change-password')
+  })
+})
+
 describe('TabStrip · 全部页签(§3.5)', () => {
   it('❗列出已打开(当前那行高亮)与最近关闭;搜索按标题过滤;点最近关闭的重新打开', async () => {
     const tabs = setup(['ledger', 'tenants', 'contracts'])

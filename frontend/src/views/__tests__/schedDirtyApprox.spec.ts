@@ -65,7 +65,7 @@ beforeEach(() => {
   for (const k of Object.keys(query)) delete query[k]
   for (const k of Object.keys(meta)) delete meta[k]
   Element.prototype.scrollIntoView = vi.fn()
-  useAuthStore().permissions = ['entry:edit']
+  useAuthStore().permissions = ['entry:edit', 'salary:edit']   // 附12 工资的写单列(2026-10-04)
   vi.setSystemTime(new Date('2025-07-15T00:00:00'))
   vi.mocked(pvApi.phases).mockResolvedValue([] as never)
   vi.mocked(pvApi.overview).mockResolvedValue({ currentYear: 2025, years: [] } as never)

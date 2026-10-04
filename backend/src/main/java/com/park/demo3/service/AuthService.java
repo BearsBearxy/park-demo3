@@ -56,11 +56,23 @@ public LoginResp login(LoginReq req) {
         // 单会话(V125,用户 2026-09-12 拍板):开新会话前先作废旧的并把 token_version +1,
         // 别处那台设备下一个请求就是 401。注意顺序:先 open 拿到新版本号再签发,
         // 反过来的话刚签的那张会被自己这次 bump 当场作废。
-        SessionService.Issued is_ = sessions.open(u, clientIp(), request.getHeader("User-Agent"));
+        SessionService.Issued is_ = sessions.open(u, clientIp(), request.getHeader("User-Agent"), "relogin");
         return new LoginResp(jwt.generate(u.getUsername(), u.getRole(), is_.tokenVersion(), is_.sessionId()),
                              u.getUsername(), u.getDisplayName(), u.getRole(),
-                             ps, nl, rn, u.getMustChangePassword() != null && u.getMustChangePassword() == 1);
+                             ps, nl, rn, u.getMustChangePassword() != null && u.getMustChangePassword() == 1,
+                             perms.isSuperAdmin(u.getUsername()));
     }
+    /**
+     * 改了自己的密码之后,给发起修改的这台设备换一张新令牌(用户 2026-10-04 拍板:改完本机不掉线,别处的登录全部退出)。
+     * 开一个新会话:旧会话连同它签出去的每一张令牌一起作废 —— 别的设备、被人抄走的那一张都下线,
+     * 下一个请求 401、登录页说「密码已修改」。改前是 revokeAll,连本机也踢回登录页,而改密页上写着「当前登录状态保持不变」。
+     * 本人改密(SystemService.changeOwnPassword)与在用户管理里给自己重置(resetPassword)都走这里。
+     */
+    public String reissueAfterPasswordChange(AuthUser u) {
+        SessionService.Issued is_ = sessions.open(u, clientIp(), request.getHeader("User-Agent"), "password");
+        return jwt.generate(u.getUsername(), u.getRole(), is_.tokenVersion(), is_.sessionId());
+    }
+
     /**
      * 当前账号的权限、导航层、角色名(V133)。App 挂载时调:登录响应里那份会在角色被改后变旧,
      * 铃铛里「角色或权限被改 · 刷新后生效」要靠它说实话。读的是内存快照,零查库。
@@ -70,7 +82,8 @@ public LoginResp login(LoginReq req) {
             .getContext().getAuthentication().getName();
         UserPermissionCache.UserAuth ua = perms.get(me);
         if (ua == null) throw new BizException(ResultCode.UNAUTHORIZED);
-        return new MeResp(me, ua.perms().stream().sorted().toList(), ua.navLayers(), ua.roleNames());
+        return new MeResp(me, ua.perms().stream().sorted().toList(), ua.navLayers(), ua.roleNames(),
+                          perms.isSuperAdmin(me));
     }
 
     // 取 XFF 首段。frontend/nginx.conf 只信 docker 内网(Caddy)给的 XFF,并把它重写成单个真实 IP 再转过来

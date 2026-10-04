@@ -163,6 +163,7 @@ class InputLimitsApiIT extends AbstractMysqlIT {
             .content("{\"username\":\"" + uname + "\",\"displayName\":\"上限测试\","
                    + "\"password\":\"" + PASS + "\",\"roleIds\":[" + ids.get(0) + "]}"))
            .andExpect(status().isOk());
+        passwordAlreadyChanged(uname);
         return uname;
     }
 

@@ -50,9 +50,13 @@ class SystemApiIT extends AbstractMysqlIT {
         // 被拦的人恰恰是不该看到账号与角色配置的
         mvc.perform(get("/api/system/users").header("Authorization", hdr(v)))
            .andExpect(status().isForbidden())
-           .andExpect(jsonPath("$.message").value("无访问权限：账号与角色管理仅对系统管理员开放"));
+           .andExpect(jsonPath("$.message").value("无查看权限：需要「系统管理 · 查看」，请联系系统管理员在角色里勾上"));
         mvc.perform(get("/api/system/roles").header("Authorization", hdr(v)))
            .andExpect(status().isForbidden());
+        // 写被拒写明缺的是「管理」那一项;不说「仅对系统管理员开放」—— 这一段按权限点放行,不按角色
+        mvc.perform(post("/api/system/users").header("Authorization", hdr(v)).contentType("application/json").content("{}"))
+           .andExpect(status().isForbidden())
+           .andExpect(jsonPath("$.message").value("无修改权限：需要「系统管理 · 管理」，请联系系统管理员在角色里勾上"));
         // 对照：业务数据他读得到，证明挡住的是 system 段而不是他整个账号
         mvc.perform(get("/api/tenants").header("Authorization", hdr(v)))
            .andExpect(status().isOk());
@@ -206,6 +210,8 @@ class SystemApiIT extends AbstractMysqlIT {
             String nt = JsonPath.read(me, "$.data.token");
             List<String> perms = JsonPath.read(me, "$.data.permissions");
             assertThat(perms).as("缓存已刷新，新账号拿到 finance_clerk 的权限").isNotEmpty();
+            // 带着初始密码时业务接口一律 428(RBAC-SPEC §13.4);当他已改过 —— 放在上面那条之后,它 reload 不掩盖建号漏 reload
+            passwordAlreadyChanged(uname);
 
             // 而且真能用：他有 entry:edit，写台账不该 403
             mvc.perform(post("/api/tenants").header("Authorization", hdr(nt))
@@ -265,6 +271,7 @@ class SystemApiIT extends AbstractMysqlIT {
                 .contentType("application/json")
                 .content("{\"username\":\"" + uname + "\",\"displayName\":\"铃铛测试人\","
                        + "\"password\":\"init-pass-123\",\"roleIds\":[" + rid + "]}")).andReturn()), "$.data.id");
+        passwordAlreadyChanged(uname);
         String u = login(uname, "init-pass-123");
         int adminBefore = noticeCount("admin");
 

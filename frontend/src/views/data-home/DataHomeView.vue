@@ -34,7 +34,7 @@ import FPReviewDialog from '@/components/fp/FPReviewDialog.vue'
 import { useBillingPeriodStore, YM } from '@/stores/billingPeriod'
 import { usePresenceStore } from '@/stores/presence'
 import { useReviewStore } from '@/stores/review'
-import type { ReviewRow } from '@/types/review'
+import { ownSubmission, SELF_REVIEW_TIP, type ReviewRow } from '@/types/review'
 import { NAV_SCOPE_PREFIX, scopeTarget } from '@/utils/lockScopes'
 import { periodLink, periodOf } from '@/nav/deepLink'
 import { CHAIN, pipsOf, chainLabel, noticeYmOf } from '@/nav/billingChain'
@@ -341,9 +341,15 @@ function reviewTip(key: string | undefined, status: string): string | undefined 
  * 且没人知道为什么"好。
  */
 const canSubmitAny = computed(() =>
-  ['entry:edit', 'billing-run:edit', 'param-policy:edit', 'param-monthly:edit', 'meter-reading:edit']
+  ['entry:edit', 'salary:edit', 'billing-run:edit', 'param-policy:edit', 'param-monthly:edit', 'meter-reading:edit']
     .some(p => auth.can(p)))
 const canApprove = computed(() => auth.can('review:approve'))
+/**
+ * 粗判的唯一例外:附表12 的交审只认「工资录入」(salary:edit,不可提权;RBAC-SPEC §11.8)。
+ * 它是唯一一张交审权不随「事后录入」走的表,只按上面那道粗判,种子里的财务专员每个月都会在这一行看到
+ * 一颗点下去恒 403 的「交审」—— 而这一行他连点开都不能(没有工资查看)。只开这一个口子,不展开成 kind→perm 全表。
+ */
+const submittable = (k: string) => !k.startsWith('salary:') || auth.can('salary:edit')
 
 /**
  * 这一行涉及的全部审核键。
@@ -361,6 +367,8 @@ function keysOf(r: CloseRow): string[] {
 
 const rowOf = (key: string) => reviewRows.value?.find(x => x.key === key) ?? null
 
+const mine = (key: string) => ownSubmission(rowOf(key), auth.me, auth.superAdmin)
+
 /** 这一行此刻各个动作要作用到哪几把键。空数组 = 该动作不画。 */
 function actionsOf(r: CloseRow) {
   const keys = r.review === 'na' ? [] : keysOf(r)
@@ -368,19 +376,21 @@ function actionsOf(r: CloseRow) {
   return {
     // 交审前置:该键已做(§7.2)。多键行按 chip 各自的 done 判 —— 只录了 A 公司就只交 A 公司。
     submit: canSubmitAny.value
-      ? keys.filter(k => {
+      ? keys.filter(submittable).filter(k => {
           const s = st(k)
           if (s !== 'entered' && s !== 'returned') return false
           const chip = (r.chips ?? []).find(c => c.reviewKey === k)
           return chip ? chip.done : r.state === 'done'
         })
       : [],
-    approve: canApprove.value ? keys.filter(k => st(k) === 'submitted') : [],
-    back: canApprove.value ? keys.filter(k => st(k) === 'submitted') : [],
+    // 自己交的不在里面(录审分离,types/review ownSubmission);整行全是自己交的 → selfOnly,按钮照画、按不动
+    approve: canApprove.value ? keys.filter(k => st(k) === 'submitted' && !mine(k)) : [],
+    back: canApprove.value ? keys.filter(k => st(k) === 'submitted' && !mine(k)) : [],
+    selfOnly: canApprove.value && keys.some(k => st(k) === 'submitted') && keys.every(k => st(k) !== 'submitted' || mine(k)),
     undo: canApprove.value ? keys.filter(k => st(k) === 'approved') : [],
     /** 有交审资格但还没录完的键 —— 按钮要画出来但按不动(直接不画会让人以为界面坏了)。 */
     submitPending: canSubmitAny.value
-      ? keys.filter(k => (st(k) === 'entered' || st(k) === 'returned'))
+      ? keys.filter(submittable).filter(k => (st(k) === 'entered' || st(k) === 'returned'))
       : [],
   }
 }
@@ -601,11 +611,12 @@ const bookingRows = computed(() => shown('booking'))
                           :disabled="!a.submit.length || !!acting"
                           v-tip="a.submit.length ? `交给审核员（${a.submit.length} 项）` : '还没录完,做完才能交审'"
                           @click="onSubmit(a.submit)">交审</button>
-                  <button v-if="a.approve.length" class="dh-abtn ok"
-                          :disabled="blockedBy(a.approve).length > 0 || !!acting"
-                          v-tip="blockedBy(a.approve).length ? `先通过 ${blockedBy(a.approve).join(' / ')} 的审核` : '通过'"
+                  <button v-if="a.approve.length || a.selfOnly" class="dh-abtn ok"
+                          :disabled="a.selfOnly || blockedBy(a.approve).length > 0 || !!acting"
+                          v-tip="a.selfOnly ? SELF_REVIEW_TIP : blockedBy(a.approve).length ? `先通过 ${blockedBy(a.approve).join(' / ')} 的审核` : '通过'"
                           @click="onApprove(a.approve)">通过</button>
-                  <button v-if="a.back.length" class="dh-abtn" :disabled="!!acting"
+                  <button v-if="a.back.length || a.selfOnly" class="dh-abtn" :disabled="a.selfOnly || !!acting"
+                          v-tip="a.selfOnly ? SELF_REVIEW_TIP : undefined"
                           @click="openDialog(a.back, `${shownYm} ${r.label}`, 'return')">退回</button>
                   <button v-if="a.undo.length" class="dh-abtn" :disabled="!!acting"
                           @click="openDialog(a.undo, `${shownYm} ${r.label}`, 'withdraw')">撤销</button>
@@ -661,11 +672,12 @@ const bookingRows = computed(() => shown('booking'))
                           :disabled="!a.submit.length || !!acting"
                           v-tip="a.submit.length ? `交给审核员（${a.submit.length} 项）` : '还没录完,做完才能交审'"
                           @click="onSubmit(a.submit)">交审</button>
-                  <button v-if="a.approve.length" class="dh-abtn ok"
-                          :disabled="blockedBy(a.approve).length > 0 || !!acting"
-                          v-tip="blockedBy(a.approve).length ? `先通过 ${blockedBy(a.approve).join(' / ')} 的审核` : '通过'"
+                  <button v-if="a.approve.length || a.selfOnly" class="dh-abtn ok"
+                          :disabled="a.selfOnly || blockedBy(a.approve).length > 0 || !!acting"
+                          v-tip="a.selfOnly ? SELF_REVIEW_TIP : blockedBy(a.approve).length ? `先通过 ${blockedBy(a.approve).join(' / ')} 的审核` : '通过'"
                           @click="onApprove(a.approve)">通过</button>
-                  <button v-if="a.back.length" class="dh-abtn" :disabled="!!acting"
+                  <button v-if="a.back.length || a.selfOnly" class="dh-abtn" :disabled="a.selfOnly || !!acting"
+                          v-tip="a.selfOnly ? SELF_REVIEW_TIP : undefined"
                           @click="openDialog(a.back, `${shownYm} ${r.label}`, 'return')">退回</button>
                   <button v-if="a.undo.length" class="dh-abtn" :disabled="!!acting"
                           @click="openDialog(a.undo, `${shownYm} ${r.label}`, 'withdraw')">撤销</button>

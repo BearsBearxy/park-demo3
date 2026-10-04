@@ -58,7 +58,7 @@ vi.mock('@/api/bills', () => ({ billsApi: { paymap: vi.fn(), setPaymap: vi.fn() 
 // 只换两个 api 对象,其余原样透传。
 vi.mock('@/api/billDelivery', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/api/billDelivery')>(),
-  companyBookApi: { list: vi.fn() },
+  companyBookApi: { list: vi.fn(), payees: vi.fn() },
   billDeliveryApi: { confirm: vi.fn(), markExported: vi.fn() },
 }))
 // 本屏进编辑态要先占到 billing-chain 那把月锁(CONCURRENCY-SPEC §3.2)。
@@ -127,6 +127,7 @@ beforeEach(() => {
   vi.mocked(contractApi.list).mockResolvedValue([] as never)
   vi.mocked(buildingApi.list).mockResolvedValue([] as never)
   vi.mocked(companyBookApi.list).mockResolvedValue(COMPANIES as never)
+  vi.mocked(companyBookApi.payees).mockResolvedValue(COMPANIES as never)
   vi.mocked(billsApi.paymap).mockResolvedValue([] as never)
 })
 

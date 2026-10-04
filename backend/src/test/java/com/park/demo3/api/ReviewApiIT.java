@@ -333,6 +333,7 @@ class ReviewApiIT extends AbstractMysqlIT {
                 .content("{\"username\":\"" + u + "\",\"displayName\":\"只录附表\","
                        + "\"password\":\"" + PASS + "\",\"roleIds\":[" + roleId + "]}"))
                .andExpect(status().isOk());
+            passwordAlreadyChanged(u);
             String t = login(u, PASS);
             seedElecCostEntry();
 
@@ -343,6 +344,64 @@ class ReviewApiIT extends AbstractMysqlIT {
 
             // 同一个人交 elec-model 的审没问题 —— 它要的正是 entry:edit
             ok(doPost("/api/review/" + MODEL + "/submit", t));
+        } finally {
+            cleanup(u);
+            jdbc.update("DELETE FROM auth_role_perm WHERE role_id=?", roleId);
+            jdbc.update("DELETE FROM auth_role WHERE id=?", roleId);
+        }
+    }
+
+    /**
+     * 录审分离(RBAC-SPEC §12,用户 2026-10-04 拍板「录审不分离在超级管理，其他分离」):
+     * 自己交的表,通过 / 退回都要别人来;系统管理员自己交自己审照常放行。
+     * 交审人用自建角色同时给录入权与审核权 —— 只有审核权的人交不了审,只有录入权的人在 URL 层就进不了 approve,
+     * 两样都有才走得到这一条。
+     */
+    @Test
+    void selfReview_isBlockedForEveryoneButASuperAdmin() throws Exception {
+        String a = admin();
+        String role = "it_rec_rev_" + System.nanoTime() % 100000;
+        int roleId = JsonPath.read(body(mvc.perform(MockMvcRequestBuilders.post("/api/system/roles")
+            .header("Authorization", hdr(a)).contentType("application/json")
+            .content("{\"code\":\"" + role + "\",\"name\":\"录审兼岗\",\"navLayers\":[\"data\"],"
+                   + "\"perms\":[\"entry:edit\",\"review:approve\"]}")).andReturn()), "$.data.id");
+        String u = "it-rr-" + System.nanoTime();
+        try {
+            mvc.perform(MockMvcRequestBuilders.post("/api/system/users")
+                .header("Authorization", hdr(a)).contentType("application/json")
+                .content("{\"username\":\"" + u + "\",\"displayName\":\"录审兼岗\","
+                       + "\"password\":\"" + PASS + "\",\"roleIds\":[" + roleId + "]}"))
+               .andExpect(status().isOk());
+            passwordAlreadyChanged(u);
+            String t = login(u, PASS);
+            seedElecCostEntry();
+            ok(doPost("/api/review/" + MODEL + "/submit", t));
+
+            // 铃铛:自己交的审不了,就不进自己的「等你审」(红数字与清单同源);系统管理员照列
+            assertThat(JsonPath.<List<String>>read(body(doGet("/api/review/pending", t)), "$.data[*].key"))
+                .as("自己交的不进自己的待审清单").doesNotContain(MODEL);
+            assertThat(JsonPath.<List<String>>read(body(doGet("/api/review/pending", a)), "$.data[*].key"))
+                .as("系统管理员的待审清单照列").contains(MODEL);
+            assertThat(pendingReviews(t)).as("红数字少的正是自己交的那一张").isEqualTo(pendingReviews(a) - 1);
+
+            // 409 不是 403:他有审核权,拦的是「自己交的」这条规矩 —— 前端只给 403 冠「你没有这张表的权限」
+            String r = body(doPost("/api/review/" + MODEL + "/approve", t));
+            assertThat((int) JsonPath.read(r, "$.code")).isEqualTo(409);
+            assertThat((String) JsonPath.read(r, "$.message")).isEqualTo(YM + " 园区电费模型 是你自己交的，要由别人通过或退回");
+            r = body(doPostJson("/api/review/" + MODEL + "/return", t, "{\"reason\":\"自己打回\"}"));
+            assertThat((int) JsonPath.read(r, "$.code")).isEqualTo(409);
+            assertThat(statusOf(a, MODEL)).as("两下都没动到状态").isEqualTo("submitted");
+
+            // 别人来审照常
+            ok(doPost("/api/review/" + MODEL + "/approve", a));
+
+            // 系统管理员自己交、自己审:放行
+            ok(doPostJson("/api/review/" + MODEL + "/withdraw", a, "{\"reason\":\"重来\"}"));
+            ok(doPost("/api/review/" + MODEL + "/submit", a));
+            ok(doPostJson("/api/review/" + MODEL + "/return", a, "{\"reason\":\"再改改\"}"));
+            ok(doPost("/api/review/" + MODEL + "/submit", a));
+            ok(doPost("/api/review/" + MODEL + "/approve", a));
+            assertThat(statusOf(a, MODEL)).isEqualTo("approved");
         } finally {
             cleanup(u);
             jdbc.update("DELETE FROM auth_role_perm WHERE role_id=?", roleId);
@@ -596,6 +655,14 @@ class ReviewApiIT extends AbstractMysqlIT {
 
     private int code(MvcResult r) throws Exception { return JsonPath.read(body(r), "$.code"); }
 
+    /** 在场心跳回的「等你审」红数字 */
+    private int pendingReviews(String token) throws Exception {
+        return JsonPath.read(body(mvc.perform(MockMvcRequestBuilders.put("/api/presence/ping")
+            .header("Authorization", hdr(token)).contentType("application/json")
+            .content("{\"sid\":\"it-review-sid\",\"scope\":null,\"label\":null,"
+                   + "\"lastActivityAt\":null,\"editScopes\":[],\"mode\":null}")).andReturn()), "$.data.pendingReviews");
+    }
+
     private String body(MvcResult r) throws Exception {
         return new String(r.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
     }
@@ -623,6 +690,7 @@ class ReviewApiIT extends AbstractMysqlIT {
             .content("{\"username\":\"" + uname + "\",\"displayName\":\"" + displayName + "\","
                    + "\"password\":\"" + PASS + "\",\"roleIds\":[" + roleId + "]}"))
            .andExpect(status().isOk());
+        passwordAlreadyChanged(uname);
         return uname;
     }
 

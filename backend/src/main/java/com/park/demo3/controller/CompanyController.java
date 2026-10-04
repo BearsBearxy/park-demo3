@@ -17,6 +17,9 @@ public class CompanyController {
     @Operation(summary = "公司列表（含收款账户）") @GetMapping
     public List<CompanyDTO> list() { return svc.list(); }
 
+    @Operation(summary = "催缴单收款公司与账户（账号明文，只给出账与催缴单查看）") @GetMapping("/payees")
+    public List<CompanyDTO> payees() { return svc.listForNotice(); }
+
     @Operation(summary = "新建公司") @PostMapping
     public CompanyDTO create(@Valid @RequestBody CompanyReq req) { return svc.create(req); }
 

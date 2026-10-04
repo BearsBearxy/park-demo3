@@ -3,6 +3,8 @@
 // ② 无 system:edit 时矩阵照常显示当前配置,只是全部 disabled、没有保存/新建/删除;
 // ③ 删除只对自定义角色出现,且 userCount>0 时禁用(预置角色一律无删除按钮);
 // ④ RBAC v3 编辑包含查看:勾编辑自动带上同模块的查看,取消查看连带取消这个模块的编辑。
+// ⑤ 系统管理分级(RBAC-SPEC §12):不是系统管理员的,比自己大的角色整块只读,自己没有的权限那一格置灰。
+//    ①–④ 的用例都以系统管理员身份挂载(不受分级限制),⑤ 单独以「只管账号的人」挂载。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -47,9 +49,10 @@ vi.mock('@/api/system', () => ({
 
 import SystemRolesView from './SystemRolesView.vue'
 
-function mountWith(perms: string[]) {
+function mountWith(perms: string[], superAdmin = true) {
   setActivePinia(createPinia())
   useAuthStore().permissions = perms
+  useAuthStore().superAdmin = superAdmin
   return mount(SystemRolesView)
 }
 
@@ -239,6 +242,46 @@ describe('SystemRolesView', () => {
     await w.find('.sr-code').setValue('outsource_audit')
     expect(errs()).toEqual(['', ''])
     expect(w.find('.sr-name').classes('bad')).toBe(false)
+  })
+
+  // ── ⑤ 分级 ──
+  // 后端按「这个人能不能改它」给 manageable:只管账号的人看系统管理员角色是 false,看自建小角色是 true
+  const NON_SUPER = ['system:view', 'system:edit', 'entry:view', 'entry:edit']
+  const rolesFor = (adminManageable: boolean) => ROLES.map(r => ({ ...r, manageable: r.code === 'admin' ? adminManageable : true }))
+
+  // 破坏验证:lacks 改成恒 false → 红(master 那几格可点);勾得到的那几格被一起置灰 → 红
+  it('❗不是系统管理员:自己没有的权限那一格置灰、悬停说为什么;自己有的照常能勾', async () => {
+    roles.mockImplementation(() => Promise.resolve(rolesFor(false)))
+    const w = mountWith(NON_SUPER, false)
+    await flushPromises()
+    vi.spyOn(useAuthStore(), 'endElevation').mockResolvedValue()
+    await w.findAll('.sr-item')[1].trigger('click')                      // 外部审计:manageable
+    await flushPromises()
+    const dis = (k: string) => (box(w, k).element as HTMLInputElement).disabled
+    expect(['master:view', 'master:edit', 'company:manage', 'salary:view', 'lock:takeover'].map(dis), '没有的五格')
+      .toEqual([true, true, true, true, true])
+    expect(['entry:view', 'entry:edit', 'system:view', 'system:edit'].map(dis), '有的四格').toEqual([false, false, false, false])
+    expect((box(w, 'master:edit').element.closest('label') as TipEl)._tip?.text).toBe('你没有这项权限,只有系统管理员能把它分给角色')
+    expect((box(w, 'lock:takeover').element.closest('label') as TipEl)._tip?.text).toBe('你没有这项权限,只有系统管理员能把它分给角色')
+    expect(w.find('.sr-act').exists(), '这个角色本身能改').toBe(true)
+  })
+
+  // 破坏验证:canEditRole 不看 manageable(恒 canEdit)→ 红
+  it('❗不是系统管理员:系统管理员角色整块只读,写明只有系统管理员能改;系统管理员本人照常能改', async () => {
+    roles.mockImplementation(() => Promise.resolve(rolesFor(false)))
+    const w = mountWith(NON_SUPER, false)
+    await flushPromises()                                                // 默认选中第一个 = 系统管理员角色
+    expect(allBoxes(w).every(b => (b.element as HTMLInputElement).disabled)).toBe(true)
+    expect(w.find('.sr-act').exists()).toBe(false)
+    expect(w.find('input.sr-name').exists(), '名称也不给改').toBe(false)
+    expect(w.find('.sr-ro').text()).toBe('系统管理员角色只有系统管理员能改。')
+    expect(w.find('.sr-item.add').exists(), '新建角色照常(新角色只能勾自己有的)').toBe(true)
+
+    roles.mockImplementation(() => Promise.resolve(rolesFor(true)))
+    const s = mountWith(['system:view', 'system:edit'], true)
+    await flushPromises()
+    expect(s.find('.sr-act').exists()).toBe(true)
+    expect((box(s, 'master:edit').element as HTMLInputElement).disabled, '系统管理员不看自己有没有').toBe(false)
   })
 
   // 两趟叠着发(写后重拉 + 手点重试)只认后发的那趟

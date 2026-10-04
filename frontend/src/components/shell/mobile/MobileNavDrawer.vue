@@ -7,7 +7,7 @@
 //     换走的屏当场卸载 —— 在手机上点回去、后退回去,除了这几格都是重新打开。
 import { computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { LogOut, Sparkles, SunMoon } from 'lucide-vue-next'
+import { Lock, LogOut, Sparkles, SunMoon } from 'lucide-vue-next'
 import { useUpdateStore } from '@/stores/update'
 import { APPEARANCE_OPTIONS, useAppearanceStore } from '@/stores/appearance'
 import { fpFindLayer, type NavLayer } from '@/nav/fpNav'
@@ -82,6 +82,13 @@ async function onLogout() {
   if (!(await tabs.leaveOk(tabs.tabs.map(t => t.value)))) return
   auth.logout()
   router.push('/login')
+}
+
+// 修改密码:同 IconRail,改密页不进外壳,有没保存改动的逐页先问
+async function onChangePassword() {
+  if (!(await tabs.leaveOk(tabs.tabs.map(t => t.value), '离开'))) return
+  router.push('/change-password')
+  emit('close')
 }
 
 // 版本更新:开「更新记录」并收起抽屉(与点条目后关抽屉同义——看一眼到点中目标即结束)
@@ -169,6 +176,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               <span class="ic"><Sparkles :size="16" /></span>
               <span class="nm">版本更新</span>
               <span class="ver">v{{ upd.version }}</span>
+            </button>
+            <button class="mnav-row mnav-pwd" @click="onChangePassword">
+              <span class="ic"><Lock :size="16" /></span>
+              <span class="nm">修改密码</span>
             </button>
           </div>
           <!-- ⑤ 账号段(IconRail 头像菜单内容) -->

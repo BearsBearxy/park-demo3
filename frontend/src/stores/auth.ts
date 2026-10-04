@@ -56,6 +56,10 @@ export const useAuthStore = defineStore('auth', () => {
   // 首次登录强制改密(RBAC-SPEC 拍板 #3):管理员设初始密码,本人进系统前必须改掉。
   // 存 '1'/缺省,双轨口径同 token;老后端不返这个字段 → 缺省 false,不误拦既有账号
   const mustChangePassword = ref((localStorage.getItem('mustChangePassword') ?? sessionStorage.getItem('mustChangePassword')) === '1')
+  // 持系统管理员角色(后端 LoginResp / MeResp.superAdmin)。用户 2026-10-04 拍板:系统管理员不分级、录审不分离,
+  // 其他人分 —— 屏上据此决定「自己交的能不能自己审」、角色矩阵里自己没有的权限要不要置灰。判据在后端,这里只管画法。
+  // 存 '1'/缺省,口径同 mustChangePassword;老后端不返 → false(多置灰几格,不会放行什么)
+  const superAdmin = ref((localStorage.getItem('superAdmin') ?? sessionStorage.getItem('superAdmin')) === '1')
 
   // JWT exp 过期感知:过期 token 视为未登录,路由守卫直接拦回登录页,
   // 不再"放行→骨架屏→首个 API 401 才弹回"。解析失败按有效处理(交给后端 401 兜底)。
@@ -160,7 +164,7 @@ export const useAuthStore = defineStore('auth', () => {
   const loginSeq = ref(0)
 
   async function login({ username, password }: { username: string; password: string }, remember = true) {
-    const { token: t, username: un, displayName: dn, role: r, permissions: ps, navLayers: nl, roleNames: rn, mustChangePassword: mcp } = await api.post<{ token: string; username?: string; displayName: string; role?: string; permissions?: string[]; navLayers?: string[]; roleNames?: string[]; mustChangePassword?: boolean }>('/auth/login', { username, password })
+    const { token: t, username: un, displayName: dn, role: r, permissions: ps, navLayers: nl, roleNames: rn, mustChangePassword: mcp, superAdmin: sa } = await api.post<{ token: string; username?: string; displayName: string; role?: string; permissions?: string[]; navLayers?: string[]; roleNames?: string[]; mustChangePassword?: boolean; superAdmin?: boolean }>('/auth/login', { username, password })
     token.value = t
     displayName.value = dn
     me.value = un ?? username
@@ -169,10 +173,11 @@ export const useAuthStore = defineStore('auth', () => {
     navLayers.value = nl ?? [...DEFAULT_NAV_LAYERS]
     roleNames.value = rn ?? []
     mustChangePassword.value = !!mcp
+    superAdmin.value = !!sa
     // 目标之外的另一份必须清:否则上次「记住」的旧 token 会盖过本次「不记住」的选择
     const target = remember ? localStorage : sessionStorage
     const other = remember ? sessionStorage : localStorage
-    for (const k of ['token', 'username', 'displayName', 'role', 'permissions', 'navLayers', 'roleNames', 'mustChangePassword']) other.removeItem(k)
+    for (const k of ['token', 'username', 'displayName', 'role', 'permissions', 'navLayers', 'roleNames', 'mustChangePassword', 'superAdmin']) other.removeItem(k)
     target.setItem('token', t)
     if (me.value) target.setItem('username', me.value)
     target.setItem('displayName', dn)
@@ -181,6 +186,9 @@ export const useAuthStore = defineStore('auth', () => {
     target.setItem('roleNames', JSON.stringify(roleNames.value))
     if (r) target.setItem('role', r)
     else target.removeItem('role')
+    // 同 mustChangePassword:不是就显式清,同机上一个系统管理员留下的 '1' 不能传给下一个人
+    if (superAdmin.value) target.setItem('superAdmin', '1')
+    else target.removeItem('superAdmin')
     // 不置真时必须显式清:同机上一个账号留下的 '1' 会把这个账号也拦进改密页
     // 绑的是用户名不是令牌串(2026-09-12):同一个人重新登录换一张令牌不算漂移。
     bindSession(me.value)   // 本标签页主动登录 → 重新绑定，别被漂移守卫误伤
@@ -326,12 +334,17 @@ export const useAuthStore = defineStore('auth', () => {
     const t = token.value
     if (!t || !isAuthed.value) return
     try {
-      const r = await api.get<{ permissions?: string[]; navLayers?: string[]; roleNames?: string[] }>('/auth/me')
+      const r = await api.get<{ permissions?: string[]; navLayers?: string[]; roleNames?: string[]; superAdmin?: boolean }>('/auth/me')
       if (token.value !== t) return   // 等的时候退出 / 换了人:这份是上一张令牌的
       const store = localStorage.getItem('token') ? localStorage : sessionStorage
       if (r?.permissions) { permissions.value = r.permissions; store.setItem('permissions', JSON.stringify(r.permissions)) }
       if (r?.navLayers) { navLayers.value = r.navLayers; store.setItem('navLayers', JSON.stringify(r.navLayers)) }
       if (r?.roleNames) { roleNames.value = r.roleNames; store.setItem('roleNames', JSON.stringify(r.roleNames)) }
+      if (typeof r?.superAdmin === 'boolean') {
+        superAdmin.value = r.superAdmin
+        if (r.superAdmin) store.setItem('superAdmin', '1')
+        else store.removeItem('superAdmin')
+      }
     } catch { /* 留着登录时那份 */ }
   }
 
@@ -361,7 +374,8 @@ export const useAuthStore = defineStore('auth', () => {
     navLayers.value = [...DEFAULT_NAV_LAYERS]
     roleNames.value = []
     mustChangePassword.value = false
-    for (const k of ['token', 'username', 'displayName', 'role', 'permissions', 'navLayers', 'roleNames', 'mustChangePassword']) {
+    superAdmin.value = false
+    for (const k of ['token', 'username', 'displayName', 'role', 'permissions', 'navLayers', 'roleNames', 'mustChangePassword', 'superAdmin']) {
       localStorage.removeItem(k)
       sessionStorage.removeItem(k)
     }
@@ -382,14 +396,16 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // ponytail: kept for backwards-compat with P0-B code that calls setToken
+  // 改了自己的密码之后服务端换发的新令牌走这里(用户 2026-10-04:改完本机不掉线、别处全部退出)。
+  // 写回原来那一轨:没勾「记住登录」的人(sessionStorage)不能被悄悄改成记住;两轨都没有时按 localStorage(P0-B 原口径)
   function setToken(t: string | null) {
     token.value = t
-    if (t) localStorage.setItem('token', t)
+    const store = !localStorage.getItem('token') && sessionStorage.getItem('token') ? sessionStorage : localStorage
+    if (t) store.setItem('token', t)
     else localStorage.removeItem('token')
   }
 
-  return { token, me, drifted, displayName, role, permissions, navLayers, roleNames, mustChangePassword,
+  return { token, me, drifted, displayName, role, permissions, navLayers, roleNames, mustChangePassword, superAdmin,
            isAuthed, isReadonly, roleLabel, landing, roleHome,
            can, hasOwn, authorizerOf, grants: liveGrants, elevationLeftMs, nowMs, requestElevation, endElevation, refreshElevation, refreshMe,
            openEditor, closeEditor, editing, editorCount, editingOn, dirtyOn, dirtyApproxOn, dirtyTotal, dirtyScreens, loginSeq,

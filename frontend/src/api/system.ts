@@ -26,8 +26,9 @@ export const systemApi = {
   setUserStatus: (id: number, status: 0 | 1): Promise<UserDTO> =>
     http.post(`/system/users/${id}/status`, { status }),
 
-  /** POST /api/system/users/{id}/password —— 管理员重置他人密码,该账号下次登录须改密 */
-  resetPassword: (id: number, password: string): Promise<void> =>
+  /** POST /api/system/users/{id}/password —— 重置别人的:该账号下次登录须改密,回 token=null;
+   *  重置自己的:不用再改,回这台设备接着用的新令牌(别处的登录已退出) */
+  resetPassword: (id: number, password: string): Promise<{ token: string | null } | null> =>
     http.post(`/system/users/${id}/password`, { password }),
 
   /**
@@ -37,7 +38,7 @@ export const systemApi = {
    */
   logs: (query: AuditQuery = {}): Promise<AuditPageDTO> => http.get('/system/logs', { params: query }),
 
-  /** POST /api/auth/change-password —— 改自己的密码(首次登录强制改密走同一个端点) */
-  changeOwnPassword: (currentPassword: string, newPassword: string): Promise<void> =>
+  /** POST /api/auth/change-password —— 改自己的密码(首次登录强制改密走同一个端点);回这台设备接着用的新令牌 */
+  changeOwnPassword: (currentPassword: string, newPassword: string): Promise<{ token: string }> =>
     http.post('/auth/change-password', { currentPassword, newPassword }),
 }

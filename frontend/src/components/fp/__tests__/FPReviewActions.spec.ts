@@ -11,7 +11,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useReviewStore } from '@/stores/review'
 import { reviewApi } from '@/api/review'
 import { receipts } from '@/utils/receipt'
-import type { ReviewRow, ReviewStatus } from '@/types/review'
+import { ownSubmission, type ReviewRow, type ReviewStatus } from '@/types/review'
 
 vi.mock('@/api/review', () => ({
   reviewApi: {
@@ -57,6 +57,8 @@ function mountWith(opts: {
   keys?: string[] | null
   perms?: string[]
   me?: string
+  /** 系统管理员(录审不分离) */
+  superAdmin?: boolean
   canEdit?: boolean
   monthText?: string | null
   /** 整年模式(年表屏):传年份数字本身 */
@@ -72,6 +74,7 @@ function mountWith(opts: {
   ;(reviewApi.states as ReturnType<typeof vi.fn>).mockResolvedValue(opts.unloaded ? [] : opts.rows)
   const auth = useAuthStore()
   auth.me = opts.me ?? 'zhangsan'
+  auth.superAdmin = opts.superAdmin ?? false
   auth.permissions = opts.perms ?? ['entry:edit']
   const w = mount(FPReviewActions, {
     props: {
@@ -169,6 +172,50 @@ describe('审核动作簇 FPReviewActions', () => {
     expect(labels(w)).toEqual(['撤销审核'])
   })
 
+  // ── 录审分离(RBAC-SPEC §12,用户 2026-10-04 拍板) ─────────────
+
+  type TipEl = HTMLElement & { _tip?: { text: string } }
+  const btnOf = (w: ReturnType<typeof mount>, label: string) => w.findAll('button').find((x) => x.text().trim() === label)!
+
+  // 破坏验证:toApprove 不滤自己交的(恒 toReview)→ 红;selfOnly 恒 false → 按钮整组消失 → 红
+  it('❗待审核 · 自己交的、我又是审核员:「通过」「退回」照画但按不动,悬停说要别人审;撤回照常', async () => {
+    const w = mountWith({ rows: [row(KEY, 'submitted')], me: 'zhangsan', perms: ['entry:edit', 'review:approve'] })
+    expect(labels(w).sort()).toEqual(['撤回', '通过', '退回'].sort())
+    for (const t of ['通过', '退回']) {
+      expect(btnOf(w, t).attributes('disabled'), t).toBeDefined()
+      expect((btnOf(w, t).element as TipEl)._tip?.text).toBe('这张表是你自己交的,要由别人通过或退回')
+    }
+    await btnOf(w, '通过').trigger('click')
+    await flushPromises()
+    expect(reviewApi.approve).not.toHaveBeenCalled()
+  })
+
+  // 破坏验证:ownSubmission 去掉 !superAdmin → 红
+  it('❗系统管理员自己交的照样能自己审', async () => {
+    const w = mountWith({ rows: [row(KEY, 'submitted')], me: 'zhangsan', superAdmin: true, perms: ['entry:edit', 'review:approve'] })
+    expect(btnOf(w, '通过').attributes('disabled')).toBeUndefined()
+    await click(w, '通过')
+    expect(reviewApi.approve).toHaveBeenCalledWith(KEY)
+  })
+
+  // 一屏两把键,一把自己交的、一把别人交的:只发别人那把
+  it('❗多键里混着自己交的:「通过」只发别人交的那几把,项数也只数它们', async () => {
+    const w = mountWith({
+      rows: [row(KEY, 'submitted'), row(KEY2, 'submitted', { submittedBy: 'lisi' })],
+      keys: [KEY, KEY2], me: 'zhangsan', perms: ['entry:edit', 'review:approve'],
+    })
+    expect(btnOf(w, '通过').attributes('disabled')).toBeUndefined()
+    await click(w, '通过')
+    expect(reviewApi.approve).toHaveBeenCalledTimes(1)
+    expect(reviewApi.approve).toHaveBeenCalledWith(KEY2)
+  })
+
+  // 破坏验证:去掉 !!me → 红(没记交审人的行被当成自己交的)
+  it('❗没记交审人的行、还没登录完的 me:不算自己交的', () => {
+    expect(ownSubmission(row(KEY, 'submitted', { submittedBy: null }), null, false)).toBe(false)
+    expect(ownSubmission(row(KEY, 'submitted'), 'zhangsan', false)).toBe(true)
+  })
+
   // ── 两道不渲染的门 ──────────────────────────────────────
 
   // 破坏验证:把 show 的 canEdit 与去掉 → 红
@@ -189,6 +236,18 @@ describe('审核动作簇 FPReviewActions', () => {
       me: 'lishen',                    // 不是交审人 ⇒ 不该出「撤回」
     })
     expect(labels(w).sort()).toEqual(['通过', '退回'].sort())
+  })
+
+  // 审核员被放进来是为了通过 / 退回:没录入权的表不给「交审」—— 点下去后端恒 403(附表12 缺工资录入的审核员就是这样)
+  // 破坏验证:toSubmit 去掉 props.canEdit 那道 → 红
+  it('❗canEdit=false 但有审核权:录入中的表不画「交审」', () => {
+    const w = mountWith({
+      rows: [row(KEY, 'entered')],
+      canEdit: false,
+      perms: ['salary:view', 'review:approve'],
+      me: 'lishen',
+    })
+    expect(labels(w).some((t) => t.startsWith('交审'))).toBe(false)
   })
 
   // 没有审核权的只读账号仍然一颗都不画 —— 上面那条不是把门拆了

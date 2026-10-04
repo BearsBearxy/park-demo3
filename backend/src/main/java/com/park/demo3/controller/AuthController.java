@@ -1,6 +1,7 @@
 package com.park.demo3.controller;
 import com.park.demo3.dto.*;
 import com.park.demo3.dto.SystemDtos.ChangePasswordReq;
+import com.park.demo3.dto.SystemDtos.PasswordChangedResp;
 import com.park.demo3.dto.ElevationDtos.ElevateReq;
 import com.park.demo3.dto.ElevationDtos.GrantDTO;
 import com.park.demo3.service.AuthService;
@@ -44,10 +45,11 @@ public class AuthController {
 
     // 本人改密:任何已登录账号都能改自己的,与 system 权限无关 →
     // PermissionRegistry 里登记为 ANY_AUTHENTICATED(不登记的话按「默认拒绝」会 403)。
-    @io.swagger.v3.oas.annotations.Operation(summary = "本人修改密码（首次登录强制改密走这里）")
+    // 回包带一张新令牌:本机换上它接着用,旧的(连同别处的)已作废。
+    @io.swagger.v3.oas.annotations.Operation(summary = "本人修改密码（首次登录强制改密走这里;回新令牌,别处的登录退出）")
     @PostMapping("/change-password")
-    public void changePassword(@Valid @RequestBody ChangePasswordReq req) {
-        system.changeOwnPassword(req.currentPassword(), req.newPassword());
+    public PasswordChangedResp changePassword(@Valid @RequestBody ChangePasswordReq req) {
+        return new PasswordChangedResp(system.changeOwnPassword(req.currentPassword(), req.newPassword()));
     }
 
     // ══════════ 主管当场授权提权(ELEVATION-SPEC) ══════════

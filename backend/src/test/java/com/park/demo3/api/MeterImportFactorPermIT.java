@@ -190,6 +190,7 @@ class MeterImportFactorPermIT extends AbstractMysqlIT {
             .content("{\"username\":\"" + uname + "\",\"displayName\":\"倍率权限测试\","
                    + "\"password\":\"" + PASS + "\",\"roleIds\":[" + ids.get(0) + "]}"))
            .andExpect(status().isOk());
+        passwordAlreadyChanged(uname);
         return uname;
     }
 

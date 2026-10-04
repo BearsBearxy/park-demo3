@@ -70,6 +70,7 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 
 > ⚠ **v3 已改**：加了 9 个查看点，总数 27；`system:view` 不再是「唯一的读权限点」。权威清单见 §11.1 与 `Perm.ALL`。
 > 下表是 v2 的 18 个点，含义不变；9 个查看点见 §11.1。
+> 2026-10-04 又加第 28 个 `salary:edit`（工资录入，§11.8）：附表 12 的写从 `entry:edit` 拆出来。
 
 **11 个业务模块的 `edit` + `system:view` + `system:edit` + `lock:takeover` + `elevate:request` + `company:manage` + `book-template:edit` + `book-template:switch` + `review:approve`。**
 
@@ -88,7 +89,8 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 | `meter-reading:edit` | 抄表读数增删改、导入、按年 simulate。**导入时改已有表的倍率另要 `meter-master:edit`**（2026-10-03 安全审计 F15）：没有的话倍率不改、本行读数按档案倍率记，只给提示 |
 | `billing-run:edit` | 公摊生成、损耗、分摊结果、`params/recalc`、催缴单生成、单据备注 |
 | `billing-issue:edit` | 催缴单确认、签发、作废、标记已导出、收款公司槽 |
-| `entry:edit` | 月度台账、附表 6/7/8/10/11/12（含工资）、办公·三期水电、年度预算导入 |
+| `entry:edit` | 月度台账、附表 6/7/8/10/11、办公·三期水电、年度预算导入。**附表 12 工资 2026-10-04 起不归它**（§11.8） |
+| `salary:edit` | 附表 12 工资明细的新增、改备注、删除、批删、导入、清空本期导入（含导入中心的工资磁贴）、交审附表 12；隐含 `salary:view`；**进 `Perm.NOT_ELEVATABLE`**（§11.8） |
 | `report:edit` | 三大报表、损益附表 1–5、收入核对处置标记 |
 | `system:edit` | 用户、角色、日志的管理 |
 | `system:view` | **唯一的读权限点**：能不能看到用户列表、角色配置、操作日志 |
@@ -127,7 +129,7 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 | `bill-notices` | `billing-run:edit` | `BillNoticeService` |
 | `ledger`（scope=companyId） | `entry:edit` | `LedgerService` |
 | `s10`（scope=1..4） | `entry:edit` | `S10Service` |
-| `salary` | `entry:edit` | `SalaryService` |
+| `salary` | `salary:edit`（2026-10-04 前是 `entry:edit`，§11.8） | `SalaryService` |
 | `utilities`（scope=office\|phase3） | `entry:edit` | **`OfficeService`**（URL `/api/utilities`） |
 | `pv` | `entry:edit` | `PvService` |
 | `charging-car` · `charging-ebike` | `entry:edit` | `ChargingService`（按 scheduleNo 7/8 分 kind） |
@@ -163,6 +165,7 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 | lock:takeover | ✓ | ✓ | — | — | — | — |
 | master:view · contract:view · param:view · meter:view · billing:view · entry:view（v3） | ✓ | ✓ | ✓ | ✓ | — | ✓ |
 | salary:view（v3） | ✓ | ✓ | — | — | — | — |
+| salary:edit（V136，§11.8） | ✓ | ✓ | — | — | — | — |
 | report:view · analysis:view（v3） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | **导航可见层** | 全部 | 全部 | 全部 | 全部 | **经营分析、账簿与报表**（v3；v2 是仅经营分析） | 全部 |
 
@@ -175,7 +178,8 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 **第 7 个预置角色 `reviewer`「审核员」**（2026-09-03 拍板 D16，R1 的 V124 落库）：只有 `review:approve`，**零 `:edit`、无 `elevate:request`**，`nav_layers='data,reports,analysis'`。V134 起另带 8 个查看点（工资除外）。
 上面那张矩阵**六个既有角色一格都不改** —— 尤其财务主管默认**不带**审核权，录审分离靠角色分配保证；
 例外是 `admin`，它是「全部权限」角色（V101 起每个新权限点都给它），所以也持有 `review:approve`。
-系统不拦「同一账号既录又审」；客户若给主管勾了审核权，录审分离由客户自己负责。
+~~系统不拦「同一账号既录又审」；客户若给主管勾了审核权，录审分离由客户自己负责。~~
+**2026-10-04 推翻**（用户：「录审不分离在超级管理，其他分离」）：除系统管理员外，自己交的表要由别人通过或退回，见 §12.4。
 
 > **⚠ 2026-09-23 修:「零 `:edit`、无 `elevate:request`」把审核员挡在了 15 个屏外面。**
 > 屏上那一簇审核按钮(`FPReviewActions`,全站唯一一份)的显示门原来是 `canEdit && ready`,
@@ -293,7 +297,7 @@ analysis  经营分析
 
 # ═══ 审核（SIDEBAR-UX-REDESIGN §7.3）═══
 # submit 的权限点看 key 里的 kind,URL 层判不出来 —— 放行「任一相关 edit 权」,细分下沉 ReviewService
-POST /api/review/*/submit    → param-policy | param-monthly | meter-reading | billing-run | entry
+POST /api/review/*/submit    → param-policy | param-monthly | meter-reading | billing-run | entry | salary
 POST /api/review/*/approve   → review:approve
 POST /api/review/*/return    → review:approve
 POST /api/review/*/withdraw  → review:approve
@@ -306,8 +310,9 @@ POST /api/review/*/recall    → 同 submit（录入方撤自己交的，本人�
    /api/company-accounts/**                      → master
    /api/contracts/**                             → contract
    /api/ledger/**, /api/s10/**, /api/pv/**,
-   /api/charging/**, /api/elec/**, /api/salary/**,
+   /api/charging/**, /api/elec/**,
    /api/utilities/**                             → entry
+   /api/salary/**                                → salary:edit    ★2026-10-04 从 entry 拆出，§11.8
    /api/reports/**, /api/pnl/**, /api/recon/**   → report
 ```
 
@@ -381,6 +386,7 @@ PUT    /api/elec-cost/price-cfg → param-policy   （不得落 entry）
 非GET  /api/pv-meter/**         → meter-*        （不得落 entry）
 PUT    /api/bills/paymap        → billing-issue  （不得落 billing-run）
 DELETE /api/salary/imported     ≠ POST /api/salary/import 的规则
+非GET  /api/salary/**           → salary:edit    （不得落 entry；PermissionCoverageTest.everySalaryWriteNeedsSalaryEdit 从源码枚举）
 匿名   GET /actuator/health     → 200            （容器健康检查）
 GET    /api/salary/**（没有 salary:view 的账号，含只有分析 / 报表查看的股东）→ 403
 GET    分析白名单里的模块接口（只有 analysis:view 的账号）→ 200
@@ -530,7 +536,8 @@ JWT 有效期 120 分钟。权限烤进令牌 → 停用一个人他还能再用
 | 公摊规则（系数簿改层份走这条） | `createRule`/`updateRule`/`deleteRule` 写 `param_change_log`（`scope=rule:{id}`）。⚠ `updateRule` 内部是 `deleteByRuleMonth` + `saveChildren`，**旧成员数必须在删之前抓**，否则再也查不回来 |
 | 单元面积 | `updateUnit` 面积变化时写 `param_change_log`（`scope=unit:{id}`，`cfg_key=area`，走 old/new 两列）。`unit.area` 同时是 `per_sqm_month` 租金的面积来源与 area 法公摊的分摊基数 —— 「面积污染」已经炸过一次。面积没变则不写，免得日志被噪声淹掉 |
 
-**留下的**：改密后旧令牌不失效（内网 + 令牌 2 小时过期；要做需引入令牌版本号）。
+**留下的**：~~改密后旧令牌不失效（内网 + 令牌 2 小时过期；要做需引入令牌版本号）。~~
+→ V125 起改密即作废旧令牌；2026-10-04 起改密后本机换新令牌，见 §13.2。
 
 ### 10.1 P1 实施记录（2026-08-22）
 
@@ -543,6 +550,7 @@ JWT 有效期 120 分钟。权限烤进令牌 → 停用一个人他还能再用
 
 **自锁防护三条**（`SystemService.guardSelf*`）：不能停用自己、不能改自己的角色、
 不能把自己的 `system:edit` 摘掉。这个系统没有第二条进门的路，锁了只能去数据库手改。
+2026-10-04 起另有分级与「至少留一个系统管理员」两道（§12），都排在这三条后面。
 
 **实施中修正的三处**：
 - `builtin` 契约写的是 `=1`、实现是 Java `boolean` → JSON `true`，前端按 number 判导致
@@ -554,7 +562,8 @@ JWT 有效期 120 分钟。权限烤进令牌 → 停用一个人他还能再用
   已单独文案并加断言。
 - `landingPath()` 补第三档：只有 `system:view`、无任何业务层的自建角色原本会落到没有入口的屏。
 
-**待定**：改密后旧令牌不失效（内网 + 令牌 2 小时过期；要做需引入令牌版本号）。
+**待定**：~~改密后旧令牌不失效（内网 + 令牌 2 小时过期；要做需引入令牌版本号）。~~
+→ V125 起改密即作废旧令牌；2026-10-04 起改密后本机换新令牌，见 §13.2。
 
 P0 做完权限已真在管用，只是还得用 SQL 加人。P1 做完客户彻底不用碰代码。
 
@@ -576,7 +585,7 @@ P0 做完权限已真在管用，只是还得用 SQL 加人。P1 做完客户彻
 | `METER_VIEW` | `meter:view` | 抄表：园区抄表、光伏分栋、充电桩 | `meter-master:edit`、`meter-reading:edit` |
 | `BILLING_VIEW` | `billing:view` | 出账与催缴单：公共电核算/公摊、账单、催缴单 | `billing-run:edit`、`billing-issue:edit` |
 | `ENTRY_VIEW` | `entry:view` | 台账与附表：月度台账、附表 6/7/8/10/11/12、办公水电、预算、电费成本；**不含工资** | `entry:edit`、`book-template:edit`、`book-template:switch` |
-| `SALARY_VIEW` | `salary:view` | 工资 | **无**（`entry:edit` 不隐含） |
+| `SALARY_VIEW` | `salary:view` | 工资 | 2026-10-04 起只有 `salary:edit`（§11.8）；`entry:edit` 不隐含 |
 | `REPORT_VIEW` | `report:view` | 报表：三大报表、损益附表、收入核对 | `report:edit` |
 | `ANALYSIS_VIEW` | `analysis:view` | 经营分析层 | **无** |
 
@@ -613,6 +622,7 @@ P0 做完权限已真在管用，只是还得用 SQL 加人。P1 做完客户彻
 5. **敏感字段服务端打码**（`SensitiveMask`）：调用者没有字段所属模块的 view 时，回包给掩码，前端不靠隐藏。见 §11.4。
 6. **查看不可提权**：全部 `*:view` 进 `Perm.NOT_ELEVATABLE`；`ReadAccessManager` 不查 `ElevationStore`。
    借得到的话「工资只给两个人看」就成了一句话的事 —— 请主管授权 30 分钟，整年工资就导走了。
+   `salary:edit` 同理（§11.8）：它隐含工资查看，借得到的话财务专员请一次授权又能往看不见的工资表里导数。
 7. **迁移 V134**（`V134__rbac_view_perms.sql`，幂等）：除园区股东外的每个角色（内置与自建）勾上 8 个查看点（工资除外）；
    `salary:view` 只给 `admin` 与 `finance_manager`；`shareholder` 只给 `analysis:view` + `report:view`，
    `nav_layers` 设为 `'analysis,reports'`；第 ④ 段把 V101 / V124 种的角色备注里 V134 之后不成立的几句改掉
@@ -636,6 +646,7 @@ meter / billing / entry / salary 任一 view（`/data-home` 的路由门）。
 | `/api/buildings/{id}` | master · contract | 合同新建逐栋取单元 |
 | `/api/buildings` | master · contract · param · meter · billing · analysis | 跨模块楼栋字典，不含个人信息 |
 | `/api/companies` | master · billing · entry · report · analysis | 台账公司选择器、三大报表（无 catch）、催缴单收款簿、分析只用公司名。账号与个人卡户名打码 |
+| `/api/companies/payees` | billing | 催缴单屏与导出窗印的收款账户，账号明文（§11.8）。只此一处不按 master:view 打码 |
 | `/api/contracts/summary` | contract · analysis | 驾驶舱无 catch。排在 `/{id}` 前 |
 | `/api/contracts/{id}/terminate-preview` | contract | 终止确认框 |
 | `/api/contracts/{id}` | contract · analysis | TenantPeerView 只用 billingLines；租户快照里的联系人打码 |
@@ -664,13 +675,14 @@ meter / billing / entry / salary 任一 view（`/data-home` 的路由门）。
 | `/api/pv/**` | entry · analysis | |
 | `/api/charging/**` `/api/elec/**` `/api/utilities/**` | entry | |
 | `/api/import-log/**` | 数据层任一 · report | 导入中心历史：文件名、行数、操作人，不含金额 |
-| `/api/salary/**` | **salary** | 不对 analysis / report 放行 |
+| `/api/salary/lunch-totals` | salary · report | 餐补逐月合计，12 个数不带人；损益附表5「餐补费」派生对照用（§11.8）。排在 `/**` 前 |
+| `/api/salary/**` | **salary** | 逐人明细不对 analysis / report 放行 |
 | `/api/pnl/*/overview` | report | 分析不调。排在 `/*/*` 前 |
 | `/api/pnl/*/*` | report · analysis | 附表5 的工资是汇总行，符合规则 4 |
 | `/api/reports/is/*/*/*` `/api/reports/bs/*/*/*` | report · analysis | 只放 is / bs 本期：科目余额表 tb 的科目名里有疑似银行账号片段，分析也不调 |
 | `/api/reports/**` `/api/recon/**` | report | |
 
-覆盖测试：`PermissionCoverageTest.everyReadEndpointIsMapped` 枚举全部 GET 映射（当前 121 条），每条都必须命中；
+覆盖测试：`PermissionCoverageTest.everyReadEndpointIsMapped` 枚举全部 GET 映射（当前 123 条），每条都必须命中；
 `readRulesOnlyReferenceViewPerms` 保证读规则只引用 `kind=view` 的点。
 
 ### 11.4 打码
@@ -683,8 +695,8 @@ meter / billing / entry / salary 任一 view（`/data-home` 的路由门）。
 | `ContractDetailDTO.tenant.contactPhone / contactName` | `GET /api/contracts/{id}`（取 tenant 表现值，归 master） | 同上 | master:view |
 | `CompanyAccountDTO.accountNo` | `GET /api/companies`、增改账户回包（`CompanyService.toDTO`），所有 kind | 只留后 4 位（`****5678`） | master:view |
 | `CompanyAccountDTO.accountName` | 同上，只对 `kind=personal` | 只留第一个字 | master:view |
+| `CompanyAccountDTO.accountNo / accountName` | `GET /api/companies/payees`（`CompanyService.listForNotice`，催缴单屏与导出窗） | 同上两行 | master:view **或** billing:view（§11.8） |
 | `data-home` 催缴单那一步的 detail | `GET /api/data-home/overview` | 去掉「 · ¥总额」，只留「N 张」 | billing:view |
-| 工资写接口回包整行 | `POST /api/salary/records`、`PATCH /records/{id}/note` | 只回 id，其余为空 | salary:view |
 
 **写回守卫**：`PUT /api/tenants/{id}`（联系人、电话、别名）、`PUT /api/company-accounts/{id}` 收到的值等于「现值的掩码」时当作没改
 （`SensitiveMask.keepIfMasked`）。靠提权拿到编辑权的人（查看不可提权）表单里回填的是掩码，不拦的话一保存就把真号码冲掉。
@@ -707,6 +719,8 @@ v3 的两处不同：
 
 ### 11.6 留给用户定的四件事（实现按默认做法）
 
+> 2026-10-04 用户拍板「按你推荐」：第 1、3 条改按「另一做法」，第 2 条改成单列一个工资录入权点 —— 落地见 §11.8。第 4 条维持默认。
+
 1. **催缴单导出会印收款账号。** 有 billing 权限但没有 master:view 的角色导出的单上是 `****1234`，而这张单要发给租户。
    V134 之后现有角色都有 master:view，只有今后新建的角色会遇到。默认：这类账号的导出按钮置灰并写明「印收款账号需要
    主数据 · 查看」（前端）。另一做法：让 billing:view 也看得到账号明文。
@@ -725,3 +739,183 @@ v3 的两处不同：
 测试：`PermissionCoverageTest`（读覆盖、读规则只引用查看点、读路由回归、查看不可提权、隐含表与设计 / META 一致）·
 `ReadPermissionIT`（缺查看 403 与文案、股东、打码与写回、本月出账金额、工资、编辑隐含查看）·
 `RbacViewPermsMigrationIT`（V134 重放幂等与第 7 条分配）。
+
+### 11.8 v3 补三件（2026-10-04 用户拍板「按你推荐」）
+
+1. **催缴单上印收款账号的明文**（推翻 §11.6 第 1 条默认）。新读接口 `GET /api/companies/payees`
+   （`CompanyService.listForNotice`），读规则只放 `billing:view`，服务端再判一次 `master:view ∪ billing:view` 才给明文 ——
+   读规则哪天被放宽，放进来的人拿到的也只是掩码。催缴单屏（`BillNoticesView.loadCompanies`，单户导出）与导出窗
+   （`ExportNoticeWindow`，账户下拉与批量导出）改取它；屏上「导出通知单」「导出本户 Excel」不再因缺主数据查看置灰。
+   **别处照旧打码**：`/api/companies`（主数据、收款公司窗、台账公司选择器、报表）仍按 `master:view`。
+   收款公司窗是维护账户的地方，照旧走 `/api/companies`（写回守卫 `keepIfMasked` 照常生效）。
+2. **工资录入单列一个权点 `salary:edit`**（推翻 §11.6 第 2 条默认）。`Perm.META` 归 `salary` 组、`kind=edit`，
+   所以「编辑隐含查看」自动推出 `salary:edit ⇒ salary:view`；角色屏矩阵「工资」一行的编辑格多出「工资录入」。
+   **工资的写一律要它**：`/api/salary` 与 `/api/salary/**` 的全部非 GET（新增、改备注、删除、批删、导入、清空本期导入）；
+   导入中心的工资磁贴按它出（`importRegistry` 的 `module`）；交审 / 撤回附表 12（`ReviewKind.SALARY.perms()`，
+   `/api/review/*/submit|recall` 的 URL 层放行并上它）。`salary_record` 只有 `SalaryService` 写，没有别的账册 / 模板 / 删公司
+   路径碰它。**不可提权**（进 `Perm.NOT_ELEVATABLE`，见上面规则 6），附表 12 页头的编辑按钮对没有它的人置灰、写明缺哪一项，
+   不弹授权窗（`SchedHeader` 的 `no-elevate`）。写接口回包按 `salary:view` 收的那道（`SalaryService.visible`）随之删掉：
+   能写的人隐含查看且借不到，那道收已无事可做。
+   **迁移 V136**（`V136__salary_edit.sql`，幂等）：同时有 `entry:edit` 与 `salary:view` 的每个角色（内置与自建）勾上
+   `salary:edit` —— 种子里是 `admin`、`finance_manager`；财务专员只有 `entry:edit`，从此录不了工资。财务专员的角色备注
+   只改 V101 原句（「…不可改档案、合同、计费口径」→「…、工资」）。
+   **迁移 V137**（`V137__admin_salary_edit.sql`，幂等，复查补）：系统管理员角色无条件有 `salary:edit` 与 `salary:view`
+   —— 部署前若有人取消过这个角色的事后录入或工资查看（分级之前任何有 `system:edit` 的人都改得了它），V136 会跳过它，
+   而系统管理员要能调试整个软件（§12）。照 V108 / V112「新权限点 admin 无条件给」的老规矩；种子库上什么都不插。
+   **V136 按角色判，权限按账号的角色并集算**：一个账号从 A 角色拿 `entry:edit`、从 B 角色拿 `salary:view`，部署前能录工资，
+   部署后 A、B 都不够格，这个账号静默丢掉工资录入（屏上：附表 12 编辑置灰写「需要「工资录入」权限」、导入中心工资磁贴消失）。
+   不放宽迁移（那会把工资录入发给只挂其中一个角色的别人）。**部署后跑一次下面这句（只读）**，跑出来的就是丢了的人，请系统管理员给他其中一个角色勾「工资录入」：
+   ```sql
+   SELECT u.username, u.display_name FROM auth_user u
+   WHERE u.status = 1
+     AND EXISTS (SELECT 1 FROM auth_user_role ur JOIN auth_role_perm p ON p.role_id = ur.role_id WHERE ur.user_id = u.id AND p.perm = 'entry:edit')
+     AND EXISTS (SELECT 1 FROM auth_user_role ur JOIN auth_role_perm p ON p.role_id = ur.role_id WHERE ur.user_id = u.id AND p.perm = 'salary:view')
+     AND NOT EXISTS (SELECT 1 FROM auth_user_role ur JOIN auth_role_perm p ON p.role_id = ur.role_id WHERE ur.user_id = u.id AND p.perm = 'salary:edit');
+   ```
+   **交审按钮跟着收**：本月出账清单的「交审」是粗判（任一编辑权就画），附表 12 那一行例外 —— 没有 `salary:edit` 不画
+   （`DataHomeView` 的 `submittable`；不然财务专员每个月都看见一颗点下去恒 403 的按钮）；屏内审核动作簇（`FPReviewActions`）的「交审」
+   只给宿主 `canEdit` 为真的人，被 `show` 放进来的纯审核员、缺工资录入的人只有通过 / 退回。
+3. **损益附表「餐补费」派生走月合计**（推翻 §11.6 第 3 条默认）。新读接口 `GET /api/salary/lunch-totals?year=`
+   （`SalaryService.lunchTotals`）只回 12 个月的餐补合计，没有工资行的月为 null（与「合计 0」分开）；读规则
+   `salary · report`，排在 `/api/salary/**` 前。`pnlDerive.loadDeriveData` 一律走它（原来 12 个 `/api/salary/records`
+   请求、没有工资查看就不发）—— 只有报表查看的总经理、园区股东也看得到这一项派生；逐人明细仍只给 `salary:view`。
+
+落点：`Perm`（`SALARY_EDIT`、ALL 28、NOT_ELEVATABLE、META 与三条 hint）· `PermissionRegistry`（工资写段、审核交审两条、
+两条读规则）· `ReviewKind.SALARY` · `SalaryService` / `SalaryController`（`lunchTotals`）· `CompanyService` /
+`CompanyController`（`payees`）· `V136__salary_edit.sql`。
+测试：`PermissionCoverageTest.everySalaryWriteNeedsSalaryEdit`（从源码枚举工资写端点）与读路由回归 ·
+`ReadPermissionIT`（工资读写分开、餐补合计、催缴单收款账户）· `RbacViewPermsMigrationIT`（V136 分配与重放、V137 系统管理员）·
+`RoleApiIT`（预置角色表）· 前端 `DataHomeView.spec`（附表 12 交审）· `FPReviewActions.spec`（canEdit 为假不画交审）。
+
+---
+
+## 12. 系统管理分级与录审分离（2026-10-04 用户拍板）
+
+> 用户原话：「系统管理不分级反正我需要一个超级管理员的账号都能调试整个软件，录审不分离在超级管理，其他分离」。
+> 对应安全审计 F86 / F38 / F39（只管账号的人能把自己升成系统管理员）与 F17 / F37（同一账号自己交自己审）。
+
+### 12.1 谁是系统管理员
+
+启用、且挂着预置角色 `admin`（屏上「系统管理员」）的账号。**按角色标识认，不按权限点认** —— 别的角色勾满全部权限也不是。
+判据只有一处：`UserPermissionCache.isSuperAdmin`（快照重载时按角色 code 算）。登录回包与 `GET /api/auth/me` 带 `superAdmin`，
+前端落进 auth 存储（键 `superAdmin`，存 `'1'`/缺省，口径同 `mustChangePassword`）。写 / 清 auth 存储的四处清单
+（`stores/auth.ts` 登录换轨、登出，`api/index.ts` 401）都带这个键。
+
+### 12.2 分级（只约束不是系统管理员的人）
+
+比较用的「我的权限」= 角色给的权限 + 编辑隐含查看（快照里那份），**不含提权**（`system:*` 本来就借不到）。下表任一条命中 → 403（body.code）。
+
+| 动作 | 拦的条件 | 文案 |
+|---|---|---|
+| 新建角色 | 勾的权限（展开隐含）里有我没有的 | 角色里有你没有的权限：X、Y。只有系统管理员能分配你没有的权限 |
+| 改角色 / 删角色 | 是系统管理员角色；或改前 ∪ 改后有我没有的（往小里改比自己大的角色也不行） | 系统管理员角色只有系统管理员能改 / 同上一行 |
+| 新建账号 | 要分配的角色里有系统管理员角色；或有我没有的权限 | 系统管理员角色只有系统管理员能分配 / 要分配的角色里有你没有的权限：…。只有系统管理员能分配你没有的权限 |
+| 改账号（显示名或角色）、重置密码、停用 / 启用 | 目标挂着系统管理员角色；或目标现有权限里有我没有的；改角色时新角色另按上一行判 | 「张三」是系统管理员账号，只有系统管理员能改 / 「张三」有你没有的权限：…。只有系统管理员能改这个账号 |
+
+- 改账号只改显示名也拦：比自己大的账号整个不归你管，屏上那一行三颗按钮一起置灰，不单为显示名留一条路。
+- 不加「再输一次自己的密码」（同一句拍板：系统管理员调试要顺手）。
+- 自锁防护三条（§10.1）照旧，排在分级前面；F39「改自己挂的角色给自己加权限」由改后那份拦住。
+
+### 12.3 至少留一个启用的系统管理员（对所有人）
+
+停用一个账号、或摘掉它的系统管理员角色之后，库里不再有别的启用账号挂这个角色 → 409
+「「X」是最后一个启用的系统管理员账号，停用它或摘掉它的系统管理员角色后，就没有人能管理整个系统了。请先给另一个账号分配系统管理员角色。」
+排在分级前面：只管账号的人去停最后一个管理员，该听到的是这个后果，不是一句「超出范围」。
+系统管理员本人操作时，「不能停用自己 / 不能改自己的角色」已先拦住会走到这里的路；账号没有删除入口，系统管理员角色是预置的删不了。
+**并发**：两个系统管理员同时互相停用（或摘角色），普通读各看见对方还启用着、双双放行，提交后一个都不剩。所以真要摘掉一个启用的
+系统管理员时，守卫先 `FOR UPDATE` 锁住 `auth_role` 里系统管理员那一行（两件事排队），再用锁定读（`FOR SHARE`）数 `auth_user_role`
+与 `auth_user` —— 锁定读读已提交的最新行，不是本事务开头拍的快照。别的账号改动不走这把锁。测试 `LastAdminLockIT`（三处各锁一次，停用要排队）。
+
+### 12.4 录审分离
+
+`ReviewService.approve` / `returnBack`：操作人就是 `submitted_by`、又不是系统管理员 → 409「2026-08 月度台账 是你自己交的，要由别人通过或退回」。
+409 不是 403：他有审核权，拦的是「这一张是自己交的」这条规矩（同「不能停用自己」）；前端两处审核入口只给 403 冠「你没有这张表的权限：」，
+冠在这句前面前后打架。
+系统管理员自己交自己审照常放行。撤销审核（withdraw）不在这一条里。全站审核写入口只有 `ReviewController` 这几个端点（铃铛只列清单、不带动作）。
+**铃铛同一条判据**：「等你审」的红数字（ping 的 `pendingReviews`）与清单（`GET /api/review/pending`）都走 `ReviewService.pendingOf` ——
+不是系统管理员时去掉自己交的（`submitted_by` 为 NULL 的照列）。自己交的他审不了，列进「等你处理」就成了一件办不完的事，红点挂到别人审完为止。
+`submitted_by` 可能为 NULL（直接写库的种子行）、取不到人时 `me()` 是空串：比较写成 `me().equals(submittedBy)`。
+
+### 12.5 屏上
+
+- **用户管理**：后端给 `UserDTO.manageable` / `RoleDTO.manageable`（守卫同一条判据算，系统管理员恒真）。管不了的账号「编辑 / 重置密码 / 停用（启用）」置灰，
+  悬停「系统管理员账号只有系统管理员能改」或「这个账号有你没有的权限,只有系统管理员能改」；点行开的抽屉（手机行卡只有这一条路）只读并写明原因；
+  新建 / 编辑里派不了的角色那一格置灰（「系统管理员角色只有系统管理员能分配」/「这个角色有你没有的权限,只有系统管理员能分配」）。
+- **角色权限**：管不了的角色整块只读，底部写「系统管理员角色只有系统管理员能改。」或「这个角色有你没有的权限,只有系统管理员能改。」；
+  能改的角色（含新建）里，自己没有的权限那一格置灰，悬停「你没有这项权限,只有系统管理员能把它分给角色」。系统管理员不受限。
+- **审核动作簇**（`FPReviewActions`）与**本月出账清单**（`DataHomeView`）：待审的全是自己交的、又不是系统管理员 →「通过」「退回」照画、按不动，
+  悬停「这张表是你自己交的,要由别人通过或退回」；多键里混着别人交的，只发别人那几把。判据 `types/review.ts` 的 `ownSubmission`（me 为空不算自己交的）。
+
+### 12.6 落点
+
+后端：`UserPermissionCache`（`SUPER_ADMIN_ROLE`、`isSuperAdmin`）· `SystemService`（`guardRoleInRange` / `guardUserInRange` / `guardKeepsAnAdmin` / `inMyRange`）·
+`SystemDtos`（两个 `manageable`）· `LoginResp` / `MeResp` / `AuthService`（`superAdmin`）· `ReviewService.guardNotOwnSubmission`。无迁移。
+测试：`SystemTieringIT`（四条升级路、系统管理员不受限且登录回包说实话、范围内照管与编辑隐含查看、最后一个管理员）·
+`LastAdminLockIT`（最后一个管理员的守卫上锁）· `ReviewApiIT.selfReview_isBlockedForEveryoneButASuperAdmin`（409、铃铛红数字与清单不含自己交的）。前端：`systemUsersView` / `systemRolesView` / `FPReviewActions` / `DataHomeView` / `auth` / `loginKicked` 各 spec。
+
+---
+
+## 13. 改密（2026-10-04 用户拍板「按你推荐」）
+
+> 用户原话：「首次登录强制改密，现在自己改不了自己的密码，并且在系统用户管理里面重置密码后，到登录的时候又要强制改一遍」。
+> 对应安全审计 F02 / F40（强制改密只有前端路由守卫拦）与 F89（改密把本机也踢下线）。
+
+### 13.1 入口
+
+账号菜单「修改密码」→ `/change-password`：桌面在头像菜单「版本更新」下一行，手机在导航抽屉「版本更新」下一行。
+改密页不进外壳（`App.vue` 的 `isBare`），去了外壳整个卸掉、各页签现场跟着没 —— 同退出登录，有没保存改动的页逐个先问（动词「离开」）。
+
+| | 自己来改 | 强制态（`mustChangePassword`） |
+|---|---|---|
+| 标题 / 说明 | 修改密码 / 修改后这台设备保持登录。（不写「其他设备上的登录会退出」：单会话下同一账号同一时刻只有一台设备登着） | 请先修改初始密码 / 这是管理员分配的初始密码，改掉之后才能进入系统。 |
+| 底部那颗 | 「返回」：回上一页；直接打开这个地址的（没有上一页）落首页 | 「退出登录」（忘了当前密码的人唯一的出口），没有「返回」 |
+| 改完 | 回上一页（没有上一页落首页），回执「密码已修改」 | 落首页，回执同左 |
+
+标题、说明、底部那颗进页时定下来，改完那一拍不跟着标志翻。
+
+### 13.2 改完本机不掉线，别处下线
+
+`POST /api/auth/change-password` 回 `{ token }`：服务端开一个新会话（`AuthService.reissueAfterPasswordChange` → `SessionService.open(…, "password")`），
+token_version +1、换新 sid。改之前签的令牌全部作废 —— 单会话下别的设备上还活着的只可能是同一张，被抄走的也是它 ——
+下一个请求 401、`X-Auth-Reason: password`，登录页说「密码已修改，请用新密码登录」。本人授权照旧随会话清空（ELEVATION-SPEC）。
+前端 `auth.setToken` 换上新令牌，写回原来那一轨（没勾「记住登录」的不被改成记住）；同一浏览器别的标签页每个请求现读 storage，跟着换上。
+**换令牌那一拍**：服务端先作废旧令牌、回包才带来新令牌，这中间拿旧令牌发出去的请求（在场心跳每 3 秒一拍，别的标签页也在发）撞 401。
+`api/index.ts` 的 401 分支清身份之前先看：① 这个请求带的令牌已经不是 storage 里那张 → 用新的重发一次；② 原因是 `password`、令牌还没换
+→ 等新令牌落地（至多 3 秒）再重发。等不来才是真被改了密码，照常清身份、去登录页。每个请求只重发一次。
+改前是 `revokeAll`：连本机也踢回登录页，强制改密改完落到首页、紧接着又被弹回登录页。
+
+### 13.3 用户管理里重置密码
+
+| 重置的是 | `must_change_password` | 会话 | 回包 |
+|---|---|---|---|
+| 别人 | 置 1，本人下次登录必须改 | 那个人全部会话作废（`revokeAll(…, "password")`） | `{ token: null }` |
+| 自己 | 置 0：密码是自己刚定的，不再逼自己改一遍 | 同 13.2，本机换新令牌、别处下线 | `{ token }` |
+
+弹窗说明与完成那句按这两种分开写（`SystemUsersView` 的 `pwSelf`）。分级（§12.2）照旧排在前面。
+
+### 13.4 带着管理员给的密码，服务端只放改密页用得到的几条
+
+`must_change_password=1`（新建账号的初始密码、被别人重置的密码）的账号，`JwtAuthFilter` 认出令牌后，
+除 `SecurityPaths.BEFORE_PASSWORD_CHANGE` 外一律 HTTP 403、`body.code` 428（`ResultCode.PASSWORD_CHANGE_REQUIRED`「请先修改初始密码，改完才能使用系统」）：
+
+| 放行 | 谁调 |
+|---|---|
+| `POST /api/auth/change-password` · `POST /api/auth/logout` | 改密页上的两个按钮 |
+| `GET /api/auth/me` · `GET /api/auth/elevate` | App 挂载时各取一次（刷新权限、恢复授权胶囊），只读本人自己的东西 |
+| `POST /api/auth/login` | 登录本身不看令牌，请求头里捎着一张没改密的旧令牌也不该把登录挡掉 |
+
+「方法 路径」原样比，写法不一样的一律算不在名单里。判据在权限快照里（`UserPermissionCache.mustChangePassword`，随 `reload()` 重算），
+逐请求零查库；改完密码 `reload()` 当场清。改前只有前端路由守卫拦，拿初始密码换来的令牌直接调接口照样全通。
+在场心跳、铃铛、版本检查都挂在外壳上，改密页不进外壳，所以强制态下它们本来就不跑。
+
+前端 `api/index.ts`：收到 428 → 标志写进令牌所在那一轨 → 整页跳 `/change-password`（不报错、不退出；不把错交给调用方；
+整页跳让外壳上的轮询跟着页面一起停）。已在改密页就不再跳，照常把错交回去。会撞上它的是：别的标签页刚用初始密码登进来，本页沿用了那张令牌。
+
+### 13.5 落点
+
+后端：`ResultCode.PASSWORD_CHANGE_REQUIRED` · `SecurityPaths.BEFORE_PASSWORD_CHANGE` · `JwtAuthFilter` · `UserPermissionCache.mustChangePassword` ·
+`SessionService.open(…, by)` · `AuthService.reissueAfterPasswordChange` · `SystemService.changeOwnPassword / resetPassword` · `SystemDtos.PasswordChangedResp`。无迁移。
+测试：`PasswordSelfServiceIT`（本机新令牌 + 旧令牌 401、重置自己 / 别人、强制态读写 428 而改密页四条放行、改完当场放行、强制态能登出）；
+用 API 建号再以那个人身份调业务接口的 IT，建完号调 `AbstractMysqlIT.passwordAlreadyChanged`。
+前端：`IconRail` / `MobileNavDrawer`（入口）· `ChangePasswordView` · `stores/auth` 的 `setToken` · `api/index.ts` · `SystemUsersView`；
+spec：`changePasswordSelf` · `systemUsersReset` · `tabStrip`（入口走离开确认）。

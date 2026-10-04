@@ -29,6 +29,11 @@ import java.util.stream.Collectors;
  *
  * ⚠ **自锁防护**（{@code guardSelf*}）：管理员改自己会把自己关在门外，而这个系统里
  *    没有第二条进门的路 —— 只能去数据库里手改。所以宁可挡住，也不能让它发生。
+ *
+ * ⚠ **分级**（{@code guard*InRange}，RBAC-SPEC §12）：系统管理员（持 admin 角色）什么都能改；
+ *    别的有 system:edit 的人只能动「不是系统管理员、权限全在自己手里」的角色和账号。
+ *    改前一个只管账号的人能给自己的角色勾满权限、建一个系统管理员账号、重置管理员的密码再登进去
+ *    （安全审计 F86 / F38 / F39）。用户 2026-10-04 拍板：系统管理员不分级，其他人分。
  */
 @Service
 public class SystemService {
@@ -44,15 +49,17 @@ public class SystemService {
     private final SessionService sessions;
     private final NoticeService notices;
     private final ElevationService elevation;
+    private final AuthService auth;
 
     public SystemService(AuthUserMapper users, AuthRoleMapper roles, AuthRolePermMapper rolePerms,
                          AuthUserRoleMapper userRoles, PasswordEncoder enc,
                          UserPermissionCache cache, AuditLogService audit, AuditQueryMapper auditQuery,
-                         SessionService sessions, NoticeService notices, ElevationService elevation) {
+                         SessionService sessions, NoticeService notices, ElevationService elevation,
+                         AuthService auth) {
         this.users = users; this.roles = roles; this.rolePerms = rolePerms;
         this.userRoles = userRoles; this.enc = enc; this.cache = cache;
         this.audit = audit; this.auditQuery = auditQuery; this.sessions = sessions; this.notices = notices;
-        this.elevation = elevation;
+        this.elevation = elevation; this.auth = auth;
     }
 
     // ══════════ 操作日志时间线（RBAC-SPEC §7.2） ══════════
@@ -107,7 +114,8 @@ public class SystemService {
         // 按 Perm.ALL 的顺序回，前端矩阵才不会每次刷新跳来跳去
         ps.sort(Comparator.comparingInt(Perm.ALL::indexOf));
         return new RoleDTO(r.getId(), r.getCode(), r.getName(), r.getBuiltin() != null && r.getBuiltin() == 1,
-            splitLayers(r.getNavLayers()), ps, countByRole.getOrDefault(r.getId(), 0L), r.getRemark());
+            splitLayers(r.getNavLayers()), ps, countByRole.getOrDefault(r.getId(), 0L), r.getRemark(),
+            inMyRange(UserPermissionCache.SUPER_ADMIN_ROLE.equals(r.getCode()), ps));
     }
 
         @NoReviewGuard(reason = "角色权限配置,不是期间数据。它是**元权限** —— 改这里能改谁有 entry:edit,进审核会自锁(要改权限先请人审,而审核权本身也在这张表里)")
@@ -115,6 +123,7 @@ public class SystemService {
     public RoleDTO createRole(RoleCreateReq req) {
         if (roles.selectOne(Wrappers.<AuthRole>lambdaQuery().eq(AuthRole::getCode, req.code())) != null)
             throw new BizException(ResultCode.CONFLICT, "角色标识「" + req.code() + "」已存在");
+        guardRoleInRange(null, validPerms(req.perms()));
         AuthRole r = new AuthRole();
         r.setCode(req.code());
         r.setName(req.name());
@@ -138,6 +147,10 @@ public class SystemService {
         // 原样保存不发通知:没改的东西写「你的权限被改了」是假话。备注不算 —— 持有人看不到它。
         Set<String> before = rolePerms.selectList(Wrappers.<AuthRolePerm>lambdaQuery().eq(AuthRolePerm::getRoleId, id))
             .stream().map(AuthRolePerm::getPerm).collect(Collectors.toSet());
+        // 改前也要比:比我大的角色,哪怕是往小里改也不归我动(F39:改自己挂的角色给自己加权限,改后那份拦住它)
+        Set<String> both = new HashSet<>(before);
+        both.addAll(next);
+        guardRoleInRange(r, both);
         boolean changed = !before.equals(new HashSet<>(next)) || !Objects.equals(r.getName(), req.name())
             || !Objects.equals(r.getNavLayers(), joinLayers(req.navLayers()));
         r.setName(req.name());
@@ -164,6 +177,7 @@ public class SystemService {
         AuthRole r = mustRole(id);
         if (r.getBuiltin() != null && r.getBuiltin() == 1)
             throw new BizException(ResultCode.CONFLICT, "预置角色不可删除（权限和导航层可以改）");
+        guardRoleInRange(r, permsOfRoles(List.of(id)));
         long n = count(userRoles.selectCount(Wrappers.<AuthUserRole>lambdaQuery().eq(AuthUserRole::getRoleId, id)));
         if (n > 0)
             throw new BizException(ResultCode.CONFLICT, "该角色下还有 " + n + " 个账号，请先把他们改派到别的角色");
@@ -181,6 +195,9 @@ public class SystemService {
         Map<Integer, List<Integer>> rolesByUser = userRoles.selectList(null).stream()
             .collect(Collectors.groupingBy(AuthUserRole::getUserId,
                      Collectors.mapping(AuthUserRole::getRoleId, Collectors.toList())));
+        Map<Integer, List<String>> permsByRole = rolePerms.selectList(null).stream()
+            .collect(Collectors.groupingBy(AuthRolePerm::getRoleId,
+                     Collectors.mapping(AuthRolePerm::getPerm, Collectors.toList())));
 
         String kw = q == null ? "" : q.trim().toLowerCase(Locale.ROOT);
         return users.selectList(Wrappers.<AuthUser>lambdaQuery().orderByAsc(AuthUser::getId)).stream()
@@ -195,7 +212,11 @@ public class SystemService {
                     rolesByUser.getOrDefault(u.getId(), List.of()).stream()
                         .map(roleById::get).filter(Objects::nonNull)
                         .map(r -> new UserRoleBrief(r.getId(), r.getCode(), r.getName())).toList(),
-                    u.getCreatedAt()))
+                    u.getCreatedAt(),
+                    inMyRange(rolesByUser.getOrDefault(u.getId(), List.of()).stream()
+                            .map(roleById::get).anyMatch(r -> r != null && UserPermissionCache.SUPER_ADMIN_ROLE.equals(r.getCode())),
+                        rolesByUser.getOrDefault(u.getId(), List.of()).stream()
+                            .flatMap(rid -> permsByRole.getOrDefault(rid, List.of()).stream()).toList())))
             .toList();
     }
 
@@ -204,6 +225,7 @@ public class SystemService {
     public UserDTO createUser(UserCreateReq req) {
         if (users.selectOne(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getUsername, req.username())) != null)
             throw new BizException(ResultCode.CONFLICT, "用户名「" + req.username() + "」已被占用");
+        guardUserInRange(null, safe(req.roleIds()));
         AuthUser u = new AuthUser();
         u.setUsername(req.username());
         u.setDisplayName(req.displayName());
@@ -233,6 +255,8 @@ public class SystemService {
               + "万一改错把自己关在门外，这个系统没有第二条进门的路。");
 
         boolean rolesDiff = !self && rolesChanged(id, req.roleIds());   // 先判再改,改完就比不出来了
+        if (rolesDiff) guardKeepsAnAdmin(u, true, safe(req.roleIds()));
+        guardUserInRange(u, rolesDiff ? safe(req.roleIds()) : null);
         u.setDisplayName(req.displayName());
         users.updateById(u);
         if (!self) replaceRoles(id, req.roleIds());   // 自己那行角色原样不动
@@ -245,10 +269,7 @@ public class SystemService {
 
     /** 传进来的角色集合与库里现有的是否不同（顺序无关；null 视为空集）。 */
     private boolean rolesChanged(Integer userId, List<Integer> incoming) {
-        Set<Integer> now = userRoles.selectList(Wrappers.<AuthUserRole>lambdaQuery()
-                .eq(AuthUserRole::getUserId, userId))
-            .stream().map(AuthUserRole::getRoleId).collect(Collectors.toSet());
-        return !now.equals(new HashSet<>(safe(incoming)));
+        return !roleIdsOf(userId).equals(new HashSet<>(safe(incoming)));
     }
 
         @NoReviewGuard(reason = "停用/启用账号。出事时要能立刻停,等审核等于把安全动作排进业务队列")
@@ -256,6 +277,8 @@ public class SystemService {
     public UserDTO setStatus(Integer id, int status) {
         AuthUser u = mustUser(id);
         guardNotSelf(u, "不能停用自己。");
+        guardKeepsAnAdmin(u, status == 1, null);
+        guardUserInRange(u, null);
         u.setStatus(status);
         users.updateById(u);
         audit.log(status == 1 ? "user.enable" : "user.disable", "user:" + u.getUsername(), null);
@@ -268,25 +291,33 @@ public class SystemService {
 
         @NoReviewGuard(reason = "凭据操作。凭据不是期间数据,而让重置密码等审核会在人被锁在门外时无解")
 @Transactional
-    public void resetPassword(Integer id, String password) {
+    /** 重置的是自己的 → 返回这台设备接着用的新令牌;重置别人的 → null。 */
+    public String resetPassword(Integer id, String password) {
         AuthUser u = mustUser(id);
+        guardUserInRange(u, null);   // 重置比自己大的账号的密码 = 拿到那个账号(F38)
+        boolean self = u.getUsername().equals(currentUsername());
         u.setPasswordHash(enc.encode(password));
-        u.setMustChangePassword(1);   // 管理员从此不知道任何人的密码,出事能说清是谁干的
+        // 给别人重置:管理员从此不知道任何人的密码,出事能说清是谁干的 → 本人下次登录必须改。
+        // 给自己重置:密码是自己刚定的,不再逼自己改一遍(用户 2026-10-04:「重置密码后，到登录的时候又要强制改一遍」)。
+        u.setMustChangePassword(self ? 0 : 1);
         users.updateById(u);
         audit.log("user.reset-password", "user:" + u.getUsername(), null);
         cache.reload();
+        // 放在 cache.reload() 之后:reload 重建整张快照,放前面会被它盖掉。
+        // 自己的:同 changeOwnPassword,本机换新令牌接着用,别处下线。
+        if (self) return auth.reissueAfterPasswordChange(u);
         // V125:改完密码要立刻生效。改前它只换了库里的哈希,
         // 已经发出去的令牌照样能用到 120 分钟过期为止。
-        // 放在 cache.reload() 之后:reload 重建整张快照,放前面会被它盖掉。
         sessions.revokeAll(u.getUsername(), "password");
+        return null;
     }
 
-    /** 本人改密。改完清 mustChangePassword，放行进系统。 */
+    /** 本人改密。改完清 mustChangePassword，放行进系统;返回这台设备接着用的新令牌。 */
     @NoReviewGuard(reason = "同 resetPassword:只写 auth_user 的口令列,凭据不是期间数据。首登强制改密走的正是这条路,进审核等于新账号在审核员点头前一直登不进系统")
     // noRollbackFor:旧口令错时 verifyOwnPassword 先写一条 .deny 审计再抛 —— 默认回滚会把这条审计一起抹掉。
     // 抛 BizException 的分支都在任何业务写之前,不回滚它们不会留下半截数据。
     @Transactional(noRollbackFor = BizException.class)
-    public void changeOwnPassword(String currentPassword, String newPassword) {
+    public String changeOwnPassword(String currentPassword, String newPassword) {
         String me = currentUsername();
         AuthUser u = users.selectOne(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getUsername, me));
         if (u == null) throw new BizException(ResultCode.UNAUTHORIZED);
@@ -300,9 +331,10 @@ public class SystemService {
         users.updateById(u);
         audit.log("user.change-password", "user:" + u.getUsername(), "本人修改");
         cache.reload();
-        // 同 resetPassword。本人手上这张也一起作废 —— 改密后重登一次是标准做法,
-        // 而「只作废别处的」需要把当前 sid 传进来,多一条参数换不来什么。
-        sessions.revokeAll(u.getUsername(), "password");
+        // 本机换一张新令牌接着用,手上这张旧的连同别处的当场作废(用户 2026-10-04 拍板,AuthService.reissueAfterPasswordChange)。
+        // 改前是 revokeAll,连本机也踢回登录页 —— 强制改密改完落到首页,紧接着又被弹回登录页。
+        // 放在 cache.reload() 之后:reload 重建整张快照,放前面会被它盖掉。
+        return auth.reissueAfterPasswordChange(u);
     }
 
     // ══════════ 守卫 ══════════
@@ -337,7 +369,110 @@ public class SystemService {
               + "如果确实要收回，请先让另一位管理员操作。");
     }
 
+    // ══════════ 分级(RBAC-SPEC §12,用户 2026-10-04 拍板) ══════════
+    // 「系统管理不分级反正我需要一个超级管理员的账号都能调试整个软件」:系统管理员一条都不拦。
+    // 比的是**角色给的**权限(含编辑隐含查看),与授权判定同一份快照;不含提权 —— system:* 本来就借不到。
+    // 不加「再输一次自己的密码」:系统管理员调试要顺手(同一句拍板)。
+
+    private boolean iAmSuperAdmin() { return cache.isSuperAdmin(currentUsername()); }
+
+    /** perms(展开隐含查看)里我没有的,人话名、按 Perm.ALL 排。我是系统管理员时恒空。 */
+    private List<String> beyondMe(Collection<String> perms) {
+        if (iAmSuperAdmin()) return List.of();
+        UserPermissionCache.UserAuth me = cache.get(currentUsername());
+        Set<String> mine = me == null ? Set.of() : me.perms();
+        return Perm.withImplied(perms).stream().filter(p -> !mine.contains(p))
+            .sorted(Comparator.comparingInt(Perm.ALL::indexOf)).map(Perm::label).toList();
+    }
+
+    /** 屏上置灰的判据(RoleDTO / UserDTO.manageable),与下面两个守卫同一条。 */
+    private boolean inMyRange(boolean holdsAdmin, Collection<String> perms) {
+        return iAmSuperAdmin() || (!holdsAdmin && beyondMe(perms).isEmpty());
+    }
+
+    /** 角色:系统管理员角色只有系统管理员动得了;别的角色里(改前 ∪ 改后)不许有我没有的权限。 */
+    private void guardRoleInRange(AuthRole r, Collection<String> perms) {
+        if (iAmSuperAdmin()) return;
+        if (r != null && UserPermissionCache.SUPER_ADMIN_ROLE.equals(r.getCode()))
+            throw new BizException(ResultCode.FORBIDDEN, "系统管理员角色只有系统管理员能改");
+        List<String> over = beyondMe(perms);
+        if (!over.isEmpty())
+            throw new BizException(ResultCode.FORBIDDEN,
+                "角色里有你没有的权限：" + String.join("、", over) + "。只有系统管理员能分配你没有的权限");
+    }
+
+    /**
+     * 账号:target 现在的样子、nextRoleIds(改完挂的角色,null = 角色不动)都得在我范围内。
+     * 持系统管理员角色的账号、以及把这个角色分给谁,只有系统管理员能做。
+     */
+    private void guardUserInRange(AuthUser target, Collection<Integer> nextRoleIds) {
+        if (iAmSuperAdmin()) return;
+        Integer adminRole = adminRoleId();
+        if (target != null) {
+            Set<Integer> cur = roleIdsOf(target.getId());
+            if (cur.contains(adminRole))
+                throw new BizException(ResultCode.FORBIDDEN,
+                    "「" + target.getDisplayName() + "」是系统管理员账号，只有系统管理员能改");
+            List<String> over = beyondMe(permsOfRoles(cur));
+            if (!over.isEmpty())
+                throw new BizException(ResultCode.FORBIDDEN,
+                    "「" + target.getDisplayName() + "」有你没有的权限：" + String.join("、", over) + "。只有系统管理员能改这个账号");
+        }
+        if (nextRoleIds == null) return;
+        if (adminRole != null && nextRoleIds.contains(adminRole))
+            throw new BizException(ResultCode.FORBIDDEN, "系统管理员角色只有系统管理员能分配");
+        List<String> over = beyondMe(permsOfRoles(nextRoleIds));
+        if (!over.isEmpty())
+            throw new BizException(ResultCode.FORBIDDEN,
+                "要分配的角色里有你没有的权限：" + String.join("、", over) + "。只有系统管理员能分配你没有的权限");
+    }
+
+    /**
+     * 至少留一个启用的系统管理员 —— 对所有人,系统管理员自己也一样(RBAC-SPEC §12)。
+     * 排在分级前面:只管账号的人去停用最后一个管理员,该听到的是这个后果,而不是一句「超出你的范围」。
+     * 系统管理员自己操作时,「不能停用自己 / 不能改自己的角色」已先拦在前面,今天走不到这里。
+     *
+     * 并发:A、B 两个系统管理员同时互相停用(或摘角色),普通读各自看见对方还启用着,双双放行,
+     * 提交后一个启用的都不剩,只能去库里手改。所以先锁住系统管理员角色那一行(两件事排队),
+     * 再用锁定读数人 —— 锁定读读的是已提交的最新行,不是本事务开头(mustUser 那一下)拍的快照,
+     * 排在后面的那个才看得见前一个刚停掉的人。只在真要摘掉一个启用的系统管理员时才锁,别的改动不排队。
+     *
+     * @param enabledAfter 改完还是不是启用
+     * @param rolesAfter   改完挂的角色;null = 角色不动
+     */
+    private void guardKeepsAnAdmin(AuthUser target, boolean enabledAfter, Collection<Integer> rolesAfter) {
+        Integer adminRole = adminRoleId();
+        if (adminRole == null) return;
+        if (!Objects.equals(target.getStatus(), 1) || !roleIdsOf(target.getId()).contains(adminRole)) return;   // 本来就不算数
+        if (enabledAfter && (rolesAfter == null || rolesAfter.contains(adminRole))) return;                     // 改完还算数
+        roles.selectList(Wrappers.<AuthRole>query().eq("id", adminRole).last("FOR UPDATE"));
+        List<Integer> others = userRoles.selectList(Wrappers.<AuthUserRole>query().eq("role_id", adminRole).last("FOR SHARE"))
+            .stream().map(AuthUserRole::getUserId).filter(uid -> !uid.equals(target.getId())).toList();
+        if (others.isEmpty() || users.selectList(Wrappers.<AuthUser>query().in("id", others).last("FOR SHARE"))
+                .stream().noneMatch(o -> Objects.equals(o.getStatus(), 1)))
+            throw new BizException(ResultCode.CONFLICT,
+                "「" + target.getDisplayName() + "」是最后一个启用的系统管理员账号，停用它或摘掉它的系统管理员角色后，"
+              + "就没有人能管理整个系统了。请先给另一个账号分配系统管理员角色。");
+    }
+
     // ══════════ helpers ══════════
+
+    private Integer adminRoleId() {
+        AuthRole r = roles.selectOne(Wrappers.<AuthRole>lambdaQuery().eq(AuthRole::getCode, UserPermissionCache.SUPER_ADMIN_ROLE));
+        return r == null ? null : r.getId();
+    }
+
+    private Set<Integer> roleIdsOf(Integer userId) {
+        return userRoles.selectList(Wrappers.<AuthUserRole>lambdaQuery().eq(AuthUserRole::getUserId, userId))
+            .stream().map(AuthUserRole::getRoleId).collect(Collectors.toSet());
+    }
+
+    /** 这几个角色勾的权限点并集(库里原样,不展开隐含 —— beyondMe 会展开)。 */
+    private Set<String> permsOfRoles(Collection<Integer> roleIds) {
+        if (roleIds.isEmpty()) return Set.of();
+        return rolePerms.selectList(Wrappers.<AuthRolePerm>lambdaQuery().in(AuthRolePerm::getRoleId, roleIds))
+            .stream().map(AuthRolePerm::getPerm).collect(Collectors.toSet());
+    }
 
     private static String currentUsername() {
         var a = SecurityContextHolder.getContext().getAuthentication();

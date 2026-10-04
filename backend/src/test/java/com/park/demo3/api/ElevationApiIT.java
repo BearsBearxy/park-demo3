@@ -117,7 +117,14 @@ class ElevationApiIT extends AbstractMysqlIT {
                 .content("{\"perms\":[\"system:edit\"],\"authorizer\":\"admin\",\"password\":\"admin123\"}")
             ).andReturn());
             assertThat((int) JsonPath.read(r, "$.code")).isEqualTo(403);
-            assertThat((String) JsonPath.read(r, "$.message")).contains("不能靠当场授权获得");
+            assertThat((String) JsonPath.read(r, "$.message")).contains("不能靠当场授权获得").contains("永久管理员账号");
+
+            // 别的不可提权点(工资录入)不讲系统管理那套理由,只说去找谁
+            r = body(mvc.perform(post("/api/auth/elevate").header("Authorization", hdr(ct))
+                .contentType("application/json")
+                .content("{\"perms\":[\"salary:edit\"],\"authorizer\":\"admin\",\"password\":\"admin123\"}")
+            ).andReturn());
+            assertThat((String) JsonPath.read(r, "$.message")).isEqualTo("「工资录入」不能靠当场授权获得，要请系统管理员在角色里开通。");
 
             // 而且真的没拿到:system 段仍然进不去
             mvc.perform(get("/api/system/users").header("Authorization", hdr(ct)))
@@ -399,6 +406,7 @@ class ElevationApiIT extends AbstractMysqlIT {
             .content("{\"username\":\"" + uname + "\",\"displayName\":\"提权测试\","
                    + "\"password\":\"" + PASS + "\",\"roleIds\":[" + roleId + "]}"))
            .andExpect(status().isOk());
+        passwordAlreadyChanged(uname);
         return uname;
     }
 

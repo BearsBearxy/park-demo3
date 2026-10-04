@@ -15,9 +15,10 @@ public final class SystemDtos {
     public record PermCatalog(List<PermMeta> perms, List<NavLayerMeta> navLayers) {}
 
     // ── 角色 ──
+    // manageable = 当前操作人能不能改它(系统管理分级,2026-10-04):守卫用的同一个判据算出来,屏上据此置灰
     public record RoleDTO(Integer id, String code, String name, boolean builtin,
                           List<String> navLayers, List<String> perms,
-                          long userCount, String remark) {}
+                          long userCount, String remark, boolean manageable) {}
 
     public record RoleCreateReq(
         @NotBlank @Pattern(regexp = "^[a-z][a-z0-9_]{1,31}$",
@@ -35,7 +36,7 @@ public final class SystemDtos {
     public record UserRoleBrief(Integer id, String code, String name) {}
     public record UserDTO(Integer id, String username, String displayName, int status,
                           boolean mustChangePassword, List<UserRoleBrief> roles,
-                          LocalDateTime createdAt) {}
+                          LocalDateTime createdAt, boolean manageable) {}
 
     public record UserCreateReq(
         @NotBlank @Pattern(regexp = "^[A-Za-z0-9_.@-]{3,64}$",
@@ -61,4 +62,7 @@ public final class SystemDtos {
     public record ChangePasswordReq(
         @NotBlank String currentPassword,
         @NotBlank @Size(min = 8, max = 72, message = "新密码至少 8 位") String newPassword) {}
+
+    /** 改了自己的密码(本人改密 / 在用户管理里给自己重置)之后这台设备接着用的新令牌;重置别人的密码时为 null。 */
+    public record PasswordChangedResp(String token) {}
 }

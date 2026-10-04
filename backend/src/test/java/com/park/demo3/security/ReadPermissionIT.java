@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -214,38 +215,109 @@ class ReadPermissionIT extends AbstractMysqlIT {
         }
     }
 
-    // ══ 工资:只认 salary:view,entry:edit 不隐含它;写接口回包也按它收 ══
+    // ══ 工资:读只认 salary:view,写只认 salary:edit(用户 2026-10-04 拍板「按你推荐」);entry:edit 两样都不给 ══
 
     /**
-     * 破坏验证:读规则 /api/salary/** 改成 ENTRY_VIEW → 两条 403 断言红;
-     *          SalaryService.visible 直接 return d → 回包 name/base 断言红。
+     * 破坏验证:读规则 /api/salary/** 改成 ENTRY_VIEW → 专员读 403 两条红;
+     *          PermissionRegistry 把 "/api/salary" 放回事后录入那一组 → 专员写 403 那几条红;
+     *          Perm.META 里 SALARY_EDIT 的 group 写成 entry → 「录入员读得到」那条红(salary:edit 不再隐含 salary:view)。
      */
     @Test
-    void salary_onlySalaryViewReads_andWriteResponsesHideTheRow() throws Exception {
+    void salary_readsNeedSalaryView_writesNeedSalaryEdit_entryEditGetsNeither() throws Exception {
         String clerk = userWith(Perm.ENTRY_EDIT);
         String hr = userWith(Perm.SALARY_VIEW);
-        String created = body(mvc.perform(post("/api/salary/records").header("Authorization", hdr(admin))
+        String payroll = userWith(Perm.SALARY_EDIT);
+        String created = body(mvc.perform(post("/api/salary/records").header("Authorization", hdr(payroll))
             .contentType("application/json")
-            .content("{\"acctMonth\":\"2080-01\",\"name\":\"IT-V3工资人\",\"base\":5000}")).andReturn());
+            .content("{\"acctMonth\":\"2080-01\",\"name\":\"IT-V3工资人\",\"base\":5000}"))
+            .andExpect(status().isOk()).andReturn());
         int id = JsonPath.read(created, "$.data.id");
         try {
-            assertThat((String) JsonPath.read(created, "$.data.name")).as("有 salary:view 的管理员看整行").isEqualTo("IT-V3工资人");
+            assertThat((String) JsonPath.read(created, "$.data.name")).as("回包整行:写的人本来就看得见").isEqualTo("IT-V3工资人");
+            assertThat(statusOf(get("/api/salary/records?year=2080&month=1"), payroll))
+                .as("录入员读得到:salary:edit 隐含 salary:view").isEqualTo(200);
 
             assertThat(statusOf(get("/api/salary/overview"), clerk)).isEqualTo(403);
             assertThat(statusOf(get("/api/salary/records?year=2080&month=1"), clerk)).isEqualTo(403);
-
-            String patched = body(mvc.perform(patch("/api/salary/records/" + id + "/note")
-                .header("Authorization", hdr(clerk)).contentType("application/json").content("{\"note\":\"x\"}"))
-                .andExpect(status().isOk()).andReturn());
-            assertThat((int) JsonPath.read(patched, "$.code")).isZero();
-            assertThat((int) JsonPath.read(patched, "$.data.id")).isEqualTo(id);
-            assertThat((Object) JsonPath.read(patched, "$.data.name")).isNull();
-            assertThat((Object) JsonPath.read(patched, "$.data.base")).isNull();
+            // 六条写路径,只有 entry:edit 的一条都过不去(salary_record 只有 SalaryService 写)
+            String json = "application/json";
+            assertThat(statusOf(post("/api/salary/records").contentType(json)
+                .content("{\"acctMonth\":\"2080-01\",\"name\":\"IT-V3专员\",\"base\":1}"), clerk)).isEqualTo(403);
+            assertThat(statusOf(patch("/api/salary/records/" + id + "/note").contentType(json)
+                .content("{\"note\":\"x\"}"), clerk)).isEqualTo(403);
+            assertThat(statusOf(delete("/api/salary/records/" + id), clerk)).isEqualTo(403);
+            assertThat(statusOf(post("/api/salary/import?year=2080&month=1").contentType(json)
+                .content("{\"rows\":[{\"tenantName\":\"IT-V3专员\"}]}"), clerk)).isEqualTo(403);
+            assertThat(statusOf(delete("/api/salary/imported?year=2080&month=1"), clerk)).isEqualTo(403);
+            assertThat(statusOf(delete("/api/salary/batch").contentType(json)
+                .content("{\"ids\":[" + id + "]}"), clerk)).isEqualTo(403);
+            // 只能看的也写不了
+            assertThat(statusOf(patch("/api/salary/records/" + id + "/note").contentType(json)
+                .content("{\"note\":\"x\"}"), hr)).isEqualTo(403);
 
             List<String> names = JsonPath.read(getBody("/api/salary/records?year=2080&month=1", hr), "$.data.rows[*].name");
-            assertThat(names).contains("IT-V3工资人");
+            assertThat(names).as("被拒的写一行都没落").containsExactly("IT-V3工资人");
         } finally {
             jdbc.update("DELETE FROM salary_record WHERE acct_month = '2080-01'");
+        }
+    }
+
+    /**
+     * 餐补逐月合计(用户 2026-10-04 拍板「按你推荐」):只有报表查看的人读得到 12 个月的合计,读不到逐人明细。独占 2080 年。
+     * 破坏验证:删掉读规则 /api/salary/lunch-totals → 报表查看 200 那条红(落进 /api/salary/** 只认 salary:view);
+     *          SalaryService.lunchTotals 不按年过滤 → 2079 年那行混进一月,一月合计红;
+     *          out 初值填 0 → 二月 null 那条红。
+     */
+    @Test
+    void lunchTotals_reportViewReadsMonthlySums_butNotPerPersonRows() throws Exception {
+        String report = userWith(Perm.REPORT_VIEW);
+        String entry = userWith(Perm.ENTRY_VIEW);
+        jdbc.update("INSERT INTO salary_record(acct_month, emp_idx, name, lunch, source) VALUES "
+            + "('2080-01', 1, 'IT-V3餐补甲', 300.00, 'manual'), ('2080-01', 2, 'IT-V3餐补乙', 150.50, 'manual'), "
+            + "('2080-03', 1, 'IT-V3餐补甲', 0.00, 'manual'), ('2079-01', 1, 'IT-V3餐补丙', 999.00, 'manual')");
+        try {
+            List<Object> ms = JsonPath.read(getBody("/api/salary/lunch-totals?year=2080", report), "$.data");
+            assertThat(ms).hasSize(12);
+            assertThat(new BigDecimal(String.valueOf(ms.get(0)))).isEqualByComparingTo("450.50");
+            assertThat(ms.get(1)).as("没录工资的月是 null,不是 0").isNull();
+            assertThat(new BigDecimal(String.valueOf(ms.get(2)))).as("录了、餐补合计 0").isEqualByComparingTo("0");
+
+            assertThat(statusOf(get("/api/salary/records?year=2080&month=1"), report))
+                .as("逐人明细仍只给工资查看").isEqualTo(403);
+            assertThat(statusOf(get("/api/salary/lunch-totals?year=2080"), entry)).isEqualTo(403);
+        } finally {
+            jdbc.update("DELETE FROM salary_record WHERE name LIKE 'IT-V3餐补%'");
+        }
+    }
+
+    /**
+     * 催缴单收款账户(用户 2026-10-04 拍板「按你推荐」):有 billing:view 就在 /api/companies/payees 拿到明文 ——
+     * 通知单要发给租户付款;同一个人读 /api/companies(主数据、收款公司窗)仍是掩码;没有 billing:view 的读 /payees 直接 403。
+     * 破坏验证:读规则 /api/companies/payees 并上 ENTRY_VIEW → 「台账查看 403」那条红;
+     *          CompanyService.listForNotice 只认 MASTER_VIEW → 「催缴单查看拿明文」两条红。
+     */
+    @Test
+    void billNoticePayees_billingViewSeesFullAccount_elsewhereStaysMasked() throws Exception {
+        String billing = userWith(Perm.BILLING_VIEW);
+        String entry = userWith(Perm.ENTRY_VIEW);
+        int companyId = jdbc.queryForObject("SELECT MIN(id) FROM management_company", Integer.class);
+        int aid = JsonPath.read(body(mvc.perform(post("/api/companies/" + companyId + "/accounts")
+            .header("Authorization", hdr(admin)).contentType("application/json")
+            .content("{\"kind\":\"personal\",\"accountName\":\"李四\",\"accountNo\":\"6222020200112345678\","
+                   + "\"bankName\":\"工商银行\"}")).andReturn()), "$.data.id");
+        try {
+            String acct = "$.data[*].accounts[?(@.id==" + aid + ")]";
+            Map<String, Object> full = one(JsonPath.read(getBody("/api/companies/payees", billing), acct));
+            assertThat(full.get("accountNo")).isEqualTo("6222020200112345678");
+            assertThat(full.get("accountName")).isEqualTo("李四");
+            Map<String, Object> masked = one(JsonPath.read(getBody("/api/companies", billing), acct));
+            assertThat(masked.get("accountNo")).as("别处照旧打码").isEqualTo("****5678");
+            assertThat(masked.get("accountName")).isEqualTo("李*");
+
+            assertThat(statusOf(get("/api/companies/payees"), entry)).isEqualTo(403);
+            assertThat(one(JsonPath.read(getBody("/api/companies", entry), acct)).get("accountNo")).isEqualTo("****5678");
+        } finally {
+            jdbc.update("DELETE FROM company_account WHERE id=?", aid);
         }
     }
 
@@ -253,7 +325,7 @@ class ReadPermissionIT extends AbstractMysqlIT {
 
     /** 破坏验证:UserPermissionCache 不调 Perm.withImplied → /api/contracts 的 200 与 me 里的 contract:view 红。 */
     @Test
-    void editImpliesView_atLoadTime_notStored_andNeverSalary() throws Exception {
+    void editImpliesView_atLoadTime_notStored_andEntryEditNeverSalary() throws Exception {
         String t = userWith(Perm.CONTRACT_EDIT, Perm.ENTRY_EDIT);
         List<String> perms = JsonPath.read(getBody("/api/auth/me", t), "$.data.permissions");
         assertThat(perms).containsExactlyInAnyOrder(Perm.CONTRACT_EDIT, Perm.ENTRY_EDIT,
@@ -291,6 +363,7 @@ class ReadPermissionIT extends AbstractMysqlIT {
                    + "\",\"roleIds\":[" + roleId + "]}"))
             .andExpect(status().isOk()).andReturn());
         assertThat((int) JsonPath.read(r, "$.code")).as(r).isZero();
+        passwordAlreadyChanged(u);
         return login(u, PASS);
     }
 

@@ -101,7 +101,7 @@ public PingResp ping(PingReq req) {
         //   「写操作后失效」的内存计数,**不要**去调慢 ping —— 那条通道还担着在场点与接管提示。
         UserPermissionCache.UserAuth ua = permCache.get(me);
         int pendingReviews = ua != null && ua.perms().contains(Perm.REVIEW_APPROVE)
-            ? reviews.pendingCount() : 0;
+            ? reviews.pendingCount(me) : 0;
 
         // 「我交的表被退回了」—— 与 pendingReviews 不同,**不看权限**:谁都可能被退回。
         // 一次按 submitted_by 的 count,自清(重新交审即归零),见 ReviewService.returnedCount。

@@ -9,6 +9,8 @@ export const salaryApi = {
   overview: (): Promise<SalaryOverviewDTO>      => http.get('/salary/overview'),
   records: (year: number, month: number): Promise<SalaryYearMonthDTO> =>
     http.get('/salary/records', { params: { year, month } }),
+  // 某年餐补逐月合计(12 个,无工资行的月为 null)。不带人,报表查看就能读 —— 损益附表5「餐补费」派生对照用
+  lunchTotals: (year: number): Promise<(number | null)[]> => http.get('/salary/lunch-totals', { params: { year } }),
   create:  (req: SalaryRecordReq): Promise<SalaryRecordDTO> => http.post('/salary/records', req),
   updateNote: (id: number, note: string | null): Promise<SalaryRecordDTO> =>
     http.patch(`/salary/records/${id}/note`, { note }),

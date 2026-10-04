@@ -35,6 +35,8 @@ export interface RoleDTO {
   perms: string[]
   userCount: number
   remark?: string | null
+  /** 当前操作人能不能改它(系统管理分级,RBAC-SPEC §12):后端用守卫同一条判据算。旧后端不带 → 按能改 */
+  manageable?: boolean
 }
 
 export interface RoleReq {
@@ -62,6 +64,8 @@ export interface UserDTO {
   mustChangePassword: boolean
   roles: UserRoleRefDTO[]
   createdAt: string
+  /** 当前操作人能不能改这个账号(停用、重置密码、改角色),同 RoleDTO.manageable */
+  manageable?: boolean
 }
 
 export interface UserCreateReq {

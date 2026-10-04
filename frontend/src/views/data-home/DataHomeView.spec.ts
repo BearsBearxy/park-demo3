@@ -1184,6 +1184,44 @@ describe('数据中心首页 · 审核态与行动作(R2 T6)', () => {
     expect(w.find('.dh-cols').findAll('[title]')).toHaveLength(0)
   })
 
+  // 附表12 的交审只认「工资录入」(RBAC-SPEC §11.8):只有事后录入的财务专员那一行不画 —— 画了点下去恒 403。
+  // 破坏验证:actionsOf 去掉 submittable 那道筛 → 红
+  it('❗附表12 录完了:没有「工资录入」的人那一行不画「交审」,有的照常', async () => {
+    const salaryItem = { name: '附表12', tag: '附12', done: true, go: 'salary' } as DataHomeItemDTO
+    vi.mocked(reviewApi.list).mockResolvedValue(reviewFixture())
+    const items = [LEDGER_ITEM, salaryItem, ...overview().schedules.items.filter(i => i.go !== 'ledger')]
+    const w = await mountWith({ schedules: { done: 3, total: 9, items } }, { perms: EDITOR_PERMS })   // 有 entry:edit,没有 salary:edit
+    expect(rowByText(w, '附表12').findAll('.dh-abtn').map(b => b.text())).not.toContain('交审')
+    expect(btn(rowByText(w, '附表6'), '交审'), '别的附表照常').toBeTruthy()
+
+    useAuthStore().permissions = [...EDITOR_PERMS, 'salary:edit']
+    await flushPromises()
+    expect(btn(rowByText(w, '附表12'), '交审')).toBeTruthy()
+  })
+
+  // 录审分离(RBAC-SPEC §12):自己交的那行,审核员看到的「通过」「退回」按不动;系统管理员不受限。
+  // 破坏验证:actionsOf 的 approve/back 不滤 mine → 红;selfOnly 恒 false → 按钮消失 → 红
+  it('❗自己交的那行:「通过」「退回」按不动并说要别人审;系统管理员照常能点', async () => {
+    const fx = () => reviewFixture({
+      [`meters:${YM}`]: { status: 'submitted', submittedBy: 'li' },
+      [`params:${YM}`]: { status: 'submitted', submittedBy: 'wang' },
+    })
+    const w = await mountReview(fx(), [...EDITOR_PERMS, 'review:approve'])
+    const auth = useAuthStore()
+    auth.me = 'li'
+    await flushPromises()
+    for (const t of ['通过', '退回']) {
+      expect(btn(rowByText(w, '园区抄表'), t)!.attributes('disabled'), t).toBeDefined()
+      expect(tipOf(btn(rowByText(w, '园区抄表'), t)!.element)).toBe('这张表是你自己交的,要由别人通过或退回')
+    }
+    expect(btn(rowByText(w, '计费参数'), '通过')!.attributes('disabled'), '别人交的照常').toBeUndefined()
+
+    auth.superAdmin = true
+    await flushPromises()
+    expect(btn(rowByText(w, '园区抄表'), '通过')!.attributes('disabled')).toBeUndefined()
+    expect(btn(rowByText(w, '园区抄表'), '退回')!.attributes('disabled')).toBeUndefined()
+  })
+
   it('已审核的行出「撤销」,待审核的行出「通过」「退回」', async () => {
     const w = await mountReview(reviewFixture({
       [`params:${YM}`]: { status: 'approved' },

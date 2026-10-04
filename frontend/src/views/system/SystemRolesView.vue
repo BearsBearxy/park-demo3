@@ -5,6 +5,8 @@
 // 编辑包含查看(用户 2026-10-04 拍板):勾编辑自动带上同模块的查看,取消查看连带取消这个模块的编辑。
 // 预置角色(builtin=true)不可删但权限与导航层照改 —— 「交付后客户自己调」是本屏存在的理由;删除只对自定义角色出现。
 // 无 system:edit 时矩阵照常显示当前配置,只是复选框 disabled、没有保存/新增/删除入口。
+// 系统管理分级(RBAC-SPEC §12,用户 2026-10-04 拍板):不是系统管理员的,比自己大的角色(含系统管理员角色)整块只读,
+// 自己没有的权限点那一格置灰 —— 后端同一条判据会 403,别让人勾完点保存才知道。系统管理员不受限。
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { systemApi } from '@/api/system'
 import type { NavLayerDTO, PermDTO, RoleDTO } from '@/types/system'
@@ -41,6 +43,14 @@ const codeErr = computed(() => (tried.value && creating.value && !/^[A-Za-z][A-Z
   ? '标识必填,且只能用英文字母开头 + 字母/数字/下划线/短横' : ''))
 
 const cur = computed(() => roles.value.find(r => r.id === selId.value) ?? null)
+// 这个角色我能不能改:后端 manageable(守卫同一条判据);新建时看各格的 lacks
+const canEditRole = computed(() => canEdit.value && (creating.value || cur.value?.manageable !== false))
+/** 我自己没有这一项(只看角色给的,不看提权 —— system:* 借不到,分级比的也是角色给的) */
+const lacks = (key: string) => !auth.superAdmin && !auth.hasOwn(key)
+const LACK_TIP = '你没有这项权限,只有系统管理员能把它分给角色'
+const rangeNote = computed(() => (cur.value?.code === 'admin'
+  ? '系统管理员角色只有系统管理员能改。'
+  : '这个角色有你没有的权限,只有系统管理员能改。'))
 const builtinRoles = computed(() => roles.value.filter(r => r.builtin))
 const customRoles = computed(() => roles.value.filter(r => !r.builtin))
 
@@ -145,20 +155,20 @@ async function cancel() {
   fillForm(cur.value)
 }
 function toggle(list: string[], key: string) {
-  if (!canEdit.value) return
+  if (!canEditRole.value) return
   const i = list.indexOf(key)
   if (i < 0) list.push(key); else list.splice(i, 1)
 }
 /** 勾编辑自动带上同模块的查看(编辑包含查看);取消编辑不动查看。 */
 function toggleEdit(m: ModuleRow, key: string) {
-  if (!canEdit.value) return
+  if (!canEditRole.value) return
   const ps = form.value.perms
   toggle(ps, key)
   if (ps.includes(key) && m.view && !ps.includes(m.view.key)) ps.push(m.view.key)
 }
 /** 取消查看连带取消这个模块的编辑(没有查看的编辑说不通);勾上查看不动编辑。 */
 function toggleView(m: ModuleRow) {
-  if (!canEdit.value || !m.view) return
+  if (!canEditRole.value || !m.view) return
   const v = m.view.key
   const f = form.value
   if (!f.perms.includes(v)) { f.perms.push(v); return }
@@ -218,7 +228,7 @@ async function remove(r: RoleDTO) {
       <div>
         <h2 class="sr-title">角色权限</h2>
         <p class="sr-sub">
-          多数模块分「查看」和「编辑」两项,编辑包含查看;工资、经营分析只有查看。共 {{ loaded ? roles.length : '…' }} 个角色
+          多数模块分「查看」和「编辑」两项,编辑包含查看;经营分析只有查看。共 {{ loaded ? roles.length : '…' }} 个角色
         </p>
       </div>
     </div>
@@ -258,12 +268,12 @@ async function remove(r: RoleDTO) {
       <section v-if="creating || cur" class="sr-pane">
         <div class="sr-panehead">
           <div class="sr-nameline">
-            <input v-if="canEdit" v-model="form.name" class="sr-name" :class="{ bad: !!nameErr }" placeholder="角色名,如:财务专员" />
+            <input v-if="canEditRole" v-model="form.name" class="sr-name" :class="{ bad: !!nameErr }" placeholder="角色名,如:财务专员" />
             <span v-else class="sr-name ro">{{ form.name }}</span>
             <Badge v-if="!creating && cur?.builtin" tone="slate" variant="subtle" :dot="false">预置</Badge>
           </div>
           <!-- 报错位在可编辑时常驻(条件是权限,不是有没有错);字才跟着错走 -->
-          <template v-if="canEdit"><p class="fp-field-err"><template v-if="nameErr">{{ nameErr }}</template></p></template>
+          <template v-if="canEditRole"><p class="fp-field-err"><template v-if="nameErr">{{ nameErr }}</template></p></template>
           <div class="sr-codeline">
             <template v-if="creating">
               <label class="sr-codelbl">标识</label>
@@ -276,7 +286,7 @@ async function remove(r: RoleDTO) {
             </template>
             <span style="flex:1"></span>
             <!-- 删除只对自定义角色出现;有账号在用时禁用并说清要先改派(预置角色一律无此按钮) -->
-            <Button v-if="canEdit && !creating && cur && !cur.builtin" variant="outline" size="sm"
+            <Button v-if="canEditRole && !creating && cur && !cur.builtin" variant="outline" size="sm"
                     :disabled="cur.userCount > 0 || saving"
                     v-tip="cur.userCount > 0 ? `该角色下还有 ${cur.userCount} 个账号,请先改派` : '删除该角色'"
                     @click="remove(cur)">
@@ -285,7 +295,7 @@ async function remove(r: RoleDTO) {
             </Button>
           </div>
           <template v-if="creating"><p class="fp-field-err"><template v-if="codeErr">{{ codeErr }}</template></p></template>
-          <input v-if="canEdit" v-model="form.remark" class="sr-remark" placeholder="备注(选填):这个角色给谁用" />
+          <input v-if="canEditRole" v-model="form.remark" class="sr-remark" placeholder="备注(选填):这个角色给谁用" />
           <p v-else-if="form.remark" class="sr-remark ro">{{ form.remark }}</p>
         </div>
 
@@ -303,16 +313,18 @@ async function remove(r: RoleDTO) {
                 <span v-if="m.view" class="sr-rowhint">{{ m.view.hint }}</span>
               </span>
               <span>
-                <label v-if="m.view" class="sr-mx-c" :class="{ off: !canEdit }">
-                  <input type="checkbox" :data-perm="m.view.key" :checked="form.perms.includes(m.view.key)" :disabled="!canEdit"
+                <label v-if="m.view" class="sr-mx-c" :class="{ off: !canEditRole || lacks(m.view.key) }"
+                       v-tip="canEditRole && lacks(m.view.key) ? LACK_TIP : undefined">
+                  <input type="checkbox" :data-perm="m.view.key" :checked="form.perms.includes(m.view.key)" :disabled="!canEditRole || lacks(m.view.key)"
                          @change="toggleView(m)" />
                   <span>查看</span>
                 </label>
                 <span v-else class="sr-mx-none">—</span>
               </span>
               <span class="sr-mx-edits">
-                <label v-for="p in m.edits" :key="p.key" v-tip="p.hint" class="sr-mx-c" :class="{ off: !canEdit }">
-                  <input type="checkbox" :data-perm="p.key" :checked="form.perms.includes(p.key)" :disabled="!canEdit"
+                <label v-for="p in m.edits" :key="p.key" v-tip="canEditRole && lacks(p.key) ? LACK_TIP : p.hint" class="sr-mx-c"
+                       :class="{ off: !canEditRole || lacks(p.key) }">
+                  <input type="checkbox" :data-perm="p.key" :checked="form.perms.includes(p.key)" :disabled="!canEditRole || lacks(p.key)"
                          @change="toggleEdit(m, p.key)" />
                   <span>{{ p.label }}</span>
                 </label>
@@ -327,8 +339,9 @@ async function remove(r: RoleDTO) {
           <div class="sr-sechead">
             <span class="sr-sectitle">其他</span>
           </div>
-          <label v-for="p in others" :key="p.key" class="sr-row" :class="{ off: !canEdit }">
-            <input type="checkbox" :data-perm="p.key" :checked="form.perms.includes(p.key)" :disabled="!canEdit"
+          <label v-for="p in others" :key="p.key" class="sr-row" :class="{ off: !canEditRole || lacks(p.key) }"
+                 v-tip="canEditRole && lacks(p.key) ? LACK_TIP : undefined">
+            <input type="checkbox" :data-perm="p.key" :checked="form.perms.includes(p.key)" :disabled="!canEditRole || lacks(p.key)"
                    @change="toggle(form.perms, p.key)" />
             <span class="sr-rowtxt">
               <span class="sr-rowlbl">{{ p.label }}</span>
@@ -346,20 +359,21 @@ async function remove(r: RoleDTO) {
               勾掉的层在这个角色的左侧导航里不显示。系统管理层单独由「系统管理 · 查看」权限决定,不在这里配
             </span>
           </div>
-          <label v-for="l in navLayerDefs" :key="l.id" class="sr-row" :class="{ off: !canEdit }">
-            <input type="checkbox" :checked="form.navLayers.includes(l.id)" :disabled="!canEdit"
+          <label v-for="l in navLayerDefs" :key="l.id" class="sr-row" :class="{ off: !canEditRole }">
+            <input type="checkbox" :checked="form.navLayers.includes(l.id)" :disabled="!canEditRole"
                    @change="toggle(form.navLayers, l.id)" />
             <span class="sr-rowtxt"><span class="sr-rowlbl">{{ l.label }}</span></span>
             <code class="sr-key">{{ l.id }}</code>
           </label>
         </div>
 
-        <div v-if="canEdit" class="sr-act">
+        <div v-if="canEditRole" class="sr-act">
           <Button variant="gray" size="sm" :disabled="saving || !dirty" @click="cancel">取消</Button>
           <Button variant="filled" size="sm" :disabled="saving || !dirty" @click="save">
             {{ saving ? '保存中…' : creating ? '新建角色' : '保存' }}
           </Button>
         </div>
+        <p v-else-if="canEdit" class="sr-ro">{{ rangeNote }}</p>
         <p v-else class="sr-ro">只读:改角色权限需要「系统管理 · 管理」权限。</p>
       </section>
 

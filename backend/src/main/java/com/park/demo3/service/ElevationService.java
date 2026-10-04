@@ -62,9 +62,11 @@ public List<GrantDTO> elevate(ElevateReq req) {
         for (String p : perms) {
             if (!Perm.exists(p)) throw new BizException(ResultCode.BAD_REQUEST, "未知权限点:" + p);
             if (!Perm.elevatable(p)) {
-                throw new BizException(ResultCode.FORBIDDEN,
-                    "「" + label(p) + "」不能靠当场授权获得。系统管理必须本人登录自己的账号去改 —— "
-                  + "否则一次 30 分钟的授权就能换来一个永久管理员账号,整套权限当场作废。");
+                // 「永久管理员账号」那句只对 system:* 成立;审核、各查看、工资录入借不到是因为它们按人开通,只说去找谁
+                throw new BizException(ResultCode.FORBIDDEN, p.startsWith("system:")
+                    ? "「" + label(p) + "」不能靠当场授权获得。系统管理必须本人登录自己的账号去改 —— "
+                      + "否则一次 30 分钟的授权就能换来一个永久管理员账号,整套权限当场作废。"
+                    : "「" + label(p) + "」不能靠当场授权获得，要请系统管理员在角色里开通。");
             }
         }
 

@@ -73,6 +73,16 @@ export function reviewNoteOf(r: ReviewRow | null): string | null {
   return `已审核${who ? ' · ' + who : ''}${day ? ' ' + day : ''}`
 }
 
+/**
+ * 录审分离(RBAC-SPEC §12,用户 2026-10-04 拍板「录审不分离在超级管理，其他分离」):自己交的表要由别人通过或退回,
+ * 系统管理员不受限。判据在后端 ReviewService.guardNotOwnSubmission,这里只决定「通过 / 退回」按不按得动 ——
+ * 本月出账清单与审核动作簇共用这一份,各写一份必漂移。
+ * me 为空时不算:没记交审人的行(submittedBy=null)与没登录完的 me=null 一比就成了「自己交的」。
+ */
+export const ownSubmission = (r: ReviewRow | null, me: string | null, superAdmin: boolean): boolean =>
+  !superAdmin && !!me && r?.submittedBy === me
+export const SELF_REVIEW_TIP = '这张表是你自己交的,要由别人通过或退回'
+
 /** 待审明细的一条(后端 ReviewDtos.PendingItemDTO)。label 是后端拼好的人话名,前端不再拼。 */
 export interface PendingItem {
   key: string

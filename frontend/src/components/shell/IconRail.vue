@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { LogOut, Sparkles, SunMoon } from 'lucide-vue-next'
+import { Lock, LogOut, Sparkles, SunMoon } from 'lucide-vue-next'
 import { useUpdateStore } from '@/stores/update'
 import { APPEARANCE_OPTIONS, useAppearanceStore } from '@/stores/appearance'
 import { fpFindLayer, type NavLayer } from '@/nav/fpNav'
@@ -44,6 +44,13 @@ async function onLogout() {
   if (!(await tabsStore.leaveOk(tabsStore.tabs.map(t => t.value)))) return
   auth.logout()
   router.push('/login')
+}
+
+// 修改密码(用户 2026-10-04「现在自己改不了自己的密码」):改密页不进外壳(App.vue),去了外壳整个卸掉、
+// 各页签的现场跟着没 —— 同退出登录,有没保存改动的逐页先问
+async function onChangePassword() {
+  if (!(await tabsStore.leaveOk(tabsStore.tabs.map(t => t.value), '离开'))) return
+  router.push('/change-password')
 }
 
 // ponytail: activeLayer derived from route — no store needed in this task
@@ -123,6 +130,9 @@ function goLayer(layer: NavLayer) {
           <button class="fp-user-row" @click="upd.openHistory()">
             <Sparkles :size="14" />版本更新
             <span class="ver">v{{ upd.version }}</span>
+          </button>
+          <button class="fp-user-row fp-user-pwd" @click="onChangePassword">
+            <Lock :size="14" />修改密码
           </button>
           <button class="fp-user-logout" @click="onLogout">
             <LogOut :size="14" />退出登录
