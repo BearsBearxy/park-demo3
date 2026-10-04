@@ -136,7 +136,7 @@ public final class Perm {
         new Meta(PARAM_MONTHLY_EDIT, "月度计费录入",    "每月录入的电价、调整量等月度计费数", "param", "edit"),
         new Meta(METER_VIEW,         "抄表 · 查看",     "园区抄表与表档案、光伏分栋、充电桩", "meter", "view"),
         new Meta(METER_MASTER_EDIT,  "表档案",          "表倍率、表与合同的绑定、删表、光伏电站与充电桩桩库", "meter", "edit"),
-        new Meta(METER_READING_EDIT, "抄表",            "读数录入、修改、导入、按年模拟填充", "meter", "edit"),
+        new Meta(METER_READING_EDIT, "抄表",            "读数录入、修改、导入", "meter", "edit"),
         new Meta(BILLING_VIEW,       "出账与催缴单 · 查看", "公共电核算与公摊、楼栋损耗、催缴单", "billing", "view"),
         new Meta(BILLING_RUN_EDIT,   "出账运行",        "公共电核算与损耗生成、重算、催缴单生成、单据备注", "billing", "edit"),
         new Meta(BILLING_ISSUE_EDIT, "催缴单签发",      "确认、签发、作废、标记已导出、改收款公司槽（对外不可逆动作）", "billing", "edit"),

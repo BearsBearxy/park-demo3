@@ -19,6 +19,7 @@ import {
 } from '@/api/elecCost'
 import type { ImportPayload } from '@/components/import/FpImportModal.vue'
 import { importBusy, settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
+import { useAppConfigStore } from '@/stores/appConfig'
 import { useAuthStore, approxDirty } from '@/stores/auth'
 import { useFormSheet } from '@/composables/useFormSheet'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
@@ -46,6 +47,7 @@ import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 import { ELEC_FEE_LABEL, ELEC_SUB_LABEL, elecFeeLabel } from '@/utils/elecCostExcel'
 
 const auth = useAuthStore()
+const appCfg = useAppConfigStore()
 // 新增电表弹卡带输入 → S 档全屏 sheet(styles/form-sheet.css)
 const sheet = useFormSheet()
 // RBAC:费项/表名录入是 entry;电价参数是计费口径,归 param-policy(simulate 会写 price-cfg,同门)
@@ -670,8 +672,8 @@ function fmtMetric(mt: ElecMetricDTO): string {
           <template #leading><component :is="iconFor('upload')" :size="14" /></template>
           导入
         </Button>
-        <!-- simulate 会给缺配置的月份写 price-cfg(RBAC-SPEC §5.3 ③),故判电价那扇门 -->
-        <Button v-if="editC" variant="outline" size="sm" :disabled="simulating" @click="onSimulate">
+        <!-- simulate 会给缺配置的月份写 price-cfg(RBAC-SPEC §5.3 ③),故判电价那扇门;客户园区不显(parkTools,2026-10-05 用户拍板「按你建议修改」;服务端同闸 DeployConfig) -->
+        <Button v-if="editC && appCfg.parkTools" variant="outline" size="sm" :disabled="simulating" @click="onSimulate">
           <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>
           模拟填充 2025
         </Button>
@@ -709,9 +711,14 @@ function fmtMetric(mt: ElecMetricDTO): string {
         </div>
       </div>
       <!-- 本月一条费项都没有、又不在能录的编辑态 → 空状态占住表格区(十件 ⑦)。
-           ⚠ 编辑态不换:表格就是逐格录入的地方,换掉它空月就只剩导入一条路(同园区抄表) -->
+           ⚠ 编辑态不换:表格就是逐格录入的地方,换掉它空月就只剩导入一条路(同园区抄表)。
+           副句:没有电表时录入和导入都得先「新增电表」(导入按表名匹配);模拟填充只对看得到那个按钮的人说
+           (按钮判 parkTools + 计费口径权限,2026-10-05 复查) -->
       <FPEmpty v-if="entries.length === 0 && !editE" class="ec-empty"
-               :sub="canEntry ? '进入「编辑模式」后可以逐格录入金额、导入长表 Excel,或按附表真实数据模拟填充 2025。' : '这个月各电表的费项都还没录。'">
+               :sub="!canEntry ? '这个月各电表的费项都还没录。'
+                 : !meters?.length ? '进入「编辑模式」后先点「新增电表」,再逐格录入金额,或点「导入」上传 Excel。'
+                 : appCfg.parkTools && canPrice ? '进入「编辑模式」后可以逐格录入金额、点「导入」上传 Excel,或按附表真实数据模拟填充 2025。'
+                 : '进入「编辑模式」后可以逐格录入金额,或点「导入」上传 Excel。'">
         {{ year }} 年 {{ month }} 月还没有费项
       </FPEmpty>
       <table v-else class="ec-table">

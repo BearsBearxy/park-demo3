@@ -610,7 +610,8 @@ P0 做完权限已真在管用，只是还得用 SQL 加人。P1 做完客户彻
    GET 被拒的 403 文案写明缺哪一项、去找系统管理员（`ReadAccessManager.deniedMessage`），不再套写被拒那句「可查看」。
 3. **任何已登录都能读的**只限身份 / 会话 / 协作基础设施与不含业务数据的字典，**逐条精确登记、不用 `/**` 通配**：
    `/api/auth/` 下 `me` `perms` `elevate` `approvals` `approvals/candidates`；`/api/notices` 与 `/api/notices/system-seen`；
-   `/api/review` 与 `/api/review/` 下 `states` `closed-months` `pending` `returned`；`/api/zones`；`/api/probe/ok` `/api/probe/boom`。
+   `/api/review` 与 `/api/review/` 下 `states` `closed-months` `pending` `returned`；`/api/zones`；`/api/probe/ok` `/api/probe/boom`；
+   `/api/app/config`（部署配置两项，2026-10-05 加：外壳一登录就取，挂查看点的话那个账号丢模拟填充按钮和更新记录）。
    通配的话，这几个前缀下以后新加一个返回全员数据的 GET 会悄悄对所有账号开放、覆盖测试照绿；
    逐条登记后新路径落默认拒绝，`everyReadEndpointIsMapped` 当场红，审过回包再登记。
    可批人 `approvals/candidates` 遇到不可提权的点直接 403（`ApprovalService.requireElevatable`），
@@ -635,7 +636,7 @@ meter / billing / entry / salary 任一 view（`/data-home` 的路由门）。
 
 | 路径 | 放行（任一） | 理由 |
 |---|---|---|
-| `/api/auth/me` `/perms` `/elevate` `/approvals` `/approvals/candidates`、`/api/notices` `/system-seen`、`/api/review` `/states` `/closed-months` `/pending` `/returned`、`/api/zones`、`/api/probe/ok` `/boom` | 任何已登录 | 规则 3，逐条精确登记 |
+| `/api/auth/me` `/perms` `/elevate` `/approvals` `/approvals/candidates`、`/api/notices` `/system-seen`、`/api/review` `/states` `/closed-months` `/pending` `/returned`、`/api/zones`、`/api/probe/ok` `/boom`、`/api/app/config` | 任何已登录 | 规则 3，逐条精确登记 |
 | `/api/system/**` | system:view | 与 SecurityConfig 那一行同值；登记在这里是为了覆盖测试不开豁免名单 |
 | `/api/analysis/**` | analysis | 分析专用：months、s10-tenant-months、ledger-tenant-months |
 | `/api/tenants/summary` | master · analysis | 租户 KPI，驾驶舱的 Promise.all 无 catch。排在 `/{id}` 前 |

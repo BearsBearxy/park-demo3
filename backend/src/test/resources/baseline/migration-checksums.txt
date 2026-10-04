@@ -1,7 +1,7 @@
 # 已发出去的迁移脚本的 Flyway 校验和(逐行 CRC32,与 flyway_schema_history.checksum 同算法)。MigrationLayoutTest 逐个比。
 # 2026-10-04 用户拍板每园一个库:这些脚本已跑在我园生产 / 将跑在各园区库上,改一个字节 = 那些库启动时校验和对不上、起不来。
 # 只许加行(db/common 新迁移),不许改行。V137__baseline.sql 在第一个新园区上线前可以重新生成,那时同步改这里。
-db/baseline/V137__baseline.sql 733336513
+db/baseline/V137__baseline.sql 549497967
 db/migration/V1__schema.sql -1809159071
 db/migration/V2__seed.sql 1127385041
 db/migration/V3__contract_remarks.sql -996082044

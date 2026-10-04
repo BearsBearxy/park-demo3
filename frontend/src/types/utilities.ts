@@ -11,7 +11,7 @@ export interface OfficeYearMeta {
 }
 
 export interface OfficeOverviewDTO {
-  currentYear: number       // 最新年 = maxDataYear
+  currentYear: number       // 最新年 = maxDataYear;一条数据都没有时 = 今年(后端 YearSpan)
   years: OfficeYearMeta[]    // 覆盖 [min(2024,minData) .. maxDataYear+1]
 }
 

@@ -1,4 +1,5 @@
 package com.park.demo3.controller;
+import com.park.demo3.config.DeployConfig;
 import com.park.demo3.dto.*;
 import com.park.demo3.service.CpMeterService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -18,7 +19,8 @@ import java.util.List;
 @RequestMapping("/api/cp-meter")
 public class CpMeterController {
     private final CpMeterService svc;
-    public CpMeterController(CpMeterService svc) { this.svc = svc; }
+    private final DeployConfig deploy;
+    public CpMeterController(CpMeterService svc, DeployConfig deploy) { this.svc = svc; this.deploy = deploy; }
 
     @Operation(summary = "充电桩列表(3 桩种子,按 sort 升序;汽车/电动车屏前端按 vehicleType 过滤)") @GetMapping("/stations")
     public List<CpStationDTO> stations() { return svc.stationList(); }
@@ -77,5 +79,8 @@ public class CpMeterController {
 
     @Operation(summary = "模拟填充(按附表7/8 充电汇总推导分桩月末记录与电表用电量;只写空位与 simulated,绝不覆盖 manual/import;幂等)")
     @PostMapping("/simulate")
-    public CpSimulateResultDTO simulate(@RequestParam @Min(2000) @Max(2100) int year) { return svc.simulate(year); }
+    public CpSimulateResultDTO simulate(@RequestParam @Min(2000) @Max(2100) int year) {
+        deploy.requireParkTools();   // 客户园区关掉(2026-10-05 用户拍板,见 DeployConfig)
+        return svc.simulate(year);
+    }
 }

@@ -19,7 +19,7 @@ export interface YearMeta {
 }
 
 export interface PvOverviewDTO {
-  currentYear: number // 最新年 = maxDataYear
+  currentYear: number // 最新年 = maxDataYear;一条数据都没有时 = 今年(后端 YearSpan)
   years: YearMeta[]   // 覆盖 [2024 .. maxDataYear+1]
 }
 

@@ -1,5 +1,6 @@
 package com.park.demo3.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.park.demo3.common.YearSpan;
 import com.park.demo3.dto.ReconEntityDTO;
 import com.park.demo3.dto.ReconEntityDTO.FeeLine;
 import com.park.demo3.dto.ReconEntityDTO.LedgerCard;
@@ -214,7 +215,7 @@ public class ReconService {
         return t;
     }
 
-    // ── overview:逐月复用整月算法只取 counts(实体量小);year 缺省=两本账有数据的最大年(确定性,不读时钟) ──
+    // ── overview:逐月复用整月算法只取 counts(实体量小);year 缺省=两本账有数据的最大年(确定性,不读时钟;两本账都空才取今年) ──
     public ReconOverviewDTO overview(Integer year) {
         int y = year != null ? year : defaultYear();
         Ctx ctx = loadCtx();
@@ -241,7 +242,9 @@ public class ReconService {
                 .select("MAX(CAST(LEFT(acct_month, 4) AS UNSIGNED))"))) {
             if (o instanceof Number n) max = Math.max(max, n.intValue());
         }
-        return max == 0 ? 2024 : max;   // 无数据兜底(种子保证不会发生)
+        // 无数据兜底:改前写死 2024(我园台账起点),新园区空库会打开 2024 年。
+        // 2026-10-05 用户拍板「按你建议修改」:一条数据都没有时取今年(读时钟);有数据照旧取最大年,不读时钟
+        return max == 0 ? YearSpan.thisYear() : max;
     }
 
     // ── mark upsert:按 uk(year,month,tenant_name) 有则更新 note/tenant_id,无则插入(E5) ──

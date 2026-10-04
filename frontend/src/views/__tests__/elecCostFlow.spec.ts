@@ -10,6 +10,7 @@ import type {
   ElecMeterDTO, ElecCostEntryDTO, ElecPriceCfgDTO, ElecMetricDTO,
 } from '@/api/elecCost'
 import { useAuthStore } from '@/stores/auth'
+import { ourPark, customerPark } from '@/test-utils/appConfig'
 import { reviewApi } from '@/api/review'
 import type { ReviewRow, ReviewStatus } from '@/types/review'
 import api from '@/api'
@@ -867,6 +868,47 @@ describe('电费成本总览 · 提示件(S4)', () => {
     expect(q).toMatchObject({ title: '模拟填充 2025 全年？', action: '模拟填充 2025 全年' })
     expect(q.danger, '只填空位、不覆盖手工数据,不是删除类').toBeFalsy()
     expect(receipts.map(r => [r.tone, r.text])).toEqual([['ok', '模拟完成：填充 12 条，跳过 3 条（手工/导入占位或值未变）。']])
+  })
+
+  // 2026-10-05 用户拍板「按你建议修改」:客户园区(parkTools=false)不显;部署配置没到之前也不显(不先闪再收)。
+  // 破坏验证:按钮 v-if 去掉 appCfg.parkTools → 「没到」「客户」两格红;空月副句写回原句 → 客户那格红
+  it('❗模拟填充按钮:我园显,客户园区与部署配置没到都不显', async () => {
+    const has = (w: ReturnType<typeof mount>) => w.findAll('button').some(b => b.text().includes('模拟填充'))
+    const w = await toEdit()
+    expect(has(w), '部署配置还没到').toBe(false)
+    ourPark(); await flushPromises()
+    expect(has(w), '我园生产').toBe(true)
+    customerPark('0.29.0'); await flushPromises()
+    expect(has(w), '客户园区').toBe(false)
+  })
+
+  it('❗空月那句:客户园区不提模拟填充,我园仍提', async () => {
+    customerPark('0.29.0')
+    const empty = await toTable()   // entries 默认 [],浏览态 → 空状态
+    const sub = () => empty.findAll('.ec-listcard')[0].find('.fp-empty.ec-empty').text()
+    expect(sub()).toContain('进入「编辑模式」后可以逐格录入金额,或点「导入」上传 Excel。')
+    expect(sub()).not.toContain('模拟填充')
+    ourPark(); await flushPromises()
+    expect(sub(), '我园仍提模拟填充').toContain('进入「编辑模式」后可以逐格录入金额、点「导入」上传 Excel,或按附表真实数据模拟填充 2025。')
+  })
+
+  // 2026-10-05 复查:模拟填充按钮判计费口径权限(editC),只有录入权的账号看不到它,句子也不提;
+  // 一块电表都没有(新园区起点库)时录入、导入都得先有电表(导入按表名匹配),第一步是「新增电表」。
+  // 破坏验证:去掉 `&& canPrice` → 第一段红;去掉没电表那一支 → 第二段红
+  const emptySub = (x: ReturnType<typeof mount>) => x.findAll('.ec-listcard')[0].find('.fp-empty.ec-empty').text()
+  it('❗空月那句:只有录入权(没有计费口径权)不提模拟填充', async () => {
+    ourPark()
+    useAuthStore().permissions = ['entry:edit']
+    const w = await toTable()
+    expect(emptySub(w)).toContain('进入「编辑模式」后可以逐格录入金额,或点「导入」上传 Excel。')
+    expect(emptySub(w)).not.toContain('模拟填充')
+  })
+
+  it('❗空月那句:一块电表都没有先说「新增电表」', async () => {
+    ourPark()
+    vi.mocked(elecCostApi.meters).mockResolvedValue([] as never)
+    const w = await toTable()
+    expect(emptySub(w)).toContain('进入「编辑模式」后先点「新增电表」,再逐格录入金额,或点「导入」上传 Excel。')
   })
 
   it('❗改动数:即时提交没有草稿算 0;开着新增电表弹窗算一处(关页签才问)', async () => {

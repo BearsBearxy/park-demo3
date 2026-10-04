@@ -149,11 +149,12 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
   <!-- §五:期间无关屏(全周期累计,pv_record 全月份),隐期间控件显口径徽章 -->
   <AnaShell period-mode="none" scope-chip="全周期累计">
     <template #kpis>
-      <!-- 投资额两个来源:设了用设的,没设用各期工程成本合计(库里只记了成本,没记含不含税,标签不写「含税」) -->
-      <AnaKpiTile label="工程总投资" :value="finWan(invest)"
+      <!-- 投资额两个来源:设了用设的,没设用各期工程成本合计(库里只记了成本,没记含不含税,标签不写「含税」)。
+           两样都没有(新园区占位期别成本是列默认 0)时投资额与回收进度写「—」:那个 0 是没填,不是量出来的 0(2026-10-05 复查) -->
+      <AnaKpiTile label="工程总投资" :value="invest > 0 ? finWan(invest) : '—'"
         :note="anaSettings.pvInvestment > 0 ? '目标与阈值里设定' : '各期工程成本合计'" />
       <AnaKpiTile label="累计电费收益" :value="finWan(tot.cum)" :note="cumPts.length + ' 个记账月'" />
-      <AnaKpiTile label="综合回收进度" :value="rpct(tot.recovery)" note="= 累计收益 ÷ 总投资" />
+      <AnaKpiTile label="综合回收进度" :value="invest > 0 ? rpct(tot.recovery) : '—'" note="= 累计收益 ÷ 总投资" />
       <AnaKpiTile label="年化电费收益" :value="finWan(tot.annual)" note="按各期已记账月折算" />
       <AnaKpiTile label="预估回收周期" :value="tot.payback ? tot.payback.toFixed(1) + ' 年' : '—'"
         :note="hitYm ? '预估回收点 ' + hitYm : '按年化外推'" />
@@ -261,7 +262,8 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
             <div class="av2-card-h"><span class="t">分期收益(自消纳 + 上网)</span><span class="hint"><span class="hint-desk">点击柱子查看该期月度明细</span><span class="hint-touch">点柱看该期月度明细</span></span></div>
             <AnaEChart :option="phaseOpt" :height="300" @chart-click="onPhaseClick" />
             <p class="ana-read">全园合计 {{ finWan(tot.cum) }}，自消纳占 {{ tot.cum ? rpct(tot.selfAmt / tot.cum) : '—' }}</p>
-            <p class="ana-ref">{{ rows.length }} 期 · 柱=自消纳+上网 · 万元</p>
+            <!-- 只数有记账月的期:新园区起点库带三个占位期别(一期~三期),只录了一期的客户原来读到「3 期」(2026-10-05 复查) -->
+            <p class="ana-ref">{{ rows.filter((x) => x.months).length }} 期有记账 · 柱=自消纳+上网 · 万元</p>
           </div>
 
           <!-- span4:选中期月度明细卡 -->

@@ -102,14 +102,17 @@ export function tieRecon(meta: ReconMonthMeta): TieItem {
   return { ...TIE_META.recon, value: `${n} 户待处理`, ok: n === 0 }
 }
 
-// ── 期间默认(F3,确定性不读时钟):recon overview 最大 hasData 月 → 种子期 {2025,9} ──
+// ── 期间默认(F3):recon overview 最大 hasData 月(确定性,不读时钟)→ 取不到才落今年今月 ──
+// 改前取不到落写死的种子期 {2025,9}(我园数据),新园区空库打开报表首页就是 2025 年 9 月。
+// 2026-10-05 用户拍板「按你建议修改」:没数据时读时钟取今月。
 export async function defaultPeriod(): Promise<{ year: number; month: number }> {
   try {
     const ov = await reconApi.overview()
     const months = ov.months.filter(m => m.hasData).map(m => m.month)
     if (months.length) return { year: ov.year, month: Math.max(...months) }
-  } catch { /* 回退种子期 */ }
-  return { year: 2025, month: 9 }
+  } catch { /* 回退今月 */ }
+  const now = new Date()
+  return { year: now.getFullYear(), month: now.getMonth() + 1 }
 }
 
 const settled = <T>(r: PromiseSettledResult<T>): T | null => (r.status === 'fulfilled' ? r.value : null)

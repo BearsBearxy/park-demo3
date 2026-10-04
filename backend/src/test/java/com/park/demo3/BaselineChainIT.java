@@ -1,8 +1,12 @@
 package com.park.demo3;
 
+import com.park.demo3.config.AdminInitializer;
+import org.assertj.core.api.SoftAssertions;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -21,8 +25,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * 在共享 Testcontainers MySQL 里建两个临时库,一个跑老链、一个跑起点链,比:
  *   1. 表结构(表/列/索引/外键/约束;不比注释 —— 起点脚本有意换掉了写着我园名字和单价的注释)
- *   2. 通用行(角色、权限、管理员、光伏判据线默认值;管理员显示名按 VALUE_OVERRIDE 换过)
- *   3. 起点链上除通用行外每张表都是空的,任何文本列、表/列/索引注释里都没有我园真名(清单在测试资源里)
+ *   2. 通用行(角色、权限、管理员、光伏判据线默认值;管理员显示名、口令列按 VALUE_OVERRIDE 换过)
+ *   3. 起点链上除通用行外每张表都是空的(占位表逐字等于 PLACEHOLDER,不跟老链比),
+ *      任何文本列、表/列/索引注释里都没有我园真名(清单在测试资源里)
  * 用完删库。老链在 Windows Docker 上迁一遍要 5–6 分钟,两条链并行迁。
  */
 class BaselineChainIT {
@@ -109,12 +114,37 @@ class BaselineChainIT {
         }
     }
 
+    /**
+     * 新园区库刚迁完、应用还没跑 AdminInitializer 时,admin 拿什么口令都登不进(2026-10-05 实测:AdminInitializer 是
+     * ApplicationRunner,跑在端口打开之后;原来起点脚本带 admin123 的哈希,首次启动头几秒 admin/admin123 登得进)。
+     * 编码器同 SecurityConfig.passwordEncoder();口令列还得正好是 AdminInitializer 认得的占位,否则首次启动也换不成 ADMIN_PASSWORD。
+     */
+    @Test
+    void baselineAdminCannotLogInBeforeFirstStart() throws SQLException {
+        String hash;
+        try (Connection c = connect(baseline)) {
+            hash = strings(c, "SELECT password_hash FROM auth_user WHERE username='admin'").get(0);
+        }
+        PasswordEncoder enc = new BCryptPasswordEncoder();
+        SoftAssertions.assertSoftly(s -> {
+            s.assertThat(List.of("admin123", "", hash).stream().filter(p -> enc.matches(p, hash)).toList())
+                    .as("这些口令登得进").isEmpty();
+            s.assertThat(hash).isEqualTo(AdminInitializer.UNSET_HASH);
+        });
+    }
+
     @Test
     void baselineChainCarriesNoParkData() throws Exception {
         assertThat(realNames()).hasSizeGreaterThan(100);
         List<String> hits = new ArrayList<>();
         try (Connection c = connect(baseline)) {
             for (String t : tables(c, baseline)) {
+                // 占位表(期别、充电类别):整表必须逐字等于生成器里列的那几行,多一行少一行改一个字都不行
+                if (PLACEHOLDER.containsKey(t)) {
+                    List<String> rows = genericRows(c, baseline, t, false);
+                    if (!rows.equals(PLACEHOLDER.get(t))) hits.add(t + " 占位行和 PLACEHOLDER 不一致: " + rows);
+                    continue;
+                }
                 String where = GENERIC.getOrDefault(t, "1=0");
                 long all = count(c, "SELECT COUNT(*) FROM `" + t + "`");
                 long generic = count(c, "SELECT COUNT(*) FROM `" + t + "` WHERE " + where);

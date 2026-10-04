@@ -7,14 +7,19 @@ import com.park.demo3.mapper.AuthUserMapper;
 import com.park.demo3.mapper.AuthUserRoleMapper;
 import com.park.demo3.security.UserPermissionCache;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 // initViewer 三分支单测(无 Spring/Docker):IT 里 Spring 上下文跨类缓存,initializer 只跑一次,
 // 幂等/重置分支(每次生产启动都会走)天然测不到,这里用 Mockito 直接锁定。
+@ExtendWith(OutputCaptureExtension.class)   // 占位+空口令那条 warn 是运维唯一的线索,得有断言钉住它打没打
 class AdminInitializerTest {
     private final PasswordEncoder enc = new BCryptPasswordEncoder();
     private final AuthUserMapper users = mock(AuthUserMapper.class);
@@ -65,10 +70,51 @@ class AdminInitializerTest {
         verify(users, never()).updateById(any(AuthUser.class));
     }
 
+    // ── 起点链(新园区):admin 口令列是占位 UNSET_HASH,首次启动前谁都登不进(2026-10-05 实测的 admin123 窗口) ──
+
+    private AuthUser adminWithHash(String hash) {
+        AuthUser u = new AuthUser();
+        u.setUsername("admin"); u.setStatus(1);
+        u.setPasswordHash(hash);
+        return u;
+    }
+
+    /** 破坏验证:去掉种子判断前的 `!unset &&` → 占位被当成「在系统里改过」跳过,updateById 没调到,红。 */
+    @Test
+    void adminOnUnsetHashGetsTheEnvPassword() {
+        when(users.selectOne(any())).thenReturn(adminWithHash(AdminInitializer.UNSET_HASH));
+        new AdminInitializer(users, userRoles, roles, cache, enc, "admin", "from-env-123", "").run(null);
+        verify(users).updateById(org.mockito.ArgumentMatchers.<AuthUser>argThat(
+                u -> enc.matches("from-env-123", u.getPasswordHash())));
+    }
+
+    /** 没给 ADMIN_PASSWORD:占位原样留着(宁可锁死),不拿空串或种子口令去填。破坏验证:空口令不 return → 写进 encode(""),红;
+     *  删掉那行 warn → 红(不然登录一直失败、日志里一个字都没有) */
+    @Test
+    void adminOnUnsetHashStaysLockedWithoutEnvPassword(CapturedOutput output) {
+        when(users.selectOne(any())).thenReturn(adminWithHash(AdminInitializer.UNSET_HASH));
+        init("").run(null);
+        verify(users, never()).updateById(any(AuthUser.class));
+        assertThat(output).contains("has no password yet").contains("Set ADMIN_PASSWORD");
+    }
+
+    /** 老链 dev(没设 ADMIN_PASSWORD):种子 admin123 原样保留,本地照旧用它登录,也不该喊「登不进」。
+     *  破坏验证同上;warn 条件改成恒真 → 红 */
+    @Test
+    void legacySeedIsKeptWithoutEnvPassword(CapturedOutput output) {
+        when(users.selectOne(any())).thenReturn(admin(AdminInitializer.SEED_PASSWORD));
+        init("").run(null);
+        verify(users, never()).updateById(any(AuthUser.class));
+        assertThat(output).doesNotContain("has no password yet");
+    }
+
     @Test
     void blankPasswordCreatesNothing() {
         init("").run(null);
-        verifyNoInteractions(users);
+        // 空口令也要查一次 admin(看它是不是起点链的占位,好在日志里说怎么解),除这一次读之外一概不许碰。
+        // 只禁 insert/updateById 的话,有人往这条路上加个 update(wrapper)/delete 也照样绿
+        verify(users).selectOne(any());
+        verifyNoMoreInteractions(users);
         verify(cache).reload();   // 不建账号也要 reload:V101 迁移刚挂上的角色要进快照
     }
 

@@ -6,6 +6,7 @@ import { useUiStore } from '@/stores/ui'
 import { usePresenceStore } from '@/stores/presence'
 import { useTabsStore } from '@/stores/tabs'
 import { useUpdateStore } from '@/stores/update'
+import { useAppConfigStore } from '@/stores/appConfig'
 import { useAppearanceStore } from '@/stores/appearance'
 import { useViewport } from '@/composables/useViewport'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
@@ -110,6 +111,10 @@ watch(() => route.path, () => {
   presence.enter(null, label || null)
 }, { immediate: true })
 onUnmounted(() => presence.stop())
+// 部署配置(stores/appConfig):各屏的模拟填充按钮与更新记录都等它。拿到后 ensure() 不再发请求;
+// 没拿到(网络抖动)时每次换屏再拉一次,我园不会因为登录那一下没拉到整场丢按钮
+const appCfg = useAppConfigStore()
+watch(() => route.path, () => void appCfg.ensure(), { immediate: true })
 
 // ── 版本更新(VERSION-UPDATE-SPEC §3/§6) ──
 // 外壳是全站唯一常驻的组件,轮询与「首次打开弹一次」都挂这里:

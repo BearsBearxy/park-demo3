@@ -1,7 +1,8 @@
--- V137__baseline.sql — 新园区库的起点:老链 V1–V137 迁到底之后的表结构 + 每个园区都要的通用行(角色、权限、管理员账号、光伏判据线默认值)。
+-- V137__baseline.sql — 新园区库的起点:老链 V1–V137 迁到底之后的表结构 + 每个园区都要的通用行(角色、权限、管理员账号、光伏判据线默认值)
+-- + 占位行(光伏/电费期别 一期~三期、充电类别 运营商一/二,让空库录得进数)。
 -- 不含任何园区数据。由 backend/src/test/java/com/park/demo3/BaselineSqlGenerator.java 生成,不要手改;
 -- 重新生成:cd backend && ./mvnw -q test -Dtest=BaselineSqlGenerator
--- 管理员口令是种子口令 admin123,部署时必须设 ADMIN_PASSWORD,首次启动会被换掉(AdminInitializer)。
+-- 管理员没有口令(password_hash 是任何口令都比不上的占位),部署时必须设 ADMIN_PASSWORD,首次启动时写进去(AdminInitializer)。
 
 CREATE TABLE `alloc_cfg` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -1392,7 +1393,7 @@ INSERT INTO `auth_role_perm` (`role_id`, `perm`) VALUES
   (7, 'review:approve');
 
 INSERT INTO `auth_user` (`id`, `username`, `password_hash`, `display_name`, `status`, `role`, `must_change_password`, `token_version`) VALUES
-  (1, 'admin', '$2a$10$cTkukBimUqZWHxvDThP2qOs9fwm75iGjln8CKEcRBxtkZHpLnEywW', '管理员', 1, 'admin', 0, 0);
+  (1, 'admin', '!unset:ADMIN_PASSWORD', '管理员', 1, 'admin', 0, 0);
 
 INSERT INTO `auth_user_role` (`user_id`, `role_id`) VALUES
   (1, 1);
@@ -1403,4 +1404,20 @@ INSERT INTO `alloc_cfg` (`id`, `scope`, `cfg_key`, `cfg_value`, `acct_month`, `m
   (171, '', 'pv_crit_yield_ratio', 0.85000000, '', 'from', '年等效小时/锚点 下限'),
   (172, '', 'pv_band_sigma', 2.00000000, '', 'from', '正常范围半宽=几倍稳健波动'),
   (173, '', 'pv_band_run', 3.00000000, '', 'from', '连续几个刻度同侧出范围才算一段');
+
+INSERT INTO `pv_phase` (`id`, `name`, `short`, `online`, `cost`, `capacity`, `cap_note`, `sort_no`) VALUES
+  ('p1', '一期', '一期', NULL, 0.00, 0.000000, NULL, 1),
+  ('p2', '二期', '二期', NULL, 0.00, 0.000000, NULL, 2),
+  ('p3', '三期', '三期', NULL, 0.00, 0.000000, NULL, 3);
+
+INSERT INTO `elec_phase` (`id`, `name`, `short`, `sort_no`) VALUES
+  ('p1', '一期', '一期', 1),
+  ('p2', '二期', '二期', 2),
+  ('p3', '三期', '三期', 3);
+
+INSERT INTO `charging_cat` (`schedule_no`, `cat_id`, `name`, `short`, `tint`, `sort_no`) VALUES
+  (7, 'op1', '运营商一', '运营商一', 'slate', 1),
+  (7, 'op2', '运营商二', '运营商二', 'blue', 2),
+  (8, 'op1', '运营商一', '运营商一', 'cyan', 1),
+  (8, 'op2', '运营商二', '运营商二', 'slate', 2);
 

@@ -35,6 +35,7 @@ import SaveConfirmDialog from '@/components/import/SaveConfirmDialog.vue'
 import FpImportModal from '@/components/import/FpImportModal.vue'
 import PnlTable from './PnlTable.vue'
 import { receipt } from '@/utils/receipt'
+import { useAppConfigStore } from '@/stores/appConfig'
 import { ask } from '@/utils/ask'
 
 const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
@@ -53,7 +54,8 @@ const data = ref<PnlYearDTO | null>(null)
 const edit = ref(false)
 const saving = ref(false)
 
-// ⓪ overview.years → YearCard;最新年 = 最大数据年(无数据年则最大年,确定性不耦合时钟)
+// ⓪ overview.years → YearCard;最新年 = 最大数据年(有数据不读时钟)。一年数据都没有(新园区空库)→ 今年:
+// 后端此时给 [去年..明年](YearSpan),改前取最大年会把明年标成「最新」(2026-10-05 用户拍板「按你建议修改」)
 const sortedYears = computed(() => [...(overview.value?.years ?? [])].sort((a, b) => a.year - b.year))
 const yearCards = computed<YearCard[]>(() =>
   sortedYears.value.map(y => ({
@@ -66,7 +68,7 @@ const yearCards = computed<YearCard[]>(() =>
 const currentYear = computed(() => {
   const ys = sortedYears.value
   const withData = ys.filter(y => y.hasData)
-  return (withData.length ? withData[withData.length - 1] : ys[ys.length - 1])?.year ?? 0
+  return withData.length ? withData[withData.length - 1].year : new Date().getFullYear()
 })
 
 // 期间条(设计稿 §3.2c)。本屏是**园区全局整年一张表**,没有月与公司维度 ——
@@ -116,8 +118,17 @@ async function loadDerive(y: number) {
 
 // ── 派生生成(P2-G2):缺失映射行自动生成落库(H1) ──────────
 const generatedYears = new Set<number>()   // 每年会话内只试一次,成败都记(防循环)
+const appCfg = useAppConfigStore()
 async function tryGenerate(y: number) {
   if (year.value !== y || edit.value || generatedYears.has(y)) return   // 竞态/编辑态守卫
+  // 客户园区不补:补的是我园母册的科目名(2026-10-05 用户拍板「按你建议修改」,DeployConfig)。
+  // 配置还没到先等它(拿到后 ensure 不再发请求):不等的话我园刷新后深链直落这一年会漏补,之后没有人再触发它。
+  // 拉失败照旧不补、不记 generatedYears —— 配置到了下次进年还能补(我园)
+  if (!appCfg.cfg) {
+    await appCfg.ensure()
+    if (year.value !== y || edit.value || generatedYears.has(y)) return   // 等的时候切了年 / 进了编辑
+  }
+  if (!appCfg.parkTools) return
   const d = data.value
   const dv = deriveData.value
   if (!d || d.year !== y || !dv) return   // 两侧就绪才生成(派生失败 dv=null 不消耗尝试)

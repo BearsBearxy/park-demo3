@@ -4,9 +4,10 @@
 //   ② 服务器上是不是已经换了新版 → hasNewVersion,进铃铛「系统」一行(2026-09-30 改,原来是底部刷新提示条);
 //   ③ 按需加载失败(发版后旧 hash 404,router/index.ts 的 onError)→ 底部提示条「这一页属于新版本」(只剩这一种)。
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { APP_VERSION, CHANGELOG, cmpVersion, isFeatureVersion, noteOf } from '@/changelog'
 import { useAuthStore } from '@/stores/auth'
+import { useAppConfigStore } from '@/stores/appConfig'
 
 /** 轮询间隔。发版不是高频事件,5 分钟足够;切回标签页时还会额外问一次。 */
 export const POLL_MS = 5 * 60 * 1000
@@ -18,11 +19,19 @@ const coachKey = (who: string) => `fp-update-coach:${who}`
 
 export const useUpdateStore = defineStore('update', () => {
   const auth = useAuthStore()
+  const appCfg = useAppConfigStore()
 
   /** 浏览器里正在跑的这一版(构建时注入)。 */
   const version = APP_VERSION
-  /** 当前版本在 changelog 里的那一段。忘了写就是 undefined —— 此时不点蓝点(changelog.spec 第一条会先红)。 */
-  const note = computed(() => noteOf(version))
+  /**
+   * 这一版算不算数:客户园区只算装机那一版之后的(releaseBaseline,2026-10-05 用户拍板「按你建议修改」;
+   * 我园是 0.0.0 = 全部)。部署配置没到之前一版都不算 —— 弹窗、铃铛「系统」里的更新提示、更新记录都不先闪出旧更新。
+   */
+  const counts = (v: string) => appCfg.releaseBaseline != null && cmpVersion(v, appCfg.releaseBaseline) > 0
+  /** 更新记录里列的那几版。 */
+  const notes = computed(() => CHANGELOG.filter((n) => counts(n.version)))
+  /** 当前版本在 changelog 里的那一段。忘了写(或不算数)就是 undefined —— 此时不点蓝点(changelog.spec 第一条会先红)。 */
+  const note = computed(() => (counts(version) ? noteOf(version) : undefined))
 
   // 已读版本按账号分开记(换个人登录要各弹各的)。读写都过 localStorage,
   // 因此换电脑、清浏览器数据会再弹一次最新版 —— 这是明知的代价,不为它建表。
@@ -48,7 +57,7 @@ export const useUpdateStore = defineStore('update', () => {
    * 比如那几天没登录 —— 照样弹 0.15.0,不能因为最新一版是小调整就把功能更新漏掉。
    */
   const popupNote = computed(() =>
-    CHANGELOG.find((n) => isFeatureVersion(n.version) && cmpVersion(n.version, version) <= 0))
+    notes.value.find((n) => isFeatureVersion(n.version) && cmpVersion(n.version, version) <= 0))
   /** 要不要自动弹:有功能更新,且这个账号看过的版本比它旧(或从没看过)。 */
   const popupDue = computed(() => !!auth.me && !!popupNote.value
     && (!seen.value || cmpVersion(seen.value, popupNote.value.version) < 0))
@@ -57,6 +66,8 @@ export const useUpdateStore = defineStore('update', () => {
   const popupOpen = ref(false)
   const historyOpen = ref(false)
   let popupTimer: ReturnType<typeof setTimeout> | undefined
+  /** 外壳挂载时部署配置还没到:等它到了再判。哪一次 ensure 拉到的都算(外壳换屏重拉的那次也算)。 */
+  let waitCfg = false
 
   /**
    * 首屏安顿下来之后判断要不要弹。**推迟 POPUP_DELAY_MS 再判**:
@@ -64,6 +75,10 @@ export const useUpdateStore = defineStore('update', () => {
    * 不如等一等;等待期间用户若进了编辑态,到点仍然不弹。
    */
   function scheduleFirstPopup() {
+    // 部署配置到了才判:客户园区只算装机之后的版本,先判就会弹出那之前的。
+    // 第一次拉失败也不放弃:下面的 watch 等外壳换屏重拉成功时再判(我园 0.29.x 发版重启那几秒刷新的人照样弹)
+    if (!appCfg.cfg) { waitCfg = true; void appCfg.ensure(); return }
+    waitCfg = false
     if (popped || !popupDue.value) return
     clearTimeout(popupTimer)
     popupTimer = setTimeout(() => {
@@ -73,7 +88,8 @@ export const useUpdateStore = defineStore('update', () => {
       popupOpen.value = true
     }, POPUP_DELAY_MS)
   }
-  function cancelScheduledPopup() { clearTimeout(popupTimer) }
+  function cancelScheduledPopup() { clearTimeout(popupTimer); waitCfg = false }
+  watch(() => appCfg.cfg, (c) => { if (c && waitCfg) scheduleFirstPopup() })
 
   /** 看过了:知道了 / × / 点遮罩 / Esc 四条路都走这里。 */
   function markSeen() {
@@ -157,7 +173,7 @@ export const useUpdateStore = defineStore('update', () => {
   }
 
   return {
-    version, note, seen, unread, popupNote, popupDue, loadSeen,
+    version, notes, note, seen, unread, popupNote, popupDue, loadSeen,
     popupOpen, historyOpen, historyFromWhatsNew, scheduleFirstPopup, cancelScheduledPopup, markSeen, openHistory,
     coachOn, showCoachOnce, hideCoach,
     serverVersion, hasNewVersion, blocked, barKind, reportBlocked, dismissBar, checkVersion, startPolling, stopPolling,

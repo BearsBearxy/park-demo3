@@ -48,6 +48,12 @@ app:
   viewer:
     # 只读账号(viewer/GET-only)：留空=不创建，与 prod 一致；dev 默认见 application-dev.yml
     password: ${VIEWER_PASSWORD:}
+  # 部署开关(2026-10-05 用户拍板「按你建议修改」,见 config/DeployConfig):默认值就是我园生产,不用设。
+  # 客户园区由 deploy/gen-env.sh 写 PARK_TOOLS_ENABLED=false(关三处模拟填充与损益附表自动补行)、
+  # RELEASE_BASELINE=装机那一版(更新记录只给看之后的)
+  park-tools:
+    enabled: ${PARK_TOOLS_ENABLED:true}
+  release-baseline: ${RELEASE_BASELINE:0.0.0}
   # SlowRequestFilter 的 warn 阈值(ms)。正常请求 2ms 级、最重的聚合接口 200ms 上下，
   # 取 500 是「已经不像正常了」的线；线上想收紧临时改环境变量即可，不必重打包
   slow-request-ms: ${SLOW_REQUEST_MS:500}

@@ -4,6 +4,7 @@ import { landNav } from '@/test-utils/landNav'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, enableAutoUnmount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
+import { ourPark } from '@/test-utils/appConfig'
 import { nextTick, reactive } from 'vue'
 import { useTabsStore } from '@/stores/tabs'
 import { useFavoritesStore } from '@/stores/favorites'
@@ -50,7 +51,7 @@ const at = (value: string, page: string, layerLabel?: string) => {
 
 beforeEach(() => {
   localStorage.clear()
-  setActivePinia(createPinia())
+  setActivePinia(createPinia()); ourPark()
   const auth = useAuthStore()
   auth.me = 'zhou'
   auth.permissions = ['ledger:edit', ...ALL_VIEWS]   // RBAC v3:没有查看权的屏不留在页签条上

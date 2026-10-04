@@ -1,5 +1,6 @@
 package com.park.demo3;
 
+import com.park.demo3.config.AdminInitializer;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 
@@ -31,7 +32,7 @@ import java.util.regex.Pattern;
  *
  * 做法:在共享的 Testcontainers MySQL 里建一个临时库,用老链(db/migration V1–V137 + V35 那个 Java 迁移)迁到底,
  * 逐表 SHOW CREATE TABLE(按外键依赖排好序、去掉 AUTO_INCREMENT=n、换掉写了我园名字和单价的列注释),
- * 再把 {@link #GENERIC} 里那几张表的通用行导成 INSERT,写进起点脚本,最后删掉临时库。
+ * 再把 {@link #GENERIC} 里那几张表的通用行导成 INSERT、接上 {@link #PLACEHOLDER} 的占位行,写进起点脚本,最后删掉临时库。
  * 用 JDBC 而不是 mysqldump:不依赖本机装客户端,和守卫测试跑在同一个 MySQL 上。
  *
  * 重新生成(切版号变了、或者改了下面几张表):cd backend && ./mvnw -q test -Dtest=BaselineSqlGenerator
@@ -61,8 +62,42 @@ class BaselineSqlGenerator {
                 + "('pv_crit_cover_month','pv_crit_ledger','pv_crit_yield_ratio','pv_band_sigma','pv_band_run')");
     }
 
-    /** 通用行里要换掉的值(表.列 → 新值)。管理员显示名在 V2 里是我园总经理的真名。 */
-    static final Map<String, String> VALUE_OVERRIDE = Map.of("auth_user.display_name", "管理员");
+    /**
+     * 占位行:起点链上固定写这几行,不跟老链比(老链上是我园的期别名、工程成本、运营商名)。
+     * 2026-10-05 用户拍板「按你建议修改」:还没有第二个客户,别的园区分几期、有哪些充电运营商都不知道,不为它们设计;
+     * 只让空库录得进数:光伏(附表6)/电费(附表11)按期别录,期别字典里查不到就 409,应用里又没有加期别的地方;
+     * 充电(附表7/8)录入和导入只认 charging_cat 里有的类别(charging_record 对它有外键)。
+     *   - pv_phase / elec_phase:p1/p2/p3 = 一期/二期/三期(应用里期区 p1..p3 写死,见 ZoneService.label / PvService.PHASES)。
+     *     光伏工程成本、装机容量两列 NOT NULL,取列默认 0 —— 不是我园的数;投资回收屏把 0 当「投资额未填」出空态。并网月留 NULL。
+     *   - charging_cat:附表7/8 各两类「运营商一 / 运营商二」,形状照老链 V19(每表两类,色点 slate/blue、cyan/slate),名字中性。
+     *     导入按 Excel「充电桩类别」列的文字对 name,客户表里写「运营商一」才对得上;换成真名要改库(应用里没有字典屏)。
+     * 每行是 dataColumns 全列的 SQL 值元组,写法与 genericRows 渲染的逐字一致、按全部列排好序(BaselineChainIT 逐字比)。
+     */
+    static final Map<String, List<String>> PLACEHOLDER = new LinkedHashMap<>();
+    static {
+        PLACEHOLDER.put("pv_phase", List.of(
+                "('p1', '一期', '一期', NULL, 0.00, 0.000000, NULL, 1)",
+                "('p2', '二期', '二期', NULL, 0.00, 0.000000, NULL, 2)",
+                "('p3', '三期', '三期', NULL, 0.00, 0.000000, NULL, 3)"));
+        PLACEHOLDER.put("elec_phase", List.of(
+                "('p1', '一期', '一期', 1)",
+                "('p2', '二期', '二期', 2)",
+                "('p3', '三期', '三期', 3)"));
+        PLACEHOLDER.put("charging_cat", List.of(
+                "(7, 'op1', '运营商一', '运营商一', 'slate', 1)",
+                "(7, 'op2', '运营商二', '运营商二', 'blue', 2)",
+                "(8, 'op1', '运营商一', '运营商一', 'cyan', 1)",
+                "(8, 'op2', '运营商二', '运营商二', 'slate', 2)"));
+    }
+
+    /**
+     * 通用行里要换掉的值(表.列 → 新值)。管理员显示名在 V2 里是我园总经理的真名。
+     * 管理员口令列换成谁都比不上的占位(2026-10-05 实测:带 admin123 的哈希,新园区首次启动头几秒 admin/admin123 登得进,
+     * 见 AdminInitializer.UNSET_HASH);首次启动由 AdminInitializer 写进 ADMIN_PASSWORD。
+     */
+    static final Map<String, String> VALUE_OVERRIDE = Map.of(
+            "auth_user.display_name", "管理员",
+            "auth_user.password_hash", AdminInitializer.UNSET_HASH);
 
     /**
      * 列注释里写了我园楼名、租户名、单价、栋数或源册单元格的(表.列 → 新注释)。注释存在库里,客户读得到。
@@ -166,14 +201,14 @@ class BaselineSqlGenerator {
     }
 
     /**
-     * 通用行,每行渲染成 SQL 值元组 "(v1, v2, …)",按全部列排序(结果稳定)。
+     * 通用行,每行渲染成 SQL 值元组 "(v1, v2, …)",按全部列排序(结果稳定)。不在 GENERIC 里的表取整表(占位表就这么比)。
      * override=true 时套上 VALUE_OVERRIDE(读老链时用;读起点链时不套,否则真名混进去也看不出来)。
      */
     static List<String> genericRows(Connection c, String schema, String table, boolean override) throws SQLException {
         List<String> cols = dataColumns(c, schema, table);
         List<String> out = new ArrayList<>();
         try (Statement s = c.createStatement(); ResultSet rs = s.executeQuery(
-                "SELECT `" + String.join("`,`", cols) + "` FROM `" + table + "` WHERE " + GENERIC.get(table)
+                "SELECT `" + String.join("`,`", cols) + "` FROM `" + table + "` WHERE " + GENERIC.getOrDefault(table, "1=1")
                         + " ORDER BY `" + String.join("`,`", cols) + "`")) {
             while (rs.next()) {
                 List<String> vals = new ArrayList<>();
@@ -243,10 +278,11 @@ class BaselineSqlGenerator {
     static String render(String schema) throws SQLException {
         StringBuilder sql = new StringBuilder();
         sql.append("-- V").append(CUT).append("__baseline.sql — 新园区库的起点:老链 V1–V").append(CUT)
-                .append(" 迁到底之后的表结构 + 每个园区都要的通用行(角色、权限、管理员账号、光伏判据线默认值)。\n")
+                .append(" 迁到底之后的表结构 + 每个园区都要的通用行(角色、权限、管理员账号、光伏判据线默认值)\n")
+                .append("-- + 占位行(光伏/电费期别 一期~三期、充电类别 运营商一/二,让空库录得进数)。\n")
                 .append("-- 不含任何园区数据。由 backend/src/test/java/com/park/demo3/BaselineSqlGenerator.java 生成,不要手改;\n")
                 .append("-- 重新生成:cd backend && ./mvnw -q test -Dtest=BaselineSqlGenerator\n")
-                .append("-- 管理员口令是种子口令 admin123,部署时必须设 ADMIN_PASSWORD,首次启动会被换掉(AdminInitializer)。\n\n");
+                .append("-- 管理员没有口令(password_hash 是任何口令都比不上的占位),部署时必须设 ADMIN_PASSWORD,首次启动时写进去(AdminInitializer)。\n\n");
         try (Connection c = connect(schema)) {
             for (String t : fkOrder(c, schema)) {
                 sql.append(overrideComments(t, showCreate(c, t).replaceAll(" AUTO_INCREMENT=\\d+", ""))).append(";\n\n");
@@ -255,9 +291,11 @@ class BaselineSqlGenerator {
                 String t = g.getKey();
                 List<String> rows = genericRows(c, schema, t, true);
                 if (rows.isEmpty()) throw new IllegalStateException("通用表 " + t + " 在老链上没有行,检查 GENERIC 的条件");
-                sql.append("INSERT INTO `").append(t).append("` (`")
-                        .append(String.join("`, `", dataColumns(c, schema, t))).append("`) VALUES\n  ")
-                        .append(String.join(",\n  ", rows)).append(";\n\n");
+                insert(sql, t, dataColumns(c, schema, t), rows);
+            }
+            for (Map.Entry<String, List<String>> p : PLACEHOLDER.entrySet()) {
+                if (GENERIC.containsKey(p.getKey())) throw new IllegalStateException(p.getKey() + " 既是通用表又是占位表");
+                insert(sql, p.getKey(), dataColumns(c, schema, p.getKey()), p.getValue());
             }
         }
         for (String k : COMMENT_OVERRIDE.keySet()) {
@@ -265,6 +303,12 @@ class BaselineSqlGenerator {
         }
         if (sql.indexOf("${") >= 0) throw new IllegalStateException("起点脚本里出现 ${,会被 Flyway 当占位符");
         return sql.toString();
+    }
+
+    private static void insert(StringBuilder sql, String table, List<String> cols, List<String> rows) {
+        sql.append("INSERT INTO `").append(table).append("` (`")
+                .append(String.join("`, `", cols)).append("`) VALUES\n  ")
+                .append(String.join(",\n  ", rows)).append(";\n\n");
     }
 
     private static String showCreate(Connection c, String table) throws SQLException {

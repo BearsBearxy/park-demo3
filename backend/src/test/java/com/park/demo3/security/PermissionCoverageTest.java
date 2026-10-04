@@ -304,8 +304,10 @@ class PermissionCoverageTest {
         assertThat(reg.resolveRead("/api/notices")).containsExactly(PermissionRegistry.ANY_AUTHENTICATED);
         assertThat(reg.resolveRead("/api/review")).containsExactly(PermissionRegistry.ANY_AUTHENTICATED);
         assertThat(reg.resolveRead("/api/auth/approvals/candidates")).containsExactly(PermissionRegistry.ANY_AUTHENTICATED);
+        // 部署配置(2026-10-05):前端外壳一登录就取,挂任何查看点都会让那个账号丢按钮 / 丢更新记录
+        assertThat(reg.resolveRead("/api/app/config")).containsExactly(PermissionRegistry.ANY_AUTHENTICATED);
         for (String fresh : List.of("/api/auth/approvals/history", "/api/auth/whatever", "/api/notices/all",
-                                    "/api/review/export", "/api/probe/dump")) {
+                                    "/api/review/export", "/api/probe/dump", "/api/app/secrets")) {
             assertThat(reg.resolveRead(fresh)).as(fresh).isNull();
         }
         // 默认拒绝

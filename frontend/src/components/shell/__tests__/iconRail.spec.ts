@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
+import { ourPark } from '@/test-utils/appConfig'
 import { grantViews } from '@/test-utils/perms'
 import IconRail from '@/components/shell/IconRail.vue'
 import { useTabsStore } from '@/stores/tabs'
@@ -20,7 +21,7 @@ const layerBtn = (w: ReturnType<typeof mountRail>, short: string) =>
   w.findAll('button').find(b => b.text().includes(short))
 
 describe('IconRail · 层切换语义(§4.1)', () => {
-  beforeEach(() => { setActivePinia(createPinia()); localStorage.clear(); push.mockClear(); grantViews() })
+  beforeEach(() => { setActivePinia(createPinia()); ourPark(); localStorage.clear(); push.mockClear(); grantViews() })
 
   it('点当前层:不 push、不动页签', async () => {
     const w = mountRail()
@@ -45,7 +46,7 @@ describe('IconRail · 层切换语义(§4.1)', () => {
 
 // ══════════ 角色行(§6,P5) ══════════
 describe('IconRail · 角色行(P5)', () => {
-  beforeEach(() => { setActivePinia(createPinia()); localStorage.clear() })
+  beforeEach(() => { setActivePinia(createPinia()); ourPark(); localStorage.clear() })
 
   // Popover 默认整只被 stub 掉,槽内容不渲染 —— 这里放行槽,否则断言的是一个空串
   const openRail = () => mount(IconRail, {
@@ -124,7 +125,7 @@ describe('IconRail · 角色行(P5)', () => {
 
 // ══════════ 记号只挂在铃铛上(06-G 规则表「只挂在铃铛上」,S5 FE-DOT) ══════════
 describe('没看过的更新:账号菜单与手机抽屉不再挂点', () => {
-  beforeEach(() => { setActivePinia(createPinia()); localStorage.clear() })
+  beforeEach(() => { setActivePinia(createPinia()); ourPark(); localStorage.clear() })
 
   /** 登进来、这一版没看过 —— 改前这时三处各亮一颗蓝点 */
   function unreadUser() {

@@ -17,6 +17,7 @@ import { cpMeterApi, type CpStationDTO, type CpPowerUsageDTO } from '@/api/cpMet
 import type { ImportPayload } from '@/components/import/FpImportModal.vue'
 import { importBusy, settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
 import { useAuthStore, approxDirty } from '@/stores/auth'
+import { useAppConfigStore } from '@/stores/appConfig'
 import { useFormSheet } from '@/composables/useFormSheet'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
@@ -49,6 +50,7 @@ import { buildCpMeterTemplate, exportCpMeterMonth } from '@/utils/cpMeterExcel'
 
 const props = defineProps<{ vehicleType: 'car' | 'ebike' }>()
 const auth = useAuthStore()
+const appCfg = useAppConfigStore()
 // 新增充电桩弹卡带输入 → S 档全屏 sheet(styles/form-sheet.css)
 const sheet = useFormSheet()
 
@@ -567,8 +569,8 @@ async function onTemplate() {
           <template #leading><component :is="iconFor('upload')" :size="14" /></template>
           导入
         </Button>
-        <!-- 模拟填充=读附表7/8 整年批量派生(§5.3-⑥)→ billing-run,不是抄表权 -->
-        <Button v-if="editMode && canRun" variant="outline" size="sm" :disabled="simulating" @click="onSimulate">
+        <!-- 模拟填充=读附表7/8 整年批量派生(§5.3-⑥)→ billing-run,不是抄表权;客户园区不显(parkTools,2026-10-05 用户拍板「按你建议修改」;服务端同闸 DeployConfig) -->
+        <Button v-if="editMode && canRun && appCfg.parkTools" variant="outline" size="sm" :disabled="simulating" @click="onSimulate">
           <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>
           模拟填充
         </Button>

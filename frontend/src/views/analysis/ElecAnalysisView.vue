@@ -8,6 +8,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
+import { useAppConfigStore } from '@/stores/appConfig'
 import { periodLink, periodOf } from '@/nav/deepLink'
 import { useViewGate } from '@/composables/useViewGate'
 import AnaShell from './AnaShell.vue'
@@ -37,6 +38,7 @@ const isS = isSViewport()
 
 const router = useRouter()
 const tabs = useTabsStore()
+const appCfg = useAppConfigStore()   // 客户园区没有模拟填充,提示里不提它(2026-10-05 用户拍板)
 const period = usePeriod()
 const year = computed(() => period.sel.value.year)
 
@@ -454,7 +456,7 @@ const spreadRead = computed(() => {
       <AnaEmpty
         v-if="!hasEntries"
         :label="loadedYear + ' 年电费成本模型无费项数据'"
-        hint="本屏依赖电费成本总览的总表/宿舍/运营费项月度值;先录入或用模拟填充"
+        :hint="'本屏依赖电费成本总览的总表/宿舍/运营费项月度值;' + (appCfg.parkTools ? '先录入或用模拟填充' : '请先到电费成本总览录入')"
         to="/elec-cost"
         to-text="去电费成本总览"
       />
@@ -502,7 +504,7 @@ const spreadRead = computed(() => {
               <span class="hint">线=双价(元/kWh,右轴) · 柱=月损益(万,左轴)</span>
             </div>
             <AnaEChart v-if="spreadHasData" :option="spreadOption" :height="300" @chart-click="onChartClick" />
-            <AnaEmpty v-else label="双价参数未录" hint="公告价/执行价按月录于成本总览电价参数(或模拟填充)" to="/elec-cost" to-text="去电费成本总览" />
+            <AnaEmpty v-else label="双价参数未录" :hint="'公告价/执行价按月录于成本总览电价参数' + (appCfg.parkTools ? '(或模拟填充)' : '')" to="/elec-cost" to-text="去电费成本总览" />
             <p class="ana-read hold"><template v-if="spreadRead">{{ spreadRead.mon }}月执行价 {{ spreadRead.exec }} 元,比公告价{{ spreadRead.diff }}</template></p>
             <p class="ana-ref hold"><template v-if="spreadRead">{{ spreadRead.n }} 个月有双价 · 同成本总览 · 元/kWh</template></p>
           </div>

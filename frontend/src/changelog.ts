@@ -21,7 +21,11 @@ import type { ReleaseNote } from '@/types/changelog'
 export const CHANGELOG: ReleaseNote[] = [
   // 功能更新(RELEASE-NOTES-SPEC §2.1 第 2 问是:新增记账的单价默认值变了;第 3 问是:到期缺口折出来的份数变了)。
   // 起因:2026-10-04 用户拍板产品要卖给别的园区,新园区从干净的起点建库(db/baseline),客户看得见的地方不再带我园的名字和数。
-  // 我园用户看得见的只有下面四条;起点链、迁移守卫、FlywayChainGuard、部署指南 §9 是给部署的人看的,不写。
+  // 我园用户看得见的只有下面四条改进和两条修复;起点链、迁移守卫、FlywayChainGuard、部署开关(DeployConfig)、部署指南 §9 是给部署的人看的,不写。
+  // 2026-10-05 复查补的两条修复(都不改数):
+  //   「角色权限」:Perm.METER_READING_EDIT 的说明去掉「按年模拟填充」—— 三条 simulate 判的是表档案 / 计费口径 / 出账运行(PermissionRegistry)。
+  //   「电费成本总览」:空月副句的模拟填充分句改判 canPrice(按钮判 editC = param-policy:edit),只有录入权的账号不再读到。
+  // 客户园区才有的变化(部署开关、更新记录按装机版本、空库落今年、占位字典)我园看不到,不写。
   // 「办公水电」(侧栏名「办公·三期水电」带期区,changelog.spec 不许写,用屏内页签名):UtilitiesRecordDrawer 原来写死 0.8123/4.15、0.7965/3.85,现在取本年记账月最晚、单价大于 0 的那条(UtilitiesView.lastPrice)。
   // 「到期墙与续约」:expiry.logic 删了 MEDIAN_FACTORY_RENT(¥11,448.50,只有我园的数),缺口改按同屏「租金中位数」瓦折算(buildExpiryStats.medRent)。
   // 「计费参数」:ParamRegistry / paramRegistry.ts 的说明去掉租户名、楼栋名和月份(paramRegistry.spec 守卫)。
@@ -39,7 +43,10 @@ export const CHANGELOG: ReleaseNote[] = [
       { icon: 'sliders-horizontal', title: '计费参数', desc: '各参数的说明去掉了租户、楼栋、月份和具体数值，两个参数名也去掉了座号和年份。' },
       { icon: 'file-check-2', title: '催缴单', desc: '包干那一行改叫「固定月额收取」了，悬浮说明也同步改了。' },
     ],
-    fixed: [],
+    fixed: [
+      '角色权限：「抄表」的说明原来写着含按年模拟填充，只勾它其实做不了',
+      '电费成本总览：不能改电价参数的账号，空月提示原来也说能模拟填充',
+    ],
   },
   // 小调整(RELEASE-NOTES-SPEC §2.1 四问都否):不改数的修复,不弹,只进铃铛「系统」一类。金额不变。
   // 修复核实(对照 master):SessionService.open 在提交前就把新 tv / sid 写进权限快照;同时跑的一次 UserPermissionCache.reload
@@ -612,12 +619,22 @@ export const CHANGELOG: ReleaseNote[] = [
 /** 当前跑在浏览器里的这一版(构建时由 vite.config.ts 注入)。 */
 export const APP_VERSION = __APP_VERSION__
 
-/** 按语义比版本号:逐位比数字,预发布后缀不参与。a 比 b 新返回正数。 */
+/**
+ * 按语义比版本号:逐位比数字;数字相同时带预发布后缀的更旧(0.10.0-beta.1 < 0.10.0),两个都带按后缀比。a 比 b 新返回正数。
+ * 2026-10-05 起客户园区按它判「装机那一版之后」(stores/update.ts notes),后缀不能再当没有。
+ */
 export function cmpVersion(a: string, b: string): number {
-  const x = a.split('-')[0].split('.').map(Number)
-  const y = b.split('-')[0].split('.').map(Number)
+  const [x, xp] = splitVersion(a)
+  const [y, yp] = splitVersion(b)
   for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0)
-  return 0
+  if (xp === yp) return 0
+  if (!xp || !yp) return xp ? -1 : 1
+  // ponytail: 后缀按自然序比(beta.2 < beta.10),没逐段套 semver「数字段低于字母段」那条;changelog 里只出现过 beta.N
+  return xp.localeCompare(yp, 'en', { numeric: true })
+}
+function splitVersion(v: string): [number[], string] {
+  const i = v.indexOf('-')
+  return [(i < 0 ? v : v.slice(0, i)).split('.').map(Number), i < 0 ? '' : v.slice(i + 1)]
 }
 
 /** 功能更新 = 版本号最后一位是 0(0.15.0、1.0.0);最后一位不是 0 的是小调整(RELEASE-NOTES-SPEC §1)。 */

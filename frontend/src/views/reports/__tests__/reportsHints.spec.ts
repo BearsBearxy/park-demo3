@@ -500,6 +500,22 @@ describe('损益附表', () => {
     await flushPromises()
     expect(w.find('.pnl-dlg h3').text(), '「新增行」该打开新增行弹窗').toBe('新增行')
   })
+
+  // 2026-10-05 用户拍板「按你建议修改」:一年数据都没有(新园区空库)时年份层「最新」标今年;有数据照旧标最大数据年,不看时钟。
+  // 本文件 beforeEach 把时钟钉在 2025-06-15
+  it('❗年份层「最新」:有数据 → 最大数据年(时钟不参与);一年数据都没有 → 今年,不是后端给的明年', async () => {
+    route.query = {}
+    const cur = (w: VueWrapper) => w.find('.sm-ycard.cur .sm-yc-year').text()
+    vi.mocked(pnlApi.overview).mockResolvedValue({ years: [
+      { year: 2024, hasData: true, rowCount: 3 }, { year: 2025, hasData: false, rowCount: 0 }, { year: 2026, hasData: false, rowCount: 0 }] })
+    let w = await openPnl()
+    expect(cur(w)).toBe('2024年')
+    w.unmount()
+    vi.mocked(pnlApi.overview).mockResolvedValue({ years: [
+      { year: 2025, hasData: false, rowCount: 0 }, { year: 2026, hasData: false, rowCount: 0 }] })
+    w = await openPnl()
+    expect(cur(w)).toBe('2025年')
+  })
 })
 
 // ── 收入核对工作台 ───────────────────────────────────────────

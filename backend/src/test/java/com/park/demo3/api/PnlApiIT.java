@@ -106,7 +106,7 @@ class PnlApiIT extends AbstractMysqlIT {
         assertThat(JsonPath.<List<String>>read(res2, "$.data.rows[*].label")).containsExactly("二次导入");
     }
 
-    // ── overview 确定性年范围:s1 有 V27 种子(2025) → [2024..2026];s5 无数据 → [2024..2025] ──
+    // ── overview 年范围:s1 有 V27 种子(2025) → [2024..2026](不读时钟);s5 无数据 → [去年..明年](2026-10-05 用户拍板) ──
     @Test
     void pnl_overview_deterministicYears() throws Exception {
         String s1 = utf8(mvc.perform(get("/api/pnl/s1/overview").header("Authorization", auth()))
@@ -119,8 +119,9 @@ class PnlApiIT extends AbstractMysqlIT {
 
         String s5 = utf8(mvc.perform(get("/api/pnl/s5/overview").header("Authorization", auth()))
                 .andExpect(status().isOk()).andReturn());
-        assertThat(JsonPath.<List<Integer>>read(s5, "$.data.years[*].year")).containsExactly(2024, 2025);
-        assertThat(JsonPath.<List<Boolean>>read(s5, "$.data.years[*].hasData")).containsExactly(false, false);
+        int now = com.park.demo3.common.YearSpan.thisYear();
+        assertThat(JsonPath.<List<Integer>>read(s5, "$.data.years[*].year")).containsExactly(now - 1, now, now + 1);
+        assertThat(JsonPath.<List<Boolean>>read(s5, "$.data.years[*].hasData")).containsExactly(false, false, false);
     }
 
     // ── V27 种子可读:s1 2025 首行 一期租金收入 m1=1141774.45;分带 kind 逐行对 ──

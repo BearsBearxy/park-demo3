@@ -1,4 +1,5 @@
 package com.park.demo3.controller;
+import com.park.demo3.config.DeployConfig;
 import com.park.demo3.dto.*;
 import com.park.demo3.service.PvMeterService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -17,7 +18,8 @@ import java.util.List;
 @RequestMapping("/api/pv-meter")
 public class PvMeterController {
     private final PvMeterService svc;
-    public PvMeterController(PvMeterService svc) { this.svc = svc; }
+    private final DeployConfig deploy;
+    public PvMeterController(PvMeterService svc, DeployConfig deploy) { this.svc = svc; this.deploy = deploy; }
 
     @Operation(summary = "电站列表(13 站种子,按 sort 升序)") @GetMapping("/stations")
     public List<PvStationDTO> stations() { return svc.stationList(); }
@@ -62,5 +64,8 @@ public class PvMeterController {
 
     @Operation(summary = "模拟填充(按附表6 phase 月度汇总反推站容量/单价(只填空位)并按容量占比拆分各栋月末记录;只写空位与 simulated,绝不覆盖 manual/import;幂等)")
     @PostMapping("/simulate")
-    public PvSimulateResultDTO simulate(@RequestParam @Min(2000) @Max(2100) int year) { return svc.simulate(year); }
+    public PvSimulateResultDTO simulate(@RequestParam @Min(2000) @Max(2100) int year) {
+        deploy.requireParkTools();   // 客户园区关掉(2026-10-05 用户拍板,见 DeployConfig)
+        return svc.simulate(year);
+    }
 }

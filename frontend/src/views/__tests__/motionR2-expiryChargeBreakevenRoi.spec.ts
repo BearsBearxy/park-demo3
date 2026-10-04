@@ -403,6 +403,8 @@ describe('光伏投资回收', () => {
 
   // 2026-10-04 用户拍板产品卖给别的园区:投资额不再写死我园 1478.7 万 —— 没填取各期工程成本合计,两样都没有出空态
   it('❗投资额没填:取各期工程成本合计;各期也没有成本就出空态,不按 0 算回收', async () => {
+    const kpi = (w: ReturnType<typeof mount>, label: string) =>
+      w.findAll('.av2-kpi').find((k) => k.find('.l').text() === label)!.find('.v').text()
     const invest = anaSettings.pvInvestment
     saveAnaSettings({ pvInvestment: 0 })
     vi.mocked(fetchPvPhases).mockResolvedValue([{ ...PHASES[0], cost: 10_000_000 }])
@@ -410,13 +412,43 @@ describe('光伏投资回收', () => {
     await flushPromises()
     // 累计 270 万 ÷ 各期成本合计 1000 万
     expect((w.find('.roi2-bar-fill').element as HTMLElement).style.getPropertyValue('--pct')).toBe('27.0%')
+    expect(kpi(w, '工程总投资')).toBe('¥1,000.0 万')
+    expect(kpi(w, '综合回收进度')).toBe('27.0%')
     w.unmount()
     vi.mocked(fetchPvPhases).mockResolvedValue([{ ...PHASES[0], cost: null }])
     w = mount(PvRoiView, STUBS)
     await flushPromises()
     expect(w.find('.roi2-bar').exists(), '没有投资额还画了回收进度').toBe(false)
     expect(w.text()).toContain('光伏投资额未填')
+    w.unmount()
+    // 新园区起点库的占位期别:成本列 NOT NULL,落的是列默认 0(2026-10-05 用户拍板「按你建议修改」)—— 也按「未填」出空态,不出 NaN
+    vi.mocked(fetchPvPhases).mockResolvedValue([{ ...PHASES[0], cost: 0 }, { ...PHASES[0], id: 'p2', cost: 0 }])
+    w = mount(PvRoiView, STUBS)
+    await flushPromises()
+    expect(w.find('.roi2-bar').exists(), '成本 0 还画了回收进度').toBe(false)
+    expect(w.text()).toContain('光伏投资额未填')
+    expect(w.text()).not.toContain('NaN')
+    // KPI 行也不给确定的 ¥0 / 0%:那个 0 是没填
+    expect(kpi(w, '工程总投资')).toBe('—')
+    expect(kpi(w, '综合回收进度')).toBe('—')
     saveAnaSettings({ pvInvestment: invest })
+    w.unmount()
+  })
+
+  // 2026-10-05 复查:新园区起点库带三个占位期别(一期~三期),只录了一期的客户原来读到「3 期」;
+  // 我园三期都有记账,仍是 3。破坏验证:脚注改回 rows.length → 第一段读到 3,红
+  it('❗分期卡脚注只数有记账月的期', async () => {
+    const foot = (w: ReturnType<typeof mount>) => w.findAll('.ana-ref').find((e) => e.text().includes('柱=自消纳+上网'))!.text()
+    const three = [PHASES[0], { ...PHASES[0], id: 'p2', name: '二期', short: '二期' }, { ...PHASES[0], id: 'p3', name: '三期', short: '三期' }]
+    vi.mocked(fetchPvPhases).mockResolvedValue(three)
+    let w = mount(PvRoiView, STUBS)
+    await flushPromises()
+    expect(foot(w), '只有一期有记账').toBe('1 期有记账 · 柱=自消纳+上网 · 万元')
+    w.unmount()
+    vi.mocked(fetchPvAll).mockResolvedValue([...RECORDS, { ...rec(4, 1), phase: 'p2' }, { ...rec(5, 1), phase: 'p3' }])
+    w = mount(PvRoiView, STUBS)
+    await flushPromises()
+    expect(foot(w), '我园三期都有记账').toBe('3 期有记账 · 柱=自消纳+上网 · 万元')
     w.unmount()
   })
 })

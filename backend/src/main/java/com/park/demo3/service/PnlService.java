@@ -2,6 +2,7 @@ package com.park.demo3.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
+import com.park.demo3.common.YearSpan;
 import com.park.demo3.dto.ImportResultDTO;
 import com.park.demo3.dto.PnlImportRequest;
 import com.park.demo3.dto.PnlOverviewDTO;
@@ -24,7 +25,6 @@ import java.util.Map;
 
 @Service
 public class PnlService {
-    private static final int BASE_YEAR = 2024;   // 年份范围下界(确定性,不读系统时钟)
     private static final List<String> SCHEDULES = List.of("s1", "s2", "s3", "s4", "s5");
     private final PnlRowMapper rows;
 
@@ -46,17 +46,16 @@ public class PnlService {
         return "detail";
     }
 
-    // ── overview:年份范围 = [min(BASE,最小数据年) .. max(数据年)+1];无数据 → [2024..2025] ──
+    // ── overview:年份范围 = [min(2024,最小数据年) .. max(数据年)+1];无数据 → [去年..明年](YearSpan) ──
     public PnlOverviewDTO overview(String schedule) {
         check(schedule);
         Map<Integer, Integer> countByYear = new LinkedHashMap<>();
         for (Map<String, Object> m : rows.years(schedule)) {
             countByYear.put(((Number) m.get("year")).intValue(), ((Number) m.get("cnt")).intValue());
         }
-        int lo = Math.min(BASE_YEAR, countByYear.keySet().stream().mapToInt(Integer::intValue).min().orElse(BASE_YEAR));
-        int hi = countByYear.keySet().stream().mapToInt(Integer::intValue).max().orElse(BASE_YEAR) + 1;
+        YearSpan span = YearSpan.of(countByYear.keySet());
         List<YearMeta> years = new ArrayList<>();
-        for (int y = lo; y <= hi; y++) {
+        for (int y = span.lo(); y <= span.hi(); y++) {
             years.add(new YearMeta(y, countByYear.containsKey(y), countByYear.getOrDefault(y, 0)));
         }
         return new PnlOverviewDTO(years);

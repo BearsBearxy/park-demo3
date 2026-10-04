@@ -56,6 +56,11 @@ services:
       FLYWAY_LOCATIONS: ${FLYWAY_LOCATIONS:-classpath:db/migration,classpath:db/common}
       # 空库跑老链默认拒绝启动(FlywayChainGuard);只有在空库上重建我园自己的库时才设 true
       FLYWAY_ALLOW_LEGACY_ON_EMPTY: ${FLYWAY_ALLOW_LEGACY_ON_EMPTY:-false}
+      # 部署开关(2026-10-05,见 backend config/DeployConfig):.env 不写 = 我园生产照旧。新园区 gen-env.sh 写
+      # PARK_TOOLS_ENABLED=false(关三处模拟填充与损益附表自动补行)、RELEASE_BASELINE=装机那一版(更新记录只给看之后的)。
+      # 默认值与 application.yml 同值;compose 不转的话 .env 里写了也到不了后端
+      PARK_TOOLS_ENABLED: ${PARK_TOOLS_ENABLED:-true}
+      RELEASE_BASELINE: ${RELEASE_BASELINE:-0.0.0}
     depends_on:
       mysql:
         condition: service_healthy

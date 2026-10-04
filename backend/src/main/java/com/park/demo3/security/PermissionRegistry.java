@@ -258,6 +258,7 @@ public class PermissionRegistry {
         addRead("/api/zones",                      ANY_AUTHENTICATED);   // 期区字典
         addRead("/api/probe/ok",                   ANY_AUTHENTICATED);   // 探针,回包固定
         addRead("/api/probe/boom",                 ANY_AUTHENTICATED);
+        addRead("/api/app/config",                 ANY_AUTHENTICATED);   // 部署配置两项(DeployConfig),不含业务数据
 
         // ═══ 系统管理:与 SecurityConfig 那一行同值(那行先命中);登记在这里是为了覆盖测试不开豁免名单 ═══
         addRead("/api/system/**", Perm.SYSTEM_VIEW);

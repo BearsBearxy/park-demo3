@@ -65,9 +65,10 @@ curl -sI http://localhost/ | grep -iE "x-frame-options|x-content-type|referrer-p
 
 浏览器打开 `https://atrilink.com`（2026-08-30 起走 HTTPS，见 §8）：
 - **admin / gen-env 生成的 ADMIN_PASSWORD**：管理员（可写），自己留用。ADMIN_PASSWORD 只在 admin 还是种子口令（首次部署）时生效；之后在系统里改过的口令，重启、重新部署都不会被改回 .env 里的值，改 .env 也不再能重置它
-  - **忘了 admin 口令的应急办法**（系统里没有别的 system:edit 账号能替它重置时）：把 admin 的哈希改回种子哈希，再重启后端，启动时就会重新用上 .env 里的 ADMIN_PASSWORD：
+  - **忘了 admin 口令的应急办法**（系统里没有别的 system:edit 账号能替它重置时）：把 admin 的口令列改成占位 `!unset:ADMIN_PASSWORD`，再重启后端，启动时就会重新用上 .env 里的 ADMIN_PASSWORD。
+    不要改回种子哈希：AdminInitializer 在端口打开之后才跑，重启那几秒 admin/admin123 登得进（2026-10-05 实测）；占位在那几秒谁都登不进。
     ```
-    echo 'UPDATE auth_user SET password_hash="$2a$10$cTkukBimUqZWHxvDThP2qOs9fwm75iGjln8CKEcRBxtkZHpLnEywW" WHERE username="admin";' \
+    echo 'UPDATE auth_user SET password_hash="!unset:ADMIN_PASSWORD" WHERE username="admin";' \
       | docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" park_demo3'
     docker compose restart backend
     ```
@@ -76,7 +77,7 @@ curl -sI http://localhost/ | grep -iE "x-frame-options|x-content-type|referrer-p
 ~~⚠️ 测试期为明文 HTTP~~ —— 2026-08-30 已上 HTTPS（§8）。口令不再明文过网，`http://` 与裸 IP 均已关闭。
 仍建议口令一对一私发：HTTPS 保护的是传输链路，保护不了发错人。
 
-数据说明：gen-env 生成的 `.env` 走起点链，全新库只有表结构 + 通用行（见 §9），没有任何楼栋 / 租户数据。
+数据说明：gen-env 生成的 `.env` 走起点链，全新库只有表结构 + 通用行 + 占位字典（见 §9），没有任何楼栋 / 租户数据。
 老链 `db/migration` 灌进去的**不是演示数据，是我园的真实数据**（楼栋、租户、电表、单价、台账、工资），只给我园自己的环境用；空库遇到老链默认拒绝启动（`FlywayChainGuard`，2026-10-04）。
 
 ## 5.5 自动发布（CD，2026-07-13 起启用；2026-08-13 改为镜像分发）
@@ -204,13 +205,14 @@ cd /opt/demo3 && cp .env.bak .env && docker compose --profile https rm -sf caddy
 | 迁移链 | `FLYWAY_LOCATIONS` | 起步后库里有什么 |
 |---|---|---|
 | 老链（我园生产、开发、测试） | 不写（默认 `classpath:db/migration,classpath:db/common`） | 我园全部历史数据，照旧 |
-| 起点链（新园区） | `classpath:db/baseline,classpath:db/common` | 全部表结构 + 内置角色/权限 + 一个 admin + 光伏判据线默认值；其余业务表全空。程序首次启动会自动建账册：每个管理公司一本台账册、附表10 四本期区册（一期厂房 / 二期厂房 / 三期厂房 / 宿舍区）和「台账通用模板」 |
+| 起点链（新园区） | `classpath:db/baseline,classpath:db/common` | 全部表结构 + 内置角色/权限 + 一个 admin + 光伏判据线默认值 + 占位字典（光伏/电费期别「一期~三期」、附表7/8 充电类别「运营商一/二」，让空库录得进数；名字要换得改库）；其余业务表全空。程序首次启动会自动建账册：每个管理公司一本台账册、附表10 四本期区册（一期厂房 / 二期厂房 / 三期厂房 / 宿舍区）和「台账通用模板」 |
 
 步骤（在 §4 的基础上多一步，**必须在第一次 `up` 之前**）：
 
 ```bash
-bash deploy/gen-env.sh <该园区的域名或IP>       # 生成 .env(随机 DB/JWT/admin 口令,已写好起点链 FLYWAY_LOCATIONS,不建只读账号)
+bash deploy/gen-env.sh <该园区的域名或IP>       # 生成 .env(随机 DB/JWT/admin 口令,已写好起点链 FLYWAY_LOCATIONS 与下面两个开关,不建只读账号)
 grep FLYWAY_LOCATIONS .env                      # 确认是 classpath:db/baseline,classpath:db/common
+grep -E 'PARK_TOOLS_ENABLED|RELEASE_BASELINE' .env   # 确认是 false 和当前版本号(如 0.29.0)
 docker compose up -d                             # mysql 卷是新的 = 空库
 docker compose logs backend | grep -E "Migrating schema|Successfully applied|admin password"
 # 应看到: Migrating schema ... to version "137 - baseline" / Successfully applied 1 migration(以后会多出 V138+)
@@ -221,8 +223,13 @@ docker compose logs backend | grep -E "Migrating schema|Successfully applied|adm
   ⚠ 现在的 compose 把 `DB_HOST/DB_PORT/DB_USER` 写死为同机的 mysql 容器、库名用默认 `park_demo3`，连外部 RDS 要先改 compose 转这几项。
 - **`.env` 里没有起点链就 `up` 了**（手写的 `.env`、或删掉了那一行）：空库遇到老链，后端拒绝启动，日志里是「空库不能跑老迁移链」，库里什么都没写 —— 补上 `FLYWAY_LOCATIONS` 再 `up` 即可（`FlywayChainGuard`）。
   拦截只认空库。万一绕过了拦截（设过 `FLYWAY_ALLOW_LEGACY_ON_EMPTY=true`）把老链灌了进去：同机 mysql 卷用 `docker compose down -v` 清掉重来；**外部 RDS 一旦灌入就视为已泄露** —— 快照、binlog、自动备份都在客户手里，删库收不回来，按数据泄露处理。
-- **首次登录**：`admin` / `.env` 里的 `ADMIN_PASSWORD`（起点脚本里的种子口令 admin123 在首次启动时被换掉），显示名「管理员」。
+- **首次登录**：`admin` / `.env` 里的 `ADMIN_PASSWORD`（起点脚本里 admin 没有能用的口令，首次启动时才写成 `ADMIN_PASSWORD`，在那之前谁都登不进），显示名「管理员」。
+  `.env` 缺 `ADMIN_PASSWORD` 或值为空：compose 直接拒绝 `up`，报「未设置 ADMIN_PASSWORD」，后端没起、`docker compose logs backend` 里什么都没有，补上再 `up`；不走 compose 起 prod 档同样起不来。只有不走 compose、以非 prod 档起或显式给空值时后端才会起来，那时 admin 谁都登不进，日志里有一行 `has no password yet` 写明要设 `ADMIN_PASSWORD` 再重启。
   进系统后从「系统管理」建该园区的账号和角色，从「楼栋 / 租户 / 合同 / 表档案」开始录数据或走导入中心。
 - 检查库是干净的：`echo 'SELECT COUNT(*) FROM building; SELECT COUNT(*) FROM tenant;' | docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" park_demo3'` 都应是 0。
+- **两个部署开关**（2026-10-05 用户拍板「按你建议修改」）：gen-env.sh 已经写好；`.env` 不写这两行就是我园生产的样子，我园不用改任何配置。
+  - `PARK_TOOLS_ENABLED=false`（我园默认 `true`）：光伏分栋、电费成本总览、充电桩分桩三处「模拟填充」按钮不显，接口回「这套系统没有模拟填充」，电费成本总览的缺源提示也不再写「可模拟填充」；损益附表进年不自动补缺失行。这几样按我园附表的口径推导，补的行名是我园的科目名。
+  - `RELEASE_BASELINE=<生成 .env 时 frontend/package.json 的版本>`（我园默认 `0.0.0`）：「本次更新」弹窗、铃铛「系统」里的更新提示、更新记录只算比它新的版本 —— 客户刚装好时一条都没有，之后发了新版才出现。
+  - 手写 `.env` 的新园区要自己补这两行。走起点链却漏了任一行（取到的是我园的默认值），后端拒绝启动，日志里写明要补哪两行；`RELEASE_BASELINE` 不是 `0.29.0` 这样的版本号（比如写成 `v0.29.0`）也拒绝启动（`DeployConfig`）。
 - 以后的迁移只写进 `backend/src/main/resources/db/common`（V138 起），两条链都会跑，**不许写任何园区的数据**；
   `db/migration` 和 `db/baseline` 都冻结了（见各目录 README，`MigrationLayoutTest` 会查）。
