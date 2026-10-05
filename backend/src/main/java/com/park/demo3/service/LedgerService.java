@@ -43,13 +43,14 @@ public class LedgerService {
     private final BookService bookService;
     private final BookPinService pinService;
     private final ReviewGuard reviewGuard;
+    private final ChangeLogService changes;
 
     public LedgerService(MonthlyLedgerMapper ledger, ManagementCompanyMapper companies,
                          TenantMapper tenants, BookService bookService, BookPinService pinService,
-                         ReviewGuard reviewGuard) {
+                         ReviewGuard reviewGuard, ChangeLogService changes) {
         this.ledger = ledger; this.companies = companies; this.tenants = tenants;
         this.bookService = bookService; this.pinService = pinService;
-        this.reviewGuard = reviewGuard;
+        this.reviewGuard = reviewGuard; this.changes = changes;
     }
 
     /** 台账的审核闸(§7.4):键是 `ledger:{公司}:{该行的年月}`。六条写路径共用一处拼键 ——
@@ -328,6 +329,7 @@ public class LedgerService {
         assertLedgerEditable(companyId, year, month);
 
         List<MonthlyLedger> storedRows = ledger.selectMonth(companyId, year, month);
+        Map<Integer, MonthlyLedger> before = snapshot(storedRows);   // 数据修改记录的「改前」
         Map<Integer, MonthlyLedger> byId = storedRows.stream()
             .collect(Collectors.toMap(MonthlyLedger::getId, l -> l));
         Map<Integer, MonthlyLedger> byTenant = storedRows.stream()
@@ -426,6 +428,7 @@ public class LedgerService {
             ledger.updateById(existing);
         }
         rechain(companyId);   // 结余链:保存后前滚归一(派生位强制=上月期末;首次出现月保留人工期初)
+        logMonth(company.getName(), companyId, year, month, before, null);
         materializePin(companyId, year, month);
         return month(companyId, year, month);
     }
@@ -447,6 +450,10 @@ public class LedgerService {
             .map(l -> l.getCompanyId() + "-" + l.getPeriodYear() + "-" + l.getPeriodMonth())
             .collect(Collectors.toSet());
         int bound = 0, conflicts = 0;
+        Map<Integer, String> coNames = companies.selectBatchIds(
+                unbound.stream().map(MonthlyLedger::getCompanyId).distinct().toList()).stream()
+            .collect(Collectors.toMap(ManagementCompany::getId, ManagementCompany::getName));
+        List<ChangeLogService.Cell> cells = new ArrayList<>();
         for (MonthlyLedger l : unbound) {
             String slot = l.getCompanyId() + "-" + l.getPeriodYear() + "-" + l.getPeriodMonth();
             if (occupied.contains(slot)) { conflicts++; continue; }
@@ -455,9 +462,12 @@ public class LedgerService {
             assertLedgerEditable(l.getCompanyId(), l.getPeriodYear(), l.getPeriodMonth());
             l.setTenantId(req.tenantId());
             ledger.updateById(l);
+            cells.add(new ChangeLogService.Cell(rowRef(coNames.getOrDefault(l.getCompanyId(), ""), l),
+                "对应租户", UNBOUND, t.getCompanyName()));
             occupied.add(slot);
             bound++;
         }
+        changes.record(ChangeLogService.Tbl.LEDGER, cells, "按账面名一次绑定");
         // 绑定改写租户键(n:名 → t:id),结余链按新键重挂:重链所有涉及公司
         unbound.stream().map(MonthlyLedger::getCompanyId).distinct().forEach(this::rechain);
         return new BindResultDTO(bound, conflicts);
@@ -469,7 +479,10 @@ public class LedgerService {
     public LedgerRowDTO bindRow(Integer rowId, Integer tenantId) { return bindRow(rowId, tenantId, false); }
 
     /** addAlias=true:顺手把本行账面名记进该租户的别名,今后 softIndex 自动认(2026-08-27 拍板)。
-     *  默认 false —— 见 RowTenantBindReq 上的说明。 */
+     *  默认 false —— 见 RowTenantBindReq 上的说明。
+     *  @Transactional:控制器直接调的是这个三参(LedgerController),改绑、记别名、数据修改记录、重链要同进同退 ——
+     *  原来只有二参带事务,改绑先提交,记录写不进去时绑定照留、操作日志里没有这一条(2026-10-05 对抗复查 SEC-5)。 */
+    @Transactional
     public LedgerRowDTO bindRow(Integer rowId, Integer tenantId, boolean addAlias) {
         MonthlyLedger l = ledger.selectById(rowId);
         if (l == null) throw new BizException(ResultCode.NOT_FOUND, "台账行不存在");
@@ -498,6 +511,8 @@ public class LedgerService {
         ledger.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<MonthlyLedger>()
             .eq("id", rowId).set("tenant_id", tenantId));
         if (addAlias && tenantId != null) rememberBookName(tenantId, l.getTenantName());
+        changes.record(ChangeLogService.Tbl.LEDGER, rowRef(coName(l.getCompanyId()), l), "对应租户",
+            tenantLabel(l.getTenantId()), tenantLabel(tenantId));
         rechain(l.getCompanyId());   // 绑定/解绑改写租户键,结余链重挂
         MonthlyLedger fresh = ledger.selectById(rowId);
         return toRowDTO(fresh, displayName(fresh, archiveNameOf(fresh.getTenantId())));
@@ -533,6 +548,8 @@ public class LedgerService {
         String newName = tenantName.trim();
         if (newName.isEmpty()) throw new BizException(ResultCode.BAD_REQUEST, "账面名不能为空");
         if (!newName.equals(l.getTenantName())) {
+            String oldName = l.getTenantName();
+            Integer oldTenant = l.getTenantId();
             if (l.getTenantId() == null) {
                 // 未绑定行改名:同月同名未绑定行唯一(uk_ledger_soft),先给可读提示
                 Long clash = ledger.selectCount(new QueryWrapper<MonthlyLedger>()
@@ -554,6 +571,10 @@ public class LedgerService {
                 }
             }
             ledger.updateById(l);
+            String ref = rowRef(coName(l.getCompanyId()), l);
+            changes.record(ChangeLogService.Tbl.LEDGER, ref, "账面名", oldName, newName);
+            if (!Objects.equals(oldTenant, l.getTenantId()))   // 改对名字顺手配上了档案
+                changes.record(ChangeLogService.Tbl.LEDGER, ref, "对应租户", UNBOUND, tenantLabel(l.getTenantId()));
             rechain(l.getCompanyId());   // 未绑定行改名=改租户键(n:名),结余链重挂
         }
         return toRowDTO(l, displayName(l, archiveNameOf(l.getTenantId())));
@@ -711,7 +732,9 @@ public class LedgerService {
 
         // V105:未绑定行(tenant_id=null)也照搬——键退回账面名(与导入 upsert 同款代码级唯一约束)
         Map<String, MonthlyLedger> cur = new HashMap<>();
-        for (MonthlyLedger l : ledger.selectMonth(companyId, year, month))
+        List<MonthlyLedger> curRows = ledger.selectMonth(companyId, year, month);
+        Map<Integer, MonthlyLedger> before = snapshot(curRows);   // 本月原有的数会被上月的盖掉,改前要留下
+        for (MonthlyLedger l : curRows)
             cur.putIfAbsent(rowKey(l), l);
 
         for (MonthlyLedger src : prev) {
@@ -728,8 +751,79 @@ public class LedgerService {
             if (existing != null) ledger.updateById(l); else ledger.insert(l);
         }
         rechain(companyId);   // 结余链:复制上月后前滚归一
+        logMonth(company.getName(), companyId, year, month, before, "复制上月");
         materializePin(companyId, year, month);
         return month(companyId, year, month);
+    }
+
+    // ── 数据修改记录(用户 2026-10-05 拍板「2按你建议，3，4一起做」第 4 条):手改的台账逐格记谁、何时、改前、改后 ──
+    // 导入(importRows)不逐格记 —— import_log 已记了谁、何时、哪个文件;rechain 顺手改到的后面月份是推出来的,也不记。
+
+    private static final String UNBOUND = "（未绑定）";
+
+    /** 写前留一份:save / copyFromPrev 在原对象上改,同一事务里重查同一个月 MyBatis 还可能还回同一批对象。 */
+    private static Map<Integer, MonthlyLedger> snapshot(List<MonthlyLedger> rows) {
+        Map<Integer, MonthlyLedger> out = new HashMap<>();
+        for (MonthlyLedger l : rows) {
+            MonthlyLedger c = new MonthlyLedger();
+            org.springframework.beans.BeanUtils.copyProperties(l, c);
+            out.put(l.getId(), c);
+        }
+        return out;
+    }
+
+    /** 本月写前写后逐格比,只记真变了的格。写后**从库里重读**:派生位的结余会被 rechain 改回上月期末、
+     *  口袋整包清空时 updateById 不落 NULL —— 拿请求去比,会记下根本没发生的改动。 */
+    private void logMonth(String company, Integer companyId, int year, int month,
+                          Map<Integer, MonthlyLedger> before, String why) {
+        Map<String, String> labels = bookService.labelsAt("ledger", companyId, year, month);
+        List<ChangeLogService.Cell> upd = new ArrayList<>(), add = new ArrayList<>(), del = new ArrayList<>();
+        Set<Integer> kept = new HashSet<>();
+        for (MonthlyLedger a : ledger.selectMonth(companyId, year, month)) {
+            MonthlyLedger b = before.get(a.getId());
+            kept.add(a.getId());
+            diffRow(b == null ? add : upd, company, labels, b, a);
+        }
+        for (MonthlyLedger b : before.values())
+            if (!kept.contains(b.getId())) diffRow(del, company, labels, b, null);
+        changes.record(ChangeLogService.Tbl.LEDGER, upd, why);
+        changes.record(ChangeLogService.Tbl.LEDGER, add, why == null ? "新增这一行" : why + "，新增这一行");
+        changes.record(ChangeLogService.Tbl.LEDGER, del, why == null ? "删除这一行" : why + "，删除这一行");
+    }
+
+    /** 一行的各列:21 费用列用该月模板上的表头(没有册退回标准名),自定义列同理;b / a = null 是新加 / 删掉的行。 */
+    private static void diffRow(List<ChangeLogService.Cell> out, String company, Map<String, String> labels,
+                                MonthlyLedger b, MonthlyLedger a) {
+        List<ChangeLogService.Col<MonthlyLedger>> cols = new ArrayList<>();
+        if (a != null && b != null) cols.add(new ChangeLogService.Col<>("账面名", MonthlyLedger::getTenantName));
+        cols.add(new ChangeLogService.Col<>("上月结余", MonthlyLedger::getBalancePrev));
+        for (ReconService.Fee f : ReconService.RECON_FEES)
+            if (f.lGet() != null) cols.add(new ChangeLogService.Col<>(labels.getOrDefault(f.key(), f.label()), f.lGet()));
+        Set<String> extra = new LinkedHashSet<>();
+        if (b != null) extra.addAll(ExtraFees.parse(b.getExtraFees()).keySet());
+        if (a != null) extra.addAll(ExtraFees.parse(a.getExtraFees()).keySet());
+        for (String k : extra)   // 口袋里缺这个键 = 屏上这一格是 0
+            cols.add(new ChangeLogService.Col<>(labels.getOrDefault(k, "自定义列"),
+                l -> ExtraFees.parse(l.getExtraFees()).getOrDefault(k, BigDecimal.ZERO)));
+        cols.add(new ChangeLogService.Col<>("本月收款", MonthlyLedger::getTotalCollected));
+        cols.add(new ChangeLogService.Col<>("备注", MonthlyLedger::getNote));
+        ChangeLogService.diff(out, rowRef(company, a != null ? a : b), cols, b, a);
+    }
+
+    /** 「公司 · 2026-08 · 账面名」—— 操作日志上原样显示。 */
+    private static String rowRef(String company, MonthlyLedger l) {
+        String name = nzs(l.getTenantName()).trim();
+        return company + " · " + String.format("%04d-%02d", l.getPeriodYear(), l.getPeriodMonth())
+            + " · " + (name.isEmpty() ? "（未命名）" : name);
+    }
+
+    private String coName(Integer companyId) {
+        ManagementCompany c = companies.selectById(companyId);
+        return c == null ? "" : c.getName();
+    }
+
+    private String tenantLabel(Integer tenantId) {
+        return tenantId == null ? UNBOUND : archiveNameOf(tenantId).getOrDefault(tenantId, "（已删除租户）");
     }
 
     // ── helpers ──

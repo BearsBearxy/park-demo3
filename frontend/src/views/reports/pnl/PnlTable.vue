@@ -25,6 +25,7 @@ const props = defineProps<{
   edit: boolean
   derive?: Record<string /*rowKey*/, CompareResult & { derived: (number | null)[] }>
   mappedKeys?: Set<string>   // 派生映射行(P2-G3 J1):编辑态月格只读+不可选删;「填入」/备注照旧
+  lockedMonths?: ReadonlySet<number>   // 整月锁账的月(0 起):编辑态那几列只读、不出「填入」(后端改到它们整次拒)
   selected?: Set<string>     // 批量删除选集(P2-G3 J7):编辑态行首复选,父组件持有
 }>()
 const emit = defineEmits<{
@@ -66,8 +67,10 @@ const isDiffCell = (rowKey: string, mi: number) => {
 // 行有空格且派生有值 → 可填入(fillRow 只填空,已录/真 0 不覆盖)
 const fillable = (r: PnlRowDTO) => {
   const d = props.derive?.[r.rowKey]
-  return !!d && r.m.some((v, i) => v === null && d.derived[i] !== null)
+  return !!d && r.m.some((v, i) => v === null && d.derived[i] !== null && !props.lockedMonths?.has(i))
 }
+// 后半句同 PnlService.refuseClosed 被拒时那句:撤任一张表的审核就解锁(ReviewService.closedMonths 判全部计入的键都已审核)
+const lockTip = (mi: number) => `${mi + 1} 月已锁账（本月出账里「本月锁账」打了勾），这一列改不了；要改，先请审核员撤销那个月其中一张表的审核`
 const showFill = computed(() => props.edit && Object.keys(props.derive ?? {}).length > 0)
 
 // ── 固定列与表格高度(LIST-PAGE §9,画布 07-C 损益附表行)──────────────
@@ -205,9 +208,10 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
               >{{ badges[r.rowKey].text }}</span>
             </div>
           </td>
-          <td v-for="(v, mi) in r.m" :key="mi" class="pt-c-num" :class="{ 'pt-cell-diff': isDiffCell(r.rowKey, mi) }">
+          <td v-for="(v, mi) in r.m" :key="mi" class="pt-c-num" :class="{ 'pt-cell-diff': isDiffCell(r.rowKey, mi) }"
+              v-tip="edit && lockedMonths?.has(mi) ? lockTip(mi) : null">
             <input
-              v-if="edit && !mappedKeys?.has(r.rowKey)"
+              v-if="edit && !mappedKeys?.has(r.rowKey) && !lockedMonths?.has(mi)"
               class="pt-in"
               inputmode="decimal"
               :value="v ?? ''"

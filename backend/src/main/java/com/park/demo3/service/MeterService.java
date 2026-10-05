@@ -94,6 +94,7 @@ public class MeterService {
     private final TenantMapper tenants;             // 批删被已确认的单挡住时点户名
     private final PermissionGuard perms;            // 批删连带删草稿催缴单 = 出账运行那一档(同 generate)
     private final AuditLogService audit;            // 删表(连带删掉的催缴单)不可逆,要留痕
+    private final ChangeLogService changes;         // 手改读数逐格留改前改后(用户 2026-10-05 拍板第 4 条)
 
     public MeterService(MeterMapper meters, MeterReadingMapper readings,
                         AllocPoolResultMapper poolResults, AllocPoolMeterResultMapper poolMeterResults,
@@ -103,8 +104,9 @@ public class MeterService {
                         BuildingMapper buildings, MeterTimelineService timeline,
                         MeterArchiveLogMapper archive, ObjectMapper json, ContractMapper contracts,
                         MeterBookSeenMapper bookSeen, BillNoticeLineMapper noticeLines, TenantMapper tenants,
-                        PermissionGuard perms, AuditLogService audit) {
+                        PermissionGuard perms, AuditLogService audit, ChangeLogService changes) {
         this.noticeLines = noticeLines; this.tenants = tenants; this.perms = perms; this.audit = audit;
+        this.changes = changes;
         this.reviewGuard = reviewGuard; this.buildings = buildings; this.timeline = timeline;
         this.archive = archive; this.json = json; this.contracts = contracts; this.bookSeen = bookSeen;
         this.meters = meters; this.readings = readings;
@@ -782,7 +784,9 @@ public class MeterService {
         r.setSource("manual");
         readings.insert(r);
         timeline.recordChange(List.of(req.ym()), READING_CHANGE);   // SPEC §1.5:读数改了,该月的快照需重算
-        return toReadingDTO(readings.selectById(r.getId()));
+        MeterReading now = readings.selectById(r.getId());
+        logReading(m, null, now, "新增这一行");
+        return toReadingDTO(now);
     }
 
     /** data_change_log.source:读数改动(档案改动由 MeterTimelineService 自己记 meter-archive)。 */
@@ -811,6 +815,8 @@ public class MeterService {
     }
 
     // PUT:改月份/读数/备注;meter 不变。factor_snap:月份不变时保持原快照(快照语义),挪到别的月时取表档案当前倍率
+    // @Transactional:数据修改记录和读数同进同退(记录写不进去,这次改动也不落库)
+    @Transactional
     public MeterReadingDTO updateReading(Integer id, MeterReadingReq req) {
         MeterReading r = readings.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
@@ -820,6 +826,8 @@ public class MeterService {
         if (clash != null && !clash.getId().equals(id))
             throw new BizException(ResultCode.CONFLICT, "该表该月已有读数");
         String oldYm = r.getYm();
+        MeterReading was = new MeterReading();
+        org.springframework.beans.BeanUtils.copyProperties(r, was);   // 改前(下面在 r 上原地改)
         r.setYm(req.ym());
         // 挪月 = 在新月份新录一条:快照照 createReading 取表档案当前倍率。原来旧快照原样跟过去 ——
         // 档案倍率改过之后,删掉本月读数、把一条旧倍率的旧读数挪进本月填上本月的数,本月就按旧倍率计了
@@ -829,16 +837,52 @@ public class MeterService {
         r.setSource("manual");
         readings.updateById(r);
         timeline.recordChange(List.of(oldYm, req.ym()), READING_CHANGE);   // 挪月 = 两个月都变了
-        return toReadingDTO(readings.selectById(id));
+        // 改后从库里重读:fill 把清空的格设成 null,updateById 跳过 null 不落库 —— 拿请求比会记下没发生的「清空」
+        MeterReading now = readings.selectById(id);
+        logReading(requireMeter(r.getMeterId()), was, now, null);
+        return toReadingDTO(now);
     }
 
     // 先取行再删:被删行的 ym 是审核闸的唯一来源,只判存在性拿不到它
+    @Transactional
     public void deleteReading(Integer id) {
         MeterReading r = readings.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
         reviewGuard.assertEditable(ReviewKind.METERS, r.getYm(), null);
         readings.deleteById(id);
         timeline.recordChange(List.of(r.getYm()), READING_CHANGE);
+        logReading(requireMeter(r.getMeterId()), r, null, "删除这一行");
+    }
+
+    // ── 数据修改记录(用户 2026-10-05 拍板「2按你建议，3，4一起做」第 4 条):手改读数逐格记谁、何时、改前、改后 ──
+    // 导入(importRows)不逐格记 —— import_log 记了谁、何时、哪个文件;倍率快照是跟着表档案走的,不算人改的格。
+    private static final List<ChangeLogService.Col<MeterReading>> READING_COLS = List.of(
+        new ChangeLogService.Col<>("上月行至", MeterReading::getPrevTotal),
+        new ChangeLogService.Col<>("本月行至", MeterReading::getCurrTotal),
+        new ChangeLogService.Col<>("上月尖", MeterReading::getPrevSharp),
+        new ChangeLogService.Col<>("上月峰", MeterReading::getPrevPeak),
+        new ChangeLogService.Col<>("上月平", MeterReading::getPrevFlat),
+        new ChangeLogService.Col<>("上月谷", MeterReading::getPrevValley),
+        new ChangeLogService.Col<>("本月尖", MeterReading::getCurrSharp),
+        new ChangeLogService.Col<>("本月峰", MeterReading::getCurrPeak),
+        new ChangeLogService.Col<>("本月平", MeterReading::getCurrFlat),
+        new ChangeLogService.Col<>("本月谷", MeterReading::getCurrValley),
+        new ChangeLogService.Col<>("备注", MeterReading::getNote));
+
+    /** was / now = null 是新加 / 删掉的一条。挪了月份另记一格「月份」。 */
+    private void logReading(Meter m, MeterReading was, MeterReading now, String note) {
+        String ref = readingRef(m, (now != null ? now : was).getYm());
+        List<ChangeLogService.Cell> cells = new ArrayList<>();
+        if (was != null && now != null) cells.add(new ChangeLogService.Cell(ref, "月份", was.getYm(), now.getYm()));
+        ChangeLogService.diff(cells, ref, READING_COLS, was, now);
+        changes.record(ChangeLogService.Tbl.METER_READING, cells, note);
+    }
+
+    /** 「一期电表 A栋101(230220001238) · 2026-08」—— 操作日志上原样显示。 */
+    private static String readingRef(Meter m, String ym) {
+        String code = m.getCode() == null || m.getCode().isBlank() ? "" : "(" + m.getCode() + ")";
+        return ZoneService.label(m.getZone()) + ("water".equals(m.getKind()) ? "水表 " : "电表 ")
+            + m.getName() + code + " · " + ym;
     }
 
     // ── 刀H §H5 按账期批量删除(用户 2026-07-31 点名:自己测试导入的 2023-10 那 80 条要能自己删掉) ──
@@ -971,6 +1015,11 @@ public class MeterService {
         if (!readingIds.isEmpty()) {
             readings.delete(new QueryWrapper<MeterReading>().in("id", readingIds));
             timeline.recordChange(List.of(ym), READING_CHANGE);
+            // 数据修改记录:整月批删记一行摘要,不逐格(一个月上千块表)
+            changes.summary(ChangeLogService.Tbl.METER_READING,
+                ym + " · " + (zone == null || zone.isBlank() ? "" : ZoneService.label(zone))
+                    + (kind == null || kind.isBlank() ? "全部表" : "water".equals(kind) ? "水表" : "电表"),
+                "批量删除了这个月的 " + readingIds.size() + " 条读数");
         }
         if (cascade) {
             poolResults.deleteByYm(ym);

@@ -5,10 +5,20 @@
 // AnaShell periodMode 三态渲染(§五期间语义):full 默认零变化 / year 隐月只年·不写穿粒度单例(复审) / none 隐控件显口径徽章。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { __resetPeriodForTest, usePeriod } from '@/analysis/usePeriod'
+import { __resetAnaSettingsForTest, anaSettings } from '@/analysis/anaSettings'
+import { analysisApi } from '@/api/analysis'
+import { useAuthStore } from '@/stores/auth'
+import { receipt } from '@/utils/receipt'
 
 vi.mock('@/analysis/anaData', () => ({
   fetchAvailableMonths: () => Promise.resolve({ months: ['2025-01', '2025-06', '2025-10'], sources: {} }),
+}))
+// 权限点人话名来自后端 Perm.META(/auth/perms);这里只给要用的一项
+vi.mock('@/api/perms', () => ({
+  loadPermDict: () => Promise.resolve(),
+  permLabel: (k: string) => ({ 'report:edit': '账簿报表' } as Record<string, string>)[k] ?? k,
 }))
 
 import AnaShell, { periodNote } from './AnaShell.vue'
@@ -198,5 +208,66 @@ describe('AnaShell 悬停说明', () => {
     expect((yoy.element as TipEl)._tip?.text).toBe('本屏不支持同比(2024 无月度数据)')
     const mom = w.findAll('.anx-cmp button').find((b) => b.text() === '环比')!
     expect((mom.element as TipEl)._tip, '支持的项不该有说明').toBeUndefined()
+  })
+})
+
+// 目标与阈值存库、全员一份(用户 2026-10-05 拍板「2按你建议，3，4一起做」第 2 条):只有账簿报表编辑权能改
+describe('目标与阈值:库里一份,没有账簿报表编辑权只读', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    __resetAnaSettingsForTest()
+    vi.restoreAllMocks()
+  })
+  const openPop = async (w: VueWrapper) => { await w.find('.anx-icobtn').trigger('click') }
+
+  // 破坏验证:anaSettingsLock 恒返回 '' → 红;六个框里去掉任一个 :disabled → 红;恢复默认去掉 :disabled → 红
+  it('❗没有账簿报表编辑权:六个框和「恢复默认」都置灰,弹层里写一句原因', async () => {
+    useAuthStore().permissions = ['analysis:view']
+    const w = mount(AnaShell)
+    await flushPromises()
+    await openPop(w)
+    const inputs = w.findAll('.anx-pop input')
+    expect(inputs).toHaveLength(6)
+    inputs.forEach((i, n) => expect(i.attributes('disabled'), `第 ${n + 1} 个框没置灰`).toBeDefined())
+    expect(w.findAll('.anx-pop button').find((b) => b.text() === '恢复默认')!.attributes('disabled')).toBeDefined()
+    expect(w.find('.anx-lock').text()).toBe('全园区共用这一份目标与阈值，需要「账簿报表」权限才能改')
+    // 「完成」照常能点
+    expect(w.findAll('.anx-pop button').find((b) => b.text() === '完成')!.attributes('disabled')).toBeUndefined()
+  })
+
+  // 破坏验证:onNum 的 catch 不把框放回原数 → 红;saveAnaSettings 不用回包覆盖 → 屏上数不对,红
+  it('❗有账簿报表编辑权:改一项就存进库,屏上用库里回来的数;存不上框里放回原数、说清原因', async () => {
+    useAuthStore().permissions = ['analysis:view', 'report:edit']
+    // 库里存四位小数:回包是库里那个数,屏上用回包的
+    const save = vi.spyOn(analysisApi, 'saveSettings').mockResolvedValueOnce({ collectTarget: 95.1235 })
+    const fail = vi.spyOn(receipt, 'fail')
+    const w = mount(AnaShell)
+    await flushPromises()
+    await openPop(w)
+    expect(w.find('.anx-lock').exists()).toBe(false)
+    const inp = w.findAll('.anx-pop input')[1]
+    expect(inp.attributes('disabled')).toBeUndefined()
+    ;(inp.element as HTMLInputElement).value = '95.12345'
+    await inp.trigger('change')
+    await flushPromises()
+    expect(save).toHaveBeenCalledWith({ collectTarget: 95.12345 })
+    expect(anaSettings.collectTarget).toBe(95.1235)
+
+    save.mockRejectedValueOnce({ code: 400, message: '「收缴率目标 (%)」要在 50 到 100 之间' })
+    ;(inp.element as HTMLInputElement).value = '40'
+    await inp.trigger('change')
+    await flushPromises()
+    expect(anaSettings.collectTarget).toBe(95.1235)
+    expect((inp.element as HTMLInputElement).value).toBe('95.1235')
+    expect(fail).toHaveBeenCalledWith('「收缴率目标 (%)」要在 50 到 100 之间')
+  })
+
+  // 拍板原话:浏览器里存的不搬,有权的人重填一次。破坏验证:删掉 removeItem 那行 → 红
+  it('❗浏览器里原来存的那份不再读,载入时删掉', async () => {
+    localStorage.setItem('fp-ana-settings', JSON.stringify({ collectTarget: 80 }))
+    vi.resetModules()
+    const m = await import('@/analysis/anaSettings')
+    expect(m.anaSettings.collectTarget).toBe(96)
+    expect(localStorage.getItem('fp-ana-settings')).toBeNull()
   })
 })

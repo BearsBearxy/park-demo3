@@ -97,6 +97,8 @@ vi.mock('@/api/pvMeter', () => ({
   },
 }))
 vi.mock('@/api/params', () => ({ paramsApi: { list: vi.fn(async () => []) } }))
+// 权限点人话名(/auth/perms):这里的账号只有查看权,盈亏平衡滑杆置灰、悬停原因要用它(2026-10-05 目标与阈值进库)
+vi.mock('@/api/perms', () => ({ loadPermDict: vi.fn(async () => {}), permLabel: (k: string) => k }))
 
 import { extractPnlBand } from '@/analysis/anaData'
 import { __resetPeriodForTest } from '@/analysis/usePeriod'

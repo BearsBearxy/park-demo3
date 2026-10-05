@@ -178,6 +178,10 @@ describe('fillRow — 只填空格', () => {
     const derived = [1, 9, 9, null]
     expect(fillRow(rowM, derived).slice(0, 4)).toEqual([1, 3, 0, null])
   })
+  // 锁账月不填(后端改到锁账月整次拒)。破坏验证:fillRow 不看 skip → 红
+  it('skip 里的月不填,已录的照留', () => {
+    expect(fillRow([null, 3, null, null], [1, 9, 9, null], new Set([0, 1])).slice(0, 4)).toEqual([null, 3, 9, null])
+  })
 })
 
 // ── generateMissingRows(P2-G2)— 纯函数,DeriveData 手工构造不走 api mock ──
@@ -261,6 +265,15 @@ describe('generateMissingRows — 缺失映射行生成(H1–H4)', () => {
   it('全空序列/无序列 → 不生成', () => {
     expect(generateMissingRows('s4', [], { 'chg8|fee': Array(12).fill(null) })).toBeNull()
     expect(generateMissingRows('s4', [], {})).toBeNull()
+  })
+
+  // 整月锁账的月不补(用户 2026-10-05 拍板「2按你建议，3，4一起做」第 3 条:后端改到锁账月整次拒)
+  // 破坏验证:generateMissingRows 不看 skip → 红
+  it('skip 的月留空、开着的月照补;只在 skip 的月有数 → 不生成', () => {
+    const res = generateMissingRows('s4', [], { 'chg8|fee': months({ 1: 5, 2: 30 }), 'chg7|cost': months({ 1: 40 }) }, new Set([0]))
+    expect(res?.added).toBe(1)
+    expect(res?.rows.map(r => r.label)).toEqual(['电动车冲电桩收入'])
+    expect(res!.rows[0].m.slice(0, 3)).toEqual([null, 30, null])
   })
 
   it('已齐全 → null', () => {

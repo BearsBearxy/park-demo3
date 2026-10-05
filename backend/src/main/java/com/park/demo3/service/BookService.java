@@ -398,6 +398,18 @@ public class BookService {
         return TemplateDef.customIds(TemplateDef.parse(versions.selectById(verId).getDefinition()));
     }
 
+    /** 某月生效模板的表头:列 id → 屏上的列名(含 hidden 列)。没有册给空表。
+     *  数据修改记录用(用户 2026-10-05 拍板第 4 条):记录里写人在屏上看到的列名,不写 factoryRent / c_xxx。 */
+    public Map<String, String> labelsAt(String screen, Integer ownerId, int year, int month) {
+        LedgerBook b = "ledger".equals(screen) ? books.byCompany(ownerId) : books.byPhase(ownerId);
+        if (b == null) return Map.of();
+        Long verId = pinSvc.resolve(screen, ownerId, year, month, chainBookId(b));
+        Map<String, String> out = new LinkedHashMap<>();
+        for (TemplateDef.Col c : TemplateDef.flatten(TemplateDef.parse(versions.selectById(verId).getDefinition())))
+            out.put(c.id(), c.label());
+        return out;
+    }
+
     // ── 归档列(spec §2:hidden 只往显示侧修) ──
 
     /** 该月有钱、但生效模板不渲染(缺席或 hidden)的自定义列。label 取链上最近一版对它的命名。 */

@@ -199,8 +199,9 @@ export function compareRow(rowM: (number | null)[], derived: (number | null)[]):
 }
 
 // 填入(G3):只填空单元格(null←派生),已录含真 0 保留;进 draft 由调用方走现有保存
-export function fillRow(rowM: (number | null)[], derived: (number | null)[]): (number | null)[] {
-  return Array.from({ length: 12 }, (_, i) => rowM[i] ?? derived[i] ?? null)
+// skip = 不填的月(0 起):「整月锁账」的月后端整次拒,填进去这次保存整次存不上(2026-10-05 对抗复查 PROD-F1)
+export function fillRow(rowM: (number | null)[], derived: (number | null)[], skip?: ReadonlySet<number>): (number | null)[] {
+  return Array.from({ length: 12 }, (_, i) => rowM[i] ?? (skip?.has(i) ? null : derived[i]) ?? null)
 }
 
 // ── 生成缺失映射行(P2-G2)──────────────────────────────────
@@ -211,8 +212,10 @@ export type PnlRowSave = PnlRowDTO
 // 生成条件(H1)=该 series 本年至少 1 非空月;m=派生原值直写(H3);kind=detectKind(H4)。
 // 插位(H4):同分组最后 detail 行后 → 无 detail 则组末行后 → 组不存在则按 MAP 序追加表尾成新组块。
 // 返回完整新行序列(既有行+生成行,rowKey/sortOrder 重建即 PUT payload);无可生成 → null。
+// skip = 不补的月(0 起):「整月锁账」的月后端整次拒(用户 2026-10-05 拍板「2按你建议，3，4一起做」第 3 条),
+// 那几个月留空、开着的月照补;只在这几个月有数的行算全空,不生成。
 export function generateMissingRows(
-  schedule: string, rows: PnlRowDTO[], data: DeriveData,
+  schedule: string, rows: PnlRowDTO[], data: DeriveData, skip?: ReadonlySet<number>,
 ): { rows: PnlRowSave[]; added: number } | null {
   const existing = new Set(rows.map(r => `${normalizeHeader(r.groupLabel)}|${normalizeHeader(r.label)}`))
   const after = new Map<number, PnlRowDTO[]>()   // 既有行 idx → 其后插入的生成行
@@ -220,7 +223,8 @@ export function generateMissingRows(
   let added = 0
   for (const e of DERIVE_MAP) {
     if (e.schedule !== schedule || existing.has(`${e.group}|${e.label}`)) continue
-    const series = data[e.series]
+    const raw = data[e.series]
+    const series = raw && skip?.size ? raw.map((v, i) => (skip.has(i) ? null : v)) : raw
     if (!series || series.every(v => v === null)) continue   // 全空不生成噪音行(H1)
     added++
     const row: PnlRowDTO = {

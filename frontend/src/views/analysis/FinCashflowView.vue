@@ -239,7 +239,7 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
           <!-- 次图 s4:收缴率 vs 目标(SVG 子弹条原语保留) -->
           <div class="av2-card av2-s4">
             <div class="av2-card-h"><span class="t">收缴率 vs 目标</span>
-              <span class="hint">目标 {{ anaSettings.collectTarget }}%(设置弹层可调)</span></div>
+              <span class="hint">目标 {{ anaSettings.collectTarget }}%</span></div>
             <AnaBarRows style="margin-top: 6px">
               <AnaBarRow v-for="p in ledgerPeriods" :key="p.ym" :name="p.ym" :value="p.rate" :max="100"
                 :target="anaSettings.collectTarget"

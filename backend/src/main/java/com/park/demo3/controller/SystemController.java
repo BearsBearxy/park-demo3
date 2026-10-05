@@ -47,9 +47,10 @@ public class SystemController {
     @DeleteMapping("/roles/{id}")
     public void deleteRole(@PathVariable Integer id) { svc.deleteRole(id); }
 
-    @Operation(summary = "操作日志时间线（五表 union，按时间倒序；src=param|import|auth|review|meter）")
+    @Operation(summary = "操作日志时间线（六表 union，按时间倒序；src=param|import|auth|review|meter|change；tbl=只看某张表的数据修改；只回查看者有权看的行）")
     @GetMapping("/logs")
     public AuditPageDTO logs(@RequestParam(required = false) String src,
+                            @RequestParam(required = false) String tbl,
                             @RequestParam(required = false) String actor,
                             @RequestParam(required = false)
                             @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
@@ -59,7 +60,7 @@ public class SystemController {
                             java.time.LocalDate to,
                             @RequestParam(defaultValue = "1") int page,
                             @RequestParam(defaultValue = "50") int size) {
-        return svc.auditLogs(src, actor, from, to, page, size);
+        return svc.auditLogs(src, tbl, actor, from, to, page, size);
     }
 
     // ── 用户 ──

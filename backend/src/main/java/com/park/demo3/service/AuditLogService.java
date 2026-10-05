@@ -23,19 +23,27 @@ public class AuditLogService {
     public AuditLogService(AuthAuditLogMapper logs) { this.logs = logs; }
 
     public void log(String action, String target, String detail) {
-        write(action, target, null, detail);
+        write(actor(), action, target, null, detail);
     }
 
     /** 代他人执行的动作（主管授权接管编辑锁）：必须记两个人。 */
     public void logAuthorized(String action, String target, String authorizer, String detail) {
-        write(action, target, authorizer, detail);
+        write(actor(), action, target, authorizer, detail);
     }
 
-    private void write(String action, String target, String authorizer, String detail) {
+    /**
+     * 操作人不是当前登录者的动作:登录本身(用户 2026-10-05 拍板记登录成败)。
+     * 登录接口上 SecurityContext 是匿名的,actor() 会是 anonymousUser,所以由调用方给。
+     */
+    public void logAs(String actor, String action, String target, String detail) {
+        write(actor, action, target, null, detail);
+    }
+
+    private void write(String actor, String action, String target, String authorizer, String detail) {
         try {
             AuthAuditLog l = new AuthAuditLog();
             l.setTs(LocalDateTime.now());
-            l.setActor(actor());
+            l.setActor(cut(actor, 64));
             l.setAction(action);
             // 截到列宽(V102:target 128 / detail 255)。不截的话超长的理由整条 INSERT 失败,
             // 被下面的 catch 吞成一行服务端日志 —— 审计凭空少一条,屏上什么都看不出来(unconfirm 原来就这样)。
@@ -54,7 +62,8 @@ public class AuditLogService {
         return s == null || s.length() <= max ? s : s.substring(0, max);
     }
 
-    private static String actor() {
+    /** 当前登录者的用户名。ChangeLogService 同口径,共用这一份。 */
+    static String actor() {
         var a = SecurityContextHolder.getContext().getAuthentication();
         return a == null || a.getName() == null ? "" : a.getName();
     }

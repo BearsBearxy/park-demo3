@@ -50,41 +50,76 @@ public class SystemService {
     private final NoticeService notices;
     private final ElevationService elevation;
     private final AuthService auth;
+    private final com.park.demo3.security.PermissionRegistry registry;   // 操作日志导入那一路照导入中心的读规则
 
     public SystemService(AuthUserMapper users, AuthRoleMapper roles, AuthRolePermMapper rolePerms,
                          AuthUserRoleMapper userRoles, PasswordEncoder enc,
                          UserPermissionCache cache, AuditLogService audit, AuditQueryMapper auditQuery,
                          SessionService sessions, NoticeService notices, ElevationService elevation,
-                         AuthService auth) {
+                         AuthService auth, com.park.demo3.security.PermissionRegistry registry) {
         this.users = users; this.roles = roles; this.rolePerms = rolePerms;
         this.userRoles = userRoles; this.enc = enc; this.cache = cache;
         this.audit = audit; this.auditQuery = auditQuery; this.sessions = sessions; this.notices = notices;
-        this.elevation = elevation; this.auth = auth;
+        this.elevation = elevation; this.auth = auth; this.registry = registry;
     }
 
     // ══════════ 操作日志时间线（RBAC-SPEC §7.2） ══════════
 
     /**
-     * 三张来源表 union 后按时间倒序。**分页在 SQL 里做** —— param_change_log 随每次
+     * 几张来源表 union 后按时间倒序。**分页在 SQL 里做** —— param_change_log 随每次
      * 改参数增长，全捞进内存再切正是 QueryHygieneTest 防的那种「返回行数只涨不跌」。
      *
-     * @param src  param / import / auth / review / meter，null=全部
+     * **谁看得见哪几行**(用户 2026-10-05 拍板:看得到操作日志,不等于看得到工资和别的打不开的数据):
+     * 一行说的是哪张表,就要那张表的查看权 —— 数据修改记录按 {@link ChangeLogService.Tbl#viewPerm},
+     * 计费参数那一路要「计费参数 · 查看」(里面是单价的改前改后),表档案那一路要「抄表 · 查看」。
+     * 导入那一路照导入中心自己的读规则(PermissionRegistry 里 /api/import-log/** 那一条,八个模块查看权任一):
+     * 只有「系统管理 · 查看」的账号打不开导入中心,这里也不给看工资表的文件名和人数;
+     * 账号与角色那一路里作废 / 撤回催缴单的行要「出账与催缴单 · 查看」,删表的行要「抄表 · 查看」;
+     * 审核那一路照旧全给 —— /api/review 本来就是任何登录账号都能读(审核状态与退回理由)。(对抗复查 SEC-2)
+     * 判定下推进 SQL 的每个分支,条数、分页、操作人下拉三处一致;不靠前端藏。回包 sources = 看得见的来源,下拉只列它们。
+     *
+     * @param src  param / import / auth / review / meter / change，null=全部
+     * @param tbl  只看某张表的数据修改记录(ChangeLogService.Tbl#code);给了它 src 就只能是 change 或不给
      * @param to   传日期时按「当天含全天」处理（前端给的是 2026-08-22，用户的意思是含这一天）
      */
-    public AuditPageDTO auditLogs(String src, String actor, LocalDate from, LocalDate to,
+    public AuditPageDTO auditLogs(String src, String tbl, String actor, LocalDate from, LocalDate to,
                                   int page, int size) {
         String s = (src == null || src.isBlank()) ? null : src.trim();
-        if (s != null && !List.of("param", "import", "auth", "review", "meter").contains(s))
+        if (s != null && !List.of("param", "import", "auth", "review", "meter", "change").contains(s))
             throw new BizException(ResultCode.BAD_REQUEST, "未知的日志来源：" + s);
+        String tb = (tbl == null || tbl.isBlank()) ? null : tbl.trim();
+        if (tb != null) {
+            if (Arrays.stream(ChangeLogService.Tbl.values()).noneMatch(x -> x.code.equals(tb)))
+                throw new BizException(ResultCode.BAD_REQUEST, "未知的表：" + tb);
+            if (s != null && !s.equals("change"))
+                throw new BizException(ResultCode.BAD_REQUEST, "按表筛只对「数据修改」这一路有效");
+            s = "change";
+        }
         String a = (actor == null || actor.isBlank()) ? null : actor.trim();
         LocalDateTime f = from == null ? null : from.atStartOfDay();
         LocalDateTime t = to == null ? null : to.plusDays(1).atStartOfDay();   // 含结束当天
 
+        UserPermissionCache.UserAuth me = cache.get(currentUsername());
+        Set<String> mine = me == null ? Set.of() : me.perms();
+        boolean seeParam = mine.contains(Perm.PARAM_VIEW), seeMeter = mine.contains(Perm.METER_VIEW);
+        boolean seeImport = registry.resolveRead("/api/import-log/overview").stream().anyMatch(mine::contains);
+        boolean seeBilling = mine.contains(Perm.BILLING_VIEW);
+        List<String> tbls = Arrays.stream(ChangeLogService.Tbl.values())
+            .filter(x -> mine.contains(x.viewPerm)).map(x -> x.code).toList();
+        List<String> sources = new ArrayList<>();
+        if (seeParam) sources.add("param");
+        if (seeImport) sources.add("import");
+        sources.add("auth");
+        sources.add("review");
+        if (seeMeter) sources.add("meter");
+        if (!tbls.isEmpty()) sources.add("change");
+
         int p = Math.max(1, page);
         int sz = Math.min(200, Math.max(1, size));
-        long total = auditQuery.count(s, a, f, t);
-        List<AuditRowDTO> rows = auditQuery.page(s, a, f, t, sz, (p - 1) * sz);
-        return new AuditPageDTO(rows, total, p, sz, auditQuery.actors());
+        long total = auditQuery.count(s, tb, a, f, t, seeParam, seeImport, seeBilling, seeMeter, tbls);
+        List<AuditRowDTO> rows = auditQuery.page(s, tb, a, f, t, seeParam, seeImport, seeBilling, seeMeter, tbls, sz, (p - 1) * sz);
+        return new AuditPageDTO(rows, total, p, sz,
+            auditQuery.actors(seeParam, seeImport, seeBilling, seeMeter, tbls), tbls, sources);
     }
 
     // ══════════ 字典 ══════════
@@ -132,7 +167,7 @@ public class SystemService {
         r.setRemark(req.remark());
         roles.insert(r);
         replacePerms(r.getId(), req.perms());
-        audit.log("role.create", "role:" + r.getCode(), "权限 " + validPerms(req.perms()).size() + " 项");
+        audit.log("role.create", "role:" + r.getCode(), permDiff(Set.of(), validPerms(req.perms())));
         cache.reload();
         return oneRole(r.getId());
     }
@@ -158,7 +193,7 @@ public class SystemService {
         r.setRemark(req.remark());
         roles.updateById(r);
         replacePerms(id, next);
-        audit.log("role.update", "role:" + r.getCode(), "权限 " + next.size() + " 项");
+        audit.log("role.update", "role:" + r.getCode(), permDiff(before, next));
         cache.reload();
         if (changed) {
             // 持这个角色的每个人(NoticeService.add 跳过操作人自己)
@@ -385,6 +420,24 @@ public class SystemService {
             throw new BizException(ResultCode.CONFLICT,
                 "这一步会摘掉你自己的「系统管理 · 管理」权限，保存后你就不能再改账号和角色了。"
               + "如果确实要收回，请先让另一位管理员操作。");
+    }
+
+    /**
+     * 角色权限加了哪几项、去了哪几项,用人话名(用户 2026-10-05 拍板:原来只记「权限 N 项」,看不出动了什么)。
+     * 加和去互不相交,全部 28 项一起加也在 detail 的 255 字以内(SystemServicePermDiffTest 钉着)。
+     */
+    static String permDiff(Collection<String> before, Collection<String> after) {
+        Set<String> b = new HashSet<>(before), a = new HashSet<>(after);
+        Comparator<String> byAll = Comparator.comparingInt(Perm.ALL::indexOf);
+        List<String> add = a.stream().filter(x -> !b.contains(x)).sorted(byAll).map(Perm::label).toList();
+        List<String> del = b.stream().filter(x -> !a.contains(x)).sorted(byAll).map(Perm::label).toList();
+        // 没增没减不说「权限没变」:那一行的动作是「改角色」(只改名 / 备注也走这里);新建时一项没勾也谈不上「没变」
+        if (add.isEmpty() && del.isEmpty()) return a.isEmpty() ? "没勾任何权限" : "没动权限，共 " + a.size() + " 项";
+        List<String> parts = new ArrayList<>();
+        if (!add.isEmpty()) parts.add("加 " + add.size() + " 项：" + String.join("、", add));
+        if (!del.isEmpty()) parts.add("去 " + del.size() + " 项：" + String.join("、", del));
+        parts.add("现共 " + a.size() + " 项");
+        return String.join("；", parts);
     }
 
     // ══════════ 分级(RBAC-SPEC §12,用户 2026-10-04 拍板) ══════════

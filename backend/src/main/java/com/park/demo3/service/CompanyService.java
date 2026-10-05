@@ -49,17 +49,19 @@ public class CompanyService {
 
     private final BookService bookService;
     private final ReviewGuard reviewGuard;
+    private final ChangeLogService changes;
 
     public CompanyService(ManagementCompanyMapper companies, CompanyAccountMapper accounts,
                           MonthlyLedgerMapper ledger,
                           ReportAmountMapper reportAmounts, ReportCustomRowMapper reportCustomRows,
                           ReportAccountMapper reportAccounts, BillNoticeMapper notices,
-                          BookService bookService, ReviewGuard reviewGuard) {
+                          BookService bookService, ReviewGuard reviewGuard, ChangeLogService changes) {
         this.companies = companies; this.accounts = accounts; this.ledger = ledger;
         this.reportAmounts = reportAmounts; this.reportCustomRows = reportCustomRows;
         this.reportAccounts = reportAccounts; this.notices = notices;
         this.bookService = bookService;
         this.reviewGuard = reviewGuard;
+        this.changes = changes;
     }
 
     /** 删公司会跨全部年份清掉这四把键的数据,scope 恒是 companyId。 */
@@ -176,8 +178,13 @@ public class CompanyService {
             }
         }
         bookService.dropLedgerBook(id);   // 册随司退场;模板版本在全局链上,不跟着走
-        ledger.delete(new QueryWrapper<MonthlyLedger>().eq("company_id", id));
-        reportAmounts.delete(new QueryWrapper<ReportAmount>().eq("company_id", id));
+        int ledgerGone = ledger.delete(new QueryWrapper<MonthlyLedger>().eq("company_id", id));
+        int reportGone = reportAmounts.delete(new QueryWrapper<ReportAmount>().eq("company_id", id));
+        // 数据修改记录(用户 2026-10-05 拍板第 4 条):整家公司各年各月一起删,不逐格记(几年的台账能有上万格),各记一行摘要
+        if (ledgerGone > 0)
+            changes.summary(ChangeLogService.Tbl.LEDGER, c.getName(), "删除了这家公司，它名下 " + ledgerGone + " 行台账（所有年月）一并删掉");
+        if (reportGone > 0)
+            changes.summary(ChangeLogService.Tbl.REPORT, c.getName(), "删除了这家公司，它名下 " + reportGone + " 格三大报表金额（所有年月）一并删掉");
         reportCustomRows.delete(new QueryWrapper<ReportCustomRow>().eq("company_id", id));
         reportAccounts.delete(new QueryWrapper<ReportAccount>().eq("company_id", id));
         companies.deleteById(id);

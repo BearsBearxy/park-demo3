@@ -18,6 +18,17 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class LedgerServiceTest {
+    /**
+     * 控制器直接调三参 bindRow(LedgerController「行级绑定」):它不在事务里的话,改绑先提交,
+     * 数据修改记录写不进去时绑定照留、操作日志里没有这一条(2026-10-05 对抗复查 SEC-5)。
+     * 破坏验证:去掉三参上的 @Transactional → 红。
+     */
+    @Test
+    void bindRowTheControllerCallsIsTransactional() throws Exception {
+        assertThat(LedgerService.class.getMethod("bindRow", Integer.class, Integer.class, boolean.class)
+            .isAnnotationPresent(org.springframework.transaction.annotation.Transactional.class)).isTrue();
+    }
+
     MonthlyLedgerMapper lm = Mockito.mock(MonthlyLedgerMapper.class);
     ManagementCompanyMapper cm = Mockito.mock(ManagementCompanyMapper.class);
     TenantMapper tm = Mockito.mock(TenantMapper.class);
@@ -25,7 +36,7 @@ class LedgerServiceTest {
     BookPinService pm = Mockito.mock(BookPinService.class);   // bookOfCompany 默认 null → 固化 pin 空转
         // 审核闸(R1 T7)在这一层不是被测对象:桩掉,让这些用例继续只钉派生/归一口径
     com.park.demo3.security.ReviewGuard rg = Mockito.mock(com.park.demo3.security.ReviewGuard.class);
-LedgerService svc = new LedgerService(lm, cm, tm, bm, pm, rg);
+LedgerService svc = new LedgerService(lm, cm, tm, bm, pm, rg, Mockito.mock(ChangeLogService.class));
 
     // --- fixtures ---
     Tenant tenant(int id, int status) {

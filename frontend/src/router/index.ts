@@ -7,6 +7,7 @@ import { useTabsStore } from '@/stores/tabs'
 import { useUiStore } from '@/stores/ui'
 import { useUpdateStore } from '@/stores/update'
 import { AUTH_REASON_KEY } from '@/api'
+import { loadAnaSettings } from '@/analysis/anaSettings'
 
 const PlaceholderView = () => import('@/views/PlaceholderView.vue')
 const Gallery = () => import('@/views/Gallery.vue')
@@ -164,6 +165,9 @@ router.beforeEach(async (to) => {
   if (auth.isAuthed && !canViewPage(to.fullPath, auth.can)) {
     return { path: '/no-access', query: { to: to.fullPath } }
   }
+  // 目标与阈值在库里、全员一份(用户 2026-10-05 拍板第 2 条):进分析层的屏之前先取到,
+  // 屏上不先按默认值画一遍、再跳成库里的数。只有第一次真的等,之后是现成的。
+  if (auth.isAuthed && (to.meta as Record<string, unknown>).layer === 'analysis') await loadAnaSettings()
 })
 
 router.afterEach((to, _from, failure) => {

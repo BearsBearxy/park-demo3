@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 光伏投资回收(pv-roi)v2 — spec §二.14:累计收益爬坡线 + 投资额 markLine(交点=预估回收点
 // markPoint 标注)+ 回收进度条 + 分期收益柱(点柱→该期月度明细卡)。
-// 数据 = pv_record 全月份(fetchPvAll,口径与 v1 一致);投资额=「目标与阈值」pvInvestment(万,localStorage)。
+// 数据 = pv_record 全月份(fetchPvAll,口径与 v1 一致);投资额=「目标与阈值」pvInvestment(万;2026-10-05 起在库里、全园一份)。
 // 分栋抄表分析已独立成屏(pv-meter-analysis,PV-ANALYSIS-SPEC §00):本屏只留附表6 口径的投资回收。
 // 数据变换纯函数抽于 pvRoi.logic.ts(单测)。
 import { computed, onMounted, ref, watch } from 'vue'
@@ -224,7 +224,7 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
       <AnaEmpty
         v-else-if="!(invest > 0)"
         label="光伏投资额未填"
-        hint="点右上角「目标与阈值」，填光伏投资（万元）后才能算回收进度；这个数只存在本浏览器"
+        hint="点右上角「目标与阈值」，填光伏投资（万元）后才能算回收进度；全园区共用这一个数，要有「账簿报表」权限才能填"
       />
 
       <template v-else>

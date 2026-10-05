@@ -28,7 +28,7 @@ class CompanyServiceTest {
     // 删公司要过审核闸(见 CompanyService.delete):本类是纯单元测试,mock 一个不拦的闸,
     // 闸本身的行为由 ReviewGuardIT 钉,挂点由 ReviewGuardMasterDataIT 钉
     com.park.demo3.security.ReviewGuard rg = Mockito.mock(com.park.demo3.security.ReviewGuard.class);
-    CompanyService svc = new CompanyService(cm, am, lm, ram, rcm, racm, nm, bm, rg);
+    CompanyService svc = new CompanyService(cm, am, lm, ram, rcm, racm, nm, bm, rg, Mockito.mock(ChangeLogService.class));
 
     ManagementCompany co(int id, String name) {
         ManagementCompany c = new ManagementCompany();

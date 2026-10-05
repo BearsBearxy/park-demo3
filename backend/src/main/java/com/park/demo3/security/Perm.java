@@ -147,7 +147,7 @@ public final class Perm {
         new Meta(SALARY_VIEW,        "工资 · 查看",     "逐人逐月工资明细；勾「工资录入」会自动带上，别的编辑权都不包含这一项", "salary", "view"),
         new Meta(SALARY_EDIT,        "工资录入",        "附表 12 工资明细的新增、改备注、删除与导入（含导入中心）；不能请主管当场授权", "salary", "edit"),
         new Meta(REPORT_VIEW,        "报表 · 查看",     "三大报表、损益附表 1–5、收入核对", "report", "view"),
-        new Meta(REPORT_EDIT,        "账簿报表",        "三大报表、损益附表 1–5、收入核对的处置标记", "report", "edit"),
+        new Meta(REPORT_EDIT,        "账簿报表",        "三大报表、损益附表 1–5、收入核对的处置标记；经营分析的目标与阈值（含盈亏平衡的固定成本系数）", "report", "edit"),
         new Meta(ANALYSIS_VIEW,      "经营分析 · 查看", "经营分析层各屏；不需要各模块的查看权，联系人电话与收款账号照样打码", "analysis", "view"),
         new Meta(SYSTEM_VIEW,        "系统管理 · 查看", "能看到用户列表、角色配置与操作日志", "system", "view"),
         new Meta(SYSTEM_EDIT,        "系统管理 · 管理", "新建/停用账号、配置角色权限", "system", "edit"),

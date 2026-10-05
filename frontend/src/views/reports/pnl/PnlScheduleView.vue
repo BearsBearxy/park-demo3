@@ -4,7 +4,7 @@
 // 路由 meta.value → PNL_SCHEDULES config(App.vue KeepAlive key=value:epoch,5 条路由 value 不同不串台)。
 // 动线:⓪ SchedYearGate(年份门,P1 惯例) → 年度矩阵(SchedHeader + PnlTable)。
 // 编辑态:单元格金额 draft(rowKey|monthIdx,null↔数值)/逐行备注/新增行(居中弹窗 PAGE-BEHAVIOR-SPEC §2,kind 自动识)/多选批量删行(J7,§7 确认,沿单删 draft 语义),
-// 保存 = PUT 整年 clear+insert(rows 重建 rowKey r<n> + sortOrder);退出有改动走 SaveConfirmDialog。
+// 保存 = PUT 整年(服务端按 分组+科目 对行,只写变了的格;改到整月锁账的月整次拒,那句话原样进失败回执);退出有改动走 SaveConfirmDialog。
 // §6:overview 加载门;切年不清 data(旧表保留到新数据落位,模板按 data.year===year 把关) + seq 竞态守卫。
 // 导入:registry pnl_s1..s5(sheetMatch 挑表 + 年自动识,识别年 ≠ 当前年时自动切年)。
 // 派生对照(P2-G):进年明细懒加载 loadDeriveData(缓存 per year,失败静默不阻塞 G6);
@@ -15,6 +15,7 @@ import { ref, computed, onMounted } from 'vue'
 import { S } from '@/utils/lockScopes'
 import { useRoute } from 'vue-router'
 import { pnlApi } from '@/api/pnl'
+import { reviewApi } from '@/api/review'
 import { PNL_SCHEDULES, detectKind, rowYearTotal } from '@/reports/pnlSchedules'
 import { loadDeriveData, deriveRow, compareRow, fillRow, generateMissingRows, isMappedRow, type DeriveData, type CompareResult } from '@/reports/pnlDerive'
 import { parserProps, runImport } from '@/utils/importRegistry'
@@ -133,14 +134,35 @@ async function tryGenerate(y: number) {
   const dv = deriveData.value
   if (!d || d.year !== y || !dv) return   // 两侧就绪才生成(派生失败 dv=null 不消耗尝试)
   generatedYears.add(y)
-  const gen = generateMissingRows(config.schedule, d.rows, dv)
+  let gen = generateMissingRows(config.schedule, d.rows, dv)
   if (!gen) return
   try {
-    await pnlApi.save(config.schedule, y, { rows: gen.rows })   // 走现有整年 PUT(H5 零后端)
+    // 「整月锁账」的月不补(用户 2026-10-05 拍板「2按你建议，3，4一起做」第 3 条:后端改到锁账月整次拒)——
+    // 不跳过的话补出来的行带着那几个月的数,整批被拒,开着的月也补不上。拉不到锁账月就照补,被拒照旧静默
+    const skip = await closedIdxOf(y)
+    if (skip.size) gen = generateMissingRows(config.schedule, d.rows, dv, skip)
+    if (!gen) return
+    await pnlApi.save(config.schedule, y, { rows: gen.rows }, true)   // 走现有整年 PUT;auto:记录上注明是自动补的
     if (year.value !== y || edit.value) return   // PUT 期间切年/进编辑 → 不覆写当前视图
     await loadYear(y)         // 重拉:生成行获正式 rowKey,overlay 徽标照常渲染(初始已证√)
     await reloadOverview()    // 年份门行数立即同步(H1)
   } catch { /* PUT/重拉失败静默:表照常显示(H1) */ }
+}
+
+// 「整月锁账」的月(0 起)。后端改到这几个月整次拒(同上第 3 条):编辑态这几列只读、「填入」跳过 ——
+// 不在屏上挡住,改了一屏到保存才知道白改,「全部填入派生值」更是每次都填进锁账月(对抗复查 PROD-F1)。
+// 进编辑态取一次(期间有人撤了审核,重进编辑就对);拉不到按没有锁账月,保存时后端照拒、那句话进回执
+async function closedIdxOf(y: number): Promise<Set<number>> {
+  const closed = await reviewApi.closedMonths().catch(() => [] as string[])
+  return new Set(closed.filter(m => m.startsWith(`${y}-`)).map(m => +m.slice(5) - 1))
+}
+const lockedIdx = ref<Set<number>>(new Set())
+async function loadLocked() {
+  const y = year.value
+  lockedIdx.value = new Set()
+  if (y == null) return
+  const s = await closedIdxOf(y)
+  if (year.value === y && edit.value) lockedIdx.value = s
 }
 
 // 命中行 rowKey → 对照结果+派生序列(displayRows 已套 draft,编辑中实时重比)
@@ -168,7 +190,7 @@ function onFill(rowKey: string) {
   const rd = rowDerive.value[rowKey]
   const row = displayRows.value.find(r => r.rowKey === rowKey)
   if (!rd || !row) return
-  const filled = fillRow(row.m, rd.derived)
+  const filled = fillRow(row.m, rd.derived, lockedIdx.value)
   const m = { ...draftM.value }
   for (let i = 0; i < 12; i++) if (filled[i] !== row.m[i]) m[`${rowKey}|${i}`] = filled[i]
   draftM.value = m
@@ -304,7 +326,7 @@ function submitAdd() {
   addDlg.value = false
 }
 
-// ── 保存(PUT 整年 clear+insert;rowKey 重建 r<n> + sortOrder) / 退出确认 ──
+// ── 保存(PUT 整年,服务端只写变了的格;rowKey 重建 r<n> 只是占位,服务端按 分组+科目 对行) / 退出确认 ──
 const saveConfirm = ref(false)
 // ── 被接管时的「复制我的改动」:改值/改备注/新增行/删除行 四类各一段 ──
 // 草稿是覆盖层(draftM/draftNote/added/removed),被踢后 resetEdit 整层清掉 —— 不复制就丢。
@@ -332,7 +354,7 @@ function draftAsTsv(): string {
 function toggleEdit(forced = false) {
   // forced = 锁已没了(同 S10.finishEdit):脏检查确认框在失锁后只是一个无锁写入口
   if (forced) { resetEdit(); return }
-  if (!edit.value) { edit.value = true; return }
+  if (!edit.value) { edit.value = true; void loadLocked(); return }
   if (dirty.value > 0) { saveConfirm.value = true; return }
   resetEdit()   // 无改动退出也走 reset:清选集(J7)
 }
@@ -356,7 +378,7 @@ function discard() {
   resetEdit()
 }
 
-// ── 导入(registry pnl_s{n}:整年 clear+insert;年优先取识别年,失败回退当前年槽) ──
+// ── 导入(registry pnl_s{n}:整年替换,服务端只写变了的格;年优先取识别年,失败回退当前年槽) ──
 // 导入弹窗的 runner(UI-OVERLAY-SPEC §8):弹窗不关,写 + 记 import_log → 刷新;失败交给弹窗的失败卡(不走回执,「返回修改」再导)。
 const importing = ref(false)
 async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
@@ -456,6 +478,7 @@ const { note: deepNote } = useDeepPeriod({
             <Button
               v-if="Object.keys(rowDerive).length"
               variant="outline" size="sm" :disabled="saving" @click="fillAllDerived"
+              v-tip="lockedIdx.size ? '已锁账的月份不会填入' : undefined"
             >
               <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>
               全部填入派生值
@@ -481,6 +504,7 @@ const { note: deepNote } = useDeepPeriod({
           :edit="edit"
           :derive="rowDerive"
           :mapped-keys="mappedKeys"
+          :locked-months="lockedIdx"
           :selected="selected"
           @input="onInput"
           @note="onNote"

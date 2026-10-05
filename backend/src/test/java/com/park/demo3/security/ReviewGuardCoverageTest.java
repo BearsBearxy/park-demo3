@@ -538,7 +538,9 @@ class ReviewGuardCoverageTest {
         "CompanyService#create", "CompanyService#update",
         "CompanyService#addAccount", "CompanyService#updateAccount", "CompanyService#deleteAccount",
         "TenantService#create", "TenantService#update",
-        "BillsService#savePaymap");
+        "BillsService#savePaymap",
+        // 经营分析目标与阈值(V138,用户 2026-10-05 拍板第 2 条):analysis_setting 与 value_change_log 都没有月份列
+        "AnalysisSettingService#save");
 
     @Test
     @DisplayName("白名单要小 —— 它是例外不是常态")

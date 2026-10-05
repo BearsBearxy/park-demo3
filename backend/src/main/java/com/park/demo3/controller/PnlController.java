@@ -31,14 +31,16 @@ public class PnlController {
         return svc.year(schedule, year);
     }
 
-    @Operation(summary = "保存整年(clear+insert,row_key 服务端合成)") @PutMapping("/{year}")
+    // auto=true:屏上打开这一年时自动补的行(PnlScheduleView.tryGenerate),只给数据修改记录加注,不改写法
+    @Operation(summary = "保存整年(只写变了的格;改到整月锁账的月整次拒)") @PutMapping("/{year}")
     public PnlYearDTO save(@PathVariable String schedule,
                            @PathVariable @Min(2000) @Max(2100) int year,
-                           @RequestBody PnlSaveRequest req) {
-        return svc.save(schedule, year, req);
+                           @RequestBody PnlSaveRequest req,
+                           @RequestParam(defaultValue = "false") boolean auto) {
+        return svc.save(schedule, year, req, auto);
     }
 
-    @Operation(summary = "导入整年(clear+insert)") @PostMapping("/import")
+    @Operation(summary = "导入整年(只写变了的格;改到整月锁账的月整次拒)") @PostMapping("/import")
     public ImportResultDTO importRows(@PathVariable String schedule,
                                       @RequestParam @Min(2000) @Max(2100) int year,
                                       @RequestBody PnlImportRequest req) {

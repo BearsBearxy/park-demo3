@@ -306,6 +306,11 @@ class PermissionCoverageTest {
         assertThat(reg.resolveRead("/api/auth/approvals/candidates")).containsExactly(PermissionRegistry.ANY_AUTHENTICATED);
         // 部署配置(2026-10-05):前端外壳一登录就取,挂任何查看点都会让那个账号丢按钮 / 丢更新记录
         assertThat(reg.resolveRead("/api/app/config")).containsExactly(PermissionRegistry.ANY_AUTHENTICATED);
+        // 目标与阈值(用户 2026-10-05 拍板第 2 条):分析查看权就能读,改要账簿报表编辑权;/api/analysis 下别的写照旧拒绝
+        assertThat(reg.resolveRead("/api/analysis/settings")).containsExactly(Perm.ANALYSIS_VIEW);
+        assertThat(reg.resolve(HttpMethod.PUT, "/api/analysis/settings")).containsExactly(Perm.REPORT_EDIT);
+        assertThat(reg.resolve(HttpMethod.POST, "/api/analysis/settings")).isNull();
+        assertThat(reg.resolve(HttpMethod.PUT, "/api/analysis/months")).isNull();
         for (String fresh : List.of("/api/auth/approvals/history", "/api/auth/whatever", "/api/notices/all",
                                     "/api/review/export", "/api/probe/dump", "/api/app/secrets")) {
             assertThat(reg.resolveRead(fresh)).as(fresh).isNull();

@@ -91,7 +91,7 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 | `billing-issue:edit` | 催缴单确认、签发、作废、标记已导出、收款公司槽 |
 | `entry:edit` | 月度台账、附表 6/7/8/10/11、办公·三期水电、年度预算导入。**附表 12 工资 2026-10-04 起不归它**（§11.8） |
 | `salary:edit` | 附表 12 工资明细的新增、改备注、删除、批删、导入、清空本期导入（含导入中心的工资磁贴）、交审附表 12；隐含 `salary:view`；**进 `Perm.NOT_ELEVATABLE`**（§11.8） |
-| `report:edit` | 三大报表、损益附表 1–5、收入核对处置标记 |
+| `report:edit` | 三大报表、损益附表 1–5、收入核对处置标记；**2026-10-05 起含经营分析的「目标与阈值」**（§14.3，角色屏上这一格叫「账簿报表」） |
 | `system:edit` | 用户、角色、日志的管理 |
 | `system:view` | **唯一的读权限点**：能不能看到用户列表、角色配置、操作日志 |
 | `lock:takeover` | **能授权别人接管**编辑锁（不是能自己接管），见 CONCURRENCY-SPEC §4.3 |
@@ -99,7 +99,8 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 | `review:approve` | **审核通过 / 退回 / 撤销**某张表某个月（SIDEBAR-UX-REDESIGN §7）。交审不设独立权限点 —— 该表的 edit 权即交审权，映射见下面 §2.2。**进 `Perm.NOT_ELEVATABLE`**：审核能当场借 30 分钟的话，录审分离当场作废（录入方可以请主管借一次权把自己刚录的东西审掉） |
 
 `analysis` **没有权限点** —— 分析层是纯只读层。它唯一落库的写是年度预算导入，按拍板 #9 归 `entry:edit`；
-另一个「写」是 `anaSettings.ts` 的目标与阈值，存 localStorage 不落库（文件头注释明写）。
+~~另一个「写」是 `anaSettings.ts` 的目标与阈值，存 localStorage 不落库（文件头注释明写）。~~
+→ 2026-10-05 起目标与阈值落库、全员一份，写要 `report:edit`（用户拍板，§14.3）。
 
 ### 2.1 四次拆分的理由
 
@@ -314,6 +315,7 @@ POST /api/review/*/recall    → 同 submit（录入方撤自己交的，本人�
    /api/utilities/**                             → entry
    /api/salary/**                                → salary:edit    ★2026-10-04 从 entry 拆出，§11.8
    /api/reports/**, /api/pnl/**, /api/recon/**   → report
+   PUT /api/analysis/settings                    → report         ★2026-10-05 目标与阈值（§14.3）；/api/analysis 下只有这一个写，别的写照旧默认拒绝
 ```
 
 > 相比 v1 要覆盖 221 条，v2 只需覆盖 **126 个写端点**。v1 那 22 个前缀陷阱里，
@@ -451,10 +453,13 @@ JWT 有效期 120 分钟。权限烤进令牌 → 停用一个人他还能再用
 |----|------|--------|
 | `param_change_log` | **已有**（V96） | 计费参数与公摊配置变更，带 `actor` / `old_value` / `new_value` / `action` |
 | `import_log` | **已有**（V20） | 导入记录，带 `operator` |
-| `auth_audit_log` | **已有**（V102） | 账号与角色变更、**编辑锁接管**（记接管人 + 授权人两个）、强制解锁、密码重置、登录锁定 |
+| `auth_audit_log` | **已有**（V102） | 账号与角色变更、**编辑锁接管**（记接管人 + 授权人两个）、强制解锁、密码重置、登录锁定；2026-10-05 起含**登录成功 / 失败**，角色权限写明加去了哪几项（§14.2） |
 | `review_log` | **新建**（V124） | 审核动作留痕：`submit` / `approve` / `return` / `withdraw`，带 `review_key` 与理由。**无 `authorizer` 列** —— 审核不走提权（`review:approve` 在不可提权名单里），没有「代他人执行」这回事，union 时写 `NULL AS authorizer` |
+| `meter_archive_log` | **已有**（V128） | 表档案归属 / 状态的每一次写（METER-TIMELINE-SPEC §5） |
+| `value_change_log` | **新建**（V138，2026-10-05） | 台账、抄表读数、工资、三大报表、损益附表的手改逐格记，目标与阈值逐项记，改前 → 改后。`authorizer` 列 V139 补上（同日对抗复查）：提权期间改的数记授权人。见 §14 |
 
-统一时间线页放在 `系统管理 → 操作日志`：**四张表** union 后按时间倒序，可按类型 / 操作人 / 时间筛。
+统一时间线页放在 `系统管理 → 操作日志`：~~**四张表**~~ **六张表**（2026-10-05 起）union 后按时间倒序，可按类型 / 操作人 / 时间筛，数据修改还能按表筛。
+**一行说的是哪张表，就要那张表的查看权才看得见**（2026-10-05 用户拍板：看得到操作日志，不等于看得到工资）—— 判定下推进 SQL，见 §14.2。
 后端落点 `AuditQueryMapper.BRANCHES`（每个分支必须写全列别名，否则单源查询「Unknown column」500）+ `SystemService.auditLogs()` 的来源白名单 + `actors()` 的 UNION。
 
 **前端落点四处**（R2 已补，2026-09-07）：`SystemLogsView.vue` 的 `SRC` 色表 / `ACTION` 人话字典 / `SRC_OPTS` 筛选项，加 `types/system.ts` 的 `AuditSource` 联合类型。
@@ -638,7 +643,7 @@ meter / billing / entry / salary 任一 view（`/data-home` 的路由门）。
 |---|---|---|
 | `/api/auth/me` `/perms` `/elevate` `/approvals` `/approvals/candidates`、`/api/notices` `/system-seen`、`/api/review` `/states` `/closed-months` `/pending` `/returned`、`/api/zones`、`/api/probe/ok` `/boom`、`/api/app/config` | 任何已登录 | 规则 3，逐条精确登记 |
 | `/api/system/**` | system:view | 与 SecurityConfig 那一行同值；登记在这里是为了覆盖测试不开豁免名单 |
-| `/api/analysis/**` | analysis | 分析专用：months、s10-tenant-months、ledger-tenant-months |
+| `/api/analysis/**` | analysis | 分析专用：months、s10-tenant-months、ledger-tenant-months、settings（目标与阈值，2026-10-05；写要 report，§14.3） |
 | `/api/tenants/summary` | master · analysis | 租户 KPI，驾驶舱的 Promise.all 无 catch。排在 `/{id}` 前 |
 | `/api/tenants/{id}` | master | 租户详情只有主数据屏用 |
 | `/api/tenants` | master · contract · param · meter · billing · entry · analysis | 跨模块字典（合同新建无 catch、抄表导入预取、台账对户、分析五屏）。电话 / 姓名打码；aliases 只对没有任何数据层查看的人打码（见 §11.4）；户名、remark 不打码 |
@@ -920,3 +925,110 @@ token_version +1、换新 sid。改之前签的令牌全部作废 —— 单会�
 用 API 建号再以那个人身份调业务接口的 IT，建完号调 `AbstractMysqlIT.passwordAlreadyChanged`。
 前端：`IconRail` / `MobileNavDrawer`（入口）· `ChangePasswordView` · `stores/auth` 的 `setToken` · `api/index.ts` · `SystemUsersView`；
 spec：`changePasswordSelf` · `systemUsersReset` · `tabStrip`（入口走离开确认）。
+
+---
+
+## 14. 数据修改记录、目标与阈值落库、损益附表锁账月（2026-10-05 用户拍板）
+
+> 用户原话「2按你建议，3，4一起做」：第 2 条目标与阈值从各人浏览器挪进库；第 3 条损益附表只存变了的格、拒整月锁账的月、逐格留痕；
+> 第 4 条手改的钱表逐格记谁、何时、哪张表哪一格、改前、改后，登录成败与角色权限的加去也记，全进「系统 → 操作日志」，按人 / 表 / 时间筛，
+> 而且看得到操作日志不能顺带看到自己打不开的表。
+
+### 14.1 记什么、不记什么
+
+新表 `value_change_log`（`db/common/V138__value_change_log.sql`，两条链都跑，只建表不写数）：一格一行 ——
+`actor`（用户名）· `authorizer`（V139：提权放行时的授权人，取 `ElevationStore.currentAuthorizer()`，同 `AuditLogService`）· `at` · `tbl` ·
+`row_ref`（人看得懂的行定位）· `field`（列的人话名）· `old_val` / `new_val`（按屏上显示的样子存字符串，
+4500.00 存 4500；NULL = 原来没有 / 删掉了）· `note`。只有 `ChangeLogService` 写它：在调用方事务里写、**不吞错** ——
+记不下来，这次保存一起失败（与 `AuditLogService` 相反，那边记不下来照样放行）。前后一样的格不记。
+
+| 表（`tbl`） | 记的写路径 | `row_ref` 的样子 | 要看这类行需要 |
+|---|---|---|---|
+| `monthly_ledger` 台账 | `LedgerService.save` / `copyFromPrev` / `renameRow` / `bindRow` / `bindTenant` | 公司 · YYYY-MM · 账面名（列名取那个月模板的表头） | `entry:view` |
+| `meter_reading` 抄表读数 | `MeterService.createReading` / `updateReading` / `deleteReading`；`batchDelete` 只记一行摘要 | 〈期区〉电表或水表 名称(编码) · YYYY-MM | `meter:view` |
+| `salary_record` 工资 | `SalaryService.create` / `updateNote` / `delete` / `batchDelete`；`clearImported` 只记一行摘要 | 姓名 · YYYY-MM | `salary:view` |
+| `report_amount` 三大报表 | `ReportService.save` / `deleteCustomRow`；删公司（`CompanyService.delete`）只记一行摘要 | 利润表 · 公司 · YYYY-MM · 行次 N | `report:view` |
+| `pnl_row` 损益附表 | `PnlService.save`（§14.4） | 附表N 名称 · YYYY 年 · 分组 · 科目；`field` 是「3月」「备注」或「类别」 | `report:view` |
+| `analysis_setting` 目标与阈值 | `AnalysisSettingService.save`（§14.3） | 经营分析；`field` 是弹层里那一项的名字 | `analysis:view` |
+
+**不记的**（都是有意的）：
+
+- **导入**（台账、抄表、工资、三大报表、损益附表）不逐格记 —— `import_log` 已经记了谁、何时、哪个文件、几行，操作日志「导入」一路照常显示。
+- 台账存盘后 rechain 改掉的**后面月份**的上月结余（派生出来的，不是人改的）；保存时人填的上月结余被 rechain 改回，也不记。
+- 新增 / 删除整行时为 0 的格（金额列默认 0，记了满屏「— → 0」）；连带抄表读数 0 在新增 / 删除时也不记，已有读数改成 0 或从 0 改走照记。
+- `factor_snap`、科目余额表的科目树本身、损益附表行的排序、整行都空的行的增删。（损益附表行的**类别**要记：它决定这一行进不进经营分析的收入 / 成本 / 损益，§14.4）
+- 整批动作只记一行摘要、不留逐格旧值：删公司（「…它名下 N 行台账（所有年月）一并删掉」，报表同）、抄表按月批删（「批量删除了这个月的 N 条读数」）、
+  清空本月导入的工资（「…共 N 人」）。工资批删与删报表自定义子类照样逐格记。
+
+### 14.2 操作日志：按查看权过滤、按表筛、登录、角色权限明细
+
+- **一行说的是哪张表，就要那张表的查看权**：`SystemService.auditLogs` 按查看者的权限快照（含隐含查看、**不含提权** —— 查看本来就借不到，§11.2 第 6 条）
+  算出 `tbls`（数据修改按上表）、`seeParam`（计费参数一路要 `param:view`：里面是单价的改前改后）、`seeMeter`（表档案一路要 `meter:view`），
+  下推到 `AuditQueryMapper` 的每个分支（看不见的分支整路 `1=0`），条数、分页、操作人下拉三处同一套条件。
+  内置角色里只有系统管理员有 `system:view`，而它什么权限都有，所以屏上看不出差别；会看出差别的是今后自建的「有系统管理查看、缺某模块查看」的角色。
+  同日对抗复查（SEC-2）补齐另外几路，都照「那块数据在自己的屏上谁打得开」：导入一路 `seeImport` = 导入中心的读规则
+  （`PermissionRegistry.resolveRead("/api/import-log/overview")`，八个模块查看权任一 —— 那条规则本来就让任一模块查看看到全部导入类型的文件名与行数，
+  这里不另立按类型的名单，免得和前端 `importRegistry` 的类型清单两份对不上）；`auth_audit_log` 里 `bill-notice.*` 要 `billing:view`（`seeBilling`）、
+  `meter.delete` 要 `meter:view`；审核一路照旧全给 —— `/api/review` 本来就对任何登录账号开（审核状态与退回理由）。
+  回包 `AuditPageDTO.sources` = 这个人看得见的来源，前端来源下拉只列它们（选了看不见的一路只会是 0 条，读起来像从没发生过）。
+- `GET /api/system/logs` 多一个参数 `tbl`：只看某张表的数据修改。不认识的表 400「未知的表：x」，和 `change` 以外的 `src` 同时给 400「按表筛只对「数据修改」这一路有效」，
+  只给 `tbl` 等于 `src=change`。读规则不变（`system:view`），无新端点。回包 `AuditPageDTO.tables` = 这个人看得见的表；
+  前端来源下拉在「数据修改」后面按它列「改台账 / 改抄表读数 / 改工资 / 改三大报表 / 改损益附表 / 改目标与阈值」（`SystemLogsView.srcOpts`），看不见的表不列。
+  一行的样子：动作「改台账」，对象「row_ref · field」，详情「改前 → 改后」（缺的一边写 —，有 note 接在后面；摘要行只有 note），提权时带「由 X 授权」。
+- **登录**（`AuthService`，写 `auth_audit_log`，进「账号与角色」一路）：成功 `login`、失败 `login.fail`，对象 = 客户端 IP，
+  操作人 = 用户名按限流键的规则小写（`LoginRateLimiter.user`）。失败详情「密码不对 / 没有这个账号 / 账号已停用」，
+  连错第 5 次那条再加「，已连错 5 次，这个网络地址 15 分钟内不能再试这个账号」（锁的是 地址 + 账号，不是电脑）。
+  **没有这个账号时操作人记空、不记敲进去的名字**（常有人把密码敲进账号框）；密码任何时候都不记。
+  行数有上限：锁定期间（429）的尝试不记（锁定本身记在第 5 次失败上）；没有这个账号的失败按**网络地址**合一个限流桶（不是按敲进去的名字 ——
+  那样换一个名字就是一个新桶、永远到不了 5 次，一个地址换着名字刷就按请求速率涨行，同日对抗复查 SEC-1），15 分钟里只记第 1 次和第 5 次，
+  第 5 次那条写「没有这个账号；这个网络地址 15 分钟内已试了 5 次不存在的账号，后面的不再一条条记」。
+- **角色权限**：`role.create` / `role.update` 的详情从「权限 N 项」改成加去明细（`SystemService.permDiff`，按角色矩阵行序、用 `Perm.META` 人话名）：
+  「加 2 项：工资 · 查看、报表 · 查看；去 1 项：台账与附表 · 查看；现共 2 项」，没增没减写「没动权限，共 K 项」（一项没有写「没勾任何权限」）——
+  只改名 / 备注也走 `role.update`，所以屏上动作名叫「改角色」；28 项全加也在 255 字内（`SystemServicePermDiffTest`）。
+  `role.delete` 与 `user.update`（「角色 N 个」）没改。
+
+### 14.3 经营分析「目标与阈值」落库（第 2 条）
+
+- 表 `analysis_setting`（同在 V138）：一项一行，**没有行 = 用默认值**（默认值不落库，我园和新园区一样）。默认值前端 `ANA_SETTINGS_DEFAULT` 与后端
+  `AnalysisSettingService.Key` 各有一份（后端只用来给记录写「改前」），改要两边一起改。
+- `GET /api/analysis/settings`（读规则沿用 `/api/analysis/**` → `analysis:view`）只回存过的项；`PUT /api/analysis/settings`（写规则 `report:edit`，§5.2）
+  收部分 `{key: number}`，**只回送来的那几项**存进库的样子（回整份的话，有 `report:edit`、没有 `analysis:view` 的账号一次值没变的保存
+  就能读走光伏投资额等，同日对抗复查 SEC-7）。范围照弹层输入框：出租率 / 收缴率 50–100、风险线 30–90、能耗突变 10–200、固定成本占比 0–1、光伏投资 0–1e8（上限只为放进
+  DECIMAL(16,4)）；超出整次拒 400「「收缴率目标 (%)」要在 50 到 100 之间」，不认识的键「没有「x」这一项」。保留 4 位小数；值没变不写不记。
+- 每改一项记一行：`row_ref`「经营分析」、`field` 弹层里的名字、改前（没存过就是默认值）→ 改后；光伏投资 0 写成「按各期工程成本合计」。`@NoReviewGuard`（没有月份）。
+- 前端 `anaSettings.ts` 不再读写 localStorage，模块加载时删掉旧键 `fp-ana-settings`。**各人浏览器里原来的值不搬**（用户拍板）：有权限的人重填一次，在那之前大家看到默认值 ——
+  更新公告 0.30.0 写了这一句。进分析层的路由先 `await loadAnaSettings()`（一次会话只真等第一次），屏上不会先按默认值画一遍再跳。
+  别人改了，刷新页面后才看得到。
+- 没有 `report:edit` 的人（主管临时授权借得到 —— 它不在 `NOT_ELEVATABLE`）：弹层六个框与「恢复默认」置灰，标题下一句
+  「全园区共用这一份目标与阈值，需要「账簿报表」权限才能改」；盈亏平衡屏的固定成本系数滑杆置灰、悬停同一句。有权限的人拖滑杆只重算本屏，
+  松手存一次（一次拖动一行记录）；存不上退回库里的数并说一句。
+
+### 14.4 损益附表只写变了的格、拒整月锁账的月（第 3 条）
+
+- `PnlService.save` / `importRows` 原来 `clear(schedule, year)` 再整年重插、挂 `@NoReviewGuard`、不留痕；现在走 `apply`：读出这一年的行，
+  按（分组, 科目）和提交的行配对，同名的第 k 个配第 k 个、不看先后（不按 `row_key`：前端按位置重编号，删一行后面全错位；原来按先后做最长公共子序列，
+  导入文件的行序和屏上不同就把同一行拆成删一行加一行、误拒锁账月，还要 旧行数 × 新行数 的内存 —— 同日对抗复查 PROD-F2 / SEC-8），只删没了的行、只改变了的行
+  （`UpdateWrapper` 每列显式写，清空的格真写成 NULL）、新行的 `row_key` 接在保留的最大号后面。整年没变 → 0 次写、0 行记录。
+- **改到整月锁账的月整次拒**：只要有月份格变了才去查 `ReviewService.closedMonths`（整月锁账 = 该月全部计入锁账的审核键都已审核，SIDEBAR-UX-REDESIGN D20），
+  碰到就 423「2025 年 3 月已锁账（本月出账里「本月锁账」打了勾），改不了。要改，先请审核员撤销那个月其中一张表的审核。」，
+  多个月「2025 年 1 月、3 月已锁账（…），改不了。要改，先请审核员撤销每个月其中一张表的审核。」（屏上那一行叫「本月锁账」，不用内部的「整月锁账」）。
+  删一行而那行在锁账月有数，也算碰到；**改类别**（明细 / 小计 / 损益 / 合计，决定这一行进不进经营分析的收入 / 成本 / 损益）算碰到这一行有数的每个月，
+  并记一格「类别」（同日对抗复查 SEC-3）。只改备注、排序不碰月份，照存。导入同一规则，整次拒（哪怕是全年重导、只有锁账月的数对不上）。
+  编辑态锁账月那几列只读（悬停「3 月已锁账…这一列改不了」）、「填入 / 全部填入派生值」跳过它们（`PnlTable lockedMonths`、`fillRow` 的 `skip`，PROD-F1）。
+- 手录保存逐格记 `pnl_row`；导入不逐格记。`PUT …?auto=true`（打开某年时屏上自动补的行，只有我园的配置会补）**只许加行**：
+  已有的行有一格不同或少了一行（几秒前读的整年、期间别人存过）就 409 不写（屏上静默），免得把别人的数改回去、还记成「自动补的行」（SEC-4）；
+  加的行记录带注「打开这一年时自动补的行」。前端自动补行时跳过锁账月（`generateMissingRows` 的 `skip`），其余月照补。
+- 损益附表**仍不进审核**（按年落库，没有月度键，SIDEBAR-UX-REDESIGN §9.1 第 2 条）；两处 `@NoReviewGuard` 的理由改写成「锁账月的拒在 apply 里做」。
+- **上线前**读一次线上 `GET /api/review/closed-months`：列出来的月份，上线即在损益附表里改不了。
+
+### 14.5 落点
+
+后端：`V138__value_change_log.sql` / `V139__value_change_log_authorizer.sql`（校验和钉在 `baseline/migration-checksums.txt`）· `ChangeLogService` · `ValueChangeLog` / `ValueChangeLogMapper` ·
+`AuditQueryMapper`（第 6 路 `change` 与三个可见性参数）· `SystemService.auditLogs` / `permDiff` · `AuditLogService.logAs` · `AuthService.loginFailed` ·
+`LoginRateLimiter.user` · `LedgerService` / `MeterService` / `SalaryService` / `ReportService` / `CompanyService` / `BookService.labelsAt` · `PnlService.apply` ·
+`AnalysisSettingService` / `AnalysisSettingMapper` · `AnalysisController` · `PnlController`（`auto`）· `PermissionRegistry`（一条写规则）。
+前端：`SystemLogsView`（来源 `change`、动作名、按表筛）· `types/system.ts` · `analysis/anaSettings.ts` · `api/analysis.ts` · `router/index.ts` ·
+`AnaShell.vue` · `BreakevenView.vue` · `api/pnl.ts` · `reports/pnlDerive.ts` · `PnlScheduleView.vue`。
+测试：`AuditTrailIT`（可见性、按表筛与 400、登录、角色明细）· `ChangeLogWritePathsIT`（四张表的写路径逐行比对）· `ChangeLogServiceTest` ·
+`SystemServicePermDiffTest` · `PnlServiceTest` / `PnlApiIT`（只写变的格、锁账月拒）· `AnalysisSettingApiIT` · `PermissionCoverageTest` 读写路由回归 ·
+`ReviewGuardCoverageTest`；前端 `systemLogsView.spec` · `AnaShell.spec` · `viewGuard.spec` · `motionR2-expiryChargeBreakevenRoi.spec` · `pnlGenerateGate.spec` · `pnlDerive.spec`。

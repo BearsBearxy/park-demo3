@@ -223,6 +223,9 @@ public class PermissionRegistry {
             add(null, p, Perm.REPORT_EDIT);
             add(null, p + "/**", Perm.REPORT_EDIT);
         }
+        // 经营分析「目标与阈值」(用户 2026-10-05 拍板第 2 条):从各人浏览器挪进库、全员一份,只有账簿报表编辑权能改。
+        // /api/analysis 下只有这一个写端点,别的写照旧默认拒绝。
+        add(HttpMethod.PUT, "/api/analysis/settings", Perm.REPORT_EDIT);
 
         // ═══ 系统管理(P1 才有实体端点,先把规则占住,免得将来裸奔) ═══
         add(null, "/api/system",    Perm.SYSTEM_EDIT);

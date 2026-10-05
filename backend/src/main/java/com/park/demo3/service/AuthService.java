@@ -21,11 +21,12 @@ public class AuthService {
     private final AuthUserMapper users; private final PasswordEncoder enc; private final JwtUtil jwt;
     private final LoginRateLimiter limiter; private final HttpServletRequest request;
     private final UserPermissionCache perms; private final SessionService sessions;
+    private final AuditLogService audit;
     public AuthService(AuthUserMapper users, PasswordEncoder enc, JwtUtil jwt,
                        LoginRateLimiter limiter, HttpServletRequest request, UserPermissionCache perms,
-                       SessionService sessions) {
+                       SessionService sessions, AuditLogService audit) {
         this.users = users; this.enc = enc; this.jwt = jwt; this.limiter = limiter;
-        this.request = request; this.perms = perms; this.sessions = sessions;
+        this.request = request; this.perms = perms; this.sessions = sessions; this.audit = audit;
     }
         @NoReviewGuard(reason = "会话,不是数据录入。进审核等于登录要先过闸,而闸的判定本身要先登录")
 public LoginResp login(LoginReq req) {
@@ -40,10 +41,12 @@ public LoginResp login(LoginReq req) {
         boolean pwOk = enc.matches(req.password(), u != null ? u.getPasswordHash() : DUMMY_HASH);
         if (!pwOk || u == null) {
             limiter.recordFailure(key);   // 口令错/查无此人/已停用 一律记一次失败
+            loginFailed(u, key, u == null ? "没有这个账号" : "密码不对");
             throw new BizException(ResultCode.UNAUTHORIZED, "用户名或密码错误");
         }
         if (u.getStatus() != 1) {
             limiter.recordFailure(key);   // 照样算失败:限流不因为密码对了就放宽
+            loginFailed(u, key, "账号已停用");
             throw new BizException(ResultCode.FORBIDDEN, "账号已停用，请联系管理员");
         }
         limiter.reset(key);
@@ -57,11 +60,39 @@ public LoginResp login(LoginReq req) {
         // 别处那台设备下一个请求就是 401。注意顺序:先 open 拿到新版本号再签发,
         // 反过来的话刚签的那张会被自己这次 bump 当场作废。
         SessionService.Issued is_ = sessions.open(u, clientIp(), request.getHeader("User-Agent"), "relogin");
+        audit.logAs(LoginRateLimiter.user(u.getUsername()), "login", clientIp(), null);
         return new LoginResp(jwt.generate(u.getUsername(), u.getRole(), is_.tokenVersion(), is_.sessionId()),
                              u.getUsername(), u.getDisplayName(), u.getRole(),
                              ps, nl, rn, u.getMustChangePassword() != null && u.getMustChangePassword() == 1,
                              perms.isSuperAdmin(u.getUsername()));
     }
+    /**
+     * 登录失败进操作日志(用户 2026-10-05 拍板:记登录成败,用户名照限流键的写法,记 IP,不记密码)。
+     * 没有这个账号时**不记输入的用户名**:常有人把密码敲进了用户名框,记下来就是把密码写进了日志。
+     * 行数有上限,靠两处:
+     *  · 已锁定期间(429)的尝试不记 —— 锁定那一下记在第 5 次失败上;真账号每个 地址|账号 15 分钟最多 5 行。
+     *  · 没有这个账号:限流键里是敲进去的名字,换一个名字就是一个新桶、永远到不了 5 次 —— 原来每次一行,
+     *    一个地址换着名字刷就按请求速率涨(2026-10-05 对抗复查 SEC-1)。改按地址合一个桶(UNKNOWN_BUCKET),
+     *    15 分钟里只记第 1 次和第 5 次,其余只计数;刷个不停这个桶一直锁着,后面的都不再记。
+     */
+    private void loginFailed(AuthUser u, String key, String why) {
+        String ip = clientIp();
+        long mins = LoginRateLimiter.LOCK_MS / 60_000;
+        if (u == null) {
+            int n = limiter.recordFailure(LoginRateLimiter.key(ip, UNKNOWN_BUCKET));
+            if (n == 1) audit.logAs("", "login.fail", ip, why);
+            else if (n == LoginRateLimiter.MAX_FAILURES)
+                audit.logAs("", "login.fail", ip, why + "；这个网络地址 " + mins + " 分钟内已试了 " + n + " 次不存在的账号，后面的不再一条条记");
+            return;
+        }
+        String detail = limiter.isLocked(key)
+            ? why + "，已连错 " + LoginRateLimiter.MAX_FAILURES + " 次，这个网络地址 " + mins + " 分钟内不能再试这个账号"
+            : why;
+        audit.logAs(LoginRateLimiter.user(u.getUsername()), "login.fail", ip, detail);
+    }
+    /** 「没有这个账号」按地址合的那个限流桶。开头是个空字符,真用户名里不会有(SystemDtos 用户名只许字母数字 _ . @ -),撞不上真账号的桶。 */
+    private static final String UNKNOWN_BUCKET = "\u0000没有这个账号";
+
     /**
      * 改了自己的密码之后,给发起修改的这台设备换一张新令牌(用户 2026-10-04 拍板:改完本机不掉线,别处的登录全部退出)。
      * 开一个新会话:旧会话连同它签出去的每一张令牌一起作废 —— 别的设备、被人抄走的那一张都下线,

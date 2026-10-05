@@ -72,7 +72,7 @@ function onScatterClick(p: unknown) {
         <AnaKpiTile label="低风险" :value="model.counts.low + ' 户'" :note="'在租 ' + model.list.length + ' 户'" />
         <AnaKpiTile label="已流失" :value="model.churned.length + ' 户'" :note="mZh(model.firstYm) + '在租 · ' + mZh(model.lastYm) + '缺席'" />
         <AnaKpiTile label="流失月应收" :value="'¥' + wan(model.churnedRecv) + '万/月'" :note="mZh(model.firstYm) + '口径'" />
-        <AnaKpiTile label="平均风险分" :value="String(model.avgScore)" :note="'预警线 ' + anaSettings.churnTh + '(顶栏可调)'" />
+        <AnaKpiTile label="平均风险分" :value="String(model.avgScore)" :note="'预警线 ' + anaSettings.churnTh" />
       </template>
     </template>
 

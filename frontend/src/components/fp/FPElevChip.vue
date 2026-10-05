@@ -132,8 +132,9 @@ async function endNow() {
                 <b>{{ hhmm(one.grantedAt) }}</b>{{ one.remote ? '批准' : '授权' }}<span class="ec-arw">→</span><b>{{ hhmm(one.expiresAt) }}</b>到期
               </dd>
             </dl>
-            <!-- 稿上是「期间的每一次修改，操作日志里都会同时记下你和{授权人}的名字」—— 不成立:授权人只落在计费参数改动和
-                 auth_audit_log 两处,台账格、抄表读数这类写入根本不进操作日志。成立的是授权本身那条(elevate.grant,带授权人) -->
+            <!-- 稿上是「期间的每一次修改，操作日志里都会同时记下你和{授权人}的名字」—— 不成立:授权人落在计费参数改动、
+                 auth_audit_log、数据修改记录(台账 / 读数 / 工资 / 报表 / 损益附表 / 目标与阈值,V139)三处,合同、催缴单这类写入
+                 不进操作日志。成立的是授权本身那条(elevate.grant,带授权人) -->
             <p v-if="props.variant !== 'mobile'" class="ec-note">这次授权已记进操作日志，写明由{{ one.authorizerName }}授权。</p>
           </div>
           <div class="ec-f">

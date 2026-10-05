@@ -31,9 +31,10 @@ import java.util.stream.Collectors;
 public class SalaryService {
     private final SalaryRecordMapper records;
     private final ReviewGuard reviewGuard;
+    private final ChangeLogService changes;
 
-    public SalaryService(SalaryRecordMapper records, ReviewGuard reviewGuard) {
-        this.records = records; this.reviewGuard = reviewGuard;
+    public SalaryService(SalaryRecordMapper records, ReviewGuard reviewGuard, ChangeLogService changes) {
+        this.records = records; this.reviewGuard = reviewGuard; this.changes = changes;
     }
 
     /** 附表12 的审核闸(§7.4):园区级表,不带 scope。 */
@@ -103,6 +104,8 @@ public class SalaryService {
     }
 
     // ── create(source=manual) ──
+    // @Transactional(这一处与下面 updateNote / delete):数据修改记录和工资行同进同退
+    @org.springframework.transaction.annotation.Transactional
     public SalaryRecordDTO create(SalaryRecordReq req) {
         assertSalaryEditable(req.acctMonth());
         SalaryRecord r = new SalaryRecord();
@@ -129,7 +132,9 @@ public class SalaryService {
         r.setNote(blankToNull(req.note()));
         r.setSource("manual");
         records.insert(r);
-        return toDTO(records.selectById(r.getId()));
+        SalaryRecord now = records.selectById(r.getId());
+        log(null, now, "新增这一行");
+        return toDTO(now);
     }
 
     // ── import:重导=替换本月导入行 —— 先删该 acctMonth 的 source='import' 行,再逐行 insert(source='import')。
@@ -186,6 +191,10 @@ public class SalaryService {
         String acctMonth = String.format("%04d-%02d", year, month);
         assertSalaryEditable(acctMonth);
         int deleted = records.deleteImported(acctMonth);
+        // 数据修改记录:删的是导入进来的行,原文件在 import_log 里有据 —— 记一行摘要,不逐格
+        if (deleted > 0)
+            changes.summary(ChangeLogService.Tbl.SALARY, acctMonth + " · 导入的工资",
+                "清空了这个月导入的工资，共 " + deleted + " 人");
         return new DeleteResultDTO(deleted, 0);
     }
 
@@ -199,29 +208,67 @@ public class SalaryService {
             // 一批 id 可跨月:逐行按被删行自己的月判(同一 @Transactional,命中即整批回滚)
             assertSalaryEditable(r.getAcctMonth());
             records.deleteById(id);
+            log(r, null, "批量删除");
             deleted++;
         }
         return new DeleteResultDTO(deleted, 0);
     }
 
     // ── updateNote(id,note;不存在 → 404) ──
+    @org.springframework.transaction.annotation.Transactional
     public SalaryRecordDTO updateNote(Integer id, String note) {
         SalaryRecord r = records.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
         assertSalaryEditable(r.getAcctMonth());
+        SalaryRecord was = new SalaryRecord();
+        org.springframework.beans.BeanUtils.copyProperties(r, was);   // 改前(下面在 r 上原地改)
         r.setNote(blankToNull(note));
         records.updateById(r);
+        // 改后从库里重读:清空备注时 updateById 跳过 null 不落库,拿请求比会记下没发生的「清空」
+        SalaryRecord now = records.selectById(id);
+        log(was, now, null);
         // 回包给整行:写要 salary:edit,它隐含 salary:view 且不可提权,能写到这里的人本来就看得见
         // (2026-10-04 之前写挂 entry:edit,这里按 salary:view 把行内容收掉过,拆权后那道收已无事可做,删了)
-        return toDTO(records.selectById(id));
+        return toDTO(now);
     }
 
     // ── delete(id;不存在 → 404;seed 同等可删) ──
+    @org.springframework.transaction.annotation.Transactional
     public void delete(Integer id) {
         SalaryRecord r = records.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
         assertSalaryEditable(r.getAcctMonth());
         records.deleteById(id);
+        log(r, null, "删除这一行");
+    }
+
+    // ── 数据修改记录(用户 2026-10-05 拍板「2按你建议，3，4一起做」第 4 条):手改的工资逐格记谁、何时、改前、改后 ──
+    // 导入(importRows)不逐格记 —— import_log 记了谁、何时、哪个文件。列名照录入抽屉。
+    private static final List<ChangeLogService.Col<SalaryRecord>> COLS = List.of(
+        new ChangeLogService.Col<>("职种/职务", SalaryRecord::getRole),
+        new ChangeLogService.Col<>("基本工资", SalaryRecord::getBase),
+        new ChangeLogService.Col<>("岗位工资", SalaryRecord::getPost),
+        new ChangeLogService.Col<>("绩效奖金", SalaryRecord::getPerf),
+        new ChangeLogService.Col<>("全勤奖", SalaryRecord::getAttend),
+        new ChangeLogService.Col<>("岗位技能津贴", SalaryRecord::getSkill),
+        new ChangeLogService.Col<>("学历津贴", SalaryRecord::getEdu),
+        new ChangeLogService.Col<>("其它津贴", SalaryRecord::getOther),
+        new ChangeLogService.Col<>("午餐补助", SalaryRecord::getLunch),
+        new ChangeLogService.Col<>("高温及其他", SalaryRecord::getHeat),
+        new ChangeLogService.Col<>("招商提成", SalaryRecord::getCommission),
+        new ChangeLogService.Col<>("应出勤(天)", SalaryRecord::getShouldDays),
+        new ChangeLogService.Col<>("请假(天)", SalaryRecord::getLeaveDays),
+        new ChangeLogService.Col<>("社保", SalaryRecord::getSocial),
+        new ChangeLogService.Col<>("上月个税", SalaryRecord::getTax),
+        new ChangeLogService.Col<>("其他扣款", SalaryRecord::getOtherDeduct),
+        new ChangeLogService.Col<>("备注", SalaryRecord::getNote));
+
+    /** was / now = null 是新加 / 删掉的一行。行定位「张三 · 2026-08」。 */
+    private void log(SalaryRecord was, SalaryRecord now, String note) {
+        SalaryRecord r = now != null ? now : was;
+        List<ChangeLogService.Cell> cells = new ArrayList<>();
+        ChangeLogService.diff(cells, r.getName() + " · " + r.getAcctMonth(), COLS, was, now);
+        changes.record(ChangeLogService.Tbl.SALARY, cells, note);
     }
 
     // ── helpers ──

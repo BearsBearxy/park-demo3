@@ -55,8 +55,10 @@ public final class SystemDtos {
         @NotBlank @Size(min = 8, max = 72, message = "密码至少 8 位") String password) {}
 
     // ── 操作日志时间线 ──
+    /** tables:这个查看者看得见哪几张表的数据修改记录(ChangeLogService.Tbl#code),给「按表筛」的下拉用。
+     *  sources:看得见哪几路(param / import / auth / review / meter / change),来源下拉只列这些 —— 看不见的一路选了只会是 0 条。 */
     public record AuditPageDTO(List<AuditRowDTO> rows, long total, int page, int size,
-                               List<String> actors) {}
+                               List<String> actors, List<String> tables, List<String> sources) {}
 
     // ── 本人改密 ──
     public record ChangePasswordReq(

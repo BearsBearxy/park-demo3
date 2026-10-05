@@ -264,7 +264,7 @@ describe('失败 · 逐段接着导(真 registry s10 run)', () => {
 describe('失败 · 一次传的数据太多(nginx 413,真 registry meter run + 真 http 拦截器)', () => {
   // 用户 2026-10-05:「抄表整册导入被拒：超过 1MB 就被服务器挡掉，没有分批导入的办法」。
   // adapter 照 nginx 的样子回 413:HTML 体、不带信封,拦截器原样抛 AxiosError。
-  // 破坏验证:failReason 去掉 413 那一支 → 「原因」那句变回「服务器返回 413」红
+  // 破坏验证:failReason 去掉 413 那一支 → 「原因」那句变成 4xx 那句(没有接受这次导入)红
   const adapter = http.defaults.adapter
   const urls: string[] = []
   const nginxSays = (status: number, statusText: string) => {
@@ -309,6 +309,25 @@ describe('失败 · 一次传的数据太多(nginx 413,真 registry meter run + 
     expect(w.find('.ipf').text()).toContain('这次写没写进去，以本页刷新后看到的为准。')
     expect(w.find('.ipf').text()).not.toContain('一条都没写进去')
     expect(w.find('.ipf').text()).not.toContain('导入前的数据')
+    // 复查 F1:原因框原来印「服务器返回 504」。破坏验证:failReason 去掉 504 那一支 → 变成 5xx 那句红
+    expect(w.find('.ipf-box').text()).toBe('原因等了很久服务器还没回话，它可能还在写入，请过几分钟刷新本页看结果')
+  })
+
+  // 复查 F2:原因框原来只印「服务器返回 502」。破坏验证:failReason 的 5xx 那支改回带状态码 → 红
+  it('其余 5xx:原因框不印状态码,说服务器出错了、稍后再试', async () => {
+    nginxSays(502, 'Bad Gateway')
+    const w = meterRun()
+    await vi.waitFor(() => expect(w.find('.ipf').exists()).toBe(true))
+    expect(w.find('.ipf-h h4').text()).toBe('导入失败，这次一条都没写进去')
+    expect(w.find('.ipf-box').text()).toBe('原因服务器出错了，请稍后再试')
+  })
+
+  // 破坏验证:failReason 最后一支改回带状态码 → 红
+  it('nginx 自己回的 4xx(不带信封):原因框不印状态码,说没有接受这次导入', async () => {
+    nginxSays(404, 'Not Found')
+    const w = meterRun()
+    await flushPromises()
+    expect(w.find('.ipf-box').text()).toBe('原因服务器没有接受这次导入，请刷新页面后再试，还不行请联系管理员')
   })
 })
 

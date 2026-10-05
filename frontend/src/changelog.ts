@@ -19,6 +19,52 @@
 import type { ReleaseNote } from '@/types/changelog'
 
 export const CHANGELOG: ReleaseNote[] = [
+  // 功能更新(RELEASE-NOTES-SPEC §2.1 第 1、2 问是):用户 2026-10-05 拍板「2按你建议，3，4一起做」。
+  // 新增 → 重点卡「操作日志的数据修改」:操作日志第 6 路(value_change_log,V138;ChangeLogService)。台账、园区抄表读数、工资、三大报表、
+  //   损益附表的手改逐格记,目标与阈值逐项记;导入不逐格记,照旧只有 import_log 那一行(AuditQueryMapper 的 import 分支:文件名 成功/总 行)。
+  //   「没有查看权的表不会列出」:SystemService.auditLogs 按查看者的查看权把 tbls / seeParam / seeImport / seeBilling / seeMeter 推进 SQL;
+  //   顺带计费参数行要 param:view、表档案行要 meter:view、导入行照导入中心的读规则、作废催缴单的行要 billing:view ——
+  //   内置角色只有系统管理员有 system:view、且什么权限都有,屏上看不出差别,不另写。
+  //   「「全部来源」里能按表筛」:SystemLogsView.srcOpts 只列回包 sources / tables 里的(屏上那一格默认叫「全部来源」)。重点卡不给「去看看」:操作日志只有系统管理 · 查看能进(同 0.28.0)。
+  // 新增「登录记录」:AuthService 记 login / login.fail,失败 detail 是 密码不对 / 没有这个账号 / 账号已停用(连错第 5 次另说锁了);
+  //   没有这个账号时不记敲进去的名字(常有人把密码敲进账号框)。核实(对照 master):AuthService 原来一行审计都不写。
+  //   「账号不存在的失败，15 分钟只记第 1、5 次」:没有这个账号按网络地址合一个桶,15 分钟(LoginRateLimiter.WINDOW_MS)只记第 1、第 5 次
+  //   (MAX_FAILURES,AuthService.loginFailed);锁住期间(429)的尝试也不记,字数放不下,不写。
+  // headline / 重点卡只点名记的那几张表(ChangeLogService.Tbl 6 张;附表6–11、办公水电、合同、租户等的手改不记;园区抄表以外的读数不记)。
+  // 改进(四条都是用法变了,按侧栏先后排):
+  //   「损益附表」PnlService.apply:改到整月锁账的月(ReviewService.closedMonths;屏上那一行叫「本月锁账」)整次拒 423,
+  //     原句「2025 年 3 月已锁账（本月出账里「本月锁账」打了勾），改不了。要改，先请审核员撤销那个月其中一张表的审核。」
+  //     编辑态那几列只读、「填入」跳过(PnlTable lockedMonths)。核实(对照 master):save / importRows 是 clear + insert、挂 @NoReviewGuard,
+  //     锁账月照写。只改备注不碰月份,照存 —— 所以写「改到它的数」。
+  //   「经营分析的目标与阈值」:原来 localStorage 'fp-ana-settings' 每台浏览器一份(master anaSettings.ts 头注释;键里没有账号,
+  //     所以是「每台电脑一份」不是「每人一份」),现在 analysis_setting 一份,
+  //     PUT /api/analysis/settings 要 report:edit(角色屏上那一格叫「账簿报表」,AnaShell 的锁句同名);旧值不搬(用户拍板),模块加载时删掉那个键,
+  //     有权限的人重填前大家看到默认值。
+  //   「盈亏平衡与敏感性」固定成本系数滑杆:没有账簿报表置灰带原因;拖动只重算本屏,松手存一次(BreakevenView.onFrDone)。
+  //     核实(对照 master):滑杆没有任何权限判断,@input 每格存一次。
+  //   「角色权限的改动记录」SystemService.permDiff;核实(对照 master):role.create / role.update 的 detail 是「权限 N 项」。
+  // 金额不变:只加留痕、改谁能改目标与阈值;损益附表锁账月从能改变成拒,库里已有的数不动。
+  {
+    version: '0.30.0',
+    date: '2026-10-05',
+    headline: '台账等手改的数有记录，目标与阈值全园共用',
+    feature: {
+      icon: 'scroll-text',
+      title: '操作日志的数据修改',
+      desc: '系统管理员：在操作日志里能看到谁改了哪一格，从几改成几。台账、园区抄表读数、工资、三大报表、损益附表和目标与阈值都记。'
+        + '导入只记文件和行数。「全部来源」里能按表筛，没有查看权的表不会列出。',
+    },
+    added: [
+      { icon: 'log-in', title: '登录记录', desc: '系统管理员：操作日志里能查登录成功、失败和原因；账号不存在的失败，15 分钟只记第 1、5 次。' },
+    ],
+    improved: [
+      { icon: 'layers', title: '损益附表', desc: '已锁账的月原来能改；现在改到它的数，保存、导入都会被拒，先请审核员撤销那个月一张表的审核。' },
+      { icon: 'sliders-horizontal', title: '经营分析的目标与阈值', desc: '原来每台电脑一份，现在全园一份，有「账簿报表」权限才能改；原来填的不带过来，得重填。' },
+      { icon: 'scale-3d', title: '盈亏平衡与敏感性', desc: '固定成本系数原来谁都能拖；现在要「账簿报表」权限，松手就改全园共用的数。', to: 'breakeven' },
+      { icon: 'shield-check', title: '角色权限的改动记录', desc: '系统管理员：原来只记权限共几项，现在写明加了哪几项、去了哪几项。' },
+    ],
+    fixed: [],
+  },
   // 功能更新(RELEASE-NOTES-SPEC §2.1 第 2 问是:新增记账的单价默认值变了;第 3 问是:到期缺口折出来的份数变了)。
   // 起因:2026-10-04 用户拍板产品要卖给别的园区,新园区从干净的起点建库(db/baseline),客户看得见的地方不再带我园的名字和数。
   // 我园用户看得见的只有下面四条改进和两条修复;起点链、迁移守卫、FlywayChainGuard、部署开关(DeployConfig)、部署指南 §9 是给部署的人看的,不写。

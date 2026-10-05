@@ -404,7 +404,7 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
             </div>
           </div>
         </div>
-        <AnaEmpty v-else label="当前阈值下无园区/公司级异常" hint="可在右上「目标与阈值」调整收缴率目标" />
+        <AnaEmpty v-else label="当前阈值下无园区/公司级异常" hint="有「账簿报表」权限的账号可在右上「目标与阈值」调整收缴率目标" />
       </div>
 
       <div class="av2-s12">

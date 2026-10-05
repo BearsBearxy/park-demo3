@@ -37,8 +37,11 @@ const SRC = {
   // 第 5 路:meter_archive_log(METER-TIMELINE-SPEC §5,表的归属 / 状态每写一行留一条)。
   // 徽标底色用 neutral(六档色已被前四路占掉四档,余下 red 会读成出错);圆点给 slate,与「其他」的 ink 分开
   meter: { label: '表档案', tone: 'neutral' as const, color: 'var(--fill-slate)' },
+  // 第 6 路:value_change_log(V138,用户 2026-10-05 拍板的数据修改记录:台账、读数、工资、报表、损益附表、
+  // 目标与阈值的手改逐格记)。徽标底色与计费参数同档(六档色已用尽),圆点给黄与前五路分开,靠徽标字区分
+  change: { label: '数据修改', tone: 'blue' as const, color: 'var(--hue-yellow)' },
 }
-// 后端只认这五个来源,但真冒出第六种也要看得见(而不是渲染成一行没有徽标的孤儿)
+// 后端只认这六个来源,但真冒出第七种也要看得见(而不是渲染成一行没有徽标的孤儿)
 const OTHER = { label: '其他', tone: 'neutral' as const, color: 'var(--ink-500)' }
 
 // 动作码翻人话。查不到就原样显示 —— 吞掉未知动作等于审计有洞。
@@ -51,20 +54,29 @@ const ACTION: Record<string, string> = {
   'user.create': '新建账号', 'user.update': '改账号', 'user.enable': '启用账号',
   'user.disable': '停用账号', 'user.reset-password': '重置密码', 'user.change-password': '修改密码',
   'user.change-password.deny': '修改密码·旧密码错', 'user.change-password.locked': '修改密码·已锁定',
-  'role.create': '新建角色', 'role.update': '改角色权限', 'role.delete': '删除角色',
+  // role.update 只改名 / 备注也记(detail 写「没动权限」),所以叫「改角色」不叫「改角色权限」
+  'role.create': '新建角色', 'role.update': '改角色', 'role.delete': '删除角色',
   'lock.takeover': '接管编辑锁', 'lock.force-release': '强制解锁',
   'meter.delete': '删表',
+  // 登录成败(用户 2026-10-05 拍板)。target = IP,失败的 detail 说为什么
+  login: '登录', 'login.fail': '登录失败',
   // review_log.action(R1;四个动作的取值见 ReviewService)
   submit: '交审', approve: '通过审核', return: '退回', withdraw: '撤销审核',
   // meter_archive_log:表(assign 归属 / status 状态)· 动作。target =「表名 · 起始月」,detail =「旧 → 新 · 来源」
   'assign.insert': '新增归属', 'assign.update': '改归属', 'assign.delete': '删除归属',
   'status.insert': '新增状态', 'status.update': '改状态', 'status.delete': '删除状态',
+  // value_change_log.tbl(第 6 路):哪张表被手改了。target =「行 · 列」,detail =「改前 → 改后」。
+  // 也是来源下拉里「按表筛」那几项的名字
+  monthly_ledger: '改台账', meter_reading: '改抄表读数', salary_record: '改工资',
+  report_amount: '改三大报表', pnl_row: '改损益附表', analysis_setting: '改目标与阈值',
 }
 
 // ─── state ───────────────────────────────────────────────
 const rows = ref<AuditRowDTO[] | null>(null)   // null = 首载未完成(不闪「共 0 条」空态)
 const total = ref(0)
 const actors = ref<string[]>([])
+const tables = ref<string[]>([])   // 这个账号看得见哪几张表的数据修改记录(后端按查看权算)
+const sources = ref<string[] | null>(null)   // 看得见哪几路(后端按查看权算);null = 还没回来,先全列
 const loadErr = ref('')
 
 const src = ref('')      // '' = 全部来源
@@ -85,8 +97,11 @@ async function load() {
   const my = ++seq
   lastSize = pageSize.value
   try {
+    // 「改台账」这类选项的值是 change:<表名>:来源固定 change,另带 tbl 让后端按表筛
+    const [s, tbl] = src.value.split(':')
     const r = await systemApi.logs({
-      src: src.value || undefined,
+      src: s || undefined,
+      tbl: tbl || undefined,
       actor: actor.value || undefined,
       from: from.value || undefined,
       to: to.value || undefined,
@@ -97,6 +112,8 @@ async function load() {
     rows.value = r.rows
     total.value = r.total
     actors.value = r.actors
+    tables.value = r.tables ?? []
+    sources.value = r.sources ?? null
     loadErr.value = ''
   } catch (e) {
     if (my !== seq) return
@@ -123,7 +140,14 @@ const SRC_OPTS = [
   { value: 'auth', label: '账号与角色' },
   { value: 'review', label: '审核' },
   { value: 'meter', label: '表档案' },
+  { value: 'change', label: '数据修改' },
 ]
+// 按表筛(用户 2026-10-05 拍板:按人 / 表 / 时间筛)并进来源下拉,只列这个账号看得见的表。
+// 来源也只列看得见的几路:没有计费参数查看权的人选「计费参数」只会看到 0 条,读起来像从没改过(对抗复查 PROD-F9)
+const srcOpts = computed(() => [
+  ...SRC_OPTS.filter(o => !o.value || !sources.value || sources.value.includes(o.value)),
+  ...tables.value.map(t => ({ value: `change:${t}`, label: ACTION[t] ?? t })),
+])
 // 操作人来自返回的 actors(三表并集),与当前筛选无关 —— 筛出 0 条时下拉不会跟着空掉
 const actorOpts = computed(() => [
   { value: '', label: '全部操作人' },
@@ -171,7 +195,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.va
       <div>
         <h2 style="margin:0;font-size:var(--fs-h2);font-weight:var(--fw-semibold)">操作日志</h2>
         <p style="margin:5px 0 0;font-size:var(--fs-label);color:var(--text-muted)">
-          系统管理 · 计费参数、导入、表档案、账号与角色、审核五路留痕,按时间倒序 · 共 {{ rows ? total : '…' }} 条
+          系统管理 · 按时间倒序，只列你有权限看的操作（计费参数、导入、表档案、账号与角色、审核、数据修改）· 共 {{ rows ? total : '…' }} 条
         </p>
       </div>
     </div>
@@ -186,7 +210,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.va
         <Button v-if="hasFilter" variant="outline" size="sm" @click="clearFilters">清除筛选</Button>
         <!-- 下拉一律 ds/Select,不用原生 <select>(UI-CONSISTENCY-SPEC §1) -->
         <div style="width:132px">
-          <Select :options="SRC_OPTS" v-model="src" size="sm" />
+          <Select :options="srcOpts" v-model="src" size="sm" />
         </div>
         <div style="width:150px">
           <Select :options="actorOpts" v-model="actor" size="sm" />

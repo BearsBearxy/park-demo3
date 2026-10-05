@@ -24,6 +24,9 @@ const ROWS = [
   // 第 5 路(METER-TIMELINE-SPEC §5):meter_archive_log。action = 表.动作,target/detail 后端拼好
   { source: 'meter', ts: '2026-08-16T11:20:00', actor: 'zhao.cb', action: 'assign.update',
     target: 'B座3楼·电表② · 2024-02', detail: '旧户甲 → 新户乙 · 导入 · 2024-02抄表.xlsx', authorizer: null },
+  // 第 6 路(V138 value_change_log):action = 表名,target =「行 · 列」,detail =「改前 → 改后」,后端拼好
+  { source: 'change', ts: '2026-08-15T09:30:00', actor: 'li.cw', action: 'salary_record',
+    target: '2025-06 · 张三 · 基本工资', detail: '4500 → 4800', authorizer: null },
 ]
 
 const logs = vi.fn()
@@ -32,7 +35,8 @@ vi.mock('@/api/system', () => ({ systemApi: { logs: (...a: unknown[]) => logs(..
 import SystemLogsView from './SystemLogsView.vue'
 
 const page = (over: Record<string, unknown> = {}) =>
-  Promise.resolve({ rows: ROWS, total: 3, page: 1, size: 10, actors: ['li.cw', 'wang.zg', 'zhang.kj'], ...over })
+  Promise.resolve({ rows: ROWS, total: 3, page: 1, size: 10, actors: ['li.cw', 'wang.zg', 'zhang.kj'],
+    tables: ['monthly_ledger', 'salary_record'], ...over })
 
 function mountView() {
   setActivePinia(createPinia())
@@ -80,6 +84,63 @@ describe('SystemLogsView', () => {
     expect(row.text()).toContain('旧户甲 → 新户乙 · 导入')
     const opts = w.findAllComponents(Select)[0].props('options') as { value: string; label: string }[]
     expect(opts.find(o => o.value === 'meter')?.label).toBe('表档案')
+  })
+
+  // 第 6 路(用户 2026-10-05 拍板的数据修改记录)。破坏验证:删 SRC.change → 退回「其他」红;
+  //   删 ACTION 里 salary_record → 露出裸表名红。
+  it('❗数据修改那一路显「数据修改 / 改工资 / 改前 → 改后」,不是「其他 / salary_record」', async () => {
+    const w = mountView()
+    await flushPromises()
+    const row = w.get('[data-src="change"]')
+    expect(row.text()).toContain('数据修改')
+    expect(row.text()).not.toContain('其他')
+    expect(row.text()).toContain('改工资')
+    expect(row.text()).not.toContain('salary_record')
+    expect(row.get('.lg-target').text()).toBe('2025-06 · 张三 · 基本工资')
+    expect(row.get('.lg-detail').text()).toBe('4500 → 4800')
+  })
+
+  // 按人 / 表 / 时间筛(同日拍板)。表只列后端回的 tables —— 那是按这个账号的查看权算的,
+  // 看不见工资的人下拉里就没有「改工资」。破坏验证:srcOpts 不并 tables → 选项缺红;
+  //   load 不拆 change:<表> → 请求里 src 是 'change:salary_record'、没有 tbl,红。
+  it('❗按表筛:下拉只列后端给的表,选中后请求带 src=change + tbl', async () => {
+    const w = mountView()
+    await flushPromises()
+    const opts = () => w.findAllComponents(Select)[0].props('options') as { value: string; label: string }[]
+    expect(opts().filter(o => o.value.startsWith('change:'))).toEqual([
+      { value: 'change:monthly_ledger', label: '改台账' },
+      { value: 'change:salary_record', label: '改工资' },
+    ])
+    expect(opts().find(o => o.value === 'change')?.label).toBe('数据修改')
+    await w.findAllComponents(Select)[0].setValue('change:salary_record')
+    await flushPromises()
+    expect(logs.mock.calls.at(-1)![0]).toMatchObject({ src: 'change', tbl: 'salary_record', page: 1 })
+    await w.findAllComponents(Select)[0].setValue('auth')
+    await flushPromises()
+    expect(logs.mock.calls.at(-1)![0]).toMatchObject({ src: 'auth', tbl: undefined })
+  })
+
+  // 来源也按查看权:后端 sources 里没有的那几路不列(只有系统查看的账号看不到计费参数 / 导入 / 表档案 / 数据修改)。
+  // 破坏验证:srcOpts 不按 sources 过滤 → 红
+  it('❗来源下拉只列后端给的 sources', async () => {
+    logs.mockImplementation(() => page({ tables: [], sources: ['auth', 'review'] }))
+    const w = mountView()
+    await flushPromises()
+    const opts = w.findAllComponents(Select)[0].props('options') as { value: string; label: string }[]
+    expect(opts.map(o => o.value)).toEqual(['', 'auth', 'review'])
+  })
+
+  it('登录成败显「登录 / 登录失败」,不是裸码', async () => {
+    logs.mockImplementation(() => page({ rows: [
+      { source: 'auth', ts: '2026-10-05T08:00:00', actor: 'li.cw', action: 'login', target: '10.0.0.8', detail: null, authorizer: null },
+      { source: 'auth', ts: '2026-10-05T07:59:00', actor: 'li.cw', action: 'login.fail', target: '10.0.0.8', detail: '密码不对', authorizer: null },
+    ] }))
+    const w = mountView()
+    await flushPromises()
+    const [ok, bad] = w.findAll('.lg-row')
+    expect(ok.get('.lg-act').text()).toBe('登录')
+    expect(bad.get('.lg-act').text()).toBe('登录失败')
+    expect(bad.get('.lg-detail').text()).toBe('密码不对')
   })
 
   it('三路来源各自渲染出可区分的徽标', async () => {
