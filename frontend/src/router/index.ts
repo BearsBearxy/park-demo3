@@ -8,6 +8,7 @@ import { useUiStore } from '@/stores/ui'
 import { useUpdateStore } from '@/stores/update'
 import { AUTH_REASON_KEY } from '@/api'
 import { loadAnaSettings } from '@/analysis/anaSettings'
+import { loadPermDict } from '@/api/perms'
 
 const PlaceholderView = () => import('@/views/PlaceholderView.vue')
 const Gallery = () => import('@/views/Gallery.vue')
@@ -167,7 +168,10 @@ router.beforeEach(async (to) => {
   }
   // 目标与阈值在库里、全员一份(用户 2026-10-05 拍板第 2 条):进分析层的屏之前先取到,
   // 屏上不先按默认值画一遍、再跳成库里的数。只有第一次真的等,之后是现成的。
-  if (auth.isAuthed && (to.meta as Record<string, unknown>).layer === 'analysis') await loadAnaSettings()
+  // 没有账簿报表编辑权的人连权限名字典一起取(同时发):盈亏平衡滑杆下那一行写「需要「账簿报表」权限」
+  // (「两个都按你建议」2026-10-05),首帧就是人话名,不先闪一下 report:edit。取不到也放行(loadPermDict 自己兜住)。
+  if (auth.isAuthed && (to.meta as Record<string, unknown>).layer === 'analysis')
+    await Promise.all([loadAnaSettings(), auth.can('report:edit') ? null : loadPermDict()])
 })
 
 router.afterEach((to, _from, failure) => {

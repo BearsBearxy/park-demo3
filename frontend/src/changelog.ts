@@ -31,7 +31,7 @@ export const CHANGELOG: ReleaseNote[] = [
   //   「账号不存在的失败，15 分钟只记第 1、5 次」:没有这个账号按网络地址合一个桶,15 分钟(LoginRateLimiter.WINDOW_MS)只记第 1、第 5 次
   //   (MAX_FAILURES,AuthService.loginFailed);锁住期间(429)的尝试也不记,字数放不下,不写。
   // headline / 重点卡只点名记的那几张表(ChangeLogService.Tbl 6 张;附表6–11、办公水电、合同、租户等的手改不记;园区抄表以外的读数不记)。
-  // 改进(四条都是用法变了,按侧栏先后排):
+  // 改进(前四条是用法变了,按侧栏先后排;第五条「园区抄表」只是变快,排最后):
   //   「损益附表」PnlService.apply:改到整月锁账的月(ReviewService.closedMonths;屏上那一行叫「本月锁账」)整次拒 423,
   //     原句「2025 年 3 月已锁账（本月出账里「本月锁账」打了勾），改不了。要改，先请审核员撤销那个月其中一张表的审核。」
   //     编辑态那几列只读、「填入」跳过(PnlTable lockedMonths)。核实(对照 master):save / importRows 是 clear + insert、挂 @NoReviewGuard,
@@ -40,9 +40,18 @@ export const CHANGELOG: ReleaseNote[] = [
   //     所以是「每台电脑一份」不是「每人一份」),现在 analysis_setting 一份,
   //     PUT /api/analysis/settings 要 report:edit(角色屏上那一格叫「账簿报表」,AnaShell 的锁句同名);旧值不搬(用户拍板),模块加载时删掉那个键,
   //     有权限的人重填前大家看到默认值。
-  //   「盈亏平衡与敏感性」固定成本系数滑杆:没有账簿报表置灰带原因;拖动只重算本屏,松手存一次(BreakevenView.onFrDone)。
-  //     核实(对照 master):滑杆没有任何权限判断,@input 每格存一次。
+  //   「盈亏平衡与敏感性」固定成本系数滑杆:谁都能拖,拖动只重算本屏;有账簿报表编辑权的松手存一次(BreakevenView.onFrDone),
+  //     没有的只是看效果(BreakevenView.tryFr),不发请求,离开这一屏 / 刷新回到全园的数(用户 2026-10-05「两个都按你建议」;此前一版是置灰)。
+  //     不写「试算」:三大报表里「试算平衡」是记账用语,用户看不懂行话。
+  //     核实(对照 master):滑杆没有任何权限判断,@input 每格存一次(存进那台浏览器的 localStorage)。
   //   「角色权限的改动记录」SystemService.permDiff;核实(对照 master):role.create / role.update 的 detail 是「权限 N 项」。
+  //   「园区抄表」导入变快(用户 2026-10-05「两个都按你建议」;只是变快,排在用法变了的四条后面):档案行攒批落库(MeterTimelineService.Batch)、
+  //     冻结月一批只查一遍,导入结果逐字节不变(MeterImportEquivalenceIT 钉快照)。本机测试库实测(同一用例 #perf,1,090 块表):
+  //     整年 14,280 行 223 秒 → 58 秒,3 个月 3,506 行 68 秒 → 13 秒;语句数 18.4 万 → 5 千。剩下的主要是写这么多行本身:测试库缓冲池只有 16MB,同样 1.4 万行前后像在默认 128MB 的库上写 6 秒、测试库 20 秒。
+  //     只写比例、不写「不到一分钟」(对抗复查 IMP-T2-changelog-claim):上面是造出来的册子,1,090 块表头一个月全是新建;
+  //     8a98896f 量的那本真实形状整年册子(13,080 行,nginx.conf 注释)改前要 345 秒,比造的这本重约 1.5 倍,改后没重量 ——
+  //     按比例约 90 秒。造的册子改后用时是改前的 26%(整年)、19%(3 个月),都在三分之一以内,所以写「不到原来的三分之一」;
+  //     真实形状那本的比例没量,发版前在同一台机器上新旧各导一次核一下。
   // 金额不变:只加留痕、改谁能改目标与阈值;损益附表锁账月从能改变成拒,库里已有的数不动。
   {
     version: '0.30.0',
@@ -60,8 +69,9 @@ export const CHANGELOG: ReleaseNote[] = [
     improved: [
       { icon: 'layers', title: '损益附表', desc: '已锁账的月原来能改；现在改到它的数，保存、导入都会被拒，先请审核员撤销那个月一张表的审核。' },
       { icon: 'sliders-horizontal', title: '经营分析的目标与阈值', desc: '原来每台电脑一份，现在全园一份，有「账簿报表」权限才能改；原来填的不带过来，得重填。' },
-      { icon: 'scale-3d', title: '盈亏平衡与敏感性', desc: '固定成本系数原来谁都能拖；现在要「账簿报表」权限，松手就改全园共用的数。', to: 'breakeven' },
+      { icon: 'scale-3d', title: '盈亏平衡与敏感性', desc: '固定成本系数原来一拖就存；现在谁都能拖着看效果，有「账簿报表」权限的人松手才改全园的数。', to: 'breakeven' },
       { icon: 'shield-check', title: '角色权限的改动记录', desc: '系统管理员：原来只记权限共几项，现在写明加了哪几项、去了哪几项。' },
+      { icon: 'gauge', title: '园区抄表', desc: '一次导入一整年的抄表册，原来要等好几分钟，现在用时不到原来的三分之一。', to: 'meters' },
     ],
     fixed: [],
   },

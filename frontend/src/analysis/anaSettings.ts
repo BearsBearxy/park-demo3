@@ -36,7 +36,7 @@ export const ANA_SETTINGS_DEFAULT: AnaSettings = {
 try { localStorage.removeItem('fp-ana-settings') } catch { /* 拿不到 storage(隐私模式)就算了 */ }
 
 export const anaSettings = reactive<AnaSettings>({ ...ANA_SETTINGS_DEFAULT })
-/** 库里的那一份(最后一次取到 / 存成的)。盈亏平衡滑杆拖动时只改 anaSettings,松手存不上就退回这一份。 */
+/** 库里的那一份(最后一次取到 / 存成的)。盈亏平衡滑杆(有编辑权的人)拖动时只改 anaSettings,松手存不上就退回这一份。 */
 const saved: AnaSettings = { ...ANA_SETTINGS_DEFAULT }
 let loading: Promise<void> | null = null
 
@@ -57,7 +57,7 @@ export function resetAnaSettings(): Promise<void> {
   return saveAnaSettings({ ...ANA_SETTINGS_DEFAULT })
 }
 
-/** 改不了时的一句原因(设置弹层、盈亏平衡滑杆共用);能改返回 ''。store 用到时再取(同 useViewGate)。 */
+/** 改不了时的一句原因(设置弹层用;盈亏平衡滑杆只看它空不空,那一行字自己写);能改返回 ''。store 用到时再取(同 useViewGate)。 */
 export function anaSettingsLock(): string {
   return useAuthStore().can('report:edit') ? '' : `全园区共用这一份目标与阈值，${lackText(['report:edit'])}才能改`
 }

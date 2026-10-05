@@ -10,11 +10,12 @@ import http from '@/api'
 import NoAccessView from '@/views/NoAccessView.vue'
 import { __resetAnaSettingsForTest, anaSettings } from '@/analysis/anaSettings'
 import { analysisApi } from '@/api/analysis'
+import { loadPermDict } from '@/api/perms'
 import { flushPromises } from '@vue/test-utils'
 
 // 权限点人话名来自后端 Perm.META(/auth/perms);这里给两个,其余退回原名(permLabel 口径)
 vi.mock('@/api/perms', () => ({
-  loadPermDict: () => Promise.resolve(),
+  loadPermDict: vi.fn(() => Promise.resolve()),
   permLabel: (k: string) => ({ 'master:view': '主数据 · 查看', 'contract:view': '合同 · 查看' } as Record<string, string>)[k] ?? k,
 }))
 
@@ -121,6 +122,29 @@ describe('守卫:进分析层的屏之前先取到目标与阈值', () => {
     } finally {
       settings.mockRestore()
     }
+  })
+
+  // 盈亏平衡滑杆下「要改全园共用的数需要「账簿报表」权限」那一行(「两个都按你建议」2026-10-05)首帧就要是人话名,
+  // 不先闪一下 report:edit(对抗复查 UI-F5)。有编辑权的人用不上,不取。破坏验证:守卫里去掉 loadPermDict → 红
+  it('❗没有账簿报表编辑权:权限名字典到了才进分析屏;有编辑权的不取', async () => {
+    signIn(['analysis:view'])
+    let release = () => {}
+    vi.mocked(loadPermDict).mockClear().mockImplementationOnce(() => new Promise((r) => { release = () => r() }))
+    await import('@/views/analysis/ExpiryView.vue')
+    let done = false
+    const nav = router.push('/expiry').then(() => { done = true })
+    await flushPromises()
+    await flushPromises()
+    expect(done, '权限名还没到就进屏了').toBe(false)
+    release()
+    await nav
+    expect(at().path).toBe('/expiry')
+
+    signIn(['analysis:view', 'report:edit'])
+    vi.mocked(loadPermDict).mockClear()
+    await router.push('/churn')
+    expect(at().path).toBe('/churn')
+    expect(loadPermDict, '有编辑权也去取了权限名').not.toHaveBeenCalled()
   })
 })
 
