@@ -3,7 +3,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { installRowMotion } from './rowMotion'
 
-type Call = { el: HTMLElement; frames: Keyframe[] }
+type Call = { el: HTMLElement; frames: Keyframe[]; opts?: KeyframeAnimationOptions }
 let calls: Call[] = []
 let uninstall: () => void
 
@@ -34,8 +34,8 @@ const byId = (id: string) => calls.find((c) => c.el.dataset.id === id)
 beforeEach(() => {
   calls = []
   Object.defineProperty(window, 'innerHeight', { value: 900, configurable: true })
-  ;(HTMLElement.prototype as unknown as { animate: unknown }).animate = function (this: HTMLElement, frames: Keyframe[]) {
-    calls.push({ el: this, frames })
+  ;(HTMLElement.prototype as unknown as { animate: unknown }).animate = function (this: HTMLElement, frames: Keyframe[], opts?: KeyframeAnimationOptions) {
+    calls.push({ el: this, frames, opts })
     // 动画刚开始:视觉位置 = 布局位置 + 首帧位移(浏览器里 getBoundingClientRect 也把在跑的 transform 算进去)
     const m = /translateY\((-?\d+)px\)/.exec(String(frames[0].transform ?? ''))
     const el = this
@@ -49,6 +49,24 @@ afterEach(() => {
   document.body.innerHTML = ''
   delete (HTMLElement.prototype as unknown as { animate?: unknown }).animate
   vi.restoreAllMocks()
+})
+
+// 2026-10-03 线上动画「没了」:生产构建把 --dur-base: 200ms 压成 .2s,parseFloat 读成 0.2 → 动画只有 0.2 毫秒。
+// 本地开发不压缩样式,是 200ms,所以本地好好的。破坏验证:cssMs 不认 s 单位 → 本条红
+describe('rowMotion · 线上压缩后的时长', () => {
+  it('❗令牌是 .2s(线上构建产物)时,动画时长是 200ms 不是 0.2ms', async () => {
+    document.documentElement.style.setProperty('--dur-base', '.2s')
+    try {
+      const t = table(['g', 'a'])
+      t.querySelector<HTMLButtonElement>('[data-id="g"] button')!.click()
+      t.tBodies[0].insertBefore(row('c', 40), t.tBodies[0].rows[1])
+      ;(t.querySelector('[data-id="a"]') as HTMLElement).dataset.y = '80'
+      await tick()
+      expect(byId('a')?.opts?.duration).toBe(200)
+    } finally {
+      document.documentElement.style.removeProperty('--dur-base')
+    }
+  })
 })
 
 describe('rowMotion · 表格展开 / 收起', () => {

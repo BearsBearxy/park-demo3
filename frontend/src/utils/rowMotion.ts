@@ -22,6 +22,9 @@ const reduced = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').
 const token = (name: string, fallback: string) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
 
+// 生产构建把 200ms 压成 .2s(2026-10-03 线上动画因此只剩 0.2ms),s / ms 都要认
+const cssMs = (v: string) => parseFloat(v) * (v.endsWith('ms') ? 1 : 1000)
+
 function snapshot(t: HTMLTableElement) {
   const top = t.getBoundingClientRect().top
   const rows = new Map<Element, number>()
@@ -53,7 +56,7 @@ function settle(t: HTMLTableElement) {
   for (const r of now) { running.get(r)?.cancel(); running.delete(r) }
   const top = t.getBoundingClientRect().top
   const vh = window.innerHeight
-  const dur = parseFloat(token('--dur-base', '200ms')) || 200
+  const dur = cssMs(token('--dur-base', '200ms')) || 200
   const move = token('--ease-both', 'ease-in-out')
   const enter = token('--ease-out', 'ease-out')
   const plan: [HTMLElement, Keyframe[], string][] = []
