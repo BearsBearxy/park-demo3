@@ -41,7 +41,7 @@ export const CHANGELOG: ReleaseNote[] = [
       { icon: 'plug', title: '办公水电', desc: '两个页签的新增记账，单价原来预填固定的数，现在取本年记账月最晚的电价和水价；没录过就空着。' },
       { icon: 'calendar-clock', title: '到期墙与续约', desc: '「续签率变一档」的缺口原来按固定厂房租金折户数，现在按「租金中位数」折份数，份数会变。' },
       { icon: 'sliders-horizontal', title: '计费参数', desc: '各参数的说明去掉了租户、楼栋、月份和具体数值，两个参数名也去掉了座号和年份。' },
-      { icon: 'file-check-2', title: '催缴单', desc: '包干那一行改叫「固定月额收取」了，悬浮说明也同步改了。' },
+      { icon: 'file-check-2', title: '催缴单', desc: '个别户每月收固定公共水电费的那一行，改叫「固定月额收取」了。' },
     ],
     fixed: [
       '角色权限：「抄表」的说明原来写着含按年模拟填充，只勾它其实做不了',
