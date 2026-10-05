@@ -77,13 +77,22 @@ export type FailKind = 'lost' | 'server' | 'reject'
 export function failKind(e: unknown): FailKind {
   const x = e as { code?: unknown; isAxiosError?: boolean; response?: { status?: number } } | null
   if (typeof x?.code === 'number') return x.code >= 500 ? 'server' : 'reject'
-  if (x?.isAxiosError) return !x.response ? 'lost' : (x.response.status ?? 0) >= 500 ? 'server' : 'reject'
+  // 504 = nginx 等后端回话等过了点(nginx.conf 导入段的 proxy_read_timeout)就先回了;后端那头没停,跑完照样提交。
+  // 写没写进去不知道,同「没有回应」—— 不能按 5xx 说「一条都没写进去」(复查 F2:一次能导的量放大后才够得着这个点)。
+  if (x?.isAxiosError) return !x.response || x.response.status === 504 ? 'lost' : (x.response.status ?? 0) >= 500 ? 'server' : 'reject'
   return 'reject'
 }
 
+// 413 = 请求体超过 nginx 的 client_max_body_size(frontend/nginx.conf),请求没到后端,一条都没写。
+// 用户 2026-10-05:「抄表整册导入被拒：超过 1MB 就被服务器挡掉，没有分批导入的办法」—— 原来这里只写「服务器返回 413」,
+// 看不懂、也不知道下一步。现在说清是太大、怎么分批:「返回修改」回到选文件那一屏时勾选都还在,先勾一部分就是分批。
+// 这句所有导入共用:有的选文件那一屏没有勾选(只有一张表 / 粘贴)、有的不按月(合同、预算),所以两种分法都说(复查 F3)。
+// 导入接口放到 16m 之后,按 park_review 各导入的行数估,只有抄表整册够得着这个上限(nginx.conf 导入那段)。
 export function failReason(e: unknown): string {
   const x = e as { message?: unknown; isAxiosError?: boolean; response?: { status?: number } } | null
-  if (x?.isAxiosError) return x.response ? `服务器返回 ${x.response.status}` : '请求发出后没有回应'
+  if (x?.isAxiosError) return !x.response ? '请求发出后没有回应'
+    : x.response.status === 413 ? '数据太多，一次传不上去。请分几次导入：点「返回修改」，选文件那一屏能勾选的话先勾一部分导，剩下的再导一次；不能勾选就把文件拆成几份，一份一份导。'
+    : `服务器返回 ${x.response.status}`
   return typeof x?.message === 'string' && x.message ? x.message : '没有给出原因'
 }
 

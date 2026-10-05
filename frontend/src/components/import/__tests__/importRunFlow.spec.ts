@@ -2,6 +2,7 @@
 // 弹窗不关 → 进度卡(逐段真进度 / 单次不确定)→ 原地结果卡或失败卡;200ms 内结束不出进度卡;
 // 逐段断在网络 / 5xx 从断的那段接着导(前面的段不重发);4xx 整单拒只给「返回修改」;导入中关不掉。
 import { mount, flushPromises } from '@vue/test-utils'
+import { AxiosError } from 'axios'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('@/api/s10', () => ({ s10Api: { importRows: vi.fn() } }))
@@ -14,6 +15,7 @@ vi.mock('@/api/utilities', () => ({ utilitiesApi: { importRows: vi.fn() } }))
 import FpImportModal, { type ImportRec, type ImportPayload, type SectionPick } from '../FpImportModal.vue'
 import { importBusy, type ImportOutcome, type ImportRunProgress } from '../importRun'
 import { runImport } from '@/utils/importRegistry'
+import http from '@/api/index'
 import { s10Api } from '@/api/s10'
 import { importLogApi } from '@/api/importLog'
 import { companyApi, ledgerApi } from '@/api/ledger'
@@ -256,6 +258,57 @@ describe('失败 · 逐段接着导(真 registry s10 run)', () => {
     await flushPromises()
     expect(w.find('.ipf-line').text()).toBe('第 1 段和后面 2 段都没有写。')
     expect(btn(w, '从第 1 段接着导')).toBeTruthy()
+  })
+})
+
+describe('失败 · 一次传的数据太多(nginx 413,真 registry meter run + 真 http 拦截器)', () => {
+  // 用户 2026-10-05:「抄表整册导入被拒：超过 1MB 就被服务器挡掉，没有分批导入的办法」。
+  // adapter 照 nginx 的样子回 413:HTML 体、不带信封,拦截器原样抛 AxiosError。
+  // 破坏验证:failReason 去掉 413 那一支 → 「原因」那句变回「服务器返回 413」红
+  const adapter = http.defaults.adapter
+  const urls: string[] = []
+  const nginxSays = (status: number, statusText: string) => {
+    http.defaults.adapter = async (config) => {
+      urls.push(config.url ?? '')
+      throw new AxiosError(`Request failed with status code ${status}`, AxiosError.ERR_BAD_REQUEST, config, {}, {
+        status, statusText, headers: {}, config,
+        data: `<html><head><title>${status} ${statusText}</title></head></html>`,
+      })
+    }
+  }
+  afterEach(() => { http.defaults.adapter = adapter; urls.length = 0 })
+  const meterRun = () => {
+    const w = track(mountModal((payload, fn, p) => runImport('meter', payload, { _run: p }, fn)))
+    vmOf(w).onLabelConfirm([{ label: '一期电 · 2024年2月', records: recs(3) }])
+    return w
+  }
+
+  it('❗抄表整册被 413 挡掉:失败卡说一次传不上去、怎么分几次导;「返回修改」回到选文件那一屏', async () => {
+    nginxSays(413, 'Request Entity Too Large')
+    const w = meterRun()
+    await flushPromises()
+    expect(urls, '走的是抄表导入那一个请求').toEqual(['/meters/import'])
+    expect(w.find('.ipf-h h4').text()).toBe('导入失败，这次一条都没写进去')
+    expect(w.find('.ipf-box').text()).toBe('原因数据太多，一次传不上去。请分几次导入：点「返回修改」，选文件那一屏能勾选的话先勾一部分导，剩下的再导一次；不能勾选就把文件拆成几份，一份一份导。')
+    expect(w.findAll('.fpimp-f button').map(b => b.text())).toEqual(['关闭', '返回修改'])
+    expect(importLogApi.record, '没写进去不记导入记录').not.toHaveBeenCalled()
+    await btn(w, '返回修改')!.trigger('click')
+    expect(w.find('.ipf').exists()).toBe(false)
+    expect((w.find('.fpimp-pick').element as HTMLElement).style.display).toBe('')
+  })
+
+  // 复查 F2:nginx 等后端等过了点回 504,后端那头跑完照样提交。原来按 5xx 写「这次一条都没写进去」「本期还是导入前的数据」,
+  // 人信了会再导一遍、或照着错的样子做事。破坏验证:failKind 去掉 504 那一支 → 标题变回「一条都没写进去」红
+  it('❗等后端等过了点(nginx 504):不说一条都没写进去,说没等到结果、以刷新后看到的为准', async () => {
+    nginxSays(504, 'Gateway Time-out')
+    const w = meterRun()
+    // 5xx 时拦截器先动态 import ui store 报全局提示,比 flushPromises 多走几拍
+    await vi.waitFor(() => expect(w.find('.ipf').exists()).toBe(true))
+    expect(urls).toEqual(['/meters/import'])
+    expect(w.find('.ipf-h h4').text()).toBe('导入失败，没等到服务器的结果')
+    expect(w.find('.ipf').text()).toContain('这次写没写进去，以本页刷新后看到的为准。')
+    expect(w.find('.ipf').text()).not.toContain('一条都没写进去')
+    expect(w.find('.ipf').text()).not.toContain('导入前的数据')
   })
 })
 

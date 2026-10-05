@@ -31,6 +31,11 @@ export const CHANGELOG: ReleaseNote[] = [
   // 「计费参数」:ParamRegistry / paramRegistry.ts 的说明去掉租户名、楼栋名和月份(paramRegistry.spec 守卫)。
   // 「催缴单」:billNoticeLogic.PACKAGE_LABEL 与悬浮(按 priceKey 渲染,已生成的单和导出也显新名);BillNoticeService 新生成行的备注同口径,
   //   库里已有的旧备注不动。说明里不写旧名:更新记录每个客户都翻得到,旧名是我园用语(2026-10-04 文案复查)。
+  // 「园区抄表」修复(用户 2026-10-05:「抄表整册导入被拒：超过 1MB 就被服务器挡掉，没有分批导入的办法」;对照 master 核实):
+  //   master 的 frontend/nginx.conf 没写 client_max_body_size,nginx 默认 1m;抄表整册一次 POST,一行约 300 字节(park_review 实测),
+  //   1m 约 3,400 行、3 个多月就被挡(413),一条都进不去。现在只有导入接口放到 16m(整年约 3.8MB),其余 /api 仍 1m;
+  //   导入接口等后端回话也从默认 60s 放到 900s(本机实测 3 个月 117 秒,60s 等不完会回 504,后端照样写完)。
+  //   还超的,失败卡原来只写「服务器返回 413」,现在说一次传不上去、怎么分几次导(importRun.failReason);504 不再说「一条都没写进去」。不改数。
   // 金额不变:只改说明、默认值和折算口径,收费算法没动。
   {
     version: '0.29.0',
@@ -44,6 +49,7 @@ export const CHANGELOG: ReleaseNote[] = [
       { icon: 'file-check-2', title: '催缴单', desc: '个别户每月收固定公共水电费的那一行，改叫「固定月额收取」了。' },
     ],
     fixed: [
+      '园区抄表：一次导入几个月的抄表册，原来会被服务器拒收，一条都导不进去',
       '角色权限：「抄表」的说明原来写着含按年模拟填充，只勾它其实做不了',
       '电费成本总览：不能改电价参数的账号，空月提示原来也说能模拟填充',
     ],
