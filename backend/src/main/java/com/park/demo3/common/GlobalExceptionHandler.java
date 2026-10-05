@@ -14,7 +14,7 @@ import java.util.NoSuchElementException;
 
 // HTTP 状态口径(项目约定,勿混用):
 //   业务错误(BizException/重复/查无) → HTTP 200 + body.code(404/409/…),前端按 code 分支展示中文;
-//   入参校验失败(@Valid/@Validated)  → HTTP 400 + body.code=400,保留 4xx 供监控统计;
+//   入参校验失败(@Valid/@Validated)、请求体解析失败 → HTTP 400 + body.code=400,保留 4xx 供监控统计;
 //   未认证 → 401(SecurityConfig);无权限(viewer 触发非 GET 写) → 403(SecurityConfig accessDeniedHandler)+ body.code=403;
 //   未捕获异常 → 500。
 // 前端拦截器对非 2xx 也解包 Result 信封,故两轨的用户提示一致(api/index.ts)。
@@ -90,6 +90,15 @@ public class GlobalExceptionHandler {
     public Result<Void> notFound(NoSuchElementException e) {
         log.warn("not found: {}", e.getMessage());
         return Result.error(ResultCode.NOT_FOUND.code, ResultCode.NOT_FOUND.message);
+    }
+
+    // 请求体读不成对象:JSON 写坏了、类型对不上、数值超界(JacksonLimitsConfig)。是调用方的错,回 400;
+    // 原来落到下面的兜底成了 500 + error 日志。日志只记异常类名 —— 它的 message 会带回请求体片段(换行可伪造日志行)。
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> unreadable(org.springframework.http.converter.HttpMessageNotReadableException e) {
+        log.warn("unreadable request body: {}", e.getMostSpecificCause().getClass().getSimpleName());
+        return Result.error(ResultCode.BAD_REQUEST.code, "提交的内容格式不对，没有保存");
     }
 
     @ExceptionHandler(Exception.class)

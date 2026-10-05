@@ -40,7 +40,8 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-async function mountAt(w: number, h: number, edit: boolean, over: { year?: number; rows?: PnlRowDTO[] } = {}) {
+async function mountAt(w: number, h: number, edit: boolean,
+                       over: { year?: number; rows?: PnlRowDTO[]; lockedMonths?: ReadonlySet<number> } = {}) {
   const wr = mount(PnlTable, {
     props: { year: 2025, rows: ROWS, groupCol: '区域', edit, derive: DERIVE, selected: new Set<string>(), ...over },
     attachTo: document.body,
@@ -165,6 +166,22 @@ describe('损益附表 · 最右空列', () => {
     expect([td('fill').right, td('ann').right]).toEqual(['0px', '56px'])
     expect(subBoxW(wr)).toBe('')   // 170 < 3000/5:名字框不定宽,按内容撑开
     wr.unmount()
+  })
+})
+
+// 整月锁账的月:后端改到它整次拒(用户 2026-10-05 拍板第 3 条),编辑态那一列只读、悬停说为什么,「填入」不再算它(对抗复查 PROD-F1)。
+// 破坏验证:月格 input 的 v-if 去掉 lockedMonths 判断 → 第一句红;fillable 不看 lockedMonths → 最后一句红
+describe('损益附表 · 锁账月', () => {
+  it('编辑态锁账那一列不出输入框,别的月照旧;只剩锁账月可填的行不出「填入」', async () => {
+    const { wr } = await mountAt(1400, 800, true, { lockedMonths: new Set([3]) })
+    const cells = wr.findAll('tbody tr')[0].findAll('td.pt-c-num').slice(0, 12)
+    expect(cells.map(c => c.find('input').exists())).toEqual(
+      [true, true, true, false, true, true, true, true, true, true, true, true])
+    expect(wr.findAll('.pt-fillbtn')).toHaveLength(0)   // r1 / r3 只在 4 月(锁了)有空可填
+    wr.unmount()
+    const open = await mountAt(1400, 800, true)
+    expect(open.wr.findAll('.pt-fillbtn')).toHaveLength(2)
+    open.wr.unmount()
   })
 })
 

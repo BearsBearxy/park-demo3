@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { defineComponent, h, KeepAlive, ref, type Component } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
+import { grantViews } from '@/test-utils/perms'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -131,6 +132,10 @@ interface MountOpt extends FxOpt {
   today?: string
   readings?: PvReadingDTO[]
   stations?: PvStationDTO[]
+  /** 计费参数行;默认只有锚点 950(2026-10-04 起锚点没填就不判,其余判据线仍回落默认) */
+  params?: ParamRowDTO[]
+  /** 参数接口失败(超时/断网) */
+  paramsFail?: boolean
 }
 
 // 挂过的屏每条测试后卸掉:usePeriod 是模块级单例,留着的旧实例会在下一条换期时跟着重算(停在高级分析的那个会再跑 buildLab)
@@ -146,7 +151,9 @@ async function mountScreen(o: MountOpt = {}, host: Component = PvMeterAnaView) {
   vi.mocked(pvMeterApi.stations).mockResolvedValue(o.stations ?? stationsFx)
   vi.mocked(pvMeterApi.readingsYear).mockImplementation(async (y: number) =>
     (y === 2026 ? rds : y === 2025 ? readingsOf(2025, { crash: false }) : []))
-  vi.mocked(paramsApi.list).mockResolvedValue([])          // 取不到参数 → 回落默认线
+  if (o.paramsFail) vi.mocked(paramsApi.list).mockRejectedValue(new Error('timeout'))
+  else vi.mocked(paramsApi.list).mockResolvedValue(o.params
+    ?? [{ key: 'pv_yield_anchor_h', scope: '', value: 950 }] as unknown as ParamRowDTO[])   // 其余取不到 → 回落默认线
 
   const w = mount(host, { global: { stubs: { RouterLink: true, teleport: true } } })
   mounted.push(w)
@@ -204,6 +211,7 @@ async function pickFirstFolded(w: VueWrapper): Promise<string> {
 const boot = () => {
   while (mounted.length) mounted.pop()!.unmount()
   setActivePinia(createPinia())
+  grantViews()   // RBAC v3:导航按查看权滤,这里给全部业务查看权
   vi.clearAllMocks()
   __resetCompareForTest()
   location.hash = ''
@@ -252,6 +260,23 @@ describe('光伏分栋分析 · 四个状态各自渲染什么', () => {
     // A2「比去年」那一列要上一年的抄表:进这一档就取,不等同比开关
     expect(vi.mocked(pvMeterApi.readingsYear)).toHaveBeenCalledWith(2025)
     expect((w.findComponent(PvAnchorBars).props('data') as { noPrev: number }).noPrev).toBe(0)
+  })
+  // 2026-10-04 用户拍板产品卖给别的园区:新园区库里没有锚点参数,不套我园的 950,卡里写明没填、给去填的入口
+  it('❗锚点参数没有:年等效小时卡写「没填」,不画比锚点的条', async () => {
+    const w = await mountScreen({ params: [] })
+    await toSection(w, '绝对水平')
+    const card = w.findAll('.pma-sec .av2-grid > .av2-card')[1]
+    expect(card.find('.av2-card-h .t').text()).toBe('年等效小时')
+    expect(card.findComponent(PvAnchorBars).exists()).toBe(false)
+    expect(card.text()).toContain('年等效小时锚点没填')
+  })
+  // 复查 SAFE-F14:接口失败时原来回落 DEFAULT_CRITERIA,带着我园实测的 950h 判别的园区;失败也按「没填」走
+  it('❗参数接口失败:同样按锚点没填,不拿默认 950 判年等效', async () => {
+    const w = await mountScreen({ paramsFail: true })
+    await toSection(w, '绝对水平')
+    const card = w.findAll('.pma-sec .av2-grid > .av2-card')[1]
+    expect(card.findComponent(PvAnchorBars).exists()).toBe(false)
+    expect(card.text()).toContain('年等效小时锚点没填')
   })
 
   it('高级分析:L1 L3 s6 · L6 s8 · L2/L4 叠在一个 s4 栏 · L7 s12,六块一块都没退成空态', { timeout: 30_000 }, async () => {

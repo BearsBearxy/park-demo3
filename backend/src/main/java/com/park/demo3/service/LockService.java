@@ -40,6 +40,12 @@ public class LockService {
         @NoReviewGuard(reason = "编辑锁写的是内存 PresenceStore,不落库,不是期间数据。锁本身是并发协调,进审核会变成「要占锁先请人审」")
 public LockDTO acquire(String scope) {
         requireSomeEditPerm();
+        // 资源上限(安全审计 G4b):scope 是路径里的自由字符串,这里是锁表唯一的插入口(takeover 撞空锁也走这里)
+        if (scope == null || scope.length() > SCOPE_MAX)
+            throw new BizException(ResultCode.BAD_REQUEST, "编辑锁标识不合法");
+        if (store.liveLocksOf(me(), scope) >= PresenceStore.LOCKS_PER_USER)
+            throw new BizException(ResultCode.TOO_MANY_REQUESTS,
+                "同时在编辑的页面太多了（最多 " + PresenceStore.LOCKS_PER_USER + " 个），先在别的页面点「完成」");
         LockState held = store.acquire(scope, me(), myName());
         if (held != null) return new LockDTO(false, holderOf(scope, held), null);
         LockState mine = store.state(scope);   // 刚占到,必是自己的、非陈旧
@@ -126,6 +132,9 @@ public LockDTO takeover(String scope, TakeoverReq req) {
     }
 
     private static boolean isBlank(String s) { return s == null || s.isBlank(); }
+
+    /** 锁标识上限。真实的形如 billing-chain:2026-09、ledger:3:2025-06,几十个字符(utils/lockScopes.ts)。 */
+    static final int SCOPE_MAX = 128;
 
     private static String me() {
         var a = SecurityContextHolder.getContext().getAuthentication();

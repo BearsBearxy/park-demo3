@@ -28,7 +28,7 @@ async function load() {
 }
 
 onMounted(async () => {
-  const p = await defaultPeriod()          // F3 确定性默认期(不读时钟)
+  const p = await defaultPeriod()          // F3 默认期:有数据取最新(不读时钟),没数据落今月
   year.value = p.year
   month.value = p.month
   await load()

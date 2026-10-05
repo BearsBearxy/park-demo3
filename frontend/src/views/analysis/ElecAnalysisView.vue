@@ -8,14 +8,16 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
+import { useAppConfigStore } from '@/stores/appConfig'
 import { periodLink, periodOf } from '@/nav/deepLink'
+import { useViewGate } from '@/composables/useViewGate'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import FPStateTag from '@/components/fp/FPStateTag.vue'
 import { iconFor } from '@/components/ds/icon'
-import { fnum, hues, sgn, STATUS } from '@/components/ana/anaFmt'
+import { esc, fnum, hues, sgn, STATUS } from '@/components/ana/anaFmt'
 import { finWan } from '@/utils/finFmt'
 import { usePeriod } from '@/analysis/usePeriod'
 import {
@@ -36,6 +38,7 @@ const isS = isSViewport()
 
 const router = useRouter()
 const tabs = useTabsStore()
+const appCfg = useAppConfigStore()   // 客户园区没有模拟填充,提示里不提它(2026-10-05 用户拍板)
 const period = usePeriod()
 const year = computed(() => period.sel.value.year)
 
@@ -128,7 +131,10 @@ const conclusion = computed(() =>
 
 // ── 深链电费成本第二本账(cost):ElecView 认 ?mode=(P0b),子屏 ElecCostView 认 ?p=YYYY-MM 落月(只有年 → 停在它的月门) ──
 // 改前发的是 view=cost —— 键名对不上,永远落在报送台账(假下钻)。openFresh 页签语义不变(spec §4.1)。
+// 跳到模块屏的入口:没有目标屏的查看权就置灰、悬停写明缺哪一项;图上的点、整行点击没法置灰,点了说一句原因不跳(RBAC v3)
+const { lack, blocked } = useViewGate()
 function goCost(month?: number): void {
+  if (blocked('/elec-cost')) return
   tabs.openDeep('elec-cost')
   void router.push(periodLink('elec-cost', { p: periodOf(loadedYear.value ?? year.value, month ?? null), extra: { mode: 'cost' } }))
 }
@@ -323,8 +329,8 @@ const spreadOption = computed<object>(() => ({
   tooltip: {
     trigger: 'axis',
     formatter: (ps: { seriesName: string; value: number | null; axisValue: string; marker: string }[]) =>
-      ps[0].axisValue + ps.map((p) =>
-        `<br/>${p.marker}${p.seriesName} ${p.value == null ? '—' : p.seriesName.includes('价') ? p.value.toFixed(3) + ' 元/kWh' : (p.value < 0 ? '−' : '') + '¥' + fnum(Math.abs(p.value), 1) + '万'}`).join(''),
+      esc(ps[0].axisValue) + ps.map((p) =>
+        `<br/>${p.marker}${esc(p.seriesName)} ${p.value == null ? '—' : p.seriesName.includes('价') ? p.value.toFixed(3) + ' 元/kWh' : (p.value < 0 ? '−' : '') + '¥' + fnum(Math.abs(p.value), 1) + '万'}`).join(''),
   },
   legend: { top: 0 },
   grid: { left: 52, right: 52, top: 32, bottom: 26 },
@@ -450,7 +456,7 @@ const spreadRead = computed(() => {
       <AnaEmpty
         v-if="!hasEntries"
         :label="loadedYear + ' 年电费成本模型无费项数据'"
-        hint="本屏依赖电费成本总览的总表/宿舍/运营费项月度值;先录入或用模拟填充"
+        :hint="'本屏依赖电费成本总览的总表/宿舍/运营费项月度值;' + (appCfg.parkTools ? '先录入或用模拟填充' : '请先到电费成本总览录入')"
         to="/elec-cost"
         to-text="去电费成本总览"
       />
@@ -460,7 +466,7 @@ const spreadRead = computed(() => {
         <div class="av2-card ea-concl">
           <!-- 行尾那枚 › 只在 S 档出:这四句本来就是 button(点进成本总览),桌面上悬停有手型说明了
                这件事,手机上没有悬停,于是把已有的可点性写出来。不是新功能,也不改 @click。 -->
-          <button v-for="c in conclusion" :key="c.key" class="ea-cs" @click="goCost()">
+          <button v-for="c in conclusion" :key="c.key" class="ea-cs" :disabled="!!lack('/elec-cost')" v-tip="lack('/elec-cost')" @click="goCost()">
             <span class="dot" :style="{ background: STATUS[c.tone].color }"></span>{{ c.text }}<span class="ea-ar" aria-hidden="true">›</span>
           </button>
         </div>
@@ -498,7 +504,7 @@ const spreadRead = computed(() => {
               <span class="hint">线=双价(元/kWh,右轴) · 柱=月损益(万,左轴)</span>
             </div>
             <AnaEChart v-if="spreadHasData" :option="spreadOption" :height="300" @chart-click="onChartClick" />
-            <AnaEmpty v-else label="双价参数未录" hint="公告价/执行价按月录于成本总览电价参数(或模拟填充)" to="/elec-cost" to-text="去电费成本总览" />
+            <AnaEmpty v-else label="双价参数未录" :hint="'公告价/执行价按月录于成本总览电价参数' + (appCfg.parkTools ? '(或模拟填充)' : '')" to="/elec-cost" to-text="去电费成本总览" />
             <p class="ana-read hold"><template v-if="spreadRead">{{ spreadRead.mon }}月执行价 {{ spreadRead.exec }} 元,比公告价{{ spreadRead.diff }}</template></p>
             <p class="ana-ref hold"><template v-if="spreadRead">{{ spreadRead.n }} 个月有双价 · 同成本总览 · 元/kWh</template></p>
           </div>
@@ -514,6 +520,8 @@ const spreadRead = computed(() => {
 .ea-concl { display: flex; flex-wrap: wrap; align-items: center; column-gap: 20px; row-gap: 6px; margin-bottom: 12px; }
 .ea-cs { display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent; padding: 0; font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-primary); cursor: pointer; }
 .ea-cs:hover { text-decoration: underline; }
+.ea-cs:disabled { cursor: default; text-decoration: none; }
+.ea-cs:disabled .ea-ar { color: var(--text-disabled); }
 .ea-cs .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 /* 行尾 ›:桌面不出(那里有悬停手型),>600 连盒子都不占 */
 .ea-ar { display: none; }

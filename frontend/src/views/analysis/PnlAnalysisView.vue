@@ -7,6 +7,7 @@ import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
+import { useViewGate } from '@/composables/useViewGate'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
@@ -83,7 +84,10 @@ watch(cards, (cs) => {
 const selCard = computed(() => cards.value.find((c) => c.s === sel.value))
 
 // 深链走 openFresh(页签语义,spec §4.1);发链 periodLink(§4.2):年表屏只取年,p=YYYY(改前 ?y=,parsePeriod 仍认旧书签)
+// 跳到模块屏的入口:没有目标屏的查看权就置灰、悬停写明缺哪一项;图上的点、整行点击没法置灰,点了说一句原因不跳(RBAC v3)
+const { lack, blocked } = useViewGate()
 function goSched(nav: string): void {
+  if (blocked('/' + nav)) return
   tabs.openDeep(nav)
   router.push(periodLink(nav, { p: periodOf(year.value, null) }))
 }
@@ -210,7 +214,7 @@ const structOpt = computed<object>(() => {
               <div><div class="no">{{ c.no }}</div><div class="nm">{{ c.name }}</div></div>
             </div>
             <div class="emp"><component :is="iconFor('minus')" :size="13" />本年暂无数据
-              <button class="go" @click="goSched(c.nav)">去录入 →</button></div>
+              <button class="go" :disabled="!!lack('/' + c.nav)" v-tip="lack('/' + c.nav)" @click="goSched(c.nav)">去录入 →</button></div>
           </div>
           <button v-else class="pa2-mini" :class="{ on: sel === c.s }" @click="sel = c.s">
             <div class="hd">
@@ -276,6 +280,7 @@ const structOpt = computed<object>(() => {
 .pa2-mini .emp { display: flex; align-items: center; gap: 6px; color: var(--text-disabled); font-size: 12px; padding: 4px 0; }
 .pa2-mini .emp .go { margin-left: auto; border: none; background: transparent; font-size: var(--fs-micro); color: var(--text-link); cursor: pointer; font-family: var(--font-sans); padding: 0; }
 .pa2-mini .emp .go:hover { text-decoration: underline; }
+.pa2-mini .emp .go:disabled { color: var(--text-disabled); cursor: default; text-decoration: none; }
 
 /* 首进骨架(C6-01)的迷你卡复用上面的盒子,但它不可点 —— 去掉手型与悬停描边 */
 .pa2-skel .pa2-mini { cursor: default; }

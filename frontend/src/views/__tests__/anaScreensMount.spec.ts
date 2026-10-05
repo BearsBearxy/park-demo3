@@ -13,6 +13,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { grantViews } from '@/test-utils/perms'
 import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Component } from 'vue'
@@ -96,6 +97,8 @@ vi.mock('@/api/pvMeter', () => ({
   },
 }))
 vi.mock('@/api/params', () => ({ paramsApi: { list: vi.fn(async () => []) } }))
+// 权限点人话名(/auth/perms):这里的账号只有查看权,盈亏平衡滑杆置灰、悬停原因要用它(2026-10-05 目标与阈值进库)
+vi.mock('@/api/perms', () => ({ loadPermDict: vi.fn(async () => {}), permLabel: (k: string) => k }))
 
 import { extractPnlBand } from '@/analysis/anaData'
 import { __resetPeriodForTest } from '@/analysis/usePeriod'
@@ -328,8 +331,8 @@ const ENERGY = [{
 
 // ── 光伏附表6 ──
 const PV_PHASES: PvPhaseDTO[] = [
-  { id: 'p1', name: '一期光伏', short: '一期', online: '2023-06' },
-  { id: 'p2', name: '二期光伏', short: '二期', online: '2024-03' },
+  { id: 'p1', name: '一期光伏', short: '一期', online: '2023-06', cost: 6_000_000 },
+  { id: 'p2', name: '二期光伏', short: '二期', online: '2024-03', cost: 6_000_000 },
 ]
 const PV: PvRecordDTO[] = YMS.flatMap((ym, mi) => PV_PHASES.map((p, k) => {
   const selfKwh = Math.round((40_000 + k * 15_000) * wave(mi + k))
@@ -502,6 +505,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date(2026, 8, 16, 12, 0, 0))
   setActivePinia(createPinia())
   localStorage.clear()
+  grantViews()   // RBAC v3:导航按查看权滤,这里给全部业务查看权
   __resetPeriodForTest()      // 模块级单例:不复位的话上一屏选的期会带进下一屏
   __resetCompareForTest()
   rejections.length = 0

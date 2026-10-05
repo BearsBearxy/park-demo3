@@ -63,7 +63,8 @@ watch(() => props.open, async o => {
   q.value = ''
   confirmedOnly.value = false
   preselect()
-  try { companies.value = await companyBookApi.list() } catch { companies.value = [] }
+  // 催缴单专用那份:账号明文,下拉里与印在单上的都是真账号(用户 2026-10-04 拍板)
+  try { companies.value = await companyBookApi.payees() } catch { companies.value = [] }
   syncAccounts()
 })
 function setPhase(v: string) {

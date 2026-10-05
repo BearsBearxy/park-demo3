@@ -59,7 +59,7 @@ export interface ReportSaveRequest {
   accounts?: ReportAccount[]
 }
 
-// 导入 body（spec §6）：多公司段，公司名匹配 management_company、未匹配自动新建。
+// 导入 body（spec §6）：多公司段，后端只认已存在的公司（未匹配的段报错跳过）；缺的公司由 importRegistry 在调用前先 companyApi.create。
 export interface ReportCompanySection {
   companyName: string
   cells: ReportCell[]

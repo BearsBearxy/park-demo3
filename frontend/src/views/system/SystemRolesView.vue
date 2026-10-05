@@ -1,9 +1,12 @@
 <script setup lang="ts">
-// 角色权限矩阵(RBAC-SPEC v2 §10 P1)— 左栏角色列表(预置/自定义分组),右栏该角色的权限矩阵 + 导航可见层。
-// 权限点清单来自 GET /api/system/perms(后端 Perm.ALL),**前端不硬编码** —— 后端加第 14 个权限点,这里自动多一行。
-// 分组标题按 key 前缀推(system:* / lock:* 各自成组,其余归业务写权限),13 行才不至于平铺成一片。
+// 角色权限矩阵(RBAC-SPEC v2 §10 P1,v3 改成按模块「查看 / 编辑」两列)— 左栏角色列表(预置/自定义分组),右栏该角色的权限矩阵 + 导航可见层。
+// 权限点清单来自 GET /api/system/perms(后端 Perm.META),**前端不硬编码** —— 后端加一个权限点,这里自动多一格。
+// 分组按后端给的 group(模块)与 kind(view / edit / other):一个模块一行,查看一格、编辑若干格;other 另列一段。
+// 编辑包含查看(用户 2026-10-04 拍板):勾编辑自动带上同模块的查看,取消查看连带取消这个模块的编辑。
 // 预置角色(builtin=true)不可删但权限与导航层照改 —— 「交付后客户自己调」是本屏存在的理由;删除只对自定义角色出现。
-// 读全开(§0):无 system:edit 时矩阵照常显示当前配置,只是复选框 disabled、没有保存/新增/删除入口。
+// 无 system:edit 时矩阵照常显示当前配置,只是复选框 disabled、没有保存/新增/删除入口。
+// 系统管理分级(RBAC-SPEC §12,用户 2026-10-04 拍板):不是系统管理员的,比自己大的角色(含系统管理员角色)整块只读,
+// 自己没有的权限点那一格置灰 —— 后端同一条判据会 403,别让人勾完点保存才知道。系统管理员不受限。
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { systemApi } from '@/api/system'
 import type { NavLayerDTO, PermDTO, RoleDTO } from '@/types/system'
@@ -40,6 +43,14 @@ const codeErr = computed(() => (tried.value && creating.value && !/^[A-Za-z][A-Z
   ? '标识必填,且只能用英文字母开头 + 字母/数字/下划线/短横' : ''))
 
 const cur = computed(() => roles.value.find(r => r.id === selId.value) ?? null)
+// 这个角色我能不能改:后端 manageable(守卫同一条判据);新建时看各格的 lacks
+const canEditRole = computed(() => canEdit.value && (creating.value || cur.value?.manageable !== false))
+/** 我自己没有这一项(只看角色给的,不看提权 —— system:* 借不到,分级比的也是角色给的) */
+const lacks = (key: string) => !auth.superAdmin && !auth.hasOwn(key)
+const LACK_TIP = '你没有这项权限,只有系统管理员能把它分给角色'
+const rangeNote = computed(() => (cur.value?.code === 'admin'
+  ? '系统管理员角色只有系统管理员能改。'
+  : '这个角色有你没有的权限,只有系统管理员能改。'))
 const builtinRoles = computed(() => roles.value.filter(r => r.builtin))
 const customRoles = computed(() => roles.value.filter(r => !r.builtin))
 
@@ -69,24 +80,28 @@ function fillForm(r: RoleDTO | null) {
   tried.value = false
   form.value = r
     ? { code: r.code, name: r.name, remark: r.remark ?? '', perms: [...r.perms], navLayers: [...r.navLayers] }
-    // 新角色缺省:零权限 + 全部导航层(比反过来安全 —— 少给权限只是不能改,少给导航层是整层看不见)
+    // 新角色缺省:零权限 + 全部导航层(没有查看权的屏照样不列;少给导航层是整层看不见)
     : { code: '', name: '', remark: '', perms: [], navLayers: navLayerDefs.value.map(l => l.id) }
 }
 
-// ── 权限矩阵分组(前缀推;后端新增的未知前缀一律归业务组,不会凭空消失) ──
-const GROUPS = [
-  { id: 'biz', title: '业务写权限', sub: '勾上=这个角色能改对应模块;不勾也照样能看(读全开)' },
-  { id: 'system', title: '系统管理', sub: '账号、角色与操作日志 —— 全站唯一「读也要管」的一段' },
-  { id: 'lock', title: '编辑锁', sub: '并发编辑时的接管授权' },
+// ── 权限矩阵(按后端 group / kind;模块键是契约定死的那 11 个,前端只给它们起名、排顺序) ──
+// 后端给了不认识的 group、或旧后端没带 group / kind 的,一律落「其他」,不会凭空消失。
+const MODULES: [string, string][] = [
+  ['master', '主数据'], ['contract', '合同'], ['param', '计费参数'], ['meter', '抄表'], ['billing', '出账与催缴单'],
+  ['entry', '台账与附表'], ['salary', '工资'], ['report', '报表'], ['analysis', '经营分析'], ['system', '系统管理'],
 ]
-function bucketOf(key: string): string {
-  const prefix = key.slice(0, key.indexOf(':'))
-  return prefix === 'system' || prefix === 'lock' ? prefix : 'biz'
-}
-const permGroups = computed(() =>
-  GROUPS.map(g => ({ ...g, rows: perms.value.filter(p => bucketOf(p.key) === g.id) }))
-       .filter(g => g.rows.length > 0),
+type ModuleRow = { id: string; title: string; view: PermDTO | null; edits: PermDTO[] }
+const modules = computed<ModuleRow[]>(() =>
+  MODULES.map(([id, title]) => ({
+    id, title,
+    view: perms.value.find(p => p.group === id && p.kind === 'view') ?? null,
+    edits: perms.value.filter(p => p.group === id && p.kind === 'edit'),
+  })).filter(m => m.view || m.edits.length),
 )
+const others = computed(() => {
+  const inModule = new Set(modules.value.flatMap(m => [m.view?.key, ...m.edits.map(e => e.key)]))
+  return perms.value.filter(p => !inModule.has(p.key))
+})
 
 // ── 编辑 ──
 // 改动数(EDIT-MODE §6.1):名称 / 备注各算 1 处,权限点与导航层每勾一个、每去一个各算 1 处。
@@ -140,9 +155,25 @@ async function cancel() {
   fillForm(cur.value)
 }
 function toggle(list: string[], key: string) {
-  if (!canEdit.value) return
+  if (!canEditRole.value) return
   const i = list.indexOf(key)
   if (i < 0) list.push(key); else list.splice(i, 1)
+}
+/** 勾编辑自动带上同模块的查看(编辑包含查看);取消编辑不动查看。 */
+function toggleEdit(m: ModuleRow, key: string) {
+  if (!canEditRole.value) return
+  const ps = form.value.perms
+  toggle(ps, key)
+  if (ps.includes(key) && m.view && !ps.includes(m.view.key)) ps.push(m.view.key)
+}
+/** 取消查看连带取消这个模块的编辑(没有查看的编辑说不通);勾上查看不动编辑。 */
+function toggleView(m: ModuleRow) {
+  if (!canEditRole.value || !m.view) return
+  const v = m.view.key
+  const f = form.value
+  if (!f.perms.includes(v)) { f.perms.push(v); return }
+  const drop = new Set([v, ...m.edits.map(e => e.key)])
+  f.perms = f.perms.filter(k => !drop.has(k))
 }
 
 async function save() {
@@ -161,7 +192,7 @@ async function save() {
       ? await systemApi.createRole({ ...req, code })
       : await systemApi.updateRole(selId.value!, req)
     await load(saved.id)
-    msg.value = { tone: 'ok', text: `已保存「${saved.name}」 —— 该角色下的账号下次请求即生效` }
+    msg.value = { tone: 'ok', text: `已保存「${saved.name}」 —— 立即生效;该角色下的账号刷新页面后,导航才跟着变` }
   } catch (e) {
     msg.value = { tone: 'err', text: errMsg(e, '保存失败') }
   } finally { saving.value = false }
@@ -197,7 +228,7 @@ async function remove(r: RoleDTO) {
       <div>
         <h2 class="sr-title">角色权限</h2>
         <p class="sr-sub">
-          读全开、写分权:任何账号都能看全站数据,权限只决定「能不能改」。共 {{ loaded ? roles.length : '…' }} 个角色
+          多数模块分「查看」和「编辑」两项,编辑包含查看;经营分析只有查看。共 {{ loaded ? roles.length : '…' }} 个角色
         </p>
       </div>
     </div>
@@ -237,12 +268,12 @@ async function remove(r: RoleDTO) {
       <section v-if="creating || cur" class="sr-pane">
         <div class="sr-panehead">
           <div class="sr-nameline">
-            <input v-if="canEdit" v-model="form.name" class="sr-name" :class="{ bad: !!nameErr }" placeholder="角色名,如:财务专员" />
+            <input v-if="canEditRole" v-model="form.name" class="sr-name" :class="{ bad: !!nameErr }" placeholder="角色名,如:财务专员" />
             <span v-else class="sr-name ro">{{ form.name }}</span>
             <Badge v-if="!creating && cur?.builtin" tone="slate" variant="subtle" :dot="false">预置</Badge>
           </div>
           <!-- 报错位在可编辑时常驻(条件是权限,不是有没有错);字才跟着错走 -->
-          <template v-if="canEdit"><p class="fp-field-err"><template v-if="nameErr">{{ nameErr }}</template></p></template>
+          <template v-if="canEditRole"><p class="fp-field-err"><template v-if="nameErr">{{ nameErr }}</template></p></template>
           <div class="sr-codeline">
             <template v-if="creating">
               <label class="sr-codelbl">标识</label>
@@ -255,7 +286,7 @@ async function remove(r: RoleDTO) {
             </template>
             <span style="flex:1"></span>
             <!-- 删除只对自定义角色出现;有账号在用时禁用并说清要先改派(预置角色一律无此按钮) -->
-            <Button v-if="canEdit && !creating && cur && !cur.builtin" variant="outline" size="sm"
+            <Button v-if="canEditRole && !creating && cur && !cur.builtin" variant="outline" size="sm"
                     :disabled="cur.userCount > 0 || saving"
                     v-tip="cur.userCount > 0 ? `该角色下还有 ${cur.userCount} 个账号,请先改派` : '删除该角色'"
                     @click="remove(cur)">
@@ -264,18 +295,53 @@ async function remove(r: RoleDTO) {
             </Button>
           </div>
           <template v-if="creating"><p class="fp-field-err"><template v-if="codeErr">{{ codeErr }}</template></p></template>
-          <input v-if="canEdit" v-model="form.remark" class="sr-remark" placeholder="备注(选填):这个角色给谁用" />
+          <input v-if="canEditRole" v-model="form.remark" class="sr-remark" placeholder="备注(选填):这个角色给谁用" />
           <p v-else-if="form.remark" class="sr-remark ro">{{ form.remark }}</p>
         </div>
 
-        <!-- 权限矩阵 -->
-        <div v-for="g in permGroups" :key="g.id" class="sr-sec">
+        <!-- 权限矩阵:一个模块一行,查看一格、编辑若干格(悬停看每一项管什么) -->
+        <div v-if="modules.length" class="sr-sec">
           <div class="sr-sechead">
-            <span class="sr-sectitle">{{ g.title }}</span>
-            <span class="sr-secsub">{{ g.sub }}</span>
+            <span class="sr-sectitle">模块权限</span>
+            <span class="sr-secsub">没有「查看」的模块,导航里不出、打开显示无权查看(附表 6 光伏、附表 7 与附表 8 充电桩这三屏,有「抄表 · 查看」也能进,只看运营账)。勾上编辑会自动带上查看;取消查看,这个模块的编辑一起取消</span>
           </div>
-          <label v-for="p in g.rows" :key="p.key" class="sr-row" :class="{ off: !canEdit }">
-            <input type="checkbox" :checked="form.perms.includes(p.key)" :disabled="!canEdit"
+          <div class="sr-mx">
+            <div class="sr-mx-r sr-mx-h"><span>模块</span><span>查看</span><span>编辑</span></div>
+            <div v-for="m in modules" :key="m.id" class="sr-mx-r" :data-module="m.id">
+              <span class="sr-mx-mod">
+                <span class="sr-rowlbl">{{ m.title }}</span>
+                <span v-if="m.view" class="sr-rowhint">{{ m.view.hint }}</span>
+              </span>
+              <span>
+                <label v-if="m.view" class="sr-mx-c" :class="{ off: !canEditRole || lacks(m.view.key) }"
+                       v-tip="canEditRole && lacks(m.view.key) ? LACK_TIP : undefined">
+                  <input type="checkbox" :data-perm="m.view.key" :checked="form.perms.includes(m.view.key)" :disabled="!canEditRole || lacks(m.view.key)"
+                         @change="toggleView(m)" />
+                  <span>查看</span>
+                </label>
+                <span v-else class="sr-mx-none">—</span>
+              </span>
+              <span class="sr-mx-edits">
+                <label v-for="p in m.edits" :key="p.key" v-tip="canEditRole && lacks(p.key) ? LACK_TIP : p.hint" class="sr-mx-c"
+                       :class="{ off: !canEditRole || lacks(p.key) }">
+                  <input type="checkbox" :data-perm="p.key" :checked="form.perms.includes(p.key)" :disabled="!canEditRole || lacks(p.key)"
+                         @change="toggleEdit(m, p.key)" />
+                  <span>{{ p.label }}</span>
+                </label>
+                <span v-if="!m.edits.length" class="sr-mx-none">—</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 不属于哪个模块的:审核、编辑锁授权、请求提权 -->
+        <div v-if="others.length" class="sr-sec">
+          <div class="sr-sechead">
+            <span class="sr-sectitle">其他</span>
+          </div>
+          <label v-for="p in others" :key="p.key" class="sr-row" :class="{ off: !canEditRole || lacks(p.key) }"
+                 v-tip="canEditRole && lacks(p.key) ? LACK_TIP : undefined">
+            <input type="checkbox" :data-perm="p.key" :checked="form.perms.includes(p.key)" :disabled="!canEditRole || lacks(p.key)"
                    @change="toggle(form.perms, p.key)" />
             <span class="sr-rowtxt">
               <span class="sr-rowlbl">{{ p.label }}</span>
@@ -290,24 +356,25 @@ async function remove(r: RoleDTO) {
           <div class="sr-sechead">
             <span class="sr-sectitle">导航可见层</span>
             <span class="sr-secsub">
-              勾掉的层在这个角色的左侧导航里不显示。系统管理层单独由「系统管理·查看」权限决定,不在这里配
+              勾掉的层在这个角色的左侧导航里不显示。系统管理层单独由「系统管理 · 查看」权限决定,不在这里配
             </span>
           </div>
-          <label v-for="l in navLayerDefs" :key="l.id" class="sr-row" :class="{ off: !canEdit }">
-            <input type="checkbox" :checked="form.navLayers.includes(l.id)" :disabled="!canEdit"
+          <label v-for="l in navLayerDefs" :key="l.id" class="sr-row" :class="{ off: !canEditRole }">
+            <input type="checkbox" :checked="form.navLayers.includes(l.id)" :disabled="!canEditRole"
                    @change="toggle(form.navLayers, l.id)" />
             <span class="sr-rowtxt"><span class="sr-rowlbl">{{ l.label }}</span></span>
             <code class="sr-key">{{ l.id }}</code>
           </label>
         </div>
 
-        <div v-if="canEdit" class="sr-act">
+        <div v-if="canEditRole" class="sr-act">
           <Button variant="gray" size="sm" :disabled="saving || !dirty" @click="cancel">取消</Button>
           <Button variant="filled" size="sm" :disabled="saving || !dirty" @click="save">
             {{ saving ? '保存中…' : creating ? '新建角色' : '保存' }}
           </Button>
         </div>
-        <p v-else class="sr-ro">只读:改角色权限需要「系统管理·编辑」权限。</p>
+        <p v-else-if="canEdit" class="sr-ro">{{ rangeNote }}</p>
+        <p v-else class="sr-ro">只读:改角色权限需要「系统管理 · 管理」权限。</p>
       </section>
 
       <div v-else class="sr-pane empty">左栏选一个角色</div>
@@ -372,6 +439,18 @@ p.sr-remark.ro { margin: 0; border: none; padding: 0; height: auto; color: var(-
 .sr-rowlbl { font-size: var(--fs-body); color: var(--text-primary); }
 .sr-rowhint { font-size: var(--fs-micro); color: var(--text-muted); line-height: 1.4; }
 .sr-key { flex: 0 0 auto; font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-muted); background: var(--surface-sunken); border-radius: var(--radius-xs); padding: 2px 6px; }
+
+/* 模块矩阵:模块 | 查看 | 编辑(若干格,放不下就折行) */
+.sr-mx { display: flex; flex-direction: column; min-width: 560px; }
+.sr-mx-r { display: grid; grid-template-columns: minmax(180px, 1.3fr) 76px minmax(0, 2.4fr); gap: 12px; align-items: center; padding: 8px; border-bottom: 1px solid var(--divider); }
+.sr-mx-h { padding-top: 0; font-size: var(--fs-micro); font-weight: var(--fw-semibold); color: var(--text-muted); }
+.sr-mx-mod { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.sr-mx-edits { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.sr-mx-c { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; font-size: var(--fs-label); color: var(--text-primary); cursor: pointer; }
+.sr-mx-c.off { cursor: default; }
+.sr-mx-c input { accent-color: var(--hue-blue); cursor: pointer; margin: 0; }
+.sr-mx-c input:disabled { cursor: default; }
+.sr-mx-none { font-size: var(--fs-label); color: var(--text-disabled); }
 
 .sr-act { display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px; border-top: 1px solid var(--divider); }
 .sr-ro { margin: 0; padding-top: 12px; border-top: 1px solid var(--divider); font-size: var(--fs-micro); color: var(--text-muted); }

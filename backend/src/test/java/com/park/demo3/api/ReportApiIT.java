@@ -18,7 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @AutoConfigureMockMvc
-// @Transactional 回滚:本类的导入用例会建公司(某全新导入公司IT / 某全新TB公司IT),
+// @Transactional 回滚:tb 导入用例先经 POST /api/companies 建公司(某全新TB公司IT),
 // 不回滚就留在库里。以前每次新起容器把这层泄漏掩盖了,容器复用后它会随运行次数堆积。
 @org.springframework.transaction.annotation.Transactional
 class ReportApiIT extends AbstractMysqlIT {
@@ -136,32 +136,35 @@ class ReportApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.code").value(400));
     }
 
-    // ── POST import 两公司(一个新公司名) → 新公司自动建 + 本期落值 ──
+    // ── POST import 两公司(一个库里没有) → 已有公司本期落值;没有的那段报错跳过、不建公司 ──
+    // RBAC-SPEC §5.6:报表导入「未匹配即报错」。原来自动建公司 = 只有 report:edit 的人绕过 company:manage 建司(安全审计 F16)。
+    // 破坏验证:把 ReportService.importRows 里未匹配那支改回建公司 → 公司列表断言红。
     @Test
-    void import_matchesExisting_autoCreatesNew_andWritesPeriod() throws Exception {
+    void import_matchesExisting_rejectsUnknownCompany() throws Exception {
         String importBody = "{\"sections\":["
                 + "{\"companyName\":\"园区租赁管理公司\",\"cells\":[{\"rowKey\":\"1\",\"field\":\"cur\",\"amount\":500}]},"
                 + "{\"companyName\":\"某全新导入公司IT\",\"cells\":["
                 + "{\"rowKey\":\"1\",\"field\":\"cur\",\"amount\":700},"
                 + "{\"rowKey\":\"1\",\"field\":\"ytd\",\"amount\":7000}]}"
                 + "]}";
-        mvc.perform(post("/api/reports/is/import").param("year", "2025").param("month", "12")
+        String res = utf8(mvc.perform(post("/api/reports/is/import").param("year", "2025").param("month", "12")
                 .header("Authorization", auth()).contentType("application/json").content(importBody))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.imported").value(3));
+                .andExpect(jsonPath("$.data.imported").value(1))
+                .andExpect(jsonPath("$.data.skipped").value(1))
+                .andExpect(jsonPath("$.data.errors[0].rowIndex").value(1)).andReturn());
+        assertThat((String) JsonPath.read(res, "$.data.errors[0].reason")).startsWith("库里没有这家公司");
 
-        // 新公司出现在公司列表
+        // 公司列表里没有多出它
         String companies = utf8(mvc.perform(get("/api/companies").header("Authorization", auth()))
                 .andExpect(status().isOk()).andReturn());
-        assertThat(JsonPath.<List<?>>read(companies, "$.data[?(@.name=='某全新导入公司IT')]")).isNotEmpty();
-        int newId = ((Number) JsonPath.<List<Object>>read(companies, "$.data[?(@.name=='某全新导入公司IT')].id").get(0)).intValue();
+        assertThat(JsonPath.<List<?>>read(companies, "$.data[?(@.name=='某全新导入公司IT')]")).isEmpty();
 
-        // 新公司本期落值
-        String p = utf8(mvc.perform(get("/api/reports/is/" + newId + "/2025/12").header("Authorization", auth()))
+        // 已有公司(V5 种子 id=1)本期落值
+        String p = utf8(mvc.perform(get("/api/reports/is/1/2025/12").header("Authorization", auth()))
                 .andExpect(status().isOk()).andReturn());
-        assertThat(((Number) JsonPath.read(p, "$.data.amounts.1.cur")).doubleValue()).isEqualTo(700.0);
-        assertThat(((Number) JsonPath.read(p, "$.data.amounts.1.ytd")).doubleValue()).isEqualTo(7000.0);
+        assertThat(((Number) JsonPath.read(p, "$.data.amounts.1.cur")).doubleValue()).isEqualTo(500.0);
     }
 
     // ── 非法 statement 'xx' → 体内 code 400(HTTP 200);'bs'/'tb' 已合法(见 bs_*/tb_* 用例) ──
@@ -247,9 +250,12 @@ class ReportApiIT extends AbstractMysqlIT {
         assertThat(JsonPath.<Map<String, ?>>read(res2, "$.data.amounts")).doesNotContainKey("1001");
     }
 
-    // ── tb: POST import 段带 accounts+cells → 自动建公司 + 科目树与金额双写 ──
+    // ── tb: POST import 段带 accounts+cells → 科目树与金额双写(公司先经「新增公司」建好,导入不再自动建) ──
     @Test
-    void tb_import_writesAccountsAndAmounts_autoCreatesCompany() throws Exception {
+    void tb_import_writesAccountsAndAmounts() throws Exception {
+        mvc.perform(post("/api/companies").header("Authorization", auth())
+                .contentType("application/json").content("{\"name\":\"某全新TB公司IT\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0));
         String importBody = "{\"sections\":[{\"companyName\":\"某全新TB公司IT\",\"accounts\":["
                 + "{\"rowKey\":\"1002\",\"parentKey\":null,\"code\":\"1002\",\"label\":\"银行存款\",\"level\":0,\"sortOrder\":0},"
                 + "{\"rowKey\":\"100201\",\"parentKey\":\"1002\",\"code\":\"100201\",\"label\":\"农商行\",\"level\":1,\"sortOrder\":1}"

@@ -936,15 +936,18 @@ public class BillNoticeService {
             }
         for (Integer tid : covering.keySet()) {   // 当月无在租合同=不落包干行(跟源册走)
             packageLine(byTenant, warnByTenant, seq, ym, tid, "share_elec_fixed", "share_elec_floor",
-                PKG_ELEC_SWALLOW, floorAnchor.get(tid), covering, locs, "孵化协议固定收取");
+                // 备注印在催缴单上、发给租户;2026-10-04 用户拍板产品卖给别的园区 ——「孵化协议」是我园固定额的来由,
+                // 库里只记了固定额没记来由,别的园区设固定额不一定是孵化协议,只写测量到的事
+                PKG_ELEC_SWALLOW, floorAnchor.get(tid), covering, locs, "公共电费按固定月额收取");
             packageLine(byTenant, warnByTenant, seq, ym, tid, "share_water_fixed", "share_green_water",
-                PKG_WATER_SWALLOW, null, covering, locs, "孵化协议固定收取");
+                PKG_WATER_SWALLOW, null, covering, locs, "公共水费按固定月额收取");
             // S13 拍板③:曹小芳/刘彪消防照抄源册实收(I=ROUND(公共电分摊!L24+L99×面积/层份,2)×层份,
             // 合成价≈250,全册仅此两户)——该户全部 share_elec_fire 行(车间池+园区消防设施+稳压泵)
             // 整组替换为一条固定额行;层份 weight 仍在册供 Σweight 对账。走 applyPackages 同一时点,
             // 天然在 E2 之前:两户损耗 base 的消防分量=实收合成额(源册 K42 同口径)。
             packageLine(byTenant, warnByTenant, seq, ym, tid, "fire_amount_fixed", "share_elec_fire",
-                Set.of("share_elec_fire"), null, covering, locs, "消防照抄源册实收(L24+L99合成价;S13拍板③户级例外)");
+                // 备注会回显到催缴单上;2026-10-04 用户拍板产品卖给别的园区,不写我园源册的单元格和内部拍板编号
+                Set.of("share_elec_fire"), null, covering, locs, "消防按固定月额收取");
         }
     }
 

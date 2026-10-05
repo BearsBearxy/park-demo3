@@ -10,21 +10,31 @@
 //
 // 判据本身在 `navAccess.canReach`(2026-09-08 从这里抽出去):屏内手写的 RouterLink
 // 也是跨层引导,当初漏在门外,两处不能各判一遍。
+//
+// v3(RBAC 读写分开,用户 2026-10-04 拍板):没有目标屏的**查看权**时不藏,置灰并写明缺哪一项 ——
+// 藏起来他不知道「本来有路,只是没开权限」。层不可见但有查看权的,照旧不画(回不来那条)。
 import { computed } from 'vue'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
 import { canReach } from '@/nav/navAccess'
 import { useAuthStore } from '@/stores/auth'
+import { useViewGate } from '@/composables/useViewGate'
 
 const props = defineProps<{ label?: string; hint?: string; to?: string; toText?: string }>()
 const auth = useAuthStore()
-const canGo = computed(() => canReach(props.to, auth.navLayers, auth.can('system:view')))
+const { lack } = useViewGate()
+const canGo = computed(() => canReach(props.to, auth.navLayers, auth.can))
+const why = computed(() => lack(props.to))
 </script>
 
 <template>
   <FPEmpty class="ana-empty" size="sm" :sub="hint">
     {{ label || '当前筛选下暂无数据' }}
-    <template v-if="canGo || $slots.default" #action>
+    <template v-if="canGo || why || $slots.default" #action>
       <RouterLink v-if="canGo" class="go" :to="to!">{{ toText || '去录入' }} →</RouterLink>
+      <template v-else-if="why">
+        <span class="go off" aria-disabled="true">{{ toText || '去录入' }} →</span>
+        <p class="why">{{ why }}，请找系统管理员开通</p>
+      </template>
       <slot />
     </template>
   </FPEmpty>
@@ -47,4 +57,8 @@ const canGo = computed(() => canReach(props.to, auth.navLayers, auth.can('system
   text-decoration: none;
 }
 .go:hover { background: var(--surface-card); }
+/* 没有查看权:同形置灰,不可点;原因写在下面一行(不靠悬停,触屏也看得到) */
+.go.off { color: var(--text-disabled); cursor: not-allowed; }
+.go.off:hover { background: var(--surface-white); }
+.why { margin: 6px 0 0; font-size: var(--fs-micro); line-height: 16px; color: var(--text-muted); }
 </style>

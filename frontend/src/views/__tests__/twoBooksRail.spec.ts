@@ -48,7 +48,8 @@ vi.mock('vue-router', () => ({
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['entry:edit', 'meter-master:edit', 'meter-reading:edit']
+  // RBAC v3:两本账各要各的查看权(报送台账 entry:view,运营账 meter:view)
+  useAuthStore().permissions = ['entry:edit', 'meter-master:edit', 'meter-reading:edit', 'entry:view', 'meter:view']
   vi.clearAllMocks()
   localStorage.clear()
   for (const k of Object.keys(query)) delete query[k]
@@ -134,6 +135,16 @@ describe('光伏 · 一屏两本账', () => {
     expect(w.findAll('.br-item')[0].classes()).toContain('on')
   })
 
+  // RBAC v3:只有抄表查看的人只有运营账那本;报送台账的期区 / 总览接口只对台账与附表(或分析)开放,取了就是 403。
+  // 破坏验证:PvView 的 onMounted 里 if (METER_ONLY) return 删掉 → 红
+  it('❗只有抄表查看:左栏只剩运营账,进屏不取报送台账的期区与总览', async () => {
+    useAuthStore().permissions = ['meter:view']
+    const w = await open()
+    expect(w.findAll('.br-item').map(i => i.find('.br-name').text())).toEqual(['分栋运营账'])
+    expect(pvApi.phases).not.toHaveBeenCalled()
+    expect(pvApi.overview).not.toHaveBeenCalled()
+  })
+
   it('两支各自的返回箭头随功能门一起退场 —— 左栏就是出路', async () => {
     const w = await open()
     // 报送台账支:年份门不再有「返回功能选择」
@@ -183,6 +194,14 @@ describe('三屏一致性门禁', () => {
       const src = readFileSync(join(VIEWS, rel), 'utf8')
       const guards = (src.match(/if \(!edit\.value\) return/g) ?? []).length
       expect(guards, `${rel} 的写函数自守少于 2 处(onCreate + onImport)`).toBeGreaterThanOrEqual(2)
+    })
+
+  // 充电桩与光伏同一接法,只钉接线(行为由上面光伏那条挂载测钉)。破坏验证:ChargingView 的守卫删掉 → 红
+  it.each(['/pv/PvView.vue', '/charging/ChargingView.vue'])(
+    '%s 没有报送台账那本时,进屏与切回都不取它的接口(RBAC v3)', (rel) => {
+      const s = readFileSync(join(VIEWS, rel), 'utf8')
+      expect(s).toMatch(/onMounted\(async \(\) => \{\s*if \(METER_ONLY\) return/)
+      expect(s).toContain('onReactivated(() => { if (!METER_ONLY) void refresh()')
     })
 
   it.each(['/pv/PvMeterView.vue', '/charging/CpMeterView.vue', '/elec/ElecCostView.vue'])(
@@ -308,4 +327,20 @@ describe('附表族即时落库屏 · 新增抽屉 / 导入窗算 1 处改动', 
       const tag = src.slice(src.indexOf('<SchedHeader'), src.indexOf('>', src.indexOf('<SchedHeader')))
       expect(tag).toContain(':dirty="drawer || importing ? 1 : 0"')
     })
+})
+
+describe('光伏 · 两本账按查看权(RBAC v3)', () => {
+  // 破坏验证:PvView 的 MODES 改回 ALL_MODES(不按 can 滤)→ 红
+  it('❗只有抄表查看权:左栏只剩分栋运营账,进屏就落在它上面', async () => {
+    useAuthStore().permissions = ['meter:view']
+    const w = await open()
+    expect(w.findAll('.br-item .br-name').map(i => i.text())).toEqual(['分栋运营账'])
+    expect(w.find('.sm-gate').exists(), '不落报送台账').toBe(false)
+  })
+
+  it('只有台账查看权:左栏只剩报送台账', async () => {
+    useAuthStore().permissions = ['entry:view']
+    const w = await open()
+    expect(w.findAll('.br-item .br-name').map(i => i.text())).toEqual(['报送台账'])
+  })
 })

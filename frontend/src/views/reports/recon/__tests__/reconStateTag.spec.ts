@@ -6,9 +6,15 @@ import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import ReconWorkbench from '../ReconWorkbench.vue'
 import type { ReconEntity } from '@/types/recon'
+import { useAuthStore } from '@/stores/auth'
+import { ALL_VIEWS } from '@/test-utils/perms'
 
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }), useRoute: () => ({ query: {}, meta: {} }) }))
 vi.mock('@/api/recon', () => ({ reconApi: { mark: vi.fn(), unmark: vi.fn() } }))
+vi.mock('@/api/perms', () => ({
+  loadPermDict: () => Promise.resolve(),
+  permLabel: (k: string) => (k === 'entry:view' ? '台账与附表 · 查看' : k),
+}))
 
 const ent = (over: Partial<ReconEntity> = {}): ReconEntity => ({
   tenantId: 1, tenantName: '甲公司', status: 'diff', ledgerTotal: 1000, s10Total: 900, diff: 100,
@@ -53,5 +59,33 @@ describe('收入核对 · 标题旁状态签', () => {
     const w = open(ent({ status: 'ok', diff: 0, s10Total: 1000 }))
     expect(tag(w).text()).toBe('两本账配平')
     expect(act(w).exists()).toBe(false)
+  })
+})
+
+/** v-tip 挂在元素上的那一句(directives/tip.ts 存在 el._tip) */
+const tipOf = (el: Element) => (el as HTMLElement & { _tip?: { text: string } })._tip?.text
+
+// RBAC v3:V134 给园区股东报表查看,收入核对在他的导航里;处置弹窗的两颗跳转原来直接把他送进「无权查看」页
+describe('收入核对 · 处置弹窗的跳转按查看权', () => {
+  const jumps = async (perms: string[]) => {
+    useAuthStore().permissions = perms
+    const w = open(ent())
+    await act(w).trigger('click')
+    return w.findAll('.rc-pop-btn')
+  }
+
+  // 破坏验证:两颗按钮的 :disabled 去掉 → 红
+  it('❗只有分析与报表查看(园区股东):去改台账、去改附表10 置灰,悬停写缺哪一项', async () => {
+    const [ledger, s10] = await jumps(['analysis:view', 'report:view'])
+    expect(ledger.text()).toBe('去改台账')
+    expect(ledger.attributes('disabled')).toBeDefined()
+    expect(s10.attributes('disabled')).toBeDefined()
+    expect(tipOf(ledger.element)).toBe('需要「台账与附表 · 查看」权限')
+  })
+
+  it('有台账与附表查看:两颗照常可点', async () => {
+    const [ledger, s10] = await jumps([...ALL_VIEWS])
+    expect(ledger.attributes('disabled')).toBeUndefined()
+    expect(s10.attributes('disabled')).toBeUndefined()
   })
 })

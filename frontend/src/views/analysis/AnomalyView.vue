@@ -9,6 +9,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
+import { useViewGate } from '@/composables/useViewGate'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
@@ -16,7 +17,7 @@ import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import { chartHeightFor } from '@/components/ana/anaChartHeight'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import { iconFor } from '@/components/ds/icon'
-import { STATUS, fint, fnum, hues } from '@/components/ana/anaFmt'
+import { STATUS, esc, fint, fnum, hues } from '@/components/ana/anaFmt'
 import { bandSeries } from '@/components/ana/anaTheme'
 import { anaSettings } from '@/analysis/anaSettings'
 import { buildAnomalies, fetchAnomalyInputs, type AnaAnomaly, type AnomalyInputs } from '@/analysis/anaData'
@@ -80,8 +81,8 @@ const energyOption = computed<object | null>(() => {
       trigger: 'axis',
       formatter: (ps: TipRow[]) => {
         const rows = ps.filter((p) => p.seriesName === '电费' || p.seriesName === '水费')
-        return (rows[0]?.axisValueLabel ?? '') + rows.map((p) =>
-          `<br/>${p.marker ?? ''}${p.seriesName} <b>¥${fint(Number(p.value ?? 0))}</b>`).join('')
+        return esc(rows[0]?.axisValueLabel) + rows.map((p) =>
+          `<br/>${p.marker ?? ''}${esc(p.seriesName)} <b>¥${fint(Number(p.value ?? 0))}</b>`).join('')
       },
     },
     xAxis: { type: 'category', data: t.months, axisLabel: { fontSize: 11 } },
@@ -183,6 +184,8 @@ function goS10(t: MonitorTenant): void {
   void router.push(periodLink('sales-income', { p: periodOf(+ym.slice(0, 4), +ym.slice(5, 7)), co: t.phase ?? undefined, extra: { tenant: t.name } }))
 }
 const go = (link: string): void => { void router.push(link) }
+// 跳到模块屏的入口:没有目标屏的查看权就置灰、悬停写明缺哪一项(RBAC v3)
+const { lack } = useViewGate()
 /** 规则引擎异常条(AnaAnomaly):录入屏目标带期与定位;落分析屏的三条 p 今天不被消费(usePeriod 单例,spec §12 遗留),带上无害。
  *  本屏这一列(otherAnoms)只有规则①②、目标都是分析屏 → 今天等于原样 push;留着为与驾驶舱同形(驾驶舱 anomTop 含③④两条录入屏规则)。 */
 const goAnom = (a: AnaAnomaly): void => {
@@ -356,16 +359,16 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
                     color: statusOf(r.id) === o.k ? o.c : 'var(--text-muted)',
                   }" @click="setStatus(r.id, o.k)">{{ o.l }}</button>
                 </div>
-                <button v-if="r.link" class="mn-link" @click="go(r.link)">查看分析 →</button>
+                <button v-if="r.link" class="mn-link" :disabled="!!lack(r.link)" v-tip="lack(r.link)" @click="go(r.link)">查看分析 →</button>
               </div>
             </div>
           </div>
           <AnaEmpty v-else label="该租户未命中任何规则" hint="欠费 / 能耗突变 / 收入中断 / 负值行 均未触发" />
           <div v-if="sel" class="mn-links">
-            <button v-tip="sel.company ? '' : '该租户无台账记录'" class="mn-go" :disabled="!sel.company || !model.lastLedgerYm" @click="goLedger(sel)">
+            <button v-tip="sel.company ? lack('/ledger') : '该租户无台账记录'" class="mn-go" :disabled="!sel.company || !model.lastLedgerYm || !!lack('/ledger')" @click="goLedger(sel)">
               查台账<component :is="iconFor('arrow-up-right')" :size="13" />
             </button>
-            <button v-tip="sel.months.length ? '' : '该租户无附表10 记录'" class="mn-go" :disabled="!sel.months.length" @click="goS10(sel)">
+            <button v-tip="sel.months.length ? lack('/sales-income') : '该租户无附表10 记录'" class="mn-go" :disabled="!sel.months.length || !!lack('/sales-income')" @click="goS10(sel)">
               查附表10<component :is="iconFor('arrow-up-right')" :size="13" />
             </button>
           </div>
@@ -397,11 +400,11 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
                   color: statusOf(a.id) === o.k ? o.c : 'var(--text-muted)',
                 }" @click="setStatus(a.id, o.k)">{{ o.l }}</button>
               </div>
-              <button class="mn-link" @click="goAnom(a)">查看分析 →</button>
+              <button class="mn-link" :disabled="!!lack(a.link)" v-tip="lack(a.link)" @click="goAnom(a)">查看分析 →</button>
             </div>
           </div>
         </div>
-        <AnaEmpty v-else label="当前阈值下无园区/公司级异常" hint="可在右上「目标与阈值」调整收缴率目标" />
+        <AnaEmpty v-else label="当前阈值下无园区/公司级异常" hint="有「账簿报表」权限的账号可在右上「目标与阈值」调整收缴率目标" />
       </div>
 
       <div class="av2-s12">
@@ -441,6 +444,7 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
 .mn-st-seg button { border: none; cursor: pointer; font-family: var(--font-sans); font-size: var(--fs-micro); padding: 2px 9px; border-radius: 999px; transition: background var(--dur-fast), color var(--dur-fast); }
 .mn-link { border: none; background: transparent; color: var(--text-link); font-size: 11px; cursor: pointer; font-family: var(--font-sans); }
 .mn-link:hover { text-decoration: underline; }
+.mn-link:disabled { color: var(--text-disabled); cursor: default; text-decoration: none; }
 /* 深链按钮 */
 .mn-links { display: flex; gap: 10px; margin-top: 10px; border-top: 1px solid var(--divider); padding-top: 10px; }
 .mn-go { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border-subtle); background: var(--surface-white); color: var(--text-secondary); border-radius: var(--radius-full); padding: 6px 14px; font-size: 12px; cursor: pointer; font-family: var(--font-sans); }

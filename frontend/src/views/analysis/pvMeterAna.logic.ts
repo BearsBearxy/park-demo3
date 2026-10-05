@@ -1149,8 +1149,8 @@ export function buildFacts(
       push('ledger', '板数或单块标称功率未录，台账对不了')
     }
 
-    // ── 年等效小时:年粒度的绝对量,只在年段说
-    if (gran === 'year' && s) {
+    // ── 年等效小时:年粒度的绝对量,只在年段说;锚点没填(0)整条不判,判据脚写明没填
+    if (gran === 'year' && s && crit.anchorHours > 0) {
       if (s.yieldRatio != null && s.days >= 300) {
         if (s.yieldRatio < crit.yieldRatio) {
           push('yield', `全年 ${s.yieldHours!.toFixed(0)} 小时，是锚点 ${crit.anchorHours} 的 ${(s.yieldRatio * 100).toFixed(0)}%`)

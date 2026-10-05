@@ -10,6 +10,7 @@ import { rowsNotEndingInFill } from '@/composables/__tests__/wideTableStub'
 import { cpMeterApi } from '@/api/cpMeter'
 import type { CpStationDTO, CpReadingDTO, CpPowerUsageDTO } from '@/api/cpMeter'
 import { useAuthStore } from '@/stores/auth'
+import { ourPark, customerPark } from '@/test-utils/appConfig'
 import api from '@/api'
 import { ask } from '@/utils/ask'
 import { receipts } from '@/utils/receipt'
@@ -1133,6 +1134,18 @@ describe('分桩充电明细 · 提示件(S4)', () => {
     expect(q).toMatchObject({ title: '模拟填充 2025 全年？', action: '模拟填充 2025 全年' })
     expect(q.danger, '只填空位、不覆盖手工数据,不是删除类').toBeFalsy()
     expect(receipts.map(r => [r.tone, r.text])).toEqual([['ok', '模拟完成：填充 8 条，跳过 2 条（手工/导入占位、值未变或缺桩）。']])
+  })
+
+  // 2026-10-05 用户拍板「按你建议修改」:客户园区(parkTools=false)不显;部署配置没到之前也不显(不先闪再收)。
+  // 破坏验证:按钮 v-if 去掉 appCfg.parkTools → 「没到」「客户」两格红
+  it('❗模拟填充按钮:我园显,客户园区与部署配置没到都不显', async () => {
+    const has = (w: ReturnType<typeof mount>) => w.findAll('button').some(b => b.text().includes('模拟填充'))
+    const w = await toEdit()
+    expect(has(w), '部署配置还没到').toBe(false)
+    ourPark(); await flushPromises()
+    expect(has(w), '我园生产').toBe(true)
+    customerPark('0.29.0'); await flushPromises()
+    expect(has(w), '客户园区').toBe(false)
   })
 
   it('❗改动数:即时提交的格子算 0;抽屉里开着记录行算一处(关页签才问)', async () => {

@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
+import { ourPark } from '@/test-utils/appConfig'
 import type { ReleaseNote } from '@/types/changelog'
 
 // vi.mock 会被提到文件最顶上执行,假数据要跟着一起提上去
@@ -40,7 +41,7 @@ function login(seen: string | null) {
 
 describe('小调整不弹、功能更新都弹', () => {
   beforeEach(() => {
-    setActivePinia(createPinia())
+    setActivePinia(createPinia()); ourPark()
     localStorage.clear()
     vi.useFakeTimers()
   })

@@ -49,6 +49,21 @@ class ReviewMigrationIT extends AbstractMysqlIT {
         applyMigration();
     }
 
+    /**
+     * 删掉再重建的 reviewer 是个新 id:V134 种给它的 8 个查看点随 ON DELETE CASCADE 一起没了,
+     * 不补的话之后用审核员读任何业务数据都 403、RoleApiIT 的种子断言红。V134 重放幂等,只会补回这一个角色的。
+     *
+     * ⚠ 必须在事务**之后**跑:V134 只有 INSERT 没有 DDL,放在 @AfterEach 里会跟着类上的 @Transactional 一起回滚
+     *   (V124 能在 @AfterEach 里种回去,靠的是它的 CREATE TABLE 隐式提交)。
+     */
+    @org.springframework.test.context.transaction.AfterTransaction
+    void reseedViewPerms() {
+        ResourceDatabasePopulator v134 = new ResourceDatabasePopulator(
+                new ClassPathResource("db/migration/V134__rbac_view_perms.sql"));
+        v134.setSqlScriptEncoding("UTF-8");
+        v134.execute(jdbc.getDataSource());
+    }
+
     private List<String> columnsOf(String table) {
         return jdbc.queryForList("SELECT column_name FROM information_schema.columns "
                 + "WHERE table_schema = DATABASE() AND table_name = ?", String.class, table);

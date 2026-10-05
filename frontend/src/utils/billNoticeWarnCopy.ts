@@ -114,9 +114,9 @@ export const WARN_COPY: Record<WarnCode, WarnCopy> = {
   },
   W_PACKAGE_NO_POOL: {
     // desc 写后果(池的差额虚高),不复述判据里的内部词「公摊池锚点」
-    title: '包干行没挂上池',
-    desc: '这些包干费按固定价收了,但没记进任何一个公摊池的已分摊里。不处理的话对应池的未分摊差额会比实际高,池账本上对不上。',
-    fmt: (payload) => `包干 ${billFeeLabel(payload)}`,
+    title: '固定月额行没记进公摊池',   // 「包干」用户看不懂(2026-10-05),只说每月固定金额这件事
+    desc: '这几户的公共水电按每月固定金额收了,但这笔钱没记进任何一个公摊池的已分摊里。不处理的话对应池的未分摊差额会比实际高,池账本上对不上。',
+    fmt: (payload) => `固定月额 ${billFeeLabel(payload)}`,
     route: 'alloc',
     actionLabel: '去公共电核算',
     drawer: true,

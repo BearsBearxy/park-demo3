@@ -1,6 +1,6 @@
 // 损益附表派生链接(P2-G)— 数据层聚合值 → 序列键 → DERIVE_MAP(spec §2 实证 35 行位) → 对照/填入。
 // loadDeriveData(year):Promise.allSettled 并行拉 6 源(s10 年聚合/光伏/充电桩7·8/电费energy·basic/
-// 办公水电13/工资×12月),统一成 Record<seriesKey,(number|null)[12]>;任一源失败相关键缺失不阻塞(G6)。
+// 办公水电13/餐补月合计),统一成 Record<seriesKey,(number|null)[12]>;任一源失败相关键缺失不阻塞(G6)。
 // 匹配 = (schedule, normalizeHeader(行标签)) 相等,分组无关(同标签多组各自命中);未映射行不显派生,不猜(G1)。
 // P2-G2:MAP 扩 group(母册分组) + generateMissingRows 生成缺失映射行(缺失判定 group+label 双 normalize)。
 import { s10Api } from '@/api/s10'
@@ -86,12 +86,11 @@ export async function loadDeriveData(year: number): Promise<DeriveData> {
         acc(data, 'office|waterAmt', i, r.waterAmt)
       }
     }),
-    // 工资 ×12 月并行:各字段月 Σ(取后端 total;无行月保持 null;MAP 只用 lunch)
-    ...Array.from({ length: 12 }, (_, m) => salaryApi.records(year, m + 1).then(dto => {
-      if (!dto.rows?.length) return
-      for (const [k, v] of Object.entries(dto.total ?? {}))
-        if (typeof v === 'number') acc(data, `sal|${k}`, m, v)
-    })),
+    // 工资:MAP 只用餐补,取后端的餐补逐月合计(无工资行的月为 null,保持 null)。不取逐人明细 ——
+    // 合计报表查看就能读,总经理也看得到这一项派生;明细仍只给工资查看(用户 2026-10-04 拍板)
+    salaryApi.lunchTotals(year).then(ms => {
+      ms.forEach((v, m) => { if (v !== null) acc(data, 'sal|lunch', m, v) })
+    }),
   ]
   await Promise.allSettled(jobs)   // 单源失败 → 相关键缺失,不抛(G6)
 
@@ -200,8 +199,9 @@ export function compareRow(rowM: (number | null)[], derived: (number | null)[]):
 }
 
 // 填入(G3):只填空单元格(null←派生),已录含真 0 保留;进 draft 由调用方走现有保存
-export function fillRow(rowM: (number | null)[], derived: (number | null)[]): (number | null)[] {
-  return Array.from({ length: 12 }, (_, i) => rowM[i] ?? derived[i] ?? null)
+// skip = 不填的月(0 起):「整月锁账」的月后端整次拒,填进去这次保存整次存不上(2026-10-05 对抗复查 PROD-F1)
+export function fillRow(rowM: (number | null)[], derived: (number | null)[], skip?: ReadonlySet<number>): (number | null)[] {
+  return Array.from({ length: 12 }, (_, i) => rowM[i] ?? (skip?.has(i) ? null : derived[i]) ?? null)
 }
 
 // ── 生成缺失映射行(P2-G2)──────────────────────────────────
@@ -212,8 +212,10 @@ export type PnlRowSave = PnlRowDTO
 // 生成条件(H1)=该 series 本年至少 1 非空月;m=派生原值直写(H3);kind=detectKind(H4)。
 // 插位(H4):同分组最后 detail 行后 → 无 detail 则组末行后 → 组不存在则按 MAP 序追加表尾成新组块。
 // 返回完整新行序列(既有行+生成行,rowKey/sortOrder 重建即 PUT payload);无可生成 → null。
+// skip = 不补的月(0 起):「整月锁账」的月后端整次拒(用户 2026-10-05 拍板「2按你建议，3，4一起做」第 3 条),
+// 那几个月留空、开着的月照补;只在这几个月有数的行算全空,不生成。
 export function generateMissingRows(
-  schedule: string, rows: PnlRowDTO[], data: DeriveData,
+  schedule: string, rows: PnlRowDTO[], data: DeriveData, skip?: ReadonlySet<number>,
 ): { rows: PnlRowSave[]; added: number } | null {
   const existing = new Set(rows.map(r => `${normalizeHeader(r.groupLabel)}|${normalizeHeader(r.label)}`))
   const after = new Map<number, PnlRowDTO[]>()   // 既有行 idx → 其后插入的生成行
@@ -221,7 +223,8 @@ export function generateMissingRows(
   let added = 0
   for (const e of DERIVE_MAP) {
     if (e.schedule !== schedule || existing.has(`${e.group}|${e.label}`)) continue
-    const series = data[e.series]
+    const raw = data[e.series]
+    const series = raw && skip?.size ? raw.map((v, i) => (skip.has(i) ? null : v)) : raw
     if (!series || series.every(v => v === null)) continue   // 全空不生成噪音行(H1)
     added++
     const row: PnlRowDTO = {

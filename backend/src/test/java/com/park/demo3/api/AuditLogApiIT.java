@@ -273,15 +273,15 @@ class AuditLogApiIT extends AbstractMysqlIT {
         assertThat(joined).as("分页切出来的顺序要和整体一致").isEqualTo(ten);
     }
 
-    /** 一行的指纹：ts+source+target+detail 足以区分（没有跨表统一 id 可用）。 */
+    /** 一行的身份：source + rid（来源表 id）。不能拿 ts+target+detail 当指纹 ——
+     *  别的 IT 同一秒登录留下的多行「登录 127.0.0.1」长得一模一样，两页各一行就会被当成重复。 */
     private static List<String> rowKeys(String body) {
-        List<String> ts = JsonPath.read(body, "$.data.rows[*].ts");
         List<String> src = JsonPath.read(body, "$.data.rows[*].source");
-        List<String> tgt = JsonPath.read(body, "$.data.rows[*].target");
-        List<String> det = JsonPath.read(body, "$.data.rows[*].detail");
+        List<Object> rid = JsonPath.read(body, "$.data.rows[*].rid");
+        assertThat(rid).as("每行都要带 rid").hasSameSizeAs(src).doesNotContainNull();
         List<String> out = new java.util.ArrayList<>();
-        for (int i = 0; i < ts.size(); i++) {
-            out.add(ts.get(i) + "|" + src.get(i) + "|" + tgt.get(i) + "|" + det.get(i));
+        for (int i = 0; i < src.size(); i++) {
+            out.add(src.get(i) + ":" + rid.get(i));
         }
         return out;
     }

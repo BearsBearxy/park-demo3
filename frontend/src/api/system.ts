@@ -8,7 +8,7 @@ import type {
 // ⚠ 没有 DELETE /system/users —— 账号只停用不删除(§8):名下有导入记录、系数簿修改历史、
 //   审核痕迹,真删了这些记录成孤儿,追责链断掉。UI 上一律写「停用」。
 export const systemApi = {
-  /** GET /api/system/perms → 13 个权限点 + 3 个导航层的人话标签 */
+  /** GET /api/system/perms → 全部权限点(带模块键与查看 / 编辑种类)+ 3 个导航层的人话标签 */
   perms: (): Promise<PermsMetaDTO> => http.get('/system/perms'),
 
   /** GET /api/system/roles → 角色(含 userCount);builtin=1 的 6 个预置角色不可删 */
@@ -26,8 +26,9 @@ export const systemApi = {
   setUserStatus: (id: number, status: 0 | 1): Promise<UserDTO> =>
     http.post(`/system/users/${id}/status`, { status }),
 
-  /** POST /api/system/users/{id}/password —— 管理员重置他人密码,该账号下次登录须改密 */
-  resetPassword: (id: number, password: string): Promise<void> =>
+  /** POST /api/system/users/{id}/password —— 重置别人的:该账号下次登录须改密,回 token=null;
+   *  重置自己的:不用再改,回这台设备接着用的新令牌(别处的登录已退出) */
+  resetPassword: (id: number, password: string): Promise<{ token: string | null } | null> =>
     http.post(`/system/users/${id}/password`, { password }),
 
   /**
@@ -37,7 +38,7 @@ export const systemApi = {
    */
   logs: (query: AuditQuery = {}): Promise<AuditPageDTO> => http.get('/system/logs', { params: query }),
 
-  /** POST /api/auth/change-password —— 改自己的密码(首次登录强制改密走同一个端点) */
-  changeOwnPassword: (currentPassword: string, newPassword: string): Promise<void> =>
+  /** POST /api/auth/change-password —— 改自己的密码(首次登录强制改密走同一个端点);回这台设备接着用的新令牌 */
+  changeOwnPassword: (currentPassword: string, newPassword: string): Promise<{ token: string }> =>
     http.post('/auth/change-password', { currentPassword, newPassword }),
 }

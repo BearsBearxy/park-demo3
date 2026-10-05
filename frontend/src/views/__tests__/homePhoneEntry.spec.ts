@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
+import { grantViews } from '@/test-utils/perms'
 import { readFileSync } from 'node:fs'
 import { mediaBlock } from '@/test-utils/mediaBlock'
 import { join } from 'node:path'
@@ -47,6 +48,7 @@ const ZERO = cell({ stale: true })
 
 /** 装一份夹具:loaded 置真挡住 loadChain 的真实取数,免得回包把 cells 冲掉。 */
 function mountWith(cells: [string, ChainCell][]) {
+  grantViews()   // RBAC v3:入口条只给看得了本月出账的人
   const period = useBillingPeriodStore()
   period.pick(2026, 9)
   period.loaded = true

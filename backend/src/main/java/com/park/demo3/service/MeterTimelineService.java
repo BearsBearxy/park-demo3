@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.entity.BillNotice;
+import com.park.demo3.entity.DataChangeLog;
 import com.park.demo3.entity.MeterArchiveLog;
 import com.park.demo3.entity.MeterAssign;
 import com.park.demo3.entity.MeterStatus;
@@ -22,7 +23,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -30,6 +33,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -141,13 +145,28 @@ public class MeterTimelineService {
      * 按 ym 升序;一个都没有回空列表。
      */
     public List<Frozen> frozenMonths(int meterId, Collection<String> months) {
+        return frozen(months, reviewStates.byKindAndScope(ReviewKind.METERS.code(), null), assigns.lockedNotices(meterId));
+    }
+
+    /**
+     * 整册导入用的 frozenMonths(用户 2026-10-05「两个都按你建议」:导入提速,结果一格不变)。
+     * 审核态开批查一次;每块表含它的已确认 / 已导出单第一次问到时查一次,之后用这一份 —— 原来认到一行就各查一遍两条。
+     * 导入不改审核态、不改催缴单,一批里看见的和逐行查库一样。
+     */
+    public BiFunction<Integer, Collection<String>, List<Frozen>> frozenLookup() {
+        List<ReviewState> review = reviewStates.byKindAndScope(ReviewKind.METERS.code(), null);
+        Map<Integer, List<BillNotice>> locked = new HashMap<>();
+        return (meterId, months) -> frozen(months, review, locked.computeIfAbsent(meterId, assigns::lockedNotices));
+    }
+
+    private static List<Frozen> frozen(Collection<String> months, List<ReviewState> review, List<BillNotice> locked) {
         Set<String> want = new HashSet<>(months);
         Map<String, Set<String>> why = new TreeMap<>();
-        for (ReviewState s : reviewStates.byKindAndScope(ReviewKind.METERS.code(), null))
+        for (ReviewState s : review)
             if (want.contains(s.getPeriod()) && REVIEW_LOCKING.contains(s.getStatus()))
                 why.computeIfAbsent(s.getPeriod(), k -> new LinkedHashSet<>())
                    .add(ReviewKind.METERS.label() + ("approved".equals(s.getStatus()) ? "已审核" : "待审核"));
-        for (BillNotice n : assigns.lockedNotices(meterId))
+        for (BillNotice n : locked)
             if (want.contains(n.getYm()))
                 // 写出单是哪个月的:冻结月是抄表月,单在下一个月,不写的话去催缴单屏按这个月找不到它
                 why.computeIfAbsent(n.getYm(), k -> new LinkedHashSet<>()).add("含这块表的 "
@@ -166,12 +185,7 @@ public class MeterTimelineService {
     public MeterAssign writeAssign(MeterAssign row, Ctx ctx) {
         checkYm(row.getFromYm());
         checkSrc(ctx);
-        row.setSrc(ctx.src());
-        row.setBatchId(ctx.batchId());
-        if (row.getOwnership() == null) row.setOwnership("share");   // 同 meter_assign.ownership 列默认
-        if (row.getTenantManual() == null) row.setTenantManual(0);
-        if (row.getOwnerManual() == null) row.setOwnerManual(0);
-        if (row.getLocManual() == null) row.setLocManual(0);
+        prepare(row, ctx);
         List<MeterAssign> cur = assignRows(row.getMeterId());
         MeterAssign old = find(cur, MeterAssign::getFromYm, row.getFromYm());
         if (old == null) {
@@ -192,12 +206,9 @@ public class MeterTimelineService {
     public MeterStatus writeStatus(int meterId, String fromYm, String status, Ctx ctx) {
         checkYm(fromYm);
         checkSrc(ctx);
-        if (!STATUSES.contains(status)) throw new BizException(ResultCode.BAD_REQUEST, "状态只能是 active / retired / removed:" + status);
+        MeterStatus row = statusRow(meterId, fromYm, status, ctx);
         List<MeterStatus> cur = statusRows(meterId);
         MeterStatus old = find(cur, MeterStatus::getFromYm, fromYm);
-        MeterStatus row = new MeterStatus();
-        row.setMeterId(meterId); row.setFromYm(fromYm); row.setStatus(status);
-        row.setSrc(ctx.src()); row.setBatchId(ctx.batchId());
         if (old == null) {
             statuses.insert(row);
         } else {
@@ -247,19 +258,155 @@ public class MeterTimelineService {
         if (!keep.isEmpty()) changes.insertMonths(keep, source, LocalDateTime.now());
     }
 
+    // ══════════ 整册导入的攒批写 ══════════
+
+    /**
+     * 整册导入用(用户 2026-10-05「两个都按你建议」:整年一册原来要等好几分钟,提速而结果一格不变)。
+     * 与 writeAssign / writeStatus 逐格同义,只是不再一格一个来回地碰库:
+     *   · 旧行、下一段取调用方传进来的内存链 —— 导入开批把两条链整份装进内存、本批写的随写随进,与库里逐行一样;
+     *   · 新插的归属 / 状态行、前后像、需重算流水先攒着,flush() 按攒的顺序多行插入:各表自增 id 照样按写的先后连号,
+     *     前后像等 id 定了才转 JSON;
+     *   · 需重算区间要的「库里最大 / 最早已生成月」开批各查一次,之后库里只有读数会动它们,调用方每冲一次读数报一次 readingsWritten。
+     * 改一行攒着还没落库的行(同一块表同一个月本批写第二次)先 flush,它有了 id 再照原路 updateById。
+     * 调用方读 meter_archive_log / data_change_log、或别处要从库里读这两条链之前,必须先 flush()。
+     */
+    public Batch batch(Ctx ctx) { return new Batch(ctx); }
+
+    private record Pending(MeterArchiveLog log, Object before, Object after) {}
+
+    // 一条多行 INSERT 的行数:前后像一行最多约 3KB,200 行压在测试库 max_allowed_packet 的 1MB 以内
+    private static final int CHUNK = 200;
+
+    public final class Batch {
+        private final Ctx ctx;
+        private String maxGen, minGen;
+        private final List<MeterAssign> assignIns = new ArrayList<>();
+        private final List<MeterStatus> statusIns = new ArrayList<>();
+        private final List<Pending> logs = new ArrayList<>();
+        private final List<DataChangeLog> dcl = new ArrayList<>();
+
+        private Batch(Ctx ctx) {
+            checkSrc(ctx);
+            this.ctx = ctx;
+            maxGen = maxGeneratedYm();
+            minGen = blankToNull(assigns.minGeneratedYm());
+        }
+
+        /** 同 writeAssign;cur = 这块表写之前的归属链(升序)。 */
+        public MeterAssign writeAssign(MeterAssign row, List<MeterAssign> cur) {
+            checkYm(row.getFromYm());
+            prepare(row, ctx);
+            MeterAssign old = find(cur, MeterAssign::getFromYm, row.getFromYm());
+            if (old == null) {
+                row.setId(null);
+                assignIns.add(row);
+            } else {
+                if (old.getId() == null) flush();
+                row.setId(old.getId());
+                if (old.equals(row)) return row;
+                assigns.updateById(row);
+            }
+            record(ASSIGN, row.getMeterId(), row.getFromYm(), old == null ? "insert" : "update", old, row,
+                MeterTimeline.until(cur.stream().map(MeterAssign::getFromYm).toList(), row.getFromYm()));
+            return row;
+        }
+
+        /** 同 writeStatus;cur = 这块表写之前的状态链(升序)。 */
+        public MeterStatus writeStatus(int meterId, String fromYm, String status, List<MeterStatus> cur) {
+            checkYm(fromYm);
+            MeterStatus row = statusRow(meterId, fromYm, status, ctx);
+            MeterStatus old = find(cur, MeterStatus::getFromYm, fromYm);
+            if (old == null) {
+                statusIns.add(row);
+            } else {
+                if (old.getId() == null) flush();
+                row.setId(old.getId());
+                if (old.equals(row)) return row;
+                statuses.updateById(row);
+            }
+            record(STATUS, meterId, fromYm, old == null ? "insert" : "update", old, row,
+                MeterTimeline.until(cur.stream().map(MeterStatus::getFromYm).toList(), fromYm));
+            return row;
+        }
+
+        /** 读数落了一批库:最大 / 最早已生成月跟着动(maxGeneratedYm / minGeneratedYm 里读数那一项)。 */
+        public void readingsWritten(Collection<String> yms) {
+            for (String y : yms) {
+                if (maxGen == null || y.compareTo(maxGen) > 0) maxGen = y;
+                if (minGen == null || y.compareTo(minGen) < 0) minGen = y;
+            }
+        }
+
+        public void flush() {
+            for (List<MeterAssign> c : chunks(assignIns)) assigns.insertAll(c);   // 按顺序回填自增 id
+            for (List<MeterStatus> c : chunks(statusIns)) statuses.insertAll(c);
+            List<MeterArchiveLog> ls = new ArrayList<>();
+            for (Pending p : logs) {
+                p.log().setBeforeJson(toJson(p.before())); p.log().setAfterJson(toJson(p.after()));
+                ls.add(p.log());
+            }
+            for (List<MeterArchiveLog> c : chunks(ls)) archive.insertAll(c);
+            for (List<DataChangeLog> c : chunks(dcl)) changes.insertAll(c);
+            assignIns.clear(); statusIns.clear(); logs.clear(); dcl.clear();
+        }
+
+        // 同 record → recordChange,需重算流水每行带自己那一刻的时钟
+        private void record(String tbl, int meterId, String fromYm, String action, Object before, Object after, String until) {
+            logs.add(new Pending(log(tbl, meterId, fromYm, action, ctx), before, after));
+            if (SRC_MIGRATE.equals(ctx.src()) || minGen == null) return;
+            LocalDateTime now = LocalDateTime.now();
+            for (String m : new TreeSet<>(MeterTimeline.affectedMonths(fromYm, until, maxGen)))
+                if (m.compareTo(minGen) >= 0) {
+                    DataChangeLog c = new DataChangeLog();
+                    c.setYm(m); c.setSource(SOURCE_ARCHIVE); c.setChangedAt(now);
+                    dcl.add(c);
+                }
+        }
+    }
+
+    private static <T> List<List<T>> chunks(List<T> rows) {
+        List<List<T>> out = new ArrayList<>();
+        for (int k = 0; k < rows.size(); k += CHUNK) out.add(rows.subList(k, Math.min(k + CHUNK, rows.size())));
+        return out;
+    }
+
     // ══════════ 内部 ══════════
+
+    // writeAssign 与 Batch.writeAssign 共用:来源 / 批次号取自 ctx,有列默认的四格补上默认
+    private static void prepare(MeterAssign row, Ctx ctx) {
+        row.setSrc(ctx.src());
+        row.setBatchId(ctx.batchId());
+        if (row.getOwnership() == null) row.setOwnership("share");   // 同 meter_assign.ownership 列默认
+        if (row.getTenantManual() == null) row.setTenantManual(0);
+        if (row.getOwnerManual() == null) row.setOwnerManual(0);
+        if (row.getLocManual() == null) row.setLocManual(0);
+    }
+
+    private static MeterStatus statusRow(int meterId, String fromYm, String status, Ctx ctx) {
+        if (!STATUSES.contains(status)) throw new BizException(ResultCode.BAD_REQUEST, "状态只能是 active / retired / removed:" + status);
+        MeterStatus row = new MeterStatus();
+        row.setMeterId(meterId); row.setFromYm(fromYm); row.setStatus(status);
+        row.setSrc(ctx.src()); row.setBatchId(ctx.batchId());
+        return row;
+    }
 
     private void record(String tbl, int meterId, String fromYm, String action, Object before, Object after,
                         String until, Ctx ctx) {
-        MeterArchiveLog l = new MeterArchiveLog();
-        l.setMeterId(meterId); l.setTbl(tbl); l.setFromYm(fromYm); l.setAction(action);
+        MeterArchiveLog l = log(tbl, meterId, fromYm, action, ctx);
         l.setBeforeJson(toJson(before)); l.setAfterJson(toJson(after));
-        l.setSrc(ctx.src()); l.setBatchId(ctx.batchId()); l.setFileName(ctx.fileName()); l.setRowRef(ctx.rowRef());
-        l.setOperator(ctx.operator() != null ? ctx.operator() : currentUser());
-        l.setAt(LocalDateTime.now());
         archive.insert(l);
         if (!SRC_MIGRATE.equals(ctx.src()))
             recordChange(MeterTimeline.affectedMonths(fromYm, until, maxGeneratedYm()), SOURCE_ARCHIVE);
+    }
+
+    // 一条前后像的其余各格(前后像 JSON 由调用方填)
+    private static MeterArchiveLog log(String tbl, int meterId, String fromYm, String action, Ctx ctx) {
+        MeterArchiveLog l = new MeterArchiveLog();
+        l.setMeterId(meterId); l.setTbl(tbl); l.setFromYm(fromYm); l.setAction(action);
+        l.setSrc(ctx.src()); l.setBatchId(ctx.batchId()); l.setFileName(ctx.fileName()); l.setRowRef(ctx.rowRef());
+        l.setOperator(ctx.operator() != null ? ctx.operator() : currentUser());
+        l.setAt(LocalDateTime.now());
+        return l;
     }
 
     private List<MeterAssign> assignRows(int meterId) {

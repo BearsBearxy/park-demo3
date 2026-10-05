@@ -16,7 +16,8 @@ import java.util.List;
  *
  * 绝大多数写端点在 {@link WriteAccessManager} 那一道就判完了,业务代码无感。
  * 这个类只给「URL 判不了、必须看请求体才知道要哪个权限」的少数几处用 ——
- * 目前只有一处:PUT /api/params 按 cfg_key 分月度录入 / 计费口径两档。
+ * 现在有三处:PUT /api/params 按 cfg_key 分月度录入 / 计费口径两档;按账期批删读数连带删草稿催缴单要 billing-run;
+ * 抄表导入改已有表的倍率要 meter-master(MeterService.importRows,2026-10-03 安全审计 F15)。
  *
  * ⚠ 这一处曾经**只写在注释里没有实现**(2026-08-22 发现):PermissionRegistry 给 PUT /api/params
  *   登记的是「policy 或 monthly 任一」,而 ParamService 里没有细分判定 ——

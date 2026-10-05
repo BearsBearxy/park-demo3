@@ -12,13 +12,26 @@ export const ymOf = (year: number, month: number): string => `${year}-${pad2(mon
 
 // ── 模块级共享状态 ──
 const months = ref<string[]>([])   // 'YYYY-MM' 升序(注入)
+/**
+ * sel 是不是本机存过的选择。不是(新浏览器 / 新园区)时先放今年今月:月份注入前各屏已按它取数,
+ * 改前放 0 年,首进每屏先打一发 ?year=0 被拒(2026-10-05 复查)。注入月份后一律夹到默认期(最近有损益的月),
+ * 不因今月恰好在可用月里就停在今月 —— 有数据时最终落点和改前一样,不读时钟。
+ */
+let pristine = true
+const todaySel = (): PeriodSel => {
+  const now = new Date()
+  return { gran: 'month', year: now.getFullYear(), month: now.getMonth() + 1 }
+}
 
 function loadSel(): PeriodSel {
   try {
     const s = JSON.parse(localStorage.getItem(LS_KEY) || 'null')
-    if (s && (s.gran === 'month' || s.gran === 'year') && typeof s.year === 'number' && typeof s.month === 'number') return s
+    if (s && (s.gran === 'month' || s.gran === 'year') && typeof s.year === 'number' && typeof s.month === 'number') {
+      pristine = false
+      return s
+    }
   } catch { /* 损坏则回默认 */ }
-  return { gran: 'month', year: 0, month: 0 }   // 月份注入后自动落到最新期
+  return todaySel()   // 月份注入后自动落到最新期
 }
 const sel = ref<PeriodSel>(loadSel())
 
@@ -44,11 +57,20 @@ function isValid(s: PeriodSel): boolean {
  */
 export function providePeriodMonths(list: string[], financeMonths?: string[]): void {
   months.value = [...new Set(list)].sort()
-  if (!months.value.length || isValid(sel.value)) return
+  if (!months.value.length) {
+    // 一个有数据的月都没有(新园区空库):落今年今月,不再停在 0 年 —— 改前屏上出「0年未导入预算」,
+    // 还拿 ?ym=0-12 / ?year=0 去取数被拒。2026-10-05 用户拍板「按你建议修改」:只在没数据时读时钟。
+    // 不写 localStorage:下次有了数据照旧夹到最近有损益的月。有数据的路径(下面)不读时钟。
+    sel.value = { ...todaySel(), gran: sel.value.gran }
+    pristine = true   // 落今月是兜底,不是谁选的:有了数据照旧夹到默认期
+    return
+  }
+  if (!pristine && isValid(sel.value)) return
   const pool = (financeMonths ?? []).filter((m) => months.value.includes(m)).sort()
   const last = (pool.length ? pool : months.value).slice(-1)[0]
   const y = +last.slice(0, 4), m = +last.slice(5, 7)
   sel.value = sel.value.gran === 'year' ? { gran: 'year', year: y, month: m } : { gran: 'month', year: y, month: m }
+  pristine = false
   persist()
 }
 
@@ -125,6 +147,7 @@ export function usePeriod() {
 /** 仅测试用:重置模块级状态。 */
 export function __resetPeriodForTest(): void {
   months.value = []
-  sel.value = { gran: 'month', year: 0, month: 0 }
+  sel.value = todaySel()
+  pristine = true
   try { localStorage.removeItem(LS_KEY) } catch { /* noop */ }
 }

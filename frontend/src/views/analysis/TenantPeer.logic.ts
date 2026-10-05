@@ -29,9 +29,7 @@ import type { AnalysisS10Row } from '@/api/analysis'
 export const MIN_SAMPLE = 20
 
 /** 某日在租(镜像 ContractService.inForceOn):非草稿、非整体承租、起止日期齐全且 asOf 落在闭区间内。
- *  参数只取用到的四个字段(Pick,不是整个 ContractDTO)——F3(对抗复查)起,expiry.logic.ts 的
- *  medianFactoryRent 也复用这同一份判据,只有 monthlyRent/startDate/endDate 三个字段的候选数据
- *  不该被强迫拼出一整个 ContractDTO 才能传进来。 */
+ *  参数只取用到的四个字段(Pick,不是整个 ContractDTO)。 */
 export function isInForce(c: Pick<ContractDTO, 'status' | 'kind' | 'startDate' | 'endDate'>, asOf: string): boolean {
   if (c.status === 'draft') return false
   if (c.kind === 'master_lease') return false

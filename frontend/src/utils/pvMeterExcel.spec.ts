@@ -86,18 +86,18 @@ describe('parsePvMeterRows — 表头别名/行级错误不整批拦', () => {
 })
 
 describe('buildPvMeterTemplateAoa — 模板结构', () => {
-  it('表头 + 两行示例(真实种子站 B座/8栋),示例日期能被自家解析器吃下', () => {
+  it('表头 + 两行示例(站名 1号楼/2号楼),示例日期能被自家解析器吃下', () => {
     const aoa = buildPvMeterTemplateAoa()
     expect(aoa.length).toBe(3)
     expect(aoa[0]).toEqual(PV_METER_TEMPLATE_COLS)
-    expect(aoa[1][1]).toBe('B座')
-    expect(aoa[2][1]).toBe('8栋')
+    expect(aoa[1][1]).toBe('1号楼')
+    expect(aoa[2][1]).toBe('2号楼')
     for (const row of aoa.slice(1)) expect(parsePvReadDate(row[2])).toBeTruthy()
   })
   it('模板回导自洽:AOA 直接喂解析器 → 2 条零错误', () => {
     const { records, errors } = parsePvMeterRows(buildPvMeterTemplateAoa().map(r => r.map(String)))
     expect(errors).toEqual([])
-    expect(records.map(r => r.station)).toEqual(['B座', '8栋'])
+    expect(records.map(r => r.station)).toEqual(['1号楼', '2号楼'])
   })
 })
 

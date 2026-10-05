@@ -255,7 +255,7 @@ export function critFoot(snap: AnaSnapshot, selId: number | null): CritFoot {
       { key: 'run', text: `连续 ≥ ${c.bandRun} ${snap.gran === 'year' ? '个月' : '天'}出范围计一段` },
       { key: 'cover', text: `抄表覆盖 ≥ ${pct0(c.coverMonth)} 才判` },
       { key: 'ledger', text: `台账差 ±${pct0(c.ledger)}` },
-      { key: 'yield', text: `年等效 ≥ ${+(c.anchorHours * c.yieldRatio).toFixed(1)} h` },
+      { key: 'yield', text: c.anchorHours > 0 ? `年等效 ≥ ${+(c.anchorHours * c.yieldRatio).toFixed(1)} h` : '年等效锚点没填，这条不判' },
     ],
     // 窗口不一定连续(月档排掉了当段),只写首末会撒谎,所以带上条数
     // 为凑够样本放宽了哪几条也要写出来 —— 静默放宽等于屏上说「同批在网」而实际没限(§03.7)

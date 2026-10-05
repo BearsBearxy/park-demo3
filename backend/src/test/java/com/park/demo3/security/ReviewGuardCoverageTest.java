@@ -95,7 +95,7 @@ class ReviewGuardCoverageTest {
     /** ①：controller 的类级前缀。**这条正则失配 = 分母塌成 0**，靠 scanFoundEnoughWriteMethods 兜。 */
     private static final Pattern CLASS_MAPPING =
         Pattern.compile("@RequestMapping\\s*\\(\\s*\"([^\"]*)\"\\s*\\)");
-    /** ②：非 GET 端点。GET 不进 —— 读全开，审核只锁写。 */
+    /** ②：非 GET 端点。GET 不进 —— 审核只锁写（读由查看点管，RBAC-SPEC §11）。 */
     private static final Pattern WRITE_MAPPING = Pattern.compile(
         "@(Post|Put|Patch|Delete)Mapping\\s*(?:\\(\\s*(?:value\\s*=\\s*)?\"([^\"]*)\"\\s*\\))?");
     private static final Pattern PUBLIC_SIG =
@@ -538,7 +538,9 @@ class ReviewGuardCoverageTest {
         "CompanyService#create", "CompanyService#update",
         "CompanyService#addAccount", "CompanyService#updateAccount", "CompanyService#deleteAccount",
         "TenantService#create", "TenantService#update",
-        "BillsService#savePaymap");
+        "BillsService#savePaymap",
+        // 经营分析目标与阈值(V138,用户 2026-10-05 拍板第 2 条):analysis_setting 与 value_change_log 都没有月份列
+        "AnalysisSettingService#save");
 
     @Test
     @DisplayName("白名单要小 —— 它是例外不是常态")

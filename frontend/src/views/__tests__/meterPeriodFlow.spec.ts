@@ -10,6 +10,7 @@ import { rowsNotEndingInFill } from '@/composables/__tests__/wideTableStub'
 import { pvMeterApi } from '@/api/pvMeter'
 import type { PvReadingDTO } from '@/api/pvMeter'
 import { useAuthStore } from '@/stores/auth'
+import { ourPark, customerPark } from '@/test-utils/appConfig'
 import { usePresenceStore } from '@/stores/presence'
 import { locksApi } from '@/api/locks'
 import { S } from '@/utils/lockScopes'
@@ -950,6 +951,20 @@ describe('光伏分栋抄表 · 提示件(确认 / 回执 / 字段报错 / 空�
     await flushPromises()
     expect(receipts.map(r => [r.tone, r.text]))
       .toEqual([['ok', '模拟完成：填充 3 条，跳过 1 条（手工 / 导入占位、值未变或缺站）']])
+  })
+
+  // 2026-10-05 用户拍板「按你建议修改」:客户园区(parkTools=false)不显;部署配置没到之前也不显(不先闪再收)。
+  // 破坏验证:按钮 v-if 去掉 appCfg.parkTools → 「没到」「客户」两格红
+  it('❗模拟填充按钮:我园显,客户园区与部署配置没到都不显', async () => {
+    const has = (w: VueWrapper) => w.findAll('button').some(b => b.text().includes('模拟填充'))
+    const w = await toTable()
+    vmOf(w).editMode = true
+    await flushPromises()
+    expect(has(w), '部署配置还没到').toBe(false)
+    ourPark(); await flushPromises()
+    expect(has(w), '我园生产').toBe(true)
+    customerPark('0.29.0'); await flushPromises()
+    expect(has(w), '客户园区').toBe(false)
   })
 
   it('❗导出失败 → 失败回执带「重试」,点了再导一次', async () => {

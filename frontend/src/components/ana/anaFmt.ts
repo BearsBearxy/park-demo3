@@ -7,6 +7,13 @@ export const fnum = (v: number, d = 1): string =>
   Number(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })
 
 export const fint = (v: number): string => Math.round(v).toLocaleString('en-US')
+/**
+ * 拼进 tooltip formatter 返回串的库内文本(租户名、楼栋名、运营商、报表科目……)一律先过它。
+ * ECharts 自定义 formatter 的返回值按 innerHTML 渲染 —— 默认 tooltip 会自己转义,自定义的不会。
+ * 名字里带 <img onerror> 就是存储型注入(2026-10-03 安全审计 F47)。只包文本,别包 p.marker(那本来就是 HTML)。
+ */
+export const esc = (s: unknown): string =>
+  String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string)
 
 export const sgn = (v: number, d = 1, u = '%'): string =>
   (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d) + u

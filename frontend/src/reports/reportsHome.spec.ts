@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   HOME_CARDS, tieBs, tieTb, tieIncome, tieRecon, defaultPeriod, loadHomeData,
 } from './reportsHome'
@@ -120,6 +120,10 @@ describe('tieRecon', () => {
 
 // ── defaultPeriod 回退链 ──
 describe('defaultPeriod', () => {
+  // 时钟钉在 2031-07:有数据的分支不读它(结果与它无关),没数据才落它(2026-10-05 用户拍板「按你建议修改」)
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2031, 6, 15)) })
+  afterEach(() => { vi.useRealTimers() })
+
   it('recon overview 最大 hasData 月', async () => {
     vi.mocked(reconApi.overview).mockResolvedValue({
       year: 2026,
@@ -132,14 +136,14 @@ describe('defaultPeriod', () => {
     expect(await defaultPeriod()).toEqual({ year: 2026, month: 5 })
   })
 
-  it('overview 失败 → 种子期 {2025,9}', async () => {
+  it('overview 失败 → 今年今月(不再落写死的 2025-09)', async () => {
     vi.mocked(reconApi.overview).mockRejectedValue(new Error('net'))
-    expect(await defaultPeriod()).toEqual({ year: 2025, month: 9 })
+    expect(await defaultPeriod()).toEqual({ year: 2031, month: 7 })
   })
 
-  it('无 hasData 月 → 种子期 {2025,9}', async () => {
+  it('无 hasData 月 → 今年今月(新园区空库)', async () => {
     vi.mocked(reconApi.overview).mockResolvedValue({ year: 2026, months: [{ ...meta(0, 0), hasData: false }] })
-    expect(await defaultPeriod()).toEqual({ year: 2025, month: 9 })
+    expect(await defaultPeriod()).toEqual({ year: 2031, month: 7 })
   })
 })
 

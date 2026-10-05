@@ -3,24 +3,26 @@
 // 左边版本列表,右边那一版的全部条目;尺寸固定,切版本只换右边。
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { CHANGELOG } from '@/changelog'
 import { useUpdateStore } from '@/stores/update'
+import { useAppConfigStore } from '@/stores/appConfig'
 import { useTabsStore } from '@/stores/tabs'
 import { X, ChevronRight, ChevronLeft } from 'lucide-vue-next'
-import type { ReleaseItem } from '@/types/changelog'
+import type { ReleaseItem, ReleaseNote } from '@/types/changelog'
 import ReleaseFeatureCard from '@/components/shell/release/ReleaseFeatureCard.vue'
 
 const emit = defineEmits<{ close: [] }>()
 
 const upd = useUpdateStore()
+const appCfg = useAppConfigStore()
 const router = useRouter()
 const tabs = useTabsStore()
 
+// 只列这套部署算数的版本(upd.notes:客户园区是装机那一版之后的,2026-10-05 用户拍板);刚装好的客户一版都没有
 const sel = ref(0)
-const note = computed(() => CHANGELOG[sel.value])
-const isCurrent = computed(() => note.value.version === upd.version)
+const note = computed<ReleaseNote | undefined>(() => upd.notes[sel.value])
+const isCurrent = computed(() => note.value?.version === upd.version)
 /** 「新增 N 项」含重点卡那条(与「本次更新」弹窗同一个数);重点卡自己在上面单独一张,不再排进行里。 */
-const addedCount = computed(() => note.value.added.length + (note.value.feature ? 1 : 0))
+const addedCount = computed(() => (note.value ? note.value.added.length + (note.value.feature ? 1 : 0) : 0))
 
 function go(item: ReleaseItem) {
   // 旧版本的条目不给跳:那时的屏可能已经改名或合并
@@ -33,7 +35,10 @@ function go(item: ReleaseItem) {
 function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape') { e.preventDefault(); emit('close') }
 }
-onMounted(() => window.addEventListener('keydown', onKey))
+onMounted(() => {
+  window.addEventListener('keydown', onKey)
+  void appCfg.ensure()   // 外壳那次没拉到时这里再拉一次
+})
 onUnmounted(() => window.removeEventListener('keydown', onKey))
 </script>
 
@@ -52,7 +57,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
           <!-- 左:版本列表(S 档变成顶部一排横滑胶囊) -->
           <nav class="cl-list" aria-label="版本">
             <button
-              v-for="(n, i) in CHANGELOG"
+              v-for="(n, i) in upd.notes"
               :key="n.version"
               class="cl-item"
               :class="{ on: i === sel }"
@@ -62,11 +67,12 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
               <span class="dt">{{ n.date }}</span>
               <span class="hl">{{ n.headline }}</span>
             </button>
-            <div class="cl-foot">当前版本 v{{ upd.version }}<br />更早的版本没有整理记录</div>
+            <!-- 「没有整理记录」只对我园成立(更新记录从 0.9.0 写起);客户园区更早的版本都有记录,只是按装机版本不列(2026-10-05) -->
+            <div class="cl-foot">当前版本 v{{ upd.version }}<template v-if="appCfg.releaseBaseline === '0.0.0'"><br />更早的版本没有整理记录</template><template v-else-if="appCfg.releaseBaseline"><br />v{{ appCfg.releaseBaseline }} 及更早的版本不在这里列出</template></div>
           </nav>
 
           <!-- 右:那一版改了什么 -->
-          <section class="cl-detail">
+          <section v-if="note" class="cl-detail">
             <div class="cl-vv">v{{ note.version }}<span v-if="isCurrent" class="cl-cur">当前版本</span></div>
             <div class="cl-m">{{ note.date }} 发布</div>
             <div class="cl-hl">{{ note.headline }}</div>
@@ -94,6 +100,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
               <div v-for="f in note.fixed" :key="f" class="cl-row"><div class="tx"><div class="d">{{ f }}</div></div></div>
             </template>
           </section>
+          <section v-else class="cl-detail"><div v-if="appCfg.cfg" class="cl-m">装好以后还没有更新过。</div></section>
         </div>
       </div>
     </div>

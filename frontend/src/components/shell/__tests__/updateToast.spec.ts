@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick, reactive } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
+import { ourPark } from '@/test-utils/appConfig'
 import { useUpdateStore, POPUP_DELAY_MS } from '@/stores/update'
 import { useUiStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
@@ -43,7 +44,7 @@ async function serverSays(version: string) {
 
 describe('AppShell · 刷新提示条', () => {
   beforeEach(() => {
-    setActivePinia(createPinia())
+    setActivePinia(createPinia()); ourPark()
     localStorage.clear()
     document.body.innerHTML = ''
     receipts.splice(0)
@@ -163,7 +164,7 @@ describe('AppShell · 刷新提示条', () => {
 
 describe('AppShell · 自动弹出', () => {
   beforeEach(() => {
-    setActivePinia(createPinia())
+    setActivePinia(createPinia()); ourPark()
     localStorage.clear()
     document.body.innerHTML = ''
   })

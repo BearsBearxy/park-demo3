@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { LogOut, Sparkles, SunMoon } from 'lucide-vue-next'
+import { Lock, LogOut, Sparkles, SunMoon } from 'lucide-vue-next'
 import { useUpdateStore } from '@/stores/update'
 import { APPEARANCE_OPTIONS, useAppearanceStore } from '@/stores/appearance'
 import { fpFindLayer, type NavLayer } from '@/nav/fpNav'
-import { visibleLayers } from '@/nav/navAccess'
+import { visibleLayers, layerEntry } from '@/nav/navAccess'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
@@ -46,20 +46,29 @@ async function onLogout() {
   router.push('/login')
 }
 
+// 修改密码(用户 2026-10-04「现在自己改不了自己的密码」):改密页不进外壳(App.vue),去了外壳整个卸掉、
+// 各页签的现场跟着没 —— 同退出登录,有没保存改动的逐页先问
+async function onChangePassword() {
+  if (!(await tabsStore.leaveOk(tabsStore.tabs.map(t => t.value), '离开'))) return
+  router.push('/change-password')
+}
+
 // ponytail: activeLayer derived from route — no store needed in this task
 const activeLayer = computed(() =>
   fpFindLayer((route.meta as Record<string, string>).value ?? '')
 )
 
-// 导航层可见性按角色的 navLayers,不按权限点(读全开:看不到入口 ≠ 进不去)
-const layers = computed(() => visibleLayers(auth.navLayers, auth.can('system:view')))
+// 导航层可见性:层在角色的 navLayers 里,且层里至少有一屏有查看权(RBAC v3,nav/navAccess.ts)
+const layers = computed(() => visibleLayers(auth.navLayers, auth.can))
 
 // 点当前层什么都不做(§4.1):它既不换屏也不该把当前层首页重置成全新实例。
+// 层首页看不了就落这一层第一块看得了的屏(layerEntry)
 const tabsStore = useTabsStore()
 function goLayer(layer: NavLayer) {
   if (layer.id === activeLayer.value.id) return
-  tabsStore.openFresh(layer.home)
-  router.push('/' + layer.home)
+  const v = layerEntry(layer, auth.can)
+  tabsStore.openFresh(v)
+  router.push('/' + v)
 }
 </script>
 
@@ -121,6 +130,9 @@ function goLayer(layer: NavLayer) {
           <button class="fp-user-row" @click="upd.openHistory()">
             <Sparkles :size="14" />版本更新
             <span class="ver">v{{ upd.version }}</span>
+          </button>
+          <button class="fp-user-row fp-user-pwd" @click="onChangePassword">
+            <Lock :size="14" />修改密码
           </button>
           <button class="fp-user-logout" @click="onLogout">
             <LogOut :size="14" />退出登录

@@ -443,8 +443,10 @@ const confirming = ref(false)
 // 点「批量确认」才滑出勾选列并把筛选行换成操作条;确认完/点退出即收起。
 const bulkMode = ref(false)
 
+// 取的是催缴单专用那份(payees):能进这一屏(出账与催缴单 · 查看)就拿到账号明文,导出的通知单上印的是真账号
+// (用户 2026-10-04 拍板)。原来走 /companies,没有主数据查看的人导出来是 ****1234,只好把导出置灰
 function loadCompanies() {
-  companyBookApi.list().then(cs => { companies.value = cs }).catch(() => { /* 公司失败=下拉空,不阻断列表 */ })
+  companyBookApi.payees().then(cs => { companies.value = cs }).catch(() => { /* 公司失败=下拉空,不阻断列表 */ })
 }
 function loadPayMap() {
   billsApi.paymap().then(ps => {
@@ -725,7 +727,7 @@ const dlgTab = ref<string>('rent')
 //
 // ⚠ 这一句给**八类**无差别追加,所以它只许说时效,不许指路、不许承诺能清掉
 //   (对抗复查 2026-09-23 查出的两处):
-//   · 原文写「在合同或表档案里改完后」—— 而「包干行没挂上池」的落点是公共电核算、
+//   · 原文写「在合同或表档案里改完后」—— 而「固定月额行没记进公摊池」的落点是公共电核算、
 //     「上个月缺价」的落点是计费参数,两类在真屏上都出现过,那句话是在把人指去错的屏。
 //     该去哪屏由每一类自己的 WARN_COPY.actionLabel 说,这里不替它们说。
 //   · 原文写「改完后……才更新」—— 而「本期合计为负」自己的 why 明写「清除路径不存在」,

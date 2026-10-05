@@ -2,7 +2,7 @@
 // CVP 模型(固定/变动拆分系数假设)+ ECharts option(CVP 线 markPoint 保本/markArea 盈利区、
 // 敏感性龙卷风横条、固定/变动逐月堆叠)。锚点(2026-07-08 dev 库,2025-10):rev 9,301,530.81 / cost 6,142,810.17。
 import type { AnalysisS10Row } from '@/api/analysis'
-import { fnum, hues, inkA } from '@/components/ana/anaFmt'
+import { esc, fnum, hues, inkA } from '@/components/ana/anaFmt'
 import { CALLOUT, calloutMark } from '@/components/ana/anaTheme'
 import { isOutlierMonth } from '@/analysis/anaData'
 
@@ -102,7 +102,7 @@ export function cvpOption(be: BeModel, instant = false): object {
     tooltip: {
       trigger: 'axis',
       formatter: (ps: { seriesName: string; value: [number, number] }[]) =>
-        `达成率 ${ps[0].value[0]}%` + ps.map((p) => `<br/>${p.seriesName} ¥${(p.value[1] / 10000).toFixed(1)}万`).join(''),
+        `达成率 ${ps[0].value[0]}%` + ps.map((p) => `<br/>${esc(p.seriesName)} ¥${(p.value[1] / 10000).toFixed(1)}万`).join(''),
     },
     legend: { top: 0, data: ['收入', '总成本'] },
     xAxis: { type: 'value', min: 0, max: 120, interval: 20, axisLabel: { formatter: '{value}%' }, name: '收入达成率', nameLocation: 'middle', nameGap: 24 },
@@ -140,7 +140,7 @@ export function tornadoOption(items: TornadoItem[], instant = false): object {
     ...slide(instant),   // C6-15 同 cvpOption:一拖滑杆三张图同时重算
     grid: { left: 96, right: 56, top: 30, bottom: 26 },
     tooltip: {
-      formatter: (p: { name: string; value: number }) => `${p.name}<br/>±10% → 净利 ±¥${Math.abs(p.value).toFixed(1)}万`,
+      formatter: (p: { name: string; value: number }) => `${esc(p.name)}<br/>±10% → 净利 ±¥${Math.abs(p.value).toFixed(1)}万`,
     },
     legend: { top: 0, data: ['净利 ↓(−10%)', '净利 ↑(+10%)'] },
     xAxis: { type: 'value', axisLabel: { formatter: (v: number) => Math.abs(v) + '万' } },
@@ -177,7 +177,7 @@ export function splitOption(d: SplitData, instant = false): object {
     tooltip: {
       trigger: 'axis', axisPointer: { type: 'shadow' },
       formatter: (ps: { name: string; seriesName: string; value: number }[]) =>
-        ps[0].name + ps.map((p) => `<br/>${p.seriesName} ¥${p.value.toFixed(1)}万`).join(''),
+        esc(ps[0].name) + ps.map((p) => `<br/>${esc(p.seriesName)} ¥${p.value.toFixed(1)}万`).join(''),
     },
     legend: { top: 0, data: ['固定成本', '变动成本'] },
     xAxis: { type: 'category', data: d.periods },

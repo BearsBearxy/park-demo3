@@ -1,6 +1,7 @@
 package com.park.demo3.service;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
+import com.park.demo3.common.YearSpan;
 import com.park.demo3.dto.DeleteResultDTO;
 import com.park.demo3.dto.ImportError;
 import com.park.demo3.dto.ImportResultDTO;
@@ -28,7 +29,6 @@ import java.util.stream.Stream;
 
 @Service
 public class OfficeService {
-    private static final int BASE_YEAR = 2024;   // 年份范围下界(确定性,不读系统时钟)
     private final OfficeRecordMapper records;
     private final ReviewGuard reviewGuard;
 
@@ -61,7 +61,7 @@ public class OfficeService {
     private static BigDecimal waterAmt(OfficeRecord r) { return r2(nz(r.getWaterQty()).multiply(nz(r.getWaterPrice()))); }
     private static BigDecimal total(OfficeRecord r) { return r2(elecAmt(r).add(waterAmt(r))); }
 
-    // ── overview:合并 13+14 两子表 → 年份范围 = [min(2024,minData) .. maxData+1];currentYear=maxData ──
+    // ── overview:合并 13+14 两子表 → 年份范围 = [min(2024,minData) .. maxData+1];currentYear=maxData;无数据 → [去年..明年](YearSpan) ──
     public OfficeOverviewDTO overview() {
         List<OfficeRecord> all = Stream.concat(
             records.selectBySchedule(13).stream(),
@@ -69,13 +69,9 @@ public class OfficeService {
         Map<Integer, List<OfficeRecord>> byYear = all.stream()
             .collect(Collectors.groupingBy(r -> yearOf(r.getAcctMonth())));
 
-        int maxDataYear = byYear.keySet().stream().mapToInt(Integer::intValue).max().orElse(0);
-        int upper = maxDataYear == 0 ? BASE_YEAR + 1 : maxDataYear + 1;   // 无数据 → [2024..2025]
-        int currentYear = maxDataYear == 0 ? upper - 1 : maxDataYear;     // 无数据 → 上界-1
-
+        YearSpan span = YearSpan.of(byYear.keySet());
         List<YearMeta> years = new ArrayList<>();
-        int lo = Math.min(BASE_YEAR, byYear.keySet().stream().mapToInt(Integer::intValue).min().orElse(BASE_YEAR));
-        for (int y = lo; y <= upper; y++) {
+        for (int y = span.lo(); y <= span.hi(); y++) {
             List<OfficeRecord> rows = byYear.get(y);
             if (rows == null || rows.isEmpty()) {
                 years.add(new YearMeta(y, false, BigDecimal.ZERO.setScale(2), 0));
@@ -84,7 +80,7 @@ public class OfficeService {
             BigDecimal totalFee = rows.stream().map(OfficeService::total).reduce(BigDecimal.ZERO, BigDecimal::add);
             years.add(new YearMeta(y, true, r2(totalFee), rows.size()));
         }
-        return new OfficeOverviewDTO(currentYear, years);
+        return new OfficeOverviewDTO(span.current(), years);
     }
 
     // ── records(no,year):该附表该年记录 acct_month,id 升序 + 派生 + 合计 ──

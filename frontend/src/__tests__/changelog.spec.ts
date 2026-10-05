@@ -61,6 +61,12 @@ describe('changelog', () => {
       }
     }
   })
+
+  // 2026-10-04 用户拍板产品卖给别的园区:更新记录每个客户都能一路翻到底,不写我园的期区、楼栋格局(所有版本都查)。
+  it('不写我园的期区和楼栋', () => {
+    const OURS = /[A-G] ?座|[A-G]–[A-G]|车间|[二三四]期|大厦|招商中心|火炬园/   // 「一期」不查:「那一期」「最新一期」是期数
+    for (const n of CHANGELOG) for (const t of textsOf(n)) expect(OURS.test(t), `${n.version}：${t}`).toBe(false)
+  })
 })
 
 // ── 更新公告规范的自动检查(docs/design/RELEASE-NOTES-SPEC.md §9)────────────────

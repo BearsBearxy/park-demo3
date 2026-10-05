@@ -91,8 +91,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
   vi.setSystemTime(new Date('2025-06-15T00:00:00'))
-  // SchedHeader 的门:perm="entry:edit"。缺了它编辑按钮点不进去,④⑤⑦ 全测不到
-  useAuthStore().permissions = ['entry:edit']
+  // SchedHeader 的门:perm="salary:edit"(2026-10-04 起工资写单列)。缺了它编辑按钮点不进去,④⑤⑦ 全测不到
+  useAuthStore().permissions = ['salary:edit']
   receipts.splice(0)
   askQueue.splice(0)
   vi.mocked(salaryApi.overview).mockResolvedValue(OVERVIEW as never)

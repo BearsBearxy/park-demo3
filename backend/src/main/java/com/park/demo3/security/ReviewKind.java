@@ -31,7 +31,7 @@ public enum ReviewKind {
     BILL_NOTICES  ("bill-notices",   "催缴单",        ScopeShape.NONE,    List.of(Perm.BILLING_RUN_EDIT),   true),
     LEDGER        ("ledger",         "月度台账",      ScopeShape.COMPANY, List.of(Perm.ENTRY_EDIT),         true),
     S10           ("s10",            "附表10",        ScopeShape.PHASE,   List.of(Perm.ENTRY_EDIT),         true),
-    SALARY        ("salary",         "附表12",        ScopeShape.NONE,    List.of(Perm.ENTRY_EDIT),         true),
+    SALARY        ("salary",         "附表12",        ScopeShape.NONE,    List.of(Perm.SALARY_EDIT),        true),   // 2026-10-04 起工资写拆成 salary:edit
     UTILITIES     ("utilities",      "办公·三期水电", ScopeShape.FIXED,   List.of(Perm.ENTRY_EDIT),         true),
     PV            ("pv",             "附表6",         ScopeShape.NONE,    List.of(Perm.ENTRY_EDIT),         true),
     CHARGING_CAR  ("charging-car",   "附表7",         ScopeShape.NONE,    List.of(Perm.ENTRY_EDIT),         true),

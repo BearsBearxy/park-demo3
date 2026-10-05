@@ -169,7 +169,7 @@ async function submit() {
           </div>
           <div class="fin-field">
             <div class="lab">别名 · 导入匹配用</div>
-            <input class="fin-in" v-model="aliases" placeholder="选填,逗号分隔(如财务表用的老板名:李富全)"
+            <input class="fin-in" v-model="aliases" placeholder="选填,逗号分隔(如财务表用的老板名:张三)"
                    v-tip="'园区财务 worksheet 常用老板名/曾用名;导入与一键挂租户按名匹配时,别名与正名同权'" @keydown.enter="submit" />
           </div>
           <div class="fin-field">

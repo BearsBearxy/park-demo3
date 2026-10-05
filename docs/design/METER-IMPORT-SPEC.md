@@ -141,11 +141,11 @@ L4 新建
 | 分区/类别 | `kind`, `zone` | 匹配条件之一,不改 |
 | 可刷新属性 | `area`, `spot`, `tenant_name`, `tenant_id`, `building_id`, `ownership`, `meter_type`, `sub_name`, `code`, `factor` | 行里**非空才覆盖**(空不清既有——同一块表在不同 sheet 详略不一) |
 | 人工资产 | `contract_id`, `retired_ym`, `device_type`, `sort_no` | **导入永不动**(合同绑定/停用是人工裁定) |
-| 读数 | `meter_reading` | 按 `(meter_id, ym)` 先删后插;`factor_snap` = 行倍率,空则档案倍率 |
+| 读数 | `meter_reading` | 按 `(meter_id, ym)` 先删后插;`factor_snap` = 行倍率,空则档案倍率。**2026-10-03 起**:导入人没有 `meter-master:edit` 而本行倍率与已有表档案不同时,档案倍率不改、`factor_snap` 取档案倍率,出一条提示(安全审计 F15;新建的表照取行倍率) |
 
 > 2026-09-24 起本表被 METER-TIMELINE-SPEC §3.2 改写:「可刷新属性」里的归属列只写**导入月 M 那一行**(`meter_assign`),
 > 别的月份一格不动;写之前过 G1–G11 护栏(人工标记只锁那一段、认不出的新户名不沿用老户、期区不符整行拒……)。
-> `factor` 只在 M 不早于这块表最新读数月时写回(G7)。「人工资产」里 `contract_id` 挪进归属行,`retired_ym` 已删。
+> `factor` 只在 M 不早于这块表最新读数月时写回(G7),且导入人要有 `meter-master:edit`(F15,没有则不改、只提示)。「人工资产」里 `contract_id` 挪进归属行,`retired_ym` 已删。
 
 ### 3.3 换表 / 停用配合
 

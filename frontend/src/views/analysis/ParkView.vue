@@ -17,19 +17,21 @@ import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
-import { fint, fnum, hues, inkA } from '@/components/ana/anaFmt'
+import { esc, fint, fnum, hues, inkA } from '@/components/ana/anaFmt'
 import { anaPalette } from '@/components/ana/anaTheme'
 import { useViewport } from '@/composables/useViewport'
 import { fetchBuildings, fetchBuildingSummary, fetchContracts, fetchTenants } from '@/analysis/anaData'
 import { buildBuildingRows, buildPhaseRows, liveContracts, splitLogPoints } from './park.logic'
 import { iconFor } from '@/components/ds/icon'
 import { canReach } from '@/nav/navAccess'
+import { useViewGate } from '@/composables/useViewGate'
 import { useAuthStore } from '@/stores/auth'
 import { occByUnit, occPct, OCC_NULL_WHY, type BuildingDTO, type BuildingSummaryDTO } from '@/types/building'
 import { RENT_AREA_FACTOR, type ContractDTO } from '@/types/contract'
 import type { TenantDTO } from '@/types/tenant'
 
 const auth = useAuthStore()
+const { lack } = useViewGate()
 
 // S 档(≤600)几何分支:TreeMap 并块 / 明细表换行卡 / 三块进折叠,都只在这一档生效,>600 原样。
 // 判视口而不判容器宽:真版式与骨架是同一处 v-if 的两支,容器要挂载之后才量得到 ——
@@ -122,7 +124,7 @@ const treemapOption = computed(() => ({
   tooltip: {
     formatter: (p: { name: string; value: number }) => {
       const r = rows.value.find((x) => x.name === p.name)
-      return `${p.name}<br/>月租 ¥${fnum(p.value, 1)}万` + (r ? ` · ${r.tenants} 户 · ${r.contracts} 份` : '')
+      return `${esc(p.name)}<br/>月租 ¥${fnum(p.value, 1)}万` + (r ? ` · ${r.tenants} 户 · ${r.contracts} 份` : '')
     },
   },
   series: [{
@@ -150,7 +152,7 @@ const bName = computed(() => new Map(buildings.value.map((b) => [b.id, b.name]))
 
 // ── 期区结构环(月租金额占比) ──
 const donutOption = computed(() => ({
-  tooltip: { formatter: (p: { name: string; value: number; percent: number }) => `${p.name}<br/>¥${fnum(p.value, 1)}万 · ${p.percent}%` },
+  tooltip: { formatter: (p: { name: string; value: number; percent: number }) => `${esc(p.name)}<br/>¥${fnum(p.value, 1)}万 · ${p.percent}%` },
   series: [{
     type: 'pie', radius: ['48%', '74%'], center: ['50%', '50%'],
     label: { fontSize: 11, formatter: '{b}\n{d}%' },
@@ -173,7 +175,7 @@ const scatterOption = computed(() => ({
   tooltip: {
     formatter: (p: { name: string; value: [number, number] }) => {
       const r = rows.value.find((x) => x.name === p.name)
-      return `${p.name}<br/>${p.value[0]} 户 · ¥${fnum(p.value[1], 1)}万` + (r ? `<br/>户均 ¥${fint(r.avgRent)}` : '')
+      return `${esc(p.name)}<br/>${p.value[0]} 户 · ¥${fnum(p.value[1], 1)}万` + (r ? `<br/>户均 ¥${fint(r.avgRent)}` : '')
     },
   },
   grid: { left: 48, right: 18, top: 16, bottom: 34 },
@@ -225,7 +227,7 @@ const areaBarOption = computed(() => ({
     formatter: (ps: { seriesName: string; name: string; value: number }[]) => {
       const name = ps[0]?.name ?? ''
       const r = areaRows.value.find((x) => x.name === name)
-      return `${name}<br/>` + ps.map((p) => `${p.seriesName} ${fnum(p.value, 0)}㎡`).join('<br/>')
+      return `${esc(name)}<br/>` + ps.map((p) => `${esc(p.seriesName)} ${fnum(p.value, 0)}㎡`).join('<br/>')
         + (r && r.rent > 0 ? `<br/>换算系数 ${fnum(r.building / r.rent, 2)}` : '')
     },
   },
@@ -483,8 +485,10 @@ const areaBarOption = computed(() => ({
             <div v-if="bSummary?.occRate == null" class="s">{{ OCC_NULL_WHY }}</div>
             <div class="s">{{ byUnit.text }} · {{ occPct(byUnit.rate) }}</div>
             <!-- 跨层引导:楼栋管理属数据层,园区股东看不见那一层 —— 给他这条链接等于把他送进一个自己回不来的屏 -->
-            <RouterLink v-if="bSummary?.occRate == null && canReach('/buildings', auth.navLayers, auth.can('system:view'))"
+            <!-- 没有楼栋的查看权(RBAC v3):不藏,置灰并悬停写明缺哪一项 -->
+            <RouterLink v-if="bSummary?.occRate == null && canReach('/buildings', auth.navLayers, auth.can)"
                         class="pk-go" to="/buildings">去补录可租面积 →</RouterLink>
+            <span v-else-if="bSummary?.occRate == null && lack('/buildings')" class="pk-go off" v-tip="lack('/buildings')">去补录可租面积 →</span>
           </div>
         </div>
 
@@ -543,6 +547,7 @@ const areaBarOption = computed(() => ({
 /* 与 AnaEmpty 的 .go 同形态:那份样式是 scoped 的,跨组件拿不过来 */
 .pk-go { display: inline-block; margin-top: 8px; font-size: 12px; color: var(--text-link); text-decoration: none; }
 .pk-go:hover { text-decoration: underline; }
+.pk-go.off { color: var(--text-disabled); cursor: default; text-decoration: none; }
 .pk-area-body { display: flex; gap: 20px; align-items: stretch; }
 .pk-area-metrics { flex: 0 0 216px; display: flex; flex-direction: column; gap: 14px; justify-content: center; }
 .pk-am .v { font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }

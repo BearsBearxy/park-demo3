@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { useTabsStore, HOME, NEWTAB } from '@/stores/tabs'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
+import { ALL_VIEWS } from '@/test-utils/perms'
 
 const route = reactive({ meta: { value: 'ledger' } as Record<string, string>, path: '/ledger' })
 // push 桩 = 导航立刻落定:改路由 + 走一遍 afterEach(页签条只在导航落定后兑现登记)
@@ -61,7 +62,7 @@ beforeEach(() => {
   localStorage.clear()
   const auth = useAuthStore()
   auth.me = 'zhou'
-  auth.permissions = ['ledger:edit']
+  auth.permissions = ['ledger:edit', ...ALL_VIEWS]   // RBAC v3:没有查看权的屏不留在页签条上
   route.meta = { value: 'ledger' }
   route.path = '/ledger'
   push.mockClear()
@@ -423,6 +424,36 @@ describe('退出登录走离开确认(画布 02-A)', () => {
     expect(card(), '0 处改动:不弹').toBeNull()
     expect(out).toHaveBeenCalledTimes(1)
     expect(push).toHaveBeenCalledWith('/login')
+  })
+})
+
+// 用户 2026-10-04「现在自己改不了自己的密码」:账号菜单(桌面)与手机抽屉各一个入口。
+// 改密页不进外壳,去了外壳整个卸掉、各页签现场跟着没 —— 同退出登录,有改动的页先问。
+// 破坏验证:入口删掉 → find 失败红;onChangePassword 去掉 leaveOk → 「继续编辑」那段红
+describe('修改密码入口走离开确认', () => {
+  const rail = () => mount(IconRail, { global: { stubs: { Popover: { template: '<div><slot name="trigger" /><slot /></div>' }, Avatar: true } } })
+  const drawer = () => mount(MobileNavDrawer, { props: { open: true }, global: { stubs: { teleport: true } } })
+  it.each([
+    ['图标轨', rail, '.fp-user-pwd'],
+    ['手机抽屉', drawer, '.mnav-pwd'],
+  ] as const)('❗%s:「修改密码」去改密页;有改动的页先问,点「继续编辑」不去', async (_, mk, sel) => {
+    const tabs = setup(['meters'], 'meters')
+    tabs.setCtx('meters', { p: '2023-08' })
+    const n = editing('meters', 3)
+    mount(FPConfirmHost, { attachTo: document.body })
+    const w = mk()
+    expect(w.find(sel).text()).toBe('修改密码')
+    await w.find(sel).trigger('click')
+    await flushPromises()
+    expect(card()?.querySelector('.fch-t')?.textContent).toBe('离开「园区抄表 · 2023-08」？')
+    await answerLeave('继续编辑')
+    expect(push).not.toHaveBeenCalledWith('/change-password')
+
+    n.value = 0
+    await w.find(sel).trigger('click')
+    await flushPromises()
+    expect(card(), '0 处改动:不弹').toBeNull()
+    expect(push).toHaveBeenCalledWith('/change-password')
   })
 })
 

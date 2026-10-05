@@ -3,6 +3,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
+import { ourPark } from '@/test-utils/appConfig'
 import { nextTick } from 'vue'
 import type { ReleaseNote } from '@/types/changelog'
 
@@ -45,7 +46,7 @@ const click = async (el: Element) => { el.dispatchEvent(new MouseEvent('click', 
 
 beforeEach(() => {
   localStorage.clear()
-  setActivePinia(createPinia())
+  setActivePinia(createPinia()); ourPark()
   push.mockClear()
   document.body.innerHTML = ''
 })

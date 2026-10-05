@@ -3,6 +3,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
+import { ourPark } from '@/test-utils/appConfig'
 import { nextTick } from 'vue'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -48,7 +49,7 @@ function login(who = 'zhou') {
 
 beforeEach(() => {
   localStorage.clear()
-  setActivePinia(createPinia())
+  setActivePinia(createPinia()); ourPark()
   push.mockClear()
   document.body.innerHTML = ''
 })

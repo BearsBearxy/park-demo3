@@ -58,7 +58,7 @@ vi.mock('@/api/building', async (o) => ({
 vi.mock('@/api/billDelivery', async (o) => ({
   ...(await o<object>()),
   billDeliveryApi: Object.fromEntries(['confirm', 'markExported'].map(f => [f, vi.fn()])),
-  companyBookApi: Object.fromEntries(['list'].map(f => [f, vi.fn()])),
+  companyBookApi: Object.fromEntries(['list', 'payees'].map(f => [f, vi.fn()])),
 }))
 vi.mock('@/api/bills', async (o) => ({
   ...(await o<object>()), billsApi: Object.fromEntries(['paymap', 'setPaymap'].map(f => [f, vi.fn()])),
@@ -79,6 +79,7 @@ beforeEach(() => {
   vi.mocked(contractApi.list).mockResolvedValue([])
   vi.mocked(buildingApi.list).mockResolvedValue([])
   vi.mocked(companyBookApi.list).mockResolvedValue([])
+  vi.mocked(companyBookApi.payees).mockResolvedValue([])
   vi.mocked(billsApi.paymap).mockResolvedValue([])
   vi.mocked(paramsApi.status).mockResolvedValue({
     priceOk: 6, priceTotal: 6, pendingChanges: 0, lastChangeAt: null,

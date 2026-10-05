@@ -15,7 +15,8 @@ import java.util.List;
 /**
  * 审核机制(SIDEBAR-UX-REDESIGN §7.4)。
  *
- * GET 不进 PermissionRegistry —— 那张表只管非 GET,读全开。
+ * GET 在 PermissionRegistry 的读规则表里登记为任何已登录可读(v3):回包只有状态、人名和退回理由,不含金额,
+ * 全站编辑闸与铃铛都依赖它。
  * 五个写端点已登记:submit 与 recall 挂「任一相关 edit 权」(真正的 kind→perm 判定在 ReviewService,
  * 因为要哪个权限点取决于 key 里的 kind,URL 层判不出来;recall 与 submit 同源 —— 都是录入方的动作,
  * 「只能撤自己交的」那一条也下沉到 service),其余三个挂 review:approve。

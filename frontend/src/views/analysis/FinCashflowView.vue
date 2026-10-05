@@ -20,6 +20,8 @@ import { iconFor } from '@/components/ds/icon'
 import { anaSettings } from '@/analysis/anaSettings'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
+import { useViewGate, lackText } from '@/composables/useViewGate'
+import { useAuthStore } from '@/stores/auth'
 import { fetchCompanies, fetchLedgerRows, fetchS10PhaseMonthly, fetchTenants, type S10PhaseMonthly } from '@/analysis/anaData'
 import { buildFamilyMap } from '@/analysis/anaFamily'
 import { fint, fnum } from '@/components/ana/anaFmt'
@@ -188,6 +190,12 @@ async function onExportCollection() {
 // 深链走 openFresh({pin:true})(页签语义,spec §4.1);发链 periodLink(§4.2):p + extra.company/tenant。台账屏切回也认 query(P0b)。
 const router = useRouter()
 const tabs = useTabsStore()
+// 跳到模块屏的入口:没有目标屏的查看权就置灰、悬停写明缺哪一项(RBAC v3)
+const { lack } = useViewGate()
+// 联系人与电话归「主数据」查看权,没有的人拿到的是服务端遮过的(RBAC v3),导出提示跟着说实话
+const auth = useAuthStore()
+const exportTip = computed(() => (auth.can('master:view') ? '逐户账龄明细+联系方式,金额为元'
+  : `逐户账龄明细,金额为元;完整联系方式${lackText(['master:view'])},导出里的联系人和电话只显示一部分`))
 function goLedger(tenant: string, company: string, ym: string) {
   drillYm.value = null
   tabs.openDeep('ledger')
@@ -231,7 +239,7 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
           <!-- 次图 s4:收缴率 vs 目标(SVG 子弹条原语保留) -->
           <div class="av2-card av2-s4">
             <div class="av2-card-h"><span class="t">收缴率 vs 目标</span>
-              <span class="hint">目标 {{ anaSettings.collectTarget }}%(设置弹层可调)</span></div>
+              <span class="hint">目标 {{ anaSettings.collectTarget }}%</span></div>
             <AnaBarRows style="margin-top: 6px">
               <AnaBarRow v-for="p in ledgerPeriods" :key="p.ym" :name="p.ym" :value="p.rate" :max="100"
                 :target="anaSettings.collectTarget"
@@ -268,7 +276,7 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
                 <button :class="{ on: !famOn }" @click="famOn = false">按户</button>
                 <button :class="{ on: famOn }" @click="famOn = true">按家族</button>
               </div>
-              <button v-tip="'逐户账龄明细+联系方式,金额为元'" class="fin-link" @click="onExportCollection">导出催缴清单</button>
+              <button v-tip="exportTip" class="fin-link" @click="onExportCollection">导出催缴清单</button>
             </span>
           </div>
           <div class="fin-age-bar">
@@ -326,7 +334,7 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
                 <td class="mono mut">{{ fnum(r.receivable / 1e4, 1) }}</td>
                 <td class="mono mut">{{ fnum(r.collected / 1e4, 1) }}</td>
                 <td class="mono" style="font-weight: 600; color: var(--hue-orange)">{{ fnum(r.balanceEnd / 1e4, 1) }}</td>
-                <td><button class="fin-link" @click="goLedger(r.tenantName, r.companyName, drillYm!)">查台账 →</button></td>
+                <td><button class="fin-link" :disabled="!!lack('/ledger')" v-tip="lack('/ledger')" @click="goLedger(r.tenantName, r.companyName, drillYm!)">查台账 →</button></td>
               </tr>
             </tbody>
           </table>
@@ -345,6 +353,7 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
 .fin-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .fin-head .sub { font-size: var(--fs-micro); color: var(--text-muted); }
 .fin-link { border: none; background: transparent; color: var(--text-link); font-size: var(--fs-micro); cursor: pointer; font-family: var(--font-sans); padding: 0; }
+.fin-link:disabled { color: var(--text-disabled); cursor: default; }
 
 /* 「含 N 户」徽标(开关本体已改用全局 .anx-seg.mini) */
 .fin-fam { display: inline-block; margin-left: 6px; font-size: var(--fs-micro); color: var(--text-muted); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 1px 7px; white-space: nowrap; }

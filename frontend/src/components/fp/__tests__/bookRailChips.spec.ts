@@ -178,7 +178,8 @@ vi.mock('vue-router', () => ({
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['entry:edit', 'meter-master:edit', 'meter-reading:edit']
+  // RBAC v3:两本账各要各的查看权(报送台账 entry:view,运营账 meter:view)
+  useAuthStore().permissions = ['entry:edit', 'meter-master:edit', 'meter-reading:edit', 'entry:view', 'meter:view']
   vi.clearAllMocks()
   localStorage.clear()
   vi.mocked(pvApi.overview).mockResolvedValue({ currentYear: 2025, years: [] } as never)

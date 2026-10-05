@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { filterPages, buildAllPages, type PageEntry } from '../paletteFilter'
 import { fpAllPages } from '@/nav/fpNav'
 
-const allPages = buildAllPages(['data', 'reports', 'analysis'])
+// 业务查看权全有、没有系统管理(RBAC v3 起 buildAllPages 也按查看权滤)
+const allPages = buildAllPages(['data', 'reports', 'analysis'], (p) => p !== 'system:view')
 
 describe('filterPages', () => {
   it('empty query yields 最近 group (≤5) + per-layer groups', () => {

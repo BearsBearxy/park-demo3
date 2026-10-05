@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vites
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createPinia, setActivePinia } from 'pinia'
+import { ourPark } from '@/test-utils/appConfig'
 import { landNav } from '@/test-utils/landNav'
 import { usePresenceStore } from '@/stores/presence'
 import { useUpdateStore } from '@/stores/update'
@@ -96,7 +97,7 @@ const rowOf = (text: string) => np().findAll('.np-row').find((r) => r.text().inc
 const heads = () => np().findAll('.np-gh').map((h) => h.text())
 
 beforeEach(() => {
-  setActivePinia(createPinia())
+  setActivePinia(createPinia()); ourPark()
   vi.clearAllMocks()
   for (const k of Object.keys(localStorage)) if (k.startsWith('fp-app-')) localStorage.removeItem(k)
   Object.assign(bell, { red: 0, reviews: [], returned: [], notices: [], noticesErr: null, noticesLoaded: true,

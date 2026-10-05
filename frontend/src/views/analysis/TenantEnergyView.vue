@@ -10,6 +10,7 @@ import { useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
+import { useViewGate } from '@/composables/useViewGate'
 import AnaShell, { periodNote } from './AnaShell.vue'
 import { usePeriod } from '@/analysis/usePeriod'
 import { anaSettings } from '@/analysis/anaSettings'
@@ -23,7 +24,7 @@ import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import FPStateTag from '@/components/fp/FPStateTag.vue'
-import { NEG, WARN, fint, hues, inkA } from '@/components/ana/anaFmt'
+import { NEG, WARN, esc, fint, hues, inkA } from '@/components/ana/anaFmt'
 import { bandSeries } from '@/components/ana/anaTheme'
 import { PHASES } from '@/views/sales-income/layout'
 import { buildFamilyMap } from '@/analysis/anaFamily'
@@ -253,7 +254,7 @@ const scatterOption = computed<object>(() => {
       formatter: (p: { data?: { name?: string; value?: number[]; phase?: number } }) => {
         const d = p.data
         if (!d?.value) return ''
-        return `${d.name}<br/>月租 ${d.value[0]}万 · 本期${metricLabel.value} ${fint(d.value[1])} 元<br/>期区 ${phaseName(d.phase ?? 1)}`
+        return `${esc(d.name)}<br/>月租 ${d.value[0]}万 · 本期${metricLabel.value} ${fint(d.value[1])} 元<br/>期区 ${phaseName(d.phase ?? 1)}`
       },
     },
     xAxis: { type: xLog.value ? 'log' : 'value', name: '月租金(万)', nameLocation: 'middle', nameGap: 26 },
@@ -290,6 +291,8 @@ const selCompany = computed(() => {
   const rs = ledgerRows.value.filter((r) => r.tenantName === name)
   return rs.length ? rs[rs.length - 1].companyName : ''
 })
+// 跳到模块屏的入口:没有目标屏的查看权就置灰、悬停写明缺哪一项(RBAC v3)
+const { lack } = useViewGate()
 function goLedger() {
   if (!selRow.value || !ledgerYm.value) return
   tabs.openDeep('ledger')
@@ -458,8 +461,8 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
               <!-- §五策略2:所选期无台账 → 台账期回退,卡头标签(画布 06-D,禁静默) -->
               <span class="t">{{ selRow?.name ?? '—' }} · 应收 vs 实收<FPStateTag v-if="ledgerFallback" tone="muted" style="margin-left: 8px">显示 {{ ledgerYm }}</FPStateTag></span>
               <span class="te2-links">
-                <button class="te2-link" :disabled="!ledgerYm" @click="goLedger">查台账 →</button>
-                <button class="te2-link" :disabled="!curYm" @click="goS10">查附表10 →</button>
+                <button class="te2-link" :disabled="!ledgerYm || !!lack('/ledger')" v-tip="lack('/ledger')" @click="goLedger">查台账 →</button>
+                <button class="te2-link" :disabled="!curYm || !!lack('/sales-income')" v-tip="lack('/sales-income')" @click="goS10">查附表10 →</button>
               </span>
             </div>
             <template v-if="ledgerYms.length">

@@ -52,6 +52,9 @@ class PvApiIT extends AbstractMysqlIT {
         List<String> shorts = JsonPath.read(body, "$.data[*].short");   // JSON wire name is "short"
         assertThat(ids).containsExactly("p1", "p2", "p3");
         assertThat(shorts).containsExactly("一期", "二期", "三期");
+        // 2026-10-04:期别带出工程成本,光伏投资回收的投资额默认取三期合计(不再在前端写死 1478.7 万)
+        List<Number> costs = JsonPath.read(body, "$.data[*].cost");
+        assertThat(costs.stream().mapToDouble(Number::doubleValue).sum()).isCloseTo(14786883.99, org.assertj.core.data.Offset.offset(0.005));
     }
 
     // ── overview (deterministic range) ────────────────────────

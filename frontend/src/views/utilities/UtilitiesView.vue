@@ -37,7 +37,7 @@ const TABS: Record<Tab, { no: number; name: string; icon: string; sub: string; n
   phase3: {
     no: 14, name: '三期水电', icon: 'wrench',
     sub: '三期区域建设期间临时水电 · 工程完工后停止记录',
-    note: '三期建设临时用水用电,工程完工(2025年3月)即止;此后不再产生记录。',
+    note: '三期建设临时用水用电,工程完工即止;此后不再产生记录。',
   },
 }
 
@@ -64,6 +64,11 @@ async function loadYear(y: number) {
   if (seq !== yearSeq) return
   yearData.value = data
 }
+// 新增记账的单价默认值:本年记账月最晚、单价大于 0 的那一条(电、水各取各的)
+const lastPrice = computed(() => {
+  const rows = [...(yearData.value?.rows ?? [])].sort((a, b) => b.acctMonth.localeCompare(a.acctMonth))
+  return { elec: rows.find(r => r.elecPrice > 0)?.elecPrice, water: rows.find(r => r.waterPrice > 0)?.waterPrice }
+})
 async function reloadOverview() {
   overview.value = await utilitiesApi.overview()
 }
@@ -259,6 +264,7 @@ const onExport = () => guard('导出失败', async () => {
         :icon="meta.icon"
         :init-year="year"
         :years="yearRange"
+        :last-price="lastPrice"
         @close="drawer = false"
         @save="onCreate"
       />

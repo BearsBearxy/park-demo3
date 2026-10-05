@@ -55,6 +55,7 @@
 - `src/analysis/usePeriod.ts`:期间上下文(按月/按年、步进、可用范围),移植 ana-period 语义。
 - `src/views/analysis/`:14 屏各一 .vue + 共享 `AnaShell.vue` 工具条(期间/阈值设置);router 14 条路由从 PlaceholderView 切到各屏。
 - 阈值/目标(出租率目标/收缴率目标/流失线/盈亏系数/光伏投资额)存 localStorage(原型 SettingsPop 语义),不落库。
+  **2026-10-05 改**(用户拍板):落库、全员一份,只有「账簿报表」编辑权能改,每改一项进操作日志;浏览器里原来的值不搬。见 RBAC-SPEC §14.3。
 
 ## 测试与验收
 

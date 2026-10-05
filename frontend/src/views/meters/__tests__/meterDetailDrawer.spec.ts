@@ -310,6 +310,29 @@ describe('历史读数 · 早于第一条在册状态补读数', () => {
   })
 })
 
+describe('历史读数 · 挪月的用量预览', () => {
+  // 挪到别的月份 = 在那个月新录一条,后端按当前表倍率重新快照(2026-10-04 安全修复)。预览和提示得跟着,
+  // 不然屏上说「按原倍率快照计」、存进去的却是当前倍率。破坏验证:previewFactor 恒取原快照 → 第二句断言红。
+  it('月份没改按原快照预览;挪到别的月份按当前表倍率', async () => {
+    vi.mocked(metersApi.meterReadings).mockResolvedValue([{
+      id: 9, meterId: 1, ym: '2025-02', prevTotal: 0, currTotal: 1,
+      prevSharp: null, prevPeak: null, prevFlat: null, prevValley: null,
+      currSharp: null, currPeak: null, currFlat: null, currValley: null,
+      factorSnap: 100, usageTotal: 100, usageSharp: null, usagePeak: null, usageFlat: null, usageValley: null,
+      note: null, source: 'manual',
+    }])
+    const w = await mountDrawer()
+    await toTab(w, 'history')
+    await w.findAll('button.mt-iop').find(b => !b.classes('danger'))!.trigger('click')
+    await flushPromises()
+    const preview = () => w.find('tr.editing td.ro').text()
+    expect(preview()).toBe('100')
+    datePicker(w).vm.$emit('update:modelValue', '2025-01')
+    await flushPromises()
+    expect(preview(), '挪月按当前表倍率 500').toBe('500')
+  })
+})
+
 describe('合同绑定页签 · 带月写', () => {
   const BIND: MeterBindingRowDTO = {
     meterId: 1, status: 'manual', bucket: 'ambiguous', contractId: null, contractNo: null, locations: [],

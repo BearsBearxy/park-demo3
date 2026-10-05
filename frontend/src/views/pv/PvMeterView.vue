@@ -17,6 +17,7 @@ import { pvMeterApi, type PvStationDTO } from '@/api/pvMeter'
 import type { ImportPayload } from '@/components/import/FpImportModal.vue'
 import { importBusy, settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
 import { useAuthStore, approxDirty } from '@/stores/auth'
+import { useAppConfigStore } from '@/stores/appConfig'
 import { useFormSheet } from '@/composables/useFormSheet'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
@@ -45,6 +46,7 @@ import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 import { buildPvMeterTemplate, exportPvMeterMonth } from '@/utils/pvMeterExcel'
 
 const auth = useAuthStore()
+const appCfg = useAppConfigStore()
 // 新增电站弹卡带输入 → S 档全屏 sheet(styles/form-sheet.css)
 const sheet = useFormSheet()
 
@@ -565,8 +567,8 @@ async function onTemplate() {
           <template #leading><component :is="iconFor('upload')" :size="14" /></template>
           导入
         </Button>
-        <!-- 模拟填充会反写电站单价(§5.3-⑤)→ 判 meter-master,不是 meter-reading -->
-        <Button v-if="editStation" variant="outline" size="sm" :disabled="simulating" @click="onSimulate">
+        <!-- 模拟填充会反写电站单价(§5.3-⑤)→ 判 meter-master,不是 meter-reading;客户园区不显(parkTools,2026-10-05 用户拍板「按你建议修改」;服务端同闸 DeployConfig) -->
+        <Button v-if="editStation && appCfg.parkTools" variant="outline" size="sm" :disabled="simulating" @click="onSimulate">
           <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>
           模拟填充
         </Button>

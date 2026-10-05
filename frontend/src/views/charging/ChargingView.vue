@@ -21,6 +21,7 @@ import type {
   ChargingImportRow,
 } from '@/types/charging'
 import { loadViewMode, saveViewMode } from '@/utils/viewMode'
+import { useAuthStore } from '@/stores/auth'
 import BookRailShell from '@/components/fp/BookRailShell.vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -53,16 +54,21 @@ const vehicleType = computed<'car' | 'ebike'>(() => (no.value === 8 ? 'ebike' : 
 // 改前是一道**整屏拦住**的功能门,而且 mode 是纯本地 ref —— 侧栏点击走 openFresh
 // 会重建组件,每次进来都得重答一遍这道选择题。三份规范本来就写着「会话内记住选择」,
 // 实现从落笔那天起就没做到(openFresh 的语义比那三份规范早 11 天)。
-const MODES = [
+const ALL_MODES = [
   { id: 'summary', name: '报送台账', desc: '按运营商 · 按月' },
   { id: 'meter', name: '分桩运营账', desc: '按桩 · 按日' },
 ] as const
-type Mode = (typeof MODES)[number]['id']
+type Mode = (typeof ALL_MODES)[number]['id']
+// RBAC v3(读写分开):报送台账归台账与附表(entry:view),分桩运营账归抄表(meter:view),左栏只列看得了的那本。
+// 进得来这一屏就至少有一本(路由门是两者任一,nav/navAccess);带 ?mode= 的深链缺那一本的权限时守卫已经拦下。
+const MODES = ALL_MODES.filter(m => useAuthStore().can(m.id === 'meter' ? 'meter:view' : 'entry:view'))
+// 只有抄表查看的人没有报送台账那本:它的总览 / 年表接口只对台账与附表(或分析)开放,取了也是 403
+const METER_ONLY = MODES.length > 0 && MODES.every(m => m.id === 'meter')
 const MODE_SCREEN = no.value === 7 ? 'car-charging' : 'ebike-charging'
 // 深链 ?mode=summary|meter 只在首载认(首页附表行走 openFresh,实例总是新的;SIDEBAR-UX-REDESIGN §5.1):
 // 盖过本机记住的那本,但不写回 —— 下面的 watch(mode) 非 immediate,只记用户自己的切换。
 const deepMode = MODES.find(m => m.id === route.query.mode)?.id ?? null
-const mode = ref<Mode>(deepMode ?? loadViewMode(MODE_SCREEN, MODES.map(m => m.id), 'summary'))
+const mode = ref<Mode>(deepMode ?? loadViewMode(MODE_SCREEN, MODES.map(m => m.id), MODES[0]?.id ?? 'summary'))
 watch(mode, (m) => saveViewMode(MODE_SCREEN, m))
 
 // ── 本屏状态(通用部分见 useSchedScreen) ─────────────────
@@ -109,7 +115,7 @@ const { note: deepNote } = useDeepPeriod({
   dirty: () => (drawer.value || importing.value ? 1 : 0),
 })
 // KeepAlive 切回重读(spec §12):导入中心导完切回来,年表与总览不能还是导入前的(refresh = load(year) + reloadOverview)
-onReactivated(() => { void refresh().catch(() => {}) })
+onReactivated(() => { if (!METER_ONLY) void refresh().catch(() => {}) })
 
 // ⚠ 切账本必须退出编辑态。`edit` 由本层持有(useSchedScreen),锁却由子组件 SchedHeader 持有,
 //   还锁挂在 useEditLock 的 onUnmounted 上 —— 切走时 SchedHeader 卸载,**锁真的还了**,
@@ -135,6 +141,7 @@ const importCtx: ImportCtx = {}
 
 // ── 进入屏:cats + overview(§6 取数前不渲染) ──────────
 onMounted(async () => {
+  if (METER_ONLY) return
   cats.value = await chargingApi.cats(no.value)
   importCtx.cats = cats.value
   overview.value = await chargingApi.overview(no.value)

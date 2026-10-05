@@ -91,13 +91,14 @@ ChargingService svc = new ChargingService(cats, records, rg);
         assertThat(y27.count()).isEqualTo(0);
     }
 
-    @Test void overview_noData_rangeBaseToBasePlusOne_currentYearBaseMinusNothing() {
-        // no data → range [2024..2025], currentYear = 2024
+    @Test void overview_noData_lastYearToNext() {
+        // no data → range [去年..明年], currentYear = 今年(2026-10-05 用户拍板:改前写死 [2024..2025])
+        int now = com.park.demo3.common.YearSpan.thisYear();
         Mockito.when(records.selectBySchedule(8)).thenReturn(List.of());
         ChargingOverviewDTO ov = svc.overview(8);
-        assertThat(ov.currentYear()).isEqualTo(2024);
+        assertThat(ov.currentYear()).isEqualTo(now);
         assertThat(ov.years()).extracting(ChargingOverviewDTO.YearMeta::year)
-            .containsExactly(2024, 2025);
+            .containsExactly(now - 1, now, now + 1);
     }
 
     @Test void delete_seedRow_nowDeletable() {

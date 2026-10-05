@@ -64,7 +64,7 @@ class RoleApiIT extends AbstractMysqlIT {
      */
     @Test
     void perm18_reviewApprove_isRegisteredEverywhere() {
-        assertThat(Perm.ALL).hasSize(18).contains(Perm.REVIEW_APPROVE);
+        assertThat(Perm.ALL).hasSize(28).contains(Perm.REVIEW_APPROVE);   // v3(V134)加了 9 个查看点,V136 加了工资录入
         assertThat(Perm.META.stream().map(Perm.Meta::key)).contains(Perm.REVIEW_APPROVE);
         assertThat(Perm.elevatable(Perm.REVIEW_APPROVE))
             .as("审核不是能当场借的权限(§7.3):借得到就等于录入方能请主管借一次权把自己录的东西审掉")
@@ -74,30 +74,43 @@ class RoleApiIT extends AbstractMysqlIT {
         assertThat(com.park.demo3.common.ResultCode.CONFLICT.code).isEqualTo(409);
     }
 
-    /** reviewer 是第 7 个预置角色:只审不录 —— 只有 review:approve,一个 :edit 都没有(D16)。 */
+    /** v3(V134,2026-10-04):除园区股东外每个角色都带这 8 个查看点;工资另算,只给 admin 与财务主管。 */
+    private static final List<String> EIGHT_VIEWS = List.of(Perm.MASTER_VIEW, Perm.CONTRACT_VIEW, Perm.PARAM_VIEW,
+        Perm.METER_VIEW, Perm.BILLING_VIEW, Perm.ENTRY_VIEW, Perm.REPORT_VIEW, Perm.ANALYSIS_VIEW);
+
+    private static List<String> plusViews(String... perms) {
+        List<String> out = new java.util.ArrayList<>(EIGHT_VIEWS);
+        out.addAll(List.of(perms));
+        return out;
+    }
+
+    /** reviewer 是第 7 个预置角色:只审不录 —— 只有 review:approve,一个 :edit 都没有(D16);V134 起带 8 个查看点。 */
     @Test
     void reviewerRoleIsSeeded_withReviewApproveOnly() {
-        assertThat(permsOf("reviewer")).containsExactly(Perm.REVIEW_APPROVE);
+        assertThat(permsOf("reviewer")).containsExactlyInAnyOrderElementsOf(plusViews(Perm.REVIEW_APPROVE));
     }
 
     @Test
     void presetRolesMatchSpec() {
         // 钉住 RBAC-SPEC §3 的角色矩阵。改这里之前先改规范,别让代码和文档对不上。
         assertThat(permsOf("finance_manager"))
-            .as("财务主管 = 除 system 外的业务全部 + 授权接管 + 可请求提权")
-            .containsExactlyInAnyOrder(
+            .as("财务主管 = 除 system 外的业务全部 + 授权接管 + 可请求提权 + 8 个查看点 + 工资查看(V134)与录入(V136)")
+            .containsExactlyInAnyOrderElementsOf(plusViews(
                 Perm.MASTER_EDIT, Perm.CONTRACT_EDIT, Perm.PARAM_POLICY_EDIT, Perm.PARAM_MONTHLY_EDIT,
                 Perm.METER_MASTER_EDIT, Perm.METER_READING_EDIT, Perm.BILLING_RUN_EDIT,
                 Perm.BILLING_ISSUE_EDIT, Perm.ENTRY_EDIT, Perm.REPORT_EDIT, Perm.LOCK_TAKEOVER,
-                Perm.ELEVATE_REQUEST);
+                Perm.ELEVATE_REQUEST, Perm.SALARY_VIEW, Perm.SALARY_EDIT));
 
         assertThat(permsOf("finance_clerk"))
             .as("财务专员 = 抄读数/台账附表录入/出账运行/报表。"
               + "⚠ V104 起**不含 param-monthly**:月度电价决定每一户的账单,收归主管级,"
               + "专员每月请主管当场授权一次(ELEVATION-SPEC 让这条从'不可行'变成'可行')")
-            .containsExactlyInAnyOrder(
+            .containsExactlyInAnyOrderElementsOf(plusViews(
                 Perm.METER_READING_EDIT, Perm.BILLING_RUN_EDIT,
-                Perm.ENTRY_EDIT, Perm.REPORT_EDIT, Perm.ELEVATE_REQUEST);
+                Perm.ENTRY_EDIT, Perm.REPORT_EDIT, Perm.ELEVATE_REQUEST));
+        assertThat(permsOf("finance_clerk"))
+            .as("V134 + V136:专员看不到工资也录不了工资 —— 工资的查看与录入只给 admin 与财务主管")
+            .doesNotContain(Perm.SALARY_VIEW, Perm.SALARY_EDIT);
         assertThat(permsOf("finance_clerk"))
             .as("电价与计费口径都必须在专员手上之外 —— 这两项一起构成'账单数字'那道门")
             .doesNotContain(Perm.PARAM_MONTHLY_EDIT, Perm.PARAM_POLICY_EDIT);
@@ -105,16 +118,18 @@ class RoleApiIT extends AbstractMysqlIT {
         // ── 三个只读角色不再完全相同(2026-08-22 用户拍板,ELEVATION-SPEC §1) ──
         // 总经理是做业务的人,遇到要改的东西可以请主管当场授权;
         // 只读账号与园区股东**连问都不能问** —— 他们连编辑模式按钮都不该看见。
+        // v3(V134):总经理与只读账号照旧看得到除工资外的全部;园区股东只有经营分析 + 报表。
         assertThat(permsOf("gm"))
-            .as("总经理:零写权限,但可请求提权")
-            .containsExactly(Perm.ELEVATE_REQUEST);
-        for (String code : List.of("shareholder", "viewer")) {
-            assertThat(permsOf(code))
-                .as("%s 必须**一个权限都没有** —— 有 elevate:request 就等于给了他们编辑模式入口", code)
-                .isEmpty();
-        }
+            .as("总经理:零写权限,但可请求提权;8 个查看点")
+            .containsExactlyInAnyOrderElementsOf(plusViews(Perm.ELEVATE_REQUEST));
+        assertThat(permsOf("viewer"))
+            .as("只读账号:只有 8 个查看点 —— 有 elevate:request 就等于给了他编辑模式入口")
+            .containsExactlyInAnyOrderElementsOf(EIGHT_VIEWS);
+        assertThat(permsOf("shareholder"))
+            .as("园区股东:只有经营分析 + 报表的查看,没有 elevate:request")
+            .containsExactlyInAnyOrder(Perm.ANALYSIS_VIEW, Perm.REPORT_VIEW);
         assertThat(roles.selectOne(Wrappers.<AuthRole>lambdaQuery().eq(AuthRole::getCode, "shareholder"))
-                .getNavLayers()).as("园区股东只看经营分析层").isEqualTo("analysis");
+                .getNavLayers()).as("园区股东看经营分析与报表两层(V134)").isEqualTo("analysis,reports");
     }
 
     @Test

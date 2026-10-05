@@ -4,7 +4,7 @@
 // ⚠ 全屏没有「删除账号」:账号只停用不删除(RBAC-SPEC §8)。删掉的账号名下有导入记录、
 //   系数簿修改历史、审核痕迹,真删了这些记录成孤儿,追责链断掉。后端也没有 DELETE /system/users。
 //
-// 读全开的唯一例外是 system 层(§0):无 system:edit 的人进得来、看得见全部账号与角色,
+// system 层的读门是 system:view(RBAC v3 起每个模块都有查看点):无 system:edit 的人进得来、看得见全部账号与角色,
 //   只是所有写按钮不渲染 —— 与其它屏「显示但不能改」同一口径。
 import { ref, computed, watch, onMounted, onBeforeUnmount, h, withDirectives } from 'vue'
 import { vTip } from '@/directives/tip'
@@ -36,6 +36,14 @@ const auth = useAuthStore()
 // 新建账号 / 重置密码两个弹卡带输入 → S 档全屏 sheet(styles/form-sheet.css);停用 / 启用确认走 ask(十件 ⑨)。
 const sheet = useFormSheet()
 const canEdit = computed(() => auth.can('system:edit'))
+// 系统管理分级(RBAC-SPEC §12,用户 2026-10-04 拍板):不是系统管理员的,只能管「不是系统管理员、权限全在自己手里」的
+// 账号与角色。后端按守卫同一条判据给了 manageable,这里照着置灰并说为什么 —— 不让人点进一个注定 403 的弹窗。
+const rangeTip = (u: UserDTO) => (u.roles.some(r => r.code === 'admin')
+  ? '系统管理员账号只有系统管理员能改'
+  : '这个账号有你没有的权限,只有系统管理员能改')
+const roleTip = (r: RoleDTO) => (r.code === 'admin'
+  ? '系统管理员角色只有系统管理员能分配'
+  : '这个角色有你没有的权限,只有系统管理员能分配')
 
 // ─── state ───────────────────────────────────────────────
 const users = ref<UserDTO[] | null>(null)   // null = 首载未完成(不闪「共 0 个账号」空态)
@@ -193,16 +201,21 @@ const columns = computed<SortableColumn<UserDTO>[]>(() => {
         const isMe = !!auth.me && u.username === auth.me
         const selfTip = '不能对自己做这个操作 —— 改掉自己的角色或停用自己会把你锁在门外,'
                       + '而这个系统没有第二条进门的路。请让另一位管理员操作。'
+        const out = u.manageable === false   // 比我大的账号:三颗都按不动
+        const outTip = out ? rangeTip(u) : undefined
         return h('span', { style: { display: 'inline-flex', gap: '6px', justifyContent: 'flex-end' } }, [
           withDirectives(h(Button, {
-            variant: 'outline', size: 'sm', disabled: isMe,
-            onClick: (e: MouseEvent) => { e.stopPropagation(); if (!isMe) openEdit(u) },
-          }, () => '编辑'), [[vTip, isMe ? selfTip : undefined]]),
-          h(Button, { variant: 'outline', size: 'sm', onClick: (e: MouseEvent) => { e.stopPropagation(); openReset(u) } }, () => '重置密码'),
+            variant: 'outline', size: 'sm', disabled: isMe || out,
+            onClick: (e: MouseEvent) => { e.stopPropagation(); if (!isMe && !out) openEdit(u) },
+          }, () => '编辑'), [[vTip, isMe ? selfTip : outTip]]),
           withDirectives(h(Button, {
-            variant: u.status === 1 ? 'gray' : 'filled', size: 'sm', disabled: isMe,
-            onClick: (e: MouseEvent) => { e.stopPropagation(); if (!isMe) void askToggle(u) },
-          }, () => (u.status === 1 ? '停用' : '启用')), [[vTip, isMe ? selfTip : undefined]]),
+            variant: 'outline', size: 'sm', disabled: out,
+            onClick: (e: MouseEvent) => { e.stopPropagation(); if (!out) openReset(u) },
+          }, () => '重置密码'), [[vTip, outTip]]),
+          withDirectives(h(Button, {
+            variant: u.status === 1 ? 'gray' : 'filled', size: 'sm', disabled: isMe || out,
+            onClick: (e: MouseEvent) => { e.stopPropagation(); if (!isMe && !out) void askToggle(u) },
+          }, () => (u.status === 1 ? '停用' : '启用')), [[vTip, isMe ? selfTip : outTip]]),
         ])
       },
     })
@@ -253,6 +266,8 @@ async function submitNew() {
 
 // ─── 编辑(抽屉) ──────────────────────────────────────────
 const openUser = ref<UserDTO | null>(null)
+// 点行开抽屉(手机行卡只有这一条路)不拦:比我大的账号照样看得到,只是抽屉只读、说明为什么
+const editable = computed(() => canEdit.value && openUser.value?.manageable !== false)
 const eDisplay = ref('')
 const eRoleIds = ref<number[]>([])
 const eErr = ref('')
@@ -288,6 +303,8 @@ const pwVal = ref('')
 const pwErr = ref('')
 const pwBusy = ref(false)
 const pwDone = ref(false)
+// 重置的是自己:不用再改、本机换新令牌接着用;别人的:该账号下次登录须改(用户 2026-10-04 拍板)
+const pwSelf = computed(() => !!auth.me && pwTarget.value?.username === auth.me)
 
 function openReset(u: UserDTO) {
   pwTarget.value = u; pwVal.value = ''; pwErr.value = ''; pwDone.value = false
@@ -299,7 +316,9 @@ async function submitReset() {
   if (!pwVal.value) { pwErr.value = '请输入新密码'; return }
   pwBusy.value = true
   try {
-    await systemApi.resetPassword(u.id, pwVal.value)
+    const r = await systemApi.resetPassword(u.id, pwVal.value)
+    // 给自己重置:服务端开了新会话,手上这张旧令牌已作废 —— 不换上新的,下面 reload 就 401 弹回登录页
+    if (r?.token) auth.setToken(r.token)
     pwVal.value = ''
     pwDone.value = true
     await reload()
@@ -462,7 +481,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
         <Badge v-if="openUser?.mustChangePassword" tone="orange" variant="subtle">待改密</Badge>
       </template>
 
-      <template v-if="canEdit" #footer>
+      <template v-if="editable" #footer>
         <Button variant="gray" size="sm" @click="openUser = null">取消</Button>
         <Button variant="filled" size="sm" :disabled="eBusy" @click="submitEdit">
           <template #leading><component :is="iconFor('check')" :size="14" /></template>
@@ -481,8 +500,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
           </div>
           <div class="su-field">
             <div class="lab">显示名</div>
-            <input class="su-in" v-model="eDisplay" :disabled="!canEdit" placeholder="如:张会计" @input="eErr = ''" @keydown.enter="submitEdit" />
+            <input class="su-in" v-model="eDisplay" :disabled="!editable" placeholder="如:张会计" @input="eErr = ''" @keydown.enter="submitEdit" />
           </div>
+          <div v-if="canEdit && !editable" class="su-hint">{{ rangeTip(openUser) }}。</div>
         </div>
       </div>
 
@@ -490,8 +510,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
         <FPSectionLabel icon="shield-check">角色 · 可多选</FPSectionLabel>
         <p class="su-hint" style="margin:0 0 8px">一个人可以有多个角色(如「主管兼管理员」),权限取并集。</p>
         <div class="su-roles">
-          <label v-for="r in roles" :key="r.id" class="su-role" :class="{ dis: !canEdit }">
-            <input type="checkbox" :value="r.id" v-model="eRoleIds" :disabled="!canEdit" />
+          <label v-for="r in roles" :key="r.id" class="su-role" :class="{ dis: !editable || r.manageable === false }"
+                 v-tip="editable && r.manageable === false ? roleTip(r) : undefined">
+            <input type="checkbox" :value="r.id" v-model="eRoleIds" :disabled="!editable || r.manageable === false" />
             <span class="su-role-n">{{ r.name }}</span>
             <span v-if="r.builtin" class="su-role-b">预置</span>
             <span class="su-role-r">{{ r.remark || '' }}</span>
@@ -539,8 +560,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
               <div class="su-field">
                 <div class="lab">角色 · 可多选</div>
                 <div class="su-roles">
-                  <label v-for="r in roles" :key="r.id" class="su-role">
-                    <input type="checkbox" :value="r.id" v-model="nRoleIds" />
+                  <label v-for="r in roles" :key="r.id" class="su-role" :class="{ dis: r.manageable === false }"
+                         v-tip="r.manageable === false ? roleTip(r) : undefined">
+                    <input type="checkbox" :value="r.id" v-model="nRoleIds" :disabled="r.manageable === false" />
                     <span class="su-role-n">{{ r.name }}</span>
                     <span v-if="r.builtin" class="su-role-b">预置</span>
                     <span class="su-role-r">{{ r.remark || '' }}</span>
@@ -569,7 +591,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
           <template v-if="pwDone">
             <div class="fin-dlg-h">
               <h3>密码已重置</h3>
-              <p>「{{ pwTarget.displayName }}」的密码已重置,该账号下次登录须修改密码。</p>
+              <p v-if="pwSelf">你的密码已重置,下次登录用新密码。</p>
+              <p v-else>「{{ pwTarget.displayName }}」的密码已重置,该账号下次登录须修改密码。</p>
             </div>
             <div class="fin-dlg-f" style="padding-top:20px">
               <Button variant="filled" size="sm" @click="pwTarget = null">完成</Button>
@@ -578,12 +601,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
           <template v-else>
             <div class="fin-dlg-h">
               <h3>重置密码</h3>
-              <p>为「{{ pwTarget.displayName }}({{ pwTarget.username }})」设一个新密码。提交后该账号下次登录须修改密码。</p>
+              <p v-if="pwSelf">为你自己的账号设一个新密码。提交后不用再改,这台设备保持登录。</p>
+              <p v-else>为「{{ pwTarget.displayName }}({{ pwTarget.username }})」设一个新密码。提交后该账号下次登录须修改密码。</p>
             </div>
             <div class="fin-dlg-b fp-fsheet-bd">
               <div class="su-field">
                 <div class="lab">新密码 <b class="req">*</b></div>
-                <input class="su-in" :class="{ err: pwErr }" type="password" v-model="pwVal" placeholder="交给本人" @input="pwErr = ''" @keydown.enter="submitReset" />
+                <input class="su-in" :class="{ err: pwErr }" type="password" v-model="pwVal" :placeholder="pwSelf ? '至少 8 位' : '交给本人'" @input="pwErr = ''" @keydown.enter="submitReset" />
               </div>
               <p class="fp-field-err"><template v-if="pwErr">{{ pwErr }}</template></p>
             </div>

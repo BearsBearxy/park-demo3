@@ -182,6 +182,7 @@ class LockApiIT extends AbstractMysqlIT {
             .content("{\"username\":\"" + uname + "\",\"displayName\":\"锁测试\","
                    + "\"password\":\"" + PASS + "\",\"roleIds\":[" + roleId + "]}"))
            .andExpect(status().isOk());
+        passwordAlreadyChanged(uname);
         return uname;
     }
 

@@ -47,7 +47,7 @@ export interface PvSimulateResultDTO {
   skipped: number
 }
 
-// PUT 时 stationId 必传但不生效(站不可改),price_snap 保持原快照
+// PUT 时 stationId 必传但不生效(站不可改);同月内改日期 price_snap 保持原快照,挪到别的月取站当前单价
 export interface PvReadingReq {
   stationId: number
   readDate: string             // YYYY-MM-DD

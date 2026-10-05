@@ -667,7 +667,7 @@ async function submit() {
                   <div class="ct-bl-seghd">
                     <span class="ct-seg-badge">{{ PROPERTY_TYPE_LABEL[seg.propertyType] }}</span>
                     <input class="ct-in ct-bl-loc" v-model="seg.location" maxlength="255"
-                           placeholder="位置(如:E座3-4层 / 宿舍楼 / 空地一 / 主)" @input="err = ''" />
+                           placeholder="位置(如:1号楼3-4层 / 宿舍楼 / 空地 / 主)" @input="err = ''" />
                     <span v-if="segArea(seg) != null" class="ct-seg-area">{{ segArea(seg)!.toLocaleString('en-US') }} ㎡</span>
                     <button type="button" class="ct-rf-del" v-tip="'删除标的段'" @click="removeSegment(si)">
                       <component :is="iconFor('trash-2')" :size="14" />
@@ -790,7 +790,7 @@ async function submit() {
               <div class="ct-field ct-span2">
                 <div class="lab">期限原文</div>
                 <textarea class="ct-in ct-ta" rows="2" v-model="termText" maxlength="255"
-                          placeholder="如:2023年7月14日起至2026年7月13日 / 竣工验收次日起计九年" @input="err = ''"></textarea>
+                          placeholder="如:2026年1月1日起至2028年12月31日 / 竣工验收次日起计九年" @input="err = ''"></textarea>
               </div>
               <div class="ct-field">
                 <div class="lab">期限类型</div>

@@ -7,6 +7,7 @@ export interface PvPhaseDTO {
   name: string
   short: string       // 2 字简称(@JsonProperty("short"))
   online: string | null  // YYYY-MM 并网月
+  cost?: number | null   // 一次性工程成本(元);光伏投资回收的投资额默认取各期合计
 }
 
 // 年份卡元数据(overview.years 元素)
@@ -18,7 +19,7 @@ export interface YearMeta {
 }
 
 export interface PvOverviewDTO {
-  currentYear: number // 最新年 = maxDataYear
+  currentYear: number // 最新年 = maxDataYear;一条数据都没有时 = 今年(后端 YearSpan)
   years: YearMeta[]   // 覆盖 [2024 .. maxDataYear+1]
 }
 

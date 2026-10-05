@@ -4,7 +4,7 @@
 import type { PnlSummary } from '@/analysis/anaData'
 import { matchBudgetKey, type BudgetKey } from '@/analysis/budget'
 import type { BudgetRowDTO } from '@/api/budget'
-import { cmpBaseline, cmpBudget, fnum, hues, inkA } from '@/components/ana/anaFmt'
+import { cmpBaseline, cmpBudget, esc, fnum, hues, inkA } from '@/components/ana/anaFmt'
 import { DUR, EASE } from '@/components/ana/anaMotion'
 
 export interface WfItem { name: string; value: number; type: 'start' | 'end' | 'inc' | 'dec' }
@@ -42,7 +42,7 @@ export function waterfallOption(items: WfItem[], height?: { barWidth?: string })
       formatter: (ps: { dataIndex: number }[]) => {
         const i = ps[0]?.dataIndex ?? 0
         const it = items[i]
-        return it ? `${it.name}<br/>${it.value < 0 ? '−' : ''}${wanTip(Math.abs(it.value))}` : ''
+        return it ? `${esc(it.name)}<br/>${it.value < 0 ? '−' : ''}${wanTip(Math.abs(it.value))}` : ''
       },
     },
     xAxis: { type: 'category', data: items.map((it) => it.name), axisLabel: { interval: 0 } },

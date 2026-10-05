@@ -163,6 +163,34 @@ describe('auth store', () => {
     expect(sessionStorage.getItem('mustChangePassword')).toBeNull()
   })
 
+  // 破坏验证(各一段红):login 不写 setItem('superAdmin') / 换「不记住」时不清另一轨 / 登出不清 / 不是时不 removeItem
+  it('❗superAdmin:登录落 storage、换轨清另一份、登出清两轨、同机下一个不是的人登录要清掉', async () => {
+    const as = (superAdmin: boolean) => ({ token: 'jwt', displayName: 'x', superAdmin })
+    const auth = useAuthStore()
+    vi.mocked(api.post).mockResolvedValueOnce(as(true))
+    await auth.login({ username: 'admin', password: 'x' })
+    expect(auth.superAdmin).toBe(true)
+    expect(localStorage.getItem('superAdmin')).toBe('1')
+    setActivePinia(createPinia())
+    expect(useAuthStore().superAdmin, '刷新后从 storage 读回').toBe(true)
+
+    vi.mocked(api.post).mockResolvedValueOnce(as(true))
+    await auth.login({ username: 'admin', password: 'x' }, false)
+    expect(sessionStorage.getItem('superAdmin')).toBe('1')
+    expect(localStorage.getItem('superAdmin'), '「记住」那一轨的旧标志要清').toBeNull()
+
+    auth.logout()
+    expect(auth.superAdmin).toBe(false)
+    expect(sessionStorage.getItem('superAdmin')).toBeNull()
+
+    vi.mocked(api.post).mockResolvedValueOnce(as(true))
+    await auth.login({ username: 'admin', password: 'x' })
+    vi.mocked(api.post).mockResolvedValueOnce(as(false))
+    await auth.login({ username: 'clerk', password: 'x' })
+    expect(auth.superAdmin).toBe(false)
+    expect(localStorage.getItem('superAdmin'), '上一个系统管理员的标志不能传给下一个人').toBeNull()
+  })
+
   it('上一个账号的改密标志不能传染下一个(同机换人登录)', async () => {
     localStorage.setItem('mustChangePassword', '1')
     vi.mocked(api.post).mockResolvedValueOnce({ token: 'jwt-2', displayName: '老手' })
@@ -177,7 +205,7 @@ describe('auth store', () => {
     s.setToken('t1')
     ;(api.post as unknown as { mockClear: () => void }).mockClear()
     s.logout()
-    expect(api.post).toHaveBeenCalledWith('/auth/logout')
+    expect(api.post).toHaveBeenCalledWith('/auth/logout', null, { headers: { Authorization: 'Bearer t1' } })
   })
 
   it('logout clears token + displayName + role + removes from localStorage', async () => {
@@ -401,6 +429,18 @@ describe('refreshMe', () => {
     expect(auth.roleNames).toEqual(['财务专员'])
     expect(JSON.parse(localStorage.getItem('permissions')!), '刷新一次就丢的话下次打开又是旧权限').toEqual(['meter:view', 'meter:edit'])
     expect(sessionStorage.getItem('permissions'), '不记住登录的人才写 sessionStorage').toBeNull()
+  })
+
+  // 破坏验证:refreshMe 里不写 superAdmin → 红
+  it('❗/auth/me 说已不是系统管理员 ⇒ superAdmin 跟着变,存储里那份也清掉', async () => {
+    localStorage.setItem('token', 'existing-token')
+    localStorage.setItem('superAdmin', '1')
+    const auth = useAuthStore()
+    expect(auth.superAdmin, '前置').toBe(true)
+    vi.mocked(api.get).mockResolvedValueOnce({ permissions: ['system:view'], superAdmin: false })
+    await auth.refreshMe()
+    expect(auth.superAdmin).toBe(false)
+    expect(localStorage.getItem('superAdmin')).toBeNull()
   })
 
   // 破坏验证:删掉 `if (token.value !== t) return` → 红

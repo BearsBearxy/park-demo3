@@ -94,6 +94,7 @@ public class MeterService {
     private final TenantMapper tenants;             // 批删被已确认的单挡住时点户名
     private final PermissionGuard perms;            // 批删连带删草稿催缴单 = 出账运行那一档(同 generate)
     private final AuditLogService audit;            // 删表(连带删掉的催缴单)不可逆,要留痕
+    private final ChangeLogService changes;         // 手改读数逐格留改前改后(用户 2026-10-05 拍板第 4 条)
 
     public MeterService(MeterMapper meters, MeterReadingMapper readings,
                         AllocPoolResultMapper poolResults, AllocPoolMeterResultMapper poolMeterResults,
@@ -103,8 +104,9 @@ public class MeterService {
                         BuildingMapper buildings, MeterTimelineService timeline,
                         MeterArchiveLogMapper archive, ObjectMapper json, ContractMapper contracts,
                         MeterBookSeenMapper bookSeen, BillNoticeLineMapper noticeLines, TenantMapper tenants,
-                        PermissionGuard perms, AuditLogService audit) {
+                        PermissionGuard perms, AuditLogService audit, ChangeLogService changes) {
         this.noticeLines = noticeLines; this.tenants = tenants; this.perms = perms; this.audit = audit;
+        this.changes = changes;
         this.reviewGuard = reviewGuard; this.buildings = buildings; this.timeline = timeline;
         this.archive = archive; this.json = json; this.contracts = contracts; this.bookSeen = bookSeen;
         this.meters = meters; this.readings = readings;
@@ -115,6 +117,8 @@ public class MeterService {
     }
 
     private static BigDecimal one(BigDecimal v) { return v == null ? BigDecimal.ONE : v; }
+    /** 给人看的倍率:80.0000 → 80。 */
+    private static String plain(BigDecimal v) { return v.stripTrailingZeros().toPlainString(); }
     private static String blankToNull(String s) { return s == null || s.isBlank() ? null : s.trim(); }
     private static boolean validKind(String s) { return "elec".equals(s) || "water".equals(s); }
     private static final java.util.regex.Pattern ZONE_RE = java.util.regex.Pattern.compile(ZoneService.ZONE_REGEX);
@@ -488,10 +492,15 @@ public class MeterService {
 
     /** 库里同 kind + 编码的其它表;编码空 = 没有。 */
     private List<Rival> rivals(String kind, String code, Integer selfId) {
+        return rivals(kind, code, selfId, id -> timeline.rows(id).status());
+    }
+
+    // 导入传自己内存里的状态链(本批写的、攒着还没落库的都在里面,与库里逐行一样),不逐块对手表回库查
+    private List<Rival> rivals(String kind, String code, Integer selfId, java.util.function.IntFunction<List<MeterStatus>> chain) {
         String c = blankToNull(code);
         if (c == null) return List.of();
         return meters.selectList(new QueryWrapper<Meter>().eq("kind", kind).eq("code", c).ne(selfId != null, "id", selfId))
-            .stream().map(o -> new Rival(o.getId(), o.getName(), timeline.rows(o.getId()).status())).toList();
+            .stream().map(o -> new Rival(o.getId(), o.getName(), chain.apply(o.getId()))).toList();
     }
 
     private void refuseCodeClash(String kind, String code, Integer selfId, List<MeterStatus> before, List<MeterStatus> after) {
@@ -780,7 +789,9 @@ public class MeterService {
         r.setSource("manual");
         readings.insert(r);
         timeline.recordChange(List.of(req.ym()), READING_CHANGE);   // SPEC §1.5:读数改了,该月的快照需重算
-        return toReadingDTO(readings.selectById(r.getId()));
+        MeterReading now = readings.selectById(r.getId());
+        logReading(m, null, now, "新增这一行");
+        return toReadingDTO(now);
     }
 
     /** data_change_log.source:读数改动(档案改动由 MeterTimelineService 自己记 meter-archive)。 */
@@ -808,7 +819,9 @@ public class MeterService {
         if (assign) timeline.writeAssign(rowAt(rs.assign(), m.getId(), ym), ctx);
     }
 
-    // PUT:改月份/读数/备注;meter 与 factor_snap 保持不变(快照语义)
+    // PUT:改月份/读数/备注;meter 不变。factor_snap:月份不变时保持原快照(快照语义),挪到别的月时取表档案当前倍率
+    // @Transactional:数据修改记录和读数同进同退(记录写不进去,这次改动也不落库)
+    @Transactional
     public MeterReadingDTO updateReading(Integer id, MeterReadingReq req) {
         MeterReading r = readings.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
@@ -818,21 +831,63 @@ public class MeterService {
         if (clash != null && !clash.getId().equals(id))
             throw new BizException(ResultCode.CONFLICT, "该表该月已有读数");
         String oldYm = r.getYm();
+        MeterReading was = new MeterReading();
+        org.springframework.beans.BeanUtils.copyProperties(r, was);   // 改前(下面在 r 上原地改)
         r.setYm(req.ym());
+        // 挪月 = 在新月份新录一条:快照照 createReading 取表档案当前倍率。原来旧快照原样跟过去 ——
+        // 档案倍率改过之后,删掉本月读数、把一条旧倍率的旧读数挪进本月填上本月的数,本月就按旧倍率计了
+        // (只要 meter-reading,2026-10-04 安全修复,F15 复查发现)。月份没变时改读数/备注不动计价口径。
+        if (!oldYm.equals(req.ym())) r.setFactorSnap(one(requireMeter(r.getMeterId()).getFactor()));
         fill(r, req);
         r.setSource("manual");
         readings.updateById(r);
         timeline.recordChange(List.of(oldYm, req.ym()), READING_CHANGE);   // 挪月 = 两个月都变了
-        return toReadingDTO(readings.selectById(id));
+        // 改后从库里重读:fill 把清空的格设成 null,updateById 跳过 null 不落库 —— 拿请求比会记下没发生的「清空」
+        MeterReading now = readings.selectById(id);
+        logReading(requireMeter(r.getMeterId()), was, now, null);
+        return toReadingDTO(now);
     }
 
     // 先取行再删:被删行的 ym 是审核闸的唯一来源,只判存在性拿不到它
+    @Transactional
     public void deleteReading(Integer id) {
         MeterReading r = readings.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
         reviewGuard.assertEditable(ReviewKind.METERS, r.getYm(), null);
         readings.deleteById(id);
         timeline.recordChange(List.of(r.getYm()), READING_CHANGE);
+        logReading(requireMeter(r.getMeterId()), r, null, "删除这一行");
+    }
+
+    // ── 数据修改记录(用户 2026-10-05 拍板「2按你建议，3，4一起做」第 4 条):手改读数逐格记谁、何时、改前、改后 ──
+    // 导入(importRows)不逐格记 —— import_log 记了谁、何时、哪个文件;倍率快照是跟着表档案走的,不算人改的格。
+    private static final List<ChangeLogService.Col<MeterReading>> READING_COLS = List.of(
+        new ChangeLogService.Col<>("上月行至", MeterReading::getPrevTotal),
+        new ChangeLogService.Col<>("本月行至", MeterReading::getCurrTotal),
+        new ChangeLogService.Col<>("上月尖", MeterReading::getPrevSharp),
+        new ChangeLogService.Col<>("上月峰", MeterReading::getPrevPeak),
+        new ChangeLogService.Col<>("上月平", MeterReading::getPrevFlat),
+        new ChangeLogService.Col<>("上月谷", MeterReading::getPrevValley),
+        new ChangeLogService.Col<>("本月尖", MeterReading::getCurrSharp),
+        new ChangeLogService.Col<>("本月峰", MeterReading::getCurrPeak),
+        new ChangeLogService.Col<>("本月平", MeterReading::getCurrFlat),
+        new ChangeLogService.Col<>("本月谷", MeterReading::getCurrValley),
+        new ChangeLogService.Col<>("备注", MeterReading::getNote));
+
+    /** was / now = null 是新加 / 删掉的一条。挪了月份另记一格「月份」。 */
+    private void logReading(Meter m, MeterReading was, MeterReading now, String note) {
+        String ref = readingRef(m, (now != null ? now : was).getYm());
+        List<ChangeLogService.Cell> cells = new ArrayList<>();
+        if (was != null && now != null) cells.add(new ChangeLogService.Cell(ref, "月份", was.getYm(), now.getYm()));
+        ChangeLogService.diff(cells, ref, READING_COLS, was, now);
+        changes.record(ChangeLogService.Tbl.METER_READING, cells, note);
+    }
+
+    /** 「一期电表 A栋101(230220001238) · 2026-08」—— 操作日志上原样显示。 */
+    private static String readingRef(Meter m, String ym) {
+        String code = m.getCode() == null || m.getCode().isBlank() ? "" : "(" + m.getCode() + ")";
+        return ZoneService.label(m.getZone()) + ("water".equals(m.getKind()) ? "水表 " : "电表 ")
+            + m.getName() + code + " · " + ym;
     }
 
     // ── 刀H §H5 按账期批量删除(用户 2026-07-31 点名:自己测试导入的 2023-10 那 80 条要能自己删掉) ──
@@ -965,6 +1020,11 @@ public class MeterService {
         if (!readingIds.isEmpty()) {
             readings.delete(new QueryWrapper<MeterReading>().in("id", readingIds));
             timeline.recordChange(List.of(ym), READING_CHANGE);
+            // 数据修改记录:整月批删记一行摘要,不逐格(一个月上千块表)
+            changes.summary(ChangeLogService.Tbl.METER_READING,
+                ym + " · " + (zone == null || zone.isBlank() ? "" : ZoneService.label(zone))
+                    + (kind == null || kind.isBlank() ? "全部表" : "water".equals(kind) ? "水表" : "电表"),
+                "批量删除了这个月的 " + readingIds.size() + " 条读数");
         }
         if (cascade) {
             poolResults.deleteByYm(ym);
@@ -986,7 +1046,8 @@ public class MeterService {
 
     // ── 导入(METER-IMPORT-SPEC §3):表身份走分层匹配管道 编码 → 位置 → 标识 → 新建,
     //   命中唯一才算命中,多候选=歧义不落库;读数按 (表,ym) upsert 覆盖(跨批重导=覆盖;同批同表同月读数不同=G6 行级错误)。
-    //   factor_snap = 行倍率(空则表档案倍率)。非法 kind/zone/ym、无从取名=行级错误跳过,不整批拦。
+    //   factor_snap = 行倍率(空则表档案倍率);导入人没有表档案权限而本行要动已有表的倍率时,档案不改、快照取系统里现有的(F15)。
+    //   非法 kind/zone/ym、无从取名=行级错误跳过,不整批拦。
     //   档案按月记(METER-TIMELINE-SPEC §3.2):每行只写导入月 M 那一行归属(和上一行一样也写),护栏 G1–G11 标在各处。 ──
     // 读数写入攒批(2026-08-11 审计 P3):500 行一条 upsert(MeterReadingMapper.upsertBatch),
     // 语义与原「先删后插」等价。攒批不影响任何判定 —— readByYm 每个 ym 只在**首次遇到**时从库装载一次,
@@ -1022,6 +1083,10 @@ public class MeterService {
         String fileName = blankToNull(req.fileName());
         if (fileName != null && fileName.length() > 255) fileName = fileName.substring(0, 255);
         MeterTimelineService.Ctx ctx = new MeterTimelineService.Ctx("import", batchId, fileName, null, null);
+        // 档案写攒批落库、冻结月一批只查一遍(用户 2026-10-05「两个都按你建议」:本机测试库整年一册 223 秒 → 58 秒,结果逐字节不变,见 MeterImportEquivalenceIT)。
+        // 本批写过的档案行在 tw.flush() 之前不在库里:循环里要的两条链一律取上面的内存链
+        MeterTimelineService.Batch tw = timeline.batch(ctx);
+        java.util.function.BiFunction<Integer, java.util.Collection<String>, List<MeterTimelineService.Frozen>> frozenAt = timeline.frozenLookup();
         String maxGen = timeline.maxGeneratedYm();
         Map<Integer, String> lastRead = lastReadingYms();                   // G7
         Map<String, Integer> seen = new java.util.HashMap<>();               // G6:表id|月 → 本批第一次认到它的行号
@@ -1039,6 +1104,10 @@ public class MeterService {
         List<ImportError> notices = new ArrayList<>();
         List<MeterImportResultDTO.Match> matches = new ArrayList<>();
         List<MeterReading> pending = new ArrayList<>();   // 待落库读数,满 READING_BATCH 冲一次
+        // 倍率是表档案的口径(RBAC-SPEC §2:meter-master「表倍率」),导入只要 meter-reading(2026-10-03 安全审计 F15,用户选方案 1):
+        // 没有表档案权限的人导入时,已有表的倍率不改、本行读数按档案倍率记,只给提示。新建的表照取本行倍率 —— 那时档案里没有旧值可护。
+        // 一批只问一次,而且只在真有一行要动倍率时才问(绝大多数导入一行都不动)。
+        Boolean canFactor = null;
         int imported = 0, sortNo = meters.maxSortNo();
         List<MeterImportRequest.Row> rows = req.rows();
         // G10 判同码在册看的是同批别的表已经写到哪:编码栏「已拆」的行先走(换表的旧表先拆掉,新表那一行补在册才不被误拒),
@@ -1101,6 +1170,9 @@ public class MeterService {
             String g4 = removedMark(row) ? "removed" : retiredMark(row) ? "retired" : null;
             boolean read = hasReading(row);
             boolean applied = true;   // G11 冻结时档案不改
+            boolean factorDenied = false;   // F15:本行要动倍率、而导入人没有表档案权限
+            BigDecimal factorKept = null;   // 被拒时本行读数用的倍率(= 系统里现有的那个)
+            String factorNote = null;       // 被拒时的提示;等这一行确定落库再进 notices(G10 撞码整行拒时不该说「读数按 X 计」)
             MeterAt m;
             if (hit.meter == null) {   // 自动建档
                 m = new MeterAt();
@@ -1108,7 +1180,7 @@ public class MeterService {
                 applyDesc(m, row, idx, "new");
                 // 新建的表写完会与同码的另一块表同一个月都在册 → 行级错误,不建表(同 G10)
                 String clash = codeClash(m.getCode(), List.of(), planned(List.of(), statusPlan(List.of(), ym, g4, read, true)),
-                    rivals(m.getKind(), m.getCode(), null));
+                    rivals(m.getKind(), m.getCode(), null, id -> statusRows.getOrDefault(id, List.of())));
                 if (clash != null) {
                     errors.add(new ImportError(i, name, clash + ",本行没有导入(读数也没写)"));
                     continue;
@@ -1141,11 +1213,30 @@ public class MeterService {
                         + "仅提示 —— 未标存疑、未影响任何计算;请在抄表屏档案页人工认对后再合并"));
                 meterById.put(m.getId(), m);
                 List<MeterStatus> sRows = statusRows.computeIfAbsent(m.getId(), k -> new ArrayList<>());
-                putAssign(assignRows.computeIfAbsent(m.getId(), k -> new ArrayList<>()), m.toAssign(ym), ctx);
-                putStatus(m, sRows, statusPlan(sRows, ym, g4, read, true), ctx, null);   // 新表不进 changes(matchBy=new 已说明)
+                putAssign(assignRows.computeIfAbsent(m.getId(), k -> new ArrayList<>()), m.toAssign(ym), tw);
+                putStatus(m, sRows, statusPlan(sRows, ym, g4, read, true), tw, null);   // 新表不进 changes(matchBy=new 已说明)
             } else {           // 刷新描述字段(导入是档案的事实源;身份/人工资产字段不动,§3.2)
                 int id = hit.meter.getId();
                 Meter asset = assetById.get(id);
+                BigDecimal archived = one(asset.getFactor());
+                // 「系统里现有的倍率」= 这个月已有读数的快照(主管按 G7 存下的旧册倍率),没有读数才是档案倍率。
+                // 比的是它而不是档案:专员原样重导一本旧册(行倍率 = 已存快照)什么都没想改,不该把快照改成档案倍率。
+                MeterReading had = readOfYm.get(id);
+                BigDecimal current = had != null && had.getFactorSnap() != null ? had.getFactorSnap() : archived;
+                String lastYm = lastRead.get(id);
+                boolean movesArchive = row.factor() != null && (lastYm == null || ym.compareTo(lastYm) >= 0)
+                    && row.factor().compareTo(archived) != 0;                                    // G7 会写回档案
+                boolean movesSnap = row.factor() != null && row.factor().compareTo(current) != 0;
+                if (movesArchive || movesSnap) {
+                    if (canFactor == null) canFactor = perms.has(Perm.METER_MASTER_EDIT);
+                    if (!canFactor) {
+                        factorDenied = true;
+                        factorKept = current;
+                        factorNote = "表「" + hit.meter.getName() + "」本行倍率 " + plain(row.factor()) + " 与系统里现有的 "
+                            + plain(current) + " 不同:没有「" + Perm.label(Perm.METER_MASTER_EDIT) + "」权限,倍率没有改"
+                            + (read ? ",本行读数按 " + plain(current) + " 计" : "");
+                    }
+                }
                 List<MeterAssign> aRows = assignRows.computeIfAbsent(id, k -> new ArrayList<>());
                 List<MeterStatus> sRows = statusRows.computeIfAbsent(id, k -> new ArrayList<>());
                 // 底子 = 导入月 M 的样子(assignAt(M)),不是最新一行:册子只改 M 这一行(R1)
@@ -1160,16 +1251,15 @@ public class MeterService {
                 List<String> diff = base == null ? List.of() : MeterTimeline.diff(base, want);
                 TreeMap<String, String> plan = statusPlan(sRows, ym, g4, read, false);
                 // G11 单表冻结(SPEC §4):这一行要改的段波及冻结月 → 读数照写,档案(含编码/倍率)一格不改
-                // ponytail: 每个认到的表查一次 frozenMonths(一条 lockedNotices + 审核态,千行约两千次查询);
-                //   整册三个月一起导嫌慢时,给 MeterTimelineService 加一个按表批量取冻结月的入口
                 java.util.Set<String> reach = new java.util.TreeSet<>(span(fromsOf(aRows, MeterAssign::getFromYm), ym, maxGen));
                 if (!plan.isEmpty()) reach.addAll(span(fromsOf(sRows, MeterStatus::getFromYm), plan.firstKey(), maxGen));
-                List<MeterTimelineService.Frozen> frozen = timeline.frozenMonths(id, reach);
+                List<MeterTimelineService.Frozen> frozen = frozenAt.apply(id, reach);
                 if (!frozen.isEmpty()) {
                     applied = false;
                     if (!diff.isEmpty() || !plan.isEmpty())
                         notices.add(new ImportError(i, name, "表「" + m.getName() + "」本行要改的档案波及冻结的月份("
                             + frozenText(frozen) + "):读数已写入,档案没有改(" + fieldsText(diff, plan) + ")"));
+                    if (factorNote != null) notices.add(new ImportError(i, name, factorNote));
                     m = hit.meter;
                 } else {
                     // G10 自愈补在册会让这块表与同码的另一块表同一个月都在册 → 行级错误,整行不写(同 G5)
@@ -1179,20 +1269,25 @@ public class MeterService {
                         continue;
                     }
                     for (String w : warns) notices.add(new ImportError(i, name, w));
+                    if (factorNote != null) notices.add(new ImportError(i, name, factorNote));
                     // G7:倍率只在 M 不早于这块表已有的最新读数月时写回;更早的旧册只进本行 factor_snap
-                    String last = lastRead.get(id);
-                    if (row.factor() != null && (last == null || ym.compareTo(last) >= 0)) m.setFactor(row.factor());
+                    if (!factorDenied && row.factor() != null && (lastYm == null || ym.compareTo(lastYm) >= 0)) m.setFactor(row.factor());
                     if (m.getFactor() == null) m.setFactor(BigDecimal.ONE);
                     idx.remove(hit.meter);
+                    Meter was = new Meter();
+                    org.springframework.beans.BeanUtils.copyProperties(asset, was);
                     m.assetInto(asset);   // 资产列(编码/表类/倍率)不分月
-                    meters.updateById(asset);
+                    // 一格没变的不 UPDATE:原来那条什么也没改 —— updated_at 也是按读进来的原值写回去的(strictUpdateFill 只补空值,
+                    // 列被显式赋值 MySQL 的 ON UPDATE 不触发),库里一格不动(对抗复查 IMP-T2-updated-at,「两个都按你建议」2026-10-05)。
+                    // 变了的照旧当场写 —— 新建表查同码对手读的是库
+                    if (!was.equals(asset)) meters.updateById(asset);
                     idx.add(m);
                     // SPEC §3.2:每个导入的月份都写自己那一行,值和上一行一样也写(R4 的地基:后面有册子的月份各有一行挡着)
-                    putAssign(aRows, want, ctx);
+                    putAssign(aRows, want, tw);
                     String until = lastMonth(MeterTimeline.until(fromsOf(aRows, MeterAssign::getFromYm), ym));
                     for (String f : diff)
                         changes.add(new MeterImportResultDTO.Change(id, m.getName(), f, valueOf(base, f), valueOf(want, f), ym, until));
-                    putStatus(m, sRows, plan, ctx, changes);
+                    putStatus(m, sRows, plan, tw, changes);
                 }
                 meterById.put(m.getId(), m);
             }
@@ -1223,18 +1318,19 @@ public class MeterService {
             r.setPrevFlat(row.prevFlat()); r.setPrevValley(row.prevValley());
             r.setCurrSharp(row.currSharp()); r.setCurrPeak(row.currPeak());
             r.setCurrFlat(row.currFlat()); r.setCurrValley(row.currValley());
-            r.setFactorSnap(one(row.factor() == null ? m.getFactor() : row.factor()));
+            r.setFactorSnap(one(factorDenied ? factorKept : row.factor() == null ? m.getFactor() : row.factor()));
             r.setNote(blankToNull(row.note()));
             r.setSource("import");
             // 表档案两条分支(insert 新建 / 已在库)都已先于本行落库,FK fk_meter_reading_meter 冲批时必定有主
             pending.add(r);
-            if (pending.size() >= READING_BATCH) { readings.upsertBatch(pending); pending.clear(); }
+            if (pending.size() >= READING_BATCH) { flushReadings(pending, tw); pending.clear(); }
             readOfYm.put(m.getId(), r);   // 探针拿的是这个内存对象,不依赖它是否已落库(也不依赖自增 id)
             lastRead.merge(m.getId(), ym, (a, b) -> a.compareTo(b) >= 0 ? a : b);   // G7:同批更晚的月压住更早的
             readMonths.add(ym);
             imported++;
         }
-        if (!pending.isEmpty()) readings.upsertBatch(pending);   // 同一 @Transactional 内,失败照样整批回滚
+        if (!pending.isEmpty()) flushReadings(pending, tw);   // 同一 @Transactional 内,失败照样整批回滚
+        tw.flush();   // 下面的批级断言读 meter_archive_log,先把攒着的档案行落库
         errors.sort(java.util.Comparator.comparingInt(ImportError::rowIndex));   // 「已拆」行先走的,排回行号序
         notices.sort(java.util.Comparator.comparingInt(ImportError::rowIndex));
         matches.sort(java.util.Comparator.comparingInt(MeterImportResultDTO.Match::rowIndex));
@@ -1253,7 +1349,8 @@ public class MeterService {
             throw new BizException(ResultCode.INTERNAL,
                 "本批写到了本批月份以外的档案行(" + String.join("、", stray) + "),整批没有导入");
         // SPEC §10.2 本月册子已核:认到表(含新建)且没被判行级错误的每一行 = seen 的键(表id|月),
-        // G2 人工保留、G11 冻结没改档案的也在内(册子里确实有这块表)。整批一条语句写完
+        // G2 人工保留、G11 冻结没改档案的也在内(册子里确实有这块表)。500 行一条语句(同读数攒批):
+        // 整年一册一万三千多行一条写完约 1.3MB,撞测试库 max_allowed_packet 的 1MB(「两个都按你建议」2026-10-05 提速时量出)
         if (!seen.isEmpty()) {
             java.time.LocalDateTime now = java.time.LocalDateTime.now();
             List<MeterBookSeen> book = new ArrayList<>();
@@ -1264,7 +1361,8 @@ public class MeterService {
                 b.setBatchId(batchId); b.setFileName(fileName); b.setSeenAt(now);
                 book.add(b);
             }
-            bookSeen.insertAll(book);
+            for (int k = 0; k < book.size(); k += READING_BATCH)
+                bookSeen.insertAll(book.subList(k, Math.min(k + READING_BATCH, book.size())));
         }
         timeline.recordChange(readMonths, READING_CHANGE);
         // 刀G 复核:提示走独立通道,不再 addAll 进 errors —— 混进去会被前端渲染成「N 行未导入」+警告三角。
@@ -1343,6 +1441,12 @@ public class MeterService {
 
     private static MeterTimelineService.Ctx undo(String src, String ref) {
         return new MeterTimelineService.Ctx(src, null, null, ref, null);
+    }
+
+    // 读数落一批库;最大 / 最早已生成月随之变,告诉攒批写(需重算区间按它取,和逐条查库时一样)
+    private void flushReadings(List<MeterReading> pending, MeterTimelineService.Batch tw) {
+        readings.upsertBatch(pending);
+        tw.readingsWritten(pending.stream().map(MeterReading::getYm).toList());
     }
 
     private <T> T parse(String s, Class<T> type) {
@@ -1909,7 +2013,7 @@ public class MeterService {
 
     // 写 M 那一行归属并放回内存链。同月已有一行且值一格不差(来源、批次号除外)就不写:
     // 重导同一份册子不该在「档案变更」里刷一遍、也不该亮「需重算」,原行的来源与批次号照留。
-    private void putAssign(List<MeterAssign> rows, MeterAssign want, MeterTimelineService.Ctx ctx) {
+    private void putAssign(List<MeterAssign> rows, MeterAssign want, MeterTimelineService.Batch tw) {
         MeterAssign old = find(rows, want.getFromYm(), MeterAssign::getFromYm);
         if (old != null) {
             MeterAssign x = new MeterAssign();
@@ -1917,15 +2021,15 @@ public class MeterService {
             x.setId(old.getId()); x.setSrc(old.getSrc()); x.setBatchId(old.getBatchId());
             if (x.equals(old)) return;
         }
-        upsert(rows, timeline.writeAssign(want, ctx), MeterAssign::getFromYm);
+        upsert(rows, tw.writeAssign(want, rows), MeterAssign::getFromYm);
     }
 
     // 按计划写状态行并放回内存链;changes 非空时每写一行记一条(新表传 null)
-    private void putStatus(MeterAt m, List<MeterStatus> rows, Map<String, String> plan, MeterTimelineService.Ctx ctx,
+    private void putStatus(MeterAt m, List<MeterStatus> rows, Map<String, String> plan, MeterTimelineService.Batch tw,
                            List<MeterImportResultDTO.Change> changes) {
         plan.forEach((from, st) -> {
             MeterStatus was = MeterTimeline.statusAt(rows, from);
-            upsert(rows, timeline.writeStatus(m.getId(), from, st, ctx), MeterStatus::getFromYm);
+            upsert(rows, tw.writeStatus(m.getId(), from, st, rows), MeterStatus::getFromYm);
             if (changes != null) changes.add(new MeterImportResultDTO.Change(m.getId(), m.getName(), "status",
                 was == null ? null : was.getStatus(), st, from,
                 lastMonth(MeterTimeline.until(fromsOf(rows, MeterStatus::getFromYm), from))));

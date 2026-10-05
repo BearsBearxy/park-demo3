@@ -8,6 +8,8 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import java.math.BigDecimal;
+import java.util.List;
 
 @Tag(name = "附表12 工资明细")
 @RestController
@@ -25,6 +27,9 @@ public class SalaryController {
                                       @RequestParam @Min(1) @Max(12) int month) {
         return svc.records(year, month);
     }
+
+    @Operation(summary = "某年餐补费逐月合计（12 个数，不带明细；无行的月为 null）") @GetMapping("/lunch-totals")
+    public List<BigDecimal> lunchTotals(@RequestParam @Min(2000) @Max(2100) int year) { return svc.lunchTotals(year); }
 
     @Operation(summary = "新增工资（source=manual）") @PostMapping("/records")
     public SalaryRecordDTO create(@Valid @RequestBody SalaryRecordReq req) { return svc.create(req); }

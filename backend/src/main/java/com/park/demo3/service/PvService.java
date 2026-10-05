@@ -1,6 +1,7 @@
 package com.park.demo3.service;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
+import com.park.demo3.common.YearSpan;
 import com.park.demo3.dto.DeleteResultDTO;
 import com.park.demo3.dto.ImportError;
 import com.park.demo3.dto.ImportResultDTO;
@@ -32,7 +33,6 @@ import java.util.stream.Collectors;
 
 @Service
 public class PvService {
-    private static final int BASE_YEAR = 2024;   // 年份范围下界(确定性,不读系统时钟)
     private final PvPhaseMapper phases;
     private final PvRecordMapper records;
     private final ReviewGuard reviewGuard;
@@ -59,18 +59,14 @@ public class PvService {
         return phases.selectAllSorted().stream().map(PvService::toPhaseDTO).toList();
     }
 
-    // ── overview:年份范围 = [2024 .. maxDataYear+1];currentYear = maxDataYear ──
+    // ── overview:年份范围 = [2024 .. maxDataYear+1];currentYear = maxDataYear;无数据 → [去年..明年](YearSpan) ──
     public PvOverviewDTO overview() {
         Map<Integer, List<PvRecord>> byYear = records.selectList(null).stream()
             .collect(Collectors.groupingBy(r -> yearOf(r.getAcctMonth())));
 
-        int maxDataYear = byYear.keySet().stream().mapToInt(Integer::intValue).max().orElse(0);
-        int upper = maxDataYear == 0 ? BASE_YEAR + 1 : maxDataYear + 1;   // 无数据 → [2024..2025]
-        int currentYear = maxDataYear == 0 ? upper - 1 : maxDataYear;     // 无数据 → 上界-1
-
+        YearSpan span = YearSpan.of(byYear.keySet());
         List<YearMeta> years = new ArrayList<>();
-        int lo = Math.min(BASE_YEAR, byYear.keySet().stream().mapToInt(Integer::intValue).min().orElse(BASE_YEAR));
-        for (int y = lo; y <= upper; y++) {
+        for (int y = span.lo(); y <= span.hi(); y++) {
             List<PvRecord> rows = byYear.get(y);
             if (rows == null || rows.isEmpty()) {
                 years.add(new YearMeta(y, false, BigDecimal.ZERO.setScale(2), 0));
@@ -79,7 +75,7 @@ public class PvService {
             BigDecimal totalFee = rows.stream().map(PvService::fee).reduce(BigDecimal.ZERO, BigDecimal::add);
             years.add(new YearMeta(y, true, r2(totalFee), rows.size()));
         }
-        return new PvOverviewDTO(currentYear, years);
+        return new PvOverviewDTO(span.current(), years);
     }
 
     // ── records(year):该年全部记录升序 + 派生 + phaseName join + 全年合计 + phases ──
@@ -238,7 +234,7 @@ public class PvService {
     }
 
     private static PvPhaseDTO toPhaseDTO(PvPhase p) {
-        return new PvPhaseDTO(p.getId(), p.getName(), p.getShortName(), p.getOnline());
+        return new PvPhaseDTO(p.getId(), p.getName(), p.getShortName(), p.getOnline(), p.getCost());
     }
 
     private static PvRecordDTO toRecordDTO(PvRecord r, String phaseName) {

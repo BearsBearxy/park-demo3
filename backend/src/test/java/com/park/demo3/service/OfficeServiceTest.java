@@ -89,13 +89,14 @@ OfficeService svc = new OfficeService(records, rg);
         assertThat(y27.totalFee()).isEqualByComparingTo("0.00");
     }
 
-    @Test void overview_noData_rangeBaseToBasePlusOne() {
+    @Test void overview_noData_lastYearToNext() {   // 2026-10-05 用户拍板:无数据取今年(改前写死 [2024..2025])
+        int now = com.park.demo3.common.YearSpan.thisYear();
         Mockito.when(records.selectBySchedule(13)).thenReturn(List.of());
         Mockito.when(records.selectBySchedule(14)).thenReturn(List.of());
         OfficeOverviewDTO ov = svc.overview();
-        assertThat(ov.currentYear()).isEqualTo(2024);
+        assertThat(ov.currentYear()).isEqualTo(now);
         assertThat(ov.years()).extracting(OfficeOverviewDTO.YearMeta::year)
-            .containsExactly(2024, 2025);
+            .containsExactly(now - 1, now, now + 1);
     }
 
     // seed 不再锁删:种子行与手动行同等可删(WI-4 去保护)。

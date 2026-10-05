@@ -12,7 +12,8 @@ export function periodNote(selected: string, used: string): string {
 
 <script setup lang="ts">
 // P3 分析层外壳(视觉 1:1 app/screen-analysis.jsx anx-* 工具条):
-// 期间控制(按月/按年/年月下拉/步进,可用范围由真数据派生)+「目标与阈值」设置弹层(localStorage)。
+// 期间控制(按月/按年/年月下拉/步进,可用范围由真数据派生)+「目标与阈值」设置弹层
+// (2026-10-05 起存库、全员一份,没有账簿报表编辑权的人只读,见 analysis/anaSettings.ts)。
 // 期间/阈值均为模块级单例 —— 屏组件直接 import usePeriod()/anaSettings 消费,切屏不丢。
 // v2(2026-07-08):工具条右侧对比开关(仅当屏传 compare 支持集才显示;useCompare 单例,屏自行
 // 同支持集调 useCompare 读 mode)+ 可选 #kpis 槽(紧贴工具条下,.av2-kpis 容器)。均可选 → 现屏零改动。
@@ -23,7 +24,8 @@ import { Comment, Fragment, computed, onMounted, onUnmounted, ref, useSlots, wat
 import { iconFor } from '@/components/ds/icon'
 import { fetchAvailableMonths } from '@/analysis/anaData'
 import { providePeriodMonths, usePeriod } from '@/analysis/usePeriod'
-import { anaSettings, resetAnaSettings, saveAnaSettings } from '@/analysis/anaSettings'
+import { anaSettings, anaSettingsLock, resetAnaSettings, saveAnaSettings } from '@/analysis/anaSettings'
+import { receipt } from '@/utils/receipt'
 import { useCompare, type CompareMode } from '@/analysis/useCompare'
 import AnaPill from '@/components/ana/AnaPill.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
@@ -140,9 +142,21 @@ onUnmounted(() => {
   document.removeEventListener('keydown', onKey, true)
 })
 
-function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedRatio' | 'pvInvestment' | 'spikeTh', e: Event) {
-  const v = Number((e.target as HTMLInputElement).value)
-  saveAnaSettings({ [key]: Number.isFinite(v) ? v : 0 })
+// 目标与阈值全员一份(用户 2026-10-05 拍板第 2 条):没有账簿报表编辑权的人框都置灰,弹层里写一句原因。
+// 只在弹层打开时才算(弹层在 v-if 里):不开弹层的屏和测试不碰登录态。
+const lock = computed(anaSettingsLock)
+const failed = (e: unknown) => receipt.fail((e as { message?: string })?.message ?? '没存上，请重试')
+
+async function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedRatio' | 'pvInvestment' | 'spikeTh', e: Event) {
+  const el = e.target as HTMLInputElement
+  const v = Number(el.value)
+  try {
+    await saveAnaSettings({ [key]: Number.isFinite(v) ? v : 0 })
+  } catch (err) {
+    // 没存上:框里放回原来的数(库里的值没变,不会重绘,得手动放回去)
+    el.value = key === 'pvInvestment' && !anaSettings.pvInvestment ? '' : String(anaSettings[key])
+    failed(err)
+  }
 }
 </script>
 
@@ -209,20 +223,21 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
           </button>
           <div v-if="pop" class="anx-pop" @click.stop>
             <h4>目标与阈值</h4>
+            <p v-if="lock" class="anx-lock">{{ lock }}</p>
             <div class="anx-fld"><label>出租率目标 (%)</label>
-              <input type="number" min="50" max="100" :value="anaSettings.occTarget" @change="onNum('occTarget', $event)" /></div>
+              <input type="number" min="50" max="100" :disabled="!!lock" :value="anaSettings.occTarget" @change="onNum('occTarget', $event)" /></div>
             <div class="anx-fld"><label>收缴率目标 (%)</label>
-              <input type="number" min="50" max="100" :value="anaSettings.collectTarget" @change="onNum('collectTarget', $event)" /></div>
+              <input type="number" min="50" max="100" :disabled="!!lock" :value="anaSettings.collectTarget" @change="onNum('collectTarget', $event)" /></div>
             <div class="anx-fld"><label>风险线/流失预警 (分)</label>
-              <input type="number" min="30" max="90" :value="anaSettings.churnTh" @change="onNum('churnTh', $event)" /></div>
+              <input type="number" min="30" max="90" :disabled="!!lock" :value="anaSettings.churnTh" @change="onNum('churnTh', $event)" /></div>
             <div class="anx-fld"><label>能耗突变阈值 (%)</label>
-              <input type="number" min="10" max="200" :value="anaSettings.spikeTh" @change="onNum('spikeTh', $event)" /></div>
+              <input type="number" min="10" max="200" :disabled="!!lock" :value="anaSettings.spikeTh" @change="onNum('spikeTh', $event)" /></div>
             <div class="anx-fld"><label>固定成本占比</label>
-              <input type="number" min="0" max="1" step="0.01" :value="anaSettings.breakevenFixedRatio" @change="onNum('breakevenFixedRatio', $event)" /></div>
+              <input type="number" min="0" max="1" step="0.01" :disabled="!!lock" :value="anaSettings.breakevenFixedRatio" @change="onNum('breakevenFixedRatio', $event)" /></div>
             <div class="anx-fld"><label>光伏投资 (万)</label>
-              <input type="number" min="0" :value="anaSettings.pvInvestment" @change="onNum('pvInvestment', $event)" /></div>
+              <input type="number" min="0" :disabled="!!lock" :value="anaSettings.pvInvestment || ''" placeholder="按各期成本" @change="onNum('pvInvestment', $event)" /></div>
             <div style="display: flex; justify-content: space-between; margin-top: 4px">
-              <button class="anx-link" @click="resetAnaSettings()">恢复默认</button>
+              <button class="anx-link" :disabled="!!lock" @click="resetAnaSettings().catch(failed)">恢复默认</button>
               <button class="anx-link" style="color: var(--text-primary); font-weight: 600" @click="pop = false">完成</button>
             </div>
           </div>
@@ -296,6 +311,9 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
 .anx-fld label { font-size: 12px; color: var(--text-secondary); }
 .anx-fld input { width: 74px; font-family: var(--font-mono); font-size: var(--fs-label); text-align: right; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 5px 8px; outline: none; }
 .anx-fld input:focus { border-color: var(--border-strong); }
+.anx-fld input:disabled { color: var(--text-muted); cursor: not-allowed; }
+.anx-link:disabled { color: var(--text-muted); cursor: not-allowed; }
+.anx-lock { margin: -4px 0 12px; font-size: var(--fs-micro); line-height: 1.5; color: var(--text-muted); }
 /* M/S(≤960,§5.2):工具条收进两行,且行组成静态确定——右侧组 flex-basis:100% 恒占第二行,
    不靠内容宽度自然换行(那会随 asof 文案/对比开关有无在一行两行间跳,sticky 条高度也跟着跳)。
    右对齐由 justify-content 接手(占满整行后 margin-left:auto 失效)。 */

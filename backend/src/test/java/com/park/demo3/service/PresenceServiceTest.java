@@ -15,6 +15,14 @@ class PresenceServiceTest {
         return new PingReq("sid", scope, "label", null, editScopes, mode);
     }
 
+    /** 锁标识上限(LockService.SCOPE_MAX)对 editScopes 元素和旧页签垫层一视同仁(2026-10-03 对抗复查:垫层原样放过了超长 scope)。 */
+    @Test
+    void oversizedScopesNeverBecomeEditScopes() {
+        String big = "x".repeat(LockService.SCOPE_MAX + 1);
+        assertThat(PresenceService.resolveEditScopes(req(List.of(big, "a:1"), null, null))).containsExactly("a:1");
+        assertThat(PresenceService.resolveEditScopes(req(null, "edit", big))).isEmpty();
+    }
+
     @Test
     void oldTabsStillSendingModeGetTheirLockRenewed() {
         // 发布前已打开的 SPA 还在发 {mode:'edit', scope},不发 editScopes ——

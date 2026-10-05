@@ -221,7 +221,7 @@ function onAddChild(row: FinTableRow) {
     : BS_ROWS.find(r => r.no === row.no)?.level ?? 0
   dlg.value = {
     type: 'addrow', parentLabel: row.label, heading: '添加资产负债表子类',
-    placeholder: '如:航泽借款',
+    placeholder: '如:股东借款',
     hint: lvl === 0 ? '可继续在子类下添加下一级。' : undefined,
   }
   addParentKey.value = String(row.key)

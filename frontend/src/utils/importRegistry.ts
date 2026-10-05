@@ -288,7 +288,7 @@ export interface ImportCtx {
 }
 // 该类导入实际写进哪个模块(RBAC-SPEC §5.6:权限挂在 import kind 上,不挂导入中心这个屏)。
 // 取值须与后端 §5.2 写端点映射表对同一条 path 的判定一致 —— 前端只管磁贴显不显示,后端才是边界。
-export type ImportModule = 'entry:edit' | 'report:edit' | 'contract:edit' | 'meter-reading:edit'
+export type ImportModule = 'entry:edit' | 'salary:edit' | 'report:edit' | 'contract:edit' | 'meter-reading:edit'
 
 export interface ImportTypeEntry {
   key: string; label: string; tag: string; icon: string
@@ -700,7 +700,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       prefetchBillingContracts()
       return {
         title: '导入 合同计费行 · 月度租金工作簿',
-        sub: '上传月度租金工作簿(每租户一 sheet,含通知单块),每费项行 1:1 提取为计费行(位置×费项×计费方式)落到生效合同;银纳类多合同按位置自动路由(厂房/宿舍),同名多合同请勾选归属;流水账/无合同 sheet 须手录/须先建合同;导入后自动下载到户报告',
+        sub: '上传月度租金工作簿(每租户一 sheet,含通知单块),每费项行 1:1 提取为计费行(位置×费项×计费方式)落到生效合同;多合同户按位置自动路由(厂房/宿舍),同名多合同请勾选归属;流水账/无合同 sheet 须手录/须先建合同;导入后自动下载到户报告',
         templateCols: BILLING_TERM_TEMPLATE_COLS,
         parseWorkbook: (sheets: { name: string; matrix: string[][] }[]) => {
           const { sections, errors, report } = parseBillingTermsWorkbook(sheets, { contracts: billingContracts ?? [] })
@@ -845,7 +845,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
     target: () => null,
   },
   {
-    key: 'salary', label: '工资明细', tag: '附表12', icon: 'wallet', context: 'none', module: 'entry:edit',
+    key: 'salary', label: '工资明细', tag: '附表12', icon: 'wallet', context: 'none', module: 'salary:edit',   // 2026-10-04 起工资写单列
     modalProps: (ctx) => ({
       title: '导入 附表12 · 工资明细',
       sub: '上传/粘贴整张多月工资表,系统按标题行自动拆月、按姓名识别行,核对年/月后逐月导入',

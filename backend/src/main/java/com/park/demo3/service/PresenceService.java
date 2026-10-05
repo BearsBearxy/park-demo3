@@ -1,6 +1,8 @@
 package com.park.demo3.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.park.demo3.common.BizException;
+import com.park.demo3.common.ResultCode;
 import com.park.demo3.security.NoReviewGuard;
 import com.park.demo3.dto.LockDtos.EvictionDTO;
 import com.park.demo3.dto.PresenceDtos.*;
@@ -30,6 +32,10 @@ public class PresenceService {
 
     /** 一个会话同时握的锁数上限。真实上限是「开着的编辑态屏数」(个位数);超出的只能是坏客户端。 */
     private static final int EDIT_SCOPES_MAX = 16;
+    /** sid 上限:真实值是 crypto.randomUUID(36 位),老浏览器兜底约 20 位(stores/presence.ts)。 */
+    private static final int SID_MAX = 64;
+    /** 「在看哪一屏」的上限,超出截断(只拿来比对换没换屏和显示)。 */
+    private static final int PAGE_SCOPE_MAX = 256;
 
     private final PresenceStore store;
     private final AuthUserMapper users;
@@ -50,6 +56,9 @@ public class PresenceService {
         @NoReviewGuard(reason = "在场心跳,写内存不落库。全站唯一的轮询,3 秒一拍 —— 进审核就是每 3 秒撞一次闸")
 public PingResp ping(PingReq req) {
         String me = me();
+        // 资源上限(安全审计 G4a):sid 是座位表的键、客户端给的。真实值是 crypto.randomUUID(36 位)
+        if (req.sid() == null || req.sid().isBlank() || req.sid().length() > SID_MAX)
+            throw new BizException(ResultCode.BAD_REQUEST, "会话标识不合法");
         // ⚠ 身份从令牌取，不从请求体取。让客户端报自己是谁，头像组就成了谁都能冒名的地方。
         //
         // 只在这个会话的**第一拍**查库。轮询从 20 秒收到 3 秒之后，每拍都查等于把这条点查
@@ -75,7 +84,7 @@ public PingResp ping(PingReq req) {
 
         List<String> editScopes = resolveEditScopes(req);
         List<PresenceStore.Eviction> es = store.ping(
-            req.sid(), me, name, role, req.scope(), clamp(req.label()), editScopes, touched);
+            req.sid(), me, name, role, clip(req.scope(), PAGE_SCOPE_MAX), clamp(req.label()), editScopes, touched);
 
         // 远程授权顺着同一条通道回来（设计稿 §07）——「要做通知机制」当初是否掉它的理由之一，
         // 而心跳建好之后，它的边际成本就只是响应体多两个字段。
@@ -92,7 +101,7 @@ public PingResp ping(PingReq req) {
         //   「写操作后失效」的内存计数,**不要**去调慢 ping —— 那条通道还担着在场点与接管提示。
         UserPermissionCache.UserAuth ua = permCache.get(me);
         int pendingReviews = ua != null && ua.perms().contains(Perm.REVIEW_APPROVE)
-            ? reviews.pendingCount() : 0;
+            ? reviews.pendingCount(me) : 0;
 
         // 「我交的表被退回了」—— 与 pendingReviews 不同,**不看权限**:谁都可能被退回。
         // 一次按 submitted_by 的 count,自清(重新交审即归零),见 ReviewService.returnedCount。
@@ -140,14 +149,18 @@ public void leave(String sid) { store.leave(sid); }
      */
     static List<String> resolveEditScopes(PingReq req) {
         List<String> raw = req.editScopes() == null ? List.of()
-            : req.editScopes().stream().filter(java.util.Objects::nonNull).limit(EDIT_SCOPES_MAX).toList();
+            : req.editScopes().stream().filter(s -> s != null && s.length() <= LockService.SCOPE_MAX)
+                .limit(EDIT_SCOPES_MAX).toList();
         if (!raw.isEmpty()) return raw;
-        return "edit".equals(req.mode()) && req.scope() != null ? List.of(req.scope()) : List.of();
+        // 旧页签垫层同样受锁标识上限约束:原样放过的话,超长 scope 会经 editScopes 广播给每个在线的人(对抗复查)
+        return "edit".equals(req.mode()) && req.scope() != null && req.scope().length() <= LockService.SCOPE_MAX
+            ? List.of(req.scope()) : List.of();
     }
 
-    private static String clamp(String label) {
-        if (label == null) return null;
-        return label.length() <= LABEL_MAX ? label : label.substring(0, LABEL_MAX);
+    private static String clamp(String label) { return clip(label, LABEL_MAX); }
+
+    private static String clip(String s, int max) {
+        return s == null || s.length() <= max ? s : s.substring(0, max);
     }
 
     private static String me() {

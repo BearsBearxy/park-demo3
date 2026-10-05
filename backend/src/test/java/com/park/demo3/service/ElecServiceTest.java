@@ -112,12 +112,13 @@ class ElecServiceTest {
         assertThat(y27.totalFee()).isEqualByComparingTo("0.00");
     }
 
-    @Test void overview_noData_rangeBaseToBasePlusOne_currentIsUpperMinusOne() {
+    @Test void overview_noData_lastYearToNext() {   // 2026-10-05 用户拍板:无数据取今年(改前写死 [2024..2025])
+        int now = com.park.demo3.common.YearSpan.thisYear();
         Mockito.when(records.selectList(null)).thenReturn(List.of());
         ElecOverviewDTO ov = svc.overview();
-        assertThat(ov.currentYear()).isEqualTo(2024);  // upper(2025) - 1
+        assertThat(ov.currentYear()).isEqualTo(now);
         assertThat(ov.years()).extracting(ElecOverviewDTO.YearMeta::year)
-            .containsExactly(2024, 2025);
+            .containsExactly(now - 1, now, now + 1);
     }
 
     @Test void delete_seedRow_ok() {   // 假数据可删:seed 与 manual 同等可删(去 seed 保护)

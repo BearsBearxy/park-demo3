@@ -2,6 +2,8 @@
 // ① 读全开(RBAC-SPEC §0):无 system:edit 时账号照常全部显示,只是没有新建/编辑/停用入口;
 // ② 账号只停用不删除(§8):全屏不得出现「删除」二字,停用行数据照常显示、只加停用徽标;
 // ③ 后端两条守卫(不能停用自己 / 用户名重复)要翻成人话,不能把原始报错糊到用户脸上。
+// ④ 系统管理分级(RBAC-SPEC §12):后端说管不了的账号(manageable=false),三颗操作按不动并说为什么,
+//    抽屉只读;后端说派不了的角色,新建 / 编辑里那一格置灰。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -21,11 +23,12 @@ const USERS = [
 const setUserStatus = vi.fn()
 const createUser = vi.fn()
 const users = vi.fn()
+const rolesMock = vi.fn()
 
 vi.mock('@/api/system', () => ({
   systemApi: {
     users: () => users(),
-    roles: () => Promise.resolve(ROLES),
+    roles: () => rolesMock(),
     setUserStatus: (...a: unknown[]) => setUserStatus(...a),
     createUser: (...a: unknown[]) => createUser(...a),
     updateUser: () => Promise.resolve(),
@@ -50,6 +53,8 @@ beforeEach(() => {
   createUser.mockReset()
   users.mockReset()
   users.mockImplementation(() => Promise.resolve(USERS))
+  rolesMock.mockReset()
+  rolesMock.mockImplementation(() => Promise.resolve(ROLES))
   askQueue.splice(0)
   receipts.splice(0)
 })
@@ -86,6 +91,44 @@ describe('SystemUsersView', () => {
     // 有权时三个行内操作齐全:启用行给「停用」,停用行给「启用」
     expect(btnByText(w, '停用').length).toBe(1)
     expect(btnByText(w, '启用').length).toBe(1)
+  })
+
+  // 破坏验证:操作列的 out 恒 false → 红;新建弹窗角色格不看 manageable → 红;抽屉 editable 不看 manageable → 红
+  it('❗管不了的账号:编辑 / 重置密码 / 停用都按不动并说为什么,点行开的抽屉只读;派不了的角色置灰', async () => {
+    type TipEl = HTMLElement & { _tip?: { text: string } }
+    const roles2 = [{ ...ROLES[0], manageable: false }, { ...ROLES[1], manageable: true }]
+    users.mockImplementation(() => Promise.resolve([
+      { ...USERS[0], roles: [roles2[0]], manageable: false },
+      { ...USERS[1], status: 1, roles: [roles2[1]], manageable: true },
+    ]))
+    rolesMock.mockImplementation(() => Promise.resolve(roles2))
+    const w = mountWith(['system:view', 'system:edit'])
+    await flushPromises()
+    const rowOf = (name: string) => w.findAll('tbody tr').find(r => r.text().includes(name))!
+    const b = (name: string, text: string) => rowOf(name).findAll('button').find(x => x.text() === text)!
+    for (const t of ['编辑', '重置密码', '停用']) {
+      expect(b('admin', t).attributes('disabled'), `admin 行「${t}」`).toBeDefined()
+      expect((b('admin', t).element as TipEl)._tip?.text).toBe('系统管理员账号只有系统管理员能改')
+      expect(b('zhang.kj', t).attributes('disabled'), `zhang.kj 行「${t}」`).toBeUndefined()
+    }
+
+    // 点行开抽屉:看得到,改不了
+    await rowOf('admin').trigger('click')
+    await flushPromises()
+    const drawer = document.body
+    expect(drawer.textContent).toContain('系统管理员账号只有系统管理员能改。')
+    expect([...drawer.querySelectorAll('button')].some(x => x.textContent?.trim() === '保存'), '没有保存').toBe(false)
+    expect([...drawer.querySelectorAll('.su-roles input')].every(i => (i as HTMLInputElement).disabled)).toBe(true)
+
+    // 新建账号:系统管理员角色那一格按不动
+    await btnByText(w, '新建账号')[0].trigger('click')
+    await flushPromises()
+    const labels = [...document.body.querySelectorAll('.fin-dlg .su-role')] as TipEl[]
+    const adminBox = labels.find(l => l.textContent?.includes('系统管理员'))!
+    const clerkBox = labels.find(l => l.textContent?.includes('财务专员'))!
+    expect((adminBox.querySelector('input') as HTMLInputElement).disabled).toBe(true)
+    expect(adminBox._tip?.text).toBe('系统管理员角色只有系统管理员能分配')
+    expect((clerkBox.querySelector('input') as HTMLInputElement).disabled).toBe(false)
   })
 
   it('后端拒绝翻人话:停用自己 / 用户名重复都不露原始报错', async () => {

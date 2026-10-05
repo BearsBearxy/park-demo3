@@ -39,11 +39,12 @@ public class ReportService {
     private final ManagementCompanyMapper companies;
     private final ReportAccountMapper accounts;
     private final com.park.demo3.security.ReviewGuard reviewGuard;
+    private final ChangeLogService changes;
 
     public ReportService(ReportAmountMapper amounts, ReportCustomRowMapper customRows,
                          ManagementCompanyMapper companies, ReportAccountMapper accounts,
-                         com.park.demo3.security.ReviewGuard reviewGuard) {
-        this.reviewGuard = reviewGuard;
+                         com.park.demo3.security.ReviewGuard reviewGuard, ChangeLogService changes) {
+        this.reviewGuard = reviewGuard; this.changes = changes;
         this.amounts = amounts; this.customRows = customRows; this.companies = companies; this.accounts = accounts;
     }
 
@@ -156,8 +157,11 @@ public class ReportService {
     @Transactional
     public ReportPeriodDTO save(String statement, int companyId, int year, int month, ReportSaveReq req) {
         checkStatement(statement);
-        requireCompany(companyId);
+        ManagementCompany company = requireCompany(companyId);
         assertEditable(statement, companyId, year, month);
+        // 数据修改记录的「改前」:下面整期先清后写
+        Map<String, Map<String, BigDecimal>> before = toCellMap(amounts.period(companyId, statement, year, month));
+        Map<String, String> names = rowNames(statement, companyId, year, month);
         clearPeriod(companyId, statement, year, month);
         if (req != null && req.cells() != null) {
             for (ReportSaveReq.Cell c : req.cells()) insertCell(companyId, statement, year, month, c.rowKey(), c.field(), c.amount());
@@ -169,6 +173,9 @@ public class ReportService {
                 insertAccount(companyId, statement, year, month,
                     a.rowKey(), a.parentKey(), a.code(), a.label(), a.level(), a.sortOrder());
         }
+        names.putAll(rowNames(statement, companyId, year, month));   // 科目树换过的话新科目用新名字,删掉的科目留旧名
+        logPeriod(statement, company.getName(), year, month, before,
+            toCellMap(amounts.period(companyId, statement, year, month)), names);
         return period(statement, companyId, year, month);
     }
 
@@ -223,17 +230,30 @@ public class ReportService {
             toDelete.add(key);
             for (ReportCustomRow child : byParent.getOrDefault(key, List.of())) stack.push(child.getRowKey());
         }
-        // 删这些行的金额(所有期)
-        amounts.delete(new QueryWrapper<ReportAmount>()
+        // 删这些行的金额(所有期)。删前读出来进数据修改记录:一次点击删掉各期的数,旧值只剩这里有
+        QueryWrapper<ReportAmount> amountsOfRows = new QueryWrapper<ReportAmount>()
             .eq("company_id", row.getCompanyId()).eq("statement", statement)
-            .in("row_key", toDelete));
+            .in("row_key", toDelete);
+        List<ReportAmount> gone = amounts.selectList(amountsOfRows);
+        amounts.delete(amountsOfRows);
+        Map<String, String> labels = pool.stream()
+            .collect(Collectors.toMap(ReportCustomRow::getRowKey, ReportCustomRow::getLabel, (a, b) -> a));
+        String co = requireCompany(row.getCompanyId()).getName();
+        List<ChangeLogService.Cell> cells = new ArrayList<>();
+        for (ReportAmount a : gone)
+            if (nz(a.getAmount()).signum() != 0)
+                cells.add(new ChangeLogService.Cell(
+                    String.join(" · ", STATEMENT_NAME.get(statement), co, String.format("%04d-%02d", a.getYear(), a.getMonth()),
+                        labels.getOrDefault(a.getRowKey(), a.getRowKey())),
+                    FIELD_NAME.getOrDefault(a.getField(), a.getField()), a.getAmount(), null));
+        changes.record(ChangeLogService.Tbl.REPORT, cells, "删除了自定义子类「" + row.getLabel() + "」，各月的数一并删掉");
         // 删自定义行本身
         customRows.delete(new QueryWrapper<ReportCustomRow>()
             .eq("company_id", row.getCompanyId()).eq("statement", statement)
             .in("row_key", toDelete));
     }
 
-    // ── 导入本期:每公司一段,公司名匹配 management_company(未匹配自动新建);per 公司 clear+insert 本期 ──
+    // ── 导入本期:每公司一段,公司名匹配 management_company(未匹配报错跳过);per 公司 clear+insert 本期 ──
     @Transactional
     public ImportResultDTO importRows(String statement, int year, int month, ReportImportRequest req) {
         checkStatement(statement);
@@ -241,32 +261,33 @@ public class ReportService {
             .collect(Collectors.toMap(ManagementCompany::getName, ManagementCompany::getId, (a, b) -> a));
         // 审核闸:**逐家**判,不是「任一家已审就整体拒」—— 后者会让一家公司审完之后,
         // 别的公司这个月再也导不进来(同 LedgerService.rechain 那条裁定:审掉 1 月不该
-        // 连 5 月都录不进去)。未匹配到公司的段会自动新建公司,新公司不可能有已审月,自然放行。
+        // 连 5 月都录不进去)。未匹配到公司的段下面直接报错跳过、一格不落,不用闸。
         // 复用上面这份 byName,不另起一趟全表查(QueryHygieneTest 会红,而且本来就是同一份数据)。
+        // ⚠ 闸和落库必须用同一个 nameOf 认公司:闸曾用原样名、落库用 trim 后的名,
+        //   「园区A 」在闸里查不到 → 不闸,落库时又认成园区A → 已审月被清空重写(2026-10-03 安全审计 F46)。
         if (req != null && req.sections() != null)
             for (ReportImportRequest.CompanySection sec : req.sections()) {
-                Integer cid = sec == null ? null : byName.get(sec.companyName());
+                String n = nameOf(sec);
+                Integer cid = n == null ? null : byName.get(n);
                 if (cid != null) assertEditable(statement, cid, year, month);
             }
         int imported = 0;
         List<ImportError> errors = new ArrayList<>();
-        List<ImportError> notices = new ArrayList<>();
         List<ReportImportRequest.CompanySection> sections = req == null || req.sections() == null ? List.of() : req.sections();
         for (int i = 0; i < sections.size(); i++) {
             ReportImportRequest.CompanySection sec = sections.get(i);
-            String name = sec.companyName() == null ? null : sec.companyName().trim();
+            String name = nameOf(sec);
             if (name == null || name.isEmpty()) {
-                errors.add(new ImportError(i, sec.companyName(), "公司名称为空"));
+                errors.add(new ImportError(i, sec == null ? null : sec.companyName(), "公司名称为空"));
                 continue;
             }
             Integer companyId = byName.get(name);
             if (companyId == null) {
-                // RBAC-SPEC §5.6:自动建档是既有能力(报表里出现新公司是正常业务),问题在于它**是静默的** ——
-                // 公司名多打一个空格或写了简称,就凭空多出一条管理公司档案,绕过 master:edit,
-                // 而且它随后会出现在台账公司下拉、收款账户簿、催缴单收款指引里,档案岗不知道它哪来的。
-                // 所以不禁止,只是让它出声:落 notices(不是 errors —— 导入本身是成功的)。
-                companyId = createCompany(name, byName);
-                notices.add(new ImportError(i, name, "库里没有这家公司,已自动建档。若是公司名写错,请去主数据删掉它"));
+                // RBAC-SPEC §5.6 原定修法:未匹配即报错。原来这里自动建公司 —— 那等于只有 report:edit 的人
+                // 绕过 company:manage 建了一家公司,而且不走 CompanyService.create,建出来的公司没有账册
+                // (2026-10-03 安全审计 F16)。新公司走公司下拉的「新增公司」。
+                errors.add(new ImportError(i, name, "库里没有这家公司，这一段没有导入"));
+                continue;
             }
             clearPeriod(companyId, statement, year, month);
             List<ReportImportRequest.Cell> cells = sec.cells() == null ? List.of() : sec.cells();
@@ -282,7 +303,54 @@ public class ReportService {
                         a.rowKey(), a.parentKey(), a.code(), a.label(), a.level(), a.sortOrder());
             }
         }
-        return new ImportResultDTO(imported, errors.size(), errors, notices);
+        return new ImportResultDTO(imported, errors.size(), errors);
+    }
+
+    /** 导入段认公司用的名字。审核闸和落库共用这一个,两处口径不许分开(F46)。 */
+    private static String nameOf(ReportImportRequest.CompanySection sec) {
+        return sec == null || sec.companyName() == null ? null : sec.companyName().trim();
+    }
+
+    // ── 数据修改记录(用户 2026-10-05 拍板「2按你建议，3，4一起做」第 4 条):手改的报表金额逐格记谁、何时、改前、改后 ──
+    // 导入(importRows)不逐格记 —— import_log 记了谁、何时、哪个文件。科目树(tb 的科目增删改名)不算金额,不记。
+    private static final Map<String, String> STATEMENT_NAME = Map.of("is", "利润表", "bs", "资产负债表", "tb", "科目余额表");
+    /** 列名照屏上表头(IncomeStatementTable / BalanceSheetView / trialBalance.ts)。 */
+    private static final Map<String, String> FIELD_NAME = Map.ofEntries(
+        Map.entry("cur", "本月金额"), Map.entry("ytd", "本年累计金额"), Map.entry("end", "期末余额"),
+        Map.entry("openDr", "期初借方"), Map.entry("openCr", "期初贷方"),
+        Map.entry("periodDr", "本期借方"), Map.entry("periodCr", "本期贷方"),
+        Map.entry("ytdDr", "本年借方"), Map.entry("ytdCr", "本年贷方"),
+        Map.entry("endDr", "期末借方"), Map.entry("endCr", "期末贷方"));
+
+    /** 行名:自定义子类取它的名字,科目余额表取「科目代码 科目名」;利润表 / 资产负债表的固定行屏上就是行次,写「行次 N」。 */
+    private Map<String, String> rowNames(String statement, int companyId, int year, int month) {
+        Map<String, String> out = new HashMap<>();
+        for (ReportCustomRow r : customRows.forCompany(companyId, statement)) out.put(r.getRowKey(), r.getLabel());
+        if ("tb".equals(statement))
+            for (ReportAccount a : accounts.period(companyId, statement, year, month))
+                out.put(a.getRowKey(), (a.getCode() == null || a.getCode().isBlank() ? "" : a.getCode() + " ") + a.getLabel());
+        return out;
+    }
+
+    /** 一期写前写后逐格比。没有这一格 = 0:前端保存不送 0 格(useFinStatementScreen),导入进来的 0 格
+     *  第一次手存就没了 —— 屏上没变,不算改动。 */
+    private void logPeriod(String statement, String company, int year, int month,
+                           Map<String, Map<String, BigDecimal>> before, Map<String, Map<String, BigDecimal>> after,
+                           Map<String, String> names) {
+        String head = String.join(" · ", STATEMENT_NAME.get(statement), company, String.format("%04d-%02d", year, month));
+        Set<String> rows = new LinkedHashSet<>(before.keySet());
+        rows.addAll(after.keySet());
+        List<ChangeLogService.Cell> cells = new ArrayList<>();
+        for (String rk : rows) {
+            Map<String, BigDecimal> b = before.getOrDefault(rk, Map.of()), a = after.getOrDefault(rk, Map.of());
+            Set<String> fields = new LinkedHashSet<>(b.keySet());
+            fields.addAll(a.keySet());
+            String ref = head + " · " + names.getOrDefault(rk, ("tb".equals(statement) ? "科目 " : "行次 ") + rk);
+            for (String f : fields)
+                cells.add(new ChangeLogService.Cell(ref, FIELD_NAME.getOrDefault(f, f),
+                    b.getOrDefault(f, BigDecimal.ZERO), a.getOrDefault(f, BigDecimal.ZERO)));
+        }
+        changes.record(ChangeLogService.Tbl.REPORT, cells, null);
     }
 
     // ── helpers ──
@@ -316,17 +384,6 @@ public class ReportService {
         a.setLevel(level == null ? 0 : level);
         a.setSortOrder(sortOrder == null ? 0 : sortOrder);
         accounts.insert(a);
-    }
-
-    // 自动新建公司(short 派生复用 CompanyService.deriveShort 规则)
-    private int createCompany(String name, Map<String, Integer> cache) {
-        ManagementCompany c = new ManagementCompany();
-        c.setName(name);
-        c.setShortName(CompanyService.deriveShort(name));
-        c.setSortNo(0);
-        companies.insert(c);
-        cache.put(name, c.getId());
-        return c.getId();
     }
 
     private String nextCustomKey(int companyId, String statement) {

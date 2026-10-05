@@ -34,13 +34,14 @@ import FPReviewDialog from '@/components/fp/FPReviewDialog.vue'
 import { useBillingPeriodStore, YM } from '@/stores/billingPeriod'
 import { usePresenceStore } from '@/stores/presence'
 import { useReviewStore } from '@/stores/review'
-import type { ReviewRow } from '@/types/review'
+import { ownSubmission, SELF_REVIEW_TIP, type ReviewRow } from '@/types/review'
 import { NAV_SCOPE_PREFIX, scopeTarget } from '@/utils/lockScopes'
 import { periodLink, periodOf } from '@/nav/deepLink'
 import { CHAIN, pipsOf, chainLabel, noticeYmOf } from '@/nav/billingChain'
 import { buildYearRows, inYearWindow } from '@/utils/matrixYears'
 import { rowsOf, closeChecks } from './monthClose.logic'
 import type { CloseRow, CloseChip } from './monthClose.logic'
+import { useViewGate } from '@/composables/useViewGate'
 
 
 const router = useRouter()
@@ -50,6 +51,8 @@ const period = useBillingPeriodStore()
 const presence = usePresenceStore()
 const review = useReviewStore()
 const CHAIN_VALUES = new Set(CHAIN.map(c => c.value))
+// RBAC v3:跳到没有查看权的屏 —— 行不显示成可点、悬停写缺哪一项;点了说一句原因、不跳(go / goEditor 里拦)
+const { lack, blocked } = useViewGate()
 
 /** **本标签页**正握着的出账链 / 抄表锁里的期。只用来判「要不要问」;问的时候写哪一页、几处改动由页签条给(titleOf / dirtyOf)。 */
 function myChainLockPeriods(): string[] {
@@ -88,7 +91,7 @@ const editors = computed(() => {
 // 落到目标屏的默认子视图,而那里恰恰没有人在编辑。⚠ co 照实传字符串,别转 number:
 // 转一道只会给非数字期区制造 NaN。
 async function goEditor(t: ReturnType<typeof scopeTarget>) {
-  if (!t || !(await confirmRebuild(t.v))) return
+  if (!t || blocked('/' + t.v) || !(await confirmRebuild(t.v))) return
   // 页面里的链接 = 新页签紧挨本页右边(TAB-BAR-SPEC §2),本月出账不被换掉
   tabsStore.openDeep(t.v)
   router.push(t.p ? periodLink(t.v, { p: t.p, co: t.co, extra: t.tab ? { tab: t.tab } : undefined }) : '/' + t.v)
@@ -163,6 +166,9 @@ function confirmRebuild(v: string): Promise<boolean> {
   return tabsStore.leaveOk(CHAIN_VALUES.has(v) ? [...CHAIN_VALUES] : [v], '重新打开')
 }
 async function go(v: string, tag = '', co?: number | 'all') {
+  // 清单行、当前步大卡、待处理面板、chip 都走这里:没有目标屏的查看权(比如没有「工资 · 查看」点附表12)
+  // 不送进「无权查看」页,就地说一句缺哪一项
+  if (blocked('/' + v)) return
   // 用户刚在下拉里选的月优先于服务端回包(回包在途时也按他选的走);没选过才用锚定月
   const ym = shownYm.value
   const p = ym ? { year: +ym.slice(0, 4), month: +ym.slice(5, 7) } : null
@@ -272,7 +278,8 @@ async function loadRecon(ym: string) {
   // 「新月已上屏、新回包还没到」这段空窗 —— 不清的话这一行会在整年 12 个月重跑核对的窗口里,
   // 挂着上一个月的 ✓/○,与已经换好月的其余行(链五步/附表)对不上。
   recon.value = null
-  if (!ym) return
+  // 收入核对归报表(RBAC v3):没有报表查看权就不发,这一行照 hasData 闸显「—」(同取数失败)
+  if (!ym || !auth.can('report:view')) return
   const year = +ym.slice(0, 4)
   const month = +ym.slice(5, 7)
   const res = await reconApi.overview(year).catch(() => null)
@@ -334,9 +341,15 @@ function reviewTip(key: string | undefined, status: string): string | undefined 
  * 且没人知道为什么"好。
  */
 const canSubmitAny = computed(() =>
-  ['entry:edit', 'billing-run:edit', 'param-policy:edit', 'param-monthly:edit', 'meter-reading:edit']
+  ['entry:edit', 'salary:edit', 'billing-run:edit', 'param-policy:edit', 'param-monthly:edit', 'meter-reading:edit']
     .some(p => auth.can(p)))
 const canApprove = computed(() => auth.can('review:approve'))
+/**
+ * 粗判的唯一例外:附表12 的交审只认「工资录入」(salary:edit,不可提权;RBAC-SPEC §11.8)。
+ * 它是唯一一张交审权不随「事后录入」走的表,只按上面那道粗判,种子里的财务专员每个月都会在这一行看到
+ * 一颗点下去恒 403 的「交审」—— 而这一行他连点开都不能(没有工资查看)。只开这一个口子,不展开成 kind→perm 全表。
+ */
+const submittable = (k: string) => !k.startsWith('salary:') || auth.can('salary:edit')
 
 /**
  * 这一行涉及的全部审核键。
@@ -354,6 +367,8 @@ function keysOf(r: CloseRow): string[] {
 
 const rowOf = (key: string) => reviewRows.value?.find(x => x.key === key) ?? null
 
+const mine = (key: string) => ownSubmission(rowOf(key), auth.me, auth.superAdmin)
+
 /** 这一行此刻各个动作要作用到哪几把键。空数组 = 该动作不画。 */
 function actionsOf(r: CloseRow) {
   const keys = r.review === 'na' ? [] : keysOf(r)
@@ -361,19 +376,21 @@ function actionsOf(r: CloseRow) {
   return {
     // 交审前置:该键已做(§7.2)。多键行按 chip 各自的 done 判 —— 只录了 A 公司就只交 A 公司。
     submit: canSubmitAny.value
-      ? keys.filter(k => {
+      ? keys.filter(submittable).filter(k => {
           const s = st(k)
           if (s !== 'entered' && s !== 'returned') return false
           const chip = (r.chips ?? []).find(c => c.reviewKey === k)
           return chip ? chip.done : r.state === 'done'
         })
       : [],
-    approve: canApprove.value ? keys.filter(k => st(k) === 'submitted') : [],
-    back: canApprove.value ? keys.filter(k => st(k) === 'submitted') : [],
+    // 自己交的不在里面(录审分离,types/review ownSubmission);整行全是自己交的 → selfOnly,按钮照画、按不动
+    approve: canApprove.value ? keys.filter(k => st(k) === 'submitted' && !mine(k)) : [],
+    back: canApprove.value ? keys.filter(k => st(k) === 'submitted' && !mine(k)) : [],
+    selfOnly: canApprove.value && keys.some(k => st(k) === 'submitted') && keys.every(k => st(k) !== 'submitted' || mine(k)),
     undo: canApprove.value ? keys.filter(k => st(k) === 'approved') : [],
     /** 有交审资格但还没录完的键 —— 按钮要画出来但按不动(直接不画会让人以为界面坏了)。 */
     submitPending: canSubmitAny.value
-      ? keys.filter(k => (st(k) === 'entered' || st(k) === 'returned'))
+      ? keys.filter(submittable).filter(k => (st(k) === 'entered' || st(k) === 'returned'))
       : [],
   }
 }
@@ -576,7 +593,8 @@ const bookingRows = computed(() => shown('booking'))
           <h3 class="dh-h3">出账链</h3>
           <ul class="dh-rows">
             <li v-for="r in billingRows" :key="r.key" class="dh-row dh-row-billing"
-                :class="{ 'dh-row-clickable': r.go }" :data-state="r.state" @click="r.go && go(r.go, r.tag)">
+                :class="{ 'dh-row-clickable': r.go && !lack('/' + r.go) }" v-tip="r.go ? lack('/' + r.go) : ''"
+                :data-state="r.state" @click="r.go && go(r.go, r.tag)">
               <span class="dh-rdot">{{ dotOf(r.state) }}</span>
               <span class="dh-rlabel">{{ r.label }}</span>
               <span v-if="r.tag" class="dh-rtag">{{ r.tag }}</span>
@@ -593,11 +611,12 @@ const bookingRows = computed(() => shown('booking'))
                           :disabled="!a.submit.length || !!acting"
                           v-tip="a.submit.length ? `交给审核员（${a.submit.length} 项）` : '还没录完,做完才能交审'"
                           @click="onSubmit(a.submit)">交审</button>
-                  <button v-if="a.approve.length" class="dh-abtn ok"
-                          :disabled="blockedBy(a.approve).length > 0 || !!acting"
-                          v-tip="blockedBy(a.approve).length ? `先通过 ${blockedBy(a.approve).join(' / ')} 的审核` : '通过'"
+                  <button v-if="a.approve.length || a.selfOnly" class="dh-abtn ok"
+                          :disabled="a.selfOnly || blockedBy(a.approve).length > 0 || !!acting"
+                          v-tip="a.selfOnly ? SELF_REVIEW_TIP : blockedBy(a.approve).length ? `先通过 ${blockedBy(a.approve).join(' / ')} 的审核` : '通过'"
                           @click="onApprove(a.approve)">通过</button>
-                  <button v-if="a.back.length" class="dh-abtn" :disabled="!!acting"
+                  <button v-if="a.back.length || a.selfOnly" class="dh-abtn" :disabled="a.selfOnly || !!acting"
+                          v-tip="a.selfOnly ? SELF_REVIEW_TIP : undefined"
                           @click="openDialog(a.back, `${shownYm} ${r.label}`, 'return')">退回</button>
                   <button v-if="a.undo.length" class="dh-abtn" :disabled="!!acting"
                           @click="openDialog(a.undo, `${shownYm} ${r.label}`, 'withdraw')">撤销</button>
@@ -629,7 +648,8 @@ const bookingRows = computed(() => shown('booking'))
           <h3 class="dh-h3">附表录入 <span class="dh-h3n">{{ checks.byCol.booking.done }}/{{ checks.byCol.booking.total }}</span></h3>
           <ul class="dh-rows">
             <li v-for="r in bookingRows" :key="r.key" class="dh-row dh-row-booking"
-                :class="{ 'dh-row-clickable': r.go }" :data-state="r.state" @click="r.go && go(r.go, r.tag)">
+                :class="{ 'dh-row-clickable': r.go && !lack('/' + r.go) }" v-tip="r.go ? lack('/' + r.go) : ''"
+                :data-state="r.state" @click="r.go && go(r.go, r.tag)">
               <span class="dh-rdot">{{ dotOf(r.state) }}</span>
               <span class="dh-rlabel">{{ r.label }}</span>
               <span v-if="r.tag" class="dh-rtag">{{ r.tag }}</span>
@@ -652,11 +672,12 @@ const bookingRows = computed(() => shown('booking'))
                           :disabled="!a.submit.length || !!acting"
                           v-tip="a.submit.length ? `交给审核员（${a.submit.length} 项）` : '还没录完,做完才能交审'"
                           @click="onSubmit(a.submit)">交审</button>
-                  <button v-if="a.approve.length" class="dh-abtn ok"
-                          :disabled="blockedBy(a.approve).length > 0 || !!acting"
-                          v-tip="blockedBy(a.approve).length ? `先通过 ${blockedBy(a.approve).join(' / ')} 的审核` : '通过'"
+                  <button v-if="a.approve.length || a.selfOnly" class="dh-abtn ok"
+                          :disabled="a.selfOnly || blockedBy(a.approve).length > 0 || !!acting"
+                          v-tip="a.selfOnly ? SELF_REVIEW_TIP : blockedBy(a.approve).length ? `先通过 ${blockedBy(a.approve).join(' / ')} 的审核` : '通过'"
                           @click="onApprove(a.approve)">通过</button>
-                  <button v-if="a.back.length" class="dh-abtn" :disabled="!!acting"
+                  <button v-if="a.back.length || a.selfOnly" class="dh-abtn" :disabled="a.selfOnly || !!acting"
+                          v-tip="a.selfOnly ? SELF_REVIEW_TIP : undefined"
                           @click="openDialog(a.back, `${shownYm} ${r.label}`, 'return')">退回</button>
                   <button v-if="a.undo.length" class="dh-abtn" :disabled="!!acting"
                           @click="openDialog(a.undo, `${shownYm} ${r.label}`, 'withdraw')">撤销</button>

@@ -4,6 +4,7 @@ import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -16,11 +17,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// 每用例独占 (schedule,year):save→s2、import→s4、overview 无数据→s5、种子→s1,互不干扰
+// 每用例独占 (schedule,year):save→s2、import→s4、只写变了的格→s3、overview 无数据→s5、种子→s1,互不干扰
 @AutoConfigureMockMvc
 class PnlApiIT extends AbstractMysqlIT {
 
     @Autowired MockMvc mvc;
+    @Autowired JdbcTemplate jdbc;
     private String token;
 
     @BeforeEach
@@ -37,7 +39,7 @@ class PnlApiIT extends AbstractMysqlIT {
     private static final String NULLS_10 = "null,null,null,null,null,null,null,null,null,null";
     private static final String M_ALL_NULL = "[null,null," + NULLS_10 + "]";   // 12 个 null
 
-    // ── PUT 2 行(含 null 月/备注/kind) → GET 读回序+值;重存 1 行覆盖(clear+insert) ──
+    // ── PUT 2 行(含 null 月/备注/kind) → GET 读回序+值;重存 1 行覆盖(整年就剩送来的这一行) ──
     @Test
     void pnl_saveYear_readBack_thenOverwrite() throws Exception {
         String saveBody = "{\"rows\":["
@@ -63,7 +65,7 @@ class PnlApiIT extends AbstractMysqlIT {
         assertThat((String) JsonPath.read(res, "$.data.rows[1].kind")).isEqualTo("subtotal");
         assertThat((Object) JsonPath.read(res, "$.data.rows[1].note")).isNull();
 
-        // 重存 1 行 → 覆盖(clear+insert)
+        // 重存 1 行 → 覆盖(原来两行删掉、新行接着编 key)
         mvc.perform(put("/api/pnl/s2/2025").header("Authorization", auth())
                 .contentType("application/json")
                 .content("{\"rows\":[{\"groupLabel\":\"g\",\"label\":\"仅剩一行\",\"kind\":\"detail\",\"note\":null,"
@@ -75,7 +77,7 @@ class PnlApiIT extends AbstractMysqlIT {
         assertThat(JsonPath.<List<String>>read(res2, "$.data.rows[*].rowKey")).containsExactly("r1");
     }
 
-    // ── POST import 2 行 → imported=2;再 import 1 行 → 整 (schedule,year) clear+insert 只剩 1 行 ──
+    // ── POST import 2 行 → imported=2;再 import 1 行 → 整 (schedule,year) 只剩 1 行 ──
     @Test
     void pnl_import_clearInsert() throws Exception {
         String importBody = "{\"rows\":["
@@ -106,7 +108,50 @@ class PnlApiIT extends AbstractMysqlIT {
         assertThat(JsonPath.<List<String>>read(res2, "$.data.rows[*].label")).containsExactly("二次导入");
     }
 
-    // ── overview 确定性年范围:s1 有 V27 种子(2025) → [2024..2026];s5 无数据 → [2024..2025] ──
+    // ── 只写变了的格(用户 2026-10-05 拍板「2按你建议，3，4一起做」第 3 条) ──
+    // 原样再存 → 一条数据修改记录都不多;清空一格 → 库里真成 NULL(逐列显式 set,updateById 会跳过 null)、
+    // 记一条「谁 · 哪张表哪一行哪一格 · 改前 → 改后」,行 key 不变。
+    @Test
+    void pnl_saveOnlyChangedCells_logsEachManualChange() throws Exception {
+        String base = "{\"rows\":["
+                + "{\"groupLabel\":\"G\",\"label\":\"X\",\"kind\":\"detail\",\"note\":null,"
+                + "\"m\":[100," + NULLS_10 + ",null],\"sortOrder\":0},"
+                + "{\"groupLabel\":\"G\",\"label\":\"Y\",\"kind\":\"detail\",\"note\":\"n\","
+                + "\"m\":[null,null,50.5,null,null,null,null,null,null,null,null,null],\"sortOrder\":1}"
+                + "]}";
+        putS3(base);   // 容器复用:上次跑剩下什么,先落成这个样子
+        long mark = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) FROM value_change_log", Long.class);
+        List<String> keys = JsonPath.read(getS3(), "$.data.rows[*].rowKey");
+
+        putS3(base);
+        assertThat(pnlLogsSince(mark)).as("原样再存不记").isEmpty();
+
+        putS3(base.replace("50.5", "null"));
+        String res = getS3();
+        assertThat((Object) JsonPath.read(res, "$.data.rows[1].m[2]")).isNull();
+        assertThat(((Number) JsonPath.read(res, "$.data.rows[0].m[0]")).doubleValue()).isEqualTo(100);
+        assertThat(JsonPath.<List<String>>read(res, "$.data.rows[*].rowKey")).isEqualTo(keys);
+        assertThat(pnlLogsSince(mark))
+                .containsExactly("admin | 附表3 水费损益明细 · 2025 年 · G · Y | 3月 | 50.5 → null");
+    }
+
+    private void putS3(String body) throws Exception {
+        mvc.perform(put("/api/pnl/s3/2025").header("Authorization", auth())
+                .contentType("application/json").content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0));
+    }
+    private String getS3() throws Exception {
+        return utf8(mvc.perform(get("/api/pnl/s3/2025").header("Authorization", auth()))
+                .andExpect(status().isOk()).andReturn());
+    }
+    private List<String> pnlLogsSince(long mark) {
+        return jdbc.queryForList("SELECT CONCAT(actor, ' | ', row_ref, ' | ', field, ' | ', COALESCE(old_val, 'null'),"
+                + " ' → ', COALESCE(new_val, 'null')) FROM value_change_log"
+                + " WHERE id > ? AND tbl = 'pnl_row' AND row_ref LIKE '附表3 水费损益明细 · 2025 年%' ORDER BY id",
+                String.class, mark);
+    }
+
+    // ── overview 年范围:s1 有 V27 种子(2025) → [2024..2026](不读时钟);s5 无数据 → [去年..明年](2026-10-05 用户拍板) ──
     @Test
     void pnl_overview_deterministicYears() throws Exception {
         String s1 = utf8(mvc.perform(get("/api/pnl/s1/overview").header("Authorization", auth()))
@@ -119,8 +164,9 @@ class PnlApiIT extends AbstractMysqlIT {
 
         String s5 = utf8(mvc.perform(get("/api/pnl/s5/overview").header("Authorization", auth()))
                 .andExpect(status().isOk()).andReturn());
-        assertThat(JsonPath.<List<Integer>>read(s5, "$.data.years[*].year")).containsExactly(2024, 2025);
-        assertThat(JsonPath.<List<Boolean>>read(s5, "$.data.years[*].hasData")).containsExactly(false, false);
+        int now = com.park.demo3.common.YearSpan.thisYear();
+        assertThat(JsonPath.<List<Integer>>read(s5, "$.data.years[*].year")).containsExactly(now - 1, now, now + 1);
+        assertThat(JsonPath.<List<Boolean>>read(s5, "$.data.years[*].hasData")).containsExactly(false, false, false);
     }
 
     // ── V27 种子可读:s1 2025 首行 一期租金收入 m1=1141774.45;分带 kind 逐行对 ──

@@ -14,6 +14,7 @@
 import { computed, onDeactivated, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
+import { useViewGate } from '@/composables/useViewGate'
 import AnaShell from './AnaShell.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
@@ -131,7 +132,8 @@ async function loadCrit(y: number): Promise<Criteria> {
       return typeof v === 'number' && isFinite(v) ? v : d
     }
     return {
-      anchorHours: n('pv_yield_anchor_h', DEFAULT_CRITERIA.anchorHours),
+      // 锚点没配 = 0 = 不判年等效(2026-10-04:默认 950 是我园实测,别的园区不能套),屏上写明没填
+      anchorHours: n('pv_yield_anchor_h', 0),
       coverMonth: n('pv_crit_cover_month', DEFAULT_CRITERIA.coverMonth),
       ledger: n('pv_crit_ledger', DEFAULT_CRITERIA.ledger),
       yieldRatio: n('pv_crit_yield_ratio', DEFAULT_CRITERIA.yieldRatio),
@@ -139,7 +141,8 @@ async function loadCrit(y: number): Promise<Criteria> {
       bandRun: n('pv_band_run', DEFAULT_CRITERIA.bandRun),
       minOnlineDays: DEFAULT_CRITERIA.minOnlineDays,
     }
-  } catch { return { ...DEFAULT_CRITERIA } /* 用默认值,屏照常出 */ }
+  // 接口失败:其余判据线用默认值、屏照常出;锚点照样按「没填」走 —— DEFAULT_CRITERIA 里的 950 是我园实测,不能套给别的园区
+  } catch { return { ...DEFAULT_CRITERIA, anchorHours: 0 } }
 }
 
 /** 上一年的抄表只有「绝对水平」档 A2 最右那列「比去年」要。别处不打这个接口。 */
@@ -257,12 +260,15 @@ const foot = computed(() => (snap.value ? critFoot(snap.value, selId.value) : nu
 
 // 「去改」落计费参数「光伏分栋判据」区(section=pv,S21 §5.7)。adopt=YYYY-12 只在会话还没有出账月时认领(常数存 12 月的约定,PvAnalysis §01);
 // 已选期的会话不动 —— 它不是选月,不能用 p= / ym=(那两个是显式深链,会覆盖组级期;2026-09-03 P0a 复查 P0A-2)。
+// 跳到模块屏的入口:没有目标屏的查看权就置灰、悬停写明缺哪一项;图上的点、整行点击没法置灰,点了说一句原因不跳(RBAC v3)
+const { lack, blocked } = useViewGate()
 function gotoParams() {
   tabs.openDeep('params')
   void router.push({ path: '/params', query: { adopt: `${year.value}-12`, section: 'pv' } })
 }
 /** 板数与单块标称功率在分栋运营账里录(光伏发电屏的 meter 那本;不带 mode 会落到本机记住的那本,默认汇总本) */
 function goMeter(): void {
+  if (blocked('/pv-income?mode=meter')) return
   tabs.openDeep('pv-income')
   void router.push({ path: '/pv-income', query: { mode: 'meter' } })
 }
@@ -523,7 +529,7 @@ onDeactivated(() => { drawerOpen.value = false })
         <div v-if="foot" class="pma-b2">
           <div class="pma-b2-r">
             <span v-for="c in foot.items" :key="c.key">{{ c.text }}</span>
-            <button class="pma-lk" @click="gotoParams">去改</button>
+            <button class="pma-lk" :disabled="!!lack('/params')" v-tip="lack('/params')" @click="gotoParams">去改</button>
           </div>
           <div class="pma-b2-r">
             <span v-tip="foot.baseNote" class="base">{{ foot.baseNote }}</span>
@@ -555,7 +561,9 @@ onDeactivated(() => { drawerOpen.value = false })
                 <span class="hint">每千瓦装机一年发了多少度，比标杆多多少</span>
                 <span class="pma-badge">整年口径 · 与 {{ snap.year - 1 }} 比</span>
               </div>
-              <PvAnchorBars :data="anchor" :sel-id="selId" @pick="pickStation" />
+              <PvAnchorBars v-if="anchor.anchor > 0" :data="anchor" :sel-id="selId" @pick="pickStation" />
+              <AnaEmpty v-else label="年等效小时锚点没填" hint="在计费参数页填好「光伏年等效利用小时锚点」，这张图才画得出来"
+                        to="/params" to-text="去计费参数" />
             </div>
             <div v-if="ledgerSc" class="av2-card av2-s12">
               <div class="av2-card-h">
@@ -727,6 +735,7 @@ onDeactivated(() => { drawerOpen.value = false })
   color: var(--text-link); font-size: 11px; white-space: nowrap;
 }
 .av2-card-h .pma-lk { margin-left: auto; }
+.pma-lk:disabled { color: var(--text-disabled); cursor: default; }
 
 @media (max-width: 1100px) {
   .pma-sec { min-height: 0; }

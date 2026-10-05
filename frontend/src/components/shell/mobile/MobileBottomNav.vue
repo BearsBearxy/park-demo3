@@ -3,7 +3,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fpFindLayer, type NavLayer } from '@/nav/fpNav'
-import { visibleLayers } from '@/nav/navAccess'
+import { visibleLayers, layerEntry } from '@/nav/navAccess'
 import { HOME, tabMeta, useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
@@ -13,8 +13,8 @@ const router = useRouter()
 const auth = useAuthStore()
 const tabsStore = useTabsStore()
 
-// 与 IconRail 同口径:按角色 navLayers 过滤,'system' 层不进 navLayers、跟 system:view 走
-const layers = computed(() => visibleLayers(auth.navLayers, auth.can('system:view')))
+// 与 IconRail 同口径:按角色 navLayers 与各屏查看权过滤('system' 层不进 navLayers)
+const layers = computed(() => visibleLayers(auth.navLayers, auth.can))
 const activeValue = computed(() => (route.meta as Record<string, string>).value ?? '')
 const onHome = computed(() => activeValue.value === HOME)
 const activeLayer = computed(() => fpFindLayer(activeValue.value))
@@ -24,8 +24,9 @@ const home = tabMeta(HOME)!
 // 点当前层什么都不做(§4.1,IconRail.goLayer 同语义)
 function goLayer(layer: NavLayer) {
   if (layer.id === activeLayer.value.id) return
-  tabsStore.openFresh(layer.home)
-  router.push('/' + layer.home)
+  const v = layerEntry(layer, auth.can)
+  tabsStore.openFresh(v)
+  router.push('/' + v)
 }
 
 // 首页格(2026-09-21 补):S 档不渲染页签条(AppShell `v-if="tier !== 's'"`),抽屉里也没有首页

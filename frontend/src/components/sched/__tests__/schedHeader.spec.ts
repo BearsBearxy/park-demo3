@@ -401,6 +401,26 @@ describe('SchedHeader 审核闸', () => {
     expect(lockPosts()).toHaveLength(0)
   })
 
+  // 附表12 的工资录入不可提权(用户 2026-10-04 拍板):借不到,所以不弹授权窗,编辑按钮置灰写明缺哪一项。
+  // 破坏验证:lackPerm 恒为 '' → 按钮可点、点了弹授权窗 → 红;:disabled 去掉 → 第一条红
+  it('❗不可提权的写权限缺了:编辑按钮置灰写明原因,点了不弹授权窗;有这项照常可点', async () => {
+    useAuthStore().permissions = ['elevate:request', 'salary:view']
+    const w = mk({ perm: 'salary:edit', noElevate: true })
+    await flushPromises()
+    const btn = w.find('.lc-lockbtn')
+    expect(btn.attributes('disabled'), '置灰').toBeDefined()
+    expect((btn.element as HTMLElement & { _tip?: { text: string } })._tip?.text).toBe('需要「salary:edit」权限')
+    await btn.trigger('click')
+    await flushPromises()
+    expect(w.findComponent({ name: 'FPElevateDialog' }).props('perms'), '借不到就不弹授权窗').toBeNull()
+    w.unmount()
+
+    useAuthStore().permissions = ['salary:edit']
+    const ok = mk({ perm: 'salary:edit', noElevate: true })
+    await flushPromises()
+    expect(ok.find('.lc-lockbtn').attributes('disabled')).toBeUndefined()
+  })
+
   // 破坏验证:删掉 onTaken 里那一行 → 红。接管抽屉不能成为绕开审核闸的后门。
   //
   // ⚠ 必须走**真实路径**(从接管抽屉 emit `taken`)。<script setup> 没有 defineExpose,
