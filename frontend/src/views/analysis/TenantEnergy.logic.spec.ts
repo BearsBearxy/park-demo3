@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
 import { buildFamilyMap } from '@/analysis/anaFamily'
-import { bandReadout, bandRefText, buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries, type TenantRow } from './TenantEnergy.logic'
+import { buildPayRows, buildTenantRows, familyBars, moverOutlier, parkQuartiles, pastYm, prevYm, splitLogPoints, tenantPeriods, yearRows } from './TenantEnergy.logic'
 
 const s10 = (tenantName: string, acctMonth: string, elec: number, water = 0, phase = 1): AnalysisS10Row =>
   ({ acctMonth, phase, tenantId: null, tenantName, elec, water, total: elec + water })
@@ -12,14 +12,10 @@ const map = (rows: AnalysisS10Row[]): Map<string, AnalysisS10Row[]> => {
   for (const r of rows) m.set(r.tenantName, [...(m.get(r.tenantName) ?? []), r])
   return m
 }
-
-// buildParkBand 只读 .vals,直接造最小 TenantRow 免去经 buildTenantRows 的间接层(D3 门槛测试用)。
-const fakeRow = (name: string, vals: Record<string, number>): TenantRow => ({
-  name, phase: 1, rank: 0, cur: 0, mom: null, vsAvg: null, sd: 0, z: 0,
-  winTotal: 0, win: [], monthlyRent: null, vals: new Map(Object.entries(vals)),
+const lr = (tenantName: string, year: number, month: number, receivable: number, collected: number, balanceEnd = receivable - collected, companyId = 1): AnalysisLedgerRow => ({
+  companyId, companyName: `公司${companyId}`, year, month, tenantId: null, tenantName,
+  balancePrev: 0, receivable, collected, balanceEnd,
 })
-const mkRows = (n: number, val = 100): TenantRow[] =>
-  Array.from({ length: n }, (_, i) => fakeRow(`户${i}`, { '2025-01': val }))
 
 describe('buildTenantRows', () => {
   const months = ['2025-01', '2025-02', '2025-03']
@@ -51,121 +47,95 @@ describe('buildTenantRows', () => {
   })
 })
 
-describe('buildParkBand / tenantSeries', () => {
-  // D3 门槛(<20 不画带)下,原 2 租户例子会整段判 null —— 补 18 户凑到 20 户,
-  // 且两月对称拆 10/10(甲/摆 两户在两月间互换阵营)保持 mean/σ 与改前一致,可心算验证。
-  const jia = fakeRow('甲', { '2025-01': 100, '2025-03': 300 })
-  const swing = fakeRow('摆', { '2025-01': 300, '2025-03': 100 })
-  const lo9 = Array.from({ length: 9 }, (_, i) => fakeRow(`低${i}`, { '2025-01': 100, '2025-03': 100 }))
-  const hi9 = Array.from({ length: 9 }, (_, i) => fakeRow(`高${i}`, { '2025-01': 300, '2025-03': 300 }))
-  const rows = [jia, swing, ...lo9, ...hi9]   // 20 户:每月各 10@100 + 10@300
-
-  it('逐月均值±σ(lo 截 0),该月无租户 → null;租户缺月 → null;n 传出(D3 门槛 ≥20)', () => {
-    const band = buildParkBand(rows, ['2025-01', '2025-02', '2025-03'])
-    expect(band.mean).toEqual([200, null, 200])                     // 逐月跨户均值;2月无数据
-    expect(band.lo[0]).toBe(100)                                    // 200-σ(=100)
-    expect(band.hi[0]).toBe(300)
-    expect(band.lo[2]).toBe(100)
-    expect(band.n).toEqual([20, 0, 20])
-    expect(tenantSeries(jia, ['2025-01', '2025-02', '2025-03'])).toEqual([100, null, 300])
-    expect(tenantSeries(null, ['2025-01'])).toEqual([null])
+describe('pastYm / prevYm(改稿:回退只往前,te2-ask 4)', () => {
+  const ms = ['2025-01', '2025-02', '2025-06', '2025-07', '2025-10', '2025-11', '2025-12']
+  it('取 ≤ 所选月的最近一月:4月 → 2月;12月 → 12月', () => {
+    expect(pastYm(ms, '2025-04')).toBe('2025-02')
+    expect(pastYm(ms, '2025-12')).toBe('2025-12')
+    expect(pastYm(ms, '2026-03')).toBe('2025-12')
   })
-
-  it('❗n = 19 不返回带(D3 三档:<20 不画),n 仍传出', () => {
-    const band = buildParkBand(mkRows(19), ['2025-01'])
-    expect(band.lo[0]).toBeNull()
-    expect(band.n[0]).toBe(19)
+  it('❗前面一个月都没有 → null,不拿以后的 2025年1月顶替 2024年12月(原来会往未来回退)', () => {
+    expect(pastYm(ms, '2024-12')).toBeNull()
+    expect(pastYm([], '2025-12')).toBeNull()
   })
-
-  it('❗n = 20 返回带,且 n 一并传出供参照系小字印', () => {
-    const band = buildParkBand(mkRows(20), ['2025-01'])
-    expect(band.lo[0]).not.toBeNull()
-    expect(band.n[0]).toBe(20)
-  })
-
-  it('❗n<20 时 buildParkBand 出 null,bandReadout 跟着自动闭嘴(不用它自己另判 n)', () => {
-    const band = buildParkBand(mkRows(15, 200), ['2025-01'])
-    expect(bandReadout(200, band.lo[0], band.hi[0], '电费')).toBeNull()
+  it('上一个月跨年', () => {
+    expect(prevYm('2025-01')).toBe('2024-12')
+    expect(prevYm('2025-10')).toBe('2025-09')
   })
 })
 
-describe('bandReadout(主图读数句)', () => {
-  it('高于上界 / 低于下界 / 落在区间内 / 缺数据(cur/lo/hi 任一为 null)→ null', () => {
-    expect(bandReadout(400, 100, 300, '电费')).toBe('电费高于跨户区间 ¥100~¥300')
-    expect(bandReadout(50, 100, 300, '电费')).toBe('电费低于跨户区间 ¥100~¥300')
-    expect(bandReadout(200, 100, 300, '电费')).toBe('电费落在跨户区间 ¥100~¥300')
-    expect(bandReadout(null, 100, 300, '电费')).toBeNull()
-    expect(bandReadout(200, null, 300, '电费')).toBeNull()
-    expect(bandReadout(200, 100, null, '电费')).toBeNull()
-  })
-
-  // ── I9(对抗复查):下沿被夹到 0 的区间,位置判断恒真 ──────────────────────────
-  // 下面两条用的是**实测量级**的均值与波动幅度(park_demo3 2025-12:263 户,均值 5315、σ 14134),
-  // 不是为了卡住边界捏的小数。改前这条句子在全部七个真实月份上都印得出来、且永远为真。
-  it('❗I9:真实量级的均值与波动幅度喂进去 —— mean−σ 为负、下沿被夹到 0,这句话必须闭嘴', () => {
-    const band = buildParkBand(
-      // 造 30 户:1 户大工业把均值与波动幅度拉到实测比例(mean 5315 / σ 14134,σ≈2.7×mean)
-      [...Array(29)].map((_, i) => fakeRow('小户' + i, { '2025-12': 300 })).concat([fakeRow('大工业', { '2025-12': 150000 })]),
-      ['2025-12'])
-    expect(band.lo[0]).toBe(0)                                   // mean−σ < 0,被 max(0,…) 夹住
-    expect(band.hi[0]).toBeGreaterThan(20000)
-    expect(bandReadout(300, band.lo[0], band.hi[0], '电费')).toBeNull()      // 普通户:改前印「落在 ¥0~¥…」
-    expect(bandReadout(150000, band.lo[0], band.hi[0], '电费')).toBeNull()   // 高出上沿的也闭嘴:¥0 那个下沿本身就是假的
-  })
-
-  it('❗I9:「低于跨户区间」只有在下沿真的大于 0 时才印得出来 —— 下沿为 0 时它在数学上不可达', () => {
-    expect(bandReadout(-1, 0, 19449, '电费')).toBeNull()   // 唯一能触发「低于」的输入是负电费
-    expect(bandReadout(50, 100, 19449, '电费')).toBe('电费低于跨户区间 ¥100~¥19,449')
+describe('yearRows(按年:这一年有数的月合计)', () => {
+  it('只合计这一年的月、一户一行按合计降序;这一年一个月都没有的户不进', () => {
+    const tm = map([
+      s10('甲', '2024-12', 9999), s10('甲', '2025-01', 100), s10('甲', '2025-02', 50), s10('甲', '2025-02', 25),
+      s10('乙', '2025-06', 300, 7),
+      s10('丙', '2024-11', 500),
+    ])
+    const rows = yearRows(tm, ['2025-01', '2025-02', '2025-06'], 'elec')
+    expect(rows.map((r) => [r.name, r.cur])).toEqual([['乙', 300], ['甲', 175]])
+    expect([...rows[1].vals]).toEqual([['2025-01', 100], ['2025-02', 75]])
+    expect(yearRows(tm, ['2025-06'], 'water').map((r) => [r.name, r.cur])).toEqual([['乙', 7]])
   })
 })
 
-describe('bandRefText(参照系小字,F2 修复轮1:只说样本量/口径/单位,不提灰带画没画)', () => {
-  it('n 有值(即便<20)→ 样本N户;n 缺 → 样本未知', () => {
-    expect(bandRefText(251)).toBe('记账月口径 · 元 · 样本251户')
-    expect(bandRefText(15)).toBe('记账月口径 · 元 · 样本15户')   // <20 也照实报数,不夹带「不画带」判断
-    expect(bandRefText(null)).toBe('记账月口径 · 元 · 样本未知')
-  })
-
-  it('❗F1:不许出现原始列名 acct_month —— 屏上写中文「记账月」', () => {
-    expect(bandRefText(251)).not.toContain('acct_month')
-    expect(bandRefText(251)).toContain('记账月')
-  })
-
-  it('❗F2:句子里不再出现「灰带」「断点」—— 带画不画/断不断点不影响这句话真假', () => {
-    expect(bandRefText(251)).not.toContain('灰带')
-    expect(bandRefText(251)).not.toContain('断点')
-  })
-})
-
-describe('buildFamilyRows(spec §B/W3 家族榜单)', () => {
-  const months = ['2025-01', '2025-02']
+describe('familyBars(按家族:开关挪到主卡卡头)', () => {
   const fam = buildFamilyMap([
     { companyName: '广联', parentName: null },
     { companyName: '广联（宿舍）', parentName: '广联' },
     { companyName: '广联（饭堂）', parentName: '广联' },
     { companyName: '安达', parentName: null },
   ])
-  it('家族成员本期金额加总重排;根在截面 → mainName=根;单户家族原样', () => {
-    const tm = map([
-      s10('广联', '2025-02', 100), s10('广联（宿舍）', '2025-02', 300), s10('广联（饭堂）', '2025-02', 50),
-      s10('安达', '2025-02', 400),
+  const bar = (name: string, cur: number, prev: number | null) => ({ name, cur, prev, pick: name })
+  it('本期、上期分别加总重排;根在截面 → 点家族条选中根', () => {
+    const fb = familyBars([bar('安达', 400, 380), bar('广联', 100, 90), bar('广联（宿舍）', 300, null), bar('广联（饭堂）', 50, 10)], fam)
+    expect(fb).toEqual([
+      { name: '广联', cur: 450, prev: 100, pick: '广联' },        // 家族合计 450 > 400 反超;上期缺的成员按 0 加
+      { name: '安达', cur: 400, prev: 380, pick: '安达' },
     ])
-    const rows = buildTenantRows(tm, '2025-02', months, 'elec', new Map())
-    expect(rows[0].name).toBe('安达')                               // 按户第一名是安达
-    const fr = buildFamilyRows(rows, fam)
-    expect(fr.map((r) => r.root)).toEqual(['广联', '安达'])          // 家族合计 450 > 400 反超
-    expect(fr[0]).toMatchObject({ cur: 450, memberCount: 3, mainName: '广联', rank: 1 })
-    expect(fr[1]).toMatchObject({ root: '安达', cur: 400, memberCount: 1, mainName: '安达', rank: 2 })
   })
-  it('根不在本期截面 → mainName 取金额最大成员;不在主数据的名称自成一族', () => {
-    const tm = map([
-      s10('广联（宿舍）', '2025-02', 80), s10('广联（饭堂）', '2025-02', 120),
-      s10('已注销租户', '2025-02', 999),
+  it('根不在截面 → 选本期最大的成员;成员上期全缺 → 上期 null;不在主数据的名称自成一族', () => {
+    const fb = familyBars([bar('广联（宿舍）', 80, null), bar('广联（饭堂）', 120, null), bar('已注销租户', 999, 5)], fam)
+    expect(fb.find((b) => b.name === '广联')).toEqual({ name: '广联', cur: 200, prev: null, pick: '广联（饭堂）' })
+    expect(fb.find((b) => b.name === '已注销租户')).toEqual({ name: '已注销租户', cur: 999, prev: 5, pick: '已注销租户' })
+  })
+})
+
+describe('parkQuartiles(全园中间一半)', () => {
+  it('同户同月先合计;只算大于 0 的户;不足 20 户的月不建;P25/P50/P75 线性插值', () => {
+    // 2025-12:户0..户19 电费 1..20(户0 拆两行 0.4+0.6),另有 0 元户、为负的户不算 → 20 户
+    const rows = Array.from({ length: 20 }, (_, i) => s10(`户${i}`, '2025-12', i + 1, 0))
+    rows[0] = s10('户0', '2025-12', 0.4); rows.push(s10('户0', '2025-12', 0.6), s10('零', '2025-12', 0), s10('负', '2025-12', -5))
+    rows.push(...Array.from({ length: 19 }, (_, i) => s10(`户${i}`, '2025-11', 10)))   // 11月只有 19 户
+    const q = parkQuartiles(map(rows), 'elec')
+    expect(Object.keys(q)).toEqual(['2025-12'])
+    expect(q['2025-12']).toEqual({ p25: 5.75, p50: 10.5, p75: 15.25, n: 20 })
+    expect(parkQuartiles(map(rows), 'water')).toEqual({})          // 水费全是 0
+  })
+})
+
+describe('tenantPeriods(选中户台账逐期,collect 的 balEnd)', () => {
+  it('几家公司相加、只取这户、只取 ≤ upto 的期、升序;end = 期末结余合计', () => {
+    const ps = tenantPeriods([
+      lr('甲', 2025, 10, 100, 120, 50, 1), lr('甲', 2025, 10, -30, 0, 120, 2),   // 罗立剑那种:一家当月应收为负,实收比应收多,期末仍欠
+      lr('甲', 2025, 9, 80, 0, 80), lr('甲', 2025, 11, 1, 1), lr('乙', 2025, 10, 5, 5),
+    ], '甲', '2025-10')
+    expect(ps).toEqual([
+      { ym: '2025-09', recv: 80, coll: 0, end: 80 },
+      { ym: '2025-10', recv: 70, coll: 120, end: 170 },
     ])
-    const rows = buildTenantRows(tm, '2025-02', months, 'elec', new Map())
-    const fr = buildFamilyRows(rows, fam)
-    expect(fr.find((r) => r.root === '广联')).toMatchObject({ cur: 200, memberCount: 2, mainName: '广联（饭堂）' })
-    expect(fr.find((r) => r.root === '已注销租户')).toMatchObject({ cur: 999, memberCount: 1, mainName: '已注销租户' })
+  })
+})
+
+describe('moverOutlier(按年欠费变动:撑开横轴的那户单独一行写数,te2-ask 6)', () => {
+  const rows = [{ name: '火炬', prev: 956.6, cur: 2164.8 }, { name: '碧沃丰', prev: 222.3, cur: 173.1 }, { name: '可莱恩', prev: 0, cur: 40.1 }]
+  it('读数句点到的那户比其余最大的值大 4 倍以上 → 单独写', () => {
+    expect(moverOutlier(rows, '火炬')).toBe('火炬')   // 2,164.8 > 4 × 222.3
+  })
+  it('不到 4 倍、或读数句没点名、或只有一户 → null(照画条)', () => {
+    expect(moverOutlier([{ name: '火炬', prev: 500, cur: 800 }, ...rows.slice(1)], '火炬')).toBeNull()   // 800 < 889.2
+    expect(moverOutlier(rows, null)).toBeNull()
+    expect(moverOutlier(rows, '碧沃丰')).toBeNull()
+    expect(moverOutlier(rows.slice(0, 1), '火炬')).toBeNull()
   })
 })
 
@@ -184,16 +154,12 @@ describe('splitLogPoints(spec §T2 散点对数轴数据准备)', () => {
 })
 
 describe('buildPayRows', () => {
-  const lr = (tenantName: string, month: number, receivable: number, collected: number, companyId = 1): AnalysisLedgerRow => ({
-    companyId, companyName: `公司${companyId}`, year: 2025, month, tenantId: null, tenantName,
-    balancePrev: 0, receivable, collected, balanceEnd: receivable - collected,
-  })
   it('按租户名跨公司聚合;结清/部分/未缴状态与 v1 一致;只取指定期', () => {
     const rows = buildPayRows([
-      lr('甲', 10, 100, 100, 1), lr('甲', 10, 50, 20, 2),   // 跨公司合并:recv 150 coll 120 bal 30 → partial
-      lr('乙', 10, 80, 0),                                   // none
-      lr('丙', 10, 60, 60),                                  // normal
-      lr('甲', 1, 999, 0),                                   // 其他期忽略
+      lr('甲', 2025, 10, 100, 100, 0, 1), lr('甲', 2025, 10, 50, 20, 30, 2),   // 跨公司合并:recv 150 coll 120 bal 30 → partial
+      lr('乙', 2025, 10, 80, 0),                                   // none
+      lr('丙', 2025, 10, 60, 60),                                  // normal
+      lr('甲', 2025, 1, 999, 0),                                   // 其他期忽略
     ], '2025-10')
     expect(rows).toHaveLength(3)
     const jia = rows.find((r) => r.name === '甲')

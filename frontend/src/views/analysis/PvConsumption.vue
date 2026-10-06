@@ -1,13 +1,16 @@
 <script setup lang="ts">
-// B7 · 消纳结构与损耗率(PV-ANALYSIS-SCREEN-V4 §3.8;画布 ../运维文档/设计稿/已实现/光伏分栋分析v4定稿-2026-09-13/Ledger.dc.html)。
+// B7 · 自用、上网和损耗(PV-ANALYSIS-SCREEN-V4 §3.8;2026-10-06 改稿画板 pv-v2-m-ledger / y-ledger)。
 // 画布 卡内宽 × 272,padL 46 / padR 46 / padT 22 / padB 26;每刻度一个槽,柱宽 = 槽宽 × 0.6;
-// 左轴 万度 = 最高那根柱 × 1.12 四等分;右轴损耗率钉死 0–6%,超出的刻度折线断开 + 轴外三角 + 数值。
-// 堆叠自下而上 = 自己用了 / 卖上网 / 路上损掉,只有最顶一段圆角(≤ 3)。数据口径在 consumption()。
+// 左轴 万kWh = 最高那根柱 × 1.12 四等分;右轴损耗率钉死 0–6%,超出的刻度折线断开 + 轴外三角 + 数值。
+// 堆叠自下而上 = 自己用了 / 卖上网 / 损耗,只有最顶一段圆角(≤ 3)。数据口径在 consumption()。
+// 2026-10-06:损耗率折线与右轴字改墨阶虚线(橙只留给「高于平时 / 超限」,超 6% 的三角照旧橙);
+// 按年读数句点到的两个月柱顶出深色气泡,某期并网的月柱顶标「几期并网」(轴字同款灰)。
 import { computed, ref } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
 import { useEnterPhase, useMorphHold } from '@/components/ana/anaMotion'
 import { tipWidth, tipX } from '@/components/ana/chartTip'
 import '@/components/ana/ana.css'   // @keyframes fp-wipe
+import { PV } from '@/components/ana/anaSentence'
 import { PV_COLORS } from './pvAnaColors'
 import { LOSS_AXIS_MAX, type PvConsumptionProps } from './pvAnaV4.logic'
 
@@ -64,6 +67,15 @@ function roundTop(x: number, y: number, w: number, h: number): string {
   return `M${x},${yb} L${x},${y + r} Q${x},${y} ${x + r},${y} L${x + w - r},${y} Q${x + w},${y} ${x + w},${y + r} L${x + w},${yb} Z`
 }
 
+/** 第 i 根柱的槽心与柱顶(三段里最高那段的上沿);没柱(没发电)= null */
+function topOf(i: number): { x: number; y: number } | null {
+  const b = bars.value.find(x => x.i === i)
+  return b ? { x: cx(i), y: Math.min(...b.segs.map(s => s.y)) } : null
+}
+/** 柱顶上方 6px:并网短标(SVG 字)与读数句气泡(HTML,translate(-50%, -100%) 往上长) */
+const joinTexts = computed(() => props.data.joins.flatMap(j => { const t = topOf(j.i); return t ? [{ ...t, y: t.y - 6, text: j.text, i: j.i }] : [] }))
+const callouts = computed(() => props.data.marks.flatMap(k => { const t = topOf(k.i); return t ? [{ ...t, y: t.y - 6, text: k.text, i: k.i }] : [] }))
+
 const lossRuns = computed(() => {
   const out: number[][] = []
   let cur: number[] = []
@@ -113,13 +125,13 @@ const tip = computed(() => {
   const t = d.ticks[i]
   const lines: TipLine[] = [
     { t: d.gran === 'month' ? `${t.label} 日` : t.label.replace('月', ' 月'), c: WHITE, b: 600 },
-    { t: `自己用了 ${(t.self / WAN).toFixed(2)} 万度`, c: PV_COLORS.TIP_SEL },
-    { t: `卖上网 ${(t.grid / WAN).toFixed(2)} 万度`, c: PV_COLORS.BAND },
-    { t: `路上损掉 ${(t.loss / WAN).toFixed(3)} 万度`, c: WHITE, o: 0.72 },
+    { t: `自己用了 ${(t.self / WAN).toFixed(2)} 万kWh`, c: PV_COLORS.TIP_SEL },
+    { t: `卖上网 ${(t.grid / WAN).toFixed(2)} 万kWh`, c: PV_COLORS.BAND },
+    { t: `${PV.consLoss} ${(t.loss / WAN).toFixed(3)} 万kWh`, c: WHITE, o: 0.72 },
     t.lossPct == null
       ? { t: '损耗率 —', c: WHITE, o: 0.72 }
       : t.lossPct >= LOSS_TIP_WARN
-        ? { t: `损耗率 ${t.lossPct.toFixed(2)}%`, c: PV_COLORS.TIP_ABOVE }
+        ? { t: `损耗率 ${t.lossPct.toFixed(2)}%`, c: WHITE }   // 不用琥珀(橙只留给「高于平时 / 超限」),只比别的行亮
         : { t: `损耗率 ${t.lossPct.toFixed(2)}%`, c: WHITE, o: 0.72 },
   ]
   const x = cx(i)
@@ -130,11 +142,11 @@ const tip = computed(() => {
 <template>
   <div class="pcs">
     <div ref="el" class="pcs-plot" :style="{ height: H + 'px' }">
-      <svg :width="width" :height="H" :viewBox="`0 0 ${width} ${H}`" class="pcs-svg" role="img" aria-label="消纳结构与损耗率">
+      <svg :width="width" :height="H" :viewBox="`0 0 ${width} ${H}`" class="pcs-svg" role="img" :aria-label="PV.card.cons">
         <template v-for="g in grid" :key="'g' + g.y">
           <line class="pcs-gl" :x1="PL" :x2="PL + iw" :y1="g.y" :y2="g.y" />
           <text class="pcs-ax pcs-mut pcs-yl" :x="PL - 6" :y="g.y + 4" text-anchor="end">{{ g.left }}</text>
-          <text class="pcs-ax pcs-yr" :x="PL + iw + 6" :y="g.y + 4" :fill="PV_COLORS.AMBER_TEXT">{{ g.right }}</text>
+          <text class="pcs-ax pcs-yr" :x="PL + iw + 6" :y="g.y + 4" :fill="PV_COLORS.AXIS_TEXT">{{ g.right }}</text>
         </template>
         <rect v-if="shade" class="pcs-future" :x="shade.x" :y="PT" :width="shade.w" :height="IH" :fill="PV_COLORS.FUTURE" />
         <rect v-if="tip" class="pcs-hair" :x="tip.x - bw / 2 - 3" :y="PT" :width="bw + 6" :height="IH" rx="3" />
@@ -149,19 +161,21 @@ const tip = computed(() => {
               <rect v-else :class="['pcs-seg', 'pcs-' + s.key]" :x="b.x" :y="s.y" :width="bw" :height="s.h" :fill="SEG_FILL[s.key]" />
             </template>
           </g>
-          <path v-for="s in lossSegs" :key="'l' + s.i" class="pcs-lossline" :data-i="s.i" :d="s.d" fill="none" :stroke="PV_COLORS.ABOVE" stroke-width="1.5" stroke-linecap="round" />
-          <circle v-for="p in lossDots" :key="'d' + p.i" class="pcs-lossdot" :cx="p.x" :cy="p.y" r="2.5" :stroke="PV_COLORS.ABOVE" stroke-width="1.5" />
+          <path v-for="s in lossSegs" :key="'l' + s.i" class="pcs-lossline" :data-i="s.i" :d="s.d" fill="none" :stroke="PV_COLORS.REF" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="4 3" />
+          <circle v-for="p in lossDots" :key="'d' + p.i" class="pcs-lossdot" :cx="p.x" :cy="p.y" r="2.5" :stroke="PV_COLORS.REF" stroke-width="1.5" />
           <!-- 轴外三角 + 数值整组按槽心平移:<polygon> 的 points 与 <text> 的 x 都过渡不了,槽宽一变柱在滑、它们先跳。
                组的 transform 走 .pcs-overg 的过渡(ana-morph 只管 rect / path / circle 的几何属性) -->
           <g v-for="o in overs" :key="'o' + o.i" class="pcs-overg" :style="{ transform: `translate(${o.x}px, 0px)` }">
             <path class="pcs-over" :d="`M-4,${PT - 2} L4,${PT - 2} L0,${PT - 9} Z`" :fill="PV_COLORS.ABOVE" />
-            <text class="pcs-ax pcs-overt" x="6" :y="PT - 3" :fill="PV_COLORS.AMBER_TEXT">{{ o.text }}</text>
+            <text class="pcs-ax pcs-overt" x="6" :y="PT - 3" :fill="PV_COLORS.AXIS_TEXT">{{ o.text }}</text>
           </g>
+          <text v-for="j in joinTexts" :key="'j' + j.i" class="pcs-ax pcs-join" :x="j.x" :y="j.y" text-anchor="middle">{{ j.text }}</text>
         </g>
-        <text class="pcs-ax pcs-mut" :x="PL - 6" y="10" text-anchor="end">万度</text>
-        <text class="pcs-ax" :x="PL + iw + 6" y="10" :fill="PV_COLORS.AMBER_TEXT">损耗率</text>
+        <text class="pcs-ax pcs-mut" :x="PL - 6" y="10" text-anchor="end">万kWh</text>
+        <text class="pcs-ax" :x="PL + iw + 6" y="10" :fill="PV_COLORS.AXIS_TEXT">损耗率</text>
       </svg>
       <div class="pcs-hit" @mousemove="onMove" @mouseleave="hover = null" />
+      <div v-for="k in callouts" :key="'c' + k.i" class="pcs-callout" :style="{ left: k.x + 'px', top: k.y + 'px' }">{{ k.text }}</div>
       <div v-if="tip" class="cz-tip pv-tip" :style="{ left: tip.left + 'px', top: '8px' }">
         <span v-for="(l, k) in tip.lines" :key="k" :style="{ color: l.c, opacity: l.o, fontWeight: l.b }">{{ l.t }}</span>
       </div>
@@ -169,11 +183,10 @@ const tip = computed(() => {
     <div class="pv-leg">
       <span><b class="pv-sw" :style="{ background: PV_COLORS.FOCUS }" />自己用了</span>
       <span><b class="pv-sw" :style="{ background: PV_COLORS.MID }" />卖上网</span>
-      <span><b class="pv-sw" :style="{ background: PV_COLORS.LOSS }" />路上损掉</span>
-      <span><i class="pv-line" :style="{ background: PV_COLORS.ABOVE }" />损耗率（右轴）</span>
+      <span><b class="pv-sw" :style="{ background: PV_COLORS.LOSS }" />{{ PV.consLoss }}</span>
+      <span><i class="pv-line" :style="{ background: `repeating-linear-gradient(90deg, ${PV_COLORS.REF} 0 4px, transparent 4px 7px)` }" />损耗率（右轴）</span>
     </div>
-    <!-- 图注写在模板里,不走整句插值:文案门禁(anaCopyLint)扫得到 -->
-    <p class="ana-ref">左轴 = 万度，三段自下而上 = 自己用了 / 卖上网 / 路上损掉 · 右轴 = 损耗率，刻度钉死在 0–{{ LOSS_AXIS_MAX }}% 不随数据缩放<template v-if="overs.length"> · {{ overs.length }} {{ data.gran === 'month' ? '天' : '个月' }}超过 {{ LOSS_AXIS_MAX }}%，折线在那里断开，轴外三角标数值</template><template v-if="data.throughIdx != null"> · 数据到 {{ data.ticks[data.throughIdx].label }}{{ data.gran === 'month' ? ' 日' : '' }}</template></p>
+    <!-- 读数句与参照由屏接着写在卡里,走句型库 PV 段 -->
   </div>
 </template>
 
@@ -192,6 +205,18 @@ const tip = computed(() => {
 /* 字形与颜色分开:琥珀字靠 fill 属性上色,类里写了 fill 会把属性盖掉 */
 .pcs-ax { font-size: var(--fs-micro); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .pcs-mut { fill: var(--text-muted); }
+.pcs-join { fill: var(--text-secondary); }
+/* 读数句点到的月:柱顶深色气泡(同 AnaEChart 的 .ana-callout 样子 —— 那份是 scoped,这里抄一份;自绘 SVG 不走 calloutMark) */
+.pcs-callout {
+  position: absolute; z-index: 1; pointer-events: none; transform: translate(-50%, -100%);
+  padding: 4px 8px; border-radius: 6px; background: var(--tip-bg); color: var(--text-on-solid);
+  font-size: var(--fs-micro); line-height: 15px; font-weight: var(--fw-semibold); white-space: nowrap;
+  box-shadow: var(--shadow-tip);
+}
+.pcs-callout::after {
+  content: ''; position: absolute; top: 100%; left: calc(50% - 6px);
+  border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 6px solid var(--tip-bg);
+}
 .pv-tip { display: flex; flex-direction: column; gap: 3px; white-space: nowrap; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .pv-leg { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px; font-size: var(--fs-micro); color: var(--text-secondary); white-space: nowrap; }
 .pv-leg span { display: inline-flex; align-items: center; gap: 5px; }

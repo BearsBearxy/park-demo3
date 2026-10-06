@@ -1,34 +1,20 @@
 // 横条收尾(2026-10-03,实现规范 §2「横条盘点」CockpitView:551 / FinCashflowView:314)。
 // 两屏挂载要喂十几个分析接口,这里钉模板与样式原文(同 meterNarrow / isHintS 的源码钉法):
-//   · 驾驶舱主图卡的负收入月提示:常驻 32px 预留位(空时透明),不再 v-if 顶开 —— 骨架那枚占位 FPNote 换真版式时卡不缩;
+//   · 驾驶舱:2026-10 改稿把卡内黄条整个拿掉(原来钉的是负收入月提示的 32px 预留位);
 //   · 收缴欠费弹层:切「按家族」不再多出一段说明,同一行副句按口径换文案,家族怎么算挂「按家族」的悬停说明。
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const read = (f: string) => readFileSync(join(__dirname, '..', f), 'utf8')
 const tpl = (src: string) => (src.match(/<template>([\s\S]*)<\/template>/)?.[1] ?? '').replace(/<!--[\s\S]*?-->/g, '')
-const css = (src: string) => [...src.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map(m => m[1]).join('\n')
 
-describe('驾驶舱 · 负收入月提示常驻预留位', () => {
-  const src = read('CockpitView.vue')
-  let style: HTMLStyleElement
-  beforeAll(() => { style = document.createElement('style'); style.textContent = css(src); document.head.appendChild(style) })
-  afterAll(() => style.remove())
-
-  // 破坏验证:外壳改回 <FPNote v-if="outlierNoteText"> 直接挂 / .cv2-onote 的 min-height 删掉 → 红
-  it('❗外壳常驻、FPNote 只在壳里出没;壳高 32 + 下边 8 = 骨架那枚占位 FPNote 的 32 + 8', () => {
-    const t = tpl(src)
-    expect(t).toContain('<div class="cv2-onote"><FPNote v-if="outlierNoteText" tone="warn">{{ outlierNoteText }}</FPNote></div>')
-    expect(t.match(/v-if="outlierNoteText"/g), '只有壳里那一处').toHaveLength(1)
-    // 骨架:占位 FPNote 自身 min-height 32(FPNote.vue)+ margin-bottom 8
-    expect(t).toContain('<FPNote class="ana-hole" tone="warn" style="margin-bottom: 8px">')
-    const el = document.createElement('div')
-    el.className = 'cv2-onote'
-    document.body.appendChild(el)
-    const cs = getComputedStyle(el)
-    expect([cs.minHeight, cs.marginBottom]).toEqual(['32px', '8px'])
-    el.remove()
+// 驾驶舱那一段 2026-10 改稿删掉:新稿把满宽黄条、结论条、卡内黄条都拿掉了(cv2-changes 第 1 条),负收入月提示不再上屏。
+describe('驾驶舱 · 卡内不再有黄条', () => {
+  it('❗没有 FPNote(负收入月提示),也没有它的预留位', () => {
+    const t = tpl(read('CockpitView.vue'))
+    expect(t).not.toContain('FPNote')
+    expect(t).not.toContain('cv2-onote')
   })
 })
 

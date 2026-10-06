@@ -1,5 +1,7 @@
 <script setup lang="ts">
-// 抽屉 B10 · 逐日偏离与两道范围线(PV-ANALYSIS-SCREEN-V4 §3.18;画布 v2/Drawer.dc.html)。
+// 抽屉 B10 · 每天的偏离和两道范围(PV-ANALYSIS-SCREEN-V4 §3.18;2026-10-06 改稿 pv-v2-drawer)。
+// 纵轴字写倍数(同第一块);没有算数的变点时两道线拿在网的全部天估,带名写「在网这段的起伏」,
+// 图内那行说拿哪段估 —— 卡下不再另写参照(和图内那行重复)。
 // 画布 宽 = 实测 × 高 250(容器 < 420 时 210),padL 46 / padR 14 / padT 14 / padB 26;x 与 B9 同一把(pvDrawerAxis)。
 // 两层带:里面那道 50%、更宽的那道 25%;点三档 —— 在里面 墨 28% r1.8 / 超出里面那道 琥珀 r2.8 /
 // 超出外面那道 红 r3(窄档 2.6 / 4 / 4)。估计窗口画成绘图区底部 10px 墨阶底条并直标取的是哪一段。
@@ -11,6 +13,7 @@ import { tipWidth, tipX } from '@/components/ana/chartTip'
 import { FP_ANA_THEME } from '@/components/ana/anaTheme'
 import '@/components/ana/ana.css'
 import { PV_COLORS as C } from './pvAnaColors'
+import { PV, PVH, pvTimesLabel, pvYearCover } from '@/components/ana/anaSentence'
 import type { PvControlChartProps } from './pvAnaV4.logic'
 import { dayOfX, md, monthStartDays, nearestIndex, PAD_L, PAD_R, r1, xOfDay, yAxis } from './pvDrawerAxis'
 
@@ -39,7 +42,16 @@ const axis = computed(() => {
   return yAxis(vals, padT, H.value - padB, { top: 50, bottom: 25 })
 })
 const Y = (v: number) => axis.value.y(v)
-const tickLabel = (v: number) => (v > 0 ? '+' : '') + v.toFixed(2)
+const tickLabel = pvTimesLabel
+/** 卡头「和在网的 N 天比」:两道线拿来估的那些天(全期估 = 在网的全部天;只拿水平变之前那段估时写「和水平变之前的 N 天比」) */
+const hint = computed(() => {
+  const d = props.data, w = d.window
+  const n = w ? d.points.filter(p => p.date >= w.from && p.date <= w.to).length : d.points.length
+  return PVH.ctrl(d.cover ?? pvYearCover(Number(d.points[0]?.date.slice(0, 4))), n, d.wholePeriod)
+})
+/** 带名:全期估 = 在网这段的起伏;按变点前那段估 = 平时的起伏 */
+const bandName = computed(() => (props.data.wholePeriod ? PV.ctrlBand : '平时的起伏'))
+const md2 = (date: string) => { const a = md(date); return `${a.m}月${a.d}日` }
 
 const months = computed(() => monthStartDays(days.value).map((d, i) => ({ m: i + 1, x: X(d) })))
 
@@ -69,7 +81,7 @@ const win = computed(() => {
   const x = X(w.fromDoy)
   // 底条盖到窗口末日的下一天为止(画布:1/1–6/8 的底条止于 6/9 的 x)
   const x2 = Math.min(W.value - PAD_R, X(w.toDoy + 1))
-  return { x, w: r1(x2 - x), from: dateText(w.from), to: dateText(w.to) }
+  return { x, w: r1(x2 - x), from: dateText(w.from), to: dateText(w.to), whole: PV.ctrlWin(md2(w.from), md2(w.to)) }
 })
 
 const LEVEL = [
@@ -100,7 +112,7 @@ const tip = computed(() => {
   const at = md(p.date), lv = LEVEL[p.level]
   const lines = [
     { t: `${at.m}月${at.d}日`, b: true },
-    { t: `偏差 ${p.v > 0 ? '+' : ''}${p.v.toFixed(3)}` },
+    { t: `偏离 ${pvTimesLabel(p.v)}` },
     { t: lv.text, c: lv.tip },
   ] as { t: string; c?: string; b?: boolean }[]
   const x = X(p.doy)
@@ -112,11 +124,11 @@ const tip = computed(() => {
 <template>
   <div class="av2-card pv-b10">
     <div class="av2-card-h">
-      <span class="t">逐日偏离与两道范围线</span>
-      <span class="hint">每天的偏差有没有超出它平时的起伏</span>
+      <span class="t">{{ PV.card.ctrl }}</span>
+      <span class="hint">{{ hint }}</span>
     </div>
     <div ref="el" class="plot" :style="{ height: H + 'px' }" @mousemove="onMove" @mouseleave="hover = null">
-      <svg :width="W" :height="H" :viewBox="`0 0 ${W} ${H}`" role="img" aria-label="逐日偏离与两道范围线">
+      <svg :width="W" :height="H" :viewBox="`0 0 ${W} ${H}`" role="img" :aria-label="PV.card.ctrl">
         <template v-for="v in axis.ticks" :key="'g' + v">
           <line class="gl" :x1="PAD_L" :x2="W - PAD_R" :y1="Y(v)" :y2="Y(v)" :stroke="C.GRID" />
           <text class="ax" :x="PAD_L - 6" :y="Y(v) + 4" text-anchor="end" :fill="C.AXIS_TEXT">{{ tickLabel(v) }}</text>
@@ -131,7 +143,7 @@ const tip = computed(() => {
           <template v-if="win">
             <rect class="win" :x="win.x" :y="H - padB - 10" :width="win.w" height="10" fill="var(--ink-100)" />
             <text class="ax winlab" :x="win.x + 4" :y="H - padB - 14" text-anchor="start" :fill="C.AXIS_TEXT">
-              <template v-if="data.wholePeriod">这两道线是拿全期 {{ win.from }} – {{ win.to }} 估的</template>
+              <template v-if="data.wholePeriod">{{ win.whole }}</template>
               <template v-else>这两道线是拿 {{ win.from }} – {{ win.to }} 这一段估的</template>
             </text>
           </template>
@@ -142,7 +154,7 @@ const tip = computed(() => {
           v-for="t in months" :key="'m' + t.m" class="ax mlab" :x="t.x" :y="H - padB + 18" text-anchor="middle"
           :fill="t.m === segMonth ? C.FOCUS : C.AXIS_TEXT" :font-weight="t.m === segMonth ? 600 : 400"
         >{{ t.m }}月</text>
-        <text class="ax bandlab" :x="W - PAD_R - 4" :y="bands.inner.y - 4" text-anchor="end" :fill="C.AXIS_TEXT">平时的起伏</text>
+        <text class="ax bandlab" :x="W - PAD_R - 4" :y="bands.inner.y - 4" text-anchor="end" :fill="C.AXIS_TEXT">{{ bandName }}</text>
         <text v-if="bands.outerLabel" class="ax bandlab" :x="W - PAD_R - 4" :y="bands.outer.y - 4" text-anchor="end" :fill="C.AXIS_TEXT">更宽的那道</text>
       </svg>
       <template v-if="tip">
@@ -156,13 +168,9 @@ const tip = computed(() => {
       <span><u :style="{ background: LEVEL[0].fill }"></u>在里面 {{ data.counts[0] }} 天</span>
       <span><u :style="{ background: LEVEL[1].fill }"></u>超出里面那道 {{ data.counts[1] }} 天</span>
       <span><u :style="{ background: LEVEL[2].fill }"></u>超出外面那道 {{ data.counts[2] }} 天</span>
-      <span><b :style="{ background: C.BAND, opacity: 0.5 }"></b>平时的起伏</span>
+      <span><b :style="{ background: C.BAND, opacity: 0.5 }"></b>{{ bandName }}</span>
       <span><b :style="{ background: C.BAND, opacity: 0.25 }"></b>更宽的那道</span>
     </div>
-    <!-- C5-11:估计窗口为空时整段图注常驻占一行(win.from / win.to 挪进内层 template) -->
-    <p class="ana-ref hold">
-      <template v-if="win">中线与两道范围<template v-if="!data.wholePeriod">都用 {{ win.to }} 及之前那一段估，之后的日子拿来对照</template><template v-else>用全期 {{ win.from }} – {{ win.to }} 估，没有留出对照的日子</template></template>
-    </p>
   </div>
 </template>
 

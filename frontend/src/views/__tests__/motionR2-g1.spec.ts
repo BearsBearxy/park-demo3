@@ -165,10 +165,10 @@ describe('S 档首进 · 骨架里顶替 AnaEChart 的块按降档表(300/440→
     expect(shimHeights(w, '.churn-skel')).toEqual(['260px', '330px', '420px', '260px'])
   })
 
-  it('❗租户用能:列表条 · 趋势 260 · 应收实收 180 · Top20 260 · 散点 260', async () => {
+  it('❗用能与缴费:主卡 454 不降档(20 行条) · 散点 260', async () => {
     const w = mountView(TenantEnergyView)
     await flushPromises()
-    expect(shimHeights(w, '.te2-skel')).toEqual(['', '260px', '180px', '260px', '260px'])
+    expect(shimHeights(w, '.te2-skel')).toEqual(['454px', '260px'])
   })
 
   it('❗结构与续约:帕累托 260 · 环 260 · 箱点 220;生命周期 5 行 = 156;清单 486', async () => {
@@ -195,29 +195,30 @@ describe('数据到了是真内容;换期 / 回签不重挂', () => {
     expect(charts(w)).toHaveLength(2)
   })
 
-  it('❗租户用能:换年只在同一份数据上重算 —— 不打接口、不卸图、不退让', async () => {
+  // 夹具的租户没有月租 → 散点卡是空状态,按月只有主卡一张图
+  it('❗用能与缴费:换年只在同一份数据上重算 —— 不打接口、不卸图、不退让', async () => {
     const w = mountView(TenantEnergyView)
     await flushPromises()
     expect(w.find('.te2-skel').exists()).toBe(false)
     const before = charts(w)
-    expect(before).toHaveLength(4)
+    expect(before).toHaveLength(1)
     const calls = vi.mocked(ana.fetchS10TenantMap).mock.calls.length
 
     usePeriod().setYear(2025)
     await flushPromises()
     await tick(260)
     await flushPromises()
-    expect(w.text(), '换年没生效(本期该回退到 2025-12)').toContain('2025-12')
+    expect(w.text(), '换年没生效(2025-12 前面没有台账,不往以后的 2026-07 顶替)').toContain('台账里没有12月，算不了12月的期末欠费')
     expect(same(charts(w), before), '换年把图卸掉重挂了').toBe(true)
     expect(vi.mocked(ana.fetchS10TenantMap).mock.calls.length, '换年不该打接口').toBe(calls)
     expect(w.find('.fp-stale').exists()).toBe(false)
   })
 
-  it('❗租户用能:回签重读在途 —— 旧内容原地不动,不退回骨架、不退让(C1-06)', async () => {
+  it('❗用能与缴费:回签重读在途 —— 旧内容原地不动,不退回骨架、不退让(C1-06)', async () => {
     const { w, toggle } = mountKept(TenantEnergyView)
     await flushPromises()
     const before = charts(w)
-    expect(before).toHaveLength(4)
+    expect(before).toHaveLength(1)
     vi.mocked(ana.fetchS10TenantMap).mockImplementation(pending as never)
     await toggle()
     await tick(260)
@@ -369,29 +370,36 @@ describe('资产负债分析(不上骨架):首进落地 + 换年退让', () => {
   })
 })
 
-// 画布 06-D:整屏「本期」回退贴期间选择旁,只有台账回退贴应收实收卡头;加载失败换掉内容区、带重试;
-// 手写的空状态换成 FPEmpty 一种样子(06-B ⑦)。
-describe('租户用能:回退标签 · 加载失败 · 空状态', () => {
-  const payHead = (w: VueWrapper) => w.findAll('.av2-card-h').find((h) => h.find('.t').text().includes('应收 vs 实收'))!
+// 2026-10 改稿 tenant-energy-v2:回退只往前(销售收入表 / 台账各取 ≤ 所选月的最近一月),和所选月不同就在那张卡头贴「显示 M月」,
+// 不再贴期间选择旁;前面一个月都没有就照说没有(主卡空状态 / 欠费卡一句),不拿以后的月顶替。加载失败换掉内容区、带重试。
+describe('用能与缴费:回退标签 · 加载失败 · 空状态', () => {
+  const card = (w: VueWrapper, title: string) => w.findAll('.anx-body .av2-card').find((c) => c.find('.av2-card-h .t').text().startsWith(title))!
+  const mainRead = (w: VueWrapper) => card(w, '各户电费').find('.ana-read').text()
+  // 夹具 2026-08:丙 3,200 · 乙 2,200 · 甲 1,200,前两户合计刚过一半
+  const FULL = '电费的 81.8% 在丙租户、乙租户'
 
-  it('❗所选 2026-08 无 s10(最近 7 月)→ 期间旁「显示 2026-07 · 8 月无数据」;台账 8 月有数,卡头不挂', async () => {
+  it('❗所选 2026-08 销售收入表没有 → 主卡、散点卡头「显示 7月」,参照照说;台账 8 月有数,欠费卡不挂;期间旁不挂', async () => {
     vi.mocked(ana.fetchS10TenantMap).mockResolvedValue(new Map([...S10_MAP].map(([k, rs]) => [k, rs.filter((r) => r.acctMonth !== '2026-08')])))
     const w = mountView(TenantEnergyView)
     await flushPromises()
-    expect(w.findAll('.anx-period .fp-state').map((e) => e.text())).toEqual(['显示 2026-07 · 8 月无数据'])
-    expect(payHead(w).find('.fp-state').exists()).toBe(false)
+    expect(card(w, '各户电费').find('.t .fp-state').text()).toBe('显示 7月')
+    expect(card(w, '电费和月租').find('.t .fp-state').text()).toBe('显示 7月')
+    expect(card(w, '各户电费').findAll('.ana-ref').map((e) => e.text())).toContain('销售收入表里没有8月，图上是7月的数')
+    expect(card(w, '各户期末欠费').find('.fp-state').exists()).toBe(false)
+    expect(w.find('.anx-period .fp-state').exists(), '回退跑到期间旁了').toBe(false)
   })
 
-  it('❗所选 2025-12 无台账(台账从 2026-07 起)→ 应收实收卡头「显示 2026-07」,期间旁不挂', async () => {
+  it('❗所选 2025-12 台账没有(台账从 2026-07 起)→ 不往以后顶替:KPI 只剩售电收入,欠费卡照说没有', async () => {
     usePeriod().setYear(2025)
     const w = mountView(TenantEnergyView)
     await flushPromises()
     expect(usePeriod().ym.value).toBe('2025-12')
-    expect(payHead(w).find('.t .fp-state').text()).toBe('显示 2026-07')
-    expect(w.find('.anx-period .fp-state').exists(), '单卡回退跑到期间旁了').toBe(false)
+    expect(w.findAll('.av2-kpi .l').map((e) => e.text())).toEqual(['售电收入'])
+    expect(card(w, '各户期末欠费').find('.ana-read').text()).toBe('台账里没有12月，算不了12月的期末欠费')
+    expect(w.text(), '拿 2026-07 的台账顶替了').not.toContain('显示 7月')
   })
 
-  it('❗没读到 → 失败件换掉内容区(带重试);重试在途失败件不撤、不先闪「s10 未录入」;成功后出正文', async () => {
+  it('❗没读到 → 失败件换掉内容区(带重试);重试在途失败件不撤、不先闪空状态;成功后出正文', async () => {
     vi.mocked(ana.fetchS10TenantMap).mockRejectedValueOnce(new Error('500'))
     const w = mountView(TenantEnergyView)
     await flushPromises()
@@ -403,11 +411,11 @@ describe('租户用能:回退标签 · 加载失败 · 空状态', () => {
     await flushPromises()
     expect(vi.mocked(ana.fetchS10TenantMap), '点重试没重新取数').toHaveBeenCalledTimes(2)
     expect(err().exists(), '重试在途失败件先撤了(错误只在成功分支清)').toBe(true)
-    expect(w.find('.ana-empty').exists(), '重试在途闪出了「未录入」空态').toBe(false)
+    expect(w.find('.ana-empty').exists(), '重试在途闪出了空状态').toBe(false)
     release()
     await flushPromises()
     expect(err().exists()).toBe(false)
-    expect(w.findAll('.te2-item').length).toBe(3)
+    expect(mainRead(w)).toBe(FULL)
   })
 
   it('❗切回重读叠着发:先发的那趟晚到,不覆盖后发那趟的数(seq 守卫)', async () => {
@@ -420,20 +428,24 @@ describe('租户用能:回退标签 · 加载失败 · 空状态', () => {
       .mockResolvedValueOnce(S10_MAP)
     await toggle()   // 第一趟挂住(旧数)
     await toggle()   // 第二趟立刻到(新数)
-    expect(w.findAll('.te2-item').length).toBe(3)
+    expect(mainRead(w)).toBe(FULL)
     releaseOld()
     await flushPromises()
-    expect(w.findAll('.te2-item').length, '晚到的旧一趟把新数盖掉了').toBe(3)
+    expect(mainRead(w), '晚到的旧一趟把新数盖掉了').toBe(FULL)
   })
 
-  it('❗搜不到租户、选中租户台账没记录 → 都是 FPEmpty 空状态件,不是一行灰字', async () => {
-    // 榜首是丙(费额最高),台账只留甲 → 默认选中的丙在台账里没有记录
+  it('❗选中户台账没记录 → 读数卡照说「台账没有这户」;销售收入表前面一个月都没有 → 主卡是 FPEmpty 空状态件', async () => {
+    // 默认选中这一期电费第一的丙,台账只留甲
     vi.mocked(ana.fetchLedgerRows).mockResolvedValue(LEDGER.filter((r) => r.tenantName === '甲租户'))
     const w = mountView(TenantEnergyView)
     await flushPromises()
-    expect(w.find('.te2-item.on').text()).toContain('丙租户')
-    expect(payHead(w).element.parentElement!.querySelector('.fp-empty')?.textContent).toContain('该租户台账无应收/实收记录')
-    await w.find('.te2-search').setValue('不存在的租户')
-    expect(w.find('.te2-list .fp-empty').text()).toContain('无匹配租户')
+    expect(card(w, '丙租户 · ').find('.ana-read').text()).toBe('台账没有这户')
+    w.unmount()
+    mounted.pop()
+    vi.mocked(ana.fetchS10TenantMap).mockResolvedValue(new Map([...S10_MAP].map(([k, rs]) => [k, rs.filter((r) => r.acctMonth >= '2026-07')])))
+    usePeriod().setYear(2025)
+    const w2 = mountView(TenantEnergyView)
+    await flushPromises()
+    expect(card(w2, '各户电费').find('.fp-empty').text()).toContain('销售收入表里没有2025年，算不了2025年的各户电费')
   })
 })

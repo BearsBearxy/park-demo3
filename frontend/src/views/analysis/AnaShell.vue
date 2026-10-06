@@ -46,6 +46,10 @@ const props = defineProps<{
   // 只靠 min-height 兜一行的量,手机两列时真版式是 3~5 行,数据一到整页下推 170~780px(2026-09-16 实测)。
   // 也可以给每张瓦的副行占位字(旧写法;副行 2026-09 起固定两行高 32,字已不影响瓦高,只用来数张数)。
   kpiHold?: number | string[]
+  // 工具条右端「数据截至」整句(2026-10 改稿五屏,规范 S-34 槽位 17):屏自己写几份数据各到哪个月,
+  // 例「台账到 2025年10月 · 销售收入表到 2025年12月」。传了就整句替换「截至 {全局最晚月}」并去掉「数据」前缀;
+  // 不传 = 原样(其余屏零变化)。
+  asofText?: string
 }>()
 
 const pmode = computed(() => props.periodMode ?? 'full')
@@ -216,7 +220,8 @@ async function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakeven
         </div>
         <!-- ≤600 缩「数据截至」为「截至」:CSS 藏前缀 span,不引 JS 档位分支(jsdom 无
              matchMedia,模板换词要么恒桌面要么加分支;藏字则测试 text() 口径不变)。 -->
-        <span class="anx-lbl"><component :is="iconFor('clock')" :size="12" /><span class="anx-asof-prefix">数据</span>截至 {{ asof }}</span>
+        <span v-if="asofText" class="anx-lbl anx-asof-text"><component :is="iconFor('clock')" :size="12" />{{ asofText }}</span>
+        <span v-else class="anx-lbl"><component :is="iconFor('clock')" :size="12" /><span class="anx-asof-prefix">数据</span>截至 {{ asof }}</span>
         <div ref="popRoot" style="position: relative">
           <button v-tip="'目标与阈值'" class="anx-icobtn" :class="{ on: pop }" @click.stop="pop = !pop">
             <component :is="iconFor('sliders-horizontal')" :size="16" />
@@ -367,5 +372,8 @@ async function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakeven
      top 跟着锚点走:基档 34 钮配 42(下缘留 8),S 档钮抬到 44 → 52,缝还是 8。 */
   .anx-pop { top: 52px; width: min(268px, 92vw); }
 }
+/* 屏自写的「数据截至」整句(asofText)可能比工具条一行长(异常提醒中心三份数据 + 「1 项到 …」):
+   允许折行,不截尾巴。桌面档放得下照旧一行;≤960 右侧组本来就独占第二行。 */
+.anx-asof-text { white-space: normal; min-width: 0; }
 @media print { .anx-tools { display: none !important; } .anx-body { padding: 0; } }
 </style>

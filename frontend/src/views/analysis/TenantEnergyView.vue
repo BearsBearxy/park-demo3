@@ -1,20 +1,22 @@
 <script setup lang="ts">
-// 租户用能工作台(tenant-energy)v2 — spec §二.5,示意图2 左右结构:
-// 左列=租户搜索列表(按本期费额降序,点击选中);右=选中租户电/水费趋势 vs 园区均值带(AnaEChart)
-// + 应收实收对比 + 深链(查台账/查附表10);下方 Top20 榜(点击选中联动)+ 费额vs月租散点(点点选中)。
-// 口径与 v1 完全一致(数值锚点不变):s10 为费用金额(元),电=基本+标准+维护电费、水=标准+维护水费;
-// 「本期」=≤所选期间的最近 s10 月;窗口=≤本期的全部 s10 月;台账应收/实收仅覆盖既有期,如实标注。
+// 用能与缴费(tenant-energy)—— 2026-10 改稿(画布 tenant-energy-v2 七块板,图 = 规格)。
+// 这屏回答「这个月租户用电花了多少、钱收回来没有、哪几户最要紧」。
+// 按月:KPI 4 张 → 主卡「各户电费」前 20 户成对条(点条选中一户)→ 选中户读数卡 + 各户期末欠费 → 电费和月租散点。
+// 按年:KPI 4 张 → 主卡(全年各户合计)+ 右栏「应收和实收」图、各户期末欠费 → 选中户「电费和水费」大图 → 各户期末欠费变动。
+// 期间只往前回退:销售收入表 / 台账各取 ≤ 所选月的最近一月,和所选月不同就在那张卡头贴「显示 M月」;前面一个月都没有画空状态。
+// 屏上每一句字从句型库 anaSentence 出;单户两张图和异常提醒中心共用 tenantEnergyChart,突变用异常提醒中心的 detectSpikes(只比相邻自然月)、灰带同那边的全园电费中间一半(S-08)。
 // 数据变换纯函数见 ./TenantEnergy.logic.ts(单测)。
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
 import { useViewGate } from '@/composables/useViewGate'
-import AnaShell, { periodNote } from './AnaShell.vue'
+import AnaShell from './AnaShell.vue'
 import { usePeriod } from '@/analysis/usePeriod'
 import { anaSettings } from '@/analysis/anaSettings'
 import { fetchLedgerRows, fetchS10TenantMap, fetchTenants } from '@/analysis/anaData'
+import { buildFamilyMap } from '@/analysis/anaFamily'
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
 import type { TenantDTO } from '@/types/tenant'
 import { iconFor } from '@/components/ds/icon'
@@ -24,19 +26,22 @@ import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import FPStateTag from '@/components/fp/FPStateTag.vue'
-import { NEG, WARN, esc, fint, hues, inkA } from '@/components/ana/anaFmt'
-import { bandSeries } from '@/components/ana/anaTheme'
-import { PHASES } from '@/views/sales-income/layout'
-import { buildFamilyMap } from '@/analysis/anaFamily'
-import { bandReadout as bandReadoutOf, bandRefText as bandRefTextOf, buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries } from './TenantEnergy.logic'
+import * as S from '@/components/ana/anaSentence'
+import { esc } from '@/components/ana/anaFmt'
+import { anaPalette } from '@/components/ana/anaTheme'
+import { splitGaps, tenantEnergyOption, tenantEnergyReads, tenantLedger } from '@/components/ana/tenantEnergyChart'
+import { detectSpikes } from './monitor.logic'
+import { buildPayRows, buildTenantRows, familyBars, moverOutlier, parkQuartiles, pastYm, prevYm, tenantPeriods, yearRows, type Bar, type PayRow } from './TenantEnergy.logic'
 
+const T = S.TE
 const period = usePeriod()
 const router = useRouter()
 const tabs = useTabsStore()
 const loaded = ref(false)
 const err = ref('')
 const metric = ref<'elec' | 'water'>('elec')
-const TOGGLES: { k: 'elec' | 'water'; l: string }[] = [{ k: 'elec', l: '电费' }, { k: 'water', l: '水费' }]
+const METRICS = ['elec', 'water'] as const
+const M = computed(() => T.metric[metric.value])
 
 const tenantMap = ref<Map<string, AnalysisS10Row[]>>(new Map())
 const ledgerRows = ref<AnalysisLedgerRow[]>([])
@@ -51,9 +56,7 @@ async function reload() {
     tenantMap.value = tm
     ledgerRows.value = lr
     tenantList.value = ts
-    // 切回重读会重跑本函数:错误不清,重试成功后屏上仍挂着上次的失败文案(P3 T2 评审坐实)。
-    // 只在成功分支清:重试在途时失败件留在原地,不先闪出「s10 未录入」那张空态。
-    err.value = ''
+    err.value = ''   // 只在成功分支清:重试在途时失败件留在原地
   } catch (e) {
     if (my === seq) err.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -61,342 +64,470 @@ async function reload() {
   }
 }
 onMounted(reload)
-// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
-// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
+// 纯读屏没有草稿要保,切回来该看最新的(导入中心导完租户,回这屏必须是新名单)
 onReactivated(() => { void reload() })
 
-// ── 期区标签/配色(ECharts canvas 不识别 CSS 变量 → fpAnaTheme 蓝族字面值) ──
-const phaseName = (p: number): string => PHASES.find((x) => x.phase === p)?.short ?? `期区${p}`
-// 按当前外观取(暗色深蓝换灰蓝);在 computed / 模板里调才跟着切外观
-const phaseHex = (p: number): string => { const h = hues(), pal = [h.blue, h.mid, h.deep, h.teal]; return pal[(p - 1 + pal.length) % pal.length] }
-
-// ── 期间锚定:本期 = ≤ 所选期间的最近 s10 月(v1 口径不变) ──
-const s10Months = computed(() => {
-  const set = new Set<string>()
-  for (const rs of tenantMap.value.values()) for (const r of rs) set.add(r.acctMonth)
-  return [...set].sort()
+// ── 期间 ──
+const byYear = computed(() => period.sel.value.gran === 'year')
+const Y = computed(() => period.sel.value.year)
+const ym = computed(() => period.ym.value ?? `${Y.value}-12`)
+const ledYmOf = (r: AnalysisLedgerRow): string => `${r.year}-${String(r.month).padStart(2, '0')}`
+const s10Months = computed(() => [...new Set([...tenantMap.value.values()].flatMap((rs) => rs.map((r) => r.acctMonth)))].sort())
+const ledgerYms = computed(() => [...new Set(ledgerRows.value.map(ledYmOf))].sort())
+const inYear = (m: string) => m.startsWith(`${Y.value}-`)
+const yms = computed(() => s10Months.value.filter(inYear))      // 按年:销售收入表这一年有数的月
+const lms = computed(() => ledgerYms.value.filter(inYear))      // 按年:台账这一年有数的月
+const curYm = computed(() => (byYear.value ? null : pastYm(s10Months.value, ym.value)))
+const ledYm = computed(() => (byYear.value ? lms.value[lms.value.length - 1] ?? null : pastYm(ledgerYms.value, ym.value)))
+const pm = computed(() => {   // 上一个有数的月(12月比11月;2月比1月)
+  const i = curYm.value ? s10Months.value.indexOf(curYm.value) : -1
+  return i > 0 ? s10Months.value[i - 1] : null
 })
-const periodEnd = computed(() => period.ym.value ?? `${period.sel.value.year}-12`)
-const curYm = computed(() => {
-  const ms = s10Months.value
-  if (!ms.length) return ''
-  const le = ms.filter((m) => m <= periodEnd.value)
-  return le.length ? le[le.length - 1] : ms[0]
+const sFall = computed(() => !!curYm.value && curYm.value !== ym.value)
+const lFall = computed(() => !!ledYm.value && (byYear.value || ledYm.value !== ym.value))
+// 回退到的月:和所选同年只写月,跨年写年(S-34;选 2026年1月退到 2025年12月,写「12月」会读成 2026 年的,对抗复查 10-05)
+const mL = (u: string) => (u.slice(0, 4) === ym.value.slice(0, 4) ? S.ymMonth(u) : S.ymLabel(u))
+const per = (y: string | null) => (y && y !== ym.value ? mL(y) : '')
+const asofText = computed(() => {
+  const rows: [string, string][] = []
+  const l = ledgerYms.value[ledgerYms.value.length - 1], s = s10Months.value[s10Months.value.length - 1]
+  if (l) rows.push([T.table.ledger, l])
+  if (s) rows.push([T.table.s10, s])
+  return rows.length ? S.asofTables(rows) : undefined
 })
-const winMonths = computed(() => s10Months.value.filter((m) => m <= curYm.value))
 
-// §五策略2「回退必须显式」:本期落在所选期间之外 → 期间旁标签,台账期 → 应收实收卡头标签(月粒度比月;年粒度比年;相等不渲染)
-const selPeriodLabel = computed(() => period.ym.value ?? `${period.sel.value.year}年`)
-const outOfSel = (used: string): boolean =>
-  period.ym.value ? used !== period.ym.value : !used.startsWith(period.sel.value.year + '-')
-const s10Fallback = computed(() => !!curYm.value && outOfSel(curYm.value))
-const ymLabel = (ym: string): string => `${+ym.slice(0, 4)}年${+ym.slice(5, 7)}月`
-const mShort = (ym: string): string => `${+ym.slice(5, 7)}月`
-const metricLabel = computed(() => (metric.value === 'elec' ? '电费' : '水费'))
-
-// ── 每户统计(纯函数,v1 rowsCur 语义) ──
+// ── 各户:按月 = 所选月(回退后)这一月;按年 = 这一年有数的月合计 ──
 const rentByName = computed(() => {
   const m = new Map<string, number>()
   for (const t of tenantList.value) if (t.status === 1 && t.monthlyRent > 0) m.set(t.companyName, t.monthlyRent)
   return m
 })
-const rowsCur = computed(() => buildTenantRows(tenantMap.value, curYm.value, winMonths.value, metric.value, rentByName.value))
-const crossMean = computed(() => (rowsCur.value.length ? rowsCur.value.reduce((s, r) => s + r.cur, 0) / rowsCur.value.length : 0))
-const crossStd = computed(() => {
-  const m = crossMean.value
-  return rowsCur.value.length ? Math.sqrt(rowsCur.value.reduce((s, r) => s + (r.cur - m) * (r.cur - m), 0) / rowsCur.value.length) : 0
-})
-const anomCount = computed(() => rowsCur.value.filter((r) => Math.abs(r.z) >= 1.3).length)
-const presentPhases = computed(() => [...new Set(rowsCur.value.map((r) => r.phase))].sort((a, b) => a - b))
+const rows = computed<{ name: string; cur: number; vals: Map<string, number>; monthlyRent?: number | null }[]>(() => (byYear.value
+  ? yearRows(tenantMap.value, yms.value, metric.value)
+  : buildTenantRows(tenantMap.value, curYm.value ?? '', s10Months.value.filter((m) => m <= (curYm.value ?? '')), metric.value, rentByName.value)))
+const pay = computed(() => (ledYm.value ? buildPayRows(ledgerRows.value, ledYm.value) : []))
+const arr = computed(() => pay.value.filter((p) => p.bal > 0.005).sort((a, b) => b.bal - a.bal))
+// 按年:台账上一年同月(期末欠费、欠费户数、欠费变动都和它比)
+const pYm = computed(() => (byYear.value && ledYm.value ? `${Y.value - 1}-${ledYm.value.slice(5)}` : null))
+const pPay = computed(() => (pYm.value && ledgerYms.value.includes(pYm.value) ? buildPayRows(ledgerRows.value, pYm.value) : null))
 
-// ── 选中租户(默认 Top1;Top20 榜/散点/列表三处联动) ──
+// ── 选中户:点主卡的条(按家族时选主租户);默认 = 这一期第一户,销售收入表没数时取期末欠费第一 ──
 const selName = ref('')
-const selRow = computed(() => rowsCur.value.find((r) => r.name === selName.value) ?? rowsCur.value[0] ?? null)
+const sel = computed(() => {
+  const n = selName.value
+  if (n && (rows.value.some((r) => r.name === n) || (!rows.value.length && pay.value.some((p) => p.name === n)))) return n
+  return rows.value[0]?.name ?? arr.value[0]?.name ?? ''
+})
 function select(name: string) { selName.value = name }
 
-// ── 主图读数句:选中租户本期 vs 跨户区间(无对应月带数据 → 闭嘴) ──
-const curBandIdx = computed(() => winMonths.value.indexOf(curYm.value))
-const bandReadout = computed<string | null>(() => {
-  const r = selRow.value
-  const idx = curBandIdx.value
-  const lo = idx >= 0 ? parkBand.value.lo[idx] : null
-  const hi = idx >= 0 ? parkBand.value.hi[idx] : null
-  return bandReadoutOf(r?.cur ?? null, lo, hi, metricLabel.value)
+// ── KPI 4 张:售电收入 / 水费收入 · 收缴率 · 期末欠费、欠费户数(台账的月) ──
+const r1 = (v: number) => Math.round(v * 10) / 10
+const d1 = (a: number, b: number) => r1(r1(a) - r1(b))   // 屏上两数相减 = 屏上写的差
+const sumBy = <X,>(xs: X[], f: (x: X) => number) => xs.reduce((s, x) => s + f(x), 0)
+const owedWan = (ps: PayRow[]) => sumBy(ps.filter((p) => p.bal > 0.005), (p) => p.bal) / 1e4
+interface Tile { label: string; value: string; note?: string; dval?: string; ddir?: 'up' | 'dn'; dkey?: string; dtone?: 'up' }
+// tone 'up' 绿:欠费变少是向好;电费多了少了只写测量,欠费变多不标红(S-41)
+const moved = (d: number, val: string, key: string, good = false): Partial<Tile> => ({ dval: val, ddir: d < 0 ? 'dn' : 'up', dkey: key, dtone: good && d < 0 ? 'up' : undefined })
+const tiles = computed<Tile[]>(() => {
+  const out: Tile[] = []
+  const sell = S.teTotal(M.value), y = Y.value
+  if (byYear.value) {
+    if (!yms.value.length) out.push({ label: sell, value: '–', note: S.noPastNote(y, T.table.s10) })
+    else {
+      const prevYear = s10Months.value.some((m) => m.startsWith(`${y - 1}-`))
+      // ponytail: 上一年销售收入表有数时副行留空 —— 库里只有 2025 年一年,到第二年再定「和往年比」的写法
+      out.push({ label: S.tileLabel(sell, S.nMonths(yms.value.length)), value: S.yuan(sumBy(rows.value, (r) => r.cur) / 1e4), note: prevYear ? undefined : S.noPastNote(y - 1, T.table.s10) })
+    }
+  } else if (!curYm.value) out.push({ label: sell, value: '–', note: S.noPastNote(+ym.value.slice(0, 4), T.table.s10) })
+  else {
+    const tot = sumBy(rows.value, (r) => r.cur) / 1e4
+    const p = pm.value
+    const pTot = p ? sumBy([...tenantMap.value.values()].flat().filter((r) => r.acctMonth === p), (r) => r[metric.value]) / 1e4 : 0
+    const d = d1(tot, pTot)
+    out.push({ label: S.tileLabel(sell, per(curYm.value)), value: S.yuan(tot), ...(p ? moved(d, S.dWan(d), S.vsLabel(S.ymMonth(p))) : { note: S.coverN(rows.value.length, '', T.hu) }) })
+  }
+  const L = ledYm.value
+  if (!L) return out
+  // 收缴率:按月 = 这一期;按年 = 这一年台账各期合计
+  const led = byYear.value ? ledgerRows.value.filter((r) => r.year === y) : ledgerRows.value.filter((r) => ledYmOf(r) === L)
+  const recv = sumBy(led, (r) => r.receivable), coll = sumBy(led, (r) => r.collected)
+  const rate = recv ? +((coll / recv) * 100).toFixed(1) : 0
+  const ls = lms.value, cont = ls.length > 0 && +ls[ls.length - 1].slice(5) - +ls[0].slice(5) + 1 === ls.length
+  const rateSpan = byYear.value ? (cont ? S.monthSpan(+ls[0].slice(5), +ls[ls.length - 1].slice(5)) : S.nMonths(ls.length)) : per(L)
+  out.push({ label: S.tileLabel(T.tile.rate, rateSpan), value: `${rate.toFixed(1)}%`, note: S.vsTarget(rate, anaSettings.collectTarget) })
+  const aSum = owedWan(pay.value), n = arr.value.length
+  const lbA = S.tileLabel(T.tile.arrears, byYear.value ? S.ymMonth(L) : per(L)), lbN = S.tileLabel(T.tile.arrearsN, byYear.value ? S.ymMonth(L) : per(L))
+  if (byYear.value) {
+    // 和上一年同月比(te2-ask 7「比去年10月」);上一年同月台账录的户数少时不画箭头,照说有几户(te2-ask 8)
+    const q = pPay.value, m = +L.slice(5)
+    if (!q) {
+      out.push({ label: lbA, value: S.yuan(aSum), note: S.noLedgerYmNote(pYm.value!) }, { label: lbN, value: `${n} 户`, note: S.noLedgerYmNote(pYm.value!) })
+    } else {
+      const dA = d1(aSum, owedWan(q)), dN = n - q.filter((p) => p.bal > 0.005).length
+      // 上一年同月台账录的户比今年少:两张瓦都不画箭头,照说那个月台账只有几户(差额多半是多录了户,不是同口径的涨跌;10-05 按推荐)
+      const fewer = q.length < pay.value.length
+      out.push({ label: lbA, value: S.yuan(aSum), ...(fewer ? { note: S.ledNNote(pYm.value!, q.length) } : moved(dA, S.dWan(dA), S.vsLastYear(m), true)) })
+      out.push({ label: lbN, value: `${n} 户`, ...(fewer ? { note: S.ledNNote(pYm.value!, q.length) } : moved(dN, S.dHu(dN), S.vsLastYear(m), true)) })
+    }
+    return out
+  }
+  const lp = prevYm(L)
+  if (!ledgerYms.value.includes(lp)) {
+    out.push({ label: lbA, value: S.yuan(aSum), note: S.noLedgerNote(+lp.slice(5)) }, { label: lbN, value: `${n} 户`, note: S.noLedgerNote(+lp.slice(5)) })
+    return out
+  }
+  const q = buildPayRows(ledgerRows.value, lp)
+  const dA = d1(aSum, owedWan(q)), dN = n - q.filter((p) => p.bal > 0.005).length
+  out.push({ label: lbA, value: S.yuan(aSum), ...moved(dA, S.dWan(dA), S.vsLabel(S.ymMonth(lp)), true) })
+  out.push({ label: lbN, value: `${n} 户`, ...moved(dN, S.dHu(dN), S.vsLabel(S.ymMonth(lp)), true) })
+  return out
 })
-// D1:句子印了区间就得在同屏带出样本量 —— buildParkBand 逐月都推 n(即便 <20 未画带也有数,与 monitor 侧 Record 不同)。
-const curBandN = computed<number | null>(() => {
-  const idx = curBandIdx.value
-  return idx >= 0 ? parkBand.value.n[idx] : null
-})
-// F2(修复轮1):小字只报三件事(样本量/口径/单位),画法解释搬进同卡 AnaMethodNote。
-// C2:带宽门已删,跨户带无条件画 —— 这句小字与画不画带本来就无关,继续只报三件事。
-const bandRefText = computed<string>(() => bandRefTextOf(curBandN.value))
 
-// ── 台账:应收 vs 实收 + 欠费(v1 口径) ──
-const ledgerYmOf = (r: AnalysisLedgerRow): string => `${r.year}-${String(r.month).padStart(2, '0')}`
-const ledgerYms = computed(() => [...new Set(ledgerRows.value.map(ledgerYmOf))].sort())
-const ledgerYm = computed(() => {
-  const le = ledgerYms.value.filter((m) => m <= periodEnd.value)
-  return le.length ? le[le.length - 1] : ledgerYms.value[0] ?? ''
-})
-const ledgerFallback = computed(() => !!ledgerYm.value && outOfSel(ledgerYm.value))
-const payRows = computed(() => buildPayRows(ledgerRows.value, ledgerYm.value))
-const curCollect = computed(() => {
-  if (!ledgerYm.value) return null
-  let recv = 0, coll = 0
-  for (const r of ledgerRows.value) if (ledgerYmOf(r) === ledgerYm.value) { recv += r.receivable; coll += r.collected }
-  return { recv, coll, rate: recv ? +((coll / recv) * 100).toFixed(1) : 0 }
-})
-const arrears = computed(() => payRows.value.filter((p) => p.bal > 0.005))
-const arrearsSum = computed(() => arrears.value.reduce((s, p) => s + p.bal, 0))
-const payByName = computed(() => new Map(payRows.value.map((p) => [p.name, p])))
-const payDot = (name: string): string => {
-  const p = payByName.value.get(name)
-  if (!p) return 'var(--text-disabled)'
-  return p.status === 'normal' ? 'var(--hue-blue)' : p.status === 'partial' ? WARN : NEG
+// ── 图 ──
+// 横向条:一户一行;cut = 读数句点到的前 k 户(S-45 标边界,画在隐形的第二根纵轴上,线跟着卡宽走);sel = 选中户深蓝;
+// mark = 读数句点到的那户两根条标数;text = 单独一行写数、不画条(te2-ask 6)
+function rankOption(a: {
+  names: string[]; cur: (number | null)[]; prev: (number | null)[] | null; prevName?: string; curName: string; sel: number
+  cut?: { at: number; label: string } | null; mark?: number; text?: { idx: number; label: string } | null
+  fmt: (v: number) => string; markFmt?: (v: number) => string; left: number; gap?: string
+}): object {
+  const p = anaPalette(), c = { cur: p.cat[0], prev: p.cat[7], sel: p.cat[5] }
+  const lab = (i: number, v: number | null) => (i === a.mark && v != null && a.markFmt
+    ? { label: { show: true, position: 'right', formatter: a.markFmt(v), fontSize: 11, color: p.legend } } : {})
+  const series: object[] = []
+  if (a.prev) series.push({ name: a.prevName, type: 'bar', barWidth: 7, barGap: a.gap ?? '10%', itemStyle: { color: c.prev }, data: a.prev.map((v, i) => ({ value: v, ...lab(i, v) })) })
+  series.push({
+    name: a.curName, type: 'bar', barWidth: a.prev ? 7 : 12,
+    data: a.cur.map((v, i) => ({ value: v, itemStyle: { color: i === a.sel ? c.sel : c.cur }, ...lab(i, v) })),
+    // 单独一行的数:钉在这一行纵轴起点、往右写(不进悬停提示,那一行两根条都是空的)
+    markPoint: a.text ? { silent: true, symbol: 'rect', symbolSize: 1, itemStyle: { color: 'transparent' },
+      label: { show: true, position: 'right', distance: 4, formatter: a.text.label, color: p.legend, fontSize: 11 }, data: [{ coord: [0, a.text.idx] }] } : undefined,
+  })
+  if (a.cut) series.push({
+    type: 'line', yAxisIndex: 1, data: [], silent: true,
+    markLine: { silent: true, symbol: 'none', lineStyle: { color: p.cmp.baseline, width: 1, type: [4, 4] },
+      label: { position: 'insideEndBottom', formatter: a.cut.label, color: p.legend, fontSize: 11 }, data: [{ yAxis: a.cut.at }] },
+  })
+  return {
+    legend: a.prev ? { top: 0, data: [a.prevName, a.curName] } : undefined,
+    grid: { left: a.left, right: a.mark != null ? 72 : 24, top: a.prev ? 30 : 4, bottom: 24 },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: (v: unknown) => (typeof v === 'number' ? a.fmt(v) : '–') },
+    xAxis: { type: 'value', splitNumber: 4, axisLabel: { formatter: (v: number) => a.fmt(v) } },
+    yAxis: [
+      { type: 'category', inverse: true, data: a.names, axisLine: { lineStyle: { color: p.axis } }, axisLabel: { interval: 0, color: p.legend, fontSize: 11 } },
+      { type: 'value', min: 0, max: a.names.length, inverse: true, show: false },
+    ],
+    series,
+  }
 }
 
-// ── 家族榜单开关(方案A,spec §B/W3):仅左列榜单家族化;KPI/Top20/散点计数口径不动 ──
-const byFamily = ref(false)
+// ── 主卡:各户电费(前 20 户;按月和上一个有数的月成对比;按户 / 按家族开关照留 —— 07-11 方案A) ──
+const TOP = 20
+const isFam = ref(false)
 const familyMap = computed(() => buildFamilyMap(tenantList.value))
-const famRows = computed(() => buildFamilyRows(rowsCur.value, familyMap.value))
-
-// ── 左列搜索列表(按户/按家族统一显示行;点家族行 → 降级选中主租户本户,hint 注明) ──
-const q = ref('')
-const listRows = computed(() => {
-  const kw = q.value.trim()
-  if (!byFamily.value)
-    return (kw ? rowsCur.value.filter((r) => r.name.includes(kw)) : rowsCur.value)
-      .map((r) => ({ key: r.name, rank: r.rank, name: r.name, phase: r.phase, cur: r.cur, selectName: r.name, members: 1 }))
-  return (kw ? famRows.value.filter((r) => r.root.includes(kw)) : famRows.value)
-    .map((r) => ({ key: r.root, rank: r.rank, name: r.root, phase: r.phase, cur: r.cur, selectName: r.mainName, members: r.memberCount }))
+const q = computed(() => (isFam.value ? S.teFamQ : T.hu))
+const bars = computed<Bar[]>(() => {
+  const p = byYear.value ? null : pm.value
+  const b = rows.value.map((r) => ({ name: r.name, cur: r.cur, prev: p && r.vals.has(p) ? r.vals.get(p)! : null, pick: r.name }))
+  return isFam.value ? familyBars(b, familyMap.value) : b
 })
+const conc = computed(() => (bars.value.length ? S.concentration({ what: M.value, by: '', items: bars.value.map((b) => ({ name: b.name, value: b.cur })), q: q.value }) : null))
+const mainHint = computed(() => (byYear.value
+  ? S.hint(S.topN(TOP, q.value), S.coverTable(yms.value.length), '元')
+  : S.hint(S.topN(TOP, q.value), pm.value ? S.cmpWith(+pm.value.slice(5)) : '', '元')))
+// 样本量带上 0 元户、为负的户(te2-ask 9:按月电费也写「x 户是 ¥0」,和水费、按年一致)
+const mainRefs = computed(() => {
+  const rs = bars.value   // 按家族时数家族,和读数句「最多的 n 个家族」同一个数法
+  if (!rs.length) return []
+  return [S.teBaseZ(rs.filter((r) => r.cur > 0).length, M.value, rs.filter((r) => r.cur === 0).length, rs.filter((r) => r.cur < 0).length, q.value),
+    sFall.value ? S.thin({ table: T.table.s10, noMonth: S.ymMonth(ym.value), shown: mL(curYm.value!) }).text : ''].filter(Boolean)
+})
+const mainEmpty = computed(() => S.thin({ table: T.table.s10, noMonth: S.yearLabel(byYear.value ? Y.value : +ym.value.slice(0, 4)), cant: S.teRank(M.value) }).text)
+const mainOption = computed(() => {
+  const top = bars.value.slice(0, TOP), k = conc.value?.top.length ?? 0
+  const p = byYear.value ? null : pm.value
+  return rankOption({
+    names: top.map((b) => b.name), cur: top.map((b) => Math.round(b.cur)),
+    prev: p ? top.map((b) => (b.prev == null ? null : Math.round(b.prev))) : null, prevName: p ? S.ymMonth(p) : '', curName: curYm.value ? S.ymMonth(curYm.value) : '',
+    sel: top.findIndex((b) => b.pick === sel.value), cut: k && k <= TOP ? { at: k, label: S.topN(k, q.value) } : null, fmt: S.yi, left: 96,
+  })
+})
+function onMainClick(params: unknown) {
+  const b = bars.value.find((x) => x.name === (params as { name?: string })?.name)
+  if (b) select(b.pick)
+}
 
-// ── 主图:选中租户趋势 vs 园区均值带 ──
-const parkBand = computed(() => buildParkBand(rowsCur.value, winMonths.value))
-const trendOption = computed<object>(() => {
-  const months = winMonths.value
-  const band = parkBand.value
-  const name = selRow.value?.name ?? '—'
+// 异常提醒中心的模型:选中户的逐月电费水费、突变(detectSpikes)、全园电费中间一半 —— 两屏同一份(S-08)
+// 选中户逐月电费、水费(同月几行相加)和突变 —— 突变用异常提醒中心同一个 detectSpikes、同一个阈值、只比相邻自然月,两屏同一户同一句(S-08)
+const mon = computed(() => {
+  const by = new Map<string, { elec: number; water: number }>()
+  for (const r of tenantMap.value.get(sel.value) ?? []) { const a = by.get(r.acctMonth) ?? { elec: 0, water: 0 }; a.elec += r.elec; a.water += r.water; by.set(r.acctMonth, a) }
+  const months = [...by.keys()].sort(), elec = months.map((m) => by.get(m)!.elec), water = months.map((m) => by.get(m)!.water)
+  const spikes = (['elec', 'water'] as const).flatMap((series) => detectSpikes(series === 'elec' ? elec : water, anaSettings.spikeTh, months).map((x) => ({ series, ...x })))
+  return months.length ? { months, elec, water, spikes } : null
+})
+const quart = computed(() => parkQuartiles(tenantMap.value, metric.value))
+const elecBand = computed(() => (metric.value === 'elec' ? quart.value : parkQuartiles(tenantMap.value, 'elec')))   // 大图灰带一律是全园电费(同异常提醒中心)
+
+// ── 按月第二排左:选中户(读数句 + 去异常提醒中心;趋势和应收实收图在那屏)──
+const tenantCard = computed(() => {
+  const c = curYm.value, L = ledYm.value, name = sel.value
+  const row = c ? rows.value.find((r) => r.name === name) : undefined
+  let eRead: S.Said | null = null, ref = '', spikeRef = ''
+  if (c && row) {
+    const t = mon.value, a = t ? (metric.value === 'elec' ? t.elec : t.water) : []
+    const spikes = t ? t.spikes.filter((s) => s.series === metric.value && t.months[s.idx] <= c)
+      .map((s) => ({ what: M.value, ym: t.months[s.idx], prevYm: t.months[s.idx - 1], cur: a[s.idx], chg: s.chg })) : []
+    const b = quart.value[c]
+    eRead = S.jump({ spikes }) || S.band({ ym: c, value: row.cur, band: b, median: b?.p50, what: M.value })
+    // 突变句带 %:同卡写这户在销售收入表里缺了哪几个月;不缺月不出句
+    if (eRead?.type === 'jump') {
+      const win = s10Months.value.filter((m) => m <= c)
+      let span = 0
+      for (let x = win[0]; x && x <= c; x = S.nextYm(x)) span++
+      const gaps = S.gapsText(row.vals.keys(), win[0], c)
+      const xs: string[] = []
+      for (let x = win[0]; x && x <= c; x = S.nextYm(x)) xs.push(x)
+      // 整张表都没有的月和只有这户缺的月分开说(同异常提醒中心那张图,te2-ask 14)
+      if (gaps) ref = S.thin({ ...splitGaps(xs, [...row.vals.keys()], s10Months.value, gaps, false), table: T.table.s10, crossed: spikes.some((s) => S.nextYm(s.prevYm) !== s.ym), nGap: span - row.vals.size }).text
+      if (eRead.text.includes('；共')) spikeRef = S.spikeCount(anaSettings.spikeTh, M.value)   // 句尾写了「共 n 次」才注:只数所选那一项
+    }
+  }
+  const periods = L ? tenantPeriods(ledgerRows.value, name, L) : []
+  // balEnd:最后一期收齐但期末仍欠时照说(te2-ask 16)
+  const cRead = L ? (periods.length ? S.collect({ periods, balEnd: periods[periods.length - 1].end }) : S.thin({ noRows: T.table.ledger })) : null
   return {
-    grid: { left: 64, right: 18, top: 34, bottom: 26 },
-    legend: { top: 0, data: [name, '园区均值'] },
-    tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (v == null ? '—' : fint(v as number) + ' 元') },
-    xAxis: { type: 'category', data: months.map(mShort), boundaryGap: false },
-    yAxis: { type: 'value', axisLabel: { formatter: (v: number) => fint(v) } },
-    series: [
-      // C2:这里曾套一道「半宽/中位 > 20% 就不画带」的门。这条带的 lo=max(0, 均值−一个波动幅度),
-      // 实测七个月的 mean−σ 全为负、lo 全被夹到 0,比值恒等于 1.000 —— 门一挂上就是一个月都不画。
-      // 带无条件画;下沿被 0 截断时读数句闭嘴(见 bandReadout)。
-      ...bandSeries(band.lo, band.hi, { name: '跨户波动范围带' }),
-      // spec §C 规则4:稀疏序列缺月不连线蒙混 → connectNulls:false 断点呈现(hint 注明断点含义)
-      { name: '园区均值', type: 'line', connectNulls: false, data: band.mean, symbol: 'none', lineStyle: { type: 'dashed', width: 1.5, color: inkA(.4) }, itemStyle: { color: inkA(.4) } },
-      { name, type: 'line', connectNulls: false, data: tenantSeries(selRow.value, months), symbolSize: 7, lineStyle: { width: 2.5, color: hues().blue }, itemStyle: { color: hues().blue } },
-    ],
+    title: S.tenantTitle(name, eRead ? S.teTenant(M.value, !!cRead) : S.MON.card.ledger),
+    reads: [eRead?.text, cRead?.text].filter((x): x is string => !!x),
+    refs: [ref, spikeRef, cRead ? S.teLedgerAll : ''].filter(Boolean),
+    hasLedger: !!cRead,
   }
 })
 
-// ── 选中租户:应收 vs 实收(台账各期) ──
-const selPay = computed(() => {
-  if (!selRow.value) return []
-  return ledgerYms.value.map((ym) => {
-    let recv = 0, coll = 0, bal = 0
-    for (const r of ledgerRows.value) {
-      if (ledgerYmOf(r) !== ym || r.tenantName !== selRow.value?.name) continue
-      recv += r.receivable; coll += r.collected; bal += r.balanceEnd
-    }
-    return { ym, recv, coll, bal }
-  }).filter((x) => x.recv || x.coll || x.bal)
+// ── 各户期末欠费:一句集中度 + 去现金流量分析(逐户清单在那屏,不重画)──
+const arrCard = computed(() => {
+  const a = arr.value
+  const aConc = a.length ? S.concentration({ what: T.tile.arrears, by: '', items: a.map((p) => ({ name: p.name, value: p.bal })), q: T.hu }) : null
+  const read = ledYm.value ? aConc : S.thin({ table: T.table.ledger, noMonth: byYear.value ? S.yearLabel(Y.value) : S.ymMonth(ym.value), cant: T.tile.arrears })
+  // 选中户卡里没有台账句时,「台账含租金」那句挪到这张卡(按年由右栏应收和实收图交代)
+  return { read: read?.text ?? '', refs: [aConc ? S.teBase(a.length, T.tile.arrears) : '', !byYear.value && ledYm.value && !tenantCard.value.hasLedger ? S.teLedgerAll : ''].filter(Boolean) }
 })
-const payOption = computed<object>(() => ({
-  grid: { left: 64, right: 18, top: 34, bottom: 26 },
-  legend: { top: 0 },
-  tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (v == null ? '—' : '¥' + ((v as number) / 10000).toFixed(1) + '万') },
-  xAxis: { type: 'category', data: selPay.value.map((x) => x.ym) },
-  yAxis: { type: 'value', axisLabel: { formatter: (v: number) => (v / 10000).toFixed(0) + '万' } },
-  series: [
-    { name: '应收', type: 'bar', barWidth: 22, data: selPay.value.map((x) => +x.recv.toFixed(2)), itemStyle: { color: hues().pale } },
-    { name: '实收', type: 'bar', barWidth: 22, data: selPay.value.map((x) => +x.coll.toFixed(2)), itemStyle: { color: hues().blue } },
-    // C6-16 ⑤:name 恒定、'YYYY-MM' 类目随租户漂移 → 换租户按 name 形变是假中间数据;id 带租户键(+序号防撞 idMap)瞬换
-  ].map((s, i) => ({ ...s, id: `pay-${i}-${selRow.value?.name ?? ''}` })),
-}))
 
-// ── Top20 榜(点击选中联动) ──
-const topRows = computed(() => rowsCur.value.slice(0, 20))
-const topOption = computed<object>(() => ({
-  grid: { left: 118, right: 46, top: 8, bottom: 26 },
-  tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: (v: unknown) => fint(v as number) + ' 元' },
-  xAxis: { type: 'value', axisLabel: { formatter: (v: number) => fint(v) } },
-  yAxis: { type: 'category', inverse: true, data: topRows.value.map((r) => r.name), axisLabel: { width: 104, overflow: 'truncate' } },
-  series: [{
-    name: `本期${metricLabel.value}`, type: 'bar', barWidth: 12,
-    data: topRows.value.map((r) => ({
-      value: +r.cur.toFixed(0),
-      itemStyle: { color: r.name === selRow.value?.name ? hues().deep : hues().mid },
-    })),
-  }],
-}))
-function onTopClick(params: unknown) {
-  const p = params as { name?: string }
-  if (p?.name) select(p.name)
-}
-
-// ── 费额 vs 月租散点(点点选中) ──
-const scatterRows = computed(() => rowsCur.value.filter((r) => r.monthlyRent != null))
-// spec §T2:x 轴(月租)默认对数(小户与大户同图可读);log 下月租≤0 无法取对数 → 过滤并在卡头 hint 披露计数
+// ── 按月第三排:电费和月租(散点;横轴对数默认、可切线性 —— 07-12 用户拍板;只画在租、有月租的户)──
 const xLog = ref(true)
-const scatterSplit = computed(() => splitLogPoints(scatterRows.value, (r) => r.monthlyRent as number, xLog.value))
-const scatterOption = computed<object>(() => {
-  const maxTotal = Math.max(...scatterRows.value.map((r) => r.winTotal), 1)
+const pts = computed(() => (byYear.value ? [] : rows.value.filter((r) => r.monthlyRent != null)
+  .map((r) => ({ name: r.name, x: r.monthlyRent as number, y: r.cur, ratio: (r.cur / (r.monthlyRent as number)) * 100 }))))
+const ex = computed(() => (pts.value.length >= 2
+  ? S.extremes({ metric: S.teRatio(M.value), items: pts.value.map((p) => ({ label: p.name, value: p.ratio })), fmt: (v) => v.toFixed(1) + '%', q: T.hu }) : null))
+const scatterRefs = computed(() => {
+  const noRent = rows.value.length - pts.value.length
+  const selOff = rows.value.some((r) => r.name === sel.value) && !pts.value.some((p) => p.name === sel.value)
+  return [S.teRentBasis(M.value), noRent ? S.thin({ noRent, sel: selOff ? sel.value : '' }).text : ''].filter(Boolean)
+})
+const scatterEmpty = computed(() => S.thin({ table: T.table.s10, noMonth: S.yearLabel(+ym.value.slice(0, 4)), cant: S.teRatio(M.value) }).text)
+const scatterOption = computed(() => {
+  const p = anaPalette(), dot = p.cat[0], deep = p.cat[5]
+  const hi = new Set(ex.value ? ex.value.his.map((x) => x.label) : []), lo = new Set(ex.value ? ex.value.los.map((x) => x.label) : [])
+  const yMax = Math.max(...pts.value.map((x) => x.y), 1)
+  const axisX = { lineStyle: { color: p.axis } }
   return {
-    grid: { left: 64, right: 18, top: 20, bottom: 40 },
-    tooltip: {
-      formatter: (p: { data?: { name?: string; value?: number[]; phase?: number } }) => {
-        const d = p.data
-        if (!d?.value) return ''
-        return `${esc(d.name)}<br/>月租 ${d.value[0]}万 · 本期${metricLabel.value} ${fint(d.value[1])} 元<br/>期区 ${phaseName(d.phase ?? 1)}`
-      },
-    },
-    xAxis: { type: xLog.value ? 'log' : 'value', name: '月租金(万)', nameLocation: 'middle', nameGap: 26 },
-    yAxis: { type: 'value', name: `本期${metricLabel.value}(元)`, axisLabel: { formatter: (v: number) => fint(v) } },
+    grid: { left: 72, right: 28, top: 30, bottom: 40 },
+    tooltip: { formatter: (q: { data?: { name?: string; value?: number[] } }) => (q.data?.value ? `${esc(q.data.name)}<br/>${T.axis.rent} ${S.yi(q.data.value[0])} · ${M.value} ${S.yi(q.data.value[1])}` : '') },
+    xAxis: { type: xLog.value ? 'log' : 'value', logBase: 10, name: T.axis.rent, nameLocation: 'middle', nameGap: 24, nameTextStyle: { fontSize: 11, color: p.label },
+      axisLabel: { formatter: (v: number) => S.yi(v), fontSize: 11, color: p.label }, axisLine: { show: true, ...axisX }, axisTick: { show: false }, splitLine: { lineStyle: { color: p.grid } } },
+    yAxis: { type: 'value', name: M.value, nameTextStyle: { fontSize: 11, color: p.label, align: 'right' }, max: metric.value === 'elec' ? Math.ceil(yMax / 20000) * 20000 : undefined, axisLabel: { formatter: (v: number) => S.yi(v) } },
     series: [{
-      type: 'scatter',
-      data: scatterSplit.value.shown.map((r) => ({
-        name: r.name, phase: r.phase,
-        value: [+((r.monthlyRent as number) / 10000).toFixed(2), +r.cur.toFixed(0)],
-        symbolSize: 6 + Math.sqrt(r.winTotal / maxTotal) * 18,
-        itemStyle: {
-          color: phaseHex(r.phase), opacity: r.name === selRow.value?.name ? 1 : 0.55,
-          borderColor: r.name === selRow.value?.name ? inkA(1) : 'transparent', borderWidth: 1.5,
-        },
+      type: 'scatter', symbolSize: 8, z: 2,
+      data: pts.value.map((x) => ({
+        name: x.name, value: [x.x, Math.round(x.y)],
+        itemStyle: { color: x.name === sel.value ? deep : dot, opacity: x.name === sel.value || hi.has(x.name) ? 1 : 0.5 },
+        label: hi.has(x.name) || (lo.size <= 2 && lo.has(x.name)) || x.name === sel.value
+          ? { show: true, formatter: x.name, position: 'right', fontSize: 11, color: p.legend, textBorderColor: p.calloutCore, textBorderWidth: 3 } : { show: false },
       })),
-      markLine: {
-        silent: true, symbol: 'none',
-        lineStyle: { type: 'dashed', color: inkA(.4) },
-        label: { formatter: '户均', color: inkA(.4), fontSize: 11 },
-        data: [{ yAxis: +crossMean.value.toFixed(0) }],
-      },
+      // 读数句点到的最低那几户:并列时只写「n 户」,点上加白环(同异常提醒中心突变点的环)
+      markPoint: { silent: true, symbol: 'circle', symbolSize: 10, label: { show: false }, itemStyle: { color: p.calloutCore, borderColor: deep, borderWidth: 2 },
+        data: lo.size > 2 ? pts.value.filter((x) => lo.has(x.name)).map((x) => ({ coord: [x.x, Math.round(x.y)] })) : [] },
     }],
   }
 })
 function onScatterClick(params: unknown) {
-  const p = params as { data?: { name?: string } }
-  if (p?.data?.name) select(p.data.name)
+  const n = (params as { data?: { name?: string } })?.data?.name
+  if (n) select(n)
 }
 
-// ── 深链(openFresh 页签语义 + periodLink 发链,参照 ChurnView.goLedger) ──
-const selCompany = computed(() => {
-  const name = selRow.value?.name
-  if (!name) return ''
-  const rs = ledgerRows.value.filter((r) => r.tenantName === name)
-  return rs.length ? rs[rs.length - 1].companyName : ''
+// ── 按年:两张单户图的宽(横轴隔几格标一次看宽)。卡是数据到了才挂上的,按元素出现时再量 ──
+const W = reactive({ trend: 946, ledger: 292 })
+const ro = typeof ResizeObserver === 'undefined' ? null
+  : new ResizeObserver((es) => { for (const e of es) { const k = (e.target as HTMLElement).dataset.w as keyof typeof W; W[k] = Math.max(160, Math.round(e.contentRect.width)) } })
+const els: Partial<Record<keyof typeof W, HTMLElement>> = {}
+const track = (k: keyof typeof W) => (el: unknown) => {
+  if (!(el instanceof HTMLElement) || !ro || els[k] === el) return
+  if (els[k]) ro.unobserve(els[k]!)
+  els[k] = el
+  ro.observe(el)
+}
+const trackTrend = track('trend'), trackLedger = track('ledger')
+onBeforeUnmount(() => ro?.disconnect())
+
+// 右栏上:选中户应收和实收图 = 异常提醒中心那张(共用 tenantLedger);横轴只取这一年的台账期;rows 带期末结余(te2-ask 16)
+const yLed = computed(() => {
+  if (!byYear.value || !sel.value) return null
+  const set = new Set(lms.value)
+  const rs = ledgerRows.value.filter((r) => r.tenantName === sel.value && set.has(ledYmOf(r)))
+    .map((r) => ({ ym: ledYmOf(r), co: r.companyName, recv: r.receivable, coll: r.collected, end: r.balanceEnd }))
+  return tenantLedger({ rows: rs, width: W.ledger, allFees: true, tableYms: lms.value })
 })
-// 跳到模块屏的入口:没有目标屏的查看权就置灰、悬停写明缺哪一项(RBAC v3)
+// 跳到模块屏的入口:没有目标屏的查看权就置灰、悬停写明缺哪一项(RBAC v3,master 0.28.0)
 const { lack } = useViewGate()
-function goLedger() {
-  if (!selRow.value || !ledgerYm.value) return
-  tabs.openDeep('ledger')
-  router.push(periodLink('ledger', { p: periodOf(+ledgerYm.value.slice(0, 4), +ledgerYm.value.slice(5, 7)), extra: { company: selCompany.value, tenant: selRow.value.name } }))
-}
-function goS10() {
-  if (!selRow.value || !curYm.value) return
-  tabs.openDeep('sales-income')
-  router.push(periodLink('sales-income', { p: periodOf(+curYm.value.slice(0, 4), +curYm.value.slice(5, 7)), co: selRow.value.phase, extra: { tenant: selRow.value.name } }))
-}
 
-const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.value.name) ?? null : null))
+// 第二排:选中户电费和水费大图 = 异常提醒中心那张(1–12 月每格都标,缺月留空;突变、灰带取异常屏的模型)
+const yTrend = computed(() => {
+  const t = mon.value
+  if (!byYear.value || !t) return null
+  const xs: string[] = []
+  for (let x = `${Y.value}-01`; x <= `${Y.value}-12`; x = S.nextYm(x)) xs.push(x)
+  const keep = t.months.filter((m) => m <= xs[11]).length   // 只用这一年末月以前的数(months 升序)
+  const months = t.months.slice(0, keep), elec = t.elec.slice(0, keep), water = t.water.slice(0, keep)
+  if (!months.some((m) => m >= xs[0])) return null
+  const R = tenantEnergyReads({ xs, months, elec, water, raw: t.spikes.filter((s) => s.idx < keep), band: elecBand.value, table: T.table.s10,
+    tableMonths: s10Months.value, crossedOnlyPick: true })
+  const markText = R.pick ? (R.read as { mark?: string } | null)?.mark ?? '' : ''
+  const { option, bandRef } = tenantEnergyOption({ xs, months, elec, water, spikes: R.spikes, pick: R.pick, markText, band: elecBand.value, width: W.trend })
+  return {
+    option, read: R.read?.text ?? '',
+    // 「共 n 次」数的是什么:紧跟读数句的注解;灰带被压扁时写出范围
+    refs: [R.ref?.text, R.read?.text.includes('；共') ? S.spikeCount(anaSettings.spikeTh) : '', bandRef].filter((x): x is string => !!x),
+  }
+})
+
+// 第三排:各户期末欠费变动(上一年同月 → 今年这个月,按户;两年台账都有的户才比,变动最大的 10 户)
+const K = 10
+const yMove = computed(() => {
+  if (!byYear.value || !ledYm.value || !pYm.value) return null
+  const pm2 = new Map((pPay.value ?? []).map((p) => [p.name, Math.max(p.bal, 0) / 1e4]))
+  const cm = new Map(pay.value.map((p) => [p.name, Math.max(p.bal, 0) / 1e4]))
+  const items = [...new Set([...pm2.keys(), ...cm.keys()])].map((n) => ({ name: n, prev: pm2.get(n) ?? null, cur: cm.get(n) ?? null }))
+  const both = items.filter((i): i is { name: string; prev: number; cur: number } => i.prev != null && i.cur != null)
+  const mv = S.movers({ items, prevLabel: S.ymLabel(pYm.value), table: T.table.ledger, q: T.hu })
+  const top = [...both].sort((a, b) => Math.abs(b.cur - b.prev) - Math.abs(a.cur - a.prev)).slice(0, K).map((i) => ({ name: i.name, prev: r1(i.prev), cur: r1(i.cur) }))
+  const out = moverOutlier(top, mv?.top)
+  const oi = top.findIndex((i) => i.name === out), mi = top.findIndex((i) => i.name === mv?.top)
+  return {
+    hint: S.hint(S.teMovers(K), S.cmpWithYm(pYm.value), '万元'),
+    read: mv?.text ?? '',
+    ref: both.length ? S.teBoth(Y.value - 1, Y.value, +ledYm.value.slice(5), both.length) : '',
+    option: top.length ? rankOption({
+      names: top.map((i) => i.name), cur: top.map((i) => (i.name === out ? null : i.cur)), prev: top.map((i) => (i.name === out ? null : i.prev)),
+      prevName: S.ymLabel(pYm.value), curName: S.ymLabel(ledYm.value), sel: top.findIndex((i) => i.name === sel.value),
+      text: oi >= 0 ? { idx: oi, label: S.teMoveRow(top[oi].prev, top[oi].cur) } : null,
+      mark: oi < 0 && mi >= 0 ? mi : undefined, markFmt: S.yuan, fmt: S.axisWan, left: 120, gap: '60%',
+    }) : null,
+  }
+})
+
+// ── 链接(发链统一 periodLink;异常提醒中心认 tenant=,p 是这屏所选的期) ──
+function goAnomaly() {
+  if (!sel.value) return
+  tabs.openDeep('anomaly')
+  router.push(periodLink('anomaly', { p: periodOf(Y.value, byYear.value ? null : period.sel.value.month), extra: { tenant: sel.value } }))
+}
+function goArrears() {
+  tabs.openDeep('fin-cashflow')
+  router.push('/fin-cashflow')
+}
 </script>
 
 <template>
-  <!-- §五:月敏感屏(full);「本期=≤所选的最近 s10 月」回退以期间选择旁的标签显式 -->
-  <AnaShell period-mode="full" :kpi-hold="!loaded ? 6 : 0">
-    <!-- v-if 必须在槽内层:挂在 <template #kpis> 上时条件为假 → $slots.kpis 不存在 →
-         AnaShell 的容器判不到、连同 min-height 一起不渲染 → 数据到达时整条 KPI 带凭空插入,
-         把下方图表整体下推 93px(PAGE-BEHAVIOR-SPEC §1.4)。写法对齐 ExpiryView。 -->
+  <AnaShell period-mode="full" :kpi-hold="!loaded ? 4 : 0" :asof-text="asofText">
     <template #kpis>
-      <template v-if="loaded && !err && s10Months.length">
-      <AnaKpiTile label="本期覆盖租户" :value="`${rowsCur.length} 户`" :note="curYm" />
-      <AnaKpiTile :label="`户均${metricLabel}`" :value="`${fint(crossMean)} 元`" :note="`跨户波动 ${fint(crossStd)} 元`" />
-      <!-- spec §C/C1 人话化:主标签人话,z 分数口径退 AnaMethodNote(计算零变化) -->
-      <AnaKpiTile label="用量异常户" :value="`${anomCount} 户`" note="较自身常态明显偏离" />
-      <AnaKpiTile v-if="curCollect" :label="`收缴率(${ledgerYm})`" :value="`${curCollect.rate}%`" :delta="+(curCollect.rate - anaSettings.collectTarget).toFixed(1)" :kind="`vs 目标 ${anaSettings.collectTarget}%`" />
-      <AnaKpiTile v-else label="收缴率" value="—" note="台账未录入" />
-      <AnaKpiTile label="期末欠费" :value="`¥${(arrearsSum / 10000).toFixed(1)}万`" :note="ledgerYm || '台账未录入'" />
-      <AnaKpiTile label="欠费户数" :value="`${arrears.length} 户`" :note="ledgerYm || '台账未录入'" />
+      <template v-if="loaded && !err">
+        <AnaKpiTile v-for="(k, i) in tiles" :key="i" v-bind="k" pct-unit />
       </template>
     </template>
-    <!-- §五策略2:所选期无 s10 →「本期」回退最近覆盖月,整屏口径 → 期间选择旁标签(画布 06-D,禁静默) -->
-    <template #period-note>
-      <FPStateTag v-if="s10Fallback && !err" tone="muted">{{ periodNote(selPeriodLabel, curYm) }}</FPStateTag>
-    </template>
     <template #tools>
-      <!-- 取数途中占位不可见(手机上工具条会因它多折一行,数据到了才插进来整页下推 38px);取完确实没数据才拿掉 -->
-      <div v-if="!loaded || (!err && s10Months.length)" class="anx-seg te2-seg" :class="{ 'ana-hole': !loaded }">
-        <button v-for="o in TOGGLES" :key="o.k" :class="{ on: metric === o.k }" @click="metric = o.k">{{ o.l }}</button>
+      <span class="te2-name"><component :is="iconFor('activity')" :size="15" />{{ T.screen }}</span>
+      <!-- 取数途中占位不可见(手机上工具条会因它多折一行,数据到了才插进来整页下推 38px) -->
+      <div v-if="!loaded || !err" class="anx-seg te2-seg" :class="{ 'ana-hole': !loaded }">
+        <button v-for="k in METRICS" :key="k" :class="{ on: metric === k }" @click="metric = k">{{ T.metric[k] }}</button>
       </div>
     </template>
 
-    <!-- 首进:版式已知就不转圈(C6-01)。图块高 = 该图 :height 字面值(趋势 300 · 应收实收 200 ·
-         Top20 440 · 散点 440;走 AnaSkelChart,与图同一张 S 档降档表),卡头 20(+ .av2-card-h 下距 8 = 28)。左列列表卡复用 .te2-left 的
-         flex 列:搜索框 31(padding 7 + 12px 行 + 边框)+ 下距 8,列表条 flex:1 —— 行高由右列那一栏定,
-         与真版式同一条规则;≤1280 左卡独占一行、不被右栏拉伸,列表条钉 560(.te2-skel-list)。读数句 .ana-read(margin-top 8)/ 参照系 .ana-ref(margin-top 2)照留。
-         KPI 行由 .anx-kpis 的 min-height 94 兜位,首进期瓦片不画。数据到了原地硬切,不做淡入、不错峰。 -->
+    <!-- 首进:版式已知就不转圈(C6-01)。图块高 = 该图 :height 字面值(主卡 454 · 散点 300 · 按年应收实收 330 · 电费和水费 300 · 欠费变动 354),
+         卡头、读数句、参照、链接用真版式同一批类,随数据变的字换成隐形占位。按年 / 按月各一份,和真版式同序。 -->
     <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <div v-if="!loaded" class="ak-page te2-skel">
       <div class="av2-grid">
-        <div class="av2-card av2-s4 te2-left">
+        <div class="av2-card" :class="byYear ? 'av2-s8' : 'av2-s12'">
           <div class="av2-card-h">
-            <span class="t">租户列表</span>
+            <span class="t">{{ S.teRank(M) }}</span>
             <span class="te2-lh">
-              <span class="hint">按本期{{ metricLabel }}降序<span class="hint-desk"> · 点击选中</span></span>
-              <span class="anx-seg mini" aria-hidden="true"><button class="on" disabled tabindex="-1">按户</button><button disabled tabindex="-1">按家族</button></span>
+              <span class="hint"><span class="ana-hole">{{ S.hint(S.topN(TOP), '元') }}</span></span>
+              <span class="anx-seg mini" aria-hidden="true"><button class="on" disabled tabindex="-1">{{ T.seg.by[0] }}</button><button disabled tabindex="-1">{{ T.seg.by[1] }}</button></span>
             </span>
           </div>
-          <input class="te2-search" type="search" disabled placeholder="搜索租户" />
-          <div class="fp-shim te2-skel-list"></div>
+          <AnaSkelChart :height="454" />
+          <p class="ana-read hold"></p>
+          <p class="ana-ref"><span class="ana-hole">{{ T.hu }}</span></p>
         </div>
-        <div class="te2-right av2-s8">
-          <div class="av2-card">
+        <template v-if="byYear">
+          <div class="te2-right av2-s4">
+            <div class="av2-card">
+              <div class="av2-card-h"><span class="t"><span class="ana-hole">{{ T.hu }}</span> · {{ S.MON.card.ledger }}</span><span class="hint"><span class="ana-hole">{{ T.hu }}</span></span></div>
+              <AnaSkelChart :height="330" />
+              <p class="ana-ref"><span class="ana-hole">{{ T.hu }}</span></p>
+            </div>
+            <div class="av2-card te2-col te2-grow">
+              <div class="av2-card-h"><span class="t">{{ S.teArrearsCard }}</span></div>
+              <p class="ana-read hold"></p>
+              <p class="ana-ref"><span class="ana-hole">{{ T.hu }}</span></p>
+              <span class="te-go ana-hole">{{ T.goArrears }}</span>
+            </div>
+          </div>
+          <div class="av2-card av2-s12 te2-col">
+            <div class="av2-card-h"><span class="t"><span class="ana-hole">{{ T.hu }}</span> · {{ S.MON.card.energy }}</span><span class="hint">{{ S.hint('元') }}</span></div>
+            <AnaSkelChart :height="300" />
+            <p class="ana-read hold"></p>
+            <!-- 参照按默认那户(全年第一)的三行留:缺月、「共 n 次」的门槛、灰带范围 -->
+            <p class="ana-ref"><span class="ana-hole">{{ T.hu }}</span></p>
+            <p class="ana-ref"><span class="ana-hole">{{ T.hu }}</span></p>
+            <p class="ana-ref"><span class="ana-hole">{{ T.hu }}</span></p>
+            <span class="te-go ana-hole">{{ T.go }}</span>
+          </div>
+          <div class="av2-card av2-s12">
+            <div class="av2-card-h"><span class="t">{{ S.teArrearsMove }}<FPStateTag tone="muted" style="margin-left: 8px"><span class="ana-hole">{{ S.fallbackTag(10) }}</span></FPStateTag></span><span class="hint"><span class="ana-hole">{{ S.teMovers(K) }}</span></span></div>
+            <AnaSkelChart :height="354" />
+            <p class="ana-read hold"></p>
+            <p class="ana-ref"><span class="ana-hole">{{ T.hu }}</span></p>
+          </div>
+        </template>
+        <template v-else>
+          <div class="av2-card av2-s6 te2-col">
+            <div class="av2-card-h"><span class="t"><span class="ana-hole">{{ T.hu }}</span> · {{ M }}</span></div>
+            <p class="ana-read hold"></p>
+            <p class="ana-read hold"></p>
+            <p class="ana-ref"><span class="ana-hole">{{ T.hu }}</span></p>
+            <span class="te-go ana-hole">{{ T.go }}</span>
+          </div>
+          <div class="av2-card av2-s6 te2-col">
+            <div class="av2-card-h"><span class="t">{{ S.teArrearsCard }}</span></div>
+            <p class="ana-read hold"></p>
+            <p class="ana-ref"><span class="ana-hole">{{ T.hu }}</span></p>
+            <span class="te-go ana-hole">{{ T.goArrears }}</span>
+          </div>
+          <div class="av2-card av2-s12">
             <div class="av2-card-h">
-              <span class="t"><span class="ana-hole">某某</span> · {{ metricLabel }}趋势 vs 园区均值带</span>
-              <span class="hint">窗口 <span class="ana-hole">00</span> 期</span>
+              <span class="t">{{ S.teScatter(M) }}</span>
+              <span class="te2-lh">
+                <span class="hint"><span class="ana-hole">{{ S.hint(T.hu, '元') }}</span></span>
+                <span class="anx-seg mini" aria-hidden="true"><button class="on" disabled tabindex="-1">{{ T.seg.axis[0] }}</button><button disabled tabindex="-1">{{ T.seg.axis[1] }}</button></span>
+              </span>
             </div>
             <AnaSkelChart :height="300" />
             <p class="ana-read hold"></p>
-            <p class="ana-ref"><span class="ana-hole">占位</span></p>
+            <p class="ana-ref"><span class="ana-hole">{{ T.hu }}</span></p>
+            <p class="ana-ref"><span class="ana-hole">{{ T.hu }}</span></p>
           </div>
-          <div class="av2-card">
-            <!-- 收缴率一行跟数据出没,库里现有数据有,骨架按「有」留位(台账期回退 2026-10-01 起是卡头标签,不占行)。
-                 卡头的租户名是默认选中的榜首(现为两字简称),占位按两字留;榜首换成长名字时卡头会多折一行。 -->
-            <div class="av2-card-h">
-              <span class="t"><span class="ana-hole">某某</span> · 应收 vs 实收</span>
-              <span class="te2-links">
-                <button class="te2-link" disabled tabindex="-1">查台账 →</button>
-                <button class="te2-link" disabled tabindex="-1">查附表10 →</button>
-              </span>
-            </div>
-            <AnaSkelChart :height="200" />
-            <div class="te2-payline"><span class="ana-hole">0000-00 收缴率 <b>00%</b> · 期末结余 <b>¥0.0万</b></span></div>
-          </div>
-        </div>
-        <div class="av2-card av2-s6">
-          <div class="av2-card-h"><span class="t">本期{{ metricLabel }} Top 20</span><span class="hint"><span class="hint-desk">点击条形选中租户</span></span></div>
-          <AnaSkelChart :height="440" />
-        </div>
-        <div class="av2-card av2-s6">
-          <div class="av2-card-h">
-            <span class="t">{{ metricLabel }} vs 月租金</span>
-            <span class="te2-lh">
-              <span class="hint"><span class="hint-desk">点点选中 · </span>气泡=窗口累计 · 虚线=户均<template v-if="xLog"> · 对数刻度:小户与大户同图可读</template></span>
-              <span class="anx-seg mini" aria-hidden="true"><button :class="{ on: xLog }" disabled tabindex="-1">对数</button><button :class="{ on: !xLog }" disabled tabindex="-1">线性</button></span>
-            </span>
-          </div>
-          <AnaSkelChart :height="440" />
-          <!-- 图例按库里现有四个期区留一行 -->
-          <div class="cz-legend ana-hole" style="margin-top: 6px">
-            <span v-for="p in [1, 2, 3, 4]" :key="p" class="cz-leg"><span class="sw"></span>{{ phaseName(p) }}</span>
-          </div>
-        </div>
+        </template>
       </div>
     </div>
     <!-- skel:end -->
@@ -404,135 +535,116 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
     <!-- 加载失败(画布 06-D 右格):换掉内容区,带重试;重试走同一个 reload(首载 / 切回共用) -->
     <FPLoadError v-else-if="err" sub="屏上不显示上一次读到的数字" @retry="reload">租户用能数据没读到</FPLoadError>
 
-    <div v-else-if="!s10Months.length" class="ak-page">
-      <div class="ak-head">
-        <div class="ak-h-l">
-          <span class="ak-h-ic"><component :is="iconFor('activity')" :size="20" /></span>
-          <div>
-            <h2 class="ak-title">租户用能工作台</h2>
-            <p class="ak-sub">期间 {{ period.label.value }}</p>
-          </div>
-        </div>
-      </div>
-      <AnaEmpty label="销售收入台账(s10)未录入,无法分析租户用能" hint="录入各期 s10 后,此处按租户呈现电费/水费分布与缴费行为" to="/sales-income" toText="去录入销售收入" />
-    </div>
-
     <div v-else class="ak-page">
       <div class="av2-grid">
-        <!-- 左列:租户搜索列表(本期费额降序,点击选中);spec §B/W3 按户|按家族开关 -->
-        <div class="av2-card av2-s4 te2-left">
+        <!-- 主卡:各户电费(按月 12 栏、按年 8 栏) -->
+        <div class="av2-card" :class="byYear ? 'av2-s8' : 'av2-s12'">
           <div class="av2-card-h">
-            <span class="t">租户列表</span>
-            <span class="te2-lh">
-              <!-- 拆开三元:排序口径留守,「点击…」指点话术进 hint-desk(S 档隐藏后不悬空分隔符) -->
-              <span class="hint">{{ byFamily ? '家族合计降序' : `按本期${metricLabel}降序` }}<span class="hint-desk">{{ byFamily ? ' · 点击看主租户' : ' · 点击选中' }}</span></span>
-              <span class="anx-seg mini" role="group" aria-label="榜单口径">
-                <button :class="{ on: !byFamily }" @click="byFamily = false">按户</button>
-                <button :class="{ on: byFamily }" @click="byFamily = true">按家族</button>
+            <span class="t">{{ S.teRank(M) }}<FPStateTag v-if="sFall" tone="muted" style="margin-left: 8px">显示 {{ mL(curYm!) }}</FPStateTag></span>
+            <span v-if="bars.length" class="te2-lh">
+              <span class="hint">{{ mainHint }}</span>
+              <span class="anx-seg mini" role="group">
+                <button :class="{ on: !isFam }" @click="isFam = false">{{ T.seg.by[0] }}</button>
+                <button :class="{ on: isFam }" @click="isFam = true">{{ T.seg.by[1] }}</button>
               </span>
             </span>
           </div>
-          <input v-model="q" class="te2-search" type="search" :placeholder="byFamily ? `搜索家族(共 ${famRows.length} 族)` : `搜索租户(共 ${rowsCur.length} 户)`" />
-          <div class="te2-list">
-            <button v-for="r in listRows" :key="r.key" class="te2-item" :class="{ on: r.selectName === selRow?.name }" @click="select(r.selectName)">
-              <span class="rk">{{ r.rank }}</span>
-              <span class="nm">{{ r.name }}<span v-if="r.members > 1" class="fam">含{{ r.members }}户</span></span>
-              <span class="ph">{{ phaseName(r.phase) }}</span>
-              <span class="amt">{{ fint(r.cur) }}</span>
-              <span v-if="!byFamily" class="dot" :style="{ background: payDot(r.name) }"></span>
-            </button>
-            <AnaEmpty v-if="!listRows.length" label="无匹配租户" />
-          </div>
+          <template v-if="bars.length">
+            <AnaEChart :option="mainOption" :height="454" @chart-click="onMainClick" />
+            <p class="ana-read hold">{{ conc?.text }}</p>
+            <p v-for="t in mainRefs" :key="t" class="ana-ref">{{ t }}</p>
+          </template>
+          <!-- 销售收入表前面一个月都没有:照说,不拿以后的月顶替(te2-ask 4);补上读数句、参照的高,主卡和有数时一样高 -->
+          <template v-else>
+            <div class="te2-empty" style="height: 470px"><AnaEmpty :label="mainEmpty" to="/sales-income" :to-text="T.goS10" /></div>
+            <p class="ana-read hold"></p>
+          </template>
         </div>
 
-        <!-- 右:选中租户趋势 vs 园区均值带 + 应收实收 + 深链 -->
-        <div class="te2-right av2-s8">
-          <div class="av2-card">
-            <div class="av2-card-h">
-              <span class="t">{{ selRow?.name ?? '—' }} · {{ metricLabel }}趋势 vs 园区均值带</span>
-              <span class="hint">窗口 {{ winMonths.length }} 期{{ byFamily ? ' · 主租户本户' : '' }}</span>
+        <template v-if="byYear">
+          <div class="te2-right av2-s4">
+            <div v-if="yLed" class="av2-card">
+              <div class="av2-card-h"><span class="t">{{ S.tenantTitle(sel, S.MON.card.ledger) }}</span><span class="hint">{{ S.hint(S.coLedger(yLed.cos), '元') }}</span></div>
+              <div data-w="ledger" :ref="trackLedger"><AnaEChart v-if="yLed.option" :option="yLed.option" :height="330" /></div>
+              <p class="ana-read hold"><template v-if="yLed.read">{{ yLed.read.text }}</template></p>
+              <p v-for="t in yLed.refs" :key="t" class="ana-ref">{{ t }}</p>
             </div>
-            <AnaEChart :option="trendOption" :height="300" />
-            <p class="ana-read hold"><template v-if="bandReadout">{{ bandReadout }}</template></p>
-            <p class="ana-ref">{{ bandRefText }}</p>
+            <div class="av2-card te2-col te2-grow">
+              <div class="av2-card-h"><span class="t">{{ S.teArrearsCard }}<FPStateTag v-if="lFall" tone="muted" style="margin-left: 8px">显示 {{ mL(ledYm!) }}</FPStateTag></span></div>
+              <p class="ana-read hold">{{ arrCard.read }}</p>
+              <p v-for="t in arrCard.refs" :key="t" class="ana-ref">{{ t }}</p>
+              <button v-if="ledYm" class="te-go" :disabled="!!lack('/fin-cashflow')" v-tip="lack('/fin-cashflow')" @click="goArrears">{{ T.goArrears }}</button>
+            </div>
           </div>
-          <div class="av2-card">
+          <div v-if="yTrend" class="av2-card av2-s12 te2-col">
+            <div class="av2-card-h"><span class="t">{{ S.tenantTitle(sel, S.MON.card.energy) }}</span><span class="hint">{{ S.hint('元') }}</span></div>
+            <div data-w="trend" :ref="trackTrend"><AnaEChart :option="yTrend.option" :height="300" /></div>
+            <p class="ana-read hold">{{ yTrend.read }}</p>
+            <p v-for="t in yTrend.refs" :key="t" class="ana-ref">{{ t }}</p>
+            <button class="te-go" :disabled="!!lack('/anomaly')" v-tip="lack('/anomaly')" @click="goAnomaly">{{ T.go }}</button>
+          </div>
+          <div v-if="yMove" class="av2-card av2-s12">
             <div class="av2-card-h">
-              <!-- §五策略2:所选期无台账 → 台账期回退,卡头标签(画布 06-D,禁静默) -->
-              <span class="t">{{ selRow?.name ?? '—' }} · 应收 vs 实收<FPStateTag v-if="ledgerFallback" tone="muted" style="margin-left: 8px">显示 {{ ledgerYm }}</FPStateTag></span>
-              <span class="te2-links">
-                <button class="te2-link" :disabled="!ledgerYm || !!lack('/ledger')" v-tip="lack('/ledger')" @click="goLedger">查台账 →</button>
-                <button class="te2-link" :disabled="!curYm || !!lack('/sales-income')" v-tip="lack('/sales-income')" @click="goS10">查附表10 →</button>
+              <span class="t">{{ S.teArrearsMove }}<FPStateTag tone="muted" style="margin-left: 8px">{{ S.fallbackTag(+ledYm!.slice(5)) }}</FPStateTag></span>
+              <span class="hint">{{ yMove.hint }}</span>
+            </div>
+            <AnaEChart v-if="yMove.option" :option="yMove.option" :height="354" />
+            <p class="ana-read hold">{{ yMove.read }}</p>
+            <p class="ana-ref hold"><template v-if="yMove.ref">{{ yMove.ref }}</template></p>
+          </div>
+        </template>
+
+        <template v-else>
+          <!-- 选中户:只放读数句 + 入口(电费和水费、应收和实收两张图在异常提醒中心) -->
+          <div v-if="sel" class="av2-card av2-s6 te2-col">
+            <div class="av2-card-h"><span class="t">{{ tenantCard.title }}</span></div>
+            <p v-for="t in tenantCard.reads" :key="t" class="ana-read hold">{{ t }}</p>
+            <p v-for="t in tenantCard.refs" :key="t" class="ana-ref">{{ t }}</p>
+            <button class="te-go" :disabled="!!lack('/anomaly')" v-tip="lack('/anomaly')" @click="goAnomaly">{{ T.go }}</button>
+          </div>
+          <div class="av2-card av2-s6 te2-col">
+            <div class="av2-card-h"><span class="t">{{ S.teArrearsCard }}<FPStateTag v-if="lFall" tone="muted" style="margin-left: 8px">显示 {{ mL(ledYm!) }}</FPStateTag></span></div>
+            <p class="ana-read hold">{{ arrCard.read }}</p>
+            <p v-for="t in arrCard.refs" :key="t" class="ana-ref">{{ t }}</p>
+            <button v-if="ledYm" class="te-go" :disabled="!!lack('/fin-cashflow')" v-tip="lack('/fin-cashflow')" @click="goArrears">{{ T.goArrears }}</button>
+          </div>
+          <div class="av2-card av2-s12">
+            <div class="av2-card-h">
+              <span class="t">{{ S.teScatter(M) }}<FPStateTag v-if="sFall" tone="muted" style="margin-left: 8px">显示 {{ mL(curYm!) }}</FPStateTag></span>
+              <span v-if="pts.length" class="te2-lh">
+                <span class="hint">{{ S.hint(S.coverN(pts.length, '', T.hu), '元') }}</span>
+                <span class="anx-seg mini" role="group">
+                  <button :class="{ on: xLog }" @click="xLog = true">{{ T.seg.axis[0] }}</button>
+                  <button :class="{ on: !xLog }" @click="xLog = false">{{ T.seg.axis[1] }}</button>
+                </span>
               </span>
             </div>
-            <template v-if="ledgerYms.length">
-              <template v-if="selPay.length">
-                <AnaEChart :option="payOption" :height="200" />
-                <div v-if="selPayRow" class="te2-payline">
-                  {{ ledgerYm }} 收缴率 <b :style="{ color: selPayRow.rate < anaSettings.collectTarget ? 'var(--hue-orange)' : 'var(--hue-blue)' }">{{ selPayRow.rate }}%</b>
-                  <span> · 期末结余 </span><b :style="{ color: selPayRow.bal > 0.005 ? 'var(--hue-red)' : 'var(--text-primary)' }">¥{{ (selPayRow.bal / 10000).toFixed(1) }}万</b>
-                </div>
-              </template>
-              <AnaEmpty v-else label="该租户台账无应收/实收记录" />
+            <template v-if="pts.length">
+              <AnaEChart :option="scatterOption" :height="300" @chart-click="onScatterClick" />
+              <p class="ana-read hold">{{ ex?.text }}</p>
+              <p v-for="t in scatterRefs" :key="t" class="ana-ref">{{ t }}</p>
             </template>
-            <AnaEmpty v-else label="月度台账未录入" hint="录入台账后此处对照该租户应收与实收" to="/ledger" toText="去录入台账" />
+            <div v-else class="te2-empty" style="height: 300px"><AnaEmpty :label="scatterEmpty" to="/sales-income" :to-text="T.goS10" /></div>
           </div>
-        </div>
-
-        <!-- 下方:Top20 榜(点击选中)+ 费额 vs 月租散点(点点选中) -->
-        <div class="av2-card av2-s6">
-          <div class="av2-card-h"><span class="t">本期{{ metricLabel }} Top 20</span><span class="hint"><span class="hint-desk">点击条形选中租户</span></span></div>
-          <AnaEChart :option="topOption" :height="440" @chart-click="onTopClick" />
-        </div>
-        <div class="av2-card av2-s6">
-          <div class="av2-card-h">
-            <span class="t">{{ metricLabel }} vs 月租金</span>
-            <span class="te2-lh">
-              <!-- 指点话术在句首:连同后随「· 」一起包,S 档隐藏后图例句仍完整 -->
-              <span class="hint"><span class="hint-desk">点点选中 · </span>气泡=窗口累计 · 虚线=户均<template v-if="xLog"> · 对数刻度:小户与大户同图可读</template><template v-if="xLog && scatterSplit.hidden"> · 0租金户 {{ scatterSplit.hidden }} 户未显示</template></span>
-              <span class="anx-seg mini" role="group" aria-label="横轴刻度">
-                <button :class="{ on: xLog }" @click="xLog = true">对数</button>
-                <button :class="{ on: !xLog }" @click="xLog = false">线性</button>
-              </span>
-            </span>
-          </div>
-          <AnaEChart :option="scatterOption" :height="440" @chart-click="onScatterClick" />
-          <div class="cz-legend" style="margin-top: 6px">
-            <span v-for="p in presentPhases" :key="p" class="cz-leg"><span class="sw" :style="{ background: phaseHex(p) }"></span>{{ phaseName(p) }}</span>
-          </div>
-        </div>
+        </template>
       </div>
     </div>
   </AnaShell>
 </template>
 
 <style scoped>
+/* 工具条屏名(order:-1 置于期间控件前,同驾驶舱 .cv2-name) */
+.te2-name { order: -1; display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-body); font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; }
 .te2-seg button { padding: 5px 14px; }
-.te2-left { display: flex; flex-direction: column; }
 .te2-lh { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-.te2-item .fam { margin-left: 6px; font-size: var(--fs-micro); color: var(--text-muted); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 1px 6px; }
-.te2-search { width: 100%; box-sizing: border-box; font-family: var(--font-sans); font-size: var(--fs-label); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 7px 10px; outline: none; margin-bottom: 8px; }
-.te2-search:focus { border-color: var(--border-strong); }
-/* 骨架列表条:>1280 左卡与右栏同一行被拉伸,条跟着 flex:1 撑满(至少 300);≤1280 左卡独占一行不被拉伸,
-   真列表高 = min(内容, 560) —— 园区在租户数上百(每行 34 + 间距 2,16 户起就顶到 560),按 560 钉,
-   否则首进数据到的那一帧左卡长高约 260,把下方整片推下去。 */
-.te2-skel-list { flex: 1; min-height: 300px; }
-@media (max-width: 1280px) { .te2-skel-list { flex: none; height: 560px; } }
-.te2-list { flex: 1; min-height: 0; max-height: 560px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
-.te2-item { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); padding: 7px 8px; border-radius: 8px; text-align: left; transition: background var(--dur-fast) var(--ease-standard); }
-.te2-item:hover { background: var(--bg-hover); }
-.te2-item:active:not(.on) { background: var(--ink-100); transition-duration: 0ms; }
-.te2-item.on { background: var(--accent-blue); }
-.te2-item .rk { width: 20px; flex: 0 0 auto; font-size: var(--fs-micro); font-family: var(--font-mono); color: var(--text-muted); }
-.te2-item .nm { flex: 1; min-width: 0; font-size: var(--fs-label); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.te2-item .ph { flex: 0 0 auto; font-size: var(--fs-micro); color: var(--text-muted); }
-.te2-item .amt { flex: 0 0 auto; font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-primary); }
-.te2-item .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 .te2-right { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.te2-links { display: inline-flex; gap: 10px; }
-.te2-link { border: none; background: transparent; color: var(--text-link); font-size: var(--fs-micro); cursor: pointer; font-family: var(--font-sans); padding: 0; }
-.te2-link:hover { text-decoration: underline; }
-.te2-link:disabled { color: var(--text-disabled); cursor: default; text-decoration: none; }
-.te2-payline { font-size: 12px; color: var(--text-secondary); margin-top: 6px; }
-.te2-payline b { font-family: var(--font-mono); font-weight: 600; }
+.te2-grow { flex: 1 1 auto; }
+.te2-empty { display: flex; flex-direction: column; }
+/* 带入口链接的卡:flex 列、链接贴卡底 —— 同排两卡被栅格拉成等高后,两条链接在一条线上。
+   flex 里外边距不折叠:卡头下第一行的上边距清零(卡头已有下边距 8),链接上方留 8 */
+.te2-col { display: flex; flex-direction: column; }
+.te2-col > .av2-card-h + * { margin-top: 0; }
+.te-go { display: block; align-self: flex-start; margin-top: auto; padding: 8px 0 0; border: none; background: transparent; color: var(--text-link); font-family: var(--font-sans); font-size: var(--fs-micro); line-height: var(--lh-snug); text-align: left; cursor: pointer; }
+.te-go:hover { text-decoration: underline; }
+.te-go:disabled { color: var(--text-disabled); cursor: default; text-decoration: none; }
 </style>

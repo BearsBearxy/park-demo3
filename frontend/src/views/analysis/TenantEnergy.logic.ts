@@ -1,9 +1,9 @@
-// TenantEnergyView(租户用能工作台)数据变换纯函数(v2 铁律⑦:抽出单测,不碰 DOM/ECharts)。
-// 口径与 v1 完全一致:s10 费用金额(元),电=基本+标准+维护电费、水=标准+维护水费;
-// 「本期」=≤所选期间的最近 s10 月;窗口=≤本期的全部 s10 月;台账应收/实收沿 AnalysisLedgerRow。
+// TenantEnergyView(用能与缴费)数据变换纯函数(v2 铁律⑦:抽出单测,不碰 DOM/ECharts)。
+// 口径:s10 = 销售收入表费用金额(元),电=基本+标准+维护电费、水=标准+维护水费;台账应收/实收/期末结余沿 AnalysisLedgerRow。
+// 2026-10 改稿(画布 tenant-energy-v2 七块板):期间只往前回退(pastYm,不拿未来的月顶替);按年 = 这一年有数的月合计(yearRows)。
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
 import { familyRootOf } from '@/analysis/anaFamily'
-import { fint, mean as aMean, std as aStd } from '@/components/ana/anaFmt'
+import { mean as aMean, quantile, std as aStd } from '@/components/ana/anaFmt'
 
 export interface TenantRow {
   name: string; phase: number; rank: number
@@ -51,89 +51,92 @@ export function buildTenantRows(
   return out
 }
 
-// ── 家族榜单(方案A,spec §B/W3):仅左列榜单按家族根名聚合重排;KPI/Top20/散点口径不动 ──
-export interface FamilyRow {
-  root: string; cur: number
-  /** 本期有 s10 流水的成员数(>1 才显「含N户」徽标) */
-  memberCount: number
-  /** 主租户:根自身在本期截面则取根,否则取本期金额最大的成员;点击家族行降级选中该户 */
-  mainName: string
-  phase: number; rank: number
+/** ≤ end 的最近一月;前面一个月都没有 → null(改稿:只往前回退,2024年12月不拿 2025年1月顶替)。ms 升序。 */
+export function pastYm(ms: string[], end: string): string | null {
+  for (let i = ms.length - 1; i >= 0; i--) if (ms[i] <= end) return ms[i]
+  return null
+}
+export const prevYm = (ym: string): string => {
+  const y = +ym.slice(0, 4), m = +ym.slice(5, 7)
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`
 }
 
-/** 按家族根名把本期金额加总重排(s10 金额加总,无净额口径问题);familyMap 见 anaFamily。 */
-export function buildFamilyRows(rows: TenantRow[], familyMap: Map<string, string>): FamilyRow[] {
-  const acc = new Map<string, TenantRow[]>()
-  for (const r of rows) {
-    const root = familyRootOf(familyMap, r.name)
-    acc.set(root, [...(acc.get(root) ?? []), r])
+/** 按年:这一年有数的几个月,每户合计(有一个月有数就进),按合计降序。 */
+export function yearRows(tenantMap: Map<string, AnalysisS10Row[]>, months: string[], metric: 'elec' | 'water'): { name: string; cur: number; vals: Map<string, number> }[] {
+  const set = new Set(months)
+  const out: { name: string; cur: number; vals: Map<string, number> }[] = []
+  for (const [name, rs] of tenantMap) {
+    const vals = new Map<string, number>()
+    for (const r of rs) if (set.has(r.acctMonth)) vals.set(r.acctMonth, (vals.get(r.acctMonth) ?? 0) + (metric === 'elec' ? r.elec : r.water))
+    if (vals.size) out.push({ name, cur: [...vals.values()].reduce((a, b) => a + b, 0), vals })
   }
-  const out: FamilyRow[] = [...acc.entries()].map(([root, members]) => {
-    const main = members.find((m) => m.name === root) ?? members.reduce((a, b) => (b.cur > a.cur ? b : a))
-    return { root, cur: members.reduce((s, m) => s + m.cur, 0), memberCount: members.length, mainName: main.name, phase: main.phase, rank: 0 }
-  })
-  out.sort((a, b) => b.cur - a.cur)
-  out.forEach((r, i) => { r.rank = i + 1 })
+  return out.sort((a, b) => b.cur - a.cur)
+}
+
+/** 主卡一根条:pick = 点这根条选中哪一户(按家族时是主租户)。 */
+export interface Bar { name: string; cur: number; prev: number | null; pick: string }
+
+/** 按家族(07-11 方案A,开关挪到主卡卡头):成员本期、上期分别加总重排;
+ *  主租户 = 根自身在截面里取根,否则取本期最大的成员(点家族条选中它)。 */
+export function familyBars(bars: Bar[], familyMap: Map<string, string>): Bar[] {
+  const acc = new Map<string, Bar[]>()
+  for (const b of bars) {
+    const root = familyRootOf(familyMap, b.name)
+    const g = acc.get(root)
+    if (g) g.push(b); else acc.set(root, [b])
+  }
+  return [...acc].map(([root, ms]) => ({
+    name: root,
+    cur: ms.reduce((s, m) => s + m.cur, 0),
+    prev: ms.every((m) => m.prev == null) ? null : ms.reduce((s, m) => s + (m.prev ?? 0), 0),
+    pick: (ms.find((m) => m.name === root) ?? ms.reduce((a, b) => (b.cur > a.cur ? b : a))).name,
+  })).sort((a, b) => b.cur - a.cur)
+}
+
+/** 全园中间一半:逐月对「该月这项费用大于 0 的户」取 P25/P50/P75;不足 20 户的月不建 key
+ *  (同异常提醒中心 monitor.logic 的灰带,那边只算电费、不带 P50)。 */
+export interface Quart { p25: number; p50: number; p75: number; n: number }
+export function parkQuartiles(tenantMap: Map<string, AnalysisS10Row[]>, metric: 'elec' | 'water'): Record<string, Quart> {
+  const by = new Map<string, number[]>()
+  for (const rs of tenantMap.values()) {
+    const m = new Map<string, number>()
+    for (const r of rs) m.set(r.acctMonth, (m.get(r.acctMonth) ?? 0) + (metric === 'elec' ? r.elec : r.water))
+    for (const [ym, v] of m) {
+      if (!(v > 0)) continue
+      const a = by.get(ym)
+      if (a) a.push(v); else by.set(ym, [v])
+    }
+  }
+  const out: Record<string, Quart> = {}
+  for (const [ym, vs] of by) if (vs.length >= 20) out[ym] = { p25: quantile(vs, 0.25), p50: quantile(vs, 0.5), p75: quantile(vs, 0.75), n: vs.length }
   return out
 }
 
-export interface ParkBand { mean: (number | null)[]; lo: (number | null)[]; hi: (number | null)[]; n: number[] }
-
-/** 园区均值带:逐月对「该月有记录的租户」求均值±1σ(lo 截 0;同类 <20 户不画带 —— D3 三档)。
- *
- *  ⚠ I9:`max(0, …)` 这个截断在真实数据上**每个月都生效** —— 电费横截面右偏得厉害
- *  (2025-12:263 户,均值 5,315、σ 14,134,σ≈2.7 倍均值),mean−σ 恒为负。
- *  也就是说 lo 恒等于 0,它是坐标轴不是同类下界。带照画(宽度是真的),但任何拿 lo 当
- *  「下界」用的下游都必须先判它是不是 0 —— bandReadout 就是这么闭嘴的。 */
-export function buildParkBand(rows: TenantRow[], months: string[]): ParkBand {
-  const mean: (number | null)[] = [], lo: (number | null)[] = [], hi: (number | null)[] = [], n: number[] = []
-  for (const m of months) {
-    const vs = rows.filter((r) => r.vals.has(m)).map((r) => r.vals.get(m) as number)
-    n.push(vs.length)
-    // D3 三档:同类 < 20 不画带。改前是 vs.length 只要 >0 就画,一户也画出一条零宽灰带。
-    if (vs.length < 20) { mean.push(null); lo.push(null); hi.push(null); continue }
-    const mn = aMean(vs), sd = aStd(vs)
-    mean.push(+mn.toFixed(0))
-    lo.push(+Math.max(0, mn - sd).toFixed(0))
-    hi.push(+(mn + sd).toFixed(0))
+/** 一户的台账逐期(几家公司相加,升序,只取 ≤ upto 的期);end = 期末结余(collect 的 balEnd,te2-ask 16)。 */
+export function tenantPeriods(ledgerRows: AnalysisLedgerRow[], name: string, upto: string): { ym: string; recv: number; coll: number; end: number }[] {
+  const by = new Map<string, { ym: string; recv: number; coll: number; end: number }>()
+  for (const r of ledgerRows) {
+    if (r.tenantName !== name) continue
+    const ym = `${r.year}-${String(r.month).padStart(2, '0')}`
+    if (ym > upto) continue
+    const a = by.get(ym) ?? { ym, recv: 0, coll: 0, end: 0 }
+    a.recv += r.receivable; a.coll += r.collected; a.end += r.balanceEnd
+    by.set(ym, a)
   }
-  return { mean, lo, hi, n }
+  return [...by.values()].sort((a, b) => a.ym.localeCompare(b.ym))
 }
 
-/** 选中租户逐月序列(缺月 = null,不补 0)。 */
-export function tenantSeries(row: TenantRow | null, months: string[]): (number | null)[] {
-  return months.map((m) => (row?.vals.has(m) ? +(row.vals.get(m) as number).toFixed(0) : null))
+/** 按年「各户期末欠费变动」(te2-ask 6):读数句点到的那户比其余各户最大的值还大 4 倍以上时,单独一行写数、不画条,
+ *  横轴只按其余几户定。返回要单独写的那户名,不需要时 null。
+ *  ponytail: 4 倍是看图定的(火炬 2,164.8 万 vs 其余最大约 200 万);要改成按像素算条宽再说 */
+export function moverOutlier(rows: { name: string; prev: number; cur: number }[], top: string | null | undefined): string | null {
+  const t = rows.find((r) => r.name === top)
+  if (!t || rows.length < 2) return null
+  const rest = Math.max(0, ...rows.filter((r) => r !== t).map((r) => Math.max(r.prev, r.cur)))
+  return Math.max(t.prev, t.cur) > 4 * rest ? t.name : null
 }
 
-/**
- * 主图读数句:选中租户本期 vs 跨户区间(cur/lo/hi 任一缺 → 闭嘴,不写占位句)。
- *
- * I9(对抗复查,2026-09-11):`lo` 来自 buildParkBand 的 `max(0, 均值 − 一个波动幅度)`。
- * 实测 park_demo3 七个记账月,跨户均值 ¥5,315~7,713、波动幅度 ¥14,134~18,992 ——
- * **每一个月的 mean − σ 都是负的**,lo 恒被夹到 0。于是:
- *   · 「低于跨户区间」需要电费为负,一辈子印不出来;
- *   · 2025-12 截面 263 户里 247 户(94%)读到的是「落在跨户区间 ¥0~¥19,449」。
- * 一句读起来像位置判断、实际恒真的话,比不说话更糟 —— 它会让读者以为自己被比较过了。
- *
- * 下沿被夹到 0 时区间只剩单边(0 是坐标轴,不是一个真实的同类下界),位置判断不再是判断:
- * 按本模块规矩③「没话可说就返回 null」闭嘴。带本身照画(宽度是真的,园区差距有多大读者看得见),
- * 下沿为什么贴着 0 由同卡的口径浮层说明。
- */
-export function bandReadout(cur: number | null, lo: number | null, hi: number | null, metricLabel: string): string | null {
-  if (cur == null || lo == null || hi == null) return null
-  if (lo <= 0) return null
-  const pos = cur > hi ? '高于' : cur < lo ? '低于' : '落在'
-  return `${metricLabel}${pos}跨户区间 ¥${fint(lo)}~¥${fint(hi)}`
-}
-
-/** 参照系小字(F2 修复轮1):只说三件 —— 样本量 · 口径列 · 单位,不解释画法。
- *  acct_month 是列名,屏上写「记账月」(F1)。 */
-export function bandRefText(n: number | null): string {
-  const sample = n != null ? `样本${n}户` : '样本未知'
-  return `记账月口径 · 元 · ${sample}`
-}
-
-// ── 散点对数轴数据准备(spec §T2):log 下金额≤0 无法取对数 → 过滤并披露计数;线性全量原样 ──
+// ── 散点对数轴数据准备(spec §T2):log 下金额≤0 无法取对数 → 过滤并披露计数;线性全量原样(park.logic 转出口给出租屏用) ──
 export function splitLogPoints<T>(rows: T[], valueOf: (r: T) => number, log: boolean): { shown: T[]; hidden: number } {
   if (!log) return { shown: rows, hidden: 0 }
   const shown = rows.filter((r) => valueOf(r) > 0)

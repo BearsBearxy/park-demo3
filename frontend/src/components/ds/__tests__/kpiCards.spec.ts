@@ -233,6 +233,20 @@ describe('分析屏小卡 AnaKpiTile', () => {
     expect(box({ loading: true })).toEqual(want)
   })
 
+  it('❗副行两行(drows,光伏屏):每行「箭头 值 key」,没数写「—」不带箭头;盒子仍是 108 / 副行 32', () => {
+    const w = put(AnaKpiTile, { label: '发电量', value: '46.8万kWh', drows: [
+      { val: '−12.4%', dir: 'dn', key: '比11月' }, { val: null, key: '比去年12月' }] })
+    const ls = w.findAll('.d .dl')
+    expect(ls.map((l) => l.text())).toEqual(['−12.4%', '—'])
+    expect(ls.map((l) => l.findAll('svg').length)).toEqual([1, 0])
+    expect(ls[0].find('svg').classes().join(' ')).toContain('arrow-down-right')
+    expect(w.findAll('.d .dk').map((k) => k.text())).toEqual(['比11月', '比去年12月'])
+    expect(w.findAll('.d .dr')).toHaveLength(2)   // 一行一条,各自不折(窄瓦里 key 尾巴省略,不把第二行挤出去)
+    expect([css(w.element).height, css(w.find('.d').element).height]).toEqual(['108px', '32px'])
+    // 对照:不传 drows 的瓦照旧走 note
+    expect(put(AnaKpiTile, { label: 'x', value: '1', note: '说明' }).find('.d').classes()).toContain('note')
+  })
+
   it('❗副行固定两行高:超过两行截断,不撑高瓦', () => {
     const d = put(AnaKpiTile, { label: 'x', value: '1', note: '一段很长很长的说明文字会折到第三行第四行也不许撑高' }).find('.d')
     const s = css(d.element) as CSSStyleDeclaration & { webkitLineClamp?: string }
@@ -255,6 +269,23 @@ describe('分析屏小卡 AnaKpiTile', () => {
     expect(css(w.find('.d .dk').element).color).toBe('var(--text-muted-tint)')
     const rev = put(AnaKpiTile, { label: '营业收入', value: '−¥63.6万', delta: -106.8, kind: '环比' }).find('.d .dl')
     expect(css(rev.element).color).toBe('var(--delta-down-text)')
+  })
+
+  // 2026-10 改稿五屏(规范 S-12/S-41/S-11):涨跌整段由句型库写好传入,颜色只跟 dtone 走,不跟正负走;% 按单位写小字
+  it('❗dval:收入差额为负也是次要灰;dtone up 绿 / down 红;dkey 灰字;传了 dval 不看 delta', () => {
+    const tone = (p: Record<string, unknown>) => css(put(AnaKpiTile, { label: '营业收入', value: '−¥63.6万', ...p }).find('.d .dl').element).color
+    expect(tone({ dval: '−¥699.4万', ddir: 'dn', dkey: '比11月' })).toBe('var(--text-secondary)')
+    expect(tone({ dval: '+¥1.0万', ddir: 'up', dtone: 'up' })).toBe('var(--delta-up-text)')
+    expect(tone({ dval: '−¥699.4万', ddir: 'dn', dtone: 'down', delta: 5 })).toBe('var(--delta-down-text)')
+    const w = put(AnaKpiTile, { label: '营业收入', value: '1', dval: '−¥699.4万', ddir: 'dn', dkey: '比11月', delta: 5 })
+    expect(w.find('.d .dl').text()).toBe('−¥699.4万')
+    expect(w.find('.d .dl svg').classes().join(' ')).toContain('arrow-down-right')
+    expect(w.find('.d .dk').text()).toBe('比11月')
+  })
+
+  it('❗pctUnit:「51.7%」的 % 进单位位;不传照旧整串是数', () => {
+    expect(put(AnaKpiTile, { label: '出租率', value: '51.7%', pctUnit: true }).find('.v .u').text()).toBe('%')
+    expect(put(AnaKpiTile, { label: '出租率', value: '51.7%' }).find('.v .u').exists()).toBe(false)
   })
 
   it('❗只有说明:灰字不给箭头;警示说明用 --warn-text', () => {

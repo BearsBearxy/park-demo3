@@ -78,7 +78,7 @@ describe('读数句的有↔无占位', () => {
     const HOLD = /class="ana-(?:read|ref) hold"/g
     expect(count('ElecAnalysisView.vue', HOLD), '电费 3 张图 × 2 行').toBe(6)
     expect(count('CockpitView.vue', HOLD), '驾驶舱：本轮 2 张 × 2 行 + 原有 outlier/forecast 4 行').toBeGreaterThanOrEqual(8)
-    expect(count('ParkView.vue', HOLD), '园区 TreeMap 2 行 + 环图 2 行 + 面积卡 1 行').toBe(5)
+    expect(count('ParkView.vue', HOLD), '2026-10 改稿:主卡 2 行 + 明细卡 楼层句 1 + 到期参照 1 + 期区 2 行 + 散点 2 行').toBe(8)
     expect(count('TenantPortfolioView.vue', HOLD), '租户 帕累托 2 行 + 散点 2 行').toBe(4)
     expect(count('PvRoiView.vue', HOLD), '光伏回收 爬坡图 2 行').toBeGreaterThanOrEqual(2)
   })

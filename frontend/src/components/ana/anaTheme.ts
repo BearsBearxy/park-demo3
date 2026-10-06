@@ -87,7 +87,7 @@ export const ANA_DARK: AnaPalette = {
 }
 
 /**
- * 自绘 SVG 图(租金带 AnaRentBandChart / 续签 AnaRenewalChart / 预测 AnaForecastChart / 单价分布 AnaUnitRentHist)的颜色。
+ * 自绘 SVG 图(租金带 AnaRentBandChart / 续签 AnaRenewalChart / 单价分布 AnaUnitRentHist)的颜色。
  * 以 CSS 变量挂在图的根上(:style="anaSvgVars()"),样式里引这些 --sv-… 变量;模板里调,切外观时重算、不用重挂载。
  * 浅色 = 各图原来写死的 Figma 取色(逐位不变);暗色:网格 / 轴线 / 坐标字同 ANA_DARK(悬停气泡直接引令牌 --tip-bg,同 ShellTip),
  * 数据线与字换同色相的浅色(线对卡片 ≥3、字 ≥4.5),带子换压暗的蓝。
@@ -95,16 +95,13 @@ export const ANA_DARK: AnaPalette = {
 const SVG_LIGHT = {
   '--sv-shade': '#F5F6F9',
   '--sv-grid': '#E9EBEF',
-  '--sv-grid-fc': '#E5EAF0',
   '--sv-grid-soft': '#EEF0F4',
   '--sv-axis': '#D7DBE2',
   '--sv-label': '#94A3B8',
   '--sv-label-strong': '#6B7280',
   '--sv-gap-text': '#8A9099',
-  '--sv-note': '#B6BDC8',
   '--sv-locked': '#98A2B3',
   '--sv-split': '#C6CCD6',
-  '--sv-today': '#CBD5E1',
   '--sv-mark': '#9AA4B2',
   '--sv-bar-muted': '#C8CDD6',
   '--sv-band': '#BFD8F5',
@@ -115,24 +112,17 @@ const SVG_LIGHT = {
   '--sv-gap': '#D97757',
   '--sv-cap': '#4F79A8',
   '--sv-hair': '#C7D2FE',
-  '--sv-fc-band': '#C7D2FE',
-  '--sv-fc-mid': '#A5B4FC',
-  '--sv-fc-line': '#4F46E5',
-  '--sv-figure': '#1E293B',
 }
 const SVG_DARK: typeof SVG_LIGHT = {
   '--sv-shade': 'rgba(255,255,255,.04)',
   '--sv-grid': 'rgba(255,255,255,.08)',
-  '--sv-grid-fc': 'rgba(255,255,255,.08)',
   '--sv-grid-soft': 'rgba(255,255,255,.08)',
   '--sv-axis': 'rgba(255,255,255,.16)',
   '--sv-label': 'rgba(236,236,238,.62)',
   '--sv-label-strong': 'rgba(236,236,238,.8)',
   '--sv-gap-text': 'rgba(236,236,238,.62)',
-  '--sv-note': 'rgba(236,236,238,.45)',
   '--sv-locked': 'rgba(236,236,238,.45)',
   '--sv-split': 'rgba(236,236,238,.25)',
-  '--sv-today': 'rgba(236,236,238,.3)',
   '--sv-mark': 'rgba(236,236,238,.4)',
   '--sv-bar-muted': 'rgba(236,236,238,.22)',
   '--sv-band': 'rgb(62,98,140)',
@@ -143,10 +133,6 @@ const SVG_DARK: typeof SVG_LIGHT = {
   '--sv-gap': '#F0997B',
   '--sv-cap': 'rgb(143,178,221)',
   '--sv-hair': 'rgba(165,180,252,.5)',
-  '--sv-fc-band': '#4F46E5',
-  '--sv-fc-mid': 'rgba(165,180,252,.7)',
-  '--sv-fc-line': '#A5B4FC',
-  '--sv-figure': 'rgb(236,236,238)',
 }
 export function anaSvgVars(): Record<string, string> {
   return resolvedTheme.value === 'dark' ? SVG_DARK : SVG_LIGHT

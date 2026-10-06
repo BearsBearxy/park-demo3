@@ -1,5 +1,7 @@
 <script setup lang="ts">
-// 抽屉 B9 · 这一年的偏离与水平变化(PV-ANALYSIS-SCREEN-V4 §3.17;画布 v2/Drawer.dc.html)。
+// 抽屉 B9 · 每天的偏离和水平变化(PV-ANALYSIS-SCREEN-V4 §3.17;2026-10-06 改稿 pv-v2-drawer)。
+// 纵轴字写倍数(×2.7 / ×1 / ×0.37):点是对数域的偏离,字写 e 的那么多次方 —— 刻度位置不动,只换写法。
+// 变点跳过并网那个月再找(buildDetail);没找到时竖线、区间底、两行直标、图例那一项都不出,参照第二行说没找到。
 // 画布 宽 = 实测 × 高 300(容器 < 420 时 240),padL 46 / padR 14 / padT 14 / padB 26;x 与 B10 同一把(pvDrawerAxis)。
 // 趋势线照画布的平滑写法:相邻点用 Catmull-Rom(÷6)转三次贝塞尔;估计范围是直线折边的闭合面。
 // 变点区间补淡红 12% 底(实施计划 §1 #17);变点直标第二行写区间,不写「抬上去了」(§1 #18)。
@@ -11,6 +13,7 @@ import { tipWidth, tipX } from '@/components/ana/chartTip'
 import { FP_ANA_THEME } from '@/components/ana/anaTheme'
 import '@/components/ana/ana.css'
 import { PV_COLORS as C } from './pvAnaColors'
+import { PV, PVH, pvDriftRefs, pvTimesLabel, pvYearCover } from '@/components/ana/anaSentence'
 import type { PvDriftChartProps } from './pvAnaV4.logic'
 import { dayOfX, md, monthStartDays, nearestIndex, PAD_L, PAD_R, r1, xOfDay, yAxis } from './pvDrawerAxis'
 
@@ -38,9 +41,11 @@ const axis = computed(() => {
   return yAxis(vals, padT, H.value - padB, { top: 59, bottom: 37 })
 })
 const Y = (v: number) => axis.value.y(v)
-const tickLabel = (v: number) => (v > 0 ? '+' : '') + v.toFixed(2)
+const tickLabel = pvTimesLabel
 
-const year = computed(() => props.data.points[0]?.date.slice(0, 4) ?? '')
+const year = computed(() => Number(props.data.points[0]?.date.slice(0, 4)))
+// 第二条参照只在没找到变点时出;找到了那一行留空(上一栋 / 下一栋不顶动下面三块)
+const refs = computed(() => pvDriftRefs())
 
 // 窄档月标隔一标(1/3/5/7/9/11):12 个标挤在 300 多宽里字会叠,当前期间那个月由图内「当前期间 N 月」认领
 const months = computed(() => monthStartDays(days.value)
@@ -111,7 +116,7 @@ const tip = computed(() => {
   const at = md(p.date)
   const lines = [
     { t: `${at.m}月${at.d}日`, b: true },
-    { t: `偏离 ${p.v > 0 ? '+' : ''}${p.v.toFixed(3)}`, c: p.v > 0 ? C.TIP_SEL : C.TIP_ABOVE },
+    { t: `偏离 ${pvTimesLabel(p.v)}`, c: p.v > 0 ? C.TIP_SEL : C.TIP_ABOVE },
   ] as { t: string; c?: string; b?: boolean; dim?: boolean }[]
   if (cp.value) lines.push({ t: `在 ${cp.value.m} 月 ${cp.value.d} 日水平变化之${p.doy >= cp.value.doy ? '后' : '前'}`, dim: true })
   const x = X(p.doy)
@@ -123,11 +128,11 @@ const tip = computed(() => {
 <template>
   <div class="av2-card pv-b9">
     <div class="av2-card-h">
-      <span class="t">这一年的偏离与水平变化</span>
-      <span class="hint">这一年里，这栋什么时候开始变了</span>
+      <span class="t">{{ PV.card.drift }}</span>
+      <span class="hint">{{ PVH.drift(data.cover ?? pvYearCover(year)) }}</span>
     </div>
     <div ref="el" class="plot" :style="{ height: H + 'px' }" @mousemove="onMove" @mouseleave="hover = null">
-      <svg :width="W" :height="H" :viewBox="`0 0 ${W} ${H}`" role="img" aria-label="这一年的偏离与水平变化">
+      <svg :width="W" :height="H" :viewBox="`0 0 ${W} ${H}`" role="img" :aria-label="PV.card.drift">
         <template v-for="v in axis.ticks" :key="'g' + v">
           <line class="gl" :x1="PAD_L" :x2="W - PAD_R" :y1="Y(v)" :y2="Y(v)" :stroke="C.GRID" />
           <text class="ax" :x="PAD_L - 6" :y="Y(v) + 4" text-anchor="end" :fill="C.AXIS_TEXT">{{ tickLabel(v) }}</text>
@@ -166,13 +171,12 @@ const tip = computed(() => {
     </div>
     <div class="leg">
       <span><u :style="{ background: C.CROWD_B9 }"></u>每天的偏离</span>
-      <span><i :style="{ background: C.FOCUS, width: '14px', height: '2px' }"></i>这段时间的常态</span>
-      <span><b :style="{ background: C.BAND }"></b>常态可能落的范围</span>
+      <span><i :style="{ background: C.FOCUS, width: '14px', height: '2px' }"></i>{{ PV.drift.level }}</span>
+      <span><b :style="{ background: C.BAND }"></b>{{ PV.drift.ci }}</span>
       <span v-if="cp"><i :style="{ background: C.BELOW, width: '2px', height: '11px' }"></i>这天前后水平变了</span>
     </div>
-    <p class="ana-ref">
-      纵轴 = 与全园同刻度中位的偏离（0 = 与全园同步）· 横轴 = {{ year }} 年逐日 · 缺抄日断开不画<template v-if="future"> · 右侧淡区还没到</template>
-    </p>
+    <p class="ana-ref">{{ refs[0].text }}</p>
+    <p class="ana-ref" :class="{ hold: cp }">{{ cp ? '' : refs[1].text }}</p>
   </div>
 </template>
 

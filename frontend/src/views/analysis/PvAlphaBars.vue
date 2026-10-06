@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * PvAlphaBars —— 高级分析档 L1「先天水平 α 排序」+ L5 脚注那一行(PV-ANALYSIS-SCREEN-V4 §3.10 §3.11)。
+ * PvAlphaBars —— 核对明细档「各栋常年水平」(PV-ANALYSIS-SCREEN-V4 §3.10;2026-10-06 改稿 pv-v2 m-lab / y-lab)。
  *
  * DOM 横条,几何照画板 Main.dc.html `4a`:行高 22、栋名列 58 右对齐、绘图区 x0 = 66 … 宽 − 10、
  * 条高 14 圆角 3、横轴端点 = 区间两端各外扩 2 再取到刻度步长的整数倍、刻度按 1/2/5 步长取约 5 条。
@@ -14,6 +14,7 @@ import { useEnterPhase, useMorphHold } from '@/components/ana/anaMotion'
 import { sgn } from '@/components/ana/anaFmt'
 import '@/components/ana/ana.css'   // @keyframes fp-wipe
 import { PHASE_COLORS, PV_COLORS } from './pvAnaColors'
+import { PV, PVH, nB, pvAlphaExcl, pvAlphaRead, pvAlphaRefs } from '@/components/ana/anaSentence'
 import { niceTicks } from './forecastChart.logic'
 import type { PvAlphaBarsProps } from './pvAnaV4.logic'
 
@@ -67,7 +68,8 @@ const geo = computed(() => {
   const f = (v: number) => (log ? Math.log(1 + v / 100) : v)
   const AX = (v: number) => r1(x0 + (f(v) - f(dlo)) / (f(dhi) - f(dlo)) * (x1 - x0))
   const zero = AX(0)
-  const ticks = tv.map(v => ({ x: AX(v), label: `${v > 0 ? '+' : ''}${v}%` }))
+  // 负号用「−」(全屏同一个写法,S-33)
+  const ticks = tv.map(v => ({ x: AX(v), label: `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v)}%` }))
   const bars = rows.map((r, i) => {
     const ax = AX(r.alphaPct)
     const on = r.id === props.selId
@@ -87,8 +89,6 @@ const geo = computed(() => {
   return { height: nRows * ROW_H.value + 14, plotH: nRows * ROW_H.value, zero, ticks, bars, log }
 })
 
-const sel = computed(() => props.data.rows.find(r => r.id === props.selId) ?? null)
-
 // ponytail: 行的 DOM 顺序只追加、不重排 —— Chromium 里被挪动的节点丢过渡(实测),换期名次一变挪动的行会瞬移。
 // 首挂按名次排;之后留着旧顺序、新栋追到尾巴。纵向位置全靠行的 translateY。
 // 代价:换期后按 Tab 走条的顺序是旧名次,不是新名次(读屏顺序同)。
@@ -100,24 +100,21 @@ const drawn = computed(() => {
 })
 const rowT = (k: number) => ({ transform: `translateY(${k * ROW_H.value}px)` })
 
-// ── L5:换一种扫描顺序重算的一句 + 88×20 迷你收敛线 + 悬停一行 ──
-const stab = computed(() => {
-  const s = props.stability
-  const head = '这份排名换一种算法顺序重算了一遍：'
-  if (!s.moved.length) return `${head}${s.n} 栋名次都没变。`
-  const list = s.moved.map(m => `${m.name} ${m.from}→${m.to}`).join(' · ')
-  const how = s.sameShift == null ? '挪了位'
-    : s.moved.length === 1 ? `挪了 ${s.sameShift} 位` : `各挪了 ${s.sameShift} 位`
-  return `${head}${s.n} 栋里 ${s.sameN} 栋名次没变，${s.moved.length} 栋${how}（${list}）。`
-})
+// 读数句:最高最低(extremes);参照:按几栋全年每天的抄表算 + 换种算法几栋名次会变(没人挪不出)+ 台账对不上没排的楼
+const hint = computed(() => PVH.alpha(props.cover ?? nB(props.data.rows.length)))
+const read = computed(() => pvAlphaRead(props.data.rows.map(r => ({ name: r.name, alpha: r.alphaPct }))))
+const refs = computed(() => [
+  ...pvAlphaRefs(props.data.rows.length, props.stability.moved.length),
+  ...(props.data.excluded.length ? [pvAlphaExcl(props.data.excluded)] : []),
+])
 
 </script>
 
 <template>
   <section class="av2-card pab">
     <div class="av2-card-h">
-      <span class="t">先天水平 α 排序</span>
-      <span class="hint">条 = 这栋常年高于 / 低于全园中位的程度 · 淡带 = 95% 区间 · 点条换上面的图</span>
+      <span class="t">{{ PV.card.alpha }}</span>
+      <span class="hint">{{ hint }}</span>
     </div>
     <div ref="el" class="pab-plot" :class="{ narrow }" :style="{
       height: `${geo.height}px`, '--pab-row-h': `${ROW_H}px`, '--pab-name-w': `${NAME_W}px`,
@@ -135,7 +132,7 @@ const stab = computed(() => {
           <span class="pab-band" :style="{ '--x': `${b.bandX}px`, '--w': `${b.bandW}px`, background: b.fill }" />
           <span v-if="b.on" class="pab-ring" :style="{ '--x': `${b.x}px`, '--w': `${b.w}px` }" />
           <span class="pab-fill" :style="{ '--x': `${b.x}px`, '--w': `${b.w}px`, background: b.fill }" />
-          <button type="button" class="pab-bar" :aria-label="`${b.name} α ${b.label}`"
+          <button type="button" class="pab-bar" :aria-label="`${b.name} 常年水平 ${b.label}`"
             :style="narrow ? undefined : { left: `${b.x}px`, width: `${b.w}px` }"
             @click="emit('pick', b.id)" />
           <span class="pab-ax pab-val" :class="{ neg: b.neg }" :style="{ '--x': `${b.lx}px` }">{{ b.label }}</span>
@@ -146,7 +143,7 @@ const stab = computed(() => {
         </div>
         <div v-for="(u, k) in data.rest" :key="u.id" class="pab-row rest" :data-id="u.id" :style="rowT(geo.bars.length + data.short.length + k)">
           <span class="pab-name">{{ u.name }}</span>
-          <span class="pab-ax pab-val" :style="{ left: `${X0 + 6}px` }">无 α</span>
+          <span class="pab-ax pab-val" :style="{ left: `${X0 + 6}px` }">{{ PV.dash }}</span>
         </div>
       </div>
     </div>
@@ -154,13 +151,11 @@ const stab = computed(() => {
       <span><b :style="{ background: PV_COLORS.PHASE1 }" />一期</span>
       <span><b :style="{ background: PV_COLORS.PHASE2 }" />二期</span>
       <span><b :style="{ background: PV_COLORS.PHASE3 }" />三期</span>
-      <span class="mut">横轴 = α，相对全园中位 %<template v-if="geo.log">（对数刻度）</template></span>
+      <span class="mut">{{ PV.alphaAxis }}<template v-if="geo.log">{{ PV.alphaLog }}</template></span>
+      <span class="mut">{{ PV.alphaBand }}</span>
     </div>
-    <p class="ana-read hold"><template v-if="sel">{{ sel.name }} α {{ sgn(sel.alphaPct, 1, '%') }}，{{ data.rows.length }} 栋里第 {{ sel.rank }} 位（1 = 最高）；区间 {{ sgn(sel.ciLo, 1, '%') }} ~ {{ sgn(sel.ciHi, 1, '%') }}，{{ sel.crossesZero ? '跨 0' : '不跨 0' }}</template></p>
-    <div v-if="stability.n > 0" class="pab-stab">
-      <span class="tx">{{ stab }}</span>
-    </div>
-    <p class="ana-ref">n = {{ data.rows.length }} 栋 · 全年逐日残差 · 相对全园中位，% · 淡带 = 这栋水平大概落在哪一段（95% 区间）<template v-if="data.excluded.length"> · 台账差超线不进排序：{{ data.excluded.join('、') }}</template></p>
+    <p class="ana-read" :class="{ hold: !read }">{{ read?.text }}</p>
+    <p v-for="r in refs" :key="r.text" class="ana-ref">{{ r.text }}</p>
   </section>
 </template>
 
@@ -215,8 +210,5 @@ const stab = computed(() => {
 .pab-leg span { display: inline-flex; align-items: center; gap: 5px; }
 .pab-leg b { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
 .pab-leg .mut { color: var(--text-muted); }
-
-.pab-stab { margin-top: 8px; }
-.pab-stab .tx { font-size: var(--fs-label); color: var(--text-primary); line-height: 1.5; min-width: 0; }
 
 </style>

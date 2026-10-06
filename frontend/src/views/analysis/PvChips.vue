@@ -10,6 +10,7 @@ import { useWidth } from '@/components/ana/useWidth'
 import { tipWidth } from '@/components/ana/chartTip'
 import { PHASE_COLORS, PV_COLORS as C } from './pvAnaColors'
 import type { ChipItem, PvChipsProps } from './pvAnaV4.logic'
+import { PV, nB } from '@/components/ana/anaSentence'
 
 const props = defineProps<PvChipsProps>()
 const emit = defineEmits<{ pick: [id: number] }>()
@@ -54,13 +55,15 @@ function look(c: ChipItem) {
 }
 
 function badgeOf(c: ChipItem): string {
-  return c.kind === 'unreadable' ? '读不出' : c.kind !== 'unborn' && c.outDays > 0 ? `${c.outDays} ${props.groups.unit}` : ''
+  // 读不出的徽标写原因的大类(2026-10-06 改稿):历史不够 / 只有月抄(一月一条,谈不上缺抄)/ 缺抄(覆盖不够、一天没抄)
+  return c.kind === 'unreadable' ? (c.history ? PV.short : c.monthly ? PV.monthOnly : PV.miss) : c.kind !== 'unborn' && c.outDays > 0 ? `${c.outDays} ${props.groups.unit}` : ''
 }
 
 // 按字估宽(chartTip 的 CJK 12 / 其余 6.6,11px 字下宁宽勿窄):
 // 芯片 = 边 2 + 内边距 17 + 点 6 + 间距 5 + 名字 [+ 间距 5 + 徽标内边距 10 + 徽标字]
 const chipW = (c: ChipItem) => 30 + tipWidth([c.name], 0) + (badgeOf(c) ? 15 + tipWidth([badgeOf(c)], 0) : 0)
-const moreW = (n: number) => 19 + tipWidth([`其余 ${n} 栋 ▾`], 0)
+const moreLabel = (n: number) => `其余 ${nB(n)} ▾`
+const moreW = (n: number) => 19 + tipWidth([moreLabel(n)], 0)
 const rowW = (xs: ChipItem[]) => xs.reduce((t, c) => t + chipW(c) + GAP, 0)
 
 const fit = computed(() => {
@@ -101,7 +104,7 @@ function pickFolded(id: number) {
 
     <Popover v-if="folded.length" v-model="open" :align="popAlign" :width="POP_W">
       <template #trigger>
-        <button type="button" class="chip more" :aria-expanded="open">其余 {{ folded.length }} 栋 ▾</button>
+        <button type="button" class="chip more" :aria-expanded="open">{{ moreLabel(folded.length) }}</button>
       </template>
       <div class="pvc-pop">
         <button v-for="x in folded" :key="x.c.id" type="button" class="chip" :style="x.style"

@@ -42,12 +42,21 @@ const mountChart = (data: ControlChart, segMonth?: number | null) => mount(PvCon
 const num = (s: string | undefined) => Number(s)
 
 describe('PvControlChart(B10)', () => {
-  it('纵轴:极值 0.2 → y 64、−0.16 → y 199(每单位 375 像素),网格 -0.20 / 0.00 / +0.20', () => {
+  it('纵轴:极值 0.2 → y 64、−0.16 → y 199(每单位 375 像素),网格在 −0.2 / 0 / +0.2,字写倍数', () => {
     const w = mountChart(monthFixture())
     expect([w.find('svg').attributes('width'), w.find('svg').attributes('height')]).toEqual(['646', '250'])
     expect(w.findAll('line.gl').map(l => num(l.attributes('y1')))).toEqual([214, 139, 64])
-    const labels = w.findAll('text').filter(t => /^[-+]?0\.\d\d$/.test(t.text()))
-    expect(labels.map(t => t.text())).toEqual(['-0.20', '0.00', '+0.20'])
+    const labels = w.findAll('text').filter(t => /^×/.test(t.text()))
+    expect(labels.map(t => t.text())).toEqual(['×0.82', '×1', '×1.2'])
+  })
+
+  it('❗卡名、卡头写两道线拿几天估(按变点前那段估 = 那段的天数;全期估 = 在网的全部天)', () => {
+    const w = mountChart(monthFixture())
+    expect(w.find('.t').text()).toBe('每天的偏离和两道范围')
+    // 只拿水平变之前那段估:不说「在网的」(在网的是全部天),说「水平变之前的」
+    expect(w.find('.hint').text()).toBe('2025年全年 · 和水平变之前的 159 天比 · 倍')
+    const whole = { ...monthFixture(), window: { from: '2025-01-01', fromDoy: 1, to: '2025-08-28', toDoy: 240 }, wholePeriod: true }
+    expect(mountChart(whole).find('.hint').text()).toBe('2025年全年 · 和在网的 239 天比 · 倍')
   })
 
   it('两层带:外带 y 101.5 高 90 淡 25%,内带 y 116.5 高 60 淡 50%;中线 y 146.5 浅蓝 1.5;两条直标贴各自上沿', () => {
@@ -82,24 +91,24 @@ describe('PvControlChart(B10)', () => {
     expect(w.find('.leg').text()).toContain(`超出外面那道 ${data.counts[2]} 天`)
   })
 
-  it('估计窗口:底条 x 46 宽 256 贴绘图区底 10px,并直标取的是哪一段;参照系只写窗口与对照', () => {
+  it('估计窗口:底条 x 46 宽 256 贴绘图区底 10px,并直标取的是哪一段;卡下不另写参照(和图内那行重复)', () => {
     const w = mountChart(monthFixture())
     const bar = w.find('rect.win')
     expect([num(bar.attributes('x')), num(bar.attributes('y')), num(bar.attributes('width')), num(bar.attributes('height')), bar.attributes('fill')])
       .toEqual([46, 214, 256, 10, 'var(--ink-100)'])
     const lab = w.find('text.winlab')
     expect([lab.text(), num(lab.attributes('x')), num(lab.attributes('y'))]).toEqual(['这两道线是拿 1 月 1 日 – 6 月 8 日 这一段估的', 50, 210])
-    const ref = w.find('.ana-ref').text()
-    expect(ref).toContain('都用 6 月 8 日 及之前那一段估，之后的日子拿来对照')
-    expect(ref).not.toMatch(/异常|变化本身/)
+    expect(w.find('.ana-ref').exists()).toBe(false)
+    expect(w.text()).not.toMatch(/异常|变化本身/)
   })
 
-  it('估计窗口退回全期:底条盖到最后一天的下一天(x 432.4),直标与参照系都写「全期」', () => {
+  it('❗估计窗口退回全期(没有算数的变点):底条盖到最后一天的下一天(x 432.4),图内写拿哪几天估,带名改「在网这段的起伏」', () => {
     const data = monthFixture()
     const w = mountChart({ ...data, window: { from: '2025-01-01', fromDoy: 1, to: '2025-08-28', toDoy: 240 }, wholePeriod: true })
     expect(num(w.find('rect.win').attributes('width'))).toBe(386.4)
-    expect(w.find('text.winlab').text()).toBe('这两道线是拿全期 1 月 1 日 – 8 月 28 日 估的')
-    expect(w.find('.ana-ref').text()).toContain('用全期 1 月 1 日 – 8 月 28 日 估，没有留出对照的日子')
+    expect(w.find('text.winlab').text()).toBe('这两道线拿 1月1日–8月28日 全部的天估')
+    expect(w.findAll('text.bandlab').map(t => t.text())).toEqual(['在网这段的起伏', '更宽的那道'])
+    expect(w.findAll('.leg span').map(s => s.text()).slice(3)).toEqual(['在网这段的起伏', '更宽的那道'])
   })
 
   it('估计窗口底条右缘夹进绘图区:窗口止于 12 月 31 日,下一天 x 633.6 越过右缘 632 → 宽 586(不夹是 587.6)', () => {
@@ -132,20 +141,21 @@ describe('PvControlChart(B10)', () => {
     expect(w.find('.hair').attributes('style')).toContain('left: 366.4px')
     expect(w.find('.hdot').exists()).toBe(false)
     const lines = w.findAll('.dtip span')
-    expect(lines.map(l => l.text())).toEqual(['7月19日', '偏差 +0.200', '超出外面那道'])
+    expect(lines.map(l => l.text())).toEqual(['7月19日', '偏离 ×1.2', '超出外面那道'])
     expect(lines[2].attributes('style')).toContain(rgb(C.TIP_BELOW))
-    // 宽:max('超出外面那道' 72, '偏差 +0.200' 70.2) → 72 + 22 = 94;366.4 + 12 + 94 ≤ 632 放右侧
+    // 宽:max('超出外面那道' 72, '偏离 ×1.2' 57) → 72 + 22 = 94;366.4 + 12 + 94 ≤ 632 放右侧
     expect(w.find('.dtip').attributes('style')).toContain('left: 378.4px')
     await w.find('.plot').trigger('mouseleave')
     expect(w.find('.dtip').exists()).toBe(false)
   })
 
-  it('气泡右缘放不下翻左:第 330 天 x 575.7,宽 93 → 左 470.7', async () => {
+  it('气泡右缘放不下翻左:第 330 天 x 575.7,宽 86 → 左 477.7', async () => {
     const w = mountChart(yearFixture())
     await w.find('.plot').trigger('mousemove', { clientX: 575.7 })
     const lines = w.findAll('.dtip span').map(l => l.text())
-    expect([lines[0], lines[2]]).toEqual(['11月26日', '在里面'])
-    expect(w.find('.dtip').attributes('style')).toContain('left: 470.7px')
+    // '偏离 ×0.95' = 24 + 6 × 6.6 = 63.6 → 64 + 22 = 86
+    expect(lines).toEqual(['11月26日', '偏离 ×0.95', '在里面'])
+    expect(w.find('.dtip').attributes('style')).toContain('left: 477.7px')
   })
 })
 

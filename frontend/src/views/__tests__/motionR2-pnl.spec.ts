@@ -42,8 +42,6 @@ import PnlAnalysisView from '@/views/analysis/PnlAnalysisView.vue'
 import BudgetView from '@/views/analysis/BudgetView.vue'
 import FinPnlView from '@/views/analysis/FinPnlView.vue'
 import CockpitView from '@/views/analysis/CockpitView.vue'
-import AnaForecastChart from '@/components/ana/AnaForecastChart.vue'
-import { rollingForecastRows } from '@/views/analysis/forecastChart.logic'
 
 // ── 夹具 ──
 const MONTHS = ['2025-01', '2025-02', '2025-03', '2025-04', '2025-05', '2025-06', '2025-07', '2025-08', '2025-09', '2025-10', '2025-11', '2025-12',
@@ -365,46 +363,44 @@ describe('对抗复查 2026-09-16:首进两趟取数 / 换年在途的横幅与�
     await expectNoBannerAcrossYear(w, data.fetchPnlYear, (_s: string, y: number) => s5For(y))
   })
 
-  const forecast = (w: VueWrapper) => w.findComponent(AnaForecastChart)
-  it('❗驾驶舱预测带:往后进一年,上一年先到而本年还在途 —— 带不动(不拿本年自己当上一年)', async () => {
+  // 2026-10 改稿:驾驶舱不再有跨年拼接的预测带(AnaForecastChart),两条预测带用例换成新稿的两处在途形状
+  it('❗驾驶舱按年:往后进一年,本年还在途 —— 屏上仍是上一年那块板(不拿新年去配旧数据),到数才整块换', async () => {
     providePeriodMonths(MONTHS, MONTHS)
     usePeriod().setGran('year')
     usePeriod().setYear(2025)
     const w = mount(CockpitView as never, STUBS)
     mounted.push(w)
     await flushPromises()
-    const rows0 = forecast(w).props('rows')
-    expect(forecast(w).props('prevState')).toBe('spliced')
+    const hints = () => w.findAll('.av2-grid[data-stale-host] .av2-card-h .hint').map((e) => e.text())
+    const before = hints()
     let release = () => {}
     vi.mocked(data.fetchPnlSummary).mockImplementation((y: number) =>
       (y === 2026 ? new Promise((res) => { release = () => res(pnlSum(y)) }) : Promise.resolve(pnlSum(y))))
     usePeriod().setYear(2026)
     await flushPromises()
-    expect(forecast(w).props('rows'), '在途期间带先换到「2025 拼 2025」').toEqual(rows0)
-    expect(forecast(w).props('prevState')).toBe('spliced')
+    expect(hints(), '在途期间板先换了').toEqual(before)
     release()
     await flushPromises()
-    expect(forecast(w).props('rows')).toEqual(rollingForecastRows(pnlSum(2026), pnlSum(2025)))
+    expect(hints(), '2026 只录到 8 月,累计卡卡头该写出覆盖到哪').toContain('2026年1–8月 · 万元')
   })
 
-  it('❗驾驶舱预测带:往回退一年,本年先到而上一年还在途 —— 按本年单独画,不拿本年自己当上一年', async () => {
+  it('❗驾驶舱 1 月:上一年还在途 —— 整屏照常出,1 月瓦先不带涨跌;上一年到了补上「比12月」', async () => {
     providePeriodMonths(MONTHS, MONTHS)
-    usePeriod().setGran('year')
+    usePeriod().setGran('month')
     usePeriod().setYear(2026)
+    usePeriod().setMonth(1)
+    let release = () => {}
+    vi.mocked(data.fetchPnlSummary).mockImplementation((y: number) =>
+      (y === 2025 ? new Promise((res) => { release = () => res(pnlSum(y)) }) : Promise.resolve(pnlSum(y))))
     const w = mount(CockpitView as never, STUBS)
     mounted.push(w)
     await flushPromises()
-    let release = () => {}
-    vi.mocked(data.fetchPnlSummary).mockImplementation((y: number) =>
-      (y === 2024 ? new Promise((res) => { release = () => res(pnlSum(y)) }) : Promise.resolve(pnlSum(y))))
-    usePeriod().setYear(2025)
-    await flushPromises()
-    expect(forecast(w).props('prevState')).toBe('none')
-    expect(forecast(w).props('rows')).toEqual(rollingForecastRows(pnlSum(2025), null))
+    const revTile = () => w.findAll('.av2-kpi')[0].text()
+    expect(w.find('.cv2-skel').exists(), '上一年拖住了整屏').toBe(false)
+    expect(revTile()).not.toContain('比12月')
     release()
     await flushPromises()
-    expect(forecast(w).props('prevState')).toBe('spliced')
-    expect(forecast(w).props('rows')).toEqual(rollingForecastRows(pnlSum(2025), pnlSum(2024)))
+    expect(revTile()).toContain('比12月')
   })
 })
 
@@ -449,26 +445,23 @@ describe('S 档骨架高:顶替 AnaEChart 的块与图同一张降档表', () =>
     expect(await heights(BudgetView, '.bv2-skel .fp-shim', true)).toEqual(['260px', '420px'])
   })
 
-  it('❗驾驶舱:主图 / 构成环 260、分期 / 收缴率 220;预测带(自绘)280 与异常速览(DOM)250 不降档', async () => {
-    expect(await heights(CockpitView, '.cv2-skel .fp-shim', true)).toEqual([
-      '260px',                           // 主图(读数句 / 参照系照抄真版式)
-      '260px',                           // 构成环
-      '280px',                           // 预测带 AnaForecastChart(自绘,不降档)
-      '220px', '220px',                  // 分期收入堆叠 / 收缴率
-      '258px',                           // 回测表块 = 表头 30 + 6 行 × 38(异常速览照抄真版式四条)
-    ])
+  // 2026-10 改稿:按月 预测图 280(降档表里没有 280,不降)/ 构成 · 分期 · 各公司收缴率 250→220;回测表块 258(DOM);规则卡照抄真版式
+  it('❗驾驶舱按月:预测图 280 不降档,三张成对条 / 横条 250→220,回测表块 258', async () => {
+    providePeriodMonths(MONTHS, MONTHS)
+    usePeriod().setGran('month')
+    expect(await heights(CockpitView, '.cv2-skel .fp-shim', true)).toEqual(['280px', '220px', '220px', '220px', '258px'])
   })
 })
 
 describe('弹层里的图瞬现(原则 7)', () => {
-  it('❗驾驶舱:点构成环扇区开出的趋势图 entrance=false;屏上的图不传(挂载即入场)', async () => {
+  it('❗驾驶舱:点营业收入构成的条开出的板块趋势图 entrance=false;屏上的图不传(挂载即入场)', async () => {
     const w = await boot(CockpitView)
     const charts = w.findAllComponents({ name: 'AnaEChart' })
     expect(charts.length).toBeGreaterThan(0)
     for (const c of charts) expect(c.props('entrance'), '屏上的图不该关入场').toBeUndefined()
-    const donut = charts.find((c) => (c.props('option') as { series?: { type?: string }[] }).series?.[0]?.type === 'pie')
-    expect(donut, '构成环不在').toBeTruthy()
-    donut!.vm.$emit('chart-click', { name: '租金' })
+    const compo = charts.find((c) => ((c.props('option') as { yAxis?: { data?: string[] } }).yAxis?.data ?? []).includes('租金'))
+    expect(compo, '营业收入构成不在').toBeTruthy()
+    compo!.vm.$emit('chart-click', { componentType: 'series', name: '租金', dataIndex: 0 })
     await flushPromises()
     const modal = w.find('.cv2-modal')
     expect(modal.exists(), '点扇区没开弹层').toBe(true)
@@ -496,63 +489,46 @@ describe('期间回退:期间选择旁的标签 / 图卡里一行,不用满宽�
     return w
   }
 
-  it('❗驾驶舱:选 2026-08 而损益只录到 7 月 → 只在期间旁挂一枚「显示 2026-07 · 8 月无数据」;构成环同锚,卡头不重复', async () => {
-    vi.mocked(data.fetchPnlSummary).mockImplementation(async (y: number) => {
-      const s = pnlSum(y)
-      return y === 2026 ? { ...s, months: s.months.filter((m) => m !== 8) } : s
-    })
+  // 2026-10 改稿(cv2-notdone):整页回退看损益表有数的月(fetchAvailableMonths 的 sources.pnl),标签不出 YYYY-MM 写法
+  it('❗驾驶舱:选 2026-08 而损益表只录到 7 月 → 整页显示 7 月,只在期间旁挂一枚「显示 7月 · 8月无数据」', async () => {
+    vi.mocked(data.fetchAvailableMonths).mockResolvedValue({ months: MONTHS, sources: { pnl: MONTHS.filter((m) => m !== '2026-08') } })
     const w = await bootAug(CockpitView)
-    expect(tags(w)).toEqual(['显示 2026-07 · 8 月无数据'])
-    expect(headTag(w, '收入构成').exists(), '整页回退只贴期间旁,构成环卡头不重复').toBe(false)
-    expect(w.findAll('.anx-body .fp-state').length, '正文里不该有回退标签').toBe(0)
+    expect(tags(w)).toEqual(['显示 7月 · 8月无数据'])
+    expect(w.findAll('.anx-body .fp-state').length, '正文里不该有整页回退标签').toBe(0)
+    expect(w.findAll('.av2-kpi')[0].text(), '整页按 7 月画:瓦比的是 6 月').toContain('比6月')
     usePeriod().setMonth(7)
     await flushPromises()
     expect(tags(w), '7 月有损益,期间旁标签该撤').toEqual([])
   })
 
-  it('❗驾驶舱:台账只到 7 月 → 收缴率卡头「显示 2026-07」,期间旁不挂;选 6 月(在柱子范围里)不挂', async () => {
+  it('❗驾驶舱:台账只到 7 月 → 各公司收缴率卡头「显示 7月」、瓦标签「收缴率(7月)」,期间旁不挂;选 7 月不挂', async () => {
     vi.mocked(data.fetchCollectRates).mockResolvedValue([
       { ym: '2026-06', receivable: 100000, collected: 90000, rate: 90 },
       { ym: '2026-07', receivable: 120000, collected: 96000, rate: 80 },
     ])
     const w = await bootAug(CockpitView)
     expect(tags(w)).toEqual([])
-    expect(headTag(w, '收缴率 vs 目标').text()).toBe('显示 2026-07')
-    usePeriod().setMonth(6)
+    expect(headTag(w, '各公司收缴率').text()).toBe('显示 7月')
+    expect(w.findAll('.av2-kpi')[3].text()).toContain('收缴率(7月)')
+    usePeriod().setMonth(7)
     await flushPromises()
-    expect(headTag(w, '收缴率 vs 目标').exists(), '所选月在柱子范围里,这张图没有回退').toBe(false)
+    expect(headTag(w, '各公司收缴率').exists(), '所选月有台账,不回退').toBe(false)
   })
 
-  // 破坏验证:删掉 #period-note 里那枚「收缴率显示」→ 红(KPI 瓦是 4 月的数,屏上只剩瓦里小字)
-  it('❗驾驶舱:台账断月(04、06 有,05 无)选 05 → KPI 瓦按 04,期间旁「收缴率显示 2026-04」;卡头不挂', async () => {
+  // 新稿把「收缴率显示 YYYY-MM」那枚期间旁标签并进了瓦标签和卡头(收缴率单图回退贴它自己的卡头)
+  it('❗驾驶舱:台账断月(04、06 有,05 无)选 05 → 瓦与卡头都按 4 月,期间旁不挂', async () => {
     vi.mocked(data.fetchCollectRates).mockResolvedValue([
       { ym: '2026-04', receivable: 100000, collected: 90000, rate: 90 },
       { ym: '2026-06', receivable: 120000, collected: 96000, rate: 80 },
     ])
     const w = await bootAug(CockpitView)
-    expect(tags(w), '选 08:卡头已挂「显示 2026-06」,期间旁不重复').toEqual([])
     usePeriod().setMonth(5)
     await flushPromises()
-    expect(tags(w)).toEqual(['收缴率显示 2026-04'])
-    expect(headTag(w, '收缴率 vs 目标').exists(), '05 在柱子范围里,图没有回退').toBe(false)
+    expect(tags(w)).toEqual([])
+    expect(headTag(w, '各公司收缴率').text()).toBe('显示 4月')
+    expect(w.findAll('.av2-kpi')[3].text()).toContain('收缴率(4月)')
   })
-
-  it('❗驾驶舱:当年有收入为负的月 → 主图卡里图上方一行块内提示(FPNote),不是横条', async () => {
-    vi.mocked(data.fetchPnlSummary).mockImplementation(async (y: number) => {
-      const s = pnlSum(y)
-      if (y !== 2026) return s
-      const revenue = [...s.revenue]
-      revenue[2] = -50000
-      return { ...s, revenue }
-    })
-    const w = await bootAug(CockpitView)
-    const note = w.find('.av2-grid[data-stale-host] .av2-s8 .fp-note')
-    expect(note.exists(), '离群月提示不在主图卡里').toBe(true)
-    expect(note.text()).toBe('2026-03 收入为负,已计入年度营收/成本/利润与达成率')
-    // 提示包在常驻 32px 的预留位里(.cv2-onote,2026-10-03 横条收尾),预留位紧贴在图上方
-    expect(note.element.parentElement!.classList.contains('cv2-onote')).toBe(true)
-    expect(note.element.parentElement!.nextElementSibling?.classList.contains('stub-chart'), '提示不在图上方').toBe(true)
-  })
+  // 「当年有收入为负的月 → 主图卡里一行 FPNote」那条 2026-10 改稿删:新稿拿掉了卡内黄条(cv2-changes 第 1 条),负数照实画在预测图里
 
   it('❗费用与报销:选 2026-08 而附表5 只录到 7 月 → 期间旁「显示 2026-07 · 8 月无数据」;异动榜科目名悬停看全称', async () => {
     vi.mocked(data.fetchPnlYear).mockImplementation(async (_s: string, y: number) => {

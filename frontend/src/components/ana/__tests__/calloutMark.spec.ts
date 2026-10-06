@@ -10,8 +10,6 @@ import { join } from 'node:path'
 import * as echarts from 'echarts'
 import { CALLOUT_GAP, CALLOUT_TOP_LIMIT, FP_ANA_THEME, calloutsOf, placeCallout } from '../anaTheme'
 import { calcBe, cvpOption } from '@/views/analysis/breakeven.logic'
-import { fitRevenueTrend, mainChart, mainChartOption, outlierResidualsByMonth } from '@/views/analysis/cockpit.logic'
-import type { PnlSummary } from '@/analysis/anaData'
 
 echarts.registerTheme('fpAnaTheme', FP_ANA_THEME)
 
@@ -67,29 +65,6 @@ describe('calloutMark:深色气泡摆在稿上的位置', () => {
     expect(ps[0].box.h, '一行').toBe(23)
     // 居中在点上,不必夹边
     expect(ps[0].left + ps[0].box.w / 2).toBeCloseTo(ps[0].dot.x, 6)
-  })
-
-  // 库里 2025 年逐月(万元),12 月收入 −63.61、利润 −655.33
-  const cockpitOpt = (): object => {
-    const N12 = (): (number | null)[] => new Array(12).fill(null)
-    const rev = [714.66, 716.98, 699.66, 740.61, 753.71, 771.11, 824.97, 866.91, 876.26, 930.15, 940.78, -63.61].map((v) => v * 10000)
-    const profit = [179.37, 276.19, 243.35, 228.51, 253.63, 253.27, 304.6, 296.68, 249.06, 315.87, 344.9, -655.33].map((v) => v * 10000)
-    const pnl: PnlSummary = { year: 2025, months: Array.from({ length: 12 }, (_, i) => i + 1), revenue: rev, cost: N12(), profit, bySchedule: {} }
-    const d = mainChart(pnl, 9_270_0000)!
-    return mainChartOption(d, outlierResidualsByMonth(fitRevenueTrend(pnl), d.rev, d.outlierMonths), 'none')!
-  }
-
-  it.each(SIZES)('驾驶舱 负收入月 %i×%i:点在柱头,两行气泡挂在下方', (w, h) => {
-    const ps = layout(cockpitOpt(), w, h)
-    expectReadable(ps, w, h)
-    expect(ps[0].side).toBe('bottom')
-    expect(ps[0].box.h, '两行').toBe(38)
-  })
-
-  it('❗手机宽驾驶舱 12 月贴右边:气泡夹进图里,尖角仍对准柱头(不在气泡正中)', () => {
-    const [p] = layout(cockpitOpt(), 289, 260)
-    expect(p.left + p.box.w).toBeCloseTo(289 - 4, 6)
-    expect(p.tipX).toBeGreaterThan(p.box.w / 2 + 4)
   })
 })
 

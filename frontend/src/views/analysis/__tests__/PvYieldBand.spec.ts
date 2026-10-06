@@ -5,10 +5,12 @@ import { nextTick } from 'vue'
 import { mount, type DOMWrapper } from '@vue/test-utils'
 import PvYieldBand from '../PvYieldBand.vue'
 import { tipWidth } from '@/components/ana/chartTip'
+import { PV_COLORS } from '../pvAnaColors'
 import type { YieldBand } from '../pvAnaV4.logic'
 import type { TickState } from '../pvMeterAna.logic'
 
-const W = 999, PL = 44, PR = 62, PT = 12, IH = 214
+// 右留白 84 = 8 + 「各栋中间一半」6 字 × 12 + 4(2026-10-06:原来 62 放不下,线尾字被往左推、压在最后一个点上)
+const W = 999, PL = 44, PR = 84, PT = 12, IH = 214
 
 function monthData(): YieldBand {
   const n = 31, fut = 28
@@ -28,17 +30,17 @@ function monthData(): YieldBand {
   return {
     gran: 'month', labels: Array.from({ length: n }, (_, i) => String(i + 1)),
     sel, selState: state, selName: 'F座', med, lo, hi,
-    futureFrom: fut, throughIdx: fut - 1, onlineN: 11, unbornN: 2, denomNote: '分母 = 台账装机（13 栋未录板数）',
+    futureFrom: fut, cap: 24, hint: '', refs: [],
   }
 }
 
-/** 独立按规格算的坐标:x 首尾贴边;y = 数据极值各外扩 18% */
+/** 独立按规格算的坐标:x 首尾贴边;y = 数据极值各外扩 18%,下沿封 0(夹具值都在 2 以上,封不到) */
 function geo(d: YieldBand) {
   const n = d.labels.length
   const iw = W - PL - PR
   const vs = [...d.sel, ...d.med, ...d.lo, ...d.hi].filter((v): v is number => v != null)
   const lo = Math.min(...vs), hi = Math.max(...vs), pad = (hi - lo) * 0.18
-  const min = lo - pad, max = hi + pad
+  const min = Math.max(0, lo - pad), max = hi + pad
   return {
     min, max,
     x: (i: number) => PL + (i / (n - 1)) * iw,
@@ -50,7 +52,7 @@ const hit = (w: ReturnType<typeof mount>) => w.find('.pyb-hit')
 const attr = (el: DOMWrapper<Element>, k: string) => el.attributes(k) ?? ''
 
 describe('PvYieldBand 几何', () => {
-  it('x 首尾贴边:1 日在 padL,31 日在 宽 − 62;淡区从 28、29 日正中起到绘图区右缘', () => {
+  it('x 首尾贴边:1 日在 padL,31 日在 宽 − 84;淡区从 28、29 日正中起到绘图区右缘', () => {
     const d = monthData()
     const w = mount(PvYieldBand, { props: { data: d } })
     const g = geo(d)
@@ -58,11 +60,11 @@ describe('PvYieldBand 几何', () => {
     expect(x0).toBeCloseTo(44, 6)
     expect(y0).toBeCloseTo(g.y(d.sel[0]!), 6)
     const shade = w.find('.pyb-future')
-    expect(Number(shade.attributes('x'))).toBeCloseTo(862.58, 1)
-    expect(Number(shade.attributes('x')) + Number(shade.attributes('width'))).toBeCloseTo(937, 6)
+    expect(Number(shade.attributes('x'))).toBeCloseTo(842.42, 1)   // 44 + 28/30 × 871 − 871/60
+    expect(Number(shade.attributes('x')) + Number(shade.attributes('width'))).toBeCloseTo(915, 6)
     const xl = w.findAll('text.pyb-ax').filter(t => t.attributes('text-anchor') === 'middle')
     expect(xl.map(t => t.text())).toEqual(['1', '5', '10', '15', '20', '25', '31'])
-    expect(Number(xl[xl.length - 1].attributes('x'))).toBeCloseTo(937, 6)
+    expect(Number(xl[xl.length - 1].attributes('x'))).toBeCloseTo(915, 6)
   })
 
   it('4 条横网格等分绘图区,刻度字 = 外扩后的值域四等分', () => {
@@ -111,13 +113,13 @@ describe('PvYieldBand 几何', () => {
       ...m, gran: 'year', labels: Array.from({ length: 8 }, (_, i) => `${i + 1}月`),
       sel: pick(m.sel).map((v, i) => (v == null ? null : v * 30 + i)), selState: pick(m.selState),
       med: pick(m.med).map(v => v! * 30), lo: pick(m.lo).map(v => v! * 30 - 4), hi: pick(m.hi).map(v => v! * 30 + 3),
-      futureFrom: null, throughIdx: null,
+      futureFrom: null, cap: null,
     }
     const w = mount(PvYieldBand, { props: { data: d } })
     expect(w.find('.pyb-future').exists()).toBe(false)
     const xl = w.findAll('text.pyb-ax').filter(t => t.attributes('text-anchor') === 'middle')
     expect(xl.map(t => t.text())).toEqual(['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月'])
-    expect(Number(xl[7].attributes('x'))).toBeCloseTo(937, 6)
+    expect(Number(xl[7].attributes('x'))).toBeCloseTo(915, 6)
     const g = geo(d)
     const [x0, y0] = firstPoint(attr(w.find('.pyb-med'), 'd'))
     expect(x0).toBeCloseTo(44, 6)
@@ -137,6 +139,23 @@ describe('PvYieldBand 线尾直标', () => {
     expect(y('sel')).toBeCloseTo(g.y(2.4) + 4, 6)
     expect(Number(w.find('.pyb-tail-sel').attributes('x'))).toBeCloseTo(g.x(27) + 8, 6)
     expect(w.find('.pyb-tail-sel').text()).toBe('F座')
+    // 全园中间:字和线都走墨阶(原来浅蓝 #85B7EB,和三期同值)
+    expect(w.find('.pyb-tail-med').text()).toBe('全园中间')
+    expect(w.find('.pyb-tail-med').attributes('fill')).toBe(PV_COLORS.AXIS_TEXT)
+    expect(w.findAll('.pyb-med').every(p => p.attributes('stroke') === PV_COLORS.REF)).toBe(true)
+  })
+
+  it('❗整段已过去、线尾在最右一个刻度:「各栋中间一半」照样落在线尾 + 8,不被往左推(右留白放得下);对照:按原来右留白 62 会被推回 18', () => {
+    const d = { ...monthData(), futureFrom: null }
+    d.hi = d.hi.map((v, i) => v ?? 4 + 0.01 * i); d.lo = d.lo.map((v, i) => v ?? 3 + 0.01 * i)
+    d.med = d.med.map((v, i) => v ?? 3.5 + 0.01 * i); d.sel = d.sel.map((v, i) => v ?? 2.5 + 0.01 * i)
+    const w = mount(PvYieldBand, { props: { data: d } })
+    const t = w.find('.pyb-tail-band')
+    const x = Number(t.attributes('x')), tw = tipWidth([t.text()], 0)
+    expect(t.text()).toBe('各栋中间一半')
+    expect(x).toBeCloseTo(geo(d).x(30) + 8, 6)
+    expect(x + tw).toBeLessThanOrEqual(W)
+    expect(Math.min(W - 62 + 8, W - tw)).toBeLessThan(W - 62 + 8)   // 对照:原来线尾 x0 = 945,放不下被夹回 927
   })
 
   it('❗中位贴着带上沿时被往下推开整 13,带标签不动', () => {
@@ -177,8 +196,8 @@ describe('PvYieldBand 悬停', () => {
     expect(Number(w.find('.pyb-dot').attributes('cy'))).toBeCloseTo(g.y(d.sel[10]!), 6)
     const lines = w.findAll('.pv-tip span').map(s => s.text())
     expect(lines).toEqual([
-      '11 日', `F座 ${d.sel[10]!.toFixed(2)} h`, `全园中位 ${d.med[10]!.toFixed(2)} h`,
-      `中间一半 ${d.lo[10]!.toFixed(2)} – ${d.hi[10]!.toFixed(2)} h`,
+      '11 日', `F座 ${d.sel[10]!.toFixed(2)} kWh`, `全园中间 ${d.med[10]!.toFixed(2)} kWh`,
+      `中间一半 ${d.lo[10]!.toFixed(2)} – ${d.hi[10]!.toFixed(2)} kWh`,
     ])
     expect(w.find('.pv-tip').attributes('style')).toContain(`left: ${g.x(10) + 12}px`)
     await hit(w).trigger('mouseleave')
@@ -204,7 +223,7 @@ describe('PvYieldBand 悬停', () => {
     const g = geo(d)
     const w = mount(PvYieldBand, { props: { data: d } })
     await hit(w).trigger('mousemove', { clientX: g.x(5) })
-    expect(w.findAll('.pv-tip span')[1].text()).toBe('F座 这天没抄表')
+    expect(w.findAll('.pv-tip span')[1].text()).toBe('F座 这天没抄表或发电不为正')
     expect(w.find('.pyb-dot').exists()).toBe(false)
     await hit(w).trigger('mousemove', { clientX: g.x(16) })
     const t = w.findAll('.pv-tip span').map(s => s.text())
@@ -221,7 +240,7 @@ describe('PvYieldBand 悬停', () => {
     await hit(w).trigger('mousemove', { clientX: geo(d).x(2) })
     expect(w.findAll('.pv-tip span')[1].text()).toBe('F座 —')
     await hit(w).trigger('mousemove', { clientX: geo(d).x(5) })
-    expect(w.findAll('.pv-tip span')[1].text()).toBe('F座 这天没抄表')
+    expect(w.findAll('.pv-tip span')[1].text()).toBe('F座 这天没抄表或发电不为正')
   })
 
   it('年档气泡首行写「3 月」', async () => {
@@ -229,7 +248,7 @@ describe('PvYieldBand 悬停', () => {
     const d: YieldBand = {
       ...m, gran: 'year', labels: Array.from({ length: 8 }, (_, i) => `${i + 1}月`),
       sel: m.sel.slice(0, 8), selState: m.selState.slice(0, 8), med: m.med.slice(0, 8),
-      lo: m.lo.slice(0, 8), hi: m.hi.slice(0, 8), futureFrom: null, throughIdx: null,
+      lo: m.lo.slice(0, 8), hi: m.hi.slice(0, 8), futureFrom: null, cap: null,
     }
     const w = mount(PvYieldBand, { props: { data: d } })
     await hit(w).trigger('mousemove', { clientX: geo(d).x(2) })
@@ -237,18 +256,54 @@ describe('PvYieldBand 悬停', () => {
   })
 })
 
-describe('PvYieldBand 图注', () => {
-  it('❗「数据到」写最后一条抄表那天,不写今天:今天 28 日、数据只到 12 日 → 写 12 日', () => {
-    const w = mount(PvYieldBand, { props: { data: { ...monthData(), throughIdx: 11 } } })
-    expect(w.find('.ana-ref').text()).toContain(' · 数据到 12 日，右侧淡区还没到 · ')
-    expect(w.find('.ana-ref').text()).not.toContain('数据到 28 日')
+// 2026-10-06 改稿(画板 m-trail-over / y-abs):超 24 压顶、下沿封 0;卡下长图注拿掉(参照由屏写,走句型库)
+describe('PvYieldBand 压顶与封 0', () => {
+  const overData = () => { const d = monthData(); d.sel[10] = 31.5; d.sel[11] = 30.2; return d }
+
+  it('❗选中栋超 24 的天压到 24 画、纵轴上沿就是 24;碰到它的线段画虚线,别的段实线;气泡写真值', async () => {
+    const d = overData()
+    const w = mount(PvYieldBand, { props: { data: d } })
+    const ax = w.findAll('text.pyb-ax').filter(t => t.attributes('text-anchor') === 'end').map(t => t.text())
+    expect(ax).toEqual(['0.0', '8.0', '16.0', '24.0'])   // 上沿 24 不外扩;下沿 2.x − 18% × 21 < 0 → 封 0
+    const yAt = (i: number) => firstPoint(attr(w.find(`.pyb-sel[data-i="${i}"]`), 'd'))[1]
+    expect(yAt(10)).toBeCloseTo(PT, 6)
+    expect(yAt(11)).toBeCloseTo(PT, 6)
+    const dash = (i: number) => w.find(`.pyb-sel[data-i="${i}"]`).attributes('stroke-dasharray')
+    expect([dash(8), dash(9), dash(10), dash(11), dash(12)]).toEqual([undefined, '2 5', '2 5', '2 5', undefined])
+    expect(w.find('.ana-ref').exists()).toBe(false)
+    await hit(w).trigger('mousemove', { clientX: geo(d).x(10) })
+    expect(w.findAll('.pv-tip span')[1].text()).toBe('F座 31.50 kWh')
+    expect(Number(w.find('.pyb-dot').attributes('cy'))).toBeCloseTo(PT, 6)
   })
 
-  it('写在网 / 未投产栋数、数据到哪天、分母口径', () => {
-    const w = mount(PvYieldBand, { props: { data: monthData() } })
-    expect(w.find('.ana-ref').text()).toBe(
-      '纵轴 = 等效小时 kWh/kWp · 横轴 = 1…31 日 · 11 栋在网、2 栋未投产 · 数据到 28 日，右侧淡区还没到 · 分母 = 台账装机（13 栋未录板数）',
-    )
+  it('❗逐刻度上限(按年 = 24 × 当月天数):只有超过自己那一格上限的点压顶,上沿是压顶后最高的点;对照:没超的格照画', () => {
+    const d = { ...overData(), cap: overData().labels.map((_, i) => (i === 10 ? 30 : 31)) }
+    const w = mount(PvYieldBand, { props: { data: d } })
+    const ax = w.findAll('text.pyb-ax').filter(t => t.attributes('text-anchor') === 'end').map(t => t.text())
+    expect(ax[3]).toBe('30.2')   // 10 压到 30;11 的 30.2 没超 31,是最高的点
+    const dash = (i: number) => w.find(`.pyb-sel[data-i="${i}"]`).attributes('stroke-dasharray')
+    expect([dash(8), dash(9), dash(10), dash(11), dash(12)]).toEqual([undefined, '2 5', '2 5', undefined, undefined])
+  })
+
+  it('对照:按年(cap = null)同一份数不压顶 —— 上沿外扩到 31.5 以上,没有虚线段', () => {
+    const w = mount(PvYieldBand, { props: { data: { ...overData(), cap: null } } })
+    const top = w.findAll('text.pyb-ax').filter(t => t.attributes('text-anchor') === 'end').map(t => Number(t.text()))[3]
+    expect(top).toBeGreaterThan(31.5)
+    expect(w.findAll('.pyb-sel').some(p => p.attributes('stroke-dasharray'))).toBe(false)
+  })
+
+  it('❗下沿封 0:最低的点离 0 很近时外扩会到负数(按年 B座 原来 −17.2),封在 0;对照:离 0 远时照外扩', () => {
+    const d = monthData()
+    d.sel[2] = 0.2
+    const w = mount(PvYieldBand, { props: { data: d } })
+    const ax = () => w.findAll('text.pyb-ax').filter(t => t.attributes('text-anchor') === 'end').map(t => Number(t.text()))
+    expect(ax()[0]).toBe(0)
+    expect(firstPoint(attr(w.find('.pyb-sel[data-i="2"]'), 'd'))[1]).toBeLessThan(PT + IH)   // 0.2 在 0 线上方
+    const raw = monthData()
+    const w2 = mount(PvYieldBand, { props: { data: raw } })
+    const ax2 = w2.findAll('text.pyb-ax').filter(t => t.attributes('text-anchor') === 'end').map(t => Number(t.text()))
+    expect(ax2[0]).toBeCloseTo(geo(raw).min, 1)
+    expect(ax2[0]).toBeGreaterThan(1)
   })
 })
 
@@ -284,7 +339,7 @@ describe('PvYieldBand 动效', () => {
     const seg = w.find('.pyb-sel[data-i="10"]').element
     const m = monthData()
     const pick = <T,>(a: T[]) => a.slice(0, 12)
-    await w.setProps({ data: { ...m, gran: 'year', labels: pick(m.labels).map(l => l + '月'), sel: pick(m.sel), selState: pick(m.selState), med: pick(m.med), lo: pick(m.lo), hi: pick(m.hi), futureFrom: 12, throughIdx: 11 } })
+    await w.setProps({ data: { ...m, gran: 'year', labels: pick(m.labels).map(l => l + '月'), sel: pick(m.sel), selState: pick(m.selState), med: pick(m.med), lo: pick(m.lo), hi: pick(m.hi), futureFrom: 12, cap: null } })
     expect(w.find('g.pyb-data').element).not.toBe(g0)
     expect(w.find('.pyb-sel[data-i="10"]').exists()).toBe(true)
     expect(w.find('.pyb-sel[data-i="10"]').element, '跨粒度复用了同下标的线段').not.toBe(seg)
@@ -303,7 +358,7 @@ describe('PvYieldBand 动效', () => {
     expect([seg.getAttribute('d'), band.getAttribute('d')].map((v, k) => v === before[k])).toEqual([false, false])
     const g = w.find('g.pyb-data')
     for (const sel of ['.pyb-band', '.pyb-med', '.pyb-sel', '.pyb-tail']) expect(g.find(sel).exists(), sel).toBe(true)
-    await w.find('.pyb-hit').trigger('mousemove', { clientX: 44 + 10 * (999 - 44 - 62) / 30 })
+    await w.find('.pyb-hit').trigger('mousemove', { clientX: 44 + 10 * (999 - 44 - PR) / 30 })
     for (const sel of ['.pyb-hair', '.pyb-dot', '.pyb-axl']) expect(w.find(sel).element.closest('.ana-morph'), sel).toBe(null)
   })
 })

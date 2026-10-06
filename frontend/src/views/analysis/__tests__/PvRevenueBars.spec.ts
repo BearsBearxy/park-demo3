@@ -1,5 +1,5 @@
 // PvRevenueBars(B8)挂载测:条从 104 起、两段接缝、条尾合计 x、段内写得下才写数(按字宽)、
-// 期别点色、选中栋加粗、行悬停气泡上下半行分放。
+// 选中栋加粗、行悬停气泡上下半行分放;2026-10-06 改稿:行头期别点、图例期别拿掉,图例三项,卡下图注拿掉(屏写读数句与参照)。
 // 夹具非退化:三期都在、合计从 3.96 万到 0.20 万、一栋没有上网、一栋上网段只有几像素、一对段宽卡在写数门槛两侧。
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
@@ -23,7 +23,7 @@ function data(): RevenueBars {
       row(7, '9栋', 2, 9000, 2000, 0),         // 没有上网;自用段 0.20 万 ≈ 39.4px,刚够写
       row(13, '三期楼', 3, 8800, 1900, 50),     // 自用段 0.19 万 ≈ 37.4px,写不下
     ],
-    gridPrice: 0.4, through: '8/28',
+    gridPrice: 0.4, through: '8/28', hint: '', read: null, refs: [],
   }
 }
 const S = (W - 84 - PL) / (3.96 * 1.04)
@@ -86,7 +86,7 @@ describe('PvRevenueBars 几何', () => {
         row(1, 'B座', 1, 3e6, 6e5, 1.2e6),
         row(9, '11栋', 2, 2e6, 5e5, 1e6),
       ],
-      gridPrice: 0.4, through: null,
+      gridPrice: 0.4, through: null, hint: '', read: null, refs: [],
     }
     const s = (W - 84 - PL) / (1000 * 1.04)
     expect(50 * s).toBeGreaterThan(38)
@@ -97,11 +97,10 @@ describe('PvRevenueBars 几何', () => {
     expect(w.findAll('text.prb-ax').map(t => t.text())).toEqual(['0', '200', '400', '600', '800', '1000'])
   })
 
-  it('期别点按期上色;选中栋名字加粗', () => {
+  it('❗行头不画期别点(期别蓝和自用 / 上网两段同值,撞色);栋名仍在 x = 22;选中栋名字加粗', () => {
     const w = mount(PvRevenueBars, { props: { data: data(), selId: 9 } })
-    const dots = w.findAll('circle.prb-dot')
-    expect(dots.map(d => d.attributes('fill'))).toEqual(['#378ADD', '#378ADD', '#5DCAA5', '#5DCAA5', '#5DCAA5', '#EF9F27'])
-    expect(num(dots[2], 'cy') + rowY(dots[2].element)).toBe(6 + 2 * 27 + 13.5)
+    expect(w.findAll('circle').length).toBe(0)
+    expect(w.findAll('text.prb-name').every(t => t.attributes('x') === '22')).toBe(true)
     expect(w.findAll('text.prb-name-sel').map(t => t.text())).toEqual(['11栋'])
   })
 })
@@ -136,14 +135,14 @@ describe('PvRevenueBars 窄容器', () => {
   })
 })
 
-describe('PvRevenueBars 悬停与图注', () => {
+describe('PvRevenueBars 悬停与图例', () => {
   it('悬停上半行:行底 4% 墨,气泡五行,放在行下 30、条尾右 60', async () => {
     const w = mount(PvRevenueBars, { props: { data: data(), selId: null } })
     const r = w.find('.prb-row[data-id="1"]')
     await r.trigger('mouseenter')
     expect(r.attributes('style')).toContain('var(--ink-040)')
     const lines = w.findAll('.pv-tip span').map(s => s.text())
-    expect(lines).toEqual(['B座 · 一期', '本段发电 5.16 万度', '自己用了 ¥1.73 万', '卖上网 ¥0.69 万', '合计 ¥2.42 万'])
+    expect(lines).toEqual(['B座 · 一期', '本段发电 5.16 万kWh', '自己用了 ¥1.73 万', '卖上网 ¥0.69 万', '合计 ¥2.42 万'])
     const tw = tipWidth(lines, 22)
     const style = w.find('.pv-tip').attributes('style')
     expect(style).toContain(`left: ${Math.min(PL + 2.42 * S + 60, W - tw - 8)}px`)
@@ -164,22 +163,19 @@ describe('PvRevenueBars 悬停与图注', () => {
     expect(w.find('.pv-tip').attributes('style')).toContain(`left: ${W - tw - 8}px`)
   })
 
-  it('图例与图注写上网单价常量、数据到哪天;对照:录满了不写数据到', () => {
+  it('图例三项:自己用的、卖上网的两个色块 + 「条尾是合计」;不带期别、不带单价(单价写在屏的参照里);卡下没有图注', () => {
     const w = mount(PvRevenueBars, { props: { data: data(), selId: null } })
-    expect(w.find('.pv-leg').text()).toContain('卖上网的（上网 ¥0.40/度）')
-    expect(w.find('.ana-ref').text()).toBe(
-      '横轴 = 万元，从 0 起 · 两段叠起来，条尾就是合计，不用心算 · 按合计从多到少排 · 两段单价口径不同（自用按录入时的单价、上网按 ¥0.40/度） · 数据到 8/28',
-    )
-    const full = mount(PvRevenueBars, { props: { data: { ...data(), through: null }, selId: null } })
-    expect(full.find('.ana-ref').text()).not.toContain('数据到')
+    expect(w.findAll('.pv-leg > span').map(s => s.text())).toEqual(['自己用的', '卖上网的', '条尾是合计'])
+    expect(w.findAll('.pv-leg .pv-sw')).toHaveLength(2)
+    expect(w.find('.ana-ref').exists()).toBe(false)
   })
 
-  it('❗C6-25：两段条 / 条内值 / 合计在 g.prb-data 里，期别点与栋名留组外', () => {
+  it('❗C6-25：两段条 / 条内值 / 合计在 g.prb-data 里，栋名留组外', () => {
     const w = mount(PvRevenueBars, { props: { data: data(), selId: 2 } })
     const g = w.find('g.prb-data')
     expect([g.findAll('rect.prb-self').length, g.findAll('text.prb-tot').length]).toEqual([6, 6])
-    expect([g.find('.prb-name').exists(), g.find('.prb-dot').exists()]).toEqual([false, false])
-    expect([w.findAll('.prb-name').length, w.findAll('.prb-dot').length]).toEqual([6, 6])
+    expect(g.find('.prb-name').exists()).toBe(false)
+    expect(w.findAll('.prb-name').length).toBe(6)
     // 选中栋名加粗不受拆组影响（C6-18 瞬变）；jsdom 的 rect 全 0 = 离屏 → 不擦(视口内的对照在「动效」组)
     expect(w.findAll('.prb-name-sel')).toHaveLength(1)
     expect(g.classes()).not.toContain('first')

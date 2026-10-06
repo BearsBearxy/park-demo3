@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 抽屉 B12 · 逐刻度明细(PV-ANALYSIS-SCREEN-V4 §3.20;画布 v2/Drawer.dc.html)。
+// 抽屉 B12 · 每天的读数(PV-ANALYSIS-SCREEN-V4 §3.20;2026-10-06 改稿 pv-v2-drawer;按年一行一个月)。
 // 五列 108 / 104 / 84 / 96 / 备注按最长一条定宽,余宽落进行末空列 .fp-fill(LIST-PAGE-SPEC §4,2026-10-02);
 // 行高 32;表头 24 吸顶,可见 8 行、表内上下滚,打开时停在最后 8 行。
 // 出范围行左侧 2px 色条(低于红 / 高于琥珀)+ 数值与状态同色;缺抄行整行淡底、数值「—」、备注「没抄表」。
@@ -8,22 +8,23 @@ import { computed, nextTick, ref, watch } from 'vue'
 import '@/components/ana/ana.css'
 import { textW } from '@/composables/useWideTable'
 import { PV_COLORS as C } from './pvAnaColors'
+import { PV, PVH, pvRowsRef } from '@/components/ana/anaSentence'
 import type { DetailRow, PvDetailTableProps } from './pvAnaV4.logic'
 
 const props = defineProps<PvDetailTableProps>()
 
 const ROW_H = 32, HEAD_H = 24, VISIBLE = 8
 
-const unit = computed(() => (props.gran === 'month' ? '天' : '个月'))
-/** 日期列:月档「8 月 21 日」,年档「2 月」;表脚的「第 a–b 天」也用这个日 / 月序号 */
+const unit = computed<'天' | '个月'>(() => (props.gran === 'month' ? '天' : '个月'))
+/** 日期列:月档「8 月 21 日」,年档「2 月」 */
 const ordinal = (key: string) => Number(props.gran === 'month' ? key.slice(8, 10) : key.slice(5, 7))
 const dateText = (key: string) =>
   props.gran === 'month' ? `${Number(key.slice(5, 7))} 月 ${ordinal(key)} 日` : `${ordinal(key)} 月`
 
 // computed:切外观时跟着换(页签常驻不重挂载;琥珀字暗色下是 --warn-text)
 const OUT = computed(() => ({
-  '-1': { text: '低于下沿', bar: C.BELOW, ink: C.BELOW },
-  '1': { text: '高于上沿', bar: C.ABOVE, ink: C.AMBER_TEXT },
+  '-1': { text: PV.table.below, bar: C.BELOW, ink: C.BELOW },
+  '1': { text: PV.table.above, bar: C.ABOVE, ink: C.AMBER_TEXT },
 }) as Record<string, { text: string; bar: string; ink: string }>)
 
 const view = computed(() => props.rows.map((r: DetailRow) => {
@@ -36,7 +37,7 @@ const view = computed(() => props.rows.map((r: DetailRow) => {
     date: dateText(r.key),
     gen: r.gen == null ? '—' : Math.round(r.gen).toLocaleString('en-US'),
     ratio: noRatio || r.ratio == null ? '—' : r.ratio.toFixed(3),
-    state: noRatio || r.out == null ? '—' : o ? o.text : '在范围内',
+    state: noRatio || r.out == null ? '—' : o ? o.text : PV.table.in,
     note: miss ? '没抄表' : noRatio ? '有抄表，发电不为正，不算比值' : r.runDay != null ? `连续第 ${r.runDay} ${unit.value}` : '',
   }
 }))
@@ -44,42 +45,34 @@ const view = computed(() => props.rows.map((r: DetailRow) => {
 // 备注列:本段全部备注里最长的一条(12px 字 + 左右内边距 16)
 const noteW = computed(() => textW(['备注', ...view.value.map(r => r.note)], 12, 16))
 
-// ── 滚动:打开 / 换数据时停在最后 8 行;表脚跟着写停在哪几行 ──
+// ── 滚动:打开 / 换数据时停在最后 8 行(最近的日子);表脚只说屏外还有几行、空行是什么 ──
 const box = ref<HTMLElement | null>(null)
-const first = ref(0)
 watch(() => props.rows, async (rows) => {
-  first.value = Math.max(0, rows.length - VISIBLE)
   await nextTick()
-  if (box.value) box.value.scrollTop = first.value * ROW_H
+  if (box.value) box.value.scrollTop = Math.max(0, rows.length - VISIBLE) * ROW_H
 }, { immediate: true })
-function onScroll() {
-  if (box.value) first.value = Math.min(Math.max(0, props.rows.length - VISIBLE), Math.round(box.value.scrollTop / ROW_H))
-}
 
-const foot = computed(() => {
-  const n = props.rows.length
-  const miss = props.gran === 'month' ? '那天' : '那个月'
-  if (n <= VISIBLE) return { scroll: '', miss }
-  const a = ordinal(props.rows[first.value].key), b = ordinal(props.rows[first.value + VISIBLE - 1].key)
-  const dir = first.value + VISIBLE >= n ? '滚上去看' : first.value === 0 ? '滚下去看' : '上下滚动看'
-  return { scroll: `表内可上下滚，这里停在第 ${a}–${b} ${unit.value}，其余 ${n - VISIBLE} ${unit.value}${dir}`, miss }
-})
+/** 卡头:这栋 · 几月几天(按年:几个月)· kWh */
+const hint = computed(() => (props.gran === 'month'
+  ? PVH.rows(props.name, Number(props.rows[0]?.key.slice(5, 7) ?? 0), props.rows.length)
+  : PVH.rowsY(props.name, props.rows.length)))
+const foot = computed(() => pvRowsRef(Math.max(0, props.rows.length - VISIBLE), unit.value))
 </script>
 
 <template>
   <div class="av2-card pv-b12">
     <div class="av2-card-h">
-      <span class="t">逐刻度明细</span>
-      <span class="hint">这一栋这一段，{{ gran === 'month' ? '每天' : '每个月' }}的原始读数</span>
+      <span class="t">{{ PV.card.rows }}</span>
+      <span class="hint">{{ hint }}</span>
     </div>
-    <div ref="box" class="scroll" :style="{ maxHeight: HEAD_H + VISIBLE * ROW_H + 'px' }" @scroll="onScroll">
+    <div ref="box" class="scroll" :style="{ maxHeight: HEAD_H + VISIBLE * ROW_H + 'px' }">
       <table class="tbl">
         <thead>
           <tr>
             <th style="width: 108px;">{{ gran === 'month' ? '日期' : '月份' }}</th>
-            <th style="width: 104px;">{{ gran === 'month' ? '当日' : '当月' }}发电 度</th>
-            <th style="width: 84px;">比值</th>
-            <th style="width: 96px;">在不在范围内</th>
+            <th style="width: 104px;">{{ gran === 'month' ? '当日' : '当月' }}发电 kWh</th>
+            <th style="width: 84px;">{{ PV.table.ratio }}</th>
+            <th style="width: 96px;">{{ PV.table.inBand }}</th>
             <th class="note" :style="{ width: noteW + 'px' }">备注</th>
             <th class="fp-fill" aria-hidden="true"></th>
           </tr>
@@ -96,9 +89,7 @@ const foot = computed(() => {
         </tbody>
       </table>
     </div>
-    <p class="ana-ref">
-      只列这一栋、只列本段<template v-if="foot.scroll"> · {{ foot.scroll }}</template> · 空行不是 0，是{{ foot.miss }}没抄表
-    </p>
+    <p class="ana-ref">{{ foot.text }}</p>
   </div>
 </template>
 

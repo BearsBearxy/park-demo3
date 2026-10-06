@@ -1,5 +1,6 @@
 // PvConsumption(B7)挂载测:槽与柱的 x/width、三段堆叠的 y、圆角只在最顶段、副轴钉死 0–6%、
-// 超轴刻度断线 + 三角 + 数值、未到淡区、悬停槽底与气泡翻边。
+// 超轴刻度断线 + 三角 + 数值、未到淡区、悬停槽底与气泡翻边;
+// 2026-10-06 改稿:损耗率墨阶虚线、右轴字灰;按年柱顶深色气泡与「几期并网」短标(钉坐标:槽心、柱顶 − 6)。
 // 夹具非退化:三段逐日起伏、损耗率逐日变且有一天冲到 7.2%、有一天损耗为 0、29–31 日未到。
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
@@ -7,6 +8,7 @@ import { mount, type DOMWrapper } from '@vue/test-utils'
 import PvConsumption from '../PvConsumption.vue'
 import { resolvedTheme } from '@/stores/appearance'
 import { tipWidth } from '@/components/ana/chartTip'
+import { PV_COLORS } from '../pvAnaColors'
 import type { Consumption, ConsumptionTick } from '../pvAnaV4.logic'
 
 const W = 999, PL = 46, PT = 22, IH = 224, BOT = 246
@@ -25,7 +27,7 @@ function monthData(): Consumption {
     const rate = i === 9 ? 0.072 : i === 2 ? 0 : 0.01 + (0.04 * (i % 7)) / 6
     return tick(label, 10000 + 1500 * Math.sin(i) + 200 * (i % 4), 5000 + 800 * Math.cos(i * 0.6), rate)
   })
-  return { gran: 'month', ticks, futureFrom: 28, throughIdx: 27 }
+  return { gran: 'month', ticks, futureFrom: 28, hint: '', read: null, refs: [], marks: [], joins: [] }
 }
 function geo(d: Consumption) {
   const slot = (W - 92) / d.ticks.length
@@ -100,7 +102,7 @@ describe('PvConsumption 柱', () => {
     const yr = w.findAll('.pcs-yr')
     expect(yr.map(t => t.text())).toEqual(['0%', '2%', '4%', '6%'])
     expect(yr.map(t => num(t, 'y') - 4)).toEqual([246, 246 - IH / 3, 246 - (2 * IH) / 3, 22].map(v => expect.closeTo(v, 6)))
-    expect(yr[0].attributes('fill')).toBe('#854F0B')
+    expect(yr[0].attributes('fill')).toBe(PV_COLORS.AXIS_TEXT)   // 2026-10-06:原来琥珀 #854F0B
     expect(num(yr[0], 'x')).toBe(W - 46 + 6)
   })
 })
@@ -134,13 +136,25 @@ describe('PvConsumption 损耗率', () => {
     expect(og.find('.pcs-overt').attributes('x')).toBe('6')
   })
 
+  it('❗2026-10-06:损耗率折线与点走墨阶虚线、右轴字灰(橙只留给超限);超 6% 的三角照旧橙', () => {
+    const w = mount(PvConsumption, { props: { data: monthData() } })
+    const segs = w.findAll('.pcs-lossline')
+    expect(segs.every(s => s.attributes('stroke') === PV_COLORS.REF && s.attributes('stroke-dasharray') === '4 3')).toBe(true)
+    expect(w.findAll('.pcs-lossdot').every(c => c.attributes('stroke') === PV_COLORS.REF)).toBe(true)
+    expect(w.find('path.pcs-over').attributes('fill')).toBe('#EF9F27')
+    expect(w.find('.pcs-overt').attributes('fill')).toBe(PV_COLORS.AXIS_TEXT)
+    expect(w.findAll('text').find(t => t.text() === '损耗率')!.attributes('fill')).toBe(PV_COLORS.AXIS_TEXT)
+    expect(w.html()).not.toContain('#854F0B')
+    expect(w.findAll('.pv-leg > span').map(s => s.text())).toEqual(['自己用了', '卖上网', '损耗', '损耗率（右轴）'])
+    expect(w.find('.pv-leg .pv-line').attributes('style')).toContain('repeating-linear-gradient')
+  })
+
   it('对照:没有超轴的刻度就没有三角,折线一笔到底', () => {
     const d = monthData()
     d.ticks[9] = tick('10', 11000, 5200, 0.05)
     const w = mount(PvConsumption, { props: { data: d } })
     expect(w.find('.pcs-over').exists()).toBe(false)
     expect(w.findAll('.pcs-lossline').map(s => Number(s.attributes('data-i')))).toEqual(Array.from({ length: 27 }, (_, k) => k))
-    expect(w.find('.ana-ref').text()).not.toContain('超过')
   })
 })
 
@@ -156,22 +170,24 @@ describe('PvConsumption 悬停', () => {
     const t = d.ticks[10]
     const lines = w.findAll('.pv-tip span')
     expect(lines.map(s => s.text())).toEqual([
-      '11 日', `自己用了 ${(t.self / 1e4).toFixed(2)} 万度`, `卖上网 ${(t.grid / 1e4).toFixed(2)} 万度`,
-      `路上损掉 ${(t.loss / 1e4).toFixed(3)} 万度`, `损耗率 ${t.lossPct!.toFixed(2)}%`,
+      '11 日', `自己用了 ${(t.self / 1e4).toFixed(2)} 万kWh`, `卖上网 ${(t.grid / 1e4).toFixed(2)} 万kWh`,
+      `损耗 ${(t.loss / 1e4).toFixed(3)} 万kWh`, `损耗率 ${t.lossPct!.toFixed(2)}%`,
     ])
     expect(w.find('.pv-tip').attributes('style')).toContain(`left: ${g.cx(10) + 14}px`)
     await w.find('.pcs-hit').trigger('mouseleave')
     expect(w.find('.pcs-hair').exists()).toBe(false)
   })
 
-  it('❗损耗率 ≥ 3% 那行转琥珀;对照 < 3% 不转', async () => {
+  it('❗损耗率 ≥ 3% 那行提亮(不用琥珀:橙只留给「高于平时 / 超限」);对照 < 3% 是淡字', async () => {
     const d = monthData()
     const g = geo(d)
     const w = mount(PvConsumption, { props: { data: d } })
     await w.find('.pcs-hit').trigger('mousemove', { clientX: g.cx(9) })
-    expect(w.findAll('.pv-tip span')[4].attributes('style')).toContain('rgb(246, 199, 122)')
+    const hi = w.findAll('.pv-tip span')[4].attributes('style')
+    expect(hi).not.toContain('rgb(246, 199, 122)')
+    expect(hi).not.toContain('opacity')
     await w.find('.pcs-hit').trigger('mousemove', { clientX: g.cx(7) })   // 8 日:1%
-    expect(w.findAll('.pv-tip span')[4].attributes('style')).not.toContain('rgb(246, 199, 122)')
+    expect(w.findAll('.pv-tip span')[4].attributes('style')).toContain('opacity: 0.72')
   })
 
   it('❗右缘放不下翻到左侧;鼠标进未到的日子钉在 28 日', async () => {
@@ -187,34 +203,47 @@ describe('PvConsumption 悬停', () => {
   })
 })
 
-describe('PvConsumption 年档与图注', () => {
-  it('年档 12 个槽全标月份,淡区从第 9 个槽起', () => {
-    const d: Consumption = {
-      gran: 'year', futureFrom: 8, throughIdx: 7,
-      ticks: Array.from({ length: 12 }, (_, i) => (i >= 8
-        ? { label: `${i + 1}月`, self: 0, grid: 0, loss: 0, lossPct: null, over: false }
-        : tick(`${i + 1}月`, 300000 + 40000 * Math.sin(i), 150000 + 20000 * i, 0.02 + 0.003 * i))),
-    }
+describe('PvConsumption 年档', () => {
+  const yearData = (fut: number | null): Consumption => ({
+    gran: 'year', futureFrom: fut, hint: '', read: null, refs: [], marks: [], joins: [],
+    ticks: Array.from({ length: 12 }, (_, i) => (fut != null && i >= fut
+      ? { label: `${i + 1}月`, self: 0, grid: 0, loss: 0, lossPct: null, over: false }
+      : tick(`${i + 1}月`, 300000 + 40000 * Math.sin(i) + (i >= 5 ? 200000 : 0), 150000 + 20000 * i, 0.02 + 0.003 * i))),
+  })
+
+  it('年档 12 个槽全标月份,淡区从第 9 个槽起;卡下没有图注(读数句与参照由屏写)', () => {
+    const d = yearData(8)
     const g = geo(d)
     const w = mount(PvConsumption, { props: { data: d } })
     expect(w.findAll('.pcs-xl').map(t => t.text())).toEqual(Array.from({ length: 12 }, (_, i) => `${i + 1}月`))
     expect(num(w.find('.pcs-future'), 'x')).toBeCloseTo(PL + 8 * g.slot, 6)
     expect(num(seg(w, 3, 'self'), 'width')).toBeCloseTo(g.bw, 6)
-    expect(w.find('.ana-ref').text()).toContain('数据到 8月')
+    expect(w.find('.ana-ref').exists()).toBe(false)
   })
 
-  it('❗「数据到」写最后一条抄表所在的刻度,不按今天:未到从 29 日起、数据只到 12 日 → 写 12 日', () => {
-    const w = mount(PvConsumption, { props: { data: { ...monthData(), throughIdx: 11 } } })
-    expect(w.find('.ana-ref').text().endsWith(' · 数据到 12 日')).toBe(true)
-    // 对照:截止日在段末(整段录满)不写
-    expect(mount(PvConsumption, { props: { data: { ...monthData(), futureFrom: null, throughIdx: null } } }).find('.ana-ref').text()).not.toContain('数据到')
+  it('❗柱顶:「几期并网」短标在槽心、柱顶上方 6(灰字,在数据组里);读数句点到的月出深色气泡,同样钉在槽心、柱顶 − 6', () => {
+    const d = { ...yearData(null), joins: [{ i: 5, text: '二期并网' }, { i: 11, text: '三期并网' }], marks: [{ i: 7, text: '8月 70.1万kWh' }, { i: 0, text: '1月 12.8万kWh' }] }
+    const g = geo(d)
+    const top = (i: number) => { const t = d.ticks[i]; return BOT - g.h(t.self + t.grid + t.loss) }
+    const w = mount(PvConsumption, { props: { data: d } })
+    const js = w.findAll('text.pcs-join')
+    expect(js.map(t => t.text())).toEqual(['二期并网', '三期并网'])
+    expect(num(js[0], 'x')).toBeCloseTo(g.cx(5), 6)
+    expect(num(js[0], 'y')).toBeCloseTo(top(5) - 6, 6)
+    expect(num(js[1], 'y')).toBeCloseTo(top(11) - 6, 6)
+    expect(js[0].attributes('text-anchor')).toBe('middle')
+    expect(js[0].element.closest('g.pcs-data')).not.toBe(null)
+    const cs = w.findAll('.pcs-callout')
+    expect(cs.map(c => c.text())).toEqual(['8月 70.1万kWh', '1月 12.8万kWh'])
+    const st = cs[0].attributes('style')!
+    expect(Number(/left: ([\d.]+)px/.exec(st)![1])).toBeCloseTo(g.cx(7), 6)
+    expect(Number(/top: ([\d.]+)px/.exec(st)![1])).toBeCloseTo(top(7) - 6, 6)
   })
 
-  it('月档图注:超轴几天、数据到哪天', () => {
+  it('对照:按月没有气泡、没有并网短标', () => {
     const w = mount(PvConsumption, { props: { data: monthData() } })
-    expect(w.find('.ana-ref').text()).toBe(
-      '左轴 = 万度，三段自下而上 = 自己用了 / 卖上网 / 路上损掉 · 右轴 = 损耗率，刻度钉死在 0–6% 不随数据缩放 · 1 天超过 6%，折线在那里断开，轴外三角标数值 · 数据到 28 日',
-    )
+    expect(w.find('.pcs-callout').exists()).toBe(false)
+    expect(w.find('.pcs-join').exists()).toBe(false)
   })
 
   it('❗C6-25：柱段 / 损耗线与点 / 轴外三角与数在 g.pcs-data 里，轴线与 x 刻度在组前', () => {

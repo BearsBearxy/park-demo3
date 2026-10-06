@@ -1,15 +1,13 @@
 <script setup lang="ts">
-// 出租与楼栋(park)v2 — spec §二.3:KPI 4(楼栋/在租/合同/月租总额)+ 主图 s8 楼栋月租 TreeMap
-// (点块→右侧 s4 该楼栋租户明细表联动过滤)+ 期区结构环 s4 + 楼栋×租户散点 s6 + 出租率卡 s2。
-// 数据与口径 = v1(building×contract×tenant 快照,有效合同=active/expiring,数值锚点不变);
-// 面积口径降级(2026-09-06 复核实测,旧注释「unit.area/contract.rent_area 全 0」已过期):
-// 分子侧其实有数 —— unit.area 217/373 行已录、在租合同 rent_area 230/386 份已录;
-// 缺的是**分母** —— building.rentable_area 与 total_area 各只有 1/30 栋非 0(那 1 栋还是 100㎡ 占位)。
-// 故面积口径出租率与平均分摊率不可算 → METRIC-SOURCE-SPEC §3:渲染「—」+ 写明原因,
-// 并给不依赖缺失字段的替代口径(副标「按单元 n/m」,与楼栋管理 KPI 同源同句),深链 /buildings 引导补录。
-// F3(2026-07-15)追加「面积转换」卡:在租合同建筑 vs 租赁面积楼栋对比 + 换算系数/分摊率,带覆盖率护栏。
+// 出租与楼栋(park)— 2026-10 改稿(画布画板 park-v2 默认 / park-v2-b 点进一期 A座 / park-v2-d 点进没建单元的楼;图 = 规格)。
+// KPI 4:出租率(按单元)/ 合同月租合计 / 有在租合同的租户 / 楼栋。
+// 主卡 s8「各栋合同月租和单元」:一栋一行,左合同月租横条、右单元租出/空着;点楼栋(柱或名字)→ 右栏合同明细只列这栋
+// (07-08 用户定的联动保留),再点同一栋 / × 取消。右栏 s4:合同明细(露 8 行 + 看全部合同)叠在各期区合同月租横条上。
+// 下面两张 s12:各栋户数和合同月租散点、面积转换。屏上每一句字从句型库 anaSentence 的 PARK 段出(画板逐字对过)。
+// 口径不变:在租合同 = active/expiring(park.logic.liveContracts);单元租出 = 单元数 − 空单元(BuildingDTO,同楼栋管理 KPI)。
+// 这屏不随期间变:工具条写「按 {今天} 在租的合同」(产品在租状态按今天派生)。
 // 数据变换纯函数见 park.logic.ts(单测 park.logic.spec.ts)。
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { onReactivated } from '@/composables/onReactivated'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
@@ -17,39 +15,39 @@ import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
-import { esc, fint, fnum, hues, inkA } from '@/components/ana/anaFmt'
+import { esc, fint, hues, inkA } from '@/components/ana/anaFmt'
 import { anaPalette } from '@/components/ana/anaTheme'
+import * as S from '@/components/ana/anaSentence'
 import { useViewport } from '@/composables/useViewport'
-import { fetchBuildings, fetchBuildingSummary, fetchContracts, fetchTenants } from '@/analysis/anaData'
-import { buildBuildingRows, buildPhaseRows, liveContracts, splitLogPoints } from './park.logic'
+import { fetchBuildingDetail, fetchBuildings, fetchBuildingSummary, fetchContracts, fetchTenants } from '@/analysis/anaData'
+import { buildBuildingRows, buildPhaseRows, crossBuildings, liveContracts, unitOcc, vacantByFloor } from './park.logic'
 import { iconFor } from '@/components/ds/icon'
 import { canReach } from '@/nav/navAccess'
 import { useViewGate } from '@/composables/useViewGate'
 import { useAuthStore } from '@/stores/auth'
-import { occByUnit, occPct, OCC_NULL_WHY, type BuildingDTO, type BuildingSummaryDTO } from '@/types/building'
+import type { BuildingDTO, BuildingSummaryDTO } from '@/types/building'
 import { RENT_AREA_FACTOR, type ContractDTO } from '@/types/contract'
 import type { TenantDTO } from '@/types/tenant'
 
+const PK = S.PARK
 const auth = useAuthStore()
 const { lack } = useViewGate()
 
-// S 档(≤600)几何分支:TreeMap 并块 / 明细表换行卡 / 三块进折叠,都只在这一档生效,>600 原样。
-// 判视口而不判容器宽:真版式与骨架是同一处 v-if 的两支,容器要挂载之后才量得到 ——
-// 首帧按桌面几何画一遍再跳,正是 LAYOUT-STABILITY 要防的那件事。matchMedia 挂载前就判得出。
+// S 档(≤600):明细表换两行行卡、散点与面积转换进「更多分析」折叠,主卡横条收窄几何。判视口不判容器(挂载前就判得出)。
 const { tier } = useViewport()
 const isS = computed(() => tier.value === 's')
-// 「更多分析」折叠(S 档才存在,见 scoped .ak-foldbar):条排在折叠内容之上,展开只往下长。
 const moreOpen = ref(false)
 
 const loading = ref(true)
 const failed = ref(false)
 const buildings = ref<BuildingDTO[]>([])
-const bSummary = ref<BuildingSummaryDTO | null>(null)   // 全园出租率(面积口径)唯一来源,见 fetchBuildingSummary 注释
+const bSummary = ref<BuildingSummaryDTO | null>(null)   // 只取 occRate(按面积的出租率,缺分母时为 null)
 const contracts = ref<ContractDTO[]>([])
 const tenants = ref<TenantDTO[]>([])
+const today = () => new Date().toLocaleDateString('sv-SE')   // sv-SE = YYYY-MM-DD,按本机时区(同 ContractDrawer todayStr)
+const day = ref(today())   // 读到数据那天(在租按今天派生),工具条「按 X 在租的合同」;每次重读刷新
 
-// 切回重读 / 点重试都重跑 reload:失败标志不清,重试成功后屏上仍挂着「加载失败」卡(P3 T2 评审坐实)。
-// 只在成功分支清:重试在途时失败卡留在原地,不先闪出一页空表。两趟叠着发(切回 + 重试)只认最后一趟。
+// 切回重读 / 点重试都重跑 reload:失败标志只在成功分支清(重试在途时失败卡留在原地)。两趟叠着发只认最后一趟。
 let seq = 0
 async function reload() {
   const my = ++seq
@@ -59,6 +57,7 @@ async function reload() {
     ])
     if (my !== seq) return
     ;[buildings.value, bSummary.value, contracts.value, tenants.value] = [bs, sum, cs, ts]
+    day.value = today()
     failed.value = false
   } catch {
     if (my === seq) failed.value = true
@@ -67,302 +66,280 @@ async function reload() {
   }
 }
 onMounted(reload)
-// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
-// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
 onReactivated(() => { void reload() })
-
-// fpAnaTheme 蓝族字面色(ECharts canvas 不认 CSS 变量;分期 1~4 取主题前 4 色)
-// 蓝族四色,按当前外观取(暗色深蓝换灰蓝);在 computed / 模板里调才跟着切外观
-const phaseColor = (p: number) => { const h = hues(), pal = [h.blue, h.deep, h.mid, h.pale]; return pal[(p - 1) % pal.length] }
 
 const live = computed(() => liveContracts(contracts.value))
 const rows = computed(() => buildBuildingRows(buildings.value, live.value))
 const phases = computed(() => buildPhaseRows(buildings.value, live.value))
-const totalRentWan = computed(() => rows.value.reduce((s, r) => s + r.rentWan, 0))
+const bById = computed(() => new Map(buildings.value.map((b) => [b.id, b])))
+const sum = (a: number[]) => a.reduce((x, y) => x + y, 0)
+const totalRentWan = computed(() => sum(rows.value.map((r) => r.rentWan)))
+const rentedCount = computed(() => rows.value.filter((r) => r.rentWan > 0).length)
+const nTen = computed(() => new Set(live.value.map((c) => c.tenantId)).size)
 const activeTenants = computed(() => tenants.value.filter((t) => t.status === 1).length)
-// 出租率卡:面积口径的值与「按单元」副标都出自 bSummary(后端 occRateOf / 共享 occByUnit,
-// 与楼栋管理 KPI 同源同句);列表只用来数「分母到底有几栋录了可租面积」——那正是算不出的原因。
-const rentableN = computed(() => buildings.value.filter((b) => b.rentableArea > 0).length)
-const byUnit = computed(() => (bSummary.value ? occByUnit(bSummary.value) : null))
+const uTot = computed(() => sum(buildings.value.map((b) => b.unitCount)))
+const uOcc = computed(() => sum(buildings.value.map(unitOcc)))
+const occRate = computed(() => (uTot.value > 0 ? Math.round((uOcc.value / uTot.value) * 1000) / 10 : null))
+const asofText = computed(() => S.asofLive(S.dayLabel(day.value)))
 
-// ── KPI 条(spec §二.3:楼栋/在租/合同/月租总额;值与 v1 statItems 一致) ──
-// 首进/失败期不清空整排瓦片(C6-01):瓦片消失 = 下方整片先上提再下推。标签常驻、值写 '—'。
-const KPI_LABELS = ['楼栋数', '在租租户', '有效合同', '合同月租合计'] as const
-const kpis = computed(() => (loading.value || failed.value ? KPI_LABELS.map((label) => ({ label, value: '—', note: ' ', loading: loading.value })) : [
-  { label: '楼栋数', value: rows.value.length + ' 栋' },
-  { label: '在租租户', value: fint(activeTenants.value) + ' 户' },
-  { label: '有效合同', value: fint(live.value.length) + ' 份' },
-  { label: '合同月租合计', value: '¥' + fnum(totalRentWan.value, 1) + '万', note: '主数据快照' },
+// ── KPI 条 ──(首进/失败期不清空整排瓦片:标签常驻、值写 '—')
+const KPI_LABELS = [PK.occTile, PK.tile.rent, PK.tile.tenants, PK.tile.bld] as const
+const kpis = computed(() => (loading.value || failed.value ? KPI_LABELS.map((label) => ({ label, value: '—', note: ' ', loading: loading.value })) : [
+  { label: PK.occTile, value: occRate.value != null ? occRate.value.toFixed(1) + '%' : '—', note: S.unitNote(uOcc.value, uTot.value) },
+  { label: PK.tile.rent, value: S.yuan(totalRentWan.value), note: S.liveNote(live.value.length) },
+  { label: PK.tile.tenants, value: nTen.value + ' 户', note: S.tenantNote(activeTenants.value) },
+  { label: PK.tile.bld, value: rows.value.length + ' 栋', note: S.bldNote(rentedCount.value) },
 ]))
 
-// ── 主图:楼栋月租 TreeMap(点块→右侧租户明细联动;再点同块/×取消) ──
+// ── 主卡:各栋合同月租和单元(一栋一行,按合同月租排;30 栋全画,行高 14 让两句读数句回到首屏) ──
 const selected = ref<string | null>(null)   // 楼栋名
-// S 档并块:块内要放得下「名字 + 值」两行 11px —— 名字最长 6 个汉字 ≈ 66 + 内距 14 = 80 宽、两行 ≈ 34 高。
-// 336 宽的画布按面积排下来,第 7 块起就低于这个门槛,于是前 6 栋照画、其余合成一块「其余 N 栋」。
-// 桌面 1200 宽下 18 块每块都写得下,不并 —— 这是宽度分支,不是口径分支(全园合计两档相同)。
-// 只剩 1 栋可并时不并(「其余 1 栋」与那一栋自己同义,白换一个读不出名字的块)。
-const TREE_TOP = 6
-const treeMerged = computed(() => isS.value && rows.value.length > TREE_TOP + 1)
-const treeData = computed(() => {
-  const cell = (name: string, wan: number, color: string) => ({
-    name, value: +wan.toFixed(2),
-    itemStyle: { color, opacity: selected.value && selected.value !== name ? 0.4 : 1 },
+const ROW = 14, TOP = 24
+const mainH = computed(() => TOP + rows.value.length * ROW + 2)
+const mainOption = computed(() => {
+  const pal = anaPalette(), h = hues(), sel = selected.value, rs = rows.value
+  // 左栏楼栋名定宽,合同月租横条与单元横条按卡宽比例分(画板 619 宽:名 120、月租 250、单元起于 432、右留 40)
+  const nameW = isS.value ? 92 : 120
+  const dim = (name: string) => !!sel && name !== sel
+  // 没选中的楼栋只淡柱子;柱端字降到墨 62% 但不跟着透明
+  const item = (name: string, v: number) => ({ value: v, itemStyle: { opacity: dim(name) ? 0.35 : 1 }, label: dim(name) ? { color: pal.label, opacity: 1 } : undefined })
+  const unitOf = (id: number) => bById.value.get(id)
+  const hasUnits = (id: number) => (unitOf(id)?.unitCount ?? 0) > 0
+  const yCat = (gi: number, show: boolean) => ({
+    gridIndex: gi, type: 'category', inverse: true, data: rs.map((r) => r.name), axisLine: { show: false }, axisTick: { show: false }, triggerEvent: show,
+    axisLabel: show
+      ? { interval: 0, fontSize: 11, color: pal.legend, formatter: (v: string) => (v === sel ? `{b|${v}}` : v), rich: { b: { fontWeight: 600, color: inkA(1), fontSize: 11 } } }
+      : { show: false },
   })
-  const head = (treeMerged.value ? rows.value.slice(0, TREE_TOP) : rows.value)
-    .map((r) => cell(r.name, r.rentWan, phaseColor(r.phase)))
-  if (!treeMerged.value) return head
-  const rest = rows.value.slice(TREE_TOP)
-  // 并块不属于任何一期 → 不借分期色(借了会被读成「那一期」),走中性墨色
-  return [...head, cell(`其余 ${rest.length} 栋`, rest.reduce((s, r) => s + r.rentWan, 0), inkA(0.45))]
-})
-// 并块后头 6 栋占几成:分子是上面那块「其余 N 栋」的补数,分母是 KPI「合同月租合计」的同一个 totalRentWan,
-// 除法与下面那句「最大 X 占 Y%」是同一个 —— 不是新指标。
-const treeHeadPct = computed(() => (totalRentWan.value > 0
-  ? rows.value.slice(0, TREE_TOP).reduce((s, r) => s + r.rentWan, 0) / totalRentWan.value * 100
-  : 0))
-const treemapOption = computed(() => ({
-  tooltip: {
-    formatter: (p: { name: string; value: number }) => {
-      const r = rows.value.find((x) => x.name === p.name)
-      return `${esc(p.name)}<br/>月租 ¥${fnum(p.value, 1)}万` + (r ? ` · ${r.tenants} 户 · ${r.contracts} 份` : '')
+  const opt = {
+    tooltip: {
+      trigger: 'item',
+      formatter: (p: { dataIndex: number; seriesIndex: number }) => {
+        const r = rs[p.dataIndex], b = r && unitOf(r.id)
+        if (!r) return ''
+        return `${esc(r.name)}<br/>${PK.rentHead} ${S.yuan(r.rentWan)}` + (b && b.unitCount ? `<br/>${PK.unitLegend[0]} ${S.unitLabel(unitOcc(b), b.unitCount)}` : `<br/>${PK.noUnitTag}`)
+      },
     },
-  },
-  series: [{
-    type: 'treemap', roam: false, nodeClick: false, breadcrumb: { show: false },
-    left: 0, right: 0, top: 0, bottom: 0,
-    label: { show: true, formatter: (p: { name: string; value: number }) => `${p.name}\n¥${fnum(p.value, 1)}万`, fontSize: 11, lineHeight: 16 },
-    itemStyle: { borderColor: anaPalette().calloutCore, borderWidth: 2, gapWidth: 2 },   // 缝 = 卡片色
-    data: treeData.value,
-  }],
-}))
-function onTreeClick(params: unknown) {
-  const p = params as { name?: string }
-  if (!p.name || !rows.value.some((r) => r.name === p.name)) return
-  selected.value = selected.value === p.name ? null : p.name
+    title: { text: PK.rentHead, left: nameW, top: 4, textStyle: { fontSize: 11, fontWeight: 'normal', color: pal.label } },
+    legend: { data: [...PK.unitLegend], left: '70%', top: 2, itemGap: 10 },
+    grid: [{ left: nameW, top: TOP, bottom: 2, width: '40%' }, { left: '70%', right: 40, top: TOP, bottom: 2 }],
+    xAxis: [
+      { gridIndex: 0, type: 'value', show: false, max: Math.max(...rs.map((r) => r.rentWan), 1) },
+      { gridIndex: 1, type: 'value', show: false, max: Math.max(...buildings.value.map((b) => b.unitCount), 1) },
+    ],
+    yAxis: [yCat(0, true), yCat(1, false)],
+    series: [
+      { type: 'bar', xAxisIndex: 0, yAxisIndex: 0, barWidth: 9, itemStyle: { color: h.blue },
+        label: { show: true, position: 'right', fontSize: 11, color: pal.legend, formatter: (p: { value: number }) => (p.value > 0 ? S.yuan(p.value) : PK.zero) },
+        data: rs.map((r) => item(r.name, +r.rentWan.toFixed(2))) },
+      { name: PK.unitLegend[0], type: 'bar', stack: 'u', xAxisIndex: 1, yAxisIndex: 1, barWidth: 9, itemStyle: { color: h.deep },
+        data: rs.map((r) => (hasUnits(r.id) ? item(r.name, unitOcc(unitOf(r.id)!)) : null)) },
+      { name: PK.unitLegend[1], type: 'bar', stack: 'u', xAxisIndex: 1, yAxisIndex: 1, barWidth: 9, itemStyle: { color: inkA(0.12) },
+        label: { show: true, position: 'right', fontSize: 11, color: pal.legend,
+          formatter: (p: { dataIndex: number }) => { const b = unitOf(rs[p.dataIndex].id)!; return S.unitLabel(unitOcc(b), b.unitCount) } },
+        data: rs.map((r) => (hasUnits(r.id) ? item(r.name, unitOf(r.id)!.vacantCount) : null)) },
+      // 没建单元的楼:单元那一栏写字不画条(散点默认 opacity .8 会把字压淡,钉成 1)
+      { type: 'scatter', xAxisIndex: 1, yAxisIndex: 1, symbolSize: 0, silent: true, itemStyle: { opacity: 1 },
+        label: { show: true, position: 'right', distance: 0, fontSize: 11, color: pal.label, formatter: PK.noUnitTag },
+        data: rs.filter((r) => !hasUnits(r.id)).map((r) => [0, r.name]) },
+    ],
+  }
+  if (!isS.value) return opt
+  // S 档(≤600)卡内只剩 ~250px,放不下名字 + 月租条 + 单元条三栏:单元那栏不画,月租条吃满
+  // (全园按单元出租率在屏顶 KPI,空单元读数句照出)
+  return { ...opt, legend: undefined, grid: [{ left: nameW, top: TOP, bottom: 2, right: 52 }],
+    xAxis: opt.xAxis.slice(0, 1), yAxis: opt.yAxis.slice(0, 1), series: opt.series.slice(0, 1) }
+})
+// 点柱子(params.name)或点左边楼栋名(yAxis triggerEvent,params.value)都算点这一栋
+function onMainClick(params: unknown) {
+  const p = params as { componentType?: string; name?: string; value?: unknown }
+  const name = p.componentType === 'yAxis' ? String(p.value ?? '') : p.name
+  if (!name || !rows.value.some((r) => r.name === name)) return
+  selected.value = selected.value === name ? null : name
 }
-
-// ── 右侧联动:该楼栋租户明细(未选中 = 全园区,按月租降序) ──
-const detailRows = computed(() => {
-  const b = selected.value ? buildings.value.find((x) => x.name === selected.value) : null
-  const cs = b ? live.value.filter((c) => c.buildingId === b.id) : live.value
-  return [...cs].sort((a, x) => x.monthlyRent - a.monthlyRent)
+const withUnits = computed(() => buildings.value.filter((b) => b.unitCount > 0))
+const rentRead = computed(() => S.concentration({ what: PK.rentHead, by: PK.byRentShort, items: rows.value.map((r) => ({ name: r.name, value: r.rentWan })), q: '栋' })?.text)
+const vacRead = computed(() => S.concentration({ what: PK.byVacant, by: PK.byVacant, items: withUnits.value.map((b) => ({ name: b.name, value: b.vacantCount })), q: '栋' })?.text)
+// 两句都是集中度 → 参照先写两句各自的样本量;再照实说没建单元的楼、有单元租出却没有本栋在租合同的楼
+const mainRefs = computed(() => {
+  const noUnit = buildings.value.length - withUnits.value.length
+  const cross = crossBuildings(rows.value, bById.value)
+  return [
+    S.mainBase(live.value.length, withUnits.value.length, sum(withUnits.value.map((b) => b.vacantCount))),
+    noUnit ? S.thin({ noUnit }).text : '',
+    cross.length ? S.thin({ cross }).text : '',
+  ].filter(Boolean)
 })
-// S 档行卡第二行要写楼栋名(未选中时明细是全园区,不写楼栋就不知道这户在哪);桌面那张表没有这一列。
-const bName = computed(() => new Map(buildings.value.map((b) => [b.id, b.name])))
 
-// ── 期区结构环(月租金额占比) ──
-const donutOption = computed(() => ({
-  tooltip: { formatter: (p: { name: string; value: number; percent: number }) => `${esc(p.name)}<br/>¥${fnum(p.value, 1)}万 · ${p.percent}%` },
-  series: [{
-    type: 'pie', radius: ['48%', '74%'], center: ['50%', '50%'],
-    label: { fontSize: 11, formatter: '{b}\n{d}%' },
-    itemStyle: { borderRadius: 6, borderColor: anaPalette().calloutCore, borderWidth: 2 },   // 缝 = 卡片色
-    data: phases.value.map((p) => ({ name: p.name, value: +p.rentWan.toFixed(2), itemStyle: { color: phaseColor(p.phase) } })),
-  }],
-}))
-// 环图读数句取的那一行:月租最大的期区。不是新指标 —— 每行的值与它的占比 tooltip 里本来就在算,
-// 这里只是对已有 phases 取最大。totalRentWan<=0(无有效合同/全 0 租)时闭嘴,不渲染 NaN%。
-// 样本量只数真有合同月租的栋:rows 对全部楼栋建行(含月租 0 的空栋,与 KPI「楼栋数」同源),
-// 拿它当那个百分比的分母说明是虚的 —— 同屏散点卡头正写着「月租0楼栋 N 栋未显示」。
-const rentedCount = computed(() => rows.value.filter((r) => r.rentWan > 0).length)
-const topPhase = computed(() => (totalRentWan.value > 0 ? [...phases.value].sort((a, b) => b.rentWan - a.rentWan)[0] : undefined))
+// ── 右栏上:合同明细(一行一份合同;没选楼栋 = 全园区;露前 8 行,其余去合同管理看) ──
+// sp-ask2 第 4 条(用户 10-05 按推荐定):画板 10 行 → 8 行,右栏变矮,主卡底下少空一截。
+const DETAIL_N = 8
+const selB = computed(() => (selected.value ? buildings.value.find((b) => b.name === selected.value) ?? null : null))
+const detailAll = computed(() => (selB.value ? live.value.filter((c) => c.buildingId === selB.value!.id) : live.value)
+  .slice().sort((a, x) => x.monthlyRent - a.monthlyRent))
+const detailRows = computed(() => detailAll.value.slice(0, DETAIL_N))
+const noEnd = computed(() => detailAll.value.filter((c) => !c.endDate).length)
+// 点进一栋:楼层读数句要这栋的单元(楼层 + 状态),按需取一次(anaData 缓存);读不到就不出这句,不挡明细
+const floors = ref<{ id: number; floors: { floor: number; n: number }[] } | null>(null)
+watch(() => selB.value?.id, async (id) => {
+  floors.value = null
+  if (id == null || !selB.value?.unitCount) return
+  try {
+    const d = await fetchBuildingDetail(id)
+    if (selB.value?.id === id) floors.value = { id, floors: vacantByFloor(d.building.floorCount, d.units) }
+  } catch { /* 楼层句闭嘴,明细照常 */ }
+})
+const unitRead = computed(() => {
+  const b = selB.value
+  if (!b) return null
+  if (!b.unitCount) return S.thin({ bldNoUnit: true }).text
+  const f = floors.value
+  return f && f.id === b.id ? S.floorRun({ what: PK.unit.st.vacant, floors: f.floors })?.text ?? null : null
+})
 
-// ── 楼栋×租户散点(x=租户数,y=月租万;气泡大小=合同数,颜色=分期) ──
-// spec §T2:y 轴(月租,万)默认对数(小栋与大栋同图可读);log 下月租≤0 无法取对数 → 过滤并在卡头 hint 披露计数
-const yLog = ref(true)
-const pkScatter = computed(() => splitLogPoints(rows.value, (r) => r.rentWan, yLog.value))
-const scatterOption = computed(() => ({
-  tooltip: {
-    formatter: (p: { name: string; value: [number, number] }) => {
-      const r = rows.value.find((x) => x.name === p.name)
-      return `${esc(p.name)}<br/>${p.value[0]} 户 · ¥${fnum(p.value[1], 1)}万` + (r ? `<br/>户均 ¥${fint(r.avgRent)}` : '')
+// ── 右栏下:各期区合同月租(横条直接标名、金额和占比,不靠颜色分期区) ──
+const phaseH = computed(() => phases.value.length * 30 + 4)
+const phaseOption = computed(() => {
+  const pal = anaPalette(), ps = phases.value, tot = sum(ps.map((p) => p.rentWan))
+  return {
+    grid: { left: 40, right: 112, top: 2, bottom: 2 },
+    xAxis: { type: 'value', show: false, max: Math.max(...ps.map((p) => p.rentWan), 1e-9) },
+    yAxis: { type: 'category', inverse: true, data: ps.map((p) => p.name), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { fontSize: 11, color: pal.legend } },
+    series: [{ type: 'bar', barWidth: 12, itemStyle: { color: hues().blue }, data: ps.map((p) => +p.rentWan.toFixed(2)),
+      label: { show: true, position: 'right', fontSize: 11, color: pal.legend,
+        formatter: (p: { dataIndex: number }) => S.shareLabel(ps[p.dataIndex].rentWan, tot > 0 ? ps[p.dataIndex].rentWan / tot * 100 : 0) } }],
+  }
+})
+const phaseRead = computed(() => S.concentration({ what: PK.rentHead, by: PK.byRentShort, items: phases.value.map((p) => ({ name: p.name, value: p.rentWan })), q: '个期区' })?.text)
+
+// ── 各栋户数和合同月租(线性轴,全部楼栋;只给读数句点到的户均最高 / 最低两栋标名) ──
+const perHead = computed(() => S.extremes({ metric: PK.perHead, fmt: S.yi,
+  items: rows.value.filter((r) => r.tenants > 0).map((r) => ({ label: r.name, value: r.rentWan * 10000 / r.tenants })) }))
+const overlapRef = computed(() => S.overlap({ n: rows.value.filter((r) => r.tenants === 0 && r.rentWan === 0).length, q: '栋', what: PK.noLive, where: PK.origin })?.text)
+const scatterOption = computed(() => {
+  const pal = anaPalette(), ex = perHead.value
+  const marked = new Set(ex ? [ex.hi.label, ex.lo.label] : [])
+  const xMax = Math.max(...rows.value.map((r) => r.tenants), 1)
+  return {
+    tooltip: {
+      formatter: (p: { name: string; value: [number, number] }) => {
+        const r = rows.value.find((x) => x.name === p.name)
+        return `${esc(p.name)}<br/>${p.value[0]} 户 · ${S.yuan(p.value[1])}` + (r && r.tenants ? `<br/>${PK.perHead} ${S.yi(r.rentWan * 10000 / r.tenants)}` : '')
+      },
     },
-  },
-  grid: { left: 48, right: 18, top: 16, bottom: 34 },
-  xAxis: { type: 'value', name: '租户数(户)', nameLocation: 'middle', nameGap: 24, nameTextStyle: { fontSize: 11 } },
-  yAxis: { type: yLog.value ? 'log' : 'value', name: '月租(万)', nameTextStyle: { fontSize: 11 } },
-  series: [{
-    type: 'scatter',
-    data: pkScatter.value.shown.map((r) => ({
-      name: r.name, value: [r.tenants, +r.rentWan.toFixed(2)],
-      symbolSize: 8 + Math.sqrt(r.contracts) * 2.4,
-      itemStyle: { color: phaseColor(r.phase), opacity: 0.85 },
-    })),
-  }],
-}))
+    grid: { left: 52, right: 24, top: 30, bottom: 34 },   // top 30:纵轴名不顶出图框
+    xAxis: { type: 'value', name: PK.scatterX, nameLocation: 'middle', nameGap: 22, nameTextStyle: { fontSize: 11, color: pal.label } },
+    yAxis: { type: 'value', name: PK.scatterY, nameTextStyle: { fontSize: 11, color: pal.label, align: 'left' } },
+    series: [{ type: 'scatter', symbolSize: 10,
+      data: rows.value.map((r) => ({ name: r.name, value: [r.tenants, +r.rentWan.toFixed(2)],
+        itemStyle: { color: hues().blue, opacity: marked.has(r.name) ? 1 : 0.55 },
+        // 靠右边的点把名字写在上面,免得出框
+        label: marked.has(r.name)
+          ? { show: true, formatter: r.name, position: r.tenants > xMax * 0.6 ? 'top' : 'right', fontSize: 11, color: pal.legend, textBorderColor: pal.calloutCore, textBorderWidth: 3 }
+          : { show: false } })) }],
+  }
+})
 
-// ── F3 面积转换(spec 2026-07-15):在租合同建筑面积 vs 租赁面积 ──
-// 覆盖率护栏铁律:只聚合「有面积数据」(建筑>0 且租赁>0,系数分母恒不为 0)的在租合同;
-// N=0 整卡空态引导补录,绝不渲染 0% 假数据。
-// ponytail: 展示基准直接 import 合同录入侧常量,全仓唯一定义点(租赁=建筑÷0.8)
-const AREA_FACTOR_BASE = RENT_AREA_FACTOR
+// ── 面积转换(07-15 用户定的卡;覆盖率常显,算不了的照说) ──
+// 只聚合「有面积数据」(建筑>0 且租赁>0)的在租合同;N=0 整卡空态引导补录,不画 0。
 const bAreaOf = (c: ContractDTO): number => Number(c.buildingArea ?? 0)
 const areaLive = computed(() => live.value.filter((c) => bAreaOf(c) > 0 && c.rentArea > 0))
 const areaStats = computed(() => {
-  const sumB = areaLive.value.reduce((s, c) => s + bAreaOf(c), 0)
-  const sumR = areaLive.value.reduce((s, c) => s + c.rentArea, 0)
-  const parkArea = buildings.value.reduce((s, b) => s + b.totalArea, 0)
-  const parkAreaN = buildings.value.filter((b) => b.totalArea > 0).length
+  const sumB = sum(areaLive.value.map(bAreaOf)), sumR = sum(areaLive.value.map((c) => c.rentArea))
+  const parkArea = sum(buildings.value.map((b) => b.totalArea))
   return {
-    n: areaLive.value.length, m: live.value.length, sumB, sumR, parkArea, parkAreaN,
-    factor: sumR > 0 ? sumB / sumR : null,                  // 全园实际换算系数 = Σ建筑÷Σ租赁
-    // 平均分摊率 = Σ在租建筑÷Σ楼栋建筑。判据与后端 occRateOf 同款:分母≤0 **或分子>分母**(数据自相矛盾)→ null。
-    // 少了后半句时,全园仅 1/30 栋录了 total_area(占位 100㎡)的分母把 13.9 万㎡ 画成「139511.4%」。
+    n: areaLive.value.length, m: live.value.length, sumB, sumR,
+    parkAreaN: buildings.value.filter((b) => b.totalArea > 0).length,
+    rentableN: buildings.value.filter((b) => b.rentableArea > 0).length,
+    factor: sumR > 0 ? sumB / sumR : null,
+    // 平均分摊率 = 在租建筑 ÷ 楼栋建筑。分母≤0 或分子>分母(数据自相矛盾)→ null,同后端 occRateOf
     share: parkArea > 0 && sumB <= parkArea ? (sumB / parkArea) * 100 : null,
   }
 })
-// 楼栋行:仅保留有面积数据合同的楼栋,按建筑面积降序(全空楼栋不画空柱)
+const areaOcc = computed(() => bSummary.value?.occRate ?? null)
 const areaRows = computed(() => buildings.value.map((b) => {
   const cs = areaLive.value.filter((c) => c.buildingId === b.id)
-  return {
-    name: b.name,
-    building: cs.reduce((s, c) => s + bAreaOf(c), 0),
-    rent: cs.reduce((s, c) => s + c.rentArea, 0),
-  }
+  return { name: b.name, building: sum(cs.map(bAreaOf)), rent: sum(cs.map((c) => c.rentArea)) }
 }).filter((r) => r.building > 0).sort((a, b) => b.building - a.building))
-const AREA_COLOR = computed(() => ({ building: hues().deep, rent: hues().mid }))   // 蓝族(同 phaseColor 取法)
-const areaBarOption = computed(() => ({
-  tooltip: {
-    trigger: 'axis', axisPointer: { type: 'shadow' },
-    formatter: (ps: { seriesName: string; name: string; value: number }[]) => {
-      const name = ps[0]?.name ?? ''
-      const r = areaRows.value.find((x) => x.name === name)
-      return `${esc(name)}<br/>` + ps.map((p) => `${esc(p.seriesName)} ${fnum(p.value, 0)}㎡`).join('<br/>')
-        + (r && r.rent > 0 ? `<br/>换算系数 ${fnum(r.building / r.rent, 2)}` : '')
+const areaRead = computed(() => S.baseline({ items: areaRows.value.map((r) => ({ name: r.name, value: r.building / r.rent })), base: RENT_AREA_FACTOR, q: '栋' })?.text)
+const areaOption = computed(() => {
+  const h = hues(), rs = areaRows.value, rot = rs.length > 8
+  return {
+    tooltip: {
+      trigger: 'axis', axisPointer: { type: 'shadow' },
+      formatter: (ps: { seriesName: string; name: string; value: number }[]) => `${esc(ps[0]?.name)}<br/>` + ps.map((p) => `${esc(p.seriesName)} ${S.sqm(p.value)}`).join('<br/>'),
     },
-  },
-  // 斜排标签比平排吃更多下边距,bottom 不跟着放大会把楼栋名切掉下半截
-  grid: { left: 56, right: 18, top: 12, bottom: areaRows.value.length > 8 ? 48 : 26 },
-  // 楼栋名多到一定数量后 ECharts 会自作主张隔一个隐一个,柱子无名可对 → interval:0 强制全画、斜排避让;
-  // 楼栋少时不倾斜(平排更好读),阈值 8 是本屏宽度下横排放得下的上限
-  xAxis: {
-    type: 'category', data: areaRows.value.map((r) => r.name),
-    axisLabel: { fontSize: 11, interval: 0, rotate: areaRows.value.length > 8 ? 30 : 0, hideOverlap: true },
-  },
-  yAxis: { type: 'value', name: '面积(㎡)', nameTextStyle: { fontSize: 11 } },
-  series: [
-    { name: '建筑面积', type: 'bar', barMaxWidth: 26, itemStyle: { color: AREA_COLOR.value.building, borderRadius: [3, 3, 0, 0] }, data: areaRows.value.map((r) => +r.building.toFixed(2)) },
-    { name: '租赁面积', type: 'bar', barMaxWidth: 26, itemStyle: { color: AREA_COLOR.value.rent, borderRadius: [3, 3, 0, 0] }, data: areaRows.value.map((r) => +r.rent.toFixed(2)) },
-  ],
-}))
+    legend: { top: 0, data: [...PK.areaLegend] },
+    grid: { left: 56, right: 12, top: 28, bottom: rot ? 64 : 26 },
+    xAxis: { type: 'category', data: rs.map((r) => r.name), axisLabel: { fontSize: 11, interval: 0, rotate: rot ? 30 : 0 } },
+    yAxis: { type: 'value', axisLabel: { formatter: (v: number) => S.sqm(v) } },
+    series: [
+      { name: PK.areaLegend[0], type: 'bar', barMaxWidth: 12, itemStyle: { color: h.deep }, data: rs.map((r) => +r.building.toFixed(2)) },
+      { name: PK.areaLegend[1], type: 'bar', barMaxWidth: 12, itemStyle: { color: h.mid }, data: rs.map((r) => +r.rent.toFixed(2)) },
+    ],
+  }
+})
 </script>
 
 <template>
-  <!-- §五:期间无关屏(主数据快照)→ 隐期间控件,显口径徽章 -->
-  <AnaShell period-mode="none" scope-chip="主数据快照 · 期间无关">
+  <!-- 期间无关屏:隐期间控件;屏名进工具条,右端写「按哪天在租的合同」 -->
+  <AnaShell period-mode="none" :asof-text="asofText">
+    <template #tools>
+      <span class="pk-name"><component :is="iconFor('building-2')" :size="15" />{{ PK.screen }}</span>
+    </template>
     <template #kpis>
-      <AnaKpiTile v-for="k in kpis" :key="k.label" v-bind="k" />
+      <AnaKpiTile v-for="k in kpis" :key="k.label" v-bind="k" pct-unit />
     </template>
 
-    <!-- 首进:版式已知就不转圈(C6-01)。块高逐块照真版式钉死 ——
-         页头 44;卡头 20 + ana.css .av2-card-h margin-bottom 8 = 28;
-         图块 = AnaSkelChart,高与各 AnaEChart 的 :height 同表降档(300 / 300 / 300 / 250,anaChartHeight.ts)。
-         TreeMap 卡与面积转换卡下面各有一条 .pk-legend(本文件 scoped margin-top 8 + 行盒 20 = 28;
-         行盒 20 = base.css body line-height var(--lh-snug) = tokens.css 20px,与 11px 字号无关);
-         读数句 .ana-read = ana.css margin-top 8 + 行盒 20 = 28;参照小字 .ana-ref = margin-top 2 + 行盒 20 = 22
-         (TreeMap 卡与期区环卡各 28 + 22;面积转换卡只有读数句,28);
-         租户明细卡 = .pk-tbl-wrap max-height 296 + .pk-sum(margin-top 8 + 行盒 20);
-         面积转换卡右栏 图 250 + legend 28 + 读数句 28 = 306 高于左栏两块指标 186(宽档左右并排,取高的那栏)。
-         ≤900 两栏改纵排、指标行在图上方,其高随「Σ建筑 … ÷ Σ租赁 …」折几行而变,骨架不兜。
-         KPI 行由 .anx-kpis min-height 94 + 常驻 '—' 瓦片兜位。数据到了原地硬切,不做淡入。 -->
-    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着)。
+         卡头、读数句、参照照抄真版式,数字换成同长的隐形占位。主卡图高按库里现有 30 栋(24 + 30×14 + 2 = 446)、
+         期区横条按现有 4 个期区(4×30 + 4 = 124)、主卡参照按现有 3 行、明细表按 8 行(浏览器 1440 宽实测)留;
+         数据形状变了,首进会差出那几行。KPI 行由 .anx-kpis min-height 兜位。数据到了原地硬切,不做淡入。 -->
     <div v-if="loading" class="ak-page ak-skel">
-      <!-- 2026-09-16 起页头、卡头、图例、出租率与面积转换两卡的文字行照抄真版式(手机上都会折行,灰条顶不住);
-           数字换成同长的隐形占位。图例按库里现有四个期区;出租率卡按「面积口径缺分母、按单元可算」的现状留行;
-           面积卡按「有面积数据、楼栋建筑面积不全」的现状留行。数据形状变了,首进会差出那几行。 -->
-      <div class="ak-head">
-        <div class="ak-h-l">
-          <span class="ak-h-ic"><component :is="iconFor('building-2')" :size="20" /></span>
-          <div>
-            <h2 class="ak-title">出租与楼栋</h2>
-            <p class="ak-sub">合同月租规模 · 楼栋×租户分布 · 共 <span class="ana-hole">00</span> 栋 · 主数据快照(不随期间切换)</p>
-          </div>
-        </div>
-      </div>
       <div class="av2-grid">
         <div class="av2-card av2-s8">
-          <div class="av2-card-h"><span class="t">楼栋月租 TreeMap</span><span class="hint">块面积＝月租(万)· 颜色＝分期<span class="hint-desk"> · 点击下钻右侧明细</span><span class="hint-touch"> · 点块看租户</span></span></div>
-          <AnaSkelChart :height="300" />
-          <div class="pk-legend ana-hole">
-            <span v-for="n in ['一期', '二期', '三期', '宿舍']" :key="n" class="pk-leg"><span class="sw"></span>{{ n }}</span>
-          </div>
-          <p class="ana-read"><span class="ana-hole">共 ¥000.0万/月,最大 000栋 占 00.0%</span></p>
-          <p class="ana-ref"><span class="ana-hole">00 栋有合同月租 · 万元</span></p>
+          <div class="av2-card-h"><span class="t">{{ PK.card.main }}</span><span class="hint">{{ S.hint(PK.allBld, PK.byRent) }}</span></div>
+          <div class="fp-shim" style="height: 446px"></div>
+          <p class="ana-read"><span class="ana-hole">合同月租的 00.0% 在最多的 0 栋</span></p>
+          <p class="ana-read"><span class="ana-hole">空单元的 00.0% 在一期 宿舍四栋、一期 某座</span></p>
+          <p class="ana-ref"><span class="ana-hole">按 000 份在租合同、00 栋的 000 个空单元算</span></p>
+          <p class="ana-ref"><span class="ana-hole">有 0 栋没建单元，算不了这几栋的出租率</span></p>
+          <p class="ana-ref"><span class="ana-hole">一期 空地租出的 0 个单元记在别栋的合同上</span></p>
         </div>
-        <div class="av2-card av2-s4">
-          <div class="av2-card-h">
-            <span class="t">租户明细 · 全园区</span>
-            <span class="hint"><span class="hint-desk">点左图楼栋块过滤</span><span class="hint-touch">点楼栋块过滤</span></span>
+        <div class="pk-col av2-s4">
+          <div class="av2-card">
+            <div class="av2-card-h"><span class="t">{{ S.tenantTitle(PK.card.detail, PK.all) }}</span><span class="hint"><span class="ana-hole">000 份 · 元</span></span></div>
+            <div v-if="isS" class="fp-shim" style="height: 448px"></div>
+            <div v-else class="fp-shim" style="height: 334px"></div>
+            <p class="ana-ref"><span class="ana-hole">000 份没写到期日，都按在租算</span></p>
+            <div class="pk-foot"><span class="pk-cue">{{ PK.pickCue }}</span><span class="pk-all ana-hole">{{ PK.viewAll }}</span></div>
           </div>
-          <div class="fp-shim" style="height: 296px"></div>
-          <div class="pk-sum"><span class="ana-hole">000 份合同 · 月租合计 ¥000.0万</span></div>
-        </div>
-        <div class="av2-card av2-s4">
-          <div class="av2-card-h"><span class="t">期区月租结构</span><span class="hint">有效合同月租占比</span></div>
-          <AnaSkelChart :height="300" />
-          <div v-if="isS" class="pk-legend ana-hole">
-            <span v-for="n in ['一期', '二期', '三期', '宿舍']" :key="n" class="pk-leg"><span class="sw"></span>{{ n }} <b class="pk-leg-v">¥000.0万</b></span>
+          <div class="av2-card">
+            <div class="av2-card-h"><span class="t">{{ PK.card.phase }}</span><span class="hint"><span class="ana-hole">0 个期区 · 万元</span></span></div>
+            <div class="fp-shim" style="height: 124px"></div>
+            <p class="ana-read"><span class="ana-hole">合同月租的 00.0% 在一期</span></p>
+            <p class="ana-ref"><span class="ana-hole">合同月租按 000 份在租合同算</span></p>
           </div>
-          <p class="ana-read"><span class="ana-hole">最大期区 000 ¥000.0万/月,共 0 个期区</span></p>
-          <p class="ana-ref"><span class="ana-hole">000 份有效合同 · 月租 · 万元</span></p>
         </div>
         <button v-if="isS" type="button" class="ak-foldbar" disabled tabindex="-1">
           <b>更多分析</b>
-          <span class="sub">楼栋×租户散点 · 出租率 · 面积转换</span>
-          <span class="n">3 块</span>
+          <span class="sub">{{ PK.card.scatter }} · {{ PK.card.area }}</span>
+          <span class="n">2 块</span>
         </button>
-        <div class="av2-card av2-s6 pk-more" :class="{ 'is-open': moreOpen }">
-          <div class="av2-card-h">
-            <span class="t">楼栋×租户散点</span>
-            <span class="pk-lh">
-              <span class="hint">气泡＝合同数 · 颜色＝分期<template v-if="yLog"> · 对数刻度:小栋与大栋同图可读<span class="ana-hole"> · 月租0楼栋 00 栋未显示</span></template></span>
-              <span class="anx-seg mini" aria-hidden="true">
-                <button :class="{ on: yLog }" disabled tabindex="-1">对数</button>
-                <button :class="{ on: !yLog }" disabled tabindex="-1">线性</button>
-              </span>
-            </span>
-          </div>
-          <AnaSkelChart :height="300" />
-        </div>
-        <div class="av2-card pk-s2 pk-more" :class="{ 'is-open': moreOpen }">
-          <div class="av2-card-h">
-            <span class="t">出租率</span>
-            <span class="hint"><b class="pk-cov ana-hole">0/00</b> 栋已录可租面积</span>
-          </div>
-          <div class="pk-am ana-hole">
-            <div class="v">—</div>
-            <div class="l">面积口径出租率</div>
-            <div class="s">缺可租面积数据</div>
-            <div class="s">按单元 000/000 · 00.0%</div>
-            <span class="pk-go">去补录可租面积 →</span>
-          </div>
+        <div class="av2-card av2-s12 pk-more" :class="{ 'is-open': moreOpen }">
+          <div class="av2-card-h"><span class="t">{{ PK.card.scatter }}</span><span class="hint">{{ S.hint(PK.allBld, '万元') }}</span></div>
+          <AnaSkelChart :height="260" />
+          <p class="ana-read"><span class="ana-hole">户均最高 一期 G座 ¥000,000，最低 散租宿舍 ¥000</span></p>
+          <p class="ana-ref"><span class="ana-hole">0 栋没有在租合同，叠在原点</span></p>
         </div>
         <div class="av2-card av2-s12 pk-more" :class="{ 'is-open': moreOpen }">
-          <div class="av2-card-h">
-            <span class="t">面积转换</span>
-            <span class="hint"><b class="pk-cov ana-hole">000/000</b> 份在租合同有面积数据 · 在租=active/expiring</span>
-          </div>
+          <div class="av2-card-h"><span class="t">{{ PK.card.area }}</span><span class="hint"><span class="ana-hole">00/000 份合同录了面积 · ㎡</span></span></div>
           <div class="pk-area-body">
             <div class="pk-area-metrics ana-hole">
-              <div class="pk-am">
-                <div class="v">0.00</div>
-                <div class="l">全园实际换算系数</div>
-                <div class="s">Σ建筑 000,000㎡ ÷ Σ租赁 000,000㎡ · 基准 0.8</div>
-              </div>
-              <div class="pk-am">
-                <div class="v">—</div>
-                <div class="l">平均分摊率</div>
-                <div class="s">Σ在租建筑 000,000㎡ ÷ Σ楼栋建筑 000㎡ · 楼栋建筑面积仅 0/00 栋已录,分母不成立</div>
-              </div>
+              <div class="pk-am"><div class="v">0.00</div><div class="l">{{ PK.factorLabel }}</div><div class="s">建筑 000,000㎡，租赁 000,000㎡</div><div class="s">约定按 0.0 换算</div></div>
+              <div class="pk-am"><div class="l">{{ PK.shareLabel }}</div><div class="pk-thin">只有 0 栋录了楼栋建筑面积，算不了平均分摊率</div></div>
+              <div class="pk-am"><div class="l">{{ PK.areaOccLabel }}</div><div class="pk-thin">只有 0 栋录了可租面积，算不了按面积的出租率</div></div>
             </div>
-            <div class="pk-area-chart">
-              <AnaSkelChart :height="250" />
-              <div class="pk-legend ana-hole">
-                <span class="pk-leg"><span class="sw"></span>建筑面积</span>
-                <span class="pk-leg"><span class="sw"></span>租赁面积</span>
-              </div>
-              <p class="ana-read"><span class="ana-hole">00 栋中建筑最大 000栋,该栋系数 0.00</span></p>
-            </div>
+            <div class="pk-area-chart"><AnaSkelChart :height="280" /></div>
           </div>
         </div>
       </div>
@@ -371,183 +348,144 @@ const areaBarOption = computed(() => ({
     <!-- 加载失败(画布 06-D 右格):换掉内容区,带重试;重试走同一个 reload(首进 / 切回共用) -->
     <FPLoadError v-else-if="failed" sub="屏上不显示上一次读到的数字" @retry="reload">楼栋、合同和租户数据没读到</FPLoadError>
     <div v-else class="ak-page">
-      <div class="ak-head">
-        <div class="ak-h-l">
-          <span class="ak-h-ic"><component :is="iconFor('building-2')" :size="20" /></span>
-          <div>
-            <h2 class="ak-title">出租与楼栋</h2>
-            <p class="ak-sub">合同月租规模 · 楼栋×租户分布 · 共 {{ rows.length }} 栋 · 主数据快照(不随期间切换)</p>
-          </div>
-        </div>
-      </div>
-
       <div class="av2-grid">
         <div class="av2-card av2-s8">
-          <div class="av2-card-h"><span class="t">楼栋月租 TreeMap</span><span class="hint">块面积＝月租(万)· 颜色＝分期<span class="hint-desk"> · 点击下钻右侧明细</span><span class="hint-touch"> · 点块看租户</span></span></div>
-          <AnaEChart :option="treemapOption" :height="300" @chart-click="onTreeClick" />
-          <div class="pk-legend">
-            <span v-for="p in phases" :key="p.phase" class="pk-leg"><span class="sw" :style="{ background: phaseColor(p.phase) }"></span>{{ p.name }}</span>
-          </div>
-          <!-- 常驻读数句:全园合计与「谁最大、占几成」原先只活在 tooltip 与目测里(块标签只印单栋值)。
-               S 档并块后换一句:图上只剩 7 块,读者要知道的第一件事是「被并掉的那些有多少」。
-               两支写在同一个 <p> 里(不是两个 <p v-if>)—— 条件出句必须常驻占位,见 anaReadoutHold.spec。 -->
-          <p class="ana-read hold"><template v-if="treeMerged">前 {{ TREE_TOP }} 栋占全园月租 {{ fnum(treeHeadPct, 1) }}%,其余 {{ rows.length - TREE_TOP }} 栋并成一块</template><template v-else-if="totalRentWan > 0">共 ¥{{ fnum(totalRentWan, 1) }}万/月,最大 {{ rows[0].name }} 占 {{ fnum(rows[0].rentWan / totalRentWan * 100, 1) }}%</template></p>
-          <p class="ana-ref hold"><template v-if="totalRentWan > 0">{{ rentedCount }} 栋有合同月租 · 万元</template></p>
+          <div class="av2-card-h"><span class="t">{{ PK.card.main }}</span><span class="hint">{{ S.hint(PK.allBld, PK.byRent) }}</span></div>
+          <AnaEChart :option="mainOption" :height="mainH" @chart-click="onMainClick" />
+          <p class="ana-read hold"><template v-if="rentRead">{{ rentRead }}</template></p>
+          <p class="ana-read hold"><template v-if="vacRead">{{ vacRead }}</template></p>
+          <p v-for="t in mainRefs" :key="t" class="ana-ref">{{ t }}</p>
         </div>
 
-        <div class="av2-card av2-s4">
-          <div class="av2-card-h">
-            <span class="t">租户明细 · {{ selected ?? '全园区' }}</span>
-            <button v-if="selected" class="pk-clear" @click="selected = null">× 取消过滤</button>
-            <!-- 整句都是指点话术,两档各显一套:桌面「点左图」,手机上 TreeMap 堆在上面,「左图」不成立 -->
-          <span v-else class="hint"><span class="hint-desk">点左图楼栋块过滤</span><span class="hint-touch">点楼栋块过滤</span></span>
-          </div>
-          <div class="pk-tbl-wrap">
-            <!-- S 档换两行行卡:3 列表每列 112px,「一期 3-4座」这种 6 字楼栋名放不下。
-                 行卡三件字段一件不少(租户 / 月租 / 到期),另补桌面表里没有的楼栋名 ——
-                 手机上 TreeMap 堆在上面、未选中时明细是全园区,不写楼栋就不知道这户在哪。
-                 外层 .pk-tbl-wrap 的 296 定高照旧,两档块高相同,骨架不必分档。 -->
-            <template v-if="!isS">
-            <table class="ak-tbl">
-              <thead><tr><th>租户</th><th>月租(元)</th><th>到期</th></tr></thead>
-              <tbody>
-                <tr v-for="c in detailRows" :key="c.id">
-                  <td>{{ c.tenantName }}</td>
-                  <td class="mono">{{ fint(c.monthlyRent) }}</td>
-                  <td class="mono mut">{{ c.endDate ?? '—' }}</td>
-                </tr>
-              </tbody>
-            </table>
-            </template>
-            <div v-else class="pk-rows">
-              <div v-for="c in detailRows" :key="c.id" class="pk-rc">
-                <div class="r1"><span class="nm">{{ c.tenantName }}</span><span class="v mono">¥{{ fnum(c.monthlyRent / 10000, 1) }}万</span></div>
-                <div class="r2"><span>{{ bName.get(c.buildingId) ?? '—' }}</span><span class="mono">到期 {{ c.endDate ?? '—' }}</span></div>
+        <div class="pk-col av2-s4">
+          <div class="av2-card">
+            <div class="av2-card-h">
+              <span class="t">{{ S.tenantTitle(PK.card.detail, selected ?? PK.all) }}</span>
+              <span class="hint">{{ S.hint(S.coverN(detailAll.length, '份', ''), '元') }}</span>
+              <button v-if="selected" class="pk-clear" @click="selected = null">{{ PK.clear }}</button>
+            </div>
+            <div class="pk-tbl-wrap">
+              <table v-if="!isS" class="ak-tbl pk-tbl">
+                <thead><tr><th v-for="t in PK.th" :key="t">{{ t }}</th></tr></thead>
+                <tbody>
+                  <tr v-for="c in detailRows" :key="c.id">
+                    <td>{{ c.tenantName }}</td>
+                    <td class="mono">{{ fint(c.monthlyRent) }}</td>
+                    <td class="mono mut">{{ c.endDate ?? PK.noEnd }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <!-- S 档两行行卡:3 列表每列 ~110px 放不下长户名;第二行补楼栋名(手机上主卡堆在上面,未选中时不写楼栋就不知道这户在哪) -->
+              <div v-else class="pk-rows">
+                <div v-for="c in detailRows" :key="c.id" class="pk-rc">
+                  <div class="r1"><span class="nm">{{ c.tenantName }}</span><span class="v mono">{{ S.yi(c.monthlyRent) }}</span></div>
+                  <div class="r2"><span>{{ bById.get(c.buildingId)?.name ?? '' }}</span><span class="mono">{{ PK.th[2] }} {{ c.endDate ?? PK.noEnd }}</span></div>
+                </div>
               </div>
             </div>
+            <!-- 点进一栋才有楼层读数句(用户点出来的,不是数据到达,不进骨架) -->
+            <template v-if="selected"><p class="ana-read hold"><template v-if="unitRead">{{ unitRead }}</template></p></template>
+            <p class="ana-ref hold"><template v-if="noEnd">{{ S.thin({ noEnd }).text }}</template></p>
+            <!-- 单元格子只在楼栋管理的楼栋弹窗里画(10-04 用户定方案 B);楼栋管理页不认深链,只跳到页 -->
+            <div v-if="selB && (canReach('/buildings', auth.navLayers, auth.can) || lack('/buildings'))" class="pk-unit">
+              <RouterLink v-if="canReach('/buildings', auth.navLayers, auth.can)" class="pk-go" to="/buildings">{{ selB.unitCount ? PK.unit.see : PK.unit.go }}</RouterLink>
+              <span v-else class="pk-go off" v-tip="lack('/buildings')">{{ selB.unitCount ? PK.unit.see : PK.unit.go }}</span>
+            </div>
+            <div class="pk-foot">
+              <!-- 「左边」只在桌面成立;手机上主卡堆在上面,这句不出 -->
+              <span v-if="!selected" class="pk-cue">{{ PK.pickCue }}</span>
+              <!-- 合同管理页没有按楼栋筛的深链(只认 ?contractNo=),只跳到页 -->
+              <RouterLink v-if="DETAIL_N < detailAll.length && canReach('/contracts', auth.navLayers, auth.can)"
+                          class="pk-all" to="/contracts">{{ PK.viewAll }}</RouterLink>
+              <span v-else-if="DETAIL_N < detailAll.length && lack('/contracts')" class="pk-all off" v-tip="lack('/contracts')">{{ PK.viewAll }}</span>
+            </div>
           </div>
-          <div class="pk-sum">{{ detailRows.length }} 份合同 · 月租合计 ¥{{ fnum(detailRows.reduce((s, c) => s + c.monthlyRent, 0) / 10000, 1) }}万</div>
+
+          <div class="av2-card">
+            <div class="av2-card-h"><span class="t">{{ PK.card.phase }}</span><span class="hint">{{ S.hint(S.coverN(phases.length, '个期区', ''), '万元') }}</span></div>
+            <AnaEChart :option="phaseOption" :height="phaseH" />
+            <p class="ana-read hold"><template v-if="phaseRead">{{ phaseRead }}</template></p>
+            <p class="ana-ref hold"><template v-if="phaseRead">{{ S.pctBase(live.length) }}</template></p>
+          </div>
         </div>
 
-        <div class="av2-card av2-s4">
-          <div class="av2-card-h"><span class="t">期区月租结构</span><span class="hint">有效合同月租占比</span></div>
-          <AnaEChart :option="donutOption" :height="300" />
-          <!-- S 档补图例行:扇区标签只印「期名 + 占比」,金额一直只活在 tooltip 里,手机悬不了停。
-               占比不重复印(扇区标签上已有);补的就是那个读不到的金额。桌面不补,零差异。 -->
-          <div v-if="isS" class="pk-legend">
-            <span v-for="p in phases" :key="p.phase" class="pk-leg">
-              <span class="sw" :style="{ background: phaseColor(p.phase) }"></span>{{ p.name }}
-              <b class="pk-leg-v">¥{{ fnum(p.rentWan, 1) }}万</b>
-            </span>
-          </div>
-          <!-- 占比有意不写:每个扇区标签自己就印着 {b}
-{d}%,而 ECharts 默认两位小数(47.06%),
-               句里写一位就是同一张图上同一个量两个数。tooltip 里的金额才是这里唯一读不到的。 -->
-          <p class="ana-read hold"><template v-if="topPhase">最大期区 {{ topPhase.name }} ¥{{ fnum(topPhase.rentWan, 1) }}万/月,共 {{ phases.length }} 个期区</template></p>
-          <p class="ana-ref hold"><template v-if="topPhase">{{ live.length }} 份有效合同 · 月租 · 万元</template></p>
-        </div>
-
-        <!-- S 档「更多分析」:散点 / 出租率 / 面积转换三块默认收起。条在三块之上,展开只往下长,
-             已渲染内容不挪位。桌面这条 display:none(不进栅格),三块照旧并排 —— 零差异。 -->
+        <!-- S 档「更多分析」:散点 / 面积转换默认收起;条在两块之上,展开只往下长。桌面这条 display:none,零差异。 -->
         <button v-if="isS" type="button" class="ak-foldbar" :aria-expanded="moreOpen" @click="moreOpen = !moreOpen">
           <b>更多分析</b>
-          <span class="sub">楼栋×租户散点 · 出租率 · 面积转换</span>
-          <span class="n">{{ moreOpen ? '收起' : '3 块' }}</span>
+          <span class="sub">{{ PK.card.scatter }} · {{ PK.card.area }}</span>
+          <span class="n">{{ moreOpen ? '收起' : '2 块' }}</span>
         </button>
 
-        <div class="av2-card av2-s6 pk-more" :class="{ 'is-open': moreOpen }">
-          <div class="av2-card-h">
-            <span class="t">楼栋×租户散点</span>
-            <span class="pk-lh">
-              <span class="hint">气泡＝合同数 · 颜色＝分期<template v-if="yLog"> · 对数刻度:小栋与大栋同图可读</template><template v-if="yLog && pkScatter.hidden"> · 月租0楼栋 {{ pkScatter.hidden }} 栋未显示</template></span>
-              <span class="anx-seg mini" role="group" aria-label="纵轴刻度">
-                <button :class="{ on: yLog }" @click="yLog = true">对数</button>
-                <button :class="{ on: !yLog }" @click="yLog = false">线性</button>
-              </span>
-            </span>
-          </div>
-          <AnaEChart :option="scatterOption" :height="300" />
-        </div>
-
-        <div class="av2-card pk-s2 pk-more" :class="{ 'is-open': moreOpen }">
-          <!-- 出租率(METRIC-SOURCE-SPEC §3):主口径按面积,分母缺失 → 「—」+ 写明原因;
-               副标给不依赖缺失字段的替代口径「按单元 n/m」,两个口径都标口径名,禁止混用。
-               整卡空态只留给「连单元台账都没有」——那时两个口径都无分母,才真的什么都算不出。 -->
-          <div class="av2-card-h">
-            <span class="t">出租率</span>
-            <span class="hint"><b class="pk-cov">{{ rentableN }}/{{ rows.length }}</b> 栋已录可租面积</span>
-          </div>
-          <AnaEmpty v-if="!byUnit || byUnit.rate == null" label="单元台账未建"
-            hint="楼栋下没有单元记录,面积与单元两个口径都不可算" to="/buildings" to-text="去建单元" />
-          <div v-else class="pk-am">
-            <div class="v">{{ occPct(bSummary?.occRate ?? null) }}</div>
-            <div class="l">面积口径出租率</div>
-            <div v-if="bSummary?.occRate == null" class="s">{{ OCC_NULL_WHY }}</div>
-            <div class="s">{{ byUnit.text }} · {{ occPct(byUnit.rate) }}</div>
-            <!-- 跨层引导:楼栋管理属数据层,园区股东看不见那一层 —— 给他这条链接等于把他送进一个自己回不来的屏 -->
-            <!-- 没有楼栋的查看权(RBAC v3):不藏,置灰并悬停写明缺哪一项 -->
-            <RouterLink v-if="bSummary?.occRate == null && canReach('/buildings', auth.navLayers, auth.can)"
-                        class="pk-go" to="/buildings">去补录可租面积 →</RouterLink>
-            <span v-else-if="bSummary?.occRate == null && lack('/buildings')" class="pk-go off" v-tip="lack('/buildings')">去补录可租面积 →</span>
-          </div>
+        <div class="av2-card av2-s12 pk-more" :class="{ 'is-open': moreOpen }">
+          <div class="av2-card-h"><span class="t">{{ PK.card.scatter }}</span><span class="hint">{{ S.hint(PK.allBld, '万元') }}</span></div>
+          <AnaEChart :option="scatterOption" :height="260" />
+          <p class="ana-read hold"><template v-if="perHead">{{ perHead.text }}</template></p>
+          <p class="ana-ref hold"><template v-if="overlapRef">{{ overlapRef }}</template></p>
         </div>
 
         <div class="av2-card av2-s12 pk-more" :class="{ 'is-open': moreOpen }">
-          <!-- F3 面积转换:覆盖率护栏常驻卡头;N=0 → 整卡空态引导补录,不画 0% 假数据 -->
-          <div class="av2-card-h">
-            <span class="t">面积转换</span>
-            <span class="hint"><b class="pk-cov">{{ areaStats.n }}/{{ areaStats.m }}</b> 份在租合同有面积数据 · 在租=active/expiring</span>
-          </div>
+          <div class="av2-card-h"><span class="t">{{ PK.card.area }}</span><span class="hint">{{ S.hint(S.areaCover(areaStats.n, areaStats.m), '㎡') }}</span></div>
           <AnaEmpty v-if="areaStats.n === 0" label="合同面积待补录"
             hint="请在合同管理中录入建筑面积与租赁面积" to="/contracts" to-text="去合同管理补录" />
           <div v-else class="pk-area-body">
             <div class="pk-area-metrics">
               <div class="pk-am">
-                <div class="v">{{ areaStats.factor != null ? fnum(areaStats.factor, 2) : '—' }}</div>
-                <div class="l">全园实际换算系数</div>
-                <div class="s">Σ建筑 {{ fnum(areaStats.sumB, 0) }}㎡ ÷ Σ租赁 {{ fnum(areaStats.sumR, 0) }}㎡ · 基准 {{ AREA_FACTOR_BASE }}</div>
+                <div class="v">{{ areaStats.factor != null ? areaStats.factor.toFixed(2) : '' }}</div>
+                <div class="l">{{ PK.factorLabel }}</div>
+                <div class="s">{{ S.areaSums(areaStats.sumB, areaStats.sumR) }}</div>
+                <div class="s">{{ S.factorBase(RENT_AREA_FACTOR) }}</div>
               </div>
               <div class="pk-am">
-                <div class="v">{{ areaStats.share != null ? fnum(areaStats.share, 1) + '%' : '—' }}</div>
-                <div class="l">平均分摊率</div>
-                <div class="s">Σ在租建筑 {{ fnum(areaStats.sumB, 0) }}㎡ ÷ Σ楼栋建筑 {{ fnum(areaStats.parkArea, 0) }}㎡<template v-if="areaStats.share == null"> · 楼栋建筑面积仅 {{ areaStats.parkAreaN }}/{{ rows.length }} 栋已录,分母不成立</template></div>
+                <div class="l">{{ PK.shareLabel }}</div>
+                <div v-if="areaStats.share != null" class="v">{{ areaStats.share.toFixed(1) }}%</div>
+                <div v-else class="pk-thin">{{ S.thin({ few: areaStats.parkAreaN, field: PK.field.total, cant: PK.cant.share }).text }}</div>
               </div>
+              <div class="pk-am">
+                <div class="l">{{ PK.areaOccLabel }}</div>
+                <div v-if="areaOcc != null" class="v">{{ areaOcc }}%</div>
+                <div v-else class="pk-thin">{{ S.thin({ few: areaStats.rentableN, field: PK.field.rentable, cant: PK.cant.occ }).text }}</div>
+              </div>
+              <!-- 跨层引导:楼栋管理属数据层,园区股东看不见那一层 -->
+              <RouterLink v-if="(areaOcc == null || areaStats.share == null) && canReach('/buildings', auth.navLayers, auth.can)"
+                          class="pk-go" to="/buildings">{{ PK.goFill }}</RouterLink>
+              <span v-else-if="(areaOcc == null || areaStats.share == null) && lack('/buildings')" class="pk-go off" v-tip="lack('/buildings')">{{ PK.goFill }}</span>
             </div>
             <div class="pk-area-chart">
-              <AnaEChart :option="areaBarOption" :height="250" />
-              <div class="pk-legend">
-                <span class="pk-leg"><span class="sw" :style="{ background: AREA_COLOR.building }"></span>建筑面积</span>
-                <span class="pk-leg"><span class="sw" :style="{ background: AREA_COLOR.rent }"></span>租赁面积</span>
-              </div>
-              <!-- 没有选中态,取建筑面积最大那一行当代表,并写出它在全体里的位置;系数即 tooltip 印的那个数;写「该栋系数」是因为左栏大字那个「全园实际换算系数」是 Σ建筑÷Σ租赁,同卡两个数不许同名。
-                   不配 .ana-ref:句里没有 %,样本量与口径同卡已常驻两处(卡头覆盖率 + 左栏 Σ 算式) -->
-              <p class="ana-read hold"><template v-if="areaRows.length">{{ areaRows.length }} 栋中建筑最大 {{ areaRows[0].name }},该栋系数 {{ fnum(areaRows[0].building / areaRows[0].rent, 2) }}</template></p>
+              <AnaEChart :option="areaOption" :height="280" />
+              <!-- 每栋都正好等于约定值时不出句(画板如此),出句时才占这一行 -->
+              <template v-if="areaRead"><p class="ana-read">{{ areaRead }}</p></template>
             </div>
           </div>
         </div>
       </div>
-
     </div>
   </AnaShell>
 </template>
 
 <style scoped>
-/* 空态卡填补 av2-grid 第二排剩余 2 列(4+6+2=12);窄屏与 av2-s* 同步降为整行 */
-.pk-s2 { grid-column: span 2; }
-@media (max-width: 1100px) { .pk-s2 { grid-column: span 12; } }
-.pk-tbl-wrap { max-height: 296px; overflow: auto; }
-.pk-sum { margin-top: 8px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+/* 屏名进工具条(同 CockpitView .cv2-name):排在工具条最前 */
+.pk-name { order: -1; display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-body); font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; }
+/* 右栏:明细卡叠在期区卡上,末张撑满(与主卡同排等高) */
+.pk-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.pk-col > .av2-card:last-child { flex: 1 1 auto; }
+/* 1101–1280:主卡整行,右栏两张并排(否则 span 6 的右栏右边空半行) */
+@media (max-width: 1280px) and (min-width: 1101px) {
+  .pk-col { grid-column: span 12; flex-direction: row; }
+  .pk-col > .av2-card, .pk-col > .av2-card:last-child { flex: 1 1 0; min-width: 0; }
+}
+.pk-tbl th, .pk-tbl td { padding-left: 8px; padding-right: 8px; }
+.pk-tbl th:first-child, .pk-tbl td:first-child { padding-left: 0; }
+.pk-tbl th:last-child, .pk-tbl td:last-child { padding-right: 0; }
+.pk-tbl td:first-child { white-space: normal; width: 100%; line-height: 16px; }
 .pk-clear { border: none; background: transparent; color: var(--text-link); font-size: 11px; cursor: pointer; font-family: var(--font-sans); white-space: nowrap; }
-.pk-lh { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-.pk-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; justify-content: center; }
-.pk-leg { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-secondary); }
-.pk-leg .sw { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
-/* F3 面积转换卡:左指标竖排 + 右图;窄屏降为纵排(指标改横排) */
-.pk-cov { font-weight: var(--fw-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }
-/* 与 AnaEmpty 的 .go 同形态:那份样式是 scoped 的,跨组件拿不过来 */
-.pk-go { display: inline-block; margin-top: 8px; font-size: 12px; color: var(--text-link); text-decoration: none; }
-.pk-go:hover { text-decoration: underline; }
-.pk-go.off { color: var(--text-disabled); cursor: default; text-decoration: none; }
+.pk-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: var(--fs-micro); color: var(--text-muted); }
+.pk-all { margin-left: auto; color: var(--text-link); font-size: var(--fs-micro); white-space: nowrap; text-decoration: none; }
+.pk-all:hover, .pk-go:hover { text-decoration: underline; }
+.pk-go { display: inline-block; margin-top: 8px; font-size: var(--fs-micro); color: var(--text-link); text-decoration: none; }
+/* 没有目标屏的查看权(RBAC v3,master 0.28.0):不藏,置灰并悬停写明缺哪一项 */
+.pk-go.off, .pk-all.off { color: var(--text-disabled); cursor: default; text-decoration: none; }
+.pk-thin { margin-top: 2px; font-size: var(--fs-label); line-height: 18px; color: var(--text-secondary); }
+/* 面积转换:左指标竖排 + 右图;窄屏降为纵排 */
 .pk-area-body { display: flex; gap: 20px; align-items: stretch; }
 .pk-area-metrics { flex: 0 0 216px; display: flex; flex-direction: column; gap: 14px; justify-content: center; }
 .pk-am .v { font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }
@@ -556,13 +494,15 @@ const areaBarOption = computed(() => ({
 .pk-area-chart { flex: 1 1 auto; min-width: 0; }
 @media (max-width: 900px) {
   .pk-area-body { flex-direction: column; }
-  .pk-area-metrics { flex: 0 0 auto; flex-direction: row; gap: 24px; }
+  .pk-area-metrics { flex: 0 0 auto; }
 }
-/* 期区图例里的金额(S 档才渲染,基档这条类用不上,留着无害) */
-.pk-leg-v { font-weight: var(--fw-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }
-/* 「更多分析」折叠条:桌面 display:none —— 不进栅格、不占位、零差异。S 档才长出来。 */
+/* 「点左边的楼栋」:≤1280 主卡 8 栏变整行、明细落到主卡下面,「左边」不成立(文案复查 10-05) */
+@media (max-width: 1280px) { .pk-cue { display: none; } }
+/* 「更多分析」折叠条:桌面 display:none —— 不进栅格、不占位。S 档才长出来。 */
 .ak-foldbar { display: none; }
 @media (max-width: 600px) { /* S */
+  .pk-col { gap: 6px; }
+  .pk-cue { display: none; }   /* 「点左边的楼栋」:手机上主卡堆在上面,「左边」不成立 */
   .ak-foldbar {
     display: flex; align-items: center; gap: 8px; grid-column: 1 / -1;
     min-height: 44px; padding: 0 12px; box-sizing: border-box;
@@ -572,11 +512,9 @@ const areaBarOption = computed(() => ({
   }
   .ak-foldbar .sub { flex: 1 1 auto; min-width: 0; font-size: var(--fs-micro); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ak-foldbar .n { flex: 0 0 auto; font-size: var(--fs-micro); color: var(--text-muted); }
-  /* 折进去的三块:收起时整块不渲染布局。默认收起,展开往下长。 */
   .pk-more { display: none; }
   .pk-more.is-open { display: block; }
-  /* 3 列表的 S 档行卡:两行 —— 第一行 租户名 + 右对齐月租(主字段),第二行 楼栋 ——右端—— 到期。
-     行高 56 与上一份稿的宽表行卡同节奏;外层 .pk-tbl-wrap 仍是 296 定高滚动,块高两档相同。 */
+  /* 明细行卡:第一行 租户名 + 右对齐合同月租(元),第二行 楼栋 ——右端—— 到期。行高 56。 */
   .pk-rows { display: flex; flex-direction: column; }
   .pk-rc { height: 56px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 0 2px; border-bottom: 1px solid var(--divider); }
   .pk-rc .r1 { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-label); }
@@ -584,7 +522,5 @@ const areaBarOption = computed(() => ({
   .pk-rc .r1 .v { flex: 0 0 auto; color: var(--text-primary); font-variant-numeric: tabular-nums; }
   .pk-rc .r2 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: var(--fs-micro); color: var(--text-muted); }
   .pk-rc .r2 > * { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  /* 图例补的金额靠左排(桌面那两处 .pk-legend 居中,S 档这一处是逐行读的清单) */
-  .pk-legend { justify-content: flex-start; }
 }
 </style>

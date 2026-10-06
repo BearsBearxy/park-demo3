@@ -1,6 +1,7 @@
 <script setup lang="ts">
-// B8 · 各栋消纳收益与上网收益堆叠横条(PV-ANALYSIS-SCREEN-V4 §3.9;画布 ../运维文档/设计稿/已实现/光伏分栋分析v4定稿-2026-09-13/Ledger.dc.html)。
-// 画布 卡内宽 × (上 6 + 行数 × 27 + 下 26);栋名列 96(期别点 x=10、栋名 x=22),条从 104 起、条尾合计右留 84;
+// B8 · 各栋自用和上网收益堆叠横条(PV-ANALYSIS-SCREEN-V4 §3.9;2026-10-06 改稿画板 pv-v2-m-ledger / y-ledger)。
+// 画布 卡内宽 × (上 6 + 行数 × 27 + 下 26);栋名列 96(栋名 x=22),条从 104 起、条尾合计右留 84;
+// 2026-10-06:行头期别点与图例里的期别拿掉 —— 看钱不用分期,期别蓝又和「自己用的 / 卖上网的」同值,同一排图例撞色。
 // 横轴 万元 从 0 起,最长那条留 4% 余量;条高 16、圆角 3;段内写得下才写数(按估出的字宽判断)。
 // 行序照 revenueBars() 给的(按合计降序),这里不重排。
 import { computed, ref } from 'vue'
@@ -8,7 +9,8 @@ import { useWidth } from '@/components/ana/useWidth'
 import { useEnterPhase, useMorphHold } from '@/components/ana/anaMotion'
 import { tipWidth } from '@/components/ana/chartTip'
 import '@/components/ana/ana.css'   // @keyframes fp-wipe
-import { PHASE_COLORS, PV_COLORS } from './pvAnaColors'
+import { PV } from '@/components/ana/anaSentence'
+import { PV_COLORS } from './pvAnaColors'
 import { phaseName, type PvRevenueBarsProps } from './pvAnaV4.logic'
 
 const props = defineProps<PvRevenueBarsProps>()
@@ -23,7 +25,6 @@ const ROW = computed(() => (narrow.value ? 30 : 27))
 // 行内的纵向落点全部从 ROW 派生 —— 只改行距不改行内 y,窄档整行内容会上偏 3px(条高恒 16)
 const BAR_Y = computed(() => (ROW.value - 16) / 2)      // 27→5.5  30→7
 const TEXT_Y = computed(() => BAR_Y.value + 12)         // 27→17.5 30→19
-const DOT_CY = computed(() => ROW.value / 2)            // 27→13.5 30→15
 // 挂载时在视口内擦入 320,否则瞬到;换期 200 形变:条长走 rect 几何,名次变了整行走行 g 的 translateY
 const first = useEnterPhase(el)
 const hold = useMorphHold(width, first)
@@ -61,7 +62,6 @@ const bars = computed(() => props.data.rows.map((r, i) => {
     selfT: fits(selfW, selfT) ? selfT : null,
     gridT: fits(gridW, gridT) ? gridT : null,
     totT: (r.total / WAN).toFixed(2),
-    dot: PHASE_COLORS[r.phase] ?? PV_COLORS.REF,
     sel: r.id === props.selId,
   }
 }))
@@ -88,7 +88,7 @@ const tip = computed(() => {
   const w2 = (v: number) => (v / WAN).toFixed(2)
   const lines: TipLine[] = [
     { t: `${r.name} · ${phaseName(r.phase)}`, c: WHITE, b: 600 },
-    { t: `本段发电 ${w2(r.gen)} 万度`, c: WHITE, o: 0.72 },
+    { t: `本段发电 ${w2(r.gen)} 万kWh`, c: WHITE, o: 0.72 },
     { t: `自己用了 ¥${w2(r.self)} 万`, c: PV_COLORS.TIP_SEL },
     { t: `卖上网 ¥${w2(r.grid)} 万`, c: PV_COLORS.BAND },
     { t: `合计 ¥${w2(r.total)} 万`, c: WHITE, b: 600 },
@@ -101,22 +101,19 @@ const tip = computed(() => {
     top: i! < n.value / 2 ? b.top + 30 : Math.max(0, b.top - 104),
   }
 })
-
-const price = computed(() => `¥${props.data.gridPrice.toFixed(2)}/度`)
 </script>
 
 <template>
   <div class="prb">
     <div ref="el" class="prb-plot" :style="{ height: H + 'px' }">
-      <svg :width="width" :height="H" :viewBox="`0 0 ${width} ${H}`" class="prb-svg" role="img" aria-label="各栋消纳收益与上网收益">
+      <svg :width="width" :height="H" :viewBox="`0 0 ${width} ${H}`" class="prb-svg" role="img" :aria-label="PV.card.rev">
         <template v-for="g in grid" :key="'g' + g.v">
           <line class="prb-gl" :x1="g.x" :x2="g.x" :y1="TOP" :y2="bottom" />
           <text class="prb-ax" :x="g.x" :y="H - 10" text-anchor="middle">{{ g.v }}</text>
         </template>
-        <!-- 期别点与栋名留在数据组外,两段各一组行 g(C6-25)。行 g 按栋作键、纵向只靠 translateY:换期名次变了整行滑到新行 -->
+        <!-- 栋名留在数据组外,两段各一组行 g(C6-25)。行 g 按栋作键、纵向只靠 translateY:换期名次变了整行滑到新行 -->
         <g :class="['prb-names', 'ana-morph', { hold }]">
           <g v-for="b in drawn" :key="'n' + b.r.id" class="prb-rowg" :style="rowT(b.top)">
-            <circle class="prb-dot" cx="10" :cy="DOT_CY" r="3.5" :fill="b.dot" />
             <text :class="['prb-name', { 'prb-name-sel': b.sel }]" x="22" :y="TEXT_Y">{{ b.r.name }}</text>
           </g>
         </g>
@@ -139,15 +136,11 @@ const price = computed(() => `¥${props.data.gridPrice.toFixed(2)}/度`)
       </div>
     </div>
     <div class="pv-leg">
-      <span><b class="pv-sw" :style="{ background: PV_COLORS.FOCUS }" />自己用的（按录入时的单价）</span>
-      <span><b class="pv-sw" :style="{ background: PV_COLORS.MID }" />卖上网的（上网 {{ price }}）</span>
-      <span><i class="pv-dot" :style="{ background: PV_COLORS.PHASE1 }" />一期</span>
-      <span><i class="pv-dot" :style="{ background: PV_COLORS.PHASE2 }" />二期</span>
-      <span><i class="pv-dot" :style="{ background: PV_COLORS.PHASE3 }" />三期</span>
-      <span class="pv-leg-m">条尾粗字 = 合计万元</span>
+      <span><b class="pv-sw" :style="{ background: PV_COLORS.FOCUS }" />{{ PV.revLegend[0] }}</span>
+      <span><b class="pv-sw" :style="{ background: PV_COLORS.MID }" />{{ PV.revLegend[1] }}</span>
+      <span class="pv-leg-m">{{ PV.revLegend[2] }}</span>
     </div>
-    <!-- 图注写在模板里,不走整句插值:文案门禁(anaCopyLint)扫得到 -->
-    <p class="ana-ref">横轴 = 万元，从 0 起 · 两段叠起来，条尾就是合计，不用心算 · 按合计从多到少排 · 两段单价口径不同（自用按录入时的单价、上网按 {{ price }}）<template v-if="data.through"> · 数据到 {{ data.through }}</template></p>
+    <!-- 读数句与参照(上网单价、自用单价、按年哪几栋不是整年)由屏接着写在卡里,走句型库 PV 段 -->
   </div>
 </template>
 
@@ -173,6 +166,5 @@ const price = computed(() => `¥${props.data.gridPrice.toFixed(2)}/度`)
 .pv-leg { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px; font-size: var(--fs-micro); color: var(--text-secondary); white-space: nowrap; }
 .pv-leg span { display: inline-flex; align-items: center; gap: 5px; }
 .pv-sw { display: inline-block; width: 11px; height: 11px; border-radius: 3px; }
-.pv-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
 .pv-leg-m { color: var(--text-muted); }
 </style>

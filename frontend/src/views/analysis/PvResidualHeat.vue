@@ -1,10 +1,11 @@
 <script setup lang="ts">
 /**
- * PvResidualHeat —— 高级分析档 L3「各栋残差的年内走势」13 × 12 热力格(PV-ANALYSIS-SCREEN-V4 §3.12)。
+ * PvResidualHeat —— 核对明细档「各栋每月和常年水平的差」13 × 12 热力格(PV-ANALYSIS-SCREEN-V4 §3.12;2026-10-06 改稿只在按年出)。
  *
  * **CSS 手写格,不用 ECharts**:bundle 没注册 heatmap / visualMap。几何照画板 Main.dc.html `4b`:
  * 行头 70(期别点 8 + 栋名 12px)、格 28×28 圆角 4 gap 2、列头 20(当段月实底白字)。
- * 色阶两向四档:正 = 蓝、负 = 琥珀,透明度 .14 / .30 / .50 / .75,接近 0 = 墨 4%;最深一档正向格字转白。
+ * 色阶两向四档:多发 = 琥珀、少发 = 红(和主卡「高于 / 低于平时」同一套方向色,2026-10-06 改稿),
+ * 透明度 .14 / .30 / .50 / .75,接近 0 = 墨 4%;格字一律正文色(琥珀 .75 上白字不够对比)。
  * 档位线、行序(固定栋序)、谁是空格全在 pvAnaV4.logic.ts residualGrid。
  * 未到的月、有效抄表不足的月、没进模型的行一律虚线空格,不补。
  */
@@ -15,16 +16,18 @@ import { sgn } from '@/components/ana/anaFmt'
 import '@/components/ana/ana.css'   // @keyframes fp-wipe
 import { tipWidth, tipX } from '@/components/ana/chartTip'
 import { PHASE_COLORS, PV_COLORS } from './pvAnaColors'
-import type { PvResidualHeatProps, ResidualCell } from './pvAnaV4.logic'
+import { PV, PVH, nB, pvHeatCapRef, pvHeatNote, pvHeatRef } from '@/components/ana/anaSentence'
+import { phaseName, type PvResidualHeatProps, type ResidualCell } from './pvAnaV4.logic'
 
 // year:列头与气泡里的年份。ResidualGrid 没带年,由 view 传 snap.year
 const props = defineProps<PvResidualHeatProps & { year: number }>()
 
 const ALPHA = [0, 0.14, 0.3, 0.5, 0.75]
+// 少发(红)最深 → 浅,接近 0,多发(琥珀)浅 → 最深。两色两种外观同值,模块里拷一份没事
 const LEG: { c: string; a: number }[] = [
-  ...[4, 3, 2, 1].map(l => ({ c: PV_COLORS.ABOVE, a: ALPHA[l] })),
+  ...[4, 3, 2, 1].map(l => ({ c: PV_COLORS.BELOW, a: ALPHA[l] })),
   { c: '', a: 0 },
-  ...[1, 2, 3, 4].map(l => ({ c: PV_COLORS.FOCUS, a: ALPHA[l] })),
+  ...[1, 2, 3, 4].map(l => ({ c: PV_COLORS.ABOVE, a: ALPHA[l] })),
 ]
 
 /** PV_COLORS 的 hex 叠透明度。只从色板常量派生,不另起色 */
@@ -55,8 +58,8 @@ function cellLook(c: ResidualCell, inModel: boolean) {
     return { t: '', bg: 'transparent', fg: 'transparent', border: '1px dashed var(--ink-100)', hover: false }
   }
   const r = Math.round(c.pct)
-  const bg = c.level === 0 ? 'var(--ink-040)' : tint(c.sign > 0 ? PV_COLORS.FOCUS : PV_COLORS.ABOVE, ALPHA[c.level])
-  const fg = c.level === 4 && c.sign > 0 ? 'var(--text-on-solid)' : c.level === 0 ? 'var(--ink-500)' : 'var(--text-primary)'
+  const bg = c.level === 0 ? 'var(--ink-040)' : tint(c.sign > 0 ? PV_COLORS.ABOVE : PV_COLORS.BELOW, ALPHA[c.level])
+  const fg = c.level === 0 ? 'var(--ink-500)' : 'var(--text-primary)'
   return { t: `${r > 0 ? '+' : r < 0 ? '−' : ''}${Math.abs(r)}`, bg, fg, border: '1px solid transparent', hover: true }
 }
 
@@ -79,10 +82,12 @@ const tip = computed(() => {
   const r = props.data.rows[h.i]
   const c = r?.cells[h.m - 1]
   if (!c || c.pct == null) return null
+  // 别的期这个月才并网:全园中间那栋跟着变,这一格不全是这栋自己多发 / 少发 —— 不说「多发」,说为什么会偏
+  const j = props.data.joins?.find(x => x.m === h.m && x.p !== r.phase)
   const lines: { t: string; b?: number; dim?: number }[] = [
-    { t: `${r.name} · ${props.year}-${String(h.m).padStart(2, '0')}`, b: 600 },
-    { t: `残差 ${sgn(c.pct, 1, '%')}` },
-    { t: c.sign > 0 ? '比自己常年水平多发' : c.sign < 0 ? '比自己常年水平少发' : '与常年水平持平', dim: 0.72 },
+    { t: `${r.name} · ${h.m}月`, b: 600 },
+    { t: `和自己常年比 ${sgn(c.pct, 1, '%')}` },
+    { t: j ? `这个月${phaseName(j.p)}并网，全园中间那栋跟着变` : c.sign > 0 ? '比自己常年水平多发' : c.sign < 0 ? '比自己常年水平少发' : '与常年水平持平', dim: 0.72 },
   ]
   const w = tipWidth(lines.map(l => l.t), 22)
   // 画板:格左 72 + (m−1)·30,气泡在格右 4px;右边放不下翻到格左 4px。窄档格区横滑,减掉滑走的那段
@@ -96,16 +101,23 @@ const legendNote = computed(() => {
   if (d.throughMonth < 12) parts.push(d.throughMonth >= 11 ? '12 月还没到' : `${d.throughMonth + 1}–12 月还没到`)
   const partial = d.rows[0]?.cells.find(c => c.partial)
   if (partial) parts.push(`${partial.month} 月还没录满`)
-  if (d.outsideN) parts.push(`${d.outsideN} 栋无残差`)
+  if (d.shortN) parts.push(pvHeatNote(d.shortN))
   return parts.join(' · ')
+})
+
+// 卡头:进了模型的几栋;参照:并网那个月冲过最深一档的格子写出范围 + 颜色到哪儿封顶
+const hint = computed(() => PVH.heat(nB(props.data.rows.filter(r => r.inModel).length)))
+const refs = computed(() => {
+  const j = props.data.join
+  return [...(j ? [pvHeatRef(j.m, j.p, j.p0, j.n, j.lo, j.hi)] : []), pvHeatCapRef(props.data.thresholds[3])]
 })
 </script>
 
 <template>
   <section class="av2-card prh">
     <div class="av2-card-h">
-      <span class="t">各栋残差的年内走势</span>
-      <span class="hint">格 = 该月残差中位数 % · 蓝 = 比自己常年多发，琥珀 = 少发</span>
+      <span class="t">{{ PV.card.heat }}</span>
+      <span class="hint">{{ hint }}</span>
     </div>
     <div ref="el" class="prh-grid" @mouseleave="hm = null">
       <div class="prh-scroll" :class="{ nar: narrow }" @scroll="onScroll">
@@ -134,6 +146,7 @@ const legendNote = computed(() => {
       <span class="mut">多发</span>
       <span v-if="legendNote" class="mut note">{{ legendNote }}</span>
     </div>
+    <p v-for="r in refs" :key="r.text" class="ana-ref">{{ r.text }}</p>
   </section>
 </template>
 

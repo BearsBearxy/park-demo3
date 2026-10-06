@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  acf, nEffOf, buildLab, buildSnapshot, buildDetail, MAX_ITER, TOL,
+  acf, nEffOf, buildLab, buildSnapshot, buildDetail, blockBootstrapP, LAB_SHUFFLES, MAX_ITER, TOL,
   type QualityState, type ReadingRow, type StationCfg, type SnapshotInput,
 } from './pvMeterAna.logic'
 
@@ -76,9 +76,9 @@ function makeInput(o: Opts = {}): SnapshotInput {
   }
 }
 
-const lab = (o: Opts = {}, focusId?: number) => {
+const lab = (o: Opts = {}) => {
   const input = makeInput(o)
-  return buildLab(buildSnapshot(input), input, focusId)
+  return buildLab(buildSnapshot(input), input)
 }
 
 /** 把 rows 打乱抄表顺序。polish.resid 是按 rows 插入顺序建的 Map —— 取值前不排序,时序就散了 */
@@ -92,7 +92,7 @@ function shuffle(input: SnapshotInput): SnapshotInput {
   return { ...input, rows }
 }
 
-/** S4 在 7/18 之后掉到 65% —— 一个真变点,用来喂 L4 零分布与「变点区间」两条断言 */
+/** S4 在 7/18 之后掉到 65% —— 一个真变点,用来喂「碰巧更偏」与「变点区间」两条断言 */
 const stepGen = (i: number, m: number, d: number) =>
   400 * (1 + (d % 5) * 0.1) * (i === 3 && (m > 7 || (m === 7 && d > 18)) ? 0.65 : 1)
 
@@ -390,27 +390,35 @@ describe('L3 · 各栋残差的年内走势(模型诊断,上线前必做)', () =
   })
 })
 
-describe('L4 · 块自助零分布', () => {
-  // 让 p 值看得见,比一个 p=0.003 可信
-  it('零分布给得出来,且带观测值', () => {
-    const l = lab({ gen: stepGen })
-    expect(l.nullDist).not.toBeNull()
-    expect(l.nullDist!.dist).toHaveLength(999)
-    expect(Number.isFinite(l.nullDist!.obs)).toBe(true)
+// 2026-10-06 改稿:零分布那张卡下线,每栋一个「碰巧更偏」进核对表一列 —— 一栋一次打乱重算,不再跟着选中栋走
+describe('碰巧更偏(TestRow.chance)', () => {
+  it('❗每栋都有:观测窗口(年档 = 最后一个月)那段的均值,打乱重算 999 次里一样偏或更偏的次数,取观测值那一侧', () => {
+    const input = makeInput({ gen: stepGen, rho: 0.5 })
+    const snap = buildSnapshot(input)
+    const l = buildLab(snap, input)
+    expect(l.tests).toHaveLength(9)
+    for (const t of l.tests) {
+      // 期望值不经过 buildLab:从快照的残差重新取序列、重新打乱
+      const series = [...snap.polish.resid.get(t.id)!].sort((a, b) => a[0].localeCompare(b[0]))
+      const win = series.filter(([d]) => d.startsWith('2026-12')).map(([, v]) => v)
+      const obs = win.reduce((a, b) => a + b, 0) / win.length
+      const dist = blockBootstrapP(series.map(([, v]) => v), obs, win.length, { block: 14, B: LAB_SHUFFLES, seed: 20260831 }).nullDist
+      expect(t.chance, t.name).toBe(Math.min(dist.filter(v => v >= obs).length, dist.filter(v => v <= obs).length))
+    }
+    // ❗S4 7/18 起掉到 65%:12 月整段在低位,打乱的 999 段里一样低的只有几十次;
+    // 对照:同一份噪声不掉的话,S4 的 12 月是常态,几百次(只有噪声的栋各栋次数散得很开,所以拿同一栋比,不拿别的栋比)
+    const s4 = l.tests.find(t => t.name === 'S4')!.chance!
+    const flat = makeInput({ rho: 0.5 })
+    const s4Flat = buildLab(buildSnapshot(flat), flat).tests.find(t => t.name === 'S4')!.chance!
+    expect(s4).toBeLessThan(100)
+    expect(s4Flat).toBeGreaterThan(300)
+    expect(Math.max(...l.tests.map(t => t.chance!))).toBeLessThanOrEqual(499)
   })
 
-  it('不给 focusId 时画 p 最小那栋', () => {
-    const l = lab({ gen: stepGen })
-    const minP = [...l.tests].sort((a, b) => a.p - b.p)[0]
-    expect(l.nullDist!.id).toBe(minP.id)
-    expect(minP.name).toBe('S4')      // 夹具前提:S4 才是掉下去的那栋
-  })
-
-  // 新签名的第三个参数:零分布跟着屏上选中走
-  it('给了 focusId 就画那一栋', () => {
-    const l = lab({ gen: stepGen }, 7)
-    expect(l.nullDist!.id).toBe(7)
-    expect(l.nullDist!.name).toBe('S7')
+  it('不跟选中栋走:同一份快照算两遍,每栋的数逐位相同(换选中不用重算)', () => {
+    const input = makeInput({ gen: stepGen, rho: 0.5 })
+    const snap = buildSnapshot(input)
+    expect(buildLab(snap, input).tests.map(t => t.chance)).toEqual(buildLab(snap, input).tests.map(t => t.chance))
   })
 })
 

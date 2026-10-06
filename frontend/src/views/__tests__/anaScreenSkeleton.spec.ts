@@ -8,8 +8,6 @@
 // 夹具不用退化数据:anaData 的取数一律停在 pending(永不 resolve),这正是真实首进那几百毫秒的状态;
 // 用空数组 resolve 会走到「空态」分支,测不到骨架。
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { mount } from '@vue/test-utils'
 import { flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -70,26 +68,16 @@ describe('C6-01 · 分析屏首进骨架逐块照真版式的高钉死', () => {
     expect(w.findAll('.anx-kpis .anx-kpi-hold')).toHaveLength(6)
   })
 
-  it('❗租户用能:左列列表 >1280 flex:1、≤1280 钉 560 · 趋势 300 · 应收实收 200 · Top20 440 · 散点 440', async () => {
+  // 2026-10 改稿 tenant-energy-v2:左列清单、Top20、选中户两张图都没了;按月 = 主卡 + 两张句子卡 + 散点(1440 浏览器实测骨架与真版式逐卡同 y / 同高)
+  it('❗用能与缴费:按月 主卡 454 · 散点 300;KPI 摆 4 张占位瓦', async () => {
     const { w, heights } = await shimHeights(TenantEnergyView, '.te2-skel')
     expect(heights).toEqual([
-      '',                             // 左列列表条(flex:1,高由右列那栏定);卡头 / 搜索框照抄真版式
-      '300px',                        // 趋势卡 :height 300(读数句 / 参照系是真版式同类的 <p>)
-      '200px',                        // 应收实收卡 :height 200(横幅 / 收缴率行照抄真版式)
-      '440px',                        // Top20 :height 440
-      '440px',                        // 散点 :height 440(图例照抄真版式)
+      '454px',                        // 主卡各户电费 :height 454(图例 + 20 行 + 横轴)
+      '300px',                        // 电费和月租 :height 300
     ])
-    // 列表条的高按断点定(jsdom 不算样式 → 钉类与 scoped 规则原文):
-    // >1280 左卡被右栏拉伸,条 flex:1(至少 300);≤1280 左卡独占一行不被拉伸,真列表 = min(内容, 560),钉 560
-    const list = w.findAll('.te2-skel .fp-shim')[0]
-    expect(list.classes(), '列表条没接断点规则').toContain('te2-skel-list')
-    const css = readFileSync(join(__dirname, '../analysis/TenantEnergyView.vue'), 'utf8').replace(/\r\n/g, '\n')
-    expect(css).toContain('.te2-skel-list { flex: 1; min-height: 300px; }')
-    expect(css, '≤1280 列表条没钉 560 → 首进数据到那一帧左卡长高、下方整片下沉')
-      .toContain('@media (max-width: 1280px) { .te2-skel-list { flex: none; height: 560px; } }')
-    expect(css).toContain('.te2-list { flex: 1; min-height: 0; max-height: 560px;')
+    expect(w.findAll('.te2-skel .te-go'), '两张句子卡的入口链接照抄真版式').toHaveLength(2)
     expect(w.find('.anx-kpis').exists()).toBe(true)
-    expect(w.findAll('.anx-kpis .anx-kpi-hold')).toHaveLength(6)
+    expect(w.findAll('.anx-kpis .anx-kpi-hold')).toHaveLength(4)
   })
 
   it('❗结构与续约:帕累托 300 · 环 300 · 箱点 250,六卡按 s8/s4 交替占满 12 栏', async () => {

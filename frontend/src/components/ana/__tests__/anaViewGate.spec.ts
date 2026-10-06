@@ -78,11 +78,13 @@ describe('分析屏深链接线', () => {
   const A = join(__dirname, '../../../views/analysis')
   it.each([
     ['AnomalyView.vue', "lack('/ledger')"], ['AnomalyView.vue', "lack('/sales-income')"],
-    ['AnomalyView.vue', ':disabled="!!lack(r.link)"'], ['AnomalyView.vue', ':disabled="!!lack(a.link)"'],
-    ['CockpitView.vue', "if (blocked('/sales-income')) return"], ['CockpitView.vue', ':disabled="!!lack(a.link)"'],
+    // 2026-10-06 改稿:规则行挂在选中户卡里(r.a),底部加光伏规则卡(落光伏分栋分析)
+    ['AnomalyView.vue', ':disabled="!!lack(r.a.link)"'], ['AnomalyView.vue', ":disabled=\"!!lack('/pv-meter-analysis')\""],
+    ['CockpitView.vue', "if (blocked('/sales-income')) return"], ['CockpitView.vue', ':disabled="!!lack(r.a.link)"'],
     ['CockpitView.vue', ":disabled=\"!!lack('/ledger')\""],
     ['ChurnView.vue', "if (blocked('/ledger')) return"], ['ChurnView.vue', ":disabled=\"!!lack('/ledger')\""],
-    ['TenantEnergyView.vue', "!!lack('/ledger')"], ['TenantEnergyView.vue', "!!lack('/sales-income')"],
+    // 2026-10-06 改稿:查台账 / 查附表10 两张单户图挪到异常提醒中心,这屏只剩「去异常提醒中心」「去现金流量」两个入口
+    ['TenantEnergyView.vue', "!!lack('/anomaly')"], ['TenantEnergyView.vue', "!!lack('/fin-cashflow')"],
     ['FinCashflowView.vue', ":disabled=\"!!lack('/ledger')\""],
     ['ExpiryView.vue', "if (blocked('/contracts')) return"],
     ['BudgetView.vue', "if (blocked('/' + nav)) return"],

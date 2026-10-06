@@ -1,13 +1,15 @@
 <script setup lang="ts">
-// A2 · 年等效小时双向条(PV-ANALYSIS-SCREEN-V4 §3.6;画布 ../运维文档/设计稿/已实现/光伏分栋分析v4定稿-2026-09-13/Abs.dc.html)。
-// 画布 卡内宽 × (上 8 + 行数 × 26 + 下 34);栋名列 96(计划 §1 #19,名字右对齐于 86);右侧预留 176;(这些是桌面档,窄档见下 narrow)
-// 0 线 = 锚点,落在绘图宽 22% 处;条长 = 比锚点多几小时,条高 14、圆角 3;每 50 h 一条竖网格。
+// A2 · 每千瓦日均和合格线的差(PV-ANALYSIS-SCREEN-V4 §3.6;2026-10-06 改稿画板 pv-v2-m-abs,只在按月出)。
+// 画布 卡内宽 × (上 8 + 行数 × 26 + 下 34);栋名列 96(名字右对齐于 86);右侧预留 176;(这些是桌面档,窄档见下 narrow)
+// 0 线 = 合格线摊到每天,落在绘图宽 22% 处;条长 = 比合格线每天多几 kWh,条高 14、圆角 3;竖网格从每 0.5 起。
+// 右边三列:差(两位小数、不带单位,卡头写了 kWh)| 百分比 | 比去年。
 // 行点击只选中该栋(计划 §1 #12),不开抽屉。数据口径在 pvAnaV4.logic.ts 的 anchorBars()。
 import { computed, ref } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
 import { useEnterPhase, useMorphHold } from '@/components/ana/anaMotion'
 import { tipWidth } from '@/components/ana/chartTip'
 import '@/components/ana/ana.css'   // @keyframes fp-wipe + ana-morph
+import { PV, pvAnchorLeg, pvAnchorZero } from '@/components/ana/anaSentence'
 import { PHASE_COLORS, PV_COLORS } from './pvAnaColors'
 import { phaseName, type AnchorRow, type PvAnchorBarsProps } from './pvAnaV4.logic'
 
@@ -21,12 +23,12 @@ const { el, width } = useWidth(999)
 const narrow = computed(() => width.value < 420)
 const PL = computed(() => (narrow.value ? 76 : 96))
 const NAME_X = computed(() => (narrow.value ? 0 : 86))
-// 窄档右侧 160 = 值 53 + 4 + 百分比 33 + 6 + 箭头 12 + 2 + 比去年 40 + 右边距 6 + 条尾余 4(mono 11 按 6.6/字符)
+// 窄档右侧 160 = 值 53 + 4 + 百分比 33 + 6 + 比去年 54 + 右边距 6 + 条尾余 4(mono 11 按 6.6/字符)
 const RIGHT = computed(() => (narrow.value ? 160 : 176))
 const ROW = computed(() => (narrow.value ? 30 : 26))
 const BAR_Y = computed(() => (narrow.value ? 8 : 6))   // 条高 14 居中于行
 const TEXT_Y = computed(() => (narrow.value ? 19 : 17))
-// 切到「绝对水平」挂上来时在视口内擦入 320;换期 200 形变:条长走 rect 几何,名次变了整行走行 g 的 translateY
+// 切到「按装机比」挂上来时在视口内擦入 320;换期 200 形变:条长走 rect 几何,名次变了整行走行 g 的 translateY
 const first = useEnterPhase(el)
 const hold = useMorphHold(width, first)
 const plotW = computed(() => width.value - PL.value - RIGHT.value)
@@ -35,7 +37,7 @@ const nRows = computed(() => props.data.rows.length + props.data.unborn.length)
 const H = computed(() => TOP + nRows.value * ROW.value + BOTTOM)
 const bottom = computed(() => TOP + nRows.value * ROW.value)
 
-/** 每小时多少 px:最长的正条留 5% 余量顶到右界;有负条时左边 22% 也要装得下 */
+/** 每 kWh 多少 px:最长的正条留 5% 余量顶到右界;有负条时左边 22% 也要装得下 */
 const scale = computed(() => {
   const ds = props.data.rows.map(r => r.delta)
   const pos = Math.max(0, ...ds), neg = Math.max(0, ...ds.map(d => -d))
@@ -49,7 +51,7 @@ const scale = computed(() => {
 const sign = (v: number) => (v > 0 ? '+' : v < 0 ? '−' : '')
 const grid = computed(() => {
   const s = scale.value
-  let step = 50
+  let step = 0.5
   while (step * s < 40) step *= 2   // 值域很宽时加大步长,刻度字不叠
   const hasNeg = props.data.rows.some(r => r.delta < 0)
   const from = hasNeg ? Math.ceil((PL.value - zero.value) / s / step) : 0
@@ -62,10 +64,9 @@ const grid = computed(() => {
 const bars = computed(() => props.data.rows.map((r, i) => {
   const top = TOP + i * ROW.value
   const end = zero.value + r.delta * scale.value
-  const hText = `${sign(r.delta)}${Math.abs(r.delta).toFixed(1)} h`
+  const hText = `${sign(r.delta)}${Math.abs(r.delta).toFixed(2)}`
   // 窄档两枚数不跟条尾跑,右对齐钉成两列(条最长只到 width − RIGHT,不会压上来)
   const labX = narrow.value ? width.value - 103 : Math.max(end, zero.value) + 8
-  const pd = r.prevDelta == null ? null : Math.round(r.prevDelta)
   return {
     r, top, end,
     x: Math.min(zero.value, end), w: Math.abs(end - zero.value),
@@ -73,10 +74,8 @@ const bars = computed(() => props.data.rows.map((r, i) => {
     sel: r.id === props.selId,
     hText, labX,
     pctText: `${sign(r.deltaPct)}${Math.abs(Math.round(r.deltaPct))}%`,
-    pctX: narrow.value ? width.value - 66 : labX + Math.max(58, tipWidth([hText], 0) + 5),   // 画布量得:8 个字符的「+x h」字尾后留 5px 起百分比
-    arrow: pd == null || pd === 0 ? null : pd > 0 ? '▲' : '▼',
-    dText: pd == null ? '—' : `${sign(pd)}${Math.abs(pd)} h`,
-    dTone: pd == null ? 'none' : pd < 0 ? 'down' : 'up',
+    pctX: narrow.value ? width.value - 66 : labX + Math.max(58, tipWidth([hText], 0) + 5),   // 画布量得:字尾后留 5px 起百分比
+    none: r.prev === PV.dash,
   }
 }))
 // ponytail: SVG 行的 DOM 顺序只追加、不重排 —— Chromium 里被挪动的节点丢过渡(实测),换期名次一变挪动的行会瞬移。
@@ -96,19 +95,12 @@ interface TipLine { t: string; c: string; o?: number; b?: number }
 const WHITE = 'var(--text-on-solid)'
 function tipLines(r: AnchorRow): TipLine[] {
   const more = r.delta >= 0
-  const lines: TipLine[] = [
+  return [
     { t: `${r.name} · ${phaseName(r.phase)}`, c: WHITE, b: 600 },
-    { t: `年等效 ${Math.round(r.yieldHours)} h`, c: WHITE, o: 0.82 },
-    { t: `比锚点${more ? '多' : '少'} ${Math.abs(r.delta).toFixed(1)} h（${sign(r.deltaPct)}${Math.abs(Math.round(r.deltaPct))}%）`, c: PV_COLORS.TIP_SEL },
+    { t: `每千瓦日均 ${r.perDay.toFixed(2)} kWh · ${r.days} 天`, c: WHITE, o: 0.82 },
+    { t: `比合格线每天${more ? '多' : '少'} ${Math.abs(r.delta).toFixed(2)} kWh（${sign(r.deltaPct)}${Math.abs(Math.round(r.deltaPct))}%）`, c: PV_COLORS.TIP_SEL },
+    ...(r.prev === PV.dash ? [] : [{ t: `比去年 ${r.prev}`, c: WHITE, o: 0.82 }]),
   ]
-  // 没取到(还在请求 / 请求失败)≠ 去年没抄表 —— 前者不许写成后者
-  if (!props.data.prevLoaded) lines.push({ t: '上一年数据没取到', c: WHITE, o: 0.62 })
-  else if (r.prevDelta == null) lines.push({ t: '去年同月无抄表，比不了', c: WHITE, o: 0.62 })
-  else {
-    const pd = Math.round(r.prevDelta)
-    lines.push({ t: `比去年${pd >= 0 ? '多' : '少'} ${Math.abs(pd)} h · 按 ${r.prevMonths} 个月对齐`, c: pd >= 0 ? PV_COLORS.TIP_IN : PV_COLORS.TIP_ABOVE })
-  }
-  return lines
 }
 const tip = computed(() => {
   const i = hover.value
@@ -123,21 +115,19 @@ const tip = computed(() => {
     top: i! < bars.value.length / 2 ? b.top + ROW.value + 4 : Math.max(0, b.top - 88),
   }
 })
-
-const anchorText = computed(() => `${props.data.anchor.toFixed(1)} h`)
 </script>
 
 <template>
   <div class="pan">
     <div ref="el" class="pan-plot" :style="{ height: H + 'px' }">
-      <svg :width="width" :height="H" :viewBox="`0 0 ${width} ${H}`" class="pan-svg" role="img" aria-label="年等效小时">
+      <svg :width="width" :height="H" :viewBox="`0 0 ${width} ${H}`" class="pan-svg" role="img" :aria-label="PV.card.anchor">
         <template v-for="g in grid" :key="'g' + g.label">
           <line class="pan-gl" :x1="g.x" :x2="g.x" :y1="TOP" :y2="bottom" />
           <text class="pan-ax" :x="g.x" :y="bottom + 16" text-anchor="middle">{{ g.label }}</text>
         </template>
         <line class="pan-anchor" :x1="zero" :x2="zero" :y1="TOP" :y2="bottom + 4" :stroke="PV_COLORS.REF"
           stroke-width="1.5" stroke-dasharray="5 4" />
-        <text class="pan-ax pan-anchor-t" :x="zero" :y="bottom + 30" text-anchor="middle">0 = {{ anchorText }} 那条线</text>
+        <text class="pan-ax pan-anchor-t" :x="zero" :y="bottom + 30" text-anchor="middle">{{ pvAnchorZero() }}</text>
 
         <!-- 栋名在数据组外(尺子先在,数据擦上去);两段各一组行 g,按栋作键、纵向只靠 translateY:换期名次变了整行滑到新行 -->
         <g :class="['pan-names', 'ana-morph', { hold }]">
@@ -153,16 +143,13 @@ const anchorText = computed(() => `${props.data.anchor.toFixed(1)} h`)
             <text class="pan-val pan-h" :x="b.labX" :y="TEXT_Y" :text-anchor="narrow ? 'end' : undefined"
               :font-weight="b.sel ? 600 : 400">{{ b.hText }}</text>
             <text class="pan-val pan-pct" :x="b.pctX" :y="TEXT_Y" :text-anchor="narrow ? 'end' : undefined">{{ b.pctText }}</text>
-            <text v-if="b.arrow" :class="['pan-val', 'pan-arrow', 'pan-' + b.dTone]" :x="width - 60" :y="TEXT_Y"
-              :fill="b.dTone === 'down' ? PV_COLORS.ABOVE : undefined">{{ b.arrow }}</text>
-            <text :class="['pan-val', 'pan-d', 'pan-d-' + b.dTone]" :x="width - 6" :y="TEXT_Y" text-anchor="end"
-              :fill="b.dTone === 'down' ? PV_COLORS.AMBER_TEXT : undefined">{{ b.dText }}</text>
+            <text :class="['pan-val', 'pan-d', b.none ? 'pan-d-none' : 'pan-d-up']" :x="width - 6" :y="TEXT_Y" text-anchor="end">{{ b.r.prev }}</text>
           </g>
         </g>
         <template v-for="u in unbornRows" :key="'u' + u.id">
           <text class="pan-name pan-name-off" :x="NAME_X" :y="u.top + TEXT_Y"
             :text-anchor="narrow ? 'start' : 'end'">{{ u.name }}</text>
-          <text class="pan-val pan-off" :x="zero + 6" :y="u.top + TEXT_Y">未投产 · 没有可算的年等效</text>
+          <text class="pan-val pan-off" :x="zero + 6" :y="u.top + TEXT_Y">{{ PV.notYet }}</text>
         </template>
         <text class="pan-ax" :x="width - 6" y="9" text-anchor="end">比去年</text>
       </svg>
@@ -177,11 +164,10 @@ const anchorText = computed(() => `${props.data.anchor.toFixed(1)} h`)
       <span><i class="pv-dot" :style="{ background: PV_COLORS.PHASE1 }" />一期</span>
       <span><i class="pv-dot" :style="{ background: PV_COLORS.PHASE2 }" />二期</span>
       <span><i class="pv-dot" :style="{ background: PV_COLORS.PHASE3 }" />三期</span>
-      <span><i class="pv-line" :style="{ background: PV_COLORS.REF }" />0 = {{ anchorText }}</span>
-      <span class="pv-leg-m">条长 = 比 {{ anchorText }} 多多少小时</span>
+      <span><i class="pv-line" :style="{ background: PV_COLORS.REF }" />{{ pvAnchorLeg() }}</span>
+      <span class="pv-leg-m">{{ PV.anchorLegend }}</span>
     </div>
-    <!-- 图注写在模板里,不走整句插值:文案门禁(anaCopyLint)扫得到 -->
-    <p class="ana-ref">横轴不从 0 h 起：0 就是 {{ anchorText }} 那条线，条长只代表离标杆多远，不能照着长度算年等效的倍数 · 最右一列 ▲▼ = 比去年同月多 / 少，<template v-if="data.prevLoaded">去年同月无抄表显 —</template><template v-else>上一年数据没取到，先显 —</template><template v-if="data.short.length"> · 在网天数不足 {{ data.short.length }} 栋，不画、不年化（{{ data.short.join('、') }}）</template><template v-if="data.noDenom.length"> · 没有装机分母 {{ data.noDenom.length }} 栋，不画（{{ data.noDenom.join('、') }}）</template> · {{ data.denomNote }}</p>
+    <!-- 参照(合格线一年多少、每期按几天平均、哪几栋在网太短不画)由屏接着写在卡里,走句型库 PV 段 -->
   </div>
 </template>
 
@@ -203,7 +189,6 @@ const anchorText = computed(() => `${props.data.anchor.toFixed(1)} h`)
 .pan-val { font-size: var(--fs-micro); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .pan-h { fill: var(--text-secondary); }
 .pan-pct { fill: var(--text-muted); }
-.pan-up.pan-arrow { fill: var(--hue-green); }
 .pan-d-up { fill: var(--text-secondary); }
 .pan-d-none, .pan-off { fill: var(--ink-500); }
 .pv-tip { display: flex; flex-direction: column; gap: 3px; white-space: nowrap; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }

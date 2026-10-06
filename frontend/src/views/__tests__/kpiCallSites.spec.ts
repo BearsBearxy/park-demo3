@@ -62,7 +62,8 @@ describe('分析屏小卡调用处', () => {
   })
 
   it('❗利润类传 profit(为负标红),收入类不传', () => {
-    expect(tagWith(read('analysis/CockpitView.vue'), 'AnaKpiTile', 'label="园区利润"')).toMatch(/\sprofit\b/)
+    // 2026-10 改稿:驾驶舱瓦的 props 由 cockpit.logic monthBoard / yearBoard 整组给(标签走句型库 CK.profit)
+    expect(tagWith(read('analysis/CockpitView.vue'), 'AnaKpiTile', 'v-bind="kpis.profit"')).toMatch(/\sprofit\b/)
     expect(tagWith(read('analysis/BreakevenView.vue'), 'AnaKpiTile', 'label="月净利"')).toMatch(/\sprofit\b/)
     expect(tagWith(read('analysis/PnlAnalysisView.vue'), 'AnaKpiTile', 'label="分项损益合计"')).toMatch(/\sprofit\b/)
     const incomeish = screens.flatMap((f) => tags(read('analysis/' + f), 'AnaKpiTile'))

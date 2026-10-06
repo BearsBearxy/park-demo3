@@ -636,7 +636,7 @@ export function rentRollSentence(r: RentRoll): string | null {
 }
 
 /**
- * 参照系小字:口径 + 单位 + 续签统计(与 bandRefText/elecBandRef 同职责,不解释画法)。
+ * 参照系小字:口径 + 单位 + 续签统计(不解释画法)。
  * F1(修复轮1):不再叫「回测样本」——这两个数从没度量过带准不准,是「过去 N 份到期合同里
  * k 份续签」,按真实身份标注。
  */

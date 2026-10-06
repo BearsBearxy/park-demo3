@@ -1,21 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { elecBandRef, elecReadout } from '../analysis/monitor.logic'
-import { bandReadout, bandRefText } from '../analysis/TenantEnergy.logic'
 import {
   priorityReadout, priorityRefText, renewalRateReadout, sensitivityRows, sensitivitySentence,
   sensitivityGapSentence, rentRollRefText, rentRollSentence, type RentPriorityRow, type RentRoll,
 } from '../analysis/expiry.logic'
 import {
-  fitRevenueTrend, mainChart, outlierReadout, outlierRefText, outlierResidual,
-  nextMonthForecast, nextForecastReadout, nextForecastRefText, backtestRows, backtestSummary, backtestReadout, backtestRefText,
-} from '../analysis/cockpit.logic'
-import {
   unitRentReadout, unitRentRefText, phaseTableReadout, phaseTableRefText,
   elecTrapReadout, elecTrapRefText, type PhaseTableRow, type ElecSpread,
 } from '../analysis/TenantPeer.logic'
-import type { PnlSummary } from '../../analysis/anaData'
 
 // 首进骨架是真版式卡头 / 文字行的照抄(2026-09-16 起,见各屏 skel:start 注释),文案门禁只审真版式那一份,
 // 不然同一句被数两遍。骨架与真版式是否逐字对得上,由 anaSkeletonParity.spec 管。
@@ -96,40 +89,10 @@ const HINT_OVER_BASELINE = 23
  * 扫描前把 <script> 整段剥掉了,为的是不误伤变量名与代码注释。这条路目前没人走,
  * 但门禁本身证明不了这件事。
  */
-// T2(design-boards 2026-09-11)固定字:驾驶舱护栏图的读数句/参照系小字是 cockpit.logic.ts 抽出的
-// 纯函数,同 F9 的盲区(.ana-read/.ana-ref 段落除插值外没有第二个字符)——直接量函数输出即可。
-// 数据是实测(park_demo3,锚点 2025-12,见 cockpit.logic.spec.ts 的「I3/I4:2025 实测量级」同一批数)。
-const COCKPIT_PNL: PnlSummary = {
-  year: 2025,
-  months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-  revenue: [
-    7146649.89, 7169836.30, 6996629.95, 7406069.55, 7537092.36, 7711058.20,
-    8249744.52, 8669057.75, 8762619.48, 9301530.81, 9407837.38, -636050.65,
-  ],
-  cost: new Array(12).fill(null),
-  profit: new Array(12).fill(null),
-  bySchedule: {},
-}
-const cockpitFit = fitRevenueTrend(COCKPIT_PNL)
-const cockpitMc = mainChart(COCKPIT_PNL, null)!
-const cockpitOutlier = outlierResidual(cockpitFit, cockpitMc.rev, cockpitMc.outlierMonths)
-// F7(对抗复查):nextForecastReadout/nextForecastRefText/backtestReadout/backtestRefText 是驾驶舱
-// 「全年会落在哪」「这条带过去准不准」两张卡的读数句/参照系小字——同一处 F9 盲区,改前一条都不在
-// 下面两个 cases 数组里,只是恰好在 cockpit.logic.spec.ts 另行断言过才没出事。补进来,与下面
-// 「❗F7:cases 完整性」那条断言配套(见该条注释)。BUDGET 锚点与 cockpit.logic.spec.ts 的
-// T1/T2/T3 三节同一份(park_demo3 2025 实测,收入总计预算 92,705,202.87)。
-const COCKPIT_BUDGET = 92705202.87
-// 2026-09-12:「全年会落在哪」整张卡删了(用户:全年分析没用),换成「下月预测」。
-// 下月预测只在**还有下个月**的年份出句,所以喂一个只录到 11 月的年份。
-const COCKPIT_PNL_TO11: PnlSummary = {
-  ...COCKPIT_PNL,
-  months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-  revenue: COCKPIT_PNL.revenue.map((v, i) => (i === 11 ? null : v)),
-}
-const cockpitForecast = nextMonthForecast(COCKPIT_PNL_TO11)
-const cockpitBackSum11 = backtestSummary(backtestRows(COCKPIT_PNL_TO11, COCKPIT_BUDGET))
-const cockpitBacktestRows = backtestRows(COCKPIT_PNL, COCKPIT_BUDGET)
-const cockpitBacktestSum = backtestSummary(cockpitBacktestRows)
+// 2026-10 改稿:驾驶舱、异常提醒中心、出租与楼栋、园区能耗、用能与缴费五屏的读数句 / 参照全部改走句型库
+// (components/ana/anaSentence.ts),原来登记在这里的驾驶舱 / 异常 / 用能纯函数随旧卡一起删了。
+// 五屏的插值槽不再进 READ_SLOTS / REF_SLOTS:句型库每句出口自带字数上限(开发和测试里超长直接抛错),
+// 禁词由下面「句型库源码不含禁词」一条管。
 
 // T6/T7(design-boards)固定字:「先谈哪几户」「续签率从哪来」「续签率变一档」三张卡的读数句/
 // 参照系小字同样是 expiry.logic.ts 抽出的纯函数,同一处 F9 盲区(.ana-read/.ana-ref 除插值外
@@ -187,10 +150,7 @@ const ROLL_B: RentRoll = {
  * 断言两边条数相等"同一个判据)。
  */
 const READ_SLOTS: (string | null)[][] = [
-  [elecReadout(500000, { p25: 123456, p75: 987654 })],                        // AnomalyView.vue elecReadout 插值槽
-  [bandReadout(500000, 123456, 987654, '电费'), bandReadout(500000, 123456, 987654, '水费')],   // TenantEnergyView.vue bandReadout 插值槽(同一元素,按 metric 切两个场景)
   [rentRollSentence(ROLL_A)],                                                 // ExpiryView.vue rentRollText 插值槽
-  [outlierReadout(cockpitFit, cockpitOutlier)],                               // CockpitView.vue outlierRead 插值槽
   [priorityReadout(PRIORITY_SAMPLE, 2179000)],                                // ExpiryView.vue priorityRead 插值槽
   [renewalRateReadout(18, 90)],                                               // ExpiryView.vue renewalRateRead 插值槽
   [sensitivitySentence(SENSITIVITY_SAMPLE)],                                  // ExpiryView.vue sensitivityRead 插值槽
@@ -198,20 +158,13 @@ const READ_SLOTS: (string | null)[][] = [
   [unitRentReadout(28.11, PEER_SAMPLE, '期区一')],                             // TenantPeerView.vue readout 插值槽
   [phaseTableReadout(PHASE_TABLE_SAMPLE)],                                    // TenantPeerView.vue phaseTableRead 插值槽
   [elecTrapReadout(ELEC_SPREAD_SAMPLE)],                                      // TenantPeerView.vue elecRead 插值槽
-  [nextForecastReadout(cockpitForecast)],                                     // CockpitView.vue forecastRead 插值槽
-  [backtestReadout(cockpitBacktestSum)],                                      // CockpitView.vue backRead 插值槽(F7 补登记)
 ]
 const REF_SLOTS: string[][] = [
-  [elecBandRef(251), elecBandRef(null)],                                      // AnomalyView.vue elecBandRef 插值槽
-  [bandRefText(251), bandRefText(null)],                                      // TenantEnergyView.vue bandRefText 插值槽
   [rentRollRefText(ROLL_B)],                                                  // ExpiryView.vue rentRollRef 插值槽
-  [outlierRefText(cockpitFit)],                                               // CockpitView.vue outlierRef 插值槽
   [priorityRefText(PRIORITY_SAMPLE, 2179000)],                                // ExpiryView.vue priorityRef 插值槽
   [unitRentRefText(51, '期区一', '2026-09')],                                  // TenantPeerView.vue refText 插值槽
   [phaseTableRefText('2026-09')],                                             // TenantPeerView.vue phaseTableRef 插值槽
   [elecTrapRefText(ELEC_SPREAD_SAMPLE)],                                      // TenantPeerView.vue elecRef 插值槽
-  [nextForecastRefText(cockpitForecast, cockpitBackSum11)],                   // CockpitView.vue forecastRef 插值槽
-  [backtestRefText(cockpitBacktestRows)],                                     // CockpitView.vue backRef 插值槽(F7 补登记)
 ]
 
 const JARGON_SRC = String.raw`σ|标准差|标准偏差|西格玛|z\s*分数|置信`
@@ -233,9 +186,15 @@ function vueFiles(): { dir: string; file: string }[] {
 
 /** 全仓「插值槽」计数(F7):.ana-read/.ana-ref 段落剥掉标签/插值/空白后是空串,即除 `{{ xxx }}` 外
  *  没有第二个字符——F9 门禁摸不到渲染结果、必须靠 READ_SLOTS/REF_SLOTS 手写清单补的那批。 */
+// 2026-10:这五屏的读数句 / 参照全走句型库,插值槽由句型库自己卡字数,不进手写清单
+// 光伏分栋分析(PvMeterAnaView)2026-10-06 改稿起首屏的读数句 / 参照同样走句型库 PV 段
+// 光伏核对明细档与抽屉的叶子组件(2026-10-06 改稿)卡内的读数句 / 参照也是句型库 PV 段拼的(PvAlphaBars 等),同样不进手写清单
+const SENTENCE_LIB_VIEWS = new Set(['CockpitView.vue', 'AnomalyView.vue', 'ParkView.vue', 'ParkEnergyView.vue', 'TenantEnergyView.vue', 'PvMeterAnaView.vue',
+  'PvAlphaBars.vue', 'PvResidualHeat.vue', 'PvQualityGrid.vue', 'PvLabTable.vue', 'PvDriftChart.vue', 'PvBetaChart.vue', 'PvDetailTable.vue'])
 function pureInterpolationSlotCount(re: RegExp): number {
   let n = 0
   for (const { dir, file } of vueFiles()) {
+    if (SENTENCE_LIB_VIEWS.has(file)) continue
     const src = readTpl(join(dir, file), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
     for (const m of src.matchAll(re)) if (!strip(m[1] ?? '')) n++
   }
@@ -362,13 +321,14 @@ describe('分析层文案门禁', () => {
     }
     // 钉一处具体的:同一段 hint 必须产出「只含桌面那句」和「只含手机那句」两条读,
     // 一条读里同时出现两句,就说明又在数用户看不到的字了。
-    const park = hintReadings().filter((r) => r.file === 'ParkView.vue' && r.text.includes('块面积'))
-    const deskOnly = park.filter((r) => r.text.includes('点击下钻右侧明细'))
-    const touchOnly = park.filter((r) => r.text.includes('点块看租户'))
-    expect(deskOnly.length, 'ParkView TreeMap 卡头的桌面读没取到').toBeGreaterThan(0)
-    expect(touchOnly.length, 'ParkView TreeMap 卡头的手机读没取到').toBeGreaterThan(0)
-    for (const r of deskOnly) expect(r.text, '桌面那条读里混进了手机句').not.toContain('点块看租户')
-    for (const r of touchOnly) expect(r.text, '手机那条读里混进了桌面句').not.toContain('点击下钻右侧明细')
+    // 原钉在出租与楼栋 TreeMap 卡头;2026-10 改稿那张卡换成横条、卡头不写操作,改钉到期墙 Pareto 卡头(同为成对写)
+    const pin = hintReadings().filter((r) => r.file === 'ExpiryView.vue' && r.text.includes('Top20'))
+    const deskOnly = pin.filter((r) => r.text.includes('点柱→清单展开'))
+    const touchOnly = pin.filter((r) => r.text.includes('点柱展开下面清单'))
+    expect(deskOnly.length, 'ExpiryView Pareto 卡头的桌面读没取到').toBeGreaterThan(0)
+    expect(touchOnly.length, 'ExpiryView Pareto 卡头的手机读没取到').toBeGreaterThan(0)
+    for (const r of deskOnly) expect(r.text, '桌面那条读里混进了手机句').not.toContain('点柱展开下面清单')
+    for (const r of touchOnly) expect(r.text, '手机那条读里混进了桌面句').not.toContain('点柱→清单展开')
   })
 
   it('❗I6:hint 取法必须配平 <span> —— 与非贪婪取法对照,配平版不更短,且在嵌套处更长', () => {
@@ -379,7 +339,7 @@ describe('分析层文案门禁', () => {
       expect(b.len, `${b.file}: 配平取法反而更短了 —— 取法写错了`).toBeGreaterThanOrEqual(naive[i].len)
     })
     const nested = balanced.filter((b, i) => b.len > naive[i].len).map((b) => b.file)
-    for (const f of ['TenantPortfolioView.vue', 'TenantEnergyView.vue', 'CockpitView.vue', 'PnlAnalysisView.vue'])
+    for (const f of ['TenantPortfolioView.vue', 'PnlAnalysisView.vue'])   // TenantEnergyView、CockpitView 2026-10 改稿后卡头说明是一整句插值(句型库 hint),不再套 <span>
       expect(nested, `${f} 的 hint 内层套了 <span>,非贪婪取法必定少量,这里却没测出差异`).toContain(f)
   })
 
@@ -462,11 +422,9 @@ describe('分析层文案门禁', () => {
     expect(unfolded, '未折叠处提了"租金"却没有"含费"——读者会拿它当纯租金单价去谈判').toContain('含费')
   })
 
-  // AnomalyView.vue / TenantEnergyView.vue 是本仓明确的「零挂载测」屏(anaDeepLink.spec.ts 头注:
-  // echarts + anaData 太重),上面 scan() 的 strip() 又把 `{{ elecReadout }}` 这类插值整个删掉,
-  // ≤30 字预算在这两句上等于没测。但 .ana-read 段落除插值外没有第二个字符
-  // (`<p v-if="elecReadout" class="ana-read">{{ elecReadout }}</p>`),
-  // 渲染结果字符对字符等于这两个纯函数的返回值 —— 直接量函数输出就是量渲染结果,不必为此单开挂载测。
+  // 上面 scan() 的 strip() 把 `{{ xxx }}` 插值整个删掉,纯插值的 .ana-read 段落(除插值外没有第二个字符)
+  // ≤30 字预算等于没测;但渲染结果字符对字符等于登记在 READ_SLOTS 里的纯函数返回值 —— 直接量函数输出就是量渲染结果。
+  // (2026-10 起改走句型库的五屏不在这里,见 SENTENCE_LIB_VIEWS。)
   it('❗读数句渲染结果(不是插值源码)也要 ≤30 可见字,且不含禁词(F9:门禁扫不到 .logic.ts,直接量函数输出)', () => {
     for (const s of READ_SLOTS.flat()) {
       expect(s, '这几个入参本该出句,不该闭嘴').not.toBeNull()
@@ -483,6 +441,12 @@ describe('分析层文案门禁', () => {
       expect([...s].length, s).toBeLessThanOrEqual(REF_MAX)
       expect(s, s).not.toMatch(JARGON_ONE)
     }
+  })
+
+  // 五屏改走句型库后(见 SENTENCE_LIB_VIEWS),它们屏上的句子全是 anaSentence.ts 模板拼数:模板里没有禁词,句子就没有
+  it('❗句型库源码(去掉注释)不含禁词 —— 五屏读数句 / 参照 / 卡头的禁词门禁', () => {
+    const lib = readFileSync(join(DIR2, 'anaSentence.ts'), 'utf8').replace(/\/\/.*$/gm, '')
+    expect(lib.match(JARGON) ?? []).toEqual([])
   })
 
   it('❗F7:cases 清单完整性——全仓「插值槽」(.ana-read/.ana-ref 除插值外没有第二个字符)数量,'
@@ -508,8 +472,7 @@ describe('分析层文案门禁', () => {
   /**
    * N5 原来钉的是 TenantEnergyView 口径浮层里那句「本图不印…判断句」少报了一支(lo<=0 时
    * 高于/落在/低于三支全闭嘴,浮层只说了两支)。浮层 2026-09-12 拆掉,这条跟着删 ——
-   * 它守的**行为**由 TenantEnergy.logic.spec.ts 的「I9」那条直接钉在 bandReadout 上,
-   * 那里拿实测量级的均值与波动幅度喂进去,断言三支都返回 null,比数浮层里的字牢靠。
+   * 它守的那句读数 2026-10 改稿随旧卡一起删了。
    */
 
   // JARGON / JARGON_EXEMPT 定义见文件顶部(D2 doc comment,F7/F8/F9 修复轮2 的改动理由都写在那)。

@@ -583,6 +583,9 @@ export interface Criteria {
   minOnlineDays: number  // 常量 90:在网不足这么多天,该栋一律「读不出」
 }
 
+/** 估平时范围的样本下限(月档按天、年档按月):够了才画得出范围。屏上「满 6 个月才判」读这个数 */
+export const BASE_MIN_N: Record<Gran, number> = { month: 15, year: 6 }
+
 export const DEFAULT_CRITERIA: Criteria = {
   anchorHours: 950, coverMonth: 0.90, ledger: 0.03, yieldRatio: 0.85,
   bandSigma: 2, bandRun: 3, minOnlineDays: 90,
@@ -1016,7 +1019,7 @@ export function buildBoard(
 
     const win = baselineWindow(all, allKeys, cohort, segCohort, k => tickSet.has(k), {
       excludeSeg: gran === 'month', useCp: gran === 'month',
-      minN: gran === 'month' ? 15 : 6, unit,
+      minN: BASE_MIN_N[gran], unit,
     })
     const base = win.vals
     const center = base.length ? median(base) : null
@@ -1387,7 +1390,16 @@ export function buildDetail(snap: AnaSnapshot, stationId: number): StationDetail
   const arr = [...byDate].sort((a, b) => a[0].localeCompare(b[0]))
   const dates = arr.map(([d]) => d)
   const resid = arr.map(([, v]) => v)
-  const cp = changePoint(resid, { block: 14, B: 999, seed: 20260831 })
+  // 变点**跳过并网那个月**再找(2026-10-06 改稿):刚并网那个月是爬坡,读数本来就低,
+  // 不跳的话二期 6 栋全在 7 月初找到一个「水平变了」—— 那是并网,不是变化。
+  // 「这一年里并网」= 这栋第一条读数晚于 1 月 1 日(同 pvBaseNote 的「刚并网」);1 月 1 日就有读数的楼不跳。
+  // 只有找变点这一步跳;点、样条、两道线的估计窗口照旧用全部的天
+  const first = snap.board.find(b => b.id === stationId)?.firstDate ?? null
+  const skipYm = first && first > `${snap.year}-01-01` ? YM(first) : null
+  const keep = dates.flatMap((d, i) => (skipYm && YM(d) === skipYm ? [] : [i]))
+  const cp = changePoint(keep.map(i => resid[i]), { block: 14, B: 999, seed: 20260831 })
+  const at = (k: number) => keep[Math.min(k, keep.length - 1)]   // 跳过之后的下标 → 全年下标
+  if (cp.index >= 0) { cp.index = at(cp.index); if (cp.ciLo >= 0) cp.ciLo = at(cp.ciLo); if (cp.ciHi >= 0) cp.ciHi = at(cp.ciHi) }
   const idx = cp.index >= 0 && cp.index < dates.length ? cp.index : null
   // 变点前段:至少留 8 个点,否则退回全期并在 limitFrom/To 上如实标出来
   const to = idx != null && idx >= 8 ? idx : resid.length
@@ -1565,7 +1577,13 @@ export interface TestRow {
   sigmaHow: string          // σ 怎么估的
   cpRange: string           // 变点区间(不是一个点)
   days: number              // 真正进了矩阵的天数
+  /** 观测窗口那段的日子打乱重算 LAB_SHUFFLES 次里,和真实那段一样偏或更偏的次数(取观测值那一侧)。
+   *  核对表「碰巧更偏」一列;窗口里一个点都没有 = null */
+  chance: number | null
 }
+
+/** 「碰巧更偏」打乱重算的次数;屏上写「重算 1000 次」= 这个数 + 1(观测那一次) */
+export const LAB_SHUFFLES = 999
 
 /**
  * 质量矩阵的格子。
@@ -1594,7 +1612,7 @@ export interface LabResult {
    * 工作台里同时存在两个期间(整年 / 观测窗口),不说清用户会以为都跟着期间选择器走。
    *
    * L1 / L2 / L3 / L5 / L6 与 L7 的 α·N_eff·变点 全部吃**整年**(模型本来就吃整年);
-   * 只有 L4 的观测值与 L7 的 z / zNaive 吃 `window`。
+   * 只有 L7 的 z / zNaive / 碰巧更偏(chance)吃 `window`。
    */
   window: {
     /** 'YYYY-MM'。月档 = 当段;年档或当段样本不足 = 最后一个自然月 */
@@ -1626,8 +1644,6 @@ export interface LabResult {
   seasonHalf: number
   /** L3 数据未录满的那个月 0–11;整月录满或无数据为 null。该月的点画空心圈。 */
   seasonPartial: number | null
-  /** L4:单栋块自助零分布 + 观测值。跟着 focusId 走;不给则取 p 最小的那栋 */
-  nullDist: { id: number; name: string; dist: number[]; obs: number } | null
   /** L5:抛光收敛读数 + 行优先/列优先的排名对照 */
   convergence: {
     names: string[]; rowRank: number[]; colRank: number[]; flipped: string[]
@@ -1665,11 +1681,10 @@ function dateSpan(from: string, to: string): string[] {
 }
 
 /**
- * 工作台的全部七块。
- *
- * @param focusId L4 零分布画哪一栋(跟着屏上选中走)。不给取 p 最小的那栋。
+ * 工作台的全部几块。2026-10-06 改稿起不跟选中栋走(L4 零分布那张图下线,每栋的「碰巧更偏」进核对表一列),
+ * 换选中不用重算。
  */
-export function buildLab(snap: AnaSnapshot, input: SnapshotInput, focusId?: number): LabResult {
+export function buildLab(snap: AnaSnapshot, input: SnapshotInput): LabResult {
   const { rows, stations } = input
   const polish = snap.polish
   // 显示顺序跟着快照的站列表走,不用 Map 的插入顺序 —— 后者取决于 rows 里谁先出现
@@ -1706,6 +1721,12 @@ export function buildLab(snap: AnaSnapshot, input: SnapshotInput, focusId?: numb
     const nEff = nEffById.get(s.id) ?? r.length
     // 变点走抽屉那一支:同一份快照、同一组 opts、同一个种子 → 与抽屉里的 p 逐位相同
     const detail = buildDetail(snap, s.id)
+    // 碰巧更偏:拿这栋整年的残差按 14 天一块打乱,凑出 LAB_SHUFFLES 段和窗口一样长的日子,
+    // 数有几段的均值和真实那段一样偏或更偏(取观测值那一侧)。一栋一次,种子钉死 —— 重开屏同一个数
+    const dist = win.length
+      ? blockBootstrapP(r, obs, win.length, { block: 14, B: LAB_SHUFFLES, seed: 20260831 }).nullDist : []
+    const chance = dist.length
+      ? Math.min(dist.filter(v => v >= obs).length, dist.filter(v => v <= obs).length) : null
     return {
       id: s.id, name: s.name,
       alphaPct: alphaById.get(s.id)?.alphaPct ?? 0,
@@ -1720,7 +1741,8 @@ export function buildLab(snap: AnaSnapshot, input: SnapshotInput, focusId?: numb
       sigmaHow: '一阶差分 MAD ÷ √2，再与全园收缩各半',
       cpRange: detail?.cpLo && detail?.cpHi ? `${detail.cpLo} ~ ${detail.cpHi}` : '—',
       days: r.length,
-      obs, winLen: win.length,
+      chance,
+      winLen: win.length,
       // 徽标必须从**实际算 z 用的那个窗口**带出来。原来 windowInfo 另起一次
       // labWindow 调用,于是把这里改回写死「最后 30 天」时徽标照样显示当段 ——
       // 图上的话与图算的数分了家,断言也就咬不住(2026-09-02 破坏验证抓到)。
@@ -1738,7 +1760,7 @@ export function buildLab(snap: AnaSnapshot, input: SnapshotInput, focusId?: numb
   const tests: TestRow[] = raw.map((x, i) => ({
     id: x.id, name: x.name, alphaPct: x.alphaPct,
     z: x.z, zNaive: x.zNaive, p: x.p, q: qs[i],
-    nEff: x.nEff, sigmaHow: x.sigmaHow, cpRange: x.cpRange, days: x.days,
+    nEff: x.nEff, sigmaHow: x.sigmaHow, cpRange: x.cpRange, days: x.days, chance: x.chance,
   }))
 
   // ── L3 残差的年内走势(逐栋逐月中位数) ────────────────────────────────
@@ -1786,18 +1808,6 @@ export function buildLab(snap: AnaSnapshot, input: SnapshotInput, focusId?: numb
   const seasonHalf = Math.max(0.02, mags.length ? mags[Math.floor(0.9 * (mags.length - 1))] : 0)
   const seasonPartial = snap.dataThrough && !isMonthEnd(snap.dataThrough)
     ? Number(snap.dataThrough.slice(5, 7)) - 1 : null
-
-  // ── L4 块自助零分布 + 观测值 ──────────────────────────────────────────
-  // 让 p 值**看得见**,比一个 p=0.003 可信。一次只画一栋 —— 十三张零分布图没人看。
-  const focus = (focusId != null ? raw.find(x => x.id === focusId) : undefined)
-    ?? [...raw].sort((a, b) => a.p - b.p)[0]
-  const nullDist = focus && focus.winLen > 0
-    ? {
-        id: focus.id, name: focus.name, obs: focus.obs,
-        dist: blockBootstrapP(seriesOf.get(focus.id)!.vals, focus.obs, focus.winLen,
-          { block: 14, B: 999, seed: 20260831 }).nullDist,
-      }
-    : null
 
   // ── L5 抛光收敛诊断 ───────────────────────────────────────────────────
   // 行优先/列优先各跑一次。**排名翻转 = 该结论不稳,不上报**。
@@ -1870,6 +1880,6 @@ export function buildLab(snap: AnaSnapshot, input: SnapshotInput, focusId?: numb
     window: windowInfo,
     alphaRows: alphaAll.filter(c => !badLedger.has(c.id)),
     alphaExcluded: alphaAll.filter(c => badLedger.has(c.id)).map(c => c.name),
-    tests, acf: acfRows, season, seasonBand, seasonHalf, seasonPartial, nullDist, convergence, quality,
+    tests, acf: acfRows, season, seasonBand, seasonHalf, seasonPartial, convergence, quality,
   }
 }

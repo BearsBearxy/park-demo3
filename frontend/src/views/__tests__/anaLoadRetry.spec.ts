@@ -295,10 +295,11 @@ describe('分析屏其余 · 加载失败换成 FPLoadError,点「重试」重�
     { name: 'TenantPeerView', comp: TenantPeerView, fn: () => vi.mocked(fetchContracts), text: '合同、楼栋和租户数据没读到' },
     { name: 'ElecAnalysisView', comp: ElecAnalysisView, fn: () => vi.mocked(elecCostApi.metricsYear), text: '2026 年的电费成本数据没读到' },
     { name: 'ChargingAnalysisView', comp: ChargingAnalysisView, fn: () => vi.mocked(cpMeterApi.readings), text: '2026 年的充电桩数据没读到' },
-    { name: 'PvMeterAnaView', comp: PvMeterAnaView, fn: () => vi.mocked(pvMeterApi.readingsYear), text: '2026 年的分栋抄表数据没读到', arm: failPv2026Once },
-  ].map((c) => ({ arm: boom(c.fn), ...c }))
+    // 光伏屏一次取数打两趟 readingsYear(这一年 + 上一年,2026-10-06 改稿:比去年同月要上一年读数)
+    { name: 'PvMeterAnaView', comp: PvMeterAnaView, fn: () => vi.mocked(pvMeterApi.readingsYear), text: '2026 年的分栋抄表数据没读到', arm: failPv2026Once, per: 2 },
+  ].map((c) => ({ arm: boom(c.fn), per: 1, ...c }))
 
-  it.each(CASES)('❗$name:失败卡换掉内容区、写明哪份没读到;点重试接口再打一次,成功后失败卡退场', async ({ comp, fn, text, arm }) => {
+  it.each(CASES)('❗$name:失败卡换掉内容区、写明哪份没读到;点重试接口再打一次,成功后失败卡退场', async ({ comp, fn, text, arm, per }) => {
     arm()
     const v = await mountScreen(comp)
     expect(loadErr(v).exists(), '失败了却没出失败卡').toBe(true)
@@ -308,7 +309,7 @@ describe('分析屏其余 · 加载失败换成 FPLoadError,点「重试」重�
     const before = fn().mock.calls.length
     await retry.trigger('click')
     await settle()
-    expect(fn(), '点「重试」没有重新取数').toHaveBeenCalledTimes(before + 1)
+    expect(fn(), '点「重试」没有重新取数').toHaveBeenCalledTimes(before + per)
     expect(loadErr(v).exists(), '重试成功了失败卡还挂着').toBe(false)
   })
 
@@ -323,7 +324,7 @@ describe('分析屏其余 · 加载失败换成 FPLoadError,点「重试」重�
     done(BUILDINGS)
     await settle()
     expect(loadErr(v).exists()).toBe(false)
-    expect(v.find('.ak-title').text()).toBe('出租与楼栋')
+    expect(v.find('.pk-name').text()).toBe('出租与楼栋')   // 2026-10 改稿:屏名进工具条,页头大标题撤掉
   })
 
   it('❗ElecAnalysisView:换年失败后再换年,在途时失败卡留着、仍写失败的那一年(不跟着选择先改字)', async () => {

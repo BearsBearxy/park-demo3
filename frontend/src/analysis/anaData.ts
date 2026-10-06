@@ -37,6 +37,10 @@ import { contractApi } from '@/api/contract'
 import { buildingApi } from '@/api/building'
 import { companyApi } from '@/api/ledger'
 import { budgetApi, type BudgetRowDTO } from '@/api/budget'
+import { pvMeterApi } from '@/api/pvMeter'
+import { paramsApi } from '@/api/params'
+import type { Criteria } from '@/views/analysis/pvMeterAna.logic'
+import type { PvRuleInput } from '@/views/analysis/pvRules.logic'
 import type { ChargingYearDTO } from '@/types/charging'
 import type { ElecYearDTO } from '@/types/elec'
 import type { PnlYearDTO } from '@/types/pnl'
@@ -249,6 +253,42 @@ export function fetchPvAll(): Promise<PvRecordDTO[]> {
   })
 }
 
+// ── 光伏分栋抄表:异常提醒中心光伏卡的原料(最近有读数的那一年整年 + 判据参数;和光伏分栋分析屏同一份接口) ──
+// 判据参数键 → Criteria 字段,同光伏分栋分析屏 loadCrit:站在这一年 12 月取,取不到用默认值(卡照常出)
+const PV_CRIT = {
+  pv_yield_anchor_h: 'anchorHours', pv_crit_cover_month: 'coverMonth', pv_crit_ledger: 'ledger',
+  pv_crit_yield_ratio: 'yieldRatio', pv_band_sigma: 'bandSigma', pv_band_run: 'bandRun',
+} as const
+/** 库里一条分栋读数都没有 → null(卡上照说) */
+export function fetchPvRuleInput(): Promise<PvRuleInput | null> {
+  return cached('pvRuleInput', async () => {
+    const ms = await pvMeterApi.months()
+    const last = ms[ms.length - 1]
+    if (!last) return null
+    const year = +last.slice(0, 4)
+    const [stations, readings, crit] = await Promise.all([pvMeterApi.stations(), pvMeterApi.readingsYear(year), pvCrit(year)])
+    if (!readings.length) return null
+    return {
+      year,
+      months: [...new Set(readings.map((r) => +r.readDate.slice(5, 7)))].sort((a, b) => a - b),
+      stations: stations.map((s) => ({ id: s.id, name: s.name, phase: s.phase, metered: s.metered === 1, capKwp: s.capacityKwp, panelCount: s.panelCount, panelWatt: s.panelWatt })),
+      rows: readings.map((r) => ({ stationId: r.stationId, date: r.readDate, gen: r.genTotal, selfUse: r.selfUse, gridFeed: r.gridFeed, revenue: r.revenue, priceSnap: r.priceSnap })),
+      crit,
+    }
+  })
+}
+async function pvCrit(year: number): Promise<Partial<Criteria>> {
+  try {
+    const rows = await paramsApi.list(`${year}-12`, 'all', { key: Object.keys(PV_CRIT).join(',') })
+    const out: Partial<Criteria> = {}
+    for (const r of rows) {
+      const k = PV_CRIT[r.key as keyof typeof PV_CRIT]
+      if (k && r.scope === '' && typeof r.value === 'number' && isFinite(r.value)) out[k] = r.value
+    }
+    return out
+  } catch { return {} }
+}
+
 // ── 能耗侧(按年缓存,park-energy 主力) ──
 export function fetchElecYear(year: number) {
   return cached(`elec:${year}`, async () => {
@@ -386,9 +426,11 @@ export const isS10AggregateRow = (tenantName: string): boolean => /^\d{6}/.test(
 const SEV_RANK: Record<AnomalySev, number> = { risk: 0, watch: 1, info: 2 }
 
 /** 四规则:①公司×期收缴率<目标 ②能耗电量环比|Δ|>40% ③s10 上期有本期无租户 ④s10/台账负值行。 */
-export function buildAnomalies(inputs: AnomalyInputs, opts: { collectTarget: number }): AnaAnomaly[] {
+// spikeTh:② 的门槛跟设置弹层「能耗突变阈值」走(2026-10-05 用户按推荐定;原来写死 ±40,不传 = 40 照旧)
+export function buildAnomalies(inputs: AnomalyInputs, opts: { collectTarget: number; spikeTh?: number }): AnaAnomaly[] {
   const out: AnaAnomaly[] = []
   const target = opts.collectTarget
+  const th = opts.spikeTh ?? 40
 
   // ① 收缴率(公司×期):rate = Σ实收/Σ应收×100 < 目标
   const byCo = new Map<string, { name: string; ym: string; recv: number; coll: number }>()
@@ -415,18 +457,18 @@ export function buildAnomalies(inputs: AnomalyInputs, opts: { collectTarget: num
     })
   }
 
-  // ② 能耗环比突变(相邻自然月电量,|Δ|>40%;隔月缺数不比)
+  // ② 能耗环比突变(相邻自然月电量,|Δ|>th%;隔月缺数不比)
   for (const es of inputs.energy) {
     for (const ym of Object.keys(es.series).sort()) {
       const n = nextYm(ym)
       const prev = es.series[ym], cur = es.series[n]
       if (!prev || cur == null || prev <= 0) continue
       const chg = (cur / prev - 1) * 100
-      if (Math.abs(chg) <= 40) continue
+      if (Math.abs(chg) <= th) continue
       out.push({
         id: `nrg:${es.name}:${n}`,
         sev: Math.abs(chg) >= 60 ? 'risk' : 'watch',   // ponytail: ±60% 定严重,经验值
-        dim: '园区', type: '能耗环比', metric: '环比突变 >±40%',
+        dim: '园区', type: '能耗环比', metric: `环比突变 >±${th}%`,
         title: `${es.name} ${n} 环比${chg > 0 ? '激增' : '骤降'}`,
         detail: `${ym} ${fInt(prev)}${es.unit} → ${n} ${fInt(cur)}${es.unit} · 环比 ${chg >= 0 ? '+' : '−'}${Math.abs(chg).toFixed(1)}%`,
         value: (chg >= 0 ? '+' : '−') + Math.abs(chg).toFixed(1) + '%', link: '/park-energy', ym: n,

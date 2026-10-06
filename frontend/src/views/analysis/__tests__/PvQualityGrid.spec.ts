@@ -1,5 +1,8 @@
-// PvQualityGrid 挂载测:L6 数据质量日历 + 缺抄榜。钉四态各自的图元(底色 / 划痕 / 虚线框)与格坐标、格内两行字、
-// 悬停描边与气泡位置(含翻边)、缺抄榜的行序 / 零基条宽 / 行尾字、年档小格。
+// PvQualityGrid 挂载测:核对明细档「每天抄表齐不齐」日历 + 右栏缺抄的楼。钉四态各自的图元(底色 / 划痕 / 虚线框)与格坐标、
+// 格内两行字、悬停描边与气泡位置(含翻边)、右栏只列有缺抄的楼、年档小格。2026-10-06 改稿:缺抄走墨阶,「整日剔除」改叫「这天不算」。
+// 2026-10-06 用户「布局很奇怪，空白很多」:月档改普通月历(x = 周几、y = 第几周),格宽 = (可用宽 − 6 × 4) / 7 铺满,
+// 格区总高按 6 周钉死 356(窄容器 284),周数少的月格子拉高;「缺抄的楼」只在有缺抄时出(宽 ≥ 640 在右边 168,否则在下面)。
+// jsdom 卡内宽默认 655、有缺抄 → 右栏 168:可用 655 − 184 = 471 → 格宽 63;8 月 5 周 → 格高 (356 + 4) / 5 − 4 = 68。
 // 夹具 2025 年 8 月(8/1 是周五):全齐(前两天 10 栋、之后 11 栋)、缺 1 栋、缺 2 栋、整日剔除、还没到 五种格都有。
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -58,62 +61,63 @@ const px = (s: string | undefined, prop: string) => Number(new RegExp(`${prop}:\
 afterEach(() => { delete (HTMLElement.prototype as unknown as { clientWidth?: number }).clientWidth })
 
 describe('PvQualityGrid · 日历四态', () => {
-  it('❗全齐:格 x = 28 + 列 × 63、y = 18 + 行 × 68,59×64 圆角 5,蓝 16%;格内只写日期,不写「N 栋全齐」', () => {
-    const c = g(mountIt(), '2025-08-01')           // 周五 = 第 0 列第 4 行
+  it('❗全齐:格 x = 周几 × 67、y = 18 + 第几周 × 72,63×68 圆角 5,蓝 16%;格内只写日期,不写「N 栋全齐」', () => {
+    const c = g(mountIt(), '2025-08-01')           // 周五、第 1 周
     const bg = c.find('rect.pqg-bg')
     expect([bg.attributes('x'), bg.attributes('y'), bg.attributes('width'), bg.attributes('height'), bg.attributes('rx')])
-      .toEqual(['28', '290', '59', '64', '5'])
+      .toEqual(['268', '18', '63', '68', '5'])
     // 透明度并进 fill(换期底色过渡不闪),不另写 fill-opacity
     expect(bg.attributes('fill')).toBe('rgba(55,138,221,0.16)')
     expect(bg.attributes('fill-opacity')).toBeUndefined()
     expect(c.find('text.pqg-day').text()).toBe('1')
-    expect([c.find('text.pqg-day').attributes('x'), c.find('text.pqg-day').attributes('y')]).toEqual(['36', '308'])
+    expect([c.find('text.pqg-day').attributes('x'), c.find('text.pqg-day').attributes('y')]).toEqual(['276', '36'])
     expect(c.find('text.pqg-sub').exists()).toBe(false)
     expect(g(mountIt(), '2025-08-04').find('text.pqg-sub').exists()).toBe(false)
     expect(c.find('rect.pqg-hatchbox').exists()).toBe(false)
   })
 
-  it('❗缺抄:琥珀 30% + 日期与「缺 N 栋」走琥珀深字', () => {
-    const c = g(mountIt(), '2025-08-19')           // 周二 = 第 3 列第 1 行
+  it('❗缺抄:墨阶(--ink-700 × .45,比「这天不算」的墨 10% 深)+「缺 N 栋」;字是正文墨色,不再用琥珀', () => {
+    const c = g(mountIt(), '2025-08-19')           // 周二、第 4 周
     const bg = c.find('rect.pqg-bg')
-    expect([bg.attributes('x'), bg.attributes('y')]).toEqual(['217', '86'])
-    expect(bg.attributes('fill')).toBe('rgba(239,159,39,0.3)')
+    expect([bg.attributes('x'), bg.attributes('y')]).toEqual(['67', '234'])
+    expect(bg.attributes('fill')).toBe('rgba(28,28,28,.36)')
     expect(bg.attributes('fill-opacity')).toBeUndefined()
     expect(c.find('text.pqg-sub').text()).toBe('缺 2 栋')
-    expect(c.find('text.pqg-day').attributes('style')).toContain('fill: #854F0B')
+    expect(c.find('text.pqg-day').attributes('style')).toBeUndefined()
     expect(c.find('text.pqg-day').classes()).toContain('miss')
     expect(g(mountIt(), '2025-08-06').find('text.pqg-sub').text()).toBe('缺 1 栋')
+    expect(mountIt().html(), '琥珀在这屏是高于平时 / 超限,缺抄不用它').not.toMatch(/239,\s*159,\s*39|#854F0B/i)
   })
 
-  it('❗整日剔除:墨 10% 底 + 同位置 45° 划痕层 + 「整日剔除」;全齐 / 缺抄格没有划痕', () => {
+  it('❗这天不算:墨 10% 底 + 同位置 45° 划痕层 + 「这天不算」;全齐 / 缺抄格没有划痕', () => {
     const w = mountIt()
-    const c = g(w, '2025-08-12')                   // 周二 = 第 2 列第 1 行
+    const c = g(w, '2025-08-12')                   // 周二、第 3 周
     const [bg, hatch] = [c.find('rect.pqg-bg'), c.find('rect.pqg-hatchbox')]
-    expect([bg.attributes('x'), bg.attributes('y')]).toEqual(['154', '86'])
+    expect([bg.attributes('x'), bg.attributes('y')]).toEqual(['67', '162'])
     expect(bg.attributes('fill')).toBe('rgba(28,28,28,.10)')
-    expect([hatch.attributes('x'), hatch.attributes('y'), hatch.attributes('width'), hatch.attributes('height')]).toEqual(['154', '86', '59', '64'])
+    expect([hatch.attributes('x'), hatch.attributes('y'), hatch.attributes('width'), hatch.attributes('height')]).toEqual(['67', '162', '63', '68'])
     const patId = w.find('pattern').attributes('id')
     expect(hatch.attributes('fill')).toBe(`url(#${patId})`)
     expect(w.find('pattern').attributes('patternTransform')).toBe('rotate(45)')
-    expect(c.find('text.pqg-sub').text()).toBe('整日剔除')
+    expect(c.find('text.pqg-sub').text()).toBe('这天不算')
     expect(w.findAll('rect.pqg-hatchbox')).toHaveLength(1)
   })
 
-  it('❗切外观不用重挂载:整日剔除格的墨色跟着换(页签在 KeepAlive 里常驻)', async () => {
+  it('❗切外观不用重挂载:这天不算 / 有栋没抄两种格的墨色跟着换(页签在 KeepAlive 里常驻)', async () => {
     const w = mountIt()
-    const bg = () => g(w, '2025-08-12').find('rect.pqg-bg').attributes('fill')
-    expect(bg()).toBe('rgba(28,28,28,.10)')
+    const bg = (d: string) => g(w, d).find('rect.pqg-bg').attributes('fill')
+    expect([bg('2025-08-12'), bg('2025-08-19')]).toEqual(['rgba(28,28,28,.10)', 'rgba(28,28,28,.36)'])
     resolvedTheme.value = 'dark'
     try {
       await nextTick()
-      expect(bg(), '切成深色后格子还是浅色外观的墨色').toBe('rgba(236,236,238,.10)')
+      expect([bg('2025-08-12'), bg('2025-08-19')], '切成深色后格子还是浅色外观的墨色').toEqual(['rgba(236,236,238,.10)', 'rgba(236,236,238,.36)'])
     } finally { resolvedTheme.value = 'light' }
   })
 
   it('❗还没到:透明底 + 墨 10% 虚线框,不写第二行字;没有底色', () => {
-    const c = g(mountIt(), '2025-08-29')           // 周五 = 第 4 列第 4 行
+    const c = g(mountIt(), '2025-08-29')           // 周五、第 5 周
     const bg = c.find('rect.pqg-bg')
-    expect([bg.attributes('x'), bg.attributes('y')]).toEqual(['280', '290'])
+    expect([bg.attributes('x'), bg.attributes('y')]).toEqual(['268', '306'])
     expect(bg.attributes('fill')).toBe('transparent')
     expect(bg.attributes('stroke')).toBe('rgba(28,28,28,.10)')
     expect(bg.attributes('stroke-dasharray')).toBe('3 3')
@@ -123,16 +127,31 @@ describe('PvQualityGrid · 日历四态', () => {
     expect(g(mountIt(), '2025-08-28').find('rect.pqg-bg').attributes('stroke-dasharray')).toBeUndefined()
   })
 
-  it('画布 = 28 + 5 列 × 63 − 4 宽、18 + 7 行 × 68 − 4 高;列头「第 N 周」居中、行头周一到周日', () => {
+  it('画布 = 7 × 67 − 4 宽、18 + 356 高;列头「周一…周日」对齐格内日期,月档不标第几周', () => {
     const w = mountIt()
-    expect(w.find('svg.pqg-svg').attributes('width')).toBe('339')
-    expect(w.find('svg.pqg-svg').attributes('height')).toBe('490')
+    expect(w.find('svg.pqg-svg').attributes('width')).toBe('465')
+    expect(w.find('svg.pqg-svg').attributes('height')).toBe('374')
     const ch = w.findAll('text.pqg-colh')
-    expect(ch.map(t => t.text())).toEqual(['第 1 周', '第 2 周', '第 3 周', '第 4 周', '第 5 周'])
-    expect(ch.map(t => t.attributes('x'))).toEqual(['57.5', '120.5', '183.5', '246.5', '309.5'])
-    const rh = w.findAll('text.pqg-rowh')
-    expect(rh.map(t => t.text())).toEqual(['一', '二', '三', '四', '五', '六', '日'])
-    expect(rh.map(t => t.attributes('y'))).toEqual(['54', '122', '190', '258', '326', '394', '462'])
+    expect(ch.map(t => t.text())).toEqual(['周一', '周二', '周三', '周四', '周五', '周六', '周日'])
+    expect(ch.map(t => t.attributes('x'))).toEqual(['8', '75', '142', '209', '276', '343', '410'])
+    expect(w.findAll('text.pqg-rowh')).toHaveLength(0)
+  })
+
+  it('❗格宽跟着卡宽铺满;5 周和 6 周的月画布一样高(切月下面的核对表不跳)', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 960 })
+    const all: QualityCalendar = { ...MONTH, missRows: MONTH.missRows.map(m => (m.kind === 'counted' ? { ...m, missDays: 0 } : m)), maxMiss: 0 }
+    const w5 = mountIt(all)
+    await nextTick()
+    // 全齐 → 没有右栏,可用宽 = 960:格宽 (960 − 24) / 7 = 133.7 → 133
+    expect(g(w5, '2025-08-01').find('rect.pqg-bg').attributes('width')).toBe('133')
+    expect(w5.find('svg.pqg-svg').attributes('width')).toBe(String(7 * 137 - 4))
+    // 2025-03 是周六开头,6 周:格高 (356 + 4) / 6 − 4 = 56;画布高同 5 周的月
+    const MAR = calendar('2025-03-01', 31, () => ({ kind: 'full' }))
+    const w6 = mountIt({ ...all, cells: MAR, weeks: 6 })
+    await nextTick()
+    const mar31 = g(w6, '2025-03-31').find('rect.pqg-bg')       // 周一、第 6 周
+    expect([mar31.attributes('x'), mar31.attributes('y'), mar31.attributes('height')]).toEqual(['0', String(18 + 5 * 60), '56'])
+    expect([w5.find('svg.pqg-svg').attributes('height'), w6.find('svg.pqg-svg').attributes('height')]).toEqual(['374', '374'])
   })
 })
 
@@ -141,32 +160,33 @@ describe('PvQualityGrid · 悬停', () => {
     const w = mountIt()
     await g(w, '2025-08-19').find('rect.pqg-hit').trigger('mouseenter')
     const ring = g(w, '2025-08-19').find('rect.pqg-ring')
-    expect([ring.attributes('x'), ring.attributes('y'), ring.attributes('width'), ring.attributes('height')]).toEqual(['218', '87', '57', '62'])
+    expect([ring.attributes('x'), ring.attributes('y'), ring.attributes('width'), ring.attributes('height')]).toEqual(['68', '235', '61', '66'])
     expect(w.findAll('rect.pqg-ring')).toHaveLength(1)
     const tip = w.find('.cz-tip')
     expect(tip.findAll('span').map(s => s.text())).toEqual(['8 月 19 日', '缺抄 2 栋 · E座、G座'])
-    expect(px(tip.attributes('style'), 'left')).toBe(217 + 59 + 8)
-    expect(px(tip.attributes('style'), 'top')).toBe(86 - 8)
+    expect(px(tip.attributes('style'), 'left')).toBe(67 + 63 + 8)
+    expect(px(tip.attributes('style'), 'top')).toBe(234 - 8)
   })
 
-  it('❗整日剔除的气泡写当天抄了几栋(取 readN,不从格子里数);全齐格写 N 栋都抄齐了', async () => {
+  it('❗这天不算的气泡写当天抄了几栋(取 readN,不从格子里数);全齐格写 N 栋都抄齐了', async () => {
     const w = mountIt()
     await g(w, '2025-08-12').find('rect.pqg-hit').trigger('mouseenter')
-    expect(w.find('.cz-tip').findAll('span').map(s => s.text())).toEqual(['8 月 12 日', '整日剔除 · 全园当天读数不进判定', '当天抄了 2 栋'])
+    expect(w.find('.cz-tip').findAll('span').map(s => s.text())).toEqual(['8 月 12 日', '这天不算 · 全园当天读数不进判定', '当天抄了 2 栋'])
     await g(w, '2025-08-04').find('rect.pqg-hit').trigger('mouseenter')
     expect(w.find('.cz-tip').findAll('span').map(s => s.text())).toEqual(['8 月 4 日', '11 栋都抄齐了'])
   })
 
-  // 430 而不是 400:< 420 是窄容器档(格 44×48),那儿的翻边坐标是另一套;这条钉的是桌面档
-  it('❗卡内宽不够时气泡翻到格左 8px(宽 430:第 5 列格右放是 347 + 86 > 430)', async () => {
+  // 430:≥ 420 不是窄容器、< 640 缺抄的楼挪到下面 → 可用 430,格宽 (430 − 24) / 7 = 58
+  it('❗卡内宽不够时气泡翻到格左 8px(宽 430:周日那列格右放是 372 + 58 + 8 + 86 > 430)', async () => {
     Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 430 })
     const w = mountIt()
+    await nextTick()   // 格宽跟着量到的卡宽走:等 useWidth 量完那一拍再悬停
     await g(w, '2025-08-31').find('rect.pqg-hit').trigger('mouseenter')
     const tip = w.find('.cz-tip')
     expect(tip.findAll('span').map(s => s.text())).toEqual(['8 月 31 日', '还没到'])
-    // 气泡宽 =「8 月 31 日」2 × 12 + 6 × 6.6 = 63.6 → 64 + 22 = 86;280 − 8 − 86 = 186
-    expect(px(tip.attributes('style'), 'left')).toBe(186)
-    expect(px(tip.attributes('style'), 'top')).toBe(426 - 8)
+    // 气泡宽 =「8 月 31 日」2 × 12 + 6 × 6.6 = 63.6 → 64 + 22 = 86;周日 x = 6 × 62 = 372,372 − 8 − 86 = 278
+    expect(px(tip.attributes('style'), 'left')).toBe(278)
+    expect(px(tip.attributes('style'), 'top')).toBe(18 + 4 * 72 - 8)
   })
 
   it('移出日历 + 榜那一块就收起描边与气泡', async () => {
@@ -179,44 +199,48 @@ describe('PvQualityGrid · 悬停', () => {
   })
 })
 
-describe('PvQualityGrid · 缺抄榜与图例', () => {
-  it('❗已装表的栋全列,行序照传入;琥珀零基条宽 = 缺抄天数 ÷ 最多那栋', () => {
+describe('PvQualityGrid · 卡头、缺抄的楼与图例', () => {
+  it('❗卡名「每天抄表齐不齐」;卡头写全部装了表的楼', () => {
     const w = mountIt()
+    expect(w.find('.t').text()).toBe('每天抄表齐不齐')
+    expect(w.find('.hint').text()).toBe('全部 6 栋楼 · 每天缺抄的栋数 · 栋')
+  })
+
+  it('❗右栏只列这一段真缺了抄的楼(行序照传入),行尾「缺 N 天」;缺 0 天、没进模型、未投产的都不列', () => {
+    const w = mountIt()
+    expect(w.find('.pqg-rank-h').text()).toBe('缺抄的楼')
+    expect(w.find('.pqg-rank').attributes('style')).toContain('flex: 0 0 168px')   // 卡内宽 655 ≥ 640:放日历右边定宽
+    expect(w.find('section.pqg').classes()).not.toContain('stack')
     const rows = w.findAll('.pqg-mrow')
-    expect(rows.map(r => r.find('.n').text())).toEqual(['E座', 'C座', 'G座', '8栋', '工业大厦', '创业大厦'])
-    expect(w.find('.pqg-rank-h').text()).toBe('这一段谁漏抄了6 栋全列')
-    const barOf = (id: number) => w.find(`.pqg-mrow[data-id="${id}"] .bar i`)
-    expect(barOf(5).attributes('style')).toContain('width: 100%')
-    expect(px(barOf(3).attributes('style')?.replace('%', 'px'), 'width')).toBeCloseTo(100 / 3, 3)
-    expect(barOf(8).attributes('style')).toContain('width: 0%')
-    expect(barOf(5).attributes('style')).toContain('background: rgb(239, 159, 39)')
+    expect(rows.map(r => [r.attributes('data-id'), r.find('.n').text(), r.find('.v').text()]))
+      .toEqual([['5', 'E座', '缺 3 天'], ['3', 'C座', '缺 1 天'], ['7', 'G座', '缺 1 天']])
+    expect(w.find('.pqg-mrow .bar').exists(), '不再画条').toBe(false)
   })
 
-  it('❗行尾:有缺抄琥珀深字、缺 0 天墨灰;没进模型「未录装机」、未投产「未投产」,两者都不画条', () => {
-    const w = mountIt()
-    const v = (id: number) => w.find(`.pqg-mrow[data-id="${id}"] .v`)
-    expect(v(5).text()).toBe('缺 3 天')
-    expect(v(5).attributes('style')).toContain('color: rgb(133, 79, 11)')
-    expect(v(8).text()).toBe('缺 0 天')
-    expect(v(8).attributes('style')).toBeUndefined()
-    expect(v(21).text()).toBe('未录装机')
-    expect(v(20).text()).toBe('未投产')
-    for (const id of [20, 21]) expect(w.find(`.pqg-mrow[data-id="${id}"] .bar i`).exists()).toBe(false)
-    expect(w.find('.pqg-mrow[data-id="20"]').classes()).toContain('unborn')
+  it('❗这一段在网的都抄了:不出「缺抄的楼」那一栏,图例下面的参照行写「在网的都抄了」', () => {
+    const all: QualityCalendar = { ...MONTH, missRows: MONTH.missRows.map(m => (m.kind === 'counted' ? { ...m, missDays: 0 } : m)), maxMiss: 0 }
+    const w = mountIt(all)
+    expect(w.find('.pqg-rank').exists()).toBe(false)
+    expect(w.find('.ana-ref').text()).toBe('在网的都抄了')
   })
 
-  it('图例写全齐栋数与期间;在网不足时的那句只在 tooFewStations 时出现', () => {
+  it('❗卡内宽 < 640 有缺抄:「缺抄的楼」挪到日历下面铺满(不挤日历)', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 500 })
     const w = mountIt()
-    const leg = w.find('.pqg-leg').text()
-    expect(leg).toContain('11 栋全抄了')
-    expect(leg).toContain('有栋没抄')
-    expect(leg).toContain('整日剔除')
-    expect(leg).toContain('还没到')
-    expect(w.find('.pqg-leg .per').text()).toBe('2025 年 8 月')
-    // C5-11:这句常驻占一行,不过线时空着 —— 换期翻转不再把下方 L7 表推上推下
+    await nextTick()
+    expect(w.find('section.pqg').classes()).toContain('stack')
+    expect(w.find('.pqg-rank').attributes('style')).toBeUndefined()
+    expect(g(w, '2025-08-01').find('rect.pqg-bg').attributes('width')).toBe(String(Math.floor((500 - 24) / 7)))
+  })
+
+  it('图例四态 + 期间;在网不足时的那句只在 tooFewStations 时出现', () => {
+    const w = mountIt()
+    expect(w.findAll('.pqg-leg > span').map(s => s.text())).toEqual(['这天都抄了', '有栋没抄', '这天不算', '还没到', '2025 年 8 月'])
+    expect(w.findAll('.pqg-leg b')[1].attributes('style')).toContain('background: rgba(28, 28, 28, 0.36)')
+    // C5-11:这句常驻占一行,有缺抄、又不过线时空着 —— 换期翻转不再把下方核对表推上推下
     expect(w.find('.ana-ref').text()).toBe('')
     expect(w.find('.ana-ref').classes()).toContain('hold')
-    expect(mountIt(MONTH, { minStations: 3, tooFewStations: true }).find('.ana-ref').text()).toContain('全园在网不足 3 栋')
+    expect(mountIt(MONTH, { minStations: 3, tooFewStations: true }).find('.ana-ref').text()).toBe('全园在网不足 3 栋，「这天不算」这条规则本段没生效')
   })
 })
 
@@ -256,37 +280,34 @@ describe('PvQualityGrid · 窄容器月档', () => {
     return w
   }
 
-  it('❗格 44×48、行头 22:画布 22 + 5 × 48 − 4 = 258 ≤ 336,横向不滚;字号一个都没动', async () => {
+  it('❗格宽 (336 − 24) / 7 = 44、格区高 284:画布 7 × 48 − 4 = 332 ≤ 336,横向不滚;字号一个都没动', async () => {
     const w = await narrow()
     expect(w.find('section.pqg').classes()).toContain('narrow')
     const svg = w.find('svg.pqg-svg')
-    expect([svg.attributes('width'), svg.attributes('height')]).toEqual(['258', '378'])
-    // 6 周满月也只有 22 + 6 × 48 − 4 = 306
-    const bg = g(w, '2025-08-01').find('rect.pqg-bg')           // 周五 = 第 0 列第 4 行
+    expect([svg.attributes('width'), svg.attributes('height')]).toEqual(['332', '302'])
+    // 8 月 5 周:格高 (284 + 4) / 5 − 4 = 53
+    const bg = g(w, '2025-08-01').find('rect.pqg-bg')           // 周五、第 1 周
     expect([bg.attributes('x'), bg.attributes('y'), bg.attributes('width'), bg.attributes('height'), bg.attributes('rx')])
-      .toEqual(['22', '226', '44', '48', '5'])
-    // 触点 = 格本身,44 × 48 ≥ 30
+      .toEqual(['192', '18', '44', '53', '5'])
+    // 触点 = 格本身,44 × 53 ≥ 30
     const hit = g(w, '2025-08-01').find('rect.pqg-hit')
-    expect([hit.attributes('width'), hit.attributes('height')]).toEqual(['44', '48'])
-    const rh = w.findAll('text.pqg-rowh')
-    expect(rh.map(t => t.text())).toEqual(['一', '二', '三', '四', '五', '六', '日'])
-    expect(rh.map(t => t.attributes('x'))).toEqual(Array(7).fill('14'))     // 22 − 8,行头右缘贴着格
-    expect(rh.map(t => t.attributes('y'))).toEqual(['46', '98', '150', '202', '254', '306', '358'])
+    expect([hit.attributes('width'), hit.attributes('height')]).toEqual(['44', '53'])
+    expect(w.findAll('text.pqg-rowh')).toHaveLength(0)
     // 不许整幅缩放:渲染宽恒等于 viewBox 宽
-    expect(svg.attributes('viewBox')).toBe('0 0 258 378')
+    expect(svg.attributes('viewBox')).toBe('0 0 332 302')
     expect(svg.attributes('transform')).toBeUndefined()
     expect(svg.attributes('preserveAspectRatio')).toBeUndefined()
   })
 
-  it('❗格内第二行去量词(44 宽放得下 4 个半角);日期与第二行还在原来的位置,不缩字', async () => {
+  it('❗格宽 < 56 时第二行去量词(44 宽放得下 4 个半角);日期与第二行还在原来的位置,不缩字', async () => {
     const w = await narrow()
     expect(g(w, '2025-08-19').find('text.pqg-sub').text()).toBe('缺 2')
     expect(g(w, '2025-08-06').find('text.pqg-sub').text()).toBe('缺 1')
-    expect(g(w, '2025-08-12').find('text.pqg-sub').text()).toBe('剔除')
+    expect(g(w, '2025-08-12').find('text.pqg-sub').text()).toBe('不算')
     // 划痕照旧在,与字两路
     expect(g(w, '2025-08-12').find('rect.pqg-hatchbox').exists()).toBe(true)
     const day = g(w, '2025-08-01').find('text.pqg-day')
-    expect([day.attributes('x'), day.attributes('y')]).toEqual(['30', '244'])   // 22 + 8、226 + 18
+    expect([day.attributes('x'), day.attributes('y')]).toEqual(['200', '36'])   // 192 + 8、18 + 18
     expect(day.attributes('font-size')).toBeUndefined()                         // 字号只走 CSS 阶梯
   })
 
