@@ -300,7 +300,7 @@ const areaOption = computed(() => {
           <div class="av2-card-h"><span class="t">{{ PK.card.main }}</span><span class="hint">{{ S.hint(PK.allBld, PK.byRent) }}</span></div>
           <div class="fp-shim" style="height: 446px"></div>
           <p class="ana-read"><span class="ana-hole">合同月租的 00.0% 在最多的 0 栋</span></p>
-          <p class="ana-read"><span class="ana-hole">空单元的 00.0% 在一期 宿舍四栋、一期 A座</span></p>
+          <p class="ana-read"><span class="ana-hole">空单元的 00.0% 在一期 宿舍四栋、一期 某座</span></p>
           <p class="ana-ref"><span class="ana-hole">按 000 份在租合同、00 栋的 000 个空单元算</span></p>
           <p class="ana-ref"><span class="ana-hole">有 0 栋没建单元，算不了这几栋的出租率</span></p>
           <p class="ana-ref"><span class="ana-hole">一期 空地租出的 0 个单元记在别栋的合同上</span></p>

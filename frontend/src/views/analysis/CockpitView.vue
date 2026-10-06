@@ -272,7 +272,7 @@ const goAnom = (a: AnaAnomaly): void => {
         <div class="av2-card av2-s6">
           <div class="av2-card-h"><span class="t">{{ CK.card.coll }}</span><span class="hint"><span class="ana-hole">6 家管理公司 · 台账 · %</span></span></div>
           <AnaSkelChart :height="250" />
-          <p class="ana-read hold"><span class="ana-hole">6 家里 0 家到了目标，最低是 创显 67.1%</span></p>
+          <p class="ana-read hold"><span class="ana-hole">6 家里 0 家到了目标，最低是 某某 67.1%</span></p>
           <p class="ana-ref hold"><span class="ana-hole">按台账10月的实收和应收算</span></p>
         </div>
         <div class="av2-card av2-s6 cv2-anoc">
