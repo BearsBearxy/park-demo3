@@ -49,3 +49,24 @@ export function buildPhaseRows(buildings: BuildingLike[], live: ContractLike[]):
   }
   return [...byPhase.values()].filter((p) => p.contracts > 0).sort((a, b) => a.phase - b.phase)
 }
+
+// ── 2026-10 改稿（画板 park-v2）：单元一栏、点进一栋的楼层读数 ──
+export interface UnitCountLike { id: number; unitCount: number; vacantCount: number }
+
+/** 租出单元 = 单元数 − 空单元（临期、预定都算租出；同 types/building occByUnit、后端 BuildingService.unitStatus）。 */
+export const unitOcc = (b: UnitCountLike): number => b.unitCount - b.vacantCount
+
+/** 单元租出了、这栋却没有以它为主楼的在租合同（主卡参照「{名}有 n 个单元租出，没有这栋的在租合同」；为什么库里没记，屏上不说）。 */
+export function crossBuildings(rows: { id: number; name: string; contracts: number }[], byId: Map<number, UnitCountLike>): { name: string; n: number }[] {
+  return rows.flatMap((r) => {
+    const b = byId.get(r.id)
+    const n = b ? unitOcc(b) : 0
+    return r.contracts === 0 && n > 0 ? [{ name: r.name, n }] : []
+  })
+}
+
+/** 点进一栋：1..顶层每层空单元个数。顶层取楼栋层数与单元最高层的大者；没建单元的层按 0 个（floorRun 要全部楼层，不跳层）。 */
+export function vacantByFloor(floorCount: number, units: { floor: number; status: string }[]): { floor: number; n: number }[] {
+  const top = Math.max(floorCount, ...units.map((u) => u.floor), 1)
+  return Array.from({ length: top }, (_, i) => ({ floor: i + 1, n: units.filter((u) => u.floor === i + 1 && u.status === 'vacant').length }))
+}

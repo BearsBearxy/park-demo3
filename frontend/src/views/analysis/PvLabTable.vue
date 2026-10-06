@@ -1,28 +1,38 @@
 <script setup lang="ts">
 /**
- * PvLabTable —— 高级分析档 L7「逐栋核对表」(PV-ANALYSIS-SCREEN-V4 §3.16;计划 §1 #16)。
+ * PvLabTable —— 核对明细档「逐栋核对表」(PV-ANALYSIS-SCREEN-V4 §3.16;2026-10-06 改稿 pv-v2 m-lab / y-lab)。
  *
- * 7 列:楼栋 96 / 期别 64 / 常年水平 104 / 名次 64 / 区间 168 / 哪天起变了 120 / 有效月数 96,行高 32,表头 sticky。
- * 原来的 10 列检验表(z / p / q / N_eff / σ 怎么估…)砍掉:屏上任何档都不写统计名词(V4 §0)。
- * 表脚一句说清砍了哪些;不做导出(§1 #16)。
- * 行投影(名次、区间、变点只在显著时给、左侧色条、有效月数)全在 pvAnaV4.logic.ts labTableRows。
+ * 9 列:楼栋 96 / 期别 64 / 常年水平 104 / 名次 64 / 大概落在 168 / 哪天起变了 120 / 有效月数 96 / 隔天像不像 96 / 碰巧更偏 96,
+ * 行高 32,表头 sticky。后两列是「隔几天的相关柱」「打乱重算的直方图」两张卡下线后并进来的,一栋一个数。
+ * 「哪天起变了」跳过并网那个月再找:找到写日子(正文色),没找到写「没找到」(不写「—」:「—」在这屏是库里没数)。
+ * 表脚六条参照说清每列怎么读;不做导出(§1 #16)。
+ * 行投影(名次、区间、变点只在显著时给、左侧色条、有效月数、两列)全在 pvAnaV4.logic.ts labTableRows。
  * 行只有 hover 底,无气泡、无点击。
  */
+import { computed } from 'vue'
 import { sgn } from '@/components/ana/anaFmt'
+import { PV, PVH, pvTableRefs } from '@/components/ana/anaSentence'
+import { LAB_SHUFFLES } from './pvMeterAna.logic'
 import { PHASE_COLORS, PV_COLORS } from './pvAnaColors'
 import { phaseName, type PvLabTableProps } from './pvAnaV4.logic'
 
-defineProps<PvLabTableProps>()
+const props = defineProps<PvLabTableProps>()
 
 const md = (d: string) => `${Number(d.slice(5, 7))}月${Number(d.slice(8, 10))}日`
 const cpText = (from: string, to: string) => (from === to ? md(from) : `${md(from)}–${md(to)}`)
+/** 负号用「−」(全屏同一个写法) */
+const r2 = (v: number) => v.toFixed(2).replace('-', '−')
+
+const hint = computed(() => PVH.table(props.cover ?? '', props.rows.length))
+// 打乱的那个月没有(一栋都没进模型)时后两条不写 —— 表里那两列也全是「—」
+const refs = computed(() => pvTableRefs(LAB_SHUFFLES + 1, props.winMonth ?? 0).slice(0, props.winMonth == null ? 4 : 6))
 </script>
 
 <template>
   <section class="av2-card plt">
     <div class="av2-card-h">
-      <span class="t">逐栋核对表</span>
-      <span class="hint">上面那几张图的数，一栋一行摊开对</span>
+      <span class="t">{{ PV.card.table }}</span>
+      <span class="hint">{{ hint }}</span>
     </div>
     <div class="plt-wrap">
       <table class="plt-tbl">
@@ -33,9 +43,11 @@ const cpText = (from: string, to: string) => (from === to ? md(from) : `${md(fro
             <th class="lft" style="min-width: 64px">期别</th>
             <th style="min-width: 104px">常年水平</th>
             <th style="min-width: 64px">名次</th>
-            <th style="min-width: 168px">区间</th>
+            <th style="min-width: 168px">{{ PV.table.ci }}</th>
             <th class="lft" style="min-width: 120px">哪天起变了</th>
             <th style="min-width: 96px">有效月数</th>
+            <th style="min-width: 96px">{{ PV.table.acf }}</th>
+            <th style="min-width: 96px">{{ PV.table.nul }}</th>
             <th class="fp-fill" aria-hidden="true"></th>
           </tr>
         </thead>
@@ -46,21 +58,23 @@ const cpText = (from: string, to: string) => (from === to ? md(from) : `${md(fro
               <span class="nmi"><i class="dot" :style="{ background: PHASE_COLORS[r.phase] ?? 'var(--ink-500)' }" />{{ r.name }}</span>
             </td>
             <td class="lft sub">{{ phaseName(r.phase) }}</td>
-            <td v-if="r.unborn" colspan="5" class="lft sub">{{ r.shortDays != null ? `在网 ${r.shortDays} 天，不排` : '没有可算的行' }}</td>
+            <td v-if="r.unborn" colspan="7" class="lft sub">{{ r.shortDays != null ? `在网 ${r.shortDays} 天，不排` : '没有可算的行' }}</td>
             <template v-else>
-              <td class="mono">{{ r.alphaPct == null ? '—' : sgn(r.alphaPct, 1, '%') }}</td>
-              <td class="mono">{{ r.rank ?? '—' }}</td>
-              <td class="mono sub">{{ r.ciLo == null || r.ciHi == null ? '—' : `${sgn(r.ciLo, 1, '%')} ~ ${sgn(r.ciHi, 1, '%')}` }}</td>
-              <td v-if="r.cpFrom && r.cpTo" class="lft cp" :style="{ color: PV_COLORS.BELOW }">{{ cpText(r.cpFrom, r.cpTo) }}</td>
-              <td v-else class="lft sub">—</td>
-              <td class="mono">{{ r.validMonths == null ? '—' : `${r.validMonths} / ${r.monthsSoFar}` }}</td>
+              <td class="mono">{{ r.alphaPct == null ? PV.dash : sgn(r.alphaPct, 1, '%') }}</td>
+              <td class="mono">{{ r.rank ?? PV.dash }}</td>
+              <td class="mono sub">{{ r.ciLo == null || r.ciHi == null ? PV.dash : `${sgn(r.ciLo, 1, '%')} ~ ${sgn(r.ciHi, 1, '%')}` }}</td>
+              <td v-if="r.cpFrom && r.cpTo" class="lft">{{ cpText(r.cpFrom, r.cpTo) }}</td>
+              <td v-else class="lft sub">{{ PV.cpNone }}</td>
+              <td class="mono">{{ r.validMonths == null ? PV.dash : `${r.validMonths} / ${r.monthsSoFar}` }}</td>
+              <td class="mono">{{ r.rho1 == null ? PV.dash : r2(r.rho1) }}</td>
+              <td class="mono">{{ r.chance ?? PV.dash }}</td>
             </template>
             <td class="fp-fill" aria-hidden="true"></td>
           </tr>
         </tbody>
       </table>
     </div>
-    <p class="ana-ref">常年水平、名次、区间、哪天起变了、有效月数按 {{ year }} 年整年算 · 名次 1 = 常年水平最高 · 左侧色条 = 本段有连续出范围的栋（红 = 低于，琥珀 = 高于）· 砍掉了 6 列算法中间量（检验用的统计量、重算了多少遍、每次取多长、有效天数等）：那些是要复算这屏数字才用得上的</p>
+    <p v-for="r in refs" :key="r.text" class="ana-ref">{{ r.text }}</p>
   </section>
 </template>
 

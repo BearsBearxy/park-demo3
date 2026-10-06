@@ -19,7 +19,7 @@ const mountChart = (s: BetaSlot[] = slots()) => mount(PvBetaChart, { props: { sl
 const num = (s: string | undefined) => Number(s)
 
 describe('PvBetaChart(B11)', () => {
-  it('12 个月槽固定:刻度字在槽中心,y 188;空槽字淡(墨 28%)并在 y 199 写原因,有值的月不写', () => {
+  it('❗12 个月槽固定:刻度字在槽中心,y 188;空槽字淡(墨 28%);原因一段连着的空槽只写一次,在那段正中、最低网格上方 8px', () => {
     const w = mountChart()
     expect([w.find('svg').attributes('width'), w.find('svg').attributes('height')]).toEqual(['646', '200'])
     const ms = w.findAll('text.mlab')
@@ -27,11 +27,24 @@ describe('PvBetaChart(B11)', () => {
     expect(ms.map(t => num(t.attributes('x')))).toEqual(CENTERS)
     expect(ms.every(t => t.attributes('y') === '188')).toBe(true)
     expect(ms.map(t => t.attributes('fill-opacity') === '0.28')).toEqual([true, true, false, false, true, false, false, false, true, true, true, true])
+    // 1 月并网前、2 月不足(原因不同,分开写)、5 月不足、9–12 月未到(一段只写一个,在 9 月与 12 月槽中心的正中)
     const why = w.findAll('text.whylab')
-    expect(why.map(t => [t.text(), num(t.attributes('x')), num(t.attributes('y'))])).toEqual([
-      ['投产前', 70.4, 199], ['不足', 119.3, 199], ['不足', 265.8, 199],
-      ['未到', 461.1, 199], ['未到', 509.9, 199], ['未到', 558.8, 199], ['未到', 607.6, 199],
-    ])
+    expect(why.map(t => t.text())).toEqual(['并网前', '不足', '不足', '未到'])
+    expect(why.map(t => num(t.attributes('x')))).toEqual([70.4, 119.3, 265.8, 534.4])
+    // 最低那条网格 0.9 在 y 146 → 字在 138;不再压在月份字下面(y 199)
+    expect(why.every(t => t.attributes('y') === '138')).toBe(true)
+  })
+
+  it('❗画板那种:1–5 月并网前 → 一个「并网前」在 1–5 月正中;「1 是和全园同步」挪进左边空槽、左对齐,不压点', () => {
+    const s = slots().map(x => (x.month <= 5 ? { ...x, beta: null, why: 'pre' as const } : x))
+    const w = mountChart(s)
+    const why = w.findAll('text.whylab')
+    expect(why.map(t => [t.text(), num(t.attributes('x'))])).toEqual([['并网前', 168.1], ['未到', 534.4]])
+    const lab = w.find('text.reflab')
+    expect([lab.text(), num(lab.attributes('x')), lab.attributes('text-anchor')]).toEqual(['1 是和全园同步', 50, 'start'])
+    // 「1 是和全园同步」宽 86(1 + 空格 2 × 6.6 + 6 汉字 × 12 = 85.2),右端 136 < 5 月槽右沿 290;5 月以前没有点
+    const dots = w.findAll('circle.dot').map(d => num(d.attributes('cx')))
+    expect(Math.min(...dots)).toBeGreaterThan(50 + 86)
   })
 
   it('点 r7 蓝底白环落在槽中心;极值 1.10 → y 50、0.95 → y 122(每单位 480 像素);连线在样本不足的 5 月断开', () => {
@@ -46,14 +59,14 @@ describe('PvBetaChart(B11)', () => {
     expect(segs.every(s => s.attributes('stroke') === C.FOCUS && s.attributes('stroke-width') === '2')).toBe(true)
   })
 
-  it('网格 0.9 / 1.0 / 1.1;=1 参照墨阶虚线 y 98 + 右端直标「1 = 与全园同步」', () => {
+  it('网格 0.9 / 1.0 / 1.1;=1 参照墨阶虚线 y 98;开头空槽放不下直标(只空 1 月)时照旧在右端「1 是和全园同步」', () => {
     const w = mountChart()
     expect(w.findAll('line.gl').map(l => num(l.attributes('y1')))).toEqual([146, 98, 50])
     expect(w.findAll('text').filter(t => /^\d\.\d$/.test(t.text())).map(t => t.text())).toEqual(['0.9', '1.0', '1.1'])
     const ref = w.find('line.ref')
     expect([num(ref.attributes('y1')), ref.attributes('stroke'), ref.attributes('stroke-dasharray')]).toEqual([98, 'var(--ink-500)', '4 3'])
     const lab = w.find('text.reflab')
-    expect([lab.text(), num(lab.attributes('x')), num(lab.attributes('y')), lab.attributes('text-anchor')]).toEqual(['1 = 与全园同步', 628, 92, 'end'])
+    expect([lab.text(), num(lab.attributes('x')), num(lab.attributes('y')), lab.attributes('text-anchor')]).toEqual(['1 是和全园同步', 628, 92, 'end'])
   })
 
   it('网格从 1 起按步长排:极值 1.12 / 0.92 时步长 0.15,网格 0.85 / 1.00 / 1.15(1 永远是一条网格)', () => {
@@ -105,7 +118,9 @@ describe('PvBetaChart(B11)', () => {
     await hits[9].trigger('mouseenter')
     const lines = w.findAll('.dtip span')
     expect(lines.map(l => l.text())).toEqual(['2025 年 10 月', '还没到，这个月不出点'])
-    expect(lines[1].attributes('style')).toContain(rgb(C.TIP_ABOVE))
+    // 空槽原因淡字,不用琥珀(橙只留给「高于平时 / 超限」)
+    expect(lines[1].attributes('style')).not.toContain(rgb(C.TIP_ABOVE))
+    expect(lines[1].attributes('style')).toContain('opacity: 0.72')
     // 宽 10 × 12 + 22 = 142;509.9 + 26 + 142 > 632 → 509.9 − 26 − 142 = 341.9
     expect(w.find('.dtip').attributes('style')).toContain('left: 341.9px')
     await hits[1].trigger('mouseenter')
@@ -114,14 +129,12 @@ describe('PvBetaChart(B11)', () => {
     expect(w.find('.dtip').exists()).toBe(false)
   })
 
-  it('图注按三种留空原因列出各自的月', () => {
-    const t = mountChart().find('.ana-ref').text()
-    expect(t).toContain('投产前（1 月）')
-    expect(t).toContain('样本不足（2、5 月抄表天数太少）')
-    expect(t).toContain('还没到（9–12 月）')
-    const none = mountChart(slots().map(s => ({ ...s, beta: s.beta ?? 1, why: null }))).find('.ana-ref').text()
-    expect(none).toContain('投产前（本栋没有）')
-    expect(none).toContain('样本不足（本栋没有）')
+  it('❗卡名、卡头、参照一句(2026-10-06 改稿);空槽原因写在图里,参照不再逐条列', () => {
+    const w = mountChart()
+    expect(w.find('.t').text()).toBe('跟全园一起涨落的程度')
+    expect(w.find('.hint').text()).toBe('12 个月 · 和全园比 · 倍')
+    expect(w.findAll('.ana-ref').map(p => p.text())).toEqual(['大于 1 是全园多发时它更多'])
+    expect(w.text()).not.toContain('投产前')
   })
 })
 

@@ -100,12 +100,16 @@ const kpiV = (w: VueWrapper, label: string) =>
   w.findAll('.av2-kpi').find((k) => k.find('.l').text() === label)!.find('.v').text()
 
 describe('换年:图不卸载,旧年内容留在原地退让,到数原地换新', () => {
-  it('❗园区能耗:同一批 AnaEChart 节点;页头期间与 KPI 在途停在旧年;200ms 后 .fp-stale + 进度线', async () => {
+  // 2026-10 改稿 energy-v2:页头撤了(屏名进工具条),在途停在旧年改看 KPI;按月屏顶不放购电成本,看单位购电成本
+  it('❗园区能耗:同一批 AnaEChart 节点;KPI 在途停在旧年;200ms 后 .fp-stale + 进度线', async () => {
     const p = usePeriod()
     p.setGran('month'); p.setYear(2026); p.setMonth(6)
     const elecFx = (y: number, total: number) =>
       ({ energy: { rows: [{ acctMonth: `${y}-06`, qty: 1000, total }] }, basic: { rows: [] } }) as never
     m(ana.fetchElecYear).mockImplementation(async (y: number) => elecFx(y, 80000))
+    // 两年 6 月都有销售收入表 → 流向图 + 各项收益两张图都在(每次取数各一次)
+    const s10 = [2025, 2026].map((y) => ({ acctMonth: `${y}-06`, phase: 1, tenantId: 1, tenantName: '租户1', elec: 120000, water: 0, total: 120000 }))
+    m(ana.fetchS10Rows).mockResolvedValueOnce(s10).mockResolvedValueOnce(s10)
 
     const w = mountPlain(ParkEnergyView)
     expect(w.find('.ak-skel').exists(), '首进没出骨架').toBe(true)
@@ -115,20 +119,19 @@ describe('换年:图不卸载,旧年内容留在原地退让,到数原地换新'
     expect(page.exists(), '内容宿主没挂 data-stale-host').toBe(true)
     const before = chartEls(w)
     expect(before.length).toBeGreaterThanOrEqual(2)
-    expect(w.find('.ak-sub').text()).toContain('期间 2026年6月')
-    expect(kpiV(w, '购电成本')).toBe('¥8.0万')
+    expect(kpiV(w, '单位购电成本')).toBe('80.000元/kWh')
 
     let release = () => {}
-    m(ana.fetchElecYear).mockImplementation((y: number) =>
-      new Promise((res) => { release = () => res(elecFx(y, 50000)) }))
+    // 取数连带上一年:只把所选那一年挂起
+    m(ana.fetchElecYear).mockImplementation((y: number) => (y === 2025
+      ? new Promise((res) => { release = () => res(elecFx(y, 50000)) }) : Promise.resolve(elecFx(y, 50000))) as never)
     p.setYear(2025)
     await flushPromises()
 
     expect(w.find('.ak-skel').exists(), '换年不该退回骨架').toBe(false)
     expect(w.find('.ak-page').element, '内容宿主被卸载重挂了').toBe(page.element)
     expectSameCharts(w, before, '换年在途图被卸载了')
-    expect(w.find('.ak-sub').text(), '在途期间页头先换成了新年(旧年数据配新年标题)').toContain('期间 2026年6月')
-    expect(kpiV(w, '购电成本'), '在途期间 KPI 被清空了').toBe('¥8.0万')
+    expect(kpiV(w, '单位购电成本'), '在途期间 KPI 被清空了 / 先换成了新年').toBe('80.000元/kWh')
     expect(w.find('.ak-page').classes(), '没到 200ms 就退让了').not.toContain('fp-stale')
 
     await wait(260)
@@ -141,8 +144,7 @@ describe('换年:图不卸载,旧年内容留在原地退让,到数原地换新'
     expect(w.find('.ak-page').classes()).not.toContain('fp-stale')
     expect(w.find('.fp-lb').exists()).toBe(false)
     expectSameCharts(w, before, '到数时图被卸载了')
-    expect(w.find('.ak-sub').text()).toContain('期间 2025年6月')
-    expect(kpiV(w, '购电成本')).toBe('¥5.0万')
+    expect(kpiV(w, '单位购电成本')).toBe('50.000元/kWh')
   })
 
   it('❗电费成本分析:同一批 AnaEChart 节点;卡头年份在途停在旧年;200ms 后 .fp-stale + 进度线', async () => {
@@ -305,8 +307,8 @@ describe('首进骨架 · S 档(≤600)与图同表降档', () => {
 describe('首进骨架 · 顶替 AnaEChart 的块逐张对上图高(源码坐标)', () => {
   const read = (f: string) => readFileSync(join(__dirname, '..', 'analysis', f), 'utf8')
   it.each([
-    ['ParkEnergyView.vue', [300, 170, 250, 250, 170]],
-    ['ParkView.vue', [300, 300, 300, 250]],
+    ['ParkEnergyView.vue', [250, 150, 260, 230, 128]],
+    ['ParkView.vue', [260, 280]],   // 2026-10 改稿:主卡横条 / 期区横条高随楼栋数、期区数变(骨架用 fp-shim 写现值),字面高只剩散点 260、面积 280
     ['ElecAnalysisView.vue', [300, 300, 300]],
     ['AnomalyView.vue', [250, 200]],
   ] as const)('❗%s', (file, heights) => {
@@ -331,7 +333,7 @@ describe('园区能耗:桑基回退贴卡头 · 加载失败带重试', () => {
     p.setGran('month'); p.setYear(2026); p.setMonth(6)
   })
 
-  it('❗所选 6 月无售电、最近 s10 在 5 月 → 桑基卡头「显示 2026-05」,期间旁不挂;换到 5 月标签撤', async () => {
+  it('❗所选 6 月无售电、最近 s10 在 5 月 → 流向图卡头「显示 5月」(改稿 energy-v2 写法),期间旁不挂;换到 5 月标签撤', async () => {
     m(ana.fetchElecYear).mockImplementation(async (y: number) => elecFx(y))
     m(ana.fetchS10Rows).mockResolvedValueOnce(s10('2026-05'))
     // 外壳挂载时会按接口回来的月份重注一次期间单例:5 月得在里面,下面才切得过去
@@ -339,7 +341,7 @@ describe('园区能耗:桑基回退贴卡头 · 加载失败带重试', () => {
     const w = mountPlain(ParkEnergyView)
     await flushPromises()
     const tag = () => w.find('.av2-core .av2-card-h .t .fp-state')
-    expect(tag().text()).toBe('显示 2026-05')
+    expect(tag().text()).toBe('显示 5月')
     expect(w.find('.anx-period .fp-state').exists(), '单图回退跑到期间旁了').toBe(false)
     usePeriod().setMonth(5)
     await flushPromises()
@@ -360,17 +362,17 @@ describe('园区能耗:桑基回退贴卡头 · 加载失败带重试', () => {
     expect(w.find('.ak-page').exists(), '失败件和旧年正文同时在').toBe(false)
 
     let release = () => {}
-    m(ana.fetchElecYear).mockImplementation((y: number) => new Promise((res) => { release = () => res(elecFx(y)) }))
+    // 取数连带上一年(1 月比上一年 12 月、按年比往年):只把所选那一年挂起
+    m(ana.fetchElecYear).mockImplementation((y: number) => (y === 2025 ? new Promise((res) => { release = () => res(elecFx(y)) }) : Promise.resolve(elecFx(y))) as never)
     const calls = m(ana.fetchElecYear).mock.calls.length
     await err().find('button').trigger('click')
     await flushPromises()
-    expect(m(ana.fetchElecYear).mock.calls.length, '点重试没重新取数').toBe(calls + 1)
-    expect(m(ana.fetchElecYear).mock.calls.at(-1)?.[0], '重试取的不是所选那一年').toBe(2025)
+    expect(m(ana.fetchElecYear).mock.calls.slice(calls).map((c) => c[0]), '点重试没重新取所选那一年(连带上一年)').toEqual([2025, 2024])
     expect(err().exists(), '重试在途失败件先撤了(错误只在成功分支清)').toBe(true)
     expect(w.find('.ak-page').exists(), '重试在途闪回了旧年正文').toBe(false)
     release()
     await flushPromises()
     expect(err().exists()).toBe(false)
-    expect(w.find('.ak-sub').text()).toContain('期间 2025年6月')
+    expect(w.find('.ak-page[data-stale-host]').exists(), '成功后没出正文').toBe(true)
   })
 })

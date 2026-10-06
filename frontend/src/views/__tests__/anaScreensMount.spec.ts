@@ -91,6 +91,8 @@ vi.mock('@/api/elecCost', () => ({
 }))
 vi.mock('@/api/pvMeter', () => ({
   pvMeterApi: {
+    // 异常提醒中心光伏卡先问有读数的月,取最近那一年(2026-10 改稿 pv-v2-anomaly)
+    months: vi.fn(async () => Array.from({ length: 8 }, (_, i) => `2026-0${i + 1}`)),
     stations: vi.fn(async () => PV_STATIONS),
     readingsYear: vi.fn(async (y: number) => (y === 2026 ? PV_READINGS : [])),
   },
@@ -472,19 +474,19 @@ const SCREENS: { name: string; comp: Component; min: number }[] = [
   { name: 'BudgetView', comp: BudgetView, min: 7 },
   { name: 'ChargingAnalysisView', comp: ChargingAnalysisView, min: 4 },
   { name: 'ChurnView', comp: ChurnView, min: 31 },
-  { name: 'CockpitView', comp: CockpitView, min: 11 },   // 2026-09-19 KPI 瓦去掉迷你趋势线(4 条 svg),17 → 13;期间条 2 个下拉箭头,→ 11
+  { name: 'CockpitView', comp: CockpitView, min: 9 },   // 2026-10 改稿:按月 4 张图桩 + 回测表行(主图柱图 / 环图 / 预测带自绘 svg 没了),11 → 9
   { name: 'ElecAnalysisView', comp: ElecAnalysisView, min: 3 },
   { name: 'ExpenseView', comp: ExpenseView, min: 3 },   // 同上,KPI 瓦 4 条迷你线,9 → 5;期间条 2 个下拉箭头,→ 3
   { name: 'ExpiryView', comp: ExpiryView, min: 57 },
   { name: 'FinBalanceView', comp: FinBalanceView, min: 62 },
   { name: 'FinCashflowView', comp: FinCashflowView, min: 4 },
   { name: 'FinPnlView', comp: FinPnlView, min: 36 },
-  { name: 'ParkEnergyView', comp: ParkEnergyView, min: 5 },
-  { name: 'ParkView', comp: ParkView, min: 33 },
+  { name: 'ParkEnergyView', comp: ParkEnergyView, min: 2 },   // 2026-10 改稿 energy-v2:按月只剩流向图 + 各项收益两张(三张 1–12 月趋势卡删了)
+  { name: 'ParkView', comp: ParkView, min: 12 },   // 2026-10 改稿:合同明细只露 8 行(原来全部合同进滚动表);4 张图桩 + 8 行
   { name: 'PnlAnalysisView', comp: PnlAnalysisView, min: 7 },
   { name: 'PvMeterAnaView', comp: PvMeterAnaView, min: 3 },
   { name: 'PvRoiView', comp: PvRoiView, min: 22 },
-  { name: 'TenantEnergyView', comp: TenantEnergyView, min: 4 },
+  { name: 'TenantEnergyView', comp: TenantEnergyView, min: 2 },   // 2026-10 改稿 tenant-energy-v2:按月 = 主卡各户电费 + 电费和月租两张(选中户趋势、应收实收两张图挪去异常提醒中心)
   { name: 'TenantPeerView', comp: TenantPeerView, min: 10 },
   { name: 'TenantPortfolioView', comp: TenantPortfolioView, min: 15 },
 ]
@@ -523,6 +525,11 @@ async function settle() {
   for (let i = 0; i < 4; i++) await flushPromises()
   await new Promise((r) => setTimeout(r, 0))
   await flushPromises()
+  // 异常提醒中心光伏卡逐月检测、月与月之间让出主线程(一月一个宏任务):多排几轮,排完还挂着留位就是真没出来
+  for (let i = 0; i < 20 && wrapper?.find('.fp-shim').exists(); i++) {
+    await new Promise((r) => setTimeout(r, 0))
+    await flushPromises()
+  }
 }
 
 describe('分析屏挂载冒烟 · 屏清单与目录一致', () => {

@@ -2,12 +2,15 @@
 // B6 · 台账装机 vs 板数 × 标称(PV-ANALYSIS-SCREEN-V4 §3.7;画布 ../运维文档/设计稿/已实现/光伏分栋分析v4定稿-2026-09-13/Abs.dc.html)。
 // 左 SQ×SQ 正方区(+34 轴字):绘图区 (SQ−52)²(padL 40 / padR 12 / padT 12),两轴同一把刻度,
 // 所以虚线 y = x 是 45°;±容差是沿对角线的斜带。右栏说明 + 录入入口(emit record,由屏去跳楼栋档案)。
-// 一栋没录也照样画框线、对角线与带,只是没有点(计划 §1 #4)。画板无悬停,这里也不加。
+// 2026-10-06 改稿(画板 pv-v2-m-abs):一栋都没录板数时整张卡收成一行字 +「去录入 →」,不画空图(原来空着占 380 高)。
+// 录了一栋以上照画散点(画板没画这一态,散点沿用原样)。画板无悬停,这里也不加。
 import { computed } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
 import { useEnterPhase, useMorphHold } from '@/components/ana/anaMotion'
 import '@/components/ana/ana.css'   // @keyframes fp-wipe + ana-morph
 import FPNote from '@/components/fp/FPNote.vue'
+import { ClipboardList } from 'lucide-vue-next'
+import { PV } from '@/components/ana/anaSentence'
 import { PV_COLORS } from './pvAnaColors'
 import type { PvLedgerScatterProps } from './pvAnaV4.logic'
 
@@ -75,7 +78,12 @@ const note = computed(() => {
 </script>
 
 <template>
-  <div ref="el" class="pls" :class="{ 'pls-narrow': narrow }">
+  <div v-if="data.empty" class="pls-empty">
+    <ClipboardList :size="14" class="pls-empty-i" />
+    <span>{{ data.empty }}</span>
+    <button type="button" class="pls-link pls-empty-link" @click="emit('record')">{{ PV.ledgerLink }}</button>
+  </div>
+  <div v-else ref="el" class="pls" :class="{ 'pls-narrow': narrow }">
     <div class="pls-fig">
       <svg :width="SQ" :height="SQ + 34" :viewBox="`0 0 ${SQ} ${SQ + 34}`" class="pls-svg" role="img" aria-label="台账装机 vs 板数 × 标称">
         <template v-for="v in ticks" :key="v">
@@ -113,7 +121,7 @@ const note = computed(() => {
         <svg width="22" height="14" viewBox="0 0 22 14"><circle cx="11" cy="7" r="5" :fill="PV_COLORS.FOCUS" fill-opacity=".22" :stroke="PV_COLORS.FOCUS" stroke-opacity=".35" /></svg>
         <span><b>一个点 = 一栋</b>：横轴是现场板子算出来的，纵轴是台账写的，两轴同一把刻度，单位 kWp。</span>
       </div>
-      <button type="button" class="pls-link" @click="emit('record')">去楼栋档案录入板数与单块标称功率 →</button>
+      <button type="button" class="pls-link" @click="emit('record')">{{ PV.ledgerRecord }}</button>
     </div>
   </div>
 </template>
@@ -139,4 +147,7 @@ const note = computed(() => {
 .pls-leg b { font-weight: 600; color: var(--text-primary); }
 .pls-link { align-self: flex-start; padding: 0; border: 0; background: none; font: inherit; font-size: var(--fs-label); color: var(--text-link); cursor: pointer; }
 .pls-link:hover { color: var(--brand-deep); }
+.pls-empty { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: var(--fs-label); color: var(--text-secondary); }
+.pls-empty-i { flex: 0 0 auto; color: var(--text-muted); }
+.pls-empty-link { align-self: auto; font-size: var(--fs-micro); }
 </style>

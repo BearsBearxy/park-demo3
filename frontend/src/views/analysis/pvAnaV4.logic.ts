@@ -8,10 +8,16 @@
 // 屏上文案只写测量,不写定性;不写统计名词。
 
 import {
-  buildSnapshot, median, robustSigma,
+  BASE_MIN_N, buildSnapshot, median, robustSigma,
   type AnaSnapshot, type BoardRow, type Gran, type LabResult, type ReadingRow,
   type SnapshotInput, type StationDetail, type TickState,
 } from './pvMeterAna.logic'
+import {
+  PV, PVH, PVK, monthLabel, num, yuan, vsLabel, pvBaseNote, pvDashNew, pvDashGap, pvDashLy, pvDashPast, pvDashRef, pvDevFact, pvFoot,
+  pvLimitRef, pvAnchorLine, pvPerKwRead, pvShortRef, type PvDelta, type PvSaid, type Said,
+  pvYearCover, pvAnchorRefs, pvAnchorBadge, pvDenomRef, pvTrailCapRef, pvConsGrowth, pvSampleRef, pvLossRef,
+  pvConsYear, pvConsMark, pvRevRead, pvRevRefs, pvRevShortRef, nB,
+} from '@/components/ana/anaSentence'
 
 // ── 共用小件 ─────────────────────────────────────────────────────────────
 
@@ -57,7 +63,7 @@ export function unreadableWhy(b: BoardRow, snap: AnaSnapshot): string | null {
   const due = b.seenN + missingN(b, snap.ticks)
   if (b.cadence === 'monthly') return '只有月抄记录，逐日比不了'
   if (b.seenN === 0) return snap.gran === 'month' ? '本月一天都没抄' : '本年没有抄表记录'
-  if (b.center == null) return b.baseNote
+  if (b.center == null) return PV.noBase
   if (b.seenN < due * snap.crit.coverMonth) return `已抄 ${b.seenN}/${due} ${unit}，覆盖不到 ${pct0(snap.crit.coverMonth)}`
   const days = shortDays(b, snap)
   if (days != null) return `在网 ${days} 天，不足 ${snap.crit.minOnlineDays} 天`
@@ -75,6 +81,11 @@ export function shortDays(b: BoardRow, snap: AnaSnapshot): number | null {
   const parkFirst = snap.board.reduce<string | null>((m, x) => (x.firstDate != null && (m == null || x.firstDate < m) ? x.firstDate : m), null)
   const days = snap.stations.find(s => s.id === b.id)?.days ?? 0
   return b.firstDate != null && parkFirst != null && b.firstDate > parkFirst && days < snap.crit.minOnlineDays ? days : null
+}
+/** 整年卡的卡头覆盖:这一年读数的首末月(满 1–12 月写「2025年全年」,不满写「1–6月」)—— 不看读数就写「全年」,导入半年数据时卡头和工具条对不上 */
+export function coverOf(snap: AnaSnapshot): string {
+  const fs = snap.board.flatMap(b => (b.firstDate ? [b.firstDate] : [])).sort()
+  return pvYearCover(snap.year, fs.length ? Number(fs[0].slice(5, 7)) : 1, snap.dataThrough ? Number(snap.dataThrough.slice(5, 7)) : 12)
 }
 const shortMap = (snap: AnaSnapshot) =>
   new Map(snap.board.flatMap(b => { const d = shortDays(b, snap); return d == null ? [] : [[b.id, d] as const] }))
@@ -101,6 +112,10 @@ export interface ChipItem {
   selected: boolean
   /** 未投产不可点 */
   clickable: boolean
+  /** 读不出是因为历史不够(画不出平时范围 / 在网不足 minOnlineDays),徽标写「历史不够」;别的读不出写「缺抄」 */
+  history: boolean
+  /** 读不出是因为只有月抄记录(一月一条,不是缺抄):徽标写「只有月抄」 */
+  monthly?: boolean
 }
 export interface ChipGroups {
   /** 常显 = 出范围(有连续段)∪ 读不出 ∪ 选中。有连续段在前 → 出范围天数降序 → 读不出其后;同键按楼栋固定顺序 */
@@ -127,6 +142,8 @@ export function chipGroups(snap: AnaSnapshot, selId: number | null): ChipGroups 
       dir: kind === 'hit' ? outDir(b) : null,
       selected: b.id === selId,
       clickable: kind !== 'unborn',
+      history: kind === 'unreadable' && historyShort(b, snap),
+      monthly: kind === 'unreadable' && b.cadence === 'monthly',
     }
   })
   const byKey = (a: ChipItem, b: ChipItem) => Number(b.hasRun) - Number(a.hasRun) || b.outDays - a.outDays
@@ -142,35 +159,55 @@ export function chipGroups(snap: AnaSnapshot, selId: number | null): ChipGroups 
   return { shown, folded, unit: unitOf(snap.gran) }
 }
 
-/** B1 大图图头的三段式事实句:出范围几天(低/高)· 连续段 · 缺抄几天。读不出的栋只写原因,不出判据结论(§07) */
+/** B1 大图图头的事实句(2026-10-06 改稿):零散偏离和连着偏离分开说,屏顶 KPI 只数连着的。
+ *  和图例同排,放不下长句 —— 哪几天连着、缺抄几天由图自己画(段底色 / 底部刻度)。
+ *  读不出的栋只写原因,不出判据结论(§07) */
 export function dayFact(row: BoardRow, snap: AnaSnapshot): string {
   const why = unreadableWhy(row, snap)
-  if (why) return `读不出 · ${why}`
-  if (row.lo == null) return row.baseNote
-  const unit = unitOf(snap.gran)
+  if (why) return why
+  if (row.lo == null) return PV.noBase
   if (row.seenN === 0) return `这一段还没有抄表`
-  const suf = snap.gran === 'month' ? '日' : '月'
-  const lab = (i: number) => snap.tickLabels[i].replace('月', '')
   const below = row.out.filter(v => v === -1).length
   const above = row.out.filter(v => v === 1).length
-  const parts = [row.outN
-    ? `${row.outN} ${unit}出范围（低 ${below} 高 ${above}）`
-    : `${row.seenN} ${unit}都在范围内`]
-  // 段末端正好是数据截止日 = 仍在持续,不写闭区间(§03.8)
-  const runs = row.runs.map(r => {
-    const dir = r.dir < 0 ? '低于' : '高于'
-    return r.live ? `${lab(r.from)} ${suf}起${dir}（仍在持续）` : `${lab(r.from)}–${lab(r.to)} ${suf}${dir}`
-  })
-  if (runs.length) parts.push(runs.join('、'))
-  const miss = missingN(row, snap.ticks)
-  if (miss) parts.push(`缺抄 ${miss} ${unit}`)
-  return parts.join(' · ')
+  return pvDevFact(row.outN, unitOf(snap.gran), below, above, row.seenN, row.runs.length)
+}
+
+/** 读不出是因为历史不够:画不出平时范围,或在网不足 minOnlineDays。别的读不出(覆盖不够、月抄、一天没抄)不算 */
+export function historyShort(b: BoardRow, snap: AnaSnapshot): boolean {
+  return isUnreadable(b, snap) && b.cadence !== 'monthly' && b.seenN > 0 && (b.center == null || shortDays(b, snap) != null)
+}
+
+/** 主卡大图下那句(thin):历史不够的楼哪天才有第一条读数、还差多少。两种拦法两种写法:
+ *  年档画不出范围 = 有读数的月不够 BASE_MIN_N.year(「只有 1 个月读数，满 6 个月才判」);
+ *  其余(月档画不出范围、或在网不足 minOnlineDays)= 按在网天数(「读数从12月1日起，还差 59 天满 90 天」)。
+ *  ponytail: 只说第一栋那一组(同一种拦法、首条读数同一天 / 同样几个月);几组不同时其余组不写 —— 这一句只有一行的地方 */
+export function shortRefOf(snap: AnaSnapshot): PvSaid | null {
+  const days = (b: BoardRow) => snap.stations.find(s => s.id === b.id)?.days ?? 0
+  const min = snap.crit.minOnlineDays
+  const byMonths = (b: BoardRow) => snap.gran === 'year' && b.center == null
+  // 按天说的那种,天数已满线却仍画不出范围(月档 1 月:年内没有段外的历史)说「还差」不成立,不出
+  const xs = snap.board.filter(b => b.bornBySeg && historyShort(b, snap) && (byMonths(b) || days(b) < min))
+  if (!xs.length) return null
+  const f = xs[0]
+  if (byMonths(f)) {
+    const g = xs.filter(b => byMonths(b) && b.seenN === f.seenN)
+    return pvShortRef({ names: g.map(b => b.name), months: f.seenN, needMonths: BASE_MIN_N.year })
+  }
+  const g = xs.filter(b => !byMonths(b) && b.firstDate === f.firstDate && days(b) === days(f))
+  return pvShortRef({ names: g.map(b => b.name), first: f.firstDate!, days: days(f), minDays: min })
+}
+
+/** 默认选中(2026-10-06 改稿):本段偏离天数最多、且判得了的那栋;有连着偏离的优先。
+ *  一栋都判不了 → 芯片顺序第一枚能点的 */
+export function defaultPick(snap: AnaSnapshot): number | null {
+  const g = chipGroups(snap, null)
+  const all = [...g.shown, ...g.folded]
+  const judged = all.filter(c => c.kind === 'hit' || c.kind === 'plain')
+    .sort((a, b) => Number(b.hasRun) - Number(a.hasRun) || b.outDays - a.outDays)
+  return judged[0]?.id ?? all.find(c => c.clickable)?.id ?? null
 }
 
 // ── B0 KPI 行(§3.1;§1 #10 #11)───────────────────────────────────────────
-
-/** 与 AnaKpiTile 的 props 同形 */
-export interface KpiTile { label: string; value: string; note: string; noteTone?: 'warn' }
 
 function kpiCounts(snap: AnaSnapshot) {
   const born = snap.board.filter(b => b.bornBySeg)
@@ -187,30 +224,251 @@ function kpiCounts(snap: AnaSnapshot) {
   }
 }
 
-export function kpiTiles(snap: AnaSnapshot): KpiTile[] {
+// ── v2 首屏(2026-10-06 改稿,画板 pv-v2):KPI 五瓦 + 「各栋每千瓦日均发电」新卡 ─────────────
+// 比较按数据齐全时的样子做成真功能(用户 10-06):上一年读数照取,有数就算,没数写「—」。
+// 每千瓦日均 = Σ发电 ÷ Σ(台账装机 × 抄表天数),没录台账装机的栋不进分子分母。
+// 月抄的楼一条读数是一整月的量:天数按那个月的日历天数算(按条数算会放大约 30 倍)。
+
+const pad2 = (n: number) => String(n).padStart(2, '0')
+const r1 = (v: number) => Math.round(v * 10) / 10
+/** 'YYYY-MM…' 那个月有几天 */
+const daysInMonth = (d: string) => new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7), 0)).getUTCDate()
+
+/** 上网单价:按读数所在的月取('YYYY-MM' → ¥/kWh;没读到 = null)。给数字 = 每个月都是这个价 */
+export type PriceOf = (ym: string) => number | null
+export type PriceIn = number | PriceOf
+const priceFn = (p: PriceIn): PriceOf => (typeof p === 'number' ? () => p : p)
+
+/** 一条读数算几天:日抄 1 天,月抄 = 那个月的日历天数 */
+function daysFn(snap: AnaSnapshot): (r: ReadingRow) => number {
+  const monthly = new Set(snap.stations.filter(s => s.cadence === 'monthly').map(s => s.id))
+  return r => (monthly.has(r.stationId) ? daysInMonth(r.date) : 1)
+}
+
+/** 一段(月 'YYYY-MM' / 年 'YYYY')的全园合计与逐栋发电、抄表天数。这段一条读数都没有 = null。
+ *  keep 给了只取它放行的日子(本段没读满时,上一期 / 去年同期截到同一天);revOk = 这段每个月的上网单价都读到了 */
+interface SegSum { gen: number; self: number; rev: number; revOk: boolean; last: string; by: Map<number, { gen: number; days: number }> }
+function segSum(rows: ReadingRow[] | undefined, pre: string, price: PriceOf, days: (r: ReadingRow) => number, keep?: (d: string) => boolean): SegSum | null {
+  if (!rows) return null
+  const o: SegSum = { gen: 0, self: 0, rev: 0, revOk: true, last: '', by: new Map() }
+  let n = 0
+  for (const r of rows) {
+    if (!r.date.startsWith(pre) || (keep && !keep(r.date))) continue
+    n++
+    o.gen += r.gen; o.self += r.selfUse
+    const p = price(r.date.slice(0, 7))
+    if (p == null) o.revOk = false
+    o.rev += r.revenue + r.gridFeed * (p ?? 0)   // 同 revenueBars:自用按录入时的单价,上网按那个月的系统上网单价
+    const a = o.by.get(r.stationId) ?? { gen: 0, days: 0 }
+    a.gen += r.gen; a.days += days(r)
+    o.by.set(r.stationId, a)
+    if (r.date > o.last) o.last = r.date
+  }
+  return n ? o : null
+}
+
+/** 每千瓦日均。ids 给了只算这批栋(比上期时只拿两期都有读数的那批:新并网的楼掺进来会改平均) */
+function perDayOf(seg: SegSum, cap: Map<number, number>, ids?: number[]): number | null {
+  let g = 0, d = 0
+  for (const [id, a] of seg.by) {
+    const c = cap.get(id)
+    if (!c || !a.days || (ids && !ids.includes(id))) continue
+    g += a.gen; d += c * a.days
+  }
+  return d ? g / d : null
+}
+const capOf = (snap: AnaSnapshot) => new Map(snap.stations.filter(s => s.capKwp != null && s.capKwp > 0).map(s => [s.id, s.capKwp!]))
+/** 两段都有读数(且有台账装机)的栋 */
+const bothIds = (a: SegSum, b: SegSum, cap: Map<number, number>) => [...a.by.keys()].filter(id => cap.has(id) && b.by.has(id))
+
+/** 这一年读数到哪天了:没到年末 = 只拿上一年同一个月日之前的读数比(年初到今天 ≠ 去年整年) */
+function yearKeep(rows: ReadingRow[], y: number): ((d: string) => boolean) | undefined {
+  let last = ''
+  for (const r of rows) if (r.date.startsWith(String(y)) && r.date > last) last = r.date
+  const md = last.slice(5)
+  return last && last < `${y}-12-31` ? (d: string) => d.slice(5) <= md : undefined
+}
+
+/** 每栋每月的发电与天数('MM' → …),比去年用 */
+type MonthMap = Map<string, { gen: number; days: number }>
+function monthAgg(rows: ReadingRow[] | undefined, yr: number, days: (r: ReadingRow) => number, keep?: (d: string) => boolean): Map<number, MonthMap> {
+  const m = new Map<number, MonthMap>()
+  for (const r of rows ?? []) {
+    if (!r.date.startsWith(String(yr)) || (keep && !keep(r.date))) continue
+    let s = m.get(r.stationId)
+    if (!s) { s = new Map(); m.set(r.stationId, s) }
+    const k = r.date.slice(5, 7), a = s.get(k) ?? { gen: 0, days: 0 }
+    a.gen += r.gen; a.days += days(r)
+    s.set(k, a)
+  }
+  return m
+}
+/** 比上一年(一栋):只拿两年都有读数的月,各自摊到每天再比 —— 年中才并网的楼拿 6–12 月去比去年整年,冬天会把它拉低。
+ *  比不了 = 「—」。新卡按年那列和「每千瓦日均和合格线的差」那列走同一个函数,同一栋两处同一个数 */
+function sharedPct(a: MonthMap | undefined, b: MonthMap | undefined): string {
+  if (!a || !b) return PV.dash
+  const ks = [...a.keys()].filter(k => b.has(k))
+  const pd = (m: MonthMap) => { let g = 0, d = 0; for (const k of ks) { const x = m.get(k)!; g += x.gen; d += x.days } return d ? g / d : null }
+  const x = pd(a), z = pd(b)
+  return x != null && z ? PVK.pct(x, z).val : PV.dash
+}
+
+/** 本段、上一期(按月才有;1 月取上一年 12 月)、去年同期三段。
+ *  本段还没读满(最后一条读数早于段末)时,上一期和去年同期截到同一个日号(按月)/ 同一个月日(按年)——
+ *  不截的话月初看当月就是拿 10 天比 30 天 */
+function segsOf(snap: AnaSnapshot, rows: ReadingRow[], prevRows: ReadingRow[] | undefined, gridPrice: PriceIn) {
+  const y = snap.year
+  const m = snap.gran === 'month' && snap.ym ? Number(snap.ym.slice(5, 7)) : null
+  const pm = m == null ? null : m > 1 ? m - 1 : 12
+  const price = priceFn(gridPrice), days = daysFn(snap)
+  const cur = segSum(rows, m == null ? String(y) : `${y}-${pad2(m)}`, price, days)
+  const end = m == null ? `${y}-12-31` : `${y}-${pad2(m)}-${pad2(daysInMonth(`${y}-${pad2(m)}`))}`
+  const cut = cur && cur.last < end ? cur.last : null
+  const keep = !cut ? undefined : m == null ? (d: string) => d.slice(5) <= cut.slice(5) : (d: string) => d.slice(8) <= cut.slice(8)
+  return {
+    y, m, pm, price, days,
+    /** 上一期怎么叫:1 月比的是上一年 12 月,写「去年12月」(和消纳卡读数句同一个叫法) */
+    pmLabel: m == null ? null : m > 1 ? monthLabel(pm!) : '去年12月',
+    cur,
+    prev: m == null ? null : m > 1 ? segSum(rows, `${y}-${pad2(pm!)}`, price, days, keep) : segSum(prevRows, `${y - 1}-12`, price, days, keep),
+    ly: segSum(prevRows, m == null ? String(y - 1) : `${y - 1}-${pad2(m)}`, price, days, keep),
+    keep,
+  }
+}
+
+export interface PvKpi {
+  label: string
+  value: string
+  /** 副行两行:比上期(按年没有)+ 比去年同期;val null = 没数,写「—」 */
+  rows?: PvDelta[]
+  note?: string
+}
+
+export function pvKpis(snap: AnaSnapshot, rows: ReadingRow[], prevRows: ReadingRow[] | undefined, gridPrice: PriceIn): PvKpi[] {
+  const { y, m, pmLabel, cur, prev, ly } = segsOf(snap, rows, prevRows, gridPrice)
+  const cap = capOf(snap)
+  const keyP = pmLabel == null ? '' : vsLabel(pmLabel), keyL = m == null ? PVK.vsY(y - 1) : PVK.vsLY(m)
+  type Diff = Omit<PvDelta, 'key'> | null
+  /** 一行副行:两段都有数才算 */
+  const vs = (p: SegSum | null, key: string, f: (c: SegSum, p: SegSum) => Diff): PvDelta =>
+    ({ ...((cur && p ? f(cur, p) : null) ?? { val: null }), key })
+  const two = (f: (c: SegSum, p: SegSum) => Diff, keyOfP = keyP) =>
+    (m == null ? [] : [vs(prev, keyOfP, f)]).concat([vs(ly, keyL, f)])
+  const selfPct = (x: SegSum) => (x.gen > 0 ? r1((x.self / x.gen) * 100) : null)
+  const pdPair = (c: SegSum, p: SegSum): Diff => {
+    const ids = bothIds(c, p, cap), a = perDayOf(c, cap, ids), b = perDayOf(p, cap, ids)
+    return a != null && b ? PVK.pct(a, b) : null
+  }
   const k = kpiCounts(snap)
-  const c = snap.crit
-  const list = (xs: string[]) => (xs.length ? xs.join(' · ') : '—')
-  const metered = snap.stations.filter(s => s.metered).length
-  const noPanel = snap.quality.noPanel.length
-  const due = k.seen + k.missing
-  const warn = (on: boolean) => (on ? { noteTone: 'warn' as const } : {})
+  const over = cur ? [...cur.by].filter(([id, a]) => { const c = cap.get(id); return !!c && a.days > 0 && a.gen / c / a.days > PV.limitDay }).length : 0
+  const hist = k.unreadable.filter(b => historyShort(b, snap)).length
+  const pd = cur ? perDayOf(cur, cap) : null
+  const sp = cur ? selfPct(cur) : null
   return [
-    { label: '本段出范围栋数', value: `${k.out.length} 栋`, note: list(k.out.map(b => b.name)), ...warn(k.out.length > 0) },
+    { label: PV.tile.gen, value: cur ? `${num(cur.gen / 1e4)}万kWh` : PV.dash, rows: two((c, p) => (p.gen > 0 ? PVK.pct(c.gen, p.gen) : null)) },
     {
-      label: '读不出', value: `${k.unreadable.length} 栋`,
-      note: k.unreadable.length
-        ? list(k.unreadable.map(b => b.name))
-        : `${k.born.length} 栋覆盖都 ≥ ${pct0(c.coverMonth)}`,
+      label: PV.tile.perKw, value: pd == null ? PV.dash : `${pd.toFixed(1)} kWh`,
+      // 比上期那行写明比的是哪一批(只拿两期都有读数的栋);比去年同期那行同样只拿两期都有的,key 不另说
+      rows: two(pdPair, cur && prev && pmLabel != null ? PVK.vsSame(bothIds(cur, prev, cap).length, pmLabel) : keyP),
     },
-    { label: '未装表', value: `${snap.quality.noMeter.length} 栋`, note: list(snap.quality.noMeter) },
-    { label: '已录板数', value: `${metered - noPanel}/${metered}`, note: noPanel ? `${noPanel} 栋未录` : '—' },
-    { label: '缺抄条数', value: `${k.missing} 条`, note: list(k.miss.map(x => `${x.name} ${x.n}`)), ...warn(k.missing > 0) },
     {
-      label: '数据到', value: snap.dataThrough ? snap.dataThrough.slice(5) : '—',
-      note: `已过去 ${snap.elapsedN}/${snap.ticks.length} ${unitOf(snap.gran)} · 已抄 ${k.seen}/${due} · ${due ? `${Math.round((k.seen / due) * 100)}%` : '—'}`,
+      label: PV.tile.dev(snap.crit.bandRun, unitOf(snap.gran)), value: `${k.out.length} 栋`,
+      note: over ? PVK.over(over) : PVK.dev(k.born.length - k.unreadable.length, hist),
+    },
+    { label: PV.tile.self, value: sp == null ? PV.dash : `${sp.toFixed(1)}%`, rows: two((c, p) => { const a = selfPct(c), b = selfPct(p); return a != null && b != null ? PVK.pt(a, b) : null }) },
+    // 「−4.8万」= 屏上一位小数相减,不拿没舍入的差(两张瓦的数相减对得上)。有月份的上网单价没读到 = 算不出,写「—」
+    {
+      label: PV.tile.rev, value: cur?.revOk ? yuan(cur.rev / 1e4) : PV.dash,
+      rows: two((c, p) => (c.revOk && p.revOk ? PVK.wan(r1(c.rev / 1e4), r1(p.rev / 1e4)) : null)),
     },
   ]
+}
+
+/** 主卡卡头「判了 N 栋楼」:本段已投产、读得出的栋 */
+export function judgedN(snap: AnaSnapshot): number {
+  const k = kpiCounts(snap)
+  return k.born.length - k.unreadable.length
+}
+
+export interface PerKwRow {
+  id: number; name: string; phase: number
+  /** null = 这段没读数(还没并网)或没录台账装机 */
+  perDay: number | null
+  /** 这段有读数的天数 */
+  days: number
+  /** 本段结束时并网了没有(首条读数不晚于段末)。没读数的行:并网了写「—」(这段没抄),没并网写「还没并网」 */
+  born: boolean
+  /** 右边几列的字(按月:比上月、比去年同月;按年:在网、比去年);没数写「—」 */
+  cols: string[]
+}
+export interface PerKwCard {
+  /** 按每千瓦日均降序(一位小数相同按楼栋顺序),这段没读数的栋垫底、占住一行(切期间这一排不缩) */
+  rows: PerKwRow[]
+  heads: string[]
+  hint: string
+  /** 合格线摊到每天(按年才画);按月 null */
+  anchorDay: number | null
+  anchorLabel: string | null
+  read: PvSaid | Said | null
+  refs: PvSaid[]
+}
+
+export function perKwCard(snap: AnaSnapshot, rows: ReadingRow[], prevRows: ReadingRow[] | undefined, gridPrice: PriceIn): PerKwCard {
+  const { y, m, pmLabel, cur, prev, ly, days: daysOfRow, keep } = segsOf(snap, rows, prevRows, gridPrice)
+  const cap = capOf(snap)
+  const pdOne = (seg: SegSum | null, id: number) => {
+    const a = seg?.by.get(id), c = cap.get(id)
+    return a && c && a.days ? a.gen / c / a.days : null
+  }
+  const pct = (a: number | null, b: number | null) => (a != null && b ? PVK.pct(a, b).val : PV.dash)
+  const yDays = daysInYear(y)
+  const order = new Map(snap.stations.map((s, i) => [s.id, i]))
+  const born = new Map(snap.board.map(b => [b.id, b.bornBySeg]))
+  // 按年那列比去年:两年都有读数的月(同「每千瓦日均和合格线的差」);这一年没到年末时去年也截到同一个月日
+  const curM = m == null ? monthAgg(rows, y, daysOfRow) : null
+  const lyM = m == null ? monthAgg(prevRows, y - 1, daysOfRow, keep) : null
+  const out: PerKwRow[] = snap.stations.filter(s => s.metered).map(s => {
+    const pd = pdOne(cur, s.id), days = cur?.by.get(s.id)?.days ?? 0
+    const lyCol = m == null ? (pd == null ? PV.dash : sharedPct(curM!.get(s.id), lyM!.get(s.id))) : pct(pd, pdOne(ly, s.id))
+    return {
+      id: s.id, name: s.name, phase: s.phase, perDay: pd, days, born: born.get(s.id) ?? false,
+      cols: m == null ? [days && days < yDays ? `${days} 天` : '', lyCol] : [pct(pd, pdOne(prev, s.id)), lyCol],
+    }
+  }).sort((a, b) => Number(a.perDay == null) - Number(b.perDay == null)
+    || (a.perDay != null && b.perDay != null ? r1(b.perDay) - r1(a.perDay) : 0)
+    || order.get(a.id)! - order.get(b.id)!)
+  const have = out.filter((r): r is PerKwRow & { perDay: number } => r.perDay != null)
+  // 「—」是什么,一张卡说一次。上一期没有这栋的读数分两种:第一条读数落在这一段里的(才并网),
+  // 早有读数、只是上一期整段没抄的(只写测量,不说原因)。上一年没取到(prevRows 为 undefined)不说「还没有」—— 那是没读到,不是没有
+  const first = new Map(snap.board.map(b => [b.id, b.firstDate]))
+  const segStart = m == null ? '' : `${y}-${pad2(m)}-01`
+  const fresh: string[] = [], gap: string[] = []
+  if (m != null && pmLabel != null && prev) {
+    for (const r of have) {
+      if (prev.by.has(r.id)) continue
+      const f = first.get(r.id)
+      const isNew = f != null && f >= segStart && (m > 1 || !prevRows?.some(x => x.stationId === r.id))
+      ;(isNew ? fresh : gap).push(r.name)
+    }
+  }
+  const lastYearAny = !!prevRows?.some(r => r.date.startsWith(String(y - 1)))
+  const dash = [
+    ...(fresh.length ? [pvDashNew(m!, pmLabel!)] : []),
+    ...(gap.length ? [pvDashGap(gap.length <= 2 ? gap.join('、') : nB(gap.length), pmLabel!)] : []),
+    ...(prevRows && !lastYearAny ? [pvDashPast(y - 1)]
+      : prevRows && !ly ? [pvDashLy(m == null ? `${y - 1}年同期` : `去年${monthLabel(m)}`)] : []),
+  ]
+  const anchor = +(snap.crit.anchorHours * snap.crit.yieldRatio).toFixed(1)
+  const anchorDay = m == null ? anchor / yDays : null
+  return {
+    rows: out,
+    heads: m == null || pmLabel == null ? [PV.online, PVK.vsY(y - 1)] : [vsLabel(pmLabel), PVK.vsLY(m)],
+    hint: m == null || pmLabel == null ? PVH.perKwY(out.length, y - 1) : PVH.perKwM(out.length, pmLabel),
+    anchorDay,
+    anchorLabel: anchorDay == null ? null : pvAnchorLine(anchor, anchorDay),
+    read: pvPerKwRead(have),
+    refs: [dash.length ? pvDashRef(dash) : null, pvLimitRef(have.filter(r => r.perDay > PV.limitDay).length)].filter((x): x is PvSaid => x != null),
+  }
 }
 
 /** 两条迷你线的序列:1 月 … 当前月,逐月各跑一次 buildSnapshot(月档) */
@@ -238,8 +496,8 @@ export function timeKpiSparks(input: SnapshotInput, now: () => number = () => pe
 // ── B2 判据脚(§3.3;§1 #8 #9)───────────────────────────────────────────
 
 export interface CritFoot {
-  items: { key: 'band' | 'run' | 'cover' | 'ledger' | 'yield'; text: string }[]
-  /** 选中栋的范围是拿哪一段估的(§1 #9);没选中 = null;画不出范围时是原因句 */
+  items: { key: 'band' | 'run' | 'cover'; text: string }[]
+  /** 选中栋的范围是拿哪一段估的(§1 #9);没选中 / 画不出范围 = null(画不出的原因大图图头已经写了) */
   baseNote: string | null
   /** 判据脚末尾那句(§1 #8) */
   tail: string
@@ -249,29 +507,25 @@ export function critFoot(snap: AnaSnapshot, selId: number | null): CritFoot {
   const c = snap.crit
   const row = snap.board.find(b => b.id === selId) ?? null
   const base = row?.base
+  // 2026-10-06 改稿:三条判据(台账差、年等效挪去「按装机比」那档);窗口句写首末 + 条数,
+  // 放宽里只说读者看得懂的两档(含这栋刚并网那段 / 含别的楼刚并网的月份)
   return {
     items: [
-      { key: 'band', text: `范围 = 这栋自己的水平 ± ${c.bandSigma} 倍稳健波动` },
-      { key: 'run', text: `连续 ≥ ${c.bandRun} ${snap.gran === 'year' ? '个月' : '天'}出范围计一段` },
-      { key: 'cover', text: `抄表覆盖 ≥ ${pct0(c.coverMonth)} 才判` },
-      { key: 'ledger', text: `台账差 ±${pct0(c.ledger)}` },
-      { key: 'yield', text: `年等效 ≥ ${+(c.anchorHours * c.yieldRatio).toFixed(1)} h` },
+      { key: 'band', text: pvFoot.band(c.bandSigma) },
+      { key: 'run', text: pvFoot.run(c.bandRun, unitOf(snap.gran)) },
+      { key: 'cover', text: pvFoot.cover(Math.round(c.coverMonth * 100)) },
     ],
-    // 窗口不一定连续(月档排掉了当段),只写首末会撒谎,所以带上条数
-    // 为凑够样本放宽了哪几条也要写出来 —— 静默放宽等于屏上说「同批在网」而实际没限(§03.7)
-    baseNote: !row ? null
-      : base ? `范围按 ${base.from.slice(5)}~${base.to} 算，共 ${base.n} ${base.unit}${base.relaxed.length ? `，放宽 ${base.relaxed.length} 档：${base.relaxed.join('、')}` : ''}`
-        : row.baseNote,
-    tail: '未列出 ≠ 没问题',
+    baseNote: row && base ? pvBaseNote(base, row.firstDate, `${snap.year}-01-01`) : null,
+    tail: PV.tail,
   }
 }
 
-// ── B3 等效小时轨迹(§3.5;§1 #13)────────────────────────────────────────
+// ── B3 每千瓦发电走势(§3.5;2026-10-06 改稿:卡名、封 0、超 24 压顶、参照只留分母那句)──────────
 
 export interface YieldBand {
   gran: Gran
   labels: string[]
-  /** 选中栋逐刻度等效小时;漏抄 / 未到 / 没选中 = null */
+  /** 选中栋逐刻度每千瓦发电 kWh;漏抄 / 未到 / 没选中 = null */
   sel: (number | null)[]
   /** pre = 这栋那时还没投产(不写「没抄表」) */
   selState: (TickState | 'pre')[]
@@ -282,29 +536,10 @@ export interface YieldBand {
   hi: (number | null)[]
   /** 从这个下标起是还没到的刻度;整段都已过去 = null */
   futureFrom: number | null
-  /** 数据截止日(最后一条抄表)落在第几个刻度;截止日在段末或段外 = null */
-  throughIdx: number | null
-  onlineN: number
-  unbornN: number
-  denomNote: string
-}
-
-/** 等效小时分母的口径句(§07:未录板数退回台账装机并写明) */
-export function denomNote(snap: AnaSnapshot): string {
-  const metered = snap.stations.filter(s => s.metered).length
-  const n = snap.quality.noPanel.length
-  if (n === 0) return '分母 = 板数 × 单块标称'
-  if (n === metered) return `分母 = 台账装机（${n} 栋未录板数）`
-  return `分母 = 板数 × 单块标称；${n} 栋未录板数，用台账装机`
-}
-
-/** 「数据到」写哪个刻度:最后一条抄表所在的刻度。不拿 elapsedN —— 那是按今天算的,今天晚于最后抄表时会把今天写成「数据到」 */
-function throughIdx(snap: AnaSnapshot): number | null {
-  const dt = snap.dataThrough
-  if (!dt) return null
-  let k = -1
-  snap.ticks.forEach((t, i) => { if (t <= dt.slice(0, t.length)) k = i })
-  return k >= 0 && k < snap.ticks.length - 1 ? k : null
+  /** 选中栋超过它的点压到它画、碰到的线段画虚线。按月 = 每千瓦一天 24 kWh;按年逐刻度 = 24 × 当月天数(一个点是一个月的合计);null = 不压 */
+  cap: number | number[] | null
+  hint: string
+  refs: PvSaid[]
 }
 
 const denomOf = (snap: AnaSnapshot) => new Map(snap.stations.filter(s => s.metered)
@@ -332,102 +567,101 @@ export function yieldBand(snap: AnaSnapshot, rows: ReadingRow[], selId: number |
     med.push(median(col)); lo.push(q(0.25)); hi.push(q(0.75))
   })
   const row = snap.board.find(b => b.id === selId) ?? null
+  const sel = row ? (eh.get(row.id) ?? snap.ticks.map(() => null)).map((v, i) => (row.state[i] === 'seen' ? v : null)) : snap.ticks.map(() => null)
+  const cap = snap.gran === 'month' ? PV.limitDay : snap.ticks.map(t => PV.limitDay * daysInMonth(t))
+  const capAt = (i: number) => (typeof cap === 'number' ? cap : cap[i])
   return {
     gran: snap.gran,
     labels: snap.tickLabels,
-    sel: row ? (eh.get(row.id) ?? snap.ticks.map(() => null)).map((v, i) => (row.state[i] === 'seen' ? v : null)) : snap.ticks.map(() => null),
+    sel,
     selState: row ? row.state.map((s, i) => (s === 'missing' && preBorn(row, snap.ticks[i]) ? 'pre' : s)) : [],
     selName: row?.name ?? null,
     med, lo, hi,
     futureFrom: snap.elapsedN < snap.ticks.length ? snap.elapsedN : null,
-    throughIdx: throughIdx(snap),
-    onlineN: snap.board.filter(b => b.bornBySeg).length,
-    unbornN: snap.board.filter(b => !b.bornBySeg).length,
-    denomNote: denomNote(snap),
+    cap,
+    hint: row ? PVH.trail(row.name, snap.gran === 'month' ? '每天' : '每月') : '',
+    refs: [
+      pvDenomRef(snap.quality.noPanel.length, snap.stations.filter(s => s.metered).length),
+      sel.some((v, i) => v != null && v > capAt(i)) ? pvTrailCapRef(snap.gran === 'year') : null,
+    ].filter((x): x is PvSaid => x != null),
   }
 }
 
-// ── A2 年等效小时(§3.6;§1 #12 #19)──────────────────────────────────────
+// ── A2 每千瓦日均和合格线的差(§3.6;2026-10-06 改稿)──────────────────────────────
+// 原来比的是年等效小时(全年发电 ÷ 装机):二期 6 月才并网,一年只发了 7 个月,被排到一期后面。
+// 改成每栋按自己有读数的天数摊到每天,合格线一年 807.5 也摊到每天,再比差。
+// 只在按月出(用户 10-06「按推荐」):按年它和新卡「各栋每千瓦日均发电」是同一组数,合格线画进新卡。
+// 分母同新卡用台账装机 —— 两张卡同一栋同一年要对得上(新卡二期 4.6 = 合格线 2.21 + 这里的 +2.36)。
 
 export interface AnchorRow {
   id: number; name: string; phase: number
-  yieldHours: number
-  /** 比锚点多几小时(负 = 少) */
+  /** 全年每千瓦日均 kWh = Σ发电 ÷ (台账装机 × 有读数的天数) */
+  perDay: number
+  /** 有读数的天数(摊到每天的分母) */
+  days: number
+  /** 比合格线每天多几 kWh(负 = 少) */
   delta: number
-  /** (年等效 ÷ 锚点 − 1) × 100 */
+  /** (每千瓦日均 ÷ 合格线每天 − 1) × 100 */
   deltaPct: number
-  /** 比上一年多几小时,按两年都有抄表的月对齐(§07);当年没录满的那个月不参与;
-   *  上一年无抄表 / 没有共同月份 / 上一年数据没取到 = null */
-  prevDelta: number | null
-  /** 参与对齐的月数 */
-  prevMonths: number
+  /** 比上一年:只拿两年都有读数的月,各自摊到每天再比(涨跌 %)—— 二期今年 6–12 月拿去比去年整年,冬天会把它拉低;
+   *  上一年这栋没读数 / 没有共同的月 / 上一年没取到 = 「—」 */
+  prev: string
 }
 export interface AnchorBars {
-  /** 锚点 = anchorHours × yieldRatio */
-  anchor: number
-  /** 按年等效降序 */
+  /** 合格线摊到每天 = anchorHours × yieldRatio ÷ 当年天数 */
+  anchorDay: number
+  /** 按差降序(两位小数一样的按楼栋顺序) */
   rows: AnchorRow[]
-  /** 整年一条抄表都没有 */
+  /** 整年一条读数都没有:占一行写「还没并网」 */
   unborn: { id: number; name: string; phase: number }[]
-  /** 在网 < minOnlineDays,移出不画、不年化,图注计数 */
-  short: string[]
-  /** 没有装机分母 */
-  noDenom: string[]
-  /** prevDelta 为 null 的行数 */
-  noPrev: number
-  /** 上一年的抄表取回来了没有(还在请求 / 请求失败 = false)。false 时不许写成「去年无抄表」 */
-  prevLoaded: boolean
-  /** 等效小时分母口径(§07,与 B3 同一句) */
-  denomNote: string
+  hint: string
+  /** 上一年取到了、却一条分栋读数都没有 →「2024年没有分栋读数」;没取到不说(那是没读到,不是没有) */
+  badge: string | null
+  refs: PvSaid[]
 }
 
 export function anchorBars(snap: AnaSnapshot, rows: ReadingRow[], prevRows: ReadingRow[] | undefined): AnchorBars {
-  const c = snap.crit
-  const anchor = c.anchorHours * c.yieldRatio
-  const denom = denomOf(snap)
-  // 数据截止日不是月末 → 那个月今年没录满,拿它去减去年整月会把每栋都拉低半个月的量
-  const dt = snap.dataThrough
-  const partial = dt && Number(dt.slice(8, 10)) < new Date(Date.UTC(Number(dt.slice(0, 4)), Number(dt.slice(5, 7)), 0)).getUTCDate()
-    ? dt.slice(5, 7) : null
-  const byMonth = (rs: ReadingRow[]) => {
-    const m = new Map<number, Map<string, number>>()
-    for (const r of rs) {
-      if (!(r.gen > 0) || r.date.slice(5, 7) === partial) continue
-      let s = m.get(r.stationId)
-      if (!s) { s = new Map(); m.set(r.stationId, s) }
-      const k = r.date.slice(5, 7)
-      s.set(k, (s.get(k) ?? 0) + r.gen)
-    }
-    return m
+  const c = snap.crit, y = snap.year
+  const anchor = +(c.anchorHours * c.yieldRatio).toFixed(1)
+  const anchorDay = anchor / daysInYear(y)
+  const cap = capOf(snap)
+  const days = daysFn(snap)
+  const cur = monthAgg(rows, y, days), prev = monthAgg(prevRows, y - 1, days, yearKeep(rows, y))
+  /** 这几个月合起来摊到每天、每千瓦 */
+  const perDayOver = (ms: MonthMap, keys: string[], k: number) => {
+    let g = 0, d = 0
+    for (const key of keys) { const a = ms.get(key)!; g += a.gen; d += a.days }
+    return d ? g / k / d : null
   }
-  const cur = byMonth(rows)
-  const prev = byMonth(prevRows ?? [])
-  const firstOf = new Map(snap.board.map(b => [b.id, b.firstDate]))
-  const out: AnchorBars = {
-    anchor, rows: [], unborn: [], short: [], noDenom: [], noPrev: 0,
-    prevLoaded: prevRows !== undefined, denomNote: denomNote(snap),
-  }
+  const order = new Map(snap.stations.map((s, i) => [s.id, i]))
+  const out: AnchorRow[] = [], unborn: AnchorBars['unborn'] = [], short: { name: string; days: number }[] = []
   for (const s of snap.stations) {
     if (!s.metered) continue
-    if (firstOf.get(s.id) == null) { out.unborn.push({ id: s.id, name: s.name, phase: s.phase }); continue }
-    if (s.yieldHours == null) { out.noDenom.push(s.name); continue }
-    if (s.days < c.minOnlineDays) { out.short.push(s.name); continue }
-    const a = cur.get(s.id), p = prev.get(s.id), d = denom.get(s.id)!
-    const shared = a && p ? [...a.keys()].filter(k => p.has(k)) : []
-    const prevDelta = shared.length
-      ? shared.reduce((t, k) => t + a!.get(k)! - p!.get(k)!, 0) / d
-      : null
-    if (prevDelta == null) out.noPrev++
-    out.rows.push({
-      id: s.id, name: s.name, phase: s.phase,
-      yieldHours: s.yieldHours,
-      delta: s.yieldHours - anchor,
-      deltaPct: (s.yieldHours / anchor - 1) * 100,
-      prevDelta, prevMonths: shared.length,
+    const a = cur.get(s.id), k = cap.get(s.id)
+    if (!a) { unborn.push({ id: s.id, name: s.name, phase: s.phase }); continue }
+    // ponytail: 没录台账装机的楼没有「每千瓦」可言,不画也不另说(库里都录了);要说时在 refs 里加一句
+    if (!k) continue
+    if (s.days < c.minOnlineDays) { short.push({ name: s.name, days: s.days }); continue }
+    const keys = [...a.keys()]
+    const perDay = perDayOver(a, keys, k)!
+    out.push({
+      id: s.id, name: s.name, phase: s.phase, perDay,
+      days: [...a.values()].reduce((t, x) => t + x.days, 0),
+      delta: perDay - anchorDay,
+      deltaPct: (perDay / anchorDay - 1) * 100,
+      prev: sharedPct(a, prev.get(s.id)),
     })
   }
-  out.rows.sort((x, y) => y.yieldHours - x.yieldHours)
-  return out
+  out.sort((a, b) => Math.round(b.delta * 100) - Math.round(a.delta * 100) || order.get(a.id)! - order.get(b.id)!)
+  const ph = new Map<number, number[]>()
+  for (const r of out) ph.set(r.phase, [...(ph.get(r.phase) ?? []), r.days])
+  const phaseDays = [...ph].sort((a, b) => a[0] - b[0]).map(([p, ds]): [number, number, number] => [p, Math.min(...ds), Math.max(...ds)])
+  return {
+    anchorDay, rows: out, unborn,
+    hint: PVH.anchor(out.length, coverOf(snap)),
+    badge: prevRows !== undefined && !prevRows.some(r => r.date.startsWith(String(y - 1))) ? pvAnchorBadge(y - 1) : null,
+    refs: pvAnchorRefs({ anchor, anchorDay, phaseDays, short, minDays: c.minOnlineDays }),
+  }
 }
 
 // ── B6 台账装机 vs 板数 × 标称(§3.7;§1 #4)──────────────────────────────
@@ -441,16 +675,22 @@ export interface LedgerScatter {
   metered: number
   /** 带宽 = crit.ledger(±3% 那条) */
   tolerance: number
+  hint: string
+  /** 一栋都没录板数(2026-10-06 改稿):整张卡收成一行字 +「去录入 →」,不画空图;录了一栋以上照画散点 */
+  empty: string | null
 }
 
 export function ledgerScatter(snap: AnaSnapshot): LedgerScatter {
   const ms = snap.stations.filter(s => s.metered)
+  const points = ms.filter(s => s.theoKwp != null && s.capKwp != null && s.capKwp > 0 && s.ledgerDiff != null)
+    .map(s => ({ id: s.id, name: s.name, phase: s.phase, x: s.theoKwp!, y: s.capKwp!, diff: s.ledgerDiff! }))
   return {
-    points: ms.filter(s => s.theoKwp != null && s.capKwp != null && s.capKwp > 0 && s.ledgerDiff != null)
-      .map(s => ({ id: s.id, name: s.name, phase: s.phase, x: s.theoKwp!, y: s.capKwp!, diff: s.ledgerDiff! })),
+    points,
     unrecorded: snap.quality.noPanel.length,
     metered: ms.length,
     tolerance: snap.crit.ledger,
+    hint: PVH.ledger(ms.length),
+    empty: ms.length && !points.length && snap.quality.noPanel.length === ms.length ? PV.ledgerEmpty(ms.length) : null,
   }
 }
 
@@ -470,25 +710,72 @@ export interface ConsumptionTick {
 }
 export interface Consumption {
   gran: Gran; ticks: ConsumptionTick[]; futureFrom: number | null
-  /** 数据截止日所在刻度(图注「数据到」);截止日在段末或段外 = null */
-  throughIdx: number | null
+  hint: string
+  /** 按月:上网电量比上月(growth);按年:发电最高最低的月(extremes)。比不了 = null(行位留着) */
+  read: Said | null
+  refs: PvSaid[]
+  /** 按年:读数句点到的两个月,柱顶深色气泡(S-45);按月没有 */
+  marks: { i: number; text: string }[]
+  /** 按年:某一期第一条分栋读数落在哪个月,那根柱顶标「几期并网」(数据的第一个月不标;和气泡同月时让给气泡) */
+  joins: { i: number; text: string }[]
 }
 
-export function consumption(snap: AnaSnapshot): Consumption {
+/** 2026-10-06 改稿:卡下的长图注换成读数句 + 参照;按年加柱顶气泡与并网短标。
+ *  prevRows 只给 1 月的「比上月」用(上一年 12 月) */
+export function consumption(snap: AnaSnapshot, rows: ReadingRow[], prevRows: ReadingRow[] | undefined): Consumption {
   const L = snap.ledger
-  return {
-    gran: snap.gran,
-    ticks: snap.ticks.map((_, i) => {
-      const gen = L.self[i] + L.grid[i] + L.loss[i]
-      const lossPct = gen > 0 ? (L.loss[i] / gen) * 100 : null
-      return {
-        label: snap.tickLabels[i], self: L.self[i], grid: L.grid[i], loss: L.loss[i],
-        lossPct, over: lossPct != null && lossPct > LOSS_AXIS_MAX,
-      }
-    }),
-    futureFrom: snap.elapsedN < snap.ticks.length ? snap.elapsedN : null,
-    throughIdx: throughIdx(snap),
+  const ticks = snap.ticks.map((_, i) => {
+    const gen = L.self[i] + L.grid[i] + L.loss[i]
+    const lossPct = gen > 0 ? (L.loss[i] / gen) * 100 : null
+    return {
+      label: snap.tickLabels[i], self: L.self[i], grid: L.grid[i], loss: L.loss[i],
+      lossPct, over: lossPct != null && lossPct > LOSS_AXIS_MAX,
+    }
+  })
+  const metered = snap.stations.filter(s => s.metered).length
+  // 卡头「全部 N 栋楼合计」只在这一段每栋都有读数时写「全部」,和参照「按 N 栋楼 … 条抄表算」同一个数
+  const segPre = snap.gran === 'month' && snap.ym ? snap.ym : String(snap.year)
+  const seg = rows.filter(r => r.date.startsWith(segPre))
+  const segN = new Set(seg.map(r => r.stationId)).size
+  const base = { gran: snap.gran, ticks, futureFrom: snap.elapsedN < snap.ticks.length ? snap.elapsedN : null, hint: PVH.cons(seg.length ? segN : metered, metered) }
+  if (snap.gran === 'month' && snap.ym) {
+    const m = Number(snap.ym.slice(5, 7))
+    const pre = m > 1 ? `${snap.year}-${pad2(m - 1)}` : `${snap.year - 1}-12`
+    // 本月还没读满时上月只取到同一个日号(10 天比 30 天,比的是天数不是发电)
+    const last = seg.reduce((t, r) => (r.date > t ? r.date : t), '')
+    const cut = last && last < `${snap.ym}-${pad2(daysInMonth(snap.ym))}` ? last.slice(8) : null
+    const prev = (m > 1 ? rows : prevRows ?? []).filter(r => r.date.startsWith(pre) && (!cut || r.date.slice(8) <= cut))
+    const grid = (rs: ReadingRow[]) => rs.reduce((t, r) => t + r.gridFeed, 0)
+    return {
+      ...base,
+      read: seg.length && prev.length
+        ? pvConsGrowth({ m: monthLabel(m), pm: m > 1 ? monthLabel(m - 1) : '去年12月', a: grid(prev), b: grid(seg) }) : null,
+      refs: [...(seg.length ? [pvSampleRef(segN, seg.length, metered)] : []), pvLossRef()],
+      marks: [], joins: [],
+    }
   }
+  const read = pvConsYear(ticks.flatMap(t => {
+    const gen = t.self + t.grid + t.loss
+    return gen > 0 ? [{ label: t.label, value: gen }] : []
+  }))
+  const marks = read ? [read.hi, read.lo].map(x => ({ i: ticks.findIndex(t => t.label === x.label), text: pvConsMark(x.label, x.value) })) : []
+  // 并网月 = 这一期第一条分栋读数的月;一年里的第一个月不算(那是数据从这里起,不是并网)
+  const phaseOf = new Map(snap.stations.map(s => [s.id, s.phase]))
+  const first = new Map<number, string>()
+  let d0: string | null = null
+  for (const r of rows) {
+    if (!r.date.startsWith(String(snap.year))) continue
+    const p = phaseOf.get(r.stationId)
+    if (p != null && (!first.has(p) || r.date < first.get(p)!)) first.set(p, r.date)
+    if (d0 == null || r.date < d0) d0 = r.date
+  }
+  const joins: Consumption['joins'] = []
+  for (const [p, d] of [...first].sort((a, b) => a[0] - b[0])) {
+    const i = Number(d.slice(5, 7)) - 1
+    // ponytail: 两期同月并网只标先那期,和气泡同月让给气泡 —— 一根柱顶只放得下一个标
+    if (d.slice(0, 7) > d0!.slice(0, 7) && !marks.some(k => k.i === i) && !joins.some(j => j.i === i)) joins.push({ i, text: PV.join(p) })
+  }
+  return { ...base, read, refs: [pvLossRef()], marks, joins }
 }
 
 // ── B8 各栋收益堆叠条(§3.9)────────────────────────────────────────────
@@ -499,27 +786,40 @@ export interface RevenueRow {
   gen: number
   /** 自己用了 ¥ = Σ 录入时的 revenue(单价快照,调价不改历史) */
   self: number
-  /** 卖上网 ¥ = Σ 上网电量 × gridPrice */
+  /** 卖上网 ¥ = Σ 上网电量 × 那个月的上网单价(没读到的月按 0,参照里写明) */
   grid: number
   total: number
 }
 export interface RevenueBars {
-  /** 按合计降序;本段没有发电的栋不出行 */
+  /** 按合计降序(条尾两位小数一样的按楼栋顺序);本段没有发电的栋不出行 */
   rows: RevenueRow[]
-  gridPrice: number
+  /** 这一段只用到一个上网单价时是它;几个月不同价或有月份没读到 = null */
+  gridPrice: number | null
   /** 本段还没录满时的「截至 M/D」;整段录满或数据在段外 = null */
   through: string | null
+  hint: string
+  read: Said | null
+  /** 上网单价、自用单价两句;按年另加「哪几栋不是整年都有读数」 */
+  refs: PvSaid[]
 }
 
-export function revenueBars(snap: AnaSnapshot, rows: ReadingRow[], gridPrice: number): RevenueBars {
+export function revenueBars(snap: AnaSnapshot, rows: ReadingRow[], gridPrice: PriceIn): RevenueBars {
+  const price = priceFn(gridPrice)
+  const used = new Set<number>()
+  let missing = false
   const inSeg = snap.gran === 'month' && snap.ym
     ? (d: string) => d.startsWith(snap.ym!)
     : (d: string) => d.startsWith(String(snap.year))
-  const acc = new Map<number, { gen: number; self: number; grid: number }>()
+  const acc = new Map<number, { gen: number; self: number; grid: number; first: string; last: string }>()
   for (const r of rows) {
     if (!inSeg(r.date)) continue
-    const a = acc.get(r.stationId) ?? { gen: 0, self: 0, grid: 0 }
-    a.gen += r.gen; a.self += r.revenue; a.grid += r.gridFeed * gridPrice
+    const a = acc.get(r.stationId) ?? { gen: 0, self: 0, grid: 0, first: r.date, last: r.date }
+    const p = price(r.date.slice(0, 7))
+    if (p == null) missing = true
+    else used.add(p)
+    a.gen += r.gen; a.self += r.revenue; a.grid += r.gridFeed * (p ?? 0)
+    if (r.date < a.first) a.first = r.date
+    if (r.date > a.last) a.last = r.date
     acc.set(r.stationId, a)
   }
   const out: RevenueRow[] = []
@@ -528,14 +828,38 @@ export function revenueBars(snap: AnaSnapshot, rows: ReadingRow[], gridPrice: nu
     if (!s.metered || !a || !(a.gen > 0)) continue
     out.push({ id: s.id, name: s.name, phase: s.phase, gen: a.gen, self: a.self, grid: a.grid, total: a.self + a.grid })
   }
-  out.sort((x, y) => y.total - x.total)
+  const order = new Map(snap.stations.map((s, i) => [s.id, i]))
+  const w2 = (v: number) => Math.round(v / 100)   // 条尾写的是万元两位小数
+  out.sort((x, y) => w2(y.total) - w2(x.total) || order.get(x.id)! - order.get(y.id)!)
   const segStart = snap.gran === 'month' ? snap.ticks[0] : `${snap.year}-01-01`
   const segEnd = snap.gran === 'month' ? snap.ticks[snap.ticks.length - 1] : `${snap.year}-12-31`
   const dt = snap.dataThrough
+  const metered = snap.stations.filter(s => s.metered)
   return {
-    rows: out, gridPrice,
+    rows: out, gridPrice: used.size === 1 && !missing ? [...used][0] : null,
     through: dt && dt >= segStart && dt < segEnd ? `${Number(dt.slice(5, 7))}/${Number(dt.slice(8, 10))}` : null,
+    hint: PVH.rev(out.length, metered.length),
+    read: pvRevRead(out),
+    refs: [...(used.size || missing ? pvRevRefs([...used], missing) : []), ...(snap.gran === 'year' ? [partialYear(out, acc, metered)] : [])].filter((x): x is PvSaid => x != null),
   }
+}
+
+/** 按年:第一条读数晚于全园第一个月的楼(年中才并网)。按第一条读数的月分组,晚的在前;
+ *  两栋以内写楼名,正好是一整期写「二期」,其余写「N 栋楼」 */
+function partialYear(out: RevenueRow[], acc: Map<number, { first: string; last: string }>, metered: { id: number; phase: number }[]): PvSaid | null {
+  const mOf = (d: string) => Number(d.slice(5, 7))
+  const fs = out.map(r => mOf(acc.get(r.id)!.first))
+  if (!fs.length) return null
+  const m0 = Math.min(...fs), m1 = Math.max(...out.map(r => mOf(acc.get(r.id)!.last)))
+  // 组内楼名按楼栋顺序写(out 是按合计排的)
+  const pos = new Map(metered.map((s, k) => [s.id, k]))
+  const by = new Map<number, RevenueRow[]>()
+  out.forEach((r, k) => { if (fs[k] > m0) by.set(fs[k], [...(by.get(fs[k]) ?? []), r].sort((a, b) => pos.get(a.id)! - pos.get(b.id)!)) })
+  return pvRevShortRef([...by].sort((a, b) => b[0] - a[0]).map(([from, g]) => {
+    const p = g[0].phase
+    const whole = g.every(r => r.phase === p) && metered.filter(s => s.phase === p).length === g.length
+    return { who: g.length <= 2 ? g.map(r => r.name).join('、') : whole ? phaseName(p) : nB(g.length), from, to: m1, n: g.length }
+  }))
 }
 
 // ── L1 α 排序条 + L5 那一行(§3.10 §3.11;§1 #3)────────────────────────
@@ -630,6 +954,13 @@ export interface ResidualGrid {
   throughMonth: number
   /** 没进模型的行数(整行空格) */
   outsideN: number
+  /** 其中在网不足 minOnlineDays 天的行数(图例右侧「N 栋楼在网太短，没算」) */
+  shortN: number
+  /** 某期年内并网那个月,老的那一期在网各栋那一格冲到最深一档以上:写出范围(颜色封顶了,数要说出来)。
+   *  p = 并网的那一期,p0 = 最早那一期;没有这种月 = null */
+  join: { m: number; p: number; p0: number; n: number; lo: number; hi: number } | null
+  /** 这一年里每一期第一条读数落在的月(最早那一期除外):这个月全园中间那栋跟着变,别的期的格子不全是自己的变化 */
+  joins?: { m: number; p: number }[]
 }
 
 export function residualGrid(lab: LabResult, snap: AnaSnapshot): ResidualGrid {
@@ -662,11 +993,32 @@ export function residualGrid(lab: LabResult, snap: AnaSnapshot): ResidualGrid {
       }),
     }
   })
+  // 每期第一条读数晚于 1 月 1 日 = 这一年里并网的(同 buildDetail 跳过并网月的判据)。
+  // 新的一期并网那个月全园中间那栋被拉低,最早那一期的楼那一格冲到几百 %;只在冲过最深一档时写
+  const phaseFirst = new Map<number, string>()
+  for (const b of snap.board) {
+    const cur = phaseFirst.get(b.phase)
+    if (b.firstDate && (cur == null || b.firstDate < cur)) phaseFirst.set(b.phase, b.firstDate)
+  }
+  const p0 = Math.min(...phaseFirst.keys())
+  let join: ResidualGrid['join'] = null
+  for (const [p, f] of [...phaseFirst].sort((a, b) => a[0] - b[0])) {
+    if (join || p === p0 || f <= `${snap.year}-01-01`) continue
+    const m = Number(f.slice(5, 7))
+    const v = rows.filter(r => r.phase === p0 && r.inModel).flatMap(r => (r.cells[m - 1].pct == null ? [] : [r.cells[m - 1]]))
+    if (v.some(c => c.level === 4)) {
+      const pc = v.map(c => c.pct!)
+      join = { m, p, p0, n: v.length, lo: Math.min(...pc), hi: Math.max(...pc) }
+    }
+  }
   return {
     rows, thresholds: th,
     currentMonth: snap.gran === 'month' && snap.ym ? Number(snap.ym.slice(5, 7)) : null,
     throughMonth: through,
     outsideN: rows.filter(r => !r.inModel).length,
+    shortN: rows.filter(r => shortD.has(r.id)).length,
+    join,
+    joins: [...phaseFirst].filter(([p, f]) => p !== p0 && f > `${snap.year}-01-01`).map(([p, f]) => ({ m: Number(f.slice(5, 7)), p })),
   }
 }
 
@@ -768,62 +1120,8 @@ export function qualityCalendar(lab: LabResult, snap: AnaSnapshot): QualityCalen
   }
 }
 
-// ── L2 隔几天的相关柱 + 淡带(§3.14;§1 #15)─────────────────────────────
-
-export interface AcfBars {
-  id: number; name: string
-  /** 该栋有效天数 */
-  n: number
-  /** 淡带半宽 = 1.96 / √n */
-  threshold: number
-  /** 从隔 1 天起;上限由 logic 按 min(30, ⌊n/4⌋) 定 */
-  bars: { lag: number; rho: number; inside: boolean }[]
-}
-
-/** 跟选中栋走;选中栋不在模型里就退回 L4 那一栋,再退回第一栋 */
-export function acfBars(lab: LabResult, selId: number | null): AcfBars | null {
-  const a = lab.acf.find(x => x.id === selId) ?? lab.acf.find(x => x.id === lab.nullDist?.id) ?? lab.acf[0]
-  if (!a) return null
-  const n = lab.tests.find(t => t.id === a.id)?.days ?? 0
-  const threshold = n > 0 ? 1.96 / Math.sqrt(n) : Infinity
-  return {
-    id: a.id, name: a.name, n, threshold,
-    bars: a.rho.slice(1).map((rho, k) => ({ lag: k + 1, rho, inside: Math.abs(rho) <= threshold })),
-  }
-}
-
-// ── L4 打乱重算的直方图(§3.15)──────────────────────────────────────────
-
-export const NULL_BINS = 16
-
-export interface NullHist {
-  id: number; name: string
-  bins: { lo: number; hi: number; count: number }[]
-  /** 这一段真实的偏差 */
-  obs: number
-  /** 比它更极端(同侧、含相等)的次数 */
-  extreme: number
-  /** 「1000 遍」= 重算次数 + 1 */
-  total: number
-}
-
-export function nullHist(lab: LabResult): NullHist | null {
-  const nd = lab.nullDist
-  if (!nd?.dist.length) return null
-  let lo = nd.obs, hi = nd.obs
-  for (const v of nd.dist) { if (v < lo) lo = v; if (v > hi) hi = v }
-  const w = (hi - lo) / NULL_BINS || 1
-  const bins = Array.from({ length: NULL_BINS }, (_, i) => ({ lo: lo + i * w, hi: lo + (i + 1) * w, count: 0 }))
-  let right = 0, left = 0
-  for (const v of nd.dist) {
-    bins[Math.min(NULL_BINS - 1, Math.floor((v - lo) / w))].count++
-    if (v >= nd.obs) right++
-    if (v <= nd.obs) left++
-  }
-  return { id: nd.id, name: nd.name, bins, obs: nd.obs, extreme: Math.min(right, left), total: nd.dist.length + 1 }
-}
-
 // ── L7 逐栋核对表(§3.16;§1 #16)──────────────────────────────────────────
+// 2026-10-06 改稿:「隔几天的相关柱」「打乱重算的直方图」两张卡下线,一栋一个数并进这张表(隔天像不像 / 碰巧更偏)
 
 /** 变点显著线:与 baselineWindow「p 不显著就不切」同一条。L7 与抽屉 B9 共用,两处不会一处有一处无 */
 export const CP_P_MAX = 0.05
@@ -845,6 +1143,10 @@ export interface LabTableRow {
   monthsSoFar: number
   /** 本段有连续出范围段时的主导方向(左侧色条);读不出的栋不给 */
   runDir: -1 | 1 | null
+  /** 隔天像不像:整年逐日偏差隔 1 天的相关(lab.acf 的 ρ₁);不排的栋 = null */
+  rho1: number | null
+  /** 碰巧更偏:观测窗口那段打乱重算里一样偏或更偏的次数(TestRow.chance);不排的栋 = null */
+  chance: number | null
 }
 
 export function labTableRows(lab: LabResult, snap: AnaSnapshot): LabTableRow[] {
@@ -852,6 +1154,7 @@ export function labTableRows(lab: LabResult, snap: AnaSnapshot): LabTableRow[] {
   const alpha = new Map(ab.rows.map(r => [r.id, r]))
   const tests = new Map(lab.tests.map(t => [t.id, t]))
   const season = new Map(lab.season.map(s => [s.id, s]))
+  const rho1 = new Map(lab.acf.map(a => [a.id, a.rho[1] ?? null]))
   const monthsSoFar = snap.dataThrough ? Number(snap.dataThrough.slice(5, 7)) : 0
   const out = snap.board.map<LabTableRow>(b => {
     const t = tests.get(b.id), a = alpha.get(b.id)
@@ -865,6 +1168,8 @@ export function labTableRows(lab: LabResult, snap: AnaSnapshot): LabTableRow[] {
       validMonths: season.get(b.id)?.months.filter(v => v != null).length ?? null,
       monthsSoFar,
       runDir: b.runs.length && !isUnreadable(b, snap) ? outDir(b) : null,
+      rho1: t && sd == null ? rho1.get(b.id) ?? null : null,
+      chance: t && sd == null ? t.chance : null,
     }
   })
   const key = (r: LabTableRow) => (r.unborn ? 3e9 : r.rank ?? 2e9)
@@ -875,6 +1180,8 @@ export function labTableRows(lab: LabResult, snap: AnaSnapshot): LabTableRow[] {
 
 export interface DriftChart {
   daysInYear: number
+  /** 卡头的覆盖(coverOf);不给按整年写 */
+  cover?: string
   points: { date: string; doy: number; v: number }[]
   trend: { doy: number; fit: number; lo: number; hi: number }[]
   /** 变点竖线与区间阴影(§1 #17);不显著或没有 = null */
@@ -916,11 +1223,14 @@ export function driftChart(detail: StationDetail | null, snap: AnaSnapshot): Dri
     trend: detail.spline.map(s => ({ doy: dayOfYear(s.date), fit: s.fit, lo: s.lo, hi: s.hi })),
     cp, seg,
     futureFromDoy: futureFrom(snap),
+    cover: coverOf(snap),
   }
 }
 
 export interface ControlChart {
   daysInYear: number
+  /** 卡头的覆盖(coverOf);不给按整年写 */
+  cover?: string
   center: number
   /** 内带 = 中线 ± 2 倍,外带 = ± 3 倍(屏上不写倍数的名字) */
   inner: { lo: number; hi: number }
@@ -963,6 +1273,7 @@ export function controlChart(detail: StationDetail | null, snap: AnaSnapshot): C
       : null,
     wholePeriod: limitTo === detail.dates[detail.dates.length - 1],
     futureFromDoy: futureFrom(snap),
+    cover: coverOf(snap),
   }
 }
 
@@ -1054,17 +1365,22 @@ export interface PvAnchorBarsProps { data: AnchorBars; selId: number | null }
 export interface PvLedgerScatterProps { data: LedgerScatter }
 export interface PvConsumptionProps { data: Consumption }
 export interface PvRevenueBarsProps { data: RevenueBars; selId: number | null }
-export interface PvAlphaBarsProps { data: AlphaBars; stability: PolishStability; selId: number | null }
+export interface PvAlphaBarsProps {
+  data: AlphaBars; stability: PolishStability; selId: number | null
+  /** 卡头的覆盖:按月写「2025年全年」(整年的卡放在按月的屏上,S-17);按年 null → 写「N 栋楼」 */
+  cover: string | null
+}
 export interface PvResidualHeatProps { data: ResidualGrid; selId: number | null }
 export interface PvQualityGridProps { data: QualityCalendar }
-export interface PvAcfBarsProps { data: AcfBars }
-export interface PvNullHistProps { data: NullHist }
 export interface PvLabTableProps {
   rows: LabTableRow[]
-  /** 常年水平 / 名次 / 区间 / 变点 / 有效月数吃的整年(表脚写明,§6.5b) */
-  year: number
+  /** 卡头的覆盖:按月「2025年全年」,按年 null(和工具条同一个期不写) */
+  cover: string | null
+  /** 「碰巧更偏」打乱的是哪个月(LabResult.window.label 的月);表脚写它 */
+  winMonth: number | null
 }
 export interface PvDriftChartProps { data: DriftChart }
 export interface PvControlChartProps { data: ControlChart }
 export interface PvBetaChartProps { slots: BetaSlot[] }
-export interface PvDetailTableProps { rows: DetailRow[]; gran: Gran }
+/** name:卡头写这一栋的名字(PVH.rows) */
+export interface PvDetailTableProps { rows: DetailRow[]; gran: Gran; name: string }

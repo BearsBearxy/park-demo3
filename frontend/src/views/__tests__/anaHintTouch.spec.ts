@@ -108,7 +108,9 @@ describe('分析层 hint 两套写法', () => {
       touch += src.split('class="hint-touch"').length - 1
     }
     // 8 屏 16 个卡片处,每处在骨架分支和真数据分支各写一遍。
-    expect(desk, '桌面话术处数').toBe(32)
+    // 2026-10 改稿:出租与楼栋卡头不再写操作(TreeMap 卡、明细卡两处 × 两遍),32 → 28。
+    // 2026-10 改稿:经营驾驶舱卡头不再写操作(原主图 / 构成环 / 分期 / 收缴率 / 异常速览五处 × 两遍),28 → 18。
+    expect(desk, '桌面话术处数').toBe(18)
     expect(touch, '手机话术处数应与桌面一一对应').toBe(desk)
   })
 
@@ -143,15 +145,5 @@ describe('分析层 hint 两套写法', () => {
     expect(bad, `这些文件在手机上还会显出「悬停」:${bad.join(', ')}`).toEqual([])
   })
 
-  it('❗唯一的例外照旧藏着:驾驶舱主图「拖选缩放」只在 .hint-desk 里,不许混进手机那一套', () => {
-    const src = tpl('CockpitView.vue')
-    expect(src, '「拖选缩放」应当还在').toContain('拖选缩放')
-    for (const t of touchTexts(src)) {
-      expect(t, 'S 档 slider 被剔,「拖选缩放」在手机上做不到').not.toContain('拖选缩放')
-    }
-    // 同一个卡头里,前半截「点月柱」必须换成了手机说法
-    const both = hintBlocks(src).filter((b) => b.includes('拖选缩放'))
-    expect(both.length, '主图卡头骨架分支 + 真数据分支各一处').toBe(2)
-    for (const b of both) expect(b, '拆 span 时把「点月柱」那半截丢了').toContain('点月柱切期间')
-  })
+  // 「驾驶舱主图『拖选缩放』只在 .hint-desk 里」那条 2026-10 改稿随主图一起删:新稿卡头不写操作,主图(带 dataZoom 的柱图)也没了。
 })

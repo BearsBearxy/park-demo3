@@ -9,7 +9,7 @@
 // ⚠ 新增图表类型（如 radar）或新用 visualMap/toolbox 之类的 component 时，必须同步加进 import 和 use([...])。
 //   漏了的表现：series 报 `Series xxx is used but not imported`，component 则静默不渲染（更难发现）。
 // ⚠ 单测里本模块整体被 vi.mock（jsdom 无 canvas），**漏注册测不出来**，只能在浏览器里看控制台。
-//   四类独苗屏漏一个就是整屏白图：园区经营(treemap) / 园区能耗(sankey) / 资产负债分析(gauge) / 带 dataZoom 的屏。
+//   三类独苗屏漏一个就是整屏白图：园区能耗(sankey) / 资产负债分析(gauge) / 带 dataZoom 的屏。
 //
 // 清单来源：2026-08-11 审计静态全扫（src/views/analysis + src/components/ana）。
 //   axisPointer 全站都嵌在 tooltip 里 → TooltipComponent 覆盖；log 轴 → GridComponent 覆盖。
@@ -21,7 +21,6 @@ import {
   LineChart,       // 34 处
   PieChart,        // 7 处
   ScatterChart,    // 5 处
-  TreemapChart,    // 1 处 ParkView 园区经营
   SankeyChart,     // 1 处 ParkEnergyView 园区能耗
   GaugeChart,      // 1 处 finBalance.logic 资产负债分析
 } from 'echarts/charts'
@@ -40,7 +39,7 @@ import { CanvasRenderer, SVGRenderer } from 'echarts/renderers'
 const useSvg = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 600px)').matches
 
 use([
-  BarChart, LineChart, PieChart, ScatterChart, TreemapChart, SankeyChart, GaugeChart,
+  BarChart, LineChart, PieChart, ScatterChart, SankeyChart, GaugeChart,
   GridComponent, TooltipComponent, LegendComponent, TitleComponent,
   MarkLineComponent, MarkPointComponent, MarkAreaComponent, DataZoomComponent,
   useSvg ? SVGRenderer : CanvasRenderer,

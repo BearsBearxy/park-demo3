@@ -162,9 +162,10 @@ const apply = (o: object, keep?: ViewKeep) => {
   const entering = props.entrance !== false && (!painted || performance.now() - enterAt < DUR.enter)
   if (entering && !painted && list.length && shown) enterAt = performance.now()
   if (list.length) painted = true
-  chart.setOption(motionize(opt, entering ? 'enter' : 'update', { reduced, isS, visible: shown }), { notMerge: true })
-  // 气泡先藏,等这一轮动画走完('finished')按点的终点位置摆好再显 —— 形变途中不跟着飘
+  // 气泡先藏,等这一轮动画走完('finished')按点的终点位置摆好再显 —— 形变途中不跟着飘。
+  // 必须在 setOption 之前收:离屏的图不放动画,'finished' 在 setOption 里同步触发,那时列表还空,气泡就一直不出(2026-10 实测按年大图)
   callouts.value = calloutsOf(opt).map((c, i) => ({ ...c, key: i, left: 0, top: 0, tipX: 0, side: c.spec.prefer, show: false }))
+  chart.setOption(motionize(opt, entering ? 'enter' : 'update', { reduced, isS, visible: shown }), { notMerge: true })
 }
 
 // 图上点标注的气泡(anaTheme.calloutMark,设计稿方案 A):HTML 叠层,不进 zrender ——

@@ -28,19 +28,21 @@ function parts(file: string, nextSibling: string) {
 }
 
 describe('分析屏首进骨架 · 块高照真版式钉死(C6-01)', () => {
-  it('❗园区能耗:页头 44 + 五张卡 = 300/170/250/250/170', () => {
+  it('❗园区能耗:流向图 250 + 按月收益 150 / 按年 260、230、128(2026-10 改稿 energy-v2,页头撤了)', () => {
     const p = parts('ParkEnergyView.vue', '<FPLoadError v-else-if="failed"')
     expect(p.spins, '版式已知还在转圈').toBe(0)
-    // 2026-09-16 起页头 / 卡头 / 人话句照抄真版式,序列里只剩五张图块(与图同表降档)
-    expect(p.shims).toEqual([300, 170, 250, 250, 170])
-    expect(p.charts, '图高变了,骨架没跟').toEqual([300, 170, 250, 250, 170])
+    // 卡头 / 读数句照抄真版式,序列里只剩图块(与图同表降档);按月、按年两套卡按源码顺序挨着
+    expect(p.shims).toEqual([250, 150, 260, 230, 128])
+    expect(p.charts, '图高变了,骨架没跟').toEqual([250, 150, 260, 230, 128])
   })
 
-  it('❗出租与楼栋:TreeMap 300、明细表 296、环 300、散点 300、面积转换右栏 250(图例 / 合计 / 指标行照抄真版式)', () => {
+  // 2026-10 改稿:主卡横条 446(24 + 30 栋×14 + 2)、明细表 8 行(S 档行卡 448 / 桌面 334)、期区横条 124(4×30 + 4)、
+  // 散点 260、面积转换 280。前两张图的高随楼栋数 / 期区数变,真版式绑变量,只有后两张是字面值(浏览器 1440 / 390 实测逐卡同高)。
+  it('❗出租与楼栋:主卡 446、明细表 448/334、期区 124、散点 260、面积转换 280(卡头 / 读数句 / 参照照抄真版式)', () => {
     const p = parts('ParkView.vue', '<FPLoadError v-else-if="failed"')
     expect(p.spins, '版式已知还在转圈').toBe(0)
-    expect(p.shims).toEqual([300, 296, 300, 300, 250])
-    expect(p.charts, '图高变了,骨架没跟').toEqual([300, 300, 300, 250])
+    expect(p.shims).toEqual([446, 448, 334, 124, 260, 280])
+    expect(p.charts, '图高变了,骨架没跟').toEqual([260, 280])
   })
 
   it('❗电费成本分析:三张 300(页头 / 结论条照抄真版式;模拟数据说明 2026-10-01 起在期间选择旁,不进正文)', () => {
@@ -50,11 +52,16 @@ describe('分析屏首进骨架 · 块高照真版式钉死(C6-01)', () => {
     expect(p.charts, '图高变了,骨架没跟').toEqual([300, 300, 300])
   })
 
-  it('❗租户异常监控:左列清单 560,右列 250 / 200 / 规则块 142,园区规则卡 60(搜索框、读数句照抄真版式)', () => {
+  // 2026-10 改稿:默认选中户(清单按未收排后是可莱恩)规则块 193(三条),底部两张半宽计数卡各 237(1440 实测)
+  // pv-v2-anomaly:底部整行光伏卡,规则 4 行 264(1440 实测 60 × 4 + 缝 8 × 3);检测没跑完时真版式里同一份留位
+  it('❗异常提醒中心:左列清单 560,右列 250 / 200 / 规则块 193,底部两张计数卡 237 / 237,光伏卡 264(搜索框、读数句照抄真版式)', () => {
     const p = parts('AnomalyView.vue', '<div v-else-if="!model')
     expect(p.spins, '版式已知还在转圈').toBe(0)
-    expect(p.shims).toEqual([560, 250, 200, 142, 60])
+    expect(p.shims).toEqual([560, 250, 200, 193, 237, 237, 264])
     expect(p.charts, '图高变了,骨架没跟').toEqual([250, 200])
+    const src = readFileSync(join(__dirname, 'AnomalyView.vue'), 'utf8')
+    const real = src.slice(src.indexOf('<!-- skel:end -->'))
+    expect([...real.matchAll(/class="fp-shim" style="height:\s*(\d+)px/g)].map((m) => Number(m[1])), '光伏卡检测期留位和首进骨架不一样高').toEqual([264])
   })
 })
 
@@ -88,11 +95,11 @@ describe('分析屏首进骨架 · 文本行按行盒 20 钉,不按字号(C6-01)
     expect(skel.match(/height: 1[45]px/g), '读数句骨架还按字号写(15 / 14)').toBeNull()
   })
 
-  it('❗租户用能:趋势卡读数句 / 参照系、收缴率那行,骨架用的是真版式同一批类', () => {
+  it('❗用能与缴费:读数句 / 参照系 / 入口链接,骨架用的是真版式同一批类', () => {
     const { skel } = halves(read('TenantEnergyView.vue'))
     expect(skel).toContain('<p class="ana-read hold">')
     expect(skel).toContain('<p class="ana-ref">')
-    expect(skel).toContain('class="te2-payline"')
+    expect(skel).toContain('class="te-go')
     expect(skel.match(/height: 1[45]px/g), '还按字号写').toBeNull()
   })
 

@@ -1,20 +1,17 @@
-// 四张非光伏自绘图的动效接线(2026-09-16 行为矩阵):擦入被取消也摘类、改宽挂 hold、换数同键形变。
+// 三张非光伏自绘图的动效接线(2026-09-16 行为矩阵):擦入被取消也摘类、改宽挂 hold、换数同键形变。
 // 过渡本身 jsdom 跑不出来(不加载 CSS)—— 这里钉的是过渡成立的前提:
 //   元素复用(同一个 DOM 节点换几何属性)、落在 .ana-morph 下、悬停层不在形变组里、结构变了就换新节点。
 // 「几何属性真的会过渡」已在本机 Chromium 实测(见 ana.css .ana-morph 头注)。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
-import AnaForecastChart from '../AnaForecastChart.vue'
 import AnaRentBandChart from '../AnaRentBandChart.vue'
 import AnaRenewalChart from '../AnaRenewalChart.vue'
 import AnaUnitRentHist from '../AnaUnitRentHist.vue'
 import AnaBullet from '../AnaBullet.vue'
 import AnaTrend from '../AnaTrend.vue'
 import AnaBarRows from '../AnaBarRows.vue'
-import { rollingForecastRows } from '@/views/analysis/forecastChart.logic'
 import type { RentBandCol } from '@/views/analysis/rentBandChart.logic'
-import type { PnlSummary } from '@/analysis/anaData'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolvedTheme } from '@/stores/appearance'
@@ -47,14 +44,6 @@ afterEach(() => {
 })
 
 /* ── 夹具 ─────────────────────────────────────────────── */
-const pnl = (revenue: (number | null)[]): PnlSummary => ({
-  year: 2025, months: revenue.flatMap((v, i) => (v == null ? [] : [i + 1])), revenue,
-  cost: new Array(12).fill(null), profit: new Array(12).fill(null), bySchedule: {},
-})
-const REV6 = [7146649.89, 7169836.30, 6996629.95, 7406069.55, 7537092.36, 7711058.20]
-const pad12 = (a: number[]) => [...a, ...new Array(12 - a.length).fill(null)]
-const fRows = (rev: number[]) => rollingForecastRows(pnl(pad12(rev)))
-
 const bandCols = (k = 1): RentBandCol[] => [
   ...Array.from({ length: 12 }, (_, i) => ({
     month: `2025-${String(i + 1).padStart(2, '0')}`, realized: (330 - i * 1.5) * k, locked: null, mid: null, lo: null, hi: null,
@@ -72,7 +61,6 @@ const histProps = (selfValue: number) => ({
 })
 
 const CHARTS = [
-  { name: 'AnaForecastChart', group: 'g.afc-data', mk: () => mount(AnaForecastChart, { props: { rows: fRows(REV6) } }) },
   { name: 'AnaRentBandChart', group: 'g.arb-data', mk: () => mount(AnaRentBandChart, { props: { cols: bandCols(), splitIdx: 12, height: 280 } }) },
   { name: 'AnaRenewalChart', group: 'g.arn-data', mk: () => mount(AnaRenewalChart, { props: { hits: 18, n: 72, band: { lo: 0.18, hi: 0.33 } } }) },
   { name: 'AnaUnitRentHist', group: 'g.auh-data', mk: () => mount(AnaUnitRentHist, { props: histProps(18) }) },
@@ -87,7 +75,7 @@ const inMorph = (el: Element) => el.closest('.ana-morph') != null
 // #1E293B 对卡片 1.02:1、提示框和卡片同色)。颜色挪进 anaTheme 的两套 --sv-* 变量,挂在图的根上,切外观不用重挂载。
 describe('自绘图 · 切外观', () => {
   afterEach(() => { resolvedTheme.value = 'light' })
-  it.each(CHARTS.slice(0, 4))('❗$name:根上挂 --sv-* 两套色,浅色是原来的 Figma 取色,切深色当场换', async ({ mk }) => {
+  it.each(CHARTS.slice(0, 3))('❗$name:根上挂 --sv-* 两套色,浅色是原来的 Figma 取色,切深色当场换', async ({ mk }) => {
     const w = mk()
     const host = () => (w.element as HTMLElement).style
     expect(host().getPropertyValue('--sv-label')).toBe('#94A3B8')
@@ -96,8 +84,8 @@ describe('自绘图 · 切外观', () => {
     expect(host().getPropertyValue('--sv-label')).toBe('rgba(236,236,238,.62)')
     w.unmount()
   })
-  it('❗样式里不再有写死的颜色:四张图的 <style> 只引 --sv-* 与令牌', () => {
-    for (const f of ['AnaRentBandChart', 'AnaForecastChart', 'AnaRenewalChart', 'AnaUnitRentHist']) {
+  it('❗样式里不再有写死的颜色:三张图的 <style> 只引 --sv-* 与令牌', () => {
+    for (const f of ['AnaRentBandChart', 'AnaRenewalChart', 'AnaUnitRentHist']) {
       const css = readFileSync(join(__dirname, '..', f + '.vue'), 'utf8').split('<style')[1].replace(/\/\*[\s\S]*?\*\//g, '')
       expect(css.match(/#[0-9a-fA-F]{3,8}\b|rgba?\(/g), f).toBeNull()
     }
@@ -167,26 +155,6 @@ describe('AnaBarRows', () => {
 })
 
 describe('自绘图换数同键形变', () => {
-  it('❗AnaForecastChart:同结构换数 → 同一批节点换 d / cy;点数一变 → 整组换新节点(不让点在线外滑)', async () => {
-    const w = mount(AnaForecastChart, { props: { rows: fRows(REV6) } })
-    const line = w.find('path.afc-line').element
-    const dot = w.find('circle.afc-dot').element
-    const d0 = line.getAttribute('d')
-    await w.setProps({ rows: fRows(REV6.map((v, i) => v * (1 + i * 0.01))) })
-    expect(w.find('path.afc-line').element, '换数重建了节点 = 没有过渡').toBe(line)
-    expect(line.getAttribute('d')).not.toBe(d0)
-    expect(w.find('circle.afc-dot').element).toBe(dot)
-    expect(inMorph(line) && inMorph(w.find('path.afc-fbar').element), '线 / 预测月标记不在形变组里').toBe(true)
-    await w.setProps({ rows: fRows([...REV6, 7800000]) })
-    expect(w.find('path.afc-line').element, '点数变了 d 插值不了,旧节点留着 = 点滑线跳').not.toBe(line)
-    // 悬停层 0ms:竖线 / 高亮点 / 气泡不在形变组里
-    await w.find('.afc-host').trigger('mousemove', { clientX: 200 })
-    for (const c of ['.afc-hair', '.afc-hdot', '.afc-tip']) {
-      expect(inMorph(w.find(c).element), `${c} 会跟着形变`).toBe(false)
-    }
-    w.unmount()
-  })
-
   it('❗AnaRentBandChart:切回重拉换数 → 同一批路径节点换 d,在形变组里', async () => {
     const w = mount(AnaRentBandChart, { props: { cols: bandCols(), splitIdx: 12, height: 280 } })
     const real = w.find('path.arb-real').element

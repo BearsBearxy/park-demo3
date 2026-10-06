@@ -5,8 +5,10 @@ exports[`首进骨架与真版式对齐 > AnomalyView:骨架块高序列(浏览�
   "560",
   "chart250",
   "chart200",
-  "142",
-  "60",
+  "193",
+  "237",
+  "237",
+  "264",
 ]
 `;
 
@@ -48,12 +50,16 @@ exports[`首进骨架与真版式对齐 > ChurnView:骨架块高序列(浏览器
 
 exports[`首进骨架与真版式对齐 > CockpitView:骨架块高序列(浏览器实测过) 1`] = `
 [
-  "chart300",
-  "chart300",
-  "280",
+  "chart280",
+  "chart250",
   "chart250",
   "chart250",
   "258",
+  "chart300",
+  "chart300",
+  "chart280",
+  "chart250",
+  "chart250",
 ]
 `;
 
@@ -90,21 +96,22 @@ exports[`首进骨架与真版式对齐 > ExpiryView:骨架块高序列(浏览�
 
 exports[`首进骨架与真版式对齐 > ParkEnergyView:骨架块高序列(浏览器实测过) 1`] = `
 [
-  "chart300",
-  "chart170",
   "chart250",
-  "chart250",
-  "chart170",
+  "chart150",
+  "chart260",
+  "chart230",
+  "chart128",
 ]
 `;
 
 exports[`首进骨架与真版式对齐 > ParkView:骨架块高序列(浏览器实测过) 1`] = `
 [
-  "chart300",
-  "296",
-  "chart300",
-  "chart300",
-  "chart250",
+  "446",
+  "448",
+  "334",
+  "124",
+  "chart260",
+  "chart280",
 ]
 `;
 
@@ -119,12 +126,19 @@ exports[`首进骨架与真版式对齐 > PnlAnalysisView:骨架块高序列(浏
 exports[`首进骨架与真版式对齐 > PvMeterAnaView:骨架块高序列(浏览器实测过) 1`] = `
 [
   "26",
+  "224",
   "260",
   "102",
   "34",
-  "332",
-  "374",
-  "522",
+  "298",
+  "16",
+  "360",
+  "362",
+  "350",
+  "372",
+  "564",
+  "542",
+  "505",
   "483",
 ]
 `;
@@ -140,10 +154,11 @@ exports[`首进骨架与真版式对齐 > PvRoiView:骨架块高序列(浏览器
 
 exports[`首进骨架与真版式对齐 > TenantEnergyView:骨架块高序列(浏览器实测过) 1`] = `
 [
+  "chart454",
+  "chart330",
   "chart300",
-  "chart200",
-  "chart440",
-  "chart440",
+  "chart354",
+  "chart300",
 ]
 `;
 

@@ -1,6 +1,7 @@
 // park.logic.spec.ts — ParkView v2 纯函数单测(有效合同过滤/楼栋聚合/去重/排序/分期聚合)。
 import { describe, expect, it } from 'vitest'
-import { buildBuildingRows, buildPhaseRows, liveContracts, type BuildingLike, type ContractLike } from './park.logic'
+import { buildBuildingRows, buildPhaseRows, crossBuildings, liveContracts, unitOcc, vacantByFloor, type BuildingLike, type ContractLike } from './park.logic'
+import { floorRun } from '@/components/ana/anaSentence'
 
 const B: BuildingLike[] = [
   { id: 1, name: 'A栋', phase: 1, phaseName: '一期' },
@@ -37,5 +38,37 @@ describe('park.logic', () => {
     expect(ps[0]).toMatchObject({ name: '一期', buildings: 1, contracts: 2, tenants: 1 })
     expect(ps[0].rentWan).toBeCloseTo(1.5, 10)
     expect(ps[1].rentWan).toBeCloseTo(2.0, 10)
+  })
+
+  // 2026-10 改稿:单元一栏、主卡参照「有单元租出却没有这栋的在租合同」、点进一栋的楼层读数
+  it('unitOcc:租出 = 单元数 − 空单元(临期、预定都算租出)', () => {
+    expect(unitOcc({ id: 1, unitCount: 59, vacantCount: 37 })).toBe(22)
+    expect(unitOcc({ id: 2, unitCount: 0, vacantCount: 0 })).toBe(0)
+  })
+
+  it('crossBuildings:没有在租合同、单元却租出了的楼才点名,带租出个数', () => {
+    const rows = [
+      { id: 1, name: 'A栋', contracts: 3 },   // 有合同 → 不点名
+      { id: 2, name: '空地', contracts: 0 },  // 无合同、2 个单元租出 → 点名
+      { id: 3, name: 'C栋', contracts: 0 },   // 无合同、单元全空 → 不点名
+      { id: 4, name: '保障房', contracts: 0 }, // 没建单元(不在 map 里)→ 不点名
+    ]
+    const byId = new Map([
+      [1, { id: 1, unitCount: 10, vacantCount: 4 }],
+      [2, { id: 2, unitCount: 2, vacantCount: 0 }],
+      [3, { id: 3, unitCount: 14, vacantCount: 14 }],
+    ])
+    expect(crossBuildings(rows, byId)).toEqual([{ name: '空地', n: 2 }])
+  })
+
+  it('vacantByFloor:1..顶层全列,没建单元的层按 0;顶层取层数与单元最高层的大者', () => {
+    const units = [
+      { floor: 1, status: 'occupied' }, { floor: 3, status: 'vacant' }, { floor: 3, status: 'vacant' },
+      { floor: 4, status: 'vacant' }, { floor: 4, status: 'expiring' }, { floor: 6, status: 'vacant' },
+    ]
+    expect(vacantByFloor(5, units)).toEqual([1, 2, 3, 4, 5, 6].map((floor) => ({ floor, n: [0, 0, 2, 1, 0, 1][floor - 1] })))
+    expect(vacantByFloor(0, [])).toEqual([{ floor: 1, n: 0 }])
+    // 接上句型库:4 个空单元里 3 个在 3F、4F(第 5 层没建单元也算进楼层段,不跳)
+    expect(floorRun({ what: '空单元', floors: vacantByFloor(6, units) })?.text).toBe('空单元的 4 个里 3 个在 3F、4F')
   })
 })

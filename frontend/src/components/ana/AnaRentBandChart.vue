@@ -32,7 +32,7 @@ const hold = useMorphHold(w, first)
 
 const box = computed<ChartBox>(() => ({ width: w.value, height: props.height, padL: 54, padR: 52, padT: 26, padB: 26 }))
 const geo = computed(() => rentBandGeo(props.cols, box.value, props.splitIdx, props.gaps))
-// 形变组的键:路径命令序列 + 列数(同 AnaForecastChart:序列一变 d 只能跳,整组换新元素一起瞬到)
+// 形变组的键:路径命令序列 + 列数(序列一变 d 只能跳,整组换新元素一起瞬到)
 const shape = computed(() => {
   const g = geo.value
   if (!g) return ''

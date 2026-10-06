@@ -1,5 +1,6 @@
 // PvLedgerScatter(B6)挂载测:正方绘图区、45° 虚线、沿对角线的 ±容差斜带、点的 cx/cy;
-// 空态(一栋没录)照样画框线与带、不画点(计划 §1 #4);录入入口 emit record。
+// 一栋点都没有时照样画框线与带(计划 §1 #4);录入入口 emit record。
+// 2026-10-06 改稿:一栋都没录板数(logic 给 empty 一句)→ 整张卡收成一行字 +「去录入 →」,不画图。
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { mount, type DOMWrapper } from '@vue/test-utils'
@@ -19,10 +20,31 @@ function withPoints(): LedgerScatter {
       { id: 10, name: '12栋', phase: 2, x: 380, y: 340, diff: -0.105 },
       { id: 2, name: 'C、D座', phase: 1, x: 812, y: 780, diff: -0.039 },
     ],
-    unrecorded: 7, metered: 11, tolerance: 0.03,
+    unrecorded: 7, metered: 11, tolerance: 0.03, hint: '', empty: null,
   }
 }
-const empty = (): LedgerScatter => ({ points: [], unrecorded: 11, metered: 11, tolerance: 0.03 })
+const empty = (): LedgerScatter => ({ points: [], unrecorded: 11, metered: 11, tolerance: 0.03, hint: '', empty: null })
+const collapsed = (): LedgerScatter => ({ ...empty(), empty: '全部 11 栋楼都没录板数，录了才画得出和台账对不对得上' })
+
+describe('PvLedgerScatter 一栋都没录板数', () => {
+  it('❗收成一行:图标 + 那句 +「去录入 →」;不画框线、虚线、带,也没有右栏说明', async () => {
+    const w = mount(PvLedgerScatter, { props: { data: collapsed() } })
+    const row = w.find('.pls-empty')
+    expect(row.find('svg').exists()).toBe(true)   // 图标
+    expect(row.text()).toBe('全部 11 栋楼都没录板数，录了才画得出和台账对不对得上去录入 →')
+    expect(w.find('.pls-svg').exists()).toBe(false)
+    expect(w.find('.pls-diag').exists()).toBe(false)
+    expect(w.find('.pls-leg').exists()).toBe(false)
+    await w.find('.pls-empty-link').trigger('click')
+    expect(w.emitted('record')).toHaveLength(1)
+  })
+
+  it('对照:logic 不给那句(录了几栋)照画散点', () => {
+    const w = mount(PvLedgerScatter, { props: { data: withPoints() } })
+    expect(w.find('.pls-empty').exists()).toBe(false)
+    expect(w.findAll('circle.pls-pt')).toHaveLength(4)
+  })
+})
 
 describe('PvLedgerScatter 有点', () => {
   // 值域:两轴合起来 340–812,各外扩 10% 值域再取整到 10 → 290–860

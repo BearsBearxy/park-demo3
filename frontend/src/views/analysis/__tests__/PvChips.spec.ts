@@ -9,8 +9,8 @@ import { mount, type VueWrapper } from '@vue/test-utils'
 import PvChips from '../PvChips.vue'
 import type { ChipGroups, ChipItem } from '../pvAnaV4.logic'
 
-const chip = (id: number, name: string, phase: number, kind: ChipItem['kind'], outDays: number, dir: -1 | 1 | null = null, selected = false): ChipItem =>
-  ({ id, name, phase, kind, outDays, hasRun: kind === 'hit', dir, selected, clickable: kind !== 'unborn' })
+const chip = (id: number, name: string, phase: number, kind: ChipItem['kind'], outDays: number, dir: -1 | 1 | null = null, selected = false, history = false): ChipItem =>
+  ({ id, name, phase, kind, outDays, hasRun: kind === 'hit', dir, selected, clickable: kind !== 'unborn', history })
 
 const GROUPS: ChipGroups = {
   shown: [
@@ -18,7 +18,7 @@ const GROUPS: ChipGroups = {
     chip(5, 'G座', 1, 'hit', 5, 1),
     chip(1, 'B座', 1, 'plain', 1, null, true),
     chip(7, '9栋', 2, 'unreadable', 0),
-    chip(8, '10栋', 2, 'unreadable', 0),
+    chip(8, '10栋', 2, 'unreadable', 0, null, false, true),   // 历史不够;9栋 是覆盖不够(缺抄)
   ],
   folded: [
     chip(2, 'C、D座', 1, 'plain', 2),
@@ -38,9 +38,9 @@ const css = (w: { element: Element }) => (w.element as HTMLElement).style
 const v = (w: { element: Element }, name: string) => (w.element as HTMLElement).style.getPropertyValue(name)
 
 describe('PvChips', () => {
-  it('常显芯片按分组顺序出,徽标 = 出范围天数;读不出的徽标写「读不出」', () => {
+  it('常显芯片按分组顺序出,徽标 = 出范围天数;读不出的徽标写原因大类:历史不够 / 缺抄(2026-10-06 改稿,屏上不出「读不出」)', () => {
     const btns = mk().findAll('.pvc > button.chip')
-    expect(btns.map(b => b.text())).toEqual(['F座25 天', 'G座5 天', 'B座1 天', '9栋读不出', '10栋读不出'])
+    expect(btns.map(b => b.text())).toEqual(['F座25 天', 'G座5 天', 'B座1 天', '9栋缺抄', '10栋历史不够'])
   })
 
   it('底色走 --chip-*:连续低于 = 红 10% 底,连续高于 = 琥珀 10% 底 + 琥珀字,无边;选中 = --control-solid 实底', () => {
@@ -60,10 +60,10 @@ describe('PvChips', () => {
     expect(v(btns[3], '--chip-bc')).toBe('var(--border-strong)')
   })
 
-  it('期别点按期别三色;点芯片发 pick(id),读不出的也能点', async () => {
+  it('期别点按期别三色(2026-10-06 起蓝的深浅:一期 #0C447C、二期 #378ADD);点芯片发 pick(id),读不出的也能点', async () => {
     const w = mk()
     const btns = w.findAll('.pvc > button.chip')
-    expect(btns.map(b => css(b.find('.dot')).background)).toEqual(['rgb(55, 138, 221)', 'rgb(55, 138, 221)', 'rgb(55, 138, 221)', 'rgb(93, 202, 165)', 'rgb(93, 202, 165)'])
+    expect(btns.map(b => css(b.find('.dot')).background)).toEqual(['rgb(12, 68, 124)', 'rgb(12, 68, 124)', 'rgb(12, 68, 124)', 'rgb(55, 138, 221)', 'rgb(55, 138, 221)'])
     await btns[1].trigger('click')
     await btns[3].trigger('click')
     expect(w.emitted('pick')).toEqual([[5], [7]])
@@ -72,7 +72,7 @@ describe('PvChips', () => {
   it('❗年档徽标单位跟着 unit 写「个月」(对照:月档写「天」)', () => {
     const btns = mk({ ...GROUPS, unit: '个月' }).findAll('.pvc > button.chip')
     expect(btns.map(b => b.text()).slice(0, 3)).toEqual(['F座25 个月', 'G座5 个月', 'B座1 个月'])
-    expect(btns[3].text()).toBe('9栋读不出')
+    expect(btns[3].text()).toBe('9栋缺抄')
   })
 
   it('❗常显一行放不下(1366 卡内 951):从末尾起挪进浮层,选中那枚留下;挪出的排在浮层最前', async () => {
@@ -84,9 +84,9 @@ describe('PvChips', () => {
     }
     const w = mount(PvChips, { props: { groups: many }, attachTo: document.body })
     live.push(w)
-    // 7 枚 = 6 × 109 + 选中 109 + 「其余 6 栋 ▾」88 = 851 ≤ 951;再多一枚 960 > 951
+    // 7 枚 = 6 × 109 + 选中 109 + 「其余 6 栋楼 ▾」100 = 863 ≤ 951;再多一枚 972 > 951
     expect(w.findAll('.pvc > button.chip').map(b => b.findAll('span')[1].text())).toEqual(['10栋', '11栋', '12栋', '13栋', '14栋', '15栋', '21栋'])
-    expect(w.find('button.more').text()).toBe('其余 6 栋 ▾')
+    expect(w.find('button.more').text()).toBe('其余 6 栋楼 ▾')
     await w.find('button.more').trigger('click')
     expect(w.findAll('.pvc-pop button.chip').map(b => b.findAll('span')[1].text())).toEqual(['16栋', '17栋', '18栋', '19栋', '20栋', '创业大厦'])
     // 触发钮已靠右(7 枚 763 + 280 > 951):浮层右对齐往左展开,不越出右缘
@@ -118,7 +118,7 @@ describe('PvChips', () => {
   })
 
   it('「其余 N 栋 ▾」数的是收起的栋;没有可收的就不出这个按钮', () => {
-    expect(mk().find('button.more').text()).toBe('其余 4 栋 ▾')
+    expect(mk().find('button.more').text()).toBe('其余 4 栋楼 ▾')
     expect(mk({ ...GROUPS, folded: [] }).find('button.more').exists()).toBe(false)
   })
 

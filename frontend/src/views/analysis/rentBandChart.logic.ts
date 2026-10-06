@@ -6,7 +6,7 @@
  * 右端四个贴着线尾的数、以及历史段与预测段用同一条 x 轴但两种笔触。
  * 自己画 SVG 就是直说,不必先翻译成 series/markArea 再祈祷它落在该落的地方。
  *
- * 视觉同 AnaForecastChart:取自 Figma「Animated Line Charts」节点 2310:2628。
+ * 视觉取自 Figma「Animated Line Charts」节点 2310:2628。
  * 直线段不做平滑 —— 平滑会在两个月之间造出没有的值。
  */
 import { niceTicks, type ChartBox } from './forecastChart.logic'

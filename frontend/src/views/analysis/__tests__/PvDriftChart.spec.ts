@@ -9,6 +9,7 @@ import { mount } from '@vue/test-utils'
 import PvDriftChart from '../PvDriftChart.vue'
 import type { DriftChart } from '../pvAnaV4.logic'
 import { PV_COLORS as C } from '../pvAnaColors'
+import { pvTimesLabel } from '@/components/ana/anaSentence'
 
 const dateOf = (doy: number) => new Date(Date.UTC(2025, 0, doy)).toISOString().slice(0, 10)
 
@@ -50,13 +51,13 @@ const mountChart = (data: DriftChart) => mount(PvDriftChart, { props: { data } }
 const num = (s: string | undefined) => Number(s)
 
 describe('PvDriftChart(B9)', () => {
-  it('画布 646 × 300;纵轴三条网格按极值贴 59 / 37 像素排出 -0.20 / 0.00 / +0.20', () => {
+  it('画布 646 × 300;纵轴三条网格按极值贴 59 / 37 像素排在 −0.2 / 0 / +0.2,字写倍数 ×0.82 / ×1 / ×1.2', () => {
     const w = mountChart(monthFixture())
     const svg = w.find('svg')
     expect([svg.attributes('width'), svg.attributes('height')]).toEqual(['646', '300'])
-    // 极值 0.25 → y 73,-0.15 → y 237,每单位 164 / 0.4 = 410 像素
-    const labels = w.findAll('text').filter(t => t.attributes('text-anchor') === 'end' && /^[-+]?0\.\d\d$/.test(t.text()))
-    expect(labels.map(t => [t.text(), num(t.attributes('y')) - 4])).toEqual([['-0.20', 257.5], ['0.00', 175.5], ['+0.20', 93.5]])
+    // 极值 0.25 → y 73,-0.15 → y 237,每单位 164 / 0.4 = 410 像素;字 = e 的那么多次方(对数域的偏离写成倍数)
+    const labels = w.findAll('text').filter(t => t.attributes('text-anchor') === 'end' && /^×/.test(t.text()))
+    expect(labels.map(t => [t.text(), num(t.attributes('y')) - 4])).toEqual([['×0.82', 257.5], ['×1', 175.5], ['×1.2', 93.5]])
     expect(w.findAll('line.gl').map(l => num(l.attributes('y1')))).toEqual([257.5, 175.5, 93.5])
     expect(w.findAll('line.gl').every(l => l.attributes('x1') === '46' && l.attributes('x2') === '632')).toBe(true)
   })
@@ -124,8 +125,10 @@ describe('PvDriftChart(B9)', () => {
     expect(ms.map(t => num(t.attributes('x')))).toEqual([46, 95.9, 141, 190.9, 239.2, 289.1, 337.4, 387.3, 437.2, 485.5, 535.4, 583.7])
     expect(ms.map(t => t.attributes('fill') === C.FOCUS)).toEqual([false, false, false, false, false, false, false, true, false, false, false, false])
     expect(ms[7].attributes('font-weight')).toBe('600')
-    expect(w.find('.ana-ref').text()).toContain('横轴 = 2025 年逐日')
-    expect(w.find('.ana-ref').text()).toContain('右侧淡区还没到')
+    // 参照:第一行说纵轴;有变点时第二行留空(上一栋 / 下一栋不顶动下面三块)
+    const refs = w.findAll('.ana-ref')
+    expect(refs.map(p => p.text())).toEqual(['纵轴是常年水平的几倍（扣掉全园当天涨落）；缺抄的天断开', ''])
+    expect(refs[1].classes()).toContain('hold')
   })
 
   it('没有变点 / 没有当段 / 数据到年底:三样图元都不出现,图例与参照系跟着不写', () => {
@@ -138,17 +141,26 @@ describe('PvDriftChart(B9)', () => {
     expect(w.find('rect.future').exists()).toBe(false)
     expect(w.findAll('text.mlab').some(t => t.attributes('fill') === C.FOCUS)).toBe(false)
     expect(w.find('.leg').text()).not.toContain('水平变了')
-    expect(w.find('.ana-ref').text()).not.toContain('右侧淡区')
+    expect(w.findAll('.ana-ref').map(p => p.text()))
+      .toEqual(['纵轴是常年水平的几倍（扣掉全园当天涨落）；缺抄的天断开', '跳过并网那个月再找，没找到水平变了的那天'])
   })
 
-  it('网格步长可取 0.15:极值 0.2 / −0.125 时排出 -0.15 / 0.00 / +0.15 / +0.30(与画布同一组网格)', () => {
+  it('❗卡名、卡头、图例三项(2026-10-06 改稿);屏上没有「常态」「残差」', () => {
+    const w = mountChart(yearFixture())
+    expect(w.find('.t').text()).toBe('每天的偏离和水平变化')
+    expect(w.find('.hint').text()).toBe('2025年全年 · 扣掉全园涨落，和常年比 · 倍')
+    expect(w.findAll('.leg span').map(s => s.text())).toEqual(['每天的偏离', '这段时间的水平', '水平大概落在这里'])
+    expect(w.text()).not.toMatch(/常态|残差/)
+  })
+
+  it('网格步长可取 0.15:极值 0.2 / −0.125 时排在 −0.15 / 0 / +0.15 / +0.30(与画布同一组网格),字写倍数', () => {
     const d = monthFixture()
     const points = d.points.map(p => ({ ...p, v: p.doy === 200 ? 0.2 : p.doy === 40 ? -0.125 : p.v * 0.6 }))
     const trend = d.trend.map(t => ({ ...t, fit: t.fit * 0.6, lo: t.fit * 0.6 - 0.02, hi: t.fit * 0.6 + 0.02 }))
     const w = mountChart({ ...d, points, trend })
     // 每单位 164 / 0.325 像素;量程 −0.198~0.317,÷3 = 0.172,离 0.15 比离 0.2 近
-    const labels = w.findAll('text').filter(t => t.attributes('text-anchor') === 'end' && /^[-+]?0\.\d\d$/.test(t.text()))
-    expect(labels.map(t => t.text())).toEqual(['-0.15', '0.00', '+0.15', '+0.30'])
+    const labels = w.findAll('text').filter(t => t.attributes('text-anchor') === 'end' && /^×/.test(t.text()))
+    expect(labels.map(t => t.text())).toEqual(['×0.86', '×1', '×1.2', '×1.3'])
     expect(w.findAll('line.gl').map(l => num(l.attributes('y1')))).toEqual([249.6, 173.9, 98.2, 22.5])
   })
 
@@ -166,7 +178,8 @@ describe('PvDriftChart(B9)', () => {
     expect(w.find('.hdot').attributes('style')).toContain(`left: 297.5px`)
     expect(w.find('.hdot').attributes('style')).toContain(`top: ${Math.round((cy - 4.5) * 10) / 10}px`)
     const lines = w.findAll('.dtip span')
-    expect(lines.map(l => l.text())).toEqual(['6月9日', `偏离 +${p.v.toFixed(3)}`, '在 6 月 9 日水平变化之后'])
+    expect(lines.map(l => l.text())).toEqual(['6月9日', `偏离 ${pvTimesLabel(p.v)}`, '在 6 月 9 日水平变化之后'])
+    expect(lines[1].text()).toBe('偏离 ×1.1')
     expect(lines[1].attributes('style')).toContain(rgb(C.TIP_SEL))
     // 最长行 9 汉字 × 12 + 6 × 6.6 = 147.6 → 148 + 22 = 170;302 + 12 + 170 = 484 ≤ 632,放右侧
     expect(w.find('.dtip').attributes('style')).toContain('left: 314px')
@@ -193,14 +206,15 @@ describe('PvDriftChart(B9)', () => {
     expect(w.findAll('.dtip span')[0].text()).toBe('2月18日')
   })
 
-  it('气泡右缘放不下翻到竖线左侧:第 330 天 x 575.7,宽 93 → 左 470.7', async () => {
+  it('气泡右缘放不下翻到竖线左侧:第 330 天 x 575.7,宽 86 → 左 477.7', async () => {
     const w = mountChart(yearFixture())
     await w.find('.plot').trigger('mousemove', { clientX: 575.7 })
     const lines = w.findAll('.dtip span').map(l => l.text())
     expect(lines).toHaveLength(2)                                         // 没有变点就没有第三行
     expect(lines[0]).toBe('11月26日')
-    // '偏离 ±0.0xx' = 2 汉字 24 + 7 × 6.6 = 70.2 → 71 + 22 = 93;575.7 + 12 + 93 > 632
-    expect(w.find('.dtip').attributes('style')).toContain('left: 470.7px')
+    // '偏离 ×0.96' = 2 汉字 24 + 6 × 6.6 = 63.6 → 64 + 22 = 86;575.7 + 12 + 86 > 632
+    expect(lines[1]).toBe('偏离 ×0.96')
+    expect(w.find('.dtip').attributes('style')).toContain('left: 477.7px')
   })
 })
 

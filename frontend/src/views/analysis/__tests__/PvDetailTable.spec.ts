@@ -31,7 +31,7 @@ const yearRows = (): DetailRow[] => [
 ]
 
 const mountTable = (rows: DetailRow[] = monthRows(), gran: 'month' | 'year' = 'month') =>
-  mount(PvDetailTable, { props: { rows, gran } })
+  mount(PvDetailTable, { props: { rows, gran, name: '13栋' } })
 // 行末空列 .fp-fill(余宽落那里)不算格子
 const cells = (tr: ReturnType<ReturnType<typeof mountTable>['findAll']>[number]) => tr.findAll('td:not(.fp-fill)').map(td => td.text())
 
@@ -51,7 +51,7 @@ describe('PvDetailTable(B12)', () => {
   it('五列表头与列宽 108 / 104 / 84 / 96 / 备注按最长一条(88),余宽归行末空列;可见 8 行 = 表头 24 + 8 × 32 = 280 内滚', () => {
     const w = mountTable()
     const th = w.findAll('th')
-    expect(th.map(t => t.text())).toEqual(['日期', '当日发电 度', '比值', '在不在范围内', '备注', ''])
+    expect(th.map(t => t.text())).toEqual(['日期', '当日发电 kWh', '几倍', '在不在平时范围', '备注', ''])
     // 夹具最长「连续第 5 天」= 汉字 4 + 半角 3 × 0.6 = 5.8em × 12px → 70 + 余量 2 + 内边距 16;空列不给宽
     expect(th.map(t => t.attributes('style') ?? '')).toEqual(['width: 108px;', 'width: 104px;', 'width: 84px;', 'width: 96px;', 'width: 88px;', ''])
     expect(th.at(-1)!.classes()).toContain('fp-fill')
@@ -63,19 +63,19 @@ describe('PvDetailTable(B12)', () => {
 
   it('在范围内的行:发电千分位、比值三位、无色条无着色', () => {
     const tr = mountTable().findAll('tbody tr')[0]
-    expect(cells(tr)).toEqual(['8 月 1 日', '1,200', '0.700', '在范围内', ''])
+    expect(cells(tr)).toEqual(['8 月 1 日', '1,200', '0.700', '在平时范围', ''])
     expect(tr.find('.bar').attributes('style')).toContain('background: transparent')
     expect(tr.findAll('td')[1].attributes('style')).toBeUndefined()
   })
 
-  it('高于上沿的行:左 2px 琥珀条,数值与状态琥珀字,备注「连续第 k 天」;低于下沿的行:红条红字', () => {
+  it('高于平时的行:左 2px 琥珀条,数值与状态琥珀字,备注「连续第 k 天」;低于平时的行:红条红字', () => {
     const rows = mountTable().findAll('tbody tr')
     const hi = rows[21]                                                 // 8 月 22 日,连续第 5 天
-    expect(cells(hi).slice(0, 1).concat(cells(hi).slice(3))).toEqual(['8 月 22 日', '高于上沿', '连续第 5 天'])
+    expect(cells(hi).slice(0, 1).concat(cells(hi).slice(3))).toEqual(['8 月 22 日', '高于平时', '连续第 5 天'])
     expect(hi.find('.bar').attributes('style')).toContain(rgb(C.ABOVE))
     for (const k of [1, 2, 3]) expect(hi.findAll('td')[k].attributes('style')).toContain(rgb(C.AMBER_TEXT))
     const lo = rows[9]                                                  // 8 月 10 日,单独一天
-    expect([cells(lo)[3], cells(lo)[4]]).toEqual(['低于下沿', ''])
+    expect([cells(lo)[3], cells(lo)[4]]).toEqual(['低于平时', ''])
     expect(lo.find('.bar').attributes('style')).toContain(rgb(C.BELOW))
     expect(lo.findAll('td')[3].attributes('style')).toContain(rgb(C.BELOW))
     // 有读数但画不出范围:状态「—」,不着色,数值照写
@@ -103,27 +103,24 @@ describe('PvDetailTable(B12)', () => {
     expect(cells(rows[16])[4]).toBe('没抄表')
   })
 
-  it('打开停在最后 8 行,表脚写停在第几天;滚到顶 / 中间表脚跟着改', async () => {
+  it('❗卡名、卡头(这栋 · 几月几天 · kWh);打开停在最后 8 行;表脚只说屏外还有几天、空行是什么', async () => {
     const w = mountTable()
-    expect(w.find('.ana-ref').text()).toBe('只列这一栋、只列本段 · 表内可上下滚，这里停在第 21–28 天，其余 20 天滚上去看 · 空行不是 0，是那天没抄表')
-    const box = w.find('.scroll')
-    Object.defineProperty(box.element, 'scrollTop', { value: 0, configurable: true, writable: true })
-    await box.trigger('scroll')
-    expect(w.find('.ana-ref').text()).toContain('这里停在第 1–8 天，其余 20 天滚下去看')
-    ;(box.element as HTMLElement).scrollTop = 320
-    await box.trigger('scroll')
-    expect(w.find('.ana-ref').text()).toContain('这里停在第 11–18 天，其余 20 天上下滚动看')
+    expect(w.find('.t').text()).toBe('每天的读数')
+    expect(w.find('.hint').text()).toBe('13栋 · 8月 28 天 · kWh')
+    expect(w.find('.ana-ref').text()).toBe('表内上下滚看其余 20 天；空行是那天没抄表')
+    await nextTick()
+    expect((w.find('.scroll').element as HTMLElement).scrollTop).toBe(20 * 32)
   })
 
-  it('年档:月份 / 当月发电;不足 8 行不写滚动;连续第 k 个月;空行是「那个月」没抄表', () => {
+  it('年档:月份 / 当月发电;卡头写几个月;不足 8 行不写滚动;连续第 k 个月;空行是「那个月」没抄表', () => {
     const w = mountTable(yearRows(), 'year')
-    expect(w.findAll('th').map(t => t.text()).slice(0, 2)).toEqual(['月份', '当月发电 度'])
+    expect(w.findAll('th').map(t => t.text()).slice(0, 2)).toEqual(['月份', '当月发电 kWh'])
     const rows = w.findAll('tbody tr')
-    expect(cells(rows[0])).toEqual(['2 月', '21,876', '0.812', '在范围内', ''])
+    expect(cells(rows[0])).toEqual(['2 月', '21,876', '0.812', '在平时范围', ''])
     expect(cells(rows[1])).toEqual(['3 月', '—', '—', '—', '没抄表'])
     expect(cells(rows[3])[4]).toBe('连续第 2 个月')
-    expect(w.find('.ana-ref').text()).toBe('只列这一栋、只列本段 · 空行不是 0，是那个月没抄表')
-    expect(w.find('.hint').text()).toBe('这一栋这一段，每个月的原始读数')
+    expect(w.find('.ana-ref').text()).toBe('空行是那个月没抄表')
+    expect(w.find('.hint').text()).toBe('13栋 · 4 个月 · kWh')
   })
 })
 

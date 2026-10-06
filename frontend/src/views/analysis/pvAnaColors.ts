@@ -14,10 +14,10 @@
 // --control-solid 给选中芯片)组件里照旧写 var(--*),不在这里抄。
 //
 // ── v4 的颜色分工 ─────────────────────────────────────────────────────────────
-//   1. **期别三色** —— 只在「一栋一条 / 一栋一点」的图上出现:A2、L1、L3 行头、L7、B8、芯片点。
-//      单栋仍不拥有私有色;三期橙在本屏只落在三期那几栋上。
+//   1. **期别三色** —— 只在「一栋一条 / 一栋一点」的图上出现:A2、L1、L3 行头、L7、B8、芯片点、每千瓦日均新卡。
+//      单栋仍不拥有私有色;2026-10-06 起是蓝的深浅(一期深、三期浅),暗色倒过来。
 //   2. **焦点蓝 #378ADD** —— 主序列与选中栋:B1 线、B3 选中栋、B7·B8 自用段、L2 柱、B9 趋势、B11。
-//      与一期同值,两个名字分开存:「一期」是类别,「选中 / 主序列」是状态,以后单调其一不牵连另一个。
+//      与二期同值,两个名字分开存:「二期」是类别,「选中 / 主序列」是状态,以后单调其一不牵连另一个。
 //   3. **方向与越界** —— 红 = 低于下沿 / 变点 / 观测值 / 超出外带(全屏唯一的负向与越界色);
 //      琥珀 = 高于上沿 / 缺抄 / 损耗率 / 超出内带。红只标方向与越界,**不做严重度灯**。
 //      缺抄与高于上沿同色,靠形状分(缺抄 = 底部刻度 / 格底色;出范围 = 白环点 / 段底色)。
@@ -28,18 +28,19 @@
 //
 // ── 暗色(DARK-MODE-SPEC §6)──────────────────────────────────────────────────────
 //   PV_COLORS 按当前外观取值(读 resolvedTheme:在模板 / computed / CSS v-bind 里读会跟着切外观重画)。
-//   期别色、焦点蓝、带、红、琥珀、提示框里的浅色字在暗底上本来就够对比,两种外观同值(同 anaTheme 分类色);
-//   变的只有:墨阶(墨色反过来 = 暗色 --ink-900 × 同一透明度)、网格 / 轴字 / 提示框底(= ANA_DARK)、琥珀字(= --warn-text)。
+//   焦点蓝、带、红、琥珀、提示框里的浅色字在暗底上本来就够对比,两种外观同值(同 anaTheme 分类色);
+//   变的只有:期别三色(深浅倒过来)、墨阶(墨色反过来 = 暗色 --ink-900 × 同一透明度)、网格 / 轴字 / 提示框底(= ANA_DARK)、琥珀字(= --warn-text)。
 //   ⚠ 别在 setup 里一次性拷成常量:页签在 KeepAlive 里常驻、切外观不重挂载,拷走的值停在旧外观。
 //     要成表就包 computed(PvDetailTable 的 OUT、PvQualityGrid 的 KIND_FILL、PvConsumption 的 SEG_FILL)。
 import { resolvedTheme } from '@/stores/appearance'
 import { ANA_DARK } from '@/components/ana/anaTheme'
 
 const LIGHT = {
-  /** 期别三色。一期与 FOCUS 同值,见头注第 2 条 */
-  PHASE1: '#378ADD',
-  PHASE2: '#5DCAA5',
-  PHASE3: '#EF9F27',
+  /** 期别三色 = 蓝的深浅(2026-10-06 改稿 D2.2:橙只留给「高于平时 / 超限」,青绿与橙不再当期别)。
+   *  二期与 FOCUS 同值,见头注第 2 条;暗色倒过来,见 DARK */
+  PHASE1: '#0C447C',
+  PHASE2: '#378ADD',
+  PHASE3: '#85B7EB',
 
   /** 主序列 / 选中栋 / 自己用了 / 残差「多发」色阶 / 当段月 */
   FOCUS: '#378ADD',
@@ -65,6 +66,9 @@ const LIGHT = {
   CROWD_B10: 'rgba(28,28,28,.28)',
   /** 整日剔除格底(另叠 45° 划痕) */
   DROP: 'rgba(28,28,28,.10)',
+  /** 有栋没抄的日子(抄表日历格 / 图例,2026-10-06 改稿):墨阶,比 DROP 深,靠深浅 + 划痕和「这天不算」分开。
+   *  = --ink-700(.8)× .45;缺抄不是「高于平时」,不再用琥珀 */
+  MISS: 'rgba(28,28,28,.36)',
   /** 还没到的日子(B1 B3 B7 B9 B10 右侧淡底) */
   FUTURE: 'rgba(28,28,28,.03)',
   /** 当前期间 / 当段:B9 底 .07,B11 当段月底 .10 */
@@ -88,7 +92,9 @@ const dk = (a: string) => `rgba(236,236,238,${a})`   // 暗色 --ink-900 × a
 const DARK: PvColors = {
   ...LIGHT,
   AMBER_TEXT: 'var(--warn-text)',   // 只落在 DOM(SVG 属性 / 行内样式),引得了令牌
-  REF: dk('.45'), REF_DIAG: dk('.35'), LOSS: dk('.30'), CROWD_B9: dk('.22'), CROWD_B10: dk('.28'), DROP: dk('.10'), FUTURE: dk('.03'),
+  // 期别深浅暗底上倒过来:一期仍最醒目;深蓝 #0C447C 在暗底上看不见(画板便签 notdone「暗色」)
+  PHASE1: '#B5D4F4', PHASE2: '#378ADD', PHASE3: '#185FA5',
+  REF: dk('.45'), REF_DIAG: dk('.35'), LOSS: dk('.30'), CROWD_B9: dk('.22'), CROWD_B10: dk('.28'), DROP: dk('.10'), MISS: dk('.36'), FUTURE: dk('.03'),
   GRID: ANA_DARK.grid, AXIS_TEXT: ANA_DARK.label, TIP_BG: ANA_DARK.tipBg,
 }
 
@@ -96,7 +102,10 @@ export const PV_COLORS: PvColors = new Proxy(LIGHT, {
   get: (light, k) => (resolvedTheme.value === 'dark' ? DARK : light)[k as keyof PvColors],
 })
 
-/** 期别 → 色。未知期别不给色,调用方退回墨阶 */
-export const PHASE_COLORS: Readonly<Record<number, string>> = {
-  1: PV_COLORS.PHASE1, 2: PV_COLORS.PHASE2, 3: PV_COLORS.PHASE3,
-}
+/** 期别 → 色。未知期别不给色,调用方退回墨阶。
+ *  取值走 getter:期别色两种外观不同值(2026-10-06 起),拷成常量就停在模块加载时的外观 */
+export const PHASE_COLORS: Readonly<Record<number, string>> = Object.defineProperties({}, {
+  1: { get: () => PV_COLORS.PHASE1, enumerable: true },
+  2: { get: () => PV_COLORS.PHASE2, enumerable: true },
+  3: { get: () => PV_COLORS.PHASE3, enumerable: true },
+})

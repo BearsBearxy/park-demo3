@@ -215,7 +215,7 @@ describe('页签模型 · 点哪开在哪(§2)', () => {
     s.openBackground('ledger')
     land(s, 'cockpit')                     // [首页, 台账, 驾驶舱]
     s.markInPage()
-    land(s, 'anomaly')                     // 驾驶舱「进入监控中心」:裸 push
+    land(s, 'anomaly')                     // 驾驶舱「去异常提醒中心看全部」:裸 push
     expect(vals(s)).toEqual([HOME, 'ledger', 'cockpit', 'anomaly'])
     s.markInPage()
     s.open('meters')                       // 出账步骤条:显式在当前页签走

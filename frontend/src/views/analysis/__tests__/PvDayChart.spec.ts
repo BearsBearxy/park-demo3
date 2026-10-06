@@ -47,12 +47,12 @@ describe('PvDayChart', () => {
     expect([svg.attributes('width'), svg.attributes('height'), svg.attributes('viewBox')]).toEqual(['1025', '236', '0 0 1025 236'])
   })
 
-  it('出范围点:只画出范围的已抄日,r4 白环,低于红 / 高于琥珀;在范围内的日子不画点', () => {
+  it('出范围点:只画出范围的已抄日,r4 白环;连着偏离的低于红 / 高于琥珀,零散的(10 日)画灰;在范围内的日子不画点', () => {
     const w = mk()
     const pts = w.findAll('circle.pt')
     expect(pts.map(p => [Number(p.attributes('cx')), Number(p.attributes('cy')), p.attributes('fill')])).toEqual([
       [44, 183.4, '#E24B4A'], [76.2, 192.6, '#E24B4A'], [108.5, 174.2, '#E24B4A'],
-      [334.1, 54.4, '#EF9F27'], [656.4, 40.6, '#EF9F27'], [688.7, 31.4, '#EF9F27'], [720.9, 49.8, '#EF9F27'],
+      [334.1, 54.4, 'var(--ink-500)'], [656.4, 40.6, '#EF9F27'], [688.7, 31.4, '#EF9F27'], [720.9, 49.8, '#EF9F27'],
     ])
     expect(pts.every(p => p.attributes('r') === '4' && p.attributes('stroke-width') === '1.5')).toBe(true)
   })
@@ -106,11 +106,11 @@ describe('PvDayChart', () => {
     expect(w.find('rect.future').exists()).toBe(false)
   })
 
-  it('三态:漏抄 = 底部 2×7 琥珀刻度;未到 = 右侧淡底(28.5 日起到 31 日)', () => {
+  it('三态:漏抄 = 底部 2×7 深灰刻度(2026-10-06 起墨阶,橙只留给高于平时);未到 = 右侧淡底(28.5 日起到 31 日)', () => {
     const w = mk()
     const miss = w.findAll('rect.miss')
     expect(miss.map(m => Number(m.attributes('x')))).toEqual([462, 816.6, 848.8])
-    expect(miss.every(m => m.attributes('y') === '205' && m.attributes('width') === '2' && m.attributes('height') === '7' && m.attributes('fill') === '#EF9F27')).toBe(true)
+    expect(miss.every(m => m.attributes('y') === '205' && m.attributes('width') === '2' && m.attributes('height') === '7' && m.attributes('fill') === 'var(--ink-700)')).toBe(true)
     const fut = w.find('rect.future')
     expect([Number(fut.attributes('x')), Number(fut.attributes('width')), fut.attributes('fill')]).toEqual([930.4, 80.6, 'rgba(28,28,28,.03)'])
     // 不写「未到 / 漏」字(V4 §0)
@@ -173,10 +173,11 @@ describe('PvDayChart', () => {
     expect(px((tip.element as HTMLElement).style.left)).toBeCloseTo(763.3, 5)
   })
 
-  it('悬停漏抄日:第二行「这天没抄表」,不画高亮点', async () => {
+  it('悬停漏抄日:第二行「这天没抄表或发电不为正」(两种都不进比值,分不出),淡字不用琥珀,不画高亮点', async () => {
     const w = mk()
     await w.find('.pdc-plot').trigger('mousemove', { clientX: 817.6 })
-    expect(w.find('.pdc-tip').findAll('span').map(s => s.text())).toEqual(['8 月 25 日', '这天没抄表'])
+    expect(w.find('.pdc-tip').findAll('span').map(s => s.text())).toEqual(['8 月 25 日', '这天没抄表或发电不为正'])
+    expect((w.find('.pdc-tip').findAll('span')[1].element as HTMLElement).style.color).toBe('')
     expect(w.find('circle.hdot').exists()).toBe(false)
     expect(Number(w.find('line.hair').attributes('x1'))).toBe(817.6)
   })
@@ -193,11 +194,24 @@ describe('PvDayChart', () => {
     expect([ok.findAll('rect.run').length, ok.findAll('circle.pt').length]).toEqual([2, 7])
   })
 
-  it('图头:栋名 + 事实句 + 五项图例', () => {
+  it('图头:栋名 + 事实句 + 六项图例(2026-10-06 改稿:加「零散」,范围叫「平时范围」)', () => {
     const w = mk()
     expect(w.find('.pdc-hd .nm').text()).toBe('E座')
     expect(w.find('.pdc-hd .fact').text()).toBe('事实句')
-    expect(w.findAll('.leg > span').map(s => s.text())).toEqual(['逐日比值', '这栋的范围', '低于下沿', '高于上沿', '缺抄'])
+    expect(w.findAll('.leg > span').map(s => s.text())).toEqual(['发电量是全园中间那栋的几倍', '平时范围', '连着低于', '连着高于', '零散', '缺抄'])
+  })
+
+  it('❗纵轴下沿封 0:余量留到 0 以下就封在 0,「下沿」字压在轴线上方;对照:不到 0 的照旧', () => {
+    const row = baseRow()
+    row.ratio[4] = 8; row.out[4] = 1   // 5 日冲到 8 倍:量程 0.60–8 留 12% 余量,下端会到 −0.29
+    const w = mk(row)
+    const labs = w.findAll('.axh').filter(e => !e.classes('hi') && !e.classes('lo'))
+    expect(labs.map(e => [e.text(), px((e.element as HTMLElement).style.top)])).toEqual([['0.00', 205], ['2.96', 138.3], ['5.93', 71.7], ['8.89', 5]])
+    // 下沿 0.70 在 y 196.3,字本该在 198.3,压到 12 + 200 − 15 = 197
+    expect(px((w.find('.axh.lo').element as HTMLElement).style.top)).toBe(197)
+    const band = w.find('rect.band')
+    expect(Math.abs(Number(band.attributes('y')) + Number(band.attributes('height')) - 196.25)).toBeLessThan(0.1)   // 带底 = 下沿 0.70(没被封到轴线)
+    expect(mk().findAll('.axh').filter(e => !e.classes('hi') && !e.classes('lo'))[0].text()).toBe('0.56')
   })
 
   it('❗C6-17：数据元素全在 g.pdc-data 里，轴线与 x 刻度在组前', () => {
