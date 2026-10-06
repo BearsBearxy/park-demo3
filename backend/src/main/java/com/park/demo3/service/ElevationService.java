@@ -62,9 +62,11 @@ public List<GrantDTO> elevate(ElevateReq req) {
         for (String p : perms) {
             if (!Perm.exists(p)) throw new BizException(ResultCode.BAD_REQUEST, "未知权限点:" + p);
             if (!Perm.elevatable(p)) {
-                throw new BizException(ResultCode.FORBIDDEN,
-                    "「" + label(p) + "」不能靠当场授权获得。系统管理必须本人登录自己的账号去改 —— "
-                  + "否则一次 30 分钟的授权就能换来一个永久管理员账号,整套权限当场作废。");
+                // 「永久管理员账号」那句只对 system:* 成立;审核、各查看、工资录入借不到是因为它们按人开通,只说去找谁
+                throw new BizException(ResultCode.FORBIDDEN, p.startsWith("system:")
+                    ? "「" + label(p) + "」不能靠当场授权获得。系统管理必须本人登录自己的账号去改 —— "
+                      + "否则一次 30 分钟的授权就能换来一个永久管理员账号,整套权限当场作废。"
+                    : "「" + label(p) + "」不能靠当场授权获得，要请系统管理员在角色里开通。");
             }
         }
 
@@ -94,14 +96,20 @@ public List<GrantDTO> elevate(ElevateReq req) {
     public AuthUser verifyAuthorizer(String account, String password, List<String> mustHave, String auditAction) {
         String me = currentUsername();
 
-        // 失败锁定:按 ip|授权人 计数(防的是猜某个主管的密码)
-        String key = LoginRateLimiter.key(clientIp(), account);
+        // 授权人账号会进登录限流表的键:先限长,与 LoginReq / ElevateReq 同口径。放在这里而不是只靠 DTO 的 @Size ——
+        // LockService.takeover 的 TakeoverReq 也走这里,而它没有校验(安全审计 F05 的漏网处)。
+        if (account == null || account.length() > 64 || password == null || password.length() > 72)
+            throw new BizException(ResultCode.UNAUTHORIZED, "授权人账号或密码错误");
+
+        AuthUser boss = users.selectOne(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getUsername, account));
+        // 失败锁定:按 ip|授权人 计数(防的是猜某个主管的密码)。用库里的规范用户名组键,理由同 AuthService.login:
+        // 排序规则不分重音与全半角,按原样输入组键就能换着写法无限猜。
+        String key = LoginRateLimiter.key(clientIp(), boss != null ? boss.getUsername() : account);
         if (limiter.isLocked(key)) {
             audit.log(auditAction + ".locked", "user:" + account, "授权失败次数过多,已锁定");
             throw new BizException(ResultCode.TOO_MANY_REQUESTS, "授权失败次数过多,请 15 分钟后再试");
         }
 
-        AuthUser boss = users.selectOne(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getUsername, account));
         boolean active = boss != null && boss.getStatus() == 1;
         boolean ok = enc.matches(password, active ? boss.getPasswordHash() : DUMMY_HASH) && active;
         if (!ok) {
@@ -131,7 +139,8 @@ public List<GrantDTO> elevate(ElevateReq req) {
     }
 
     /**
-     * 校验**当前登录者本人**的密码。远程授权用（设计稿 §07）：
+     * 校验**当前登录者本人**的密码。远程授权批准（设计稿 §07）与本人改密共用;限流键 ip|本人,与登录同一个桶 ——
+     * 在这里连错 5 次,同一 IP 登录这个账号也要等 15 分钟。远程授权的理由:
      * 主管在**自己的电脑上**批，输的是自己的密码 —— 那正是这条路径比当场授权更安全的地方。
      *
      * 与 verifyAuthorizer 共用同一套护栏（失败锁定 / 空跑 BCrypt / 失败进审计）：
@@ -140,6 +149,11 @@ public List<GrantDTO> elevate(ElevateReq req) {
      * —— 被授权的是**请求者**，不是他自己，所以那道守卫在这条路径上是错的。
      */
     public void verifyOwnPassword(String password, String auditAction) {
+        verifyOwnPassword(password, auditAction, "密码错误");
+    }
+
+    /** 同上;wrongMessage 是口令错时给人看的那句(改密屏要说「当前密码不正确」,光说「密码错误」分不清是哪个)。 */
+    public void verifyOwnPassword(String password, String auditAction, String wrongMessage) {
         String me = currentUsername();
         String key = LoginRateLimiter.key(clientIp(), me);
         if (limiter.isLocked(key)) {
@@ -152,7 +166,7 @@ public List<GrantDTO> elevate(ElevateReq req) {
         if (!ok) {
             limiter.recordFailure(key);
             audit.log(auditAction + ".deny", "user:" + me, "密码错误");
-            throw new BizException(ResultCode.UNAUTHORIZED, "密码错误");
+            throw new BizException(ResultCode.UNAUTHORIZED, wrongMessage);
         }
         limiter.reset(key);
     }

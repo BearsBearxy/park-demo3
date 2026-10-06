@@ -12,6 +12,8 @@ import { useViewport } from '@/composables/useViewport'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { CHAIN, chainStepsOf } from '@/nav/billingChain'
 import { fpBuildRoutes } from '@/nav/fpNav'
+import { canViewPage } from '@/nav/navAccess'
+import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
 import { BRAND } from '@/brand'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
@@ -22,6 +24,12 @@ const tabs = useTabsStore()
 const favs = useFavoritesStore()
 const ui = useUiStore()
 const ROUTES = fpBuildRoutes()
+const auth = useAuthStore()
+// RBAC v3:没有查看权的屏不在首页列(收藏、最近打开、本月出账入口条)。收藏只是不显示、不删 ——
+// 权限回来了它们原样回来;删了就是替人做主。
+const seen = (v: string) => canViewPage(v, auth.can)
+const favList = computed(() => favs.list.filter(seen))
+const canBilling = computed(() => seen('data-home'))
 
 const isHome = computed(() => (route.meta as Record<string, unknown>).value === 'home')
 
@@ -31,13 +39,13 @@ function go(v: string) {
 }
 
 const hint = computed(() => {
-  const n = favs.list.length
+  const n = favList.value.length
   if (!n) return ''
   if (favs.seeded && n === 1) return '先放好了你最常用的一屏 · 在页面上点 ☆ 加更多'
   return `${n} 个 · 在页面上点 ☆ 加进来`
 })
 
-const recent = computed(() => tabs.recent.filter(v => ROUTES[v]))
+const recent = computed(() => tabs.recent.filter(v => ROUTES[v] && seen(v)))
 
 // ── 本月出账入口条(S 档)。副行是实测数,数在 billingPeriod 里 ──
 const period = useBillingPeriodStore()
@@ -46,7 +54,8 @@ const { tier } = useViewport()
 // ⚠ 只在 S 档打:它喂的副行 entrySub 只在 ≤600 上屏(.hm-entry 在宽档 display:none),
 //   无条件调等于桌面 1440 登录落地后凭空多一轮请求,画面上一个像素都不用它 ——
 //   §9 的零差异不只是像素那半。转屏 / 缩窗进 S 时 watchEffect 会补拉。
-watchEffect(() => { if (tier.value === 's') void period.loadChain().catch(() => { /* noop */ }) })
+//   没有本月出账的查看权(比如只看分析和报表的股东)整条入口不出,也不拉(出账链月索引对他是 403)。
+watchEffect(() => { if (tier.value === 's' && canBilling.value) void period.loadChain().catch(() => { /* noop */ }) })
 
 // 「本月」:手选优先,没选过用日历当月 —— 与 data-home 的 shownYm 同序。
 const entryYm = computed(() => {
@@ -72,8 +81,9 @@ function onDragStart(i: number, e: DragEvent) {
   e.dataTransfer?.setData('text/plain', String(i))
   if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
 }
+// 格子的下标是**显示出来的**那几格;换回收藏表里的真下标(中间可能夹着看不了、没显示的)
 function onDrop(i: number) {
-  if (dragFrom.value >= 0) favs.move(dragFrom.value, i)
+  if (dragFrom.value >= 0) favs.move(favs.list.indexOf(favList.value[dragFrom.value]), favs.list.indexOf(favList.value[i]))
   dragFrom.value = -1
   dragOver.value = -1
 }
@@ -96,7 +106,7 @@ function onDragEnd() { dragFrom.value = -1; dragOver.value = -1 }
 
     <!-- 本月出账入口条:S 档才出 —— M↑ 有图标轨与页签条,这条是它们在手机上的替身。
          整条 68 是一个点击目标,右端 › 只是个图标,不单独可点。 -->
-    <button type="button" class="hm-entry" @click="go('data-home')">
+    <button v-if="canBilling" type="button" class="hm-entry" @click="go('data-home')">
       <span class="ei"><component :is="iconFor(ROUTES['data-home']?.icon ?? '')" :size="20" /></span>
       <span class="et">
         <b>{{ ROUTES['data-home']?.page }} · {{ entryYm }}</b>
@@ -109,7 +119,7 @@ function onDragEnd() { dragFrom.value = -1; dragOver.value = -1 }
       <div class="hm-sh"><b>收藏</b><span v-if="hint" class="hm-hint">{{ hint }}</span></div>
       <div class="hm-tiles">
         <div
-          v-for="(v, i) in favs.list"
+          v-for="(v, i) in favList"
           :key="v"
           class="hm-tile"
           :class="{ over: dragOver === i && dragFrom !== i, dragging: dragFrom === i }"
@@ -131,7 +141,7 @@ function onDragEnd() { dragFrom.value = -1; dragOver.value = -1 }
             <X :size="13" />
           </button>
         </div>
-        <FPEmpty v-if="!favs.list.length" class="hm-empty" sub="在任意页面点顶栏页面名后面的 ☆，就会出现在这里">还没有收藏</FPEmpty>
+        <FPEmpty v-if="!favList.length" class="hm-empty" sub="在任意页面点顶栏页面名后面的 ☆，就会出现在这里">还没有收藏</FPEmpty>
       </div>
     </section>
 

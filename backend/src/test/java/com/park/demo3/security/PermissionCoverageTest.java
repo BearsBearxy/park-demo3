@@ -10,6 +10,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -26,31 +27,54 @@ class PermissionCoverageTest {
     private static final Path CONTROLLERS =
         Paths.get("src/main/java/com/park/demo3/controller");
 
-    private static final Pattern CLASS_MAPPING =
-        Pattern.compile("@RequestMapping\\s*\\(\\s*\"([^\"]*)\"\\s*\\)");
-    private static final Pattern METHOD_MAPPING =
-        Pattern.compile("@(Get|Post|Put|Patch|Delete)Mapping\\s*(?:\\(\\s*(?:value\\s*=\\s*)?\"([^\"]*)\"\\s*\\))?");
+    /** 类级与方法级映射注解;括号里的原文交给 {@link #literal} 判写法。 */
+    private static final Pattern MAPPING =
+        Pattern.compile("@(Request|Get|Post|Put|Patch|Delete)Mapping\\b(?:\\s*\\(([^)]*)\\))?");
+    /** 括号里只认「一个字面路径」(可带 value =)或什么都不写。 */
+    private static final Pattern LITERAL_ARG = Pattern.compile("\\s*(?:value\\s*=\\s*)?\"([^\"]*)\"\\s*");
 
     private record Endpoint(HttpMethod method, String path, String source) {}
 
     // ── 扫描 ──────────────────────────────────────────────────────────────
 
+    /**
+     * ⚠ 扫描器看不懂的写法一律让测试红,不许静默跳过:
+     *  · 递归扫(Files.walk):controller 子包里的新接口也得扫到;
+     *  · 映射注解括号里不是单个字面路径(数组、produces = …、常量)→ 红。老正则会把 @GetMapping(value="/x", produces=…)
+     *    当成没写路径,拼出类基址去命中已有规则,测试照绿、运行时却 403;
+     *  · 一个文件只许一个 @RequestMapping(类级)—— 方法级的 @RequestMapping(method = …) 扫不到 HTTP 方法。
+     */
     private List<Endpoint> scan() throws IOException {
+        List<Path> files;
+        try (Stream<Path> s = Files.walk(CONTROLLERS)) {
+            files = s.filter(p -> p.toString().endsWith(".java")).sorted().toList();
+        }
         List<Endpoint> out = new ArrayList<>();
-        try (DirectoryStream<Path> ds = Files.newDirectoryStream(CONTROLLERS, "*.java")) {
-            for (Path f : ds) {
-                String src = Files.readString(f, StandardCharsets.UTF_8);
-                Matcher cm = CLASS_MAPPING.matcher(src);
-                String base = cm.find() ? cm.group(1) : "";
-                Matcher mm = METHOD_MAPPING.matcher(src);
-                while (mm.find()) {
-                    HttpMethod m = HttpMethod.valueOf(mm.group(1).toUpperCase(Locale.ROOT));
-                    String sub = mm.group(2) == null ? "" : mm.group(2);
-                    out.add(new Endpoint(m, join(base, sub), f.getFileName().toString()));
+        for (Path f : files) {
+            String src = Files.readString(f, StandardCharsets.UTF_8);
+            String base = null;
+            Matcher mm = MAPPING.matcher(src);
+            while (mm.find()) {
+                String sub = literal(mm.group(2), f, mm.group());
+                if ("Request".equals(mm.group(1))) {
+                    assertThat(base).as(f.getFileName() + ":只认一个类级 @RequestMapping,方法级的扫描器判不出 HTTP 方法").isNull();
+                    base = sub;
+                    continue;
                 }
+                HttpMethod m = HttpMethod.valueOf(mm.group(1).toUpperCase(Locale.ROOT));
+                out.add(new Endpoint(m, join(base == null ? "" : base, sub), f.getFileName().toString()));
             }
         }
         return out;
+    }
+
+    private static String literal(String args, Path f, String whole) {
+        if (args == null || args.isBlank()) return "";
+        Matcher lm = LITERAL_ARG.matcher(args);
+        assertThat(lm.matches())
+            .as(f.getFileName() + " 的 " + whole + ":括号里只许一个字面路径,别的写法扫描器会拼错路径")
+            .isTrue();
+        return lm.group(1);
     }
 
     private static String join(String base, String sub) {
@@ -191,5 +215,187 @@ class PermissionCoverageTest {
         assertThat(reg.resolve(HttpMethod.POST, "/api/books/7/template/pin"))
                 .containsExactly(Perm.BOOK_TEMPLATE_SWITCH);
         assertThat(Perm.BOOK_TEMPLATE_EDIT).isNotEqualTo(Perm.BOOK_TEMPLATE_SWITCH);
+    }
+
+    // ══ v3「读写分开」(RBAC-SPEC §11):读也默认拒绝,所以读端点也要逐条覆盖 ══════════════
+
+    @Test
+    @DisplayName("每一个读端点(GET)都必须命中读规则表（默认拒绝，漏配即 403）")
+    void everyReadEndpointIsMapped() throws IOException {
+        PermissionRegistry reg = new PermissionRegistry();
+        List<Endpoint> gets = scan().stream().filter(e -> e.method() == HttpMethod.GET).toList();
+        assertThat(gets)
+            .as("GET 扫描结果太少 —— 正则或路径失效了，这个测试等于没跑")
+            .hasSizeGreaterThan(100);
+
+        var parser = org.springframework.web.util.pattern.PathPatternParser.defaultInstance;
+        List<org.springframework.web.util.pattern.PathPattern> permitAll =
+            Arrays.stream(SecurityPaths.PERMIT_ALL).map(parser::parse).toList();
+
+        List<String> uncovered = gets.stream()
+            // 白名单同样只来自 SecurityPaths,测试里不开自己的豁免名单
+            .filter(e -> permitAll.stream().noneMatch(
+                pp -> pp.matches(org.springframework.http.server.PathContainer.parsePath(e.path()))))
+            .filter(e -> reg.resolveRead(e.path()) == null)
+            .map(e -> "GET " + e.path() + "   (" + e.source() + ")")
+            .sorted()
+            .toList();
+
+        assertThat(uncovered)
+            .as("这些读端点没有落进 PermissionRegistry.registerReads，按「默认拒绝」它们对所有人 403；"
+              + "新加读接口请补一条读规则，并对照 docs/design/RBAC-SPEC.md §11.3")
+            .isEmpty();
+    }
+
+    @Test
+    @DisplayName("读规则只许引用查看点（kind=view）—— 读规则挂一个 :edit 等于让查看依赖编辑")
+    void readRulesOnlyReferenceViewPerms() throws IOException {
+        PermissionRegistry reg = new PermissionRegistry();
+        Set<String> views = new HashSet<>();
+        for (Perm.Meta m : Perm.META) if ("view".equals(m.kind())) views.add(m.key());
+        List<String> bad = new ArrayList<>();
+        for (Endpoint e : scan()) {
+            if (e.method() != HttpMethod.GET) continue;
+            List<String> anyOf = reg.resolveRead(e.path());
+            if (anyOf == null) continue;
+            for (String p : anyOf) {
+                if (!PermissionRegistry.ANY_AUTHENTICATED.equals(p) && !views.contains(p)) bad.add(e.path() + " → " + p);
+            }
+        }
+        assertThat(bad).isEmpty();
+    }
+
+    @Test
+    @DisplayName("回归：读规则的段感知与最长前缀 —— 分析白名单不得吞掉同前缀的明细接口")
+    void readRoutingRegressions() {
+        PermissionRegistry reg = new PermissionRegistry();
+        // 段感知:/api/pv ⊂ /api/pv-meter、/api/elec ⊂ /api/elec-cost
+        assertThat(reg.resolveRead("/api/pv-meter/years")).containsExactly(Perm.METER_VIEW);
+        assertThat(reg.resolveRead("/api/pv/records"))
+            .containsExactly(Perm.ENTRY_VIEW, Perm.REPORT_VIEW, Perm.ANALYSIS_VIEW);
+        assertThat(reg.resolveRead("/api/elec-cost/months")).containsExactly(Perm.ENTRY_VIEW);
+        assertThat(reg.resolveRead("/api/elec-cost/price-cfg"))
+            .containsExactly(Perm.PARAM_VIEW, Perm.ENTRY_VIEW, Perm.ANALYSIS_VIEW);
+        // 最长前缀:/summary 在 /{id} 前;租户详情不给分析(电话在里面,分析只拿列表)
+        assertThat(reg.resolveRead("/api/tenants/summary")).containsExactly(Perm.MASTER_VIEW, Perm.ANALYSIS_VIEW);
+        assertThat(reg.resolveRead("/api/tenants/7")).containsExactly(Perm.MASTER_VIEW);
+        assertThat(reg.resolveRead("/api/contracts/7/terminate-preview")).containsExactly(Perm.CONTRACT_VIEW);
+        // /api/meters/{id}/readings 三段,吞不掉 readings/delete-preview
+        assertThat(reg.resolveRead("/api/meters/9/readings")).containsExactly(Perm.METER_VIEW, Perm.BILLING_VIEW);
+        assertThat(reg.resolveRead("/api/meters/readings/delete-preview")).containsExactly(Perm.METER_VIEW);
+        // 公摊规则归计费参数,不被 /api/alloc/** 的 billing 吃掉
+        assertThat(reg.resolveRead("/api/alloc/rules")).containsExactly(Perm.PARAM_VIEW, Perm.BILLING_VIEW);
+        assertThat(reg.resolveRead("/api/alloc/cfg")).containsExactly(Perm.PARAM_VIEW);
+        // 损益附表:overview 不给分析,排在 /*/* 前
+        assertThat(reg.resolveRead("/api/pnl/1/overview")).containsExactly(Perm.REPORT_VIEW);
+        assertThat(reg.resolveRead("/api/pnl/1/2024")).containsExactly(Perm.REPORT_VIEW, Perm.ANALYSIS_VIEW);
+        // 报表:is / bs 本期给分析,科目余额表 tb 不给
+        assertThat(reg.resolveRead("/api/reports/is/all/2024/5")).containsExactly(Perm.REPORT_VIEW, Perm.ANALYSIS_VIEW);
+        assertThat(reg.resolveRead("/api/reports/bs/3/2024/5")).containsExactly(Perm.REPORT_VIEW, Perm.ANALYSIS_VIEW);
+        assertThat(reg.resolveRead("/api/reports/tb/all/2024/5")).containsExactly(Perm.REPORT_VIEW);
+        assertThat(reg.resolveRead("/api/reports/is/3/2024")).containsExactly(Perm.REPORT_VIEW);
+        // 工资只认 salary:view —— 分析与报表都不放行;唯一例外是不带人的餐补逐月合计(报表派生对照用)
+        assertThat(reg.resolveRead("/api/salary/records")).containsExactly(Perm.SALARY_VIEW);
+        assertThat(reg.resolveRead("/api/salary/overview")).containsExactly(Perm.SALARY_VIEW);
+        assertThat(reg.resolveRead("/api/salary/lunch-totals")).containsExactly(Perm.SALARY_VIEW, Perm.REPORT_VIEW);
+        // 催缴单收款账户明文只给 billing:view(/api/companies 那条对别的查看点打码)
+        assertThat(reg.resolveRead("/api/companies/payees")).containsExactly(Perm.BILLING_VIEW);
+        // 协作基础设施逐条精确登记:同前缀下新加的 GET 不许被「任何已登录」顺手放开,要落默认拒绝
+        assertThat(reg.resolveRead("/api/notices")).containsExactly(PermissionRegistry.ANY_AUTHENTICATED);
+        assertThat(reg.resolveRead("/api/review")).containsExactly(PermissionRegistry.ANY_AUTHENTICATED);
+        assertThat(reg.resolveRead("/api/auth/approvals/candidates")).containsExactly(PermissionRegistry.ANY_AUTHENTICATED);
+        // 部署配置(2026-10-05):前端外壳一登录就取,挂任何查看点都会让那个账号丢按钮 / 丢更新记录
+        assertThat(reg.resolveRead("/api/app/config")).containsExactly(PermissionRegistry.ANY_AUTHENTICATED);
+        // 目标与阈值(用户 2026-10-05 拍板第 2 条):分析查看权就能读,改要账簿报表编辑权;/api/analysis 下别的写照旧拒绝
+        assertThat(reg.resolveRead("/api/analysis/settings")).containsExactly(Perm.ANALYSIS_VIEW);
+        assertThat(reg.resolve(HttpMethod.PUT, "/api/analysis/settings")).containsExactly(Perm.REPORT_EDIT);
+        assertThat(reg.resolve(HttpMethod.POST, "/api/analysis/settings")).isNull();
+        assertThat(reg.resolve(HttpMethod.PUT, "/api/analysis/months")).isNull();
+        for (String fresh : List.of("/api/auth/approvals/history", "/api/auth/whatever", "/api/notices/all",
+                                    "/api/review/export", "/api/probe/dump", "/api/app/secrets")) {
+            assertThat(reg.resolveRead(fresh)).as(fresh).isNull();
+        }
+        // 默认拒绝
+        assertThat(reg.resolveRead("/api/brand-new-endpoint")).isNull();
+    }
+
+    /**
+     * 工资的写一律 salary:edit(用户 2026-10-04 拍板「按你推荐」,RBAC-SPEC §11.8)。从 controller 源码枚举,
+     * 不手抄清单 —— 将来 /api/salary 下新加一个写端点,它自动进这条断言。
+     * 破坏验证:PermissionRegistry 把 "/api/salary" 放回事后录入那一组 → 本条红(那组排在前面,首个命中);
+     *          ReviewKind.SALARY 改回 ENTRY_EDIT → 交审那条红;NOT_ELEVATABLE 去掉 SALARY_EDIT → 最后一条红。
+     */
+    @Test
+    @DisplayName("工资的每一个写端点都只认 salary:edit;交审附表12 也只认它;它不可提权")
+    void everySalaryWriteNeedsSalaryEdit() throws IOException {
+        List<Endpoint> writes = scan().stream()
+            .filter(e -> e.method() != HttpMethod.GET && e.path().startsWith("/api/salary/")).toList();
+        assertThat(writes).as("SalaryController 的写端点:新增 / 改备注 / 删 / 导入 / 清空本期导入 / 批删").hasSize(6);
+        PermissionRegistry reg = new PermissionRegistry();
+        for (Endpoint e : writes) {
+            assertThat(reg.resolve(e.method(), e.path())).as(e.method() + " " + e.path()).containsExactly(Perm.SALARY_EDIT);
+        }
+        assertThat(ReviewKind.SALARY.perms()).containsExactly(Perm.SALARY_EDIT);
+        assertThat(reg.resolve(HttpMethod.POST, "/api/review/salary:2024-02/submit")).contains(Perm.SALARY_EDIT);
+        assertThat(reg.resolve(HttpMethod.POST, "/api/review/salary:2024-02/recall")).contains(Perm.SALARY_EDIT);
+        assertThat(Perm.elevatable(Perm.SALARY_EDIT)).as("借到它就能往看不见的工资表里写").isFalse();
+    }
+
+    @Test
+    @DisplayName("全部 :view 不可提权（v3 规则 6）")
+    void everyViewIsNotElevatable() {
+        List<String> views = Perm.META.stream().filter(m -> "view".equals(m.kind())).map(Perm.Meta::key).toList();
+        assertThat(views).as("9 个模块查看点 + system:view").hasSize(10);
+        assertThat(views).allSatisfy(v -> assertThat(Perm.elevatable(v)).as(v).isFalse());
+    }
+
+    @Test
+    @DisplayName("编辑隐含查看:隐含表与设计一致,且与 META 的 group/kind 一致；工资与分析不被任何点隐含")
+    void impliedViewsMatchDesignAndMeta() {
+        // 设计原文(2026-10-04 拍板)逐条抄录;book-template:* 归 entry、system:edit 隐含 system:view 是勘察结论
+        Map<String, String> design = Map.ofEntries(
+            Map.entry(Perm.MASTER_EDIT, Perm.MASTER_VIEW), Map.entry(Perm.COMPANY_MANAGE, Perm.MASTER_VIEW),
+            Map.entry(Perm.CONTRACT_EDIT, Perm.CONTRACT_VIEW),
+            Map.entry(Perm.PARAM_POLICY_EDIT, Perm.PARAM_VIEW), Map.entry(Perm.PARAM_MONTHLY_EDIT, Perm.PARAM_VIEW),
+            Map.entry(Perm.METER_MASTER_EDIT, Perm.METER_VIEW), Map.entry(Perm.METER_READING_EDIT, Perm.METER_VIEW),
+            Map.entry(Perm.BILLING_RUN_EDIT, Perm.BILLING_VIEW), Map.entry(Perm.BILLING_ISSUE_EDIT, Perm.BILLING_VIEW),
+            Map.entry(Perm.ENTRY_EDIT, Perm.ENTRY_VIEW),
+            Map.entry(Perm.BOOK_TEMPLATE_EDIT, Perm.ENTRY_VIEW), Map.entry(Perm.BOOK_TEMPLATE_SWITCH, Perm.ENTRY_VIEW),
+            Map.entry(Perm.REPORT_EDIT, Perm.REPORT_VIEW),
+            Map.entry(Perm.SALARY_EDIT, Perm.SALARY_VIEW),   // 2026-10-04 用户拍板「按你推荐」:工资录入单列
+            Map.entry(Perm.SYSTEM_EDIT, Perm.SYSTEM_VIEW));
+        assertThat(Perm.IMPLIED_VIEW).containsExactlyInAnyOrderEntriesOf(design);
+
+        Map<String, Perm.Meta> meta = new HashMap<>();
+        for (Perm.Meta m : Perm.META) meta.put(m.key(), m);
+        design.forEach((edit, view) -> {
+            assertThat(meta.get(edit).kind()).as(edit).isEqualTo("edit");
+            assertThat(meta.get(view).kind()).as(view).isEqualTo("view");
+            assertThat(meta.get(edit).group()).as(edit + " 与 " + view + " 同组").isEqualTo(meta.get(view).group());
+        });
+
+        assertThat(Perm.IMPLIED_VIEW.values()).doesNotContain(Perm.ANALYSIS_VIEW);
+        assertThat(Perm.withImplied(List.of(Perm.ENTRY_EDIT)))
+            .as("事后录入不带出工资").containsExactlyInAnyOrder(Perm.ENTRY_EDIT, Perm.ENTRY_VIEW);
+    }
+
+    @Test
+    @DisplayName("META 与 ALL 同序同集；group 只用固定的 11 个模块键,kind 只用 view/edit/other")
+    void metaGroupsAndKindsAreWellFormed() {
+        assertThat(Perm.META.stream().map(Perm.Meta::key).toList()).containsExactlyElementsOf(Perm.ALL);
+        assertThat(Perm.ALL).hasSize(28).doesNotHaveDuplicates();
+        Set<String> groups = Set.of("master", "contract", "param", "meter", "billing", "entry", "salary",
+                                    "report", "analysis", "system", "other");
+        assertThat(Perm.META).allSatisfy(m -> {
+            assertThat(groups).as(m.key()).contains(m.group());
+            assertThat(Set.of("view", "edit", "other")).as(m.key()).contains(m.kind());
+            assertThat("other".equals(m.group())).as(m.key() + ":other 组与 other 种类成对").isEqualTo("other".equals(m.kind()));
+        });
+        // 每个业务组恰好一个查看点 —— 「编辑隐含查看」靠它推出来
+        for (String g : groups) {
+            if (g.equals("other")) continue;
+            assertThat(Perm.META.stream().filter(m -> m.group().equals(g) && m.kind().equals("view")).count())
+                .as("模块 %s 的查看点个数", g).isEqualTo(1);
+        }
     }
 }

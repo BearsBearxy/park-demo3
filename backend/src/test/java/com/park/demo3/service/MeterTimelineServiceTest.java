@@ -1,13 +1,24 @@
 package com.park.demo3.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.park.demo3.entity.DataChangeLog;
 import com.park.demo3.entity.MeterAssign;
 import com.park.demo3.entity.MeterStatus;
+import com.park.demo3.mapper.DataChangeLogMapper;
+import com.park.demo3.mapper.MeterArchiveLogMapper;
+import com.park.demo3.mapper.MeterAssignMapper;
+import com.park.demo3.mapper.MeterMapper;
+import com.park.demo3.mapper.MeterStatusMapper;
+import com.park.demo3.mapper.ReviewStateMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 // METER-TIMELINE-SPEC 的纯函数(MeterTimeline):取值、区间、链尾、「变了」判据。不起 Spring、不碰库。
 // R4 三段走查照 SPEC 用真实月份:A@2023-08 B@2023-11 C@2024-05。
@@ -118,5 +129,36 @@ class MeterTimelineServiceTest {
 
         y.setBuildingId(3); y.setRoomNo("401室"); y.setContractId(12);
         assertThat(MeterTimeline.diff(x, y)).containsExactly("contractId");
+    }
+
+    // 整册导入攒批写的「最早已生成月」(MeterTimelineService.Batch,用户 2026-10-05「两个都按你建议」:提速,结果一格不变)。
+    // 空库起步的新园区:开批时库里没有已生成月(minGeneratedYm 回 '9999-12'),这时的档案改动永远不会「需重算」,不记;
+    // 批中途冲了第一批读数,最早已生成月就是那批里最早的月,之后的改动从它起记 —— 与逐条查库的 recordChange 一样。
+    // MeterImportEquivalenceIT 的共享库早有 2076-12 的读数,这一半在那里一直不动,这里不起 Spring 单钉(对抗复查 IMP-T2-harness-mingen)。
+    // 破坏验证:readingsWritten 里去掉 minGen 那一行 → 红;Batch.record 的 >= 改成 > → 红
+    @Test
+    void importBatch_minGeneratedMonth_followsReadingsWrittenInTheBatch() {
+        MeterAssignMapper assigns = mock(MeterAssignMapper.class);
+        DataChangeLogMapper changes = mock(DataChangeLogMapper.class);
+        when(assigns.maxGeneratedYm()).thenReturn("");
+        when(assigns.minGeneratedYm()).thenReturn("9999-12");
+        List<String> logged = new ArrayList<>();
+        when(changes.insertAll(any())).thenAnswer(inv -> {   // flush 传的是攒批列表的视图、随后清空:当场抄下
+            List<DataChangeLog> rows = inv.getArgument(0);
+            rows.forEach(r -> logged.add(r.getYm()));
+            return rows.size();
+        });
+        MeterTimelineService svc = new MeterTimelineService(assigns, mock(MeterStatusMapper.class), mock(MeterArchiveLogMapper.class),
+            changes, mock(ReviewStateMapper.class), new ObjectMapper(), mock(MeterMapper.class));
+        MeterTimelineService.Batch b = svc.batch(new MeterTimelineService.Ctx("import", "b1", "册.xlsx", null, "it"));
+
+        b.writeStatus(1, "2024-01", "active", List.of());
+        b.flush();
+        assertThat(logged).as("库里还没有已生成月就记了需重算").isEmpty();
+
+        b.readingsWritten(List.of("2024-02", "2024-01"));
+        b.writeStatus(2, "2023-12", "active", List.of());   // 早于最早已生成月的 2023-12 不记;正好是它的 2024-01 要记
+        b.flush();
+        assertThat(logged).containsExactly("2024-01", "2024-02");
     }
 }

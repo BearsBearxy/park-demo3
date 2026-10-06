@@ -16,6 +16,7 @@ import { useAuthStore } from '@/stores/auth'
 import { askQueue, answer } from '@/utils/ask'
 import { receipts } from '@/utils/receipt'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
+import { ALL_VIEWS } from '@/test-utils/perms'
 
 /** v-tip 挂在元素上的那一句(directives/tip.ts 存在 el._tip) */
 const tipOf = (el: Element) => (el as HTMLElement & { _tip?: { text: string } })._tip?.text
@@ -48,6 +49,11 @@ vi.mock('@/api/dataHome', () => ({ dataHomeApi: { getOverview: (ym?: string) => 
 // 与改版前(recon 概念还不存在)的 25 条老用例默认行为等价,不改它们的既有预期。
 const reconOverview = vi.fn().mockResolvedValue({ year: 0, months: [] })
 vi.mock('@/api/recon', () => ({ reconApi: { overview: (year?: number) => reconOverview(year) } }))
+// 缺查看权的原因句要权限点人话名(后端 Perm.META);这里给一个,其余退回原名
+vi.mock('@/api/perms', () => ({
+  loadPermDict: () => Promise.resolve(),
+  permLabel: (k: string) => (k === 'salary:view' ? '工资 · 查看' : k),
+}))
 
 // billingPeriod.loadChain 打的四个端点(照 stores/__tests__/billingPeriod.spec.ts:21-24 的写法)。
 // 不 mock 的话点一下出账链行就真发网络请求。
@@ -114,7 +120,9 @@ function overview(patch: Partial<DataHomeOverviewDTO> = {}): DataHomeOverviewDTO
 // 这屏用它决定 CTA 文案(「去处理」vs「查看」)与写按钮是否渲染,所以默认给一个有写权限的
 // 登录态 —— 否则版面用例会被权限态带偏(空 pinia 在 v2 下就是只读)。传 perms: [] 模拟只读账号。
 // 必须在 setActivePinia 之前写 storage:auth store 是初始化时读它的。
-const EDITOR_PERMS = ['entry:edit', 'billing-run:edit', 'meter-reading:edit', 'report:edit']
+// RBAC v3:编辑隐含查看由后端展开(UserPermissionCache),前端拿到的就是展开后的 —— 夹具照样带上查看
+// 清单行跳去的屏各要各的查看权(go() 里拦),默认给全部业务查看,缺哪项的用例自己减
+const EDITOR_PERMS = ['entry:edit', 'billing-run:edit', 'meter-reading:edit', 'report:edit', ...ALL_VIEWS]
 
 async function mountWith(patch: Partial<DataHomeOverviewDTO> = {}, opts: { perms?: string[] } = {}) {
   localStorage.setItem('permissions', JSON.stringify(opts.perms ?? EDITOR_PERMS))
@@ -673,6 +681,15 @@ describe('数据中心首页 · 两栏清单(P2 T3)', () => {
     expect(row!.find('.dh-rdot').text()).toBe('—')
   })
 
+  // RBAC v3:收入核对归报表,没有 report:view 的人请求必 403。破坏验证:loadRecon 里 can('report:view') 那一判去掉 → 红
+  it('❗没有报表查看权:收入核对不发请求,那一行照常显「—」', async () => {
+    const w = await mountWith({}, { perms: ['entry:edit', 'entry:view', 'billing:view', 'meter:view'] })
+    await flushPromises()
+    expect(reconOverview).not.toHaveBeenCalled()
+    const row = w.findAll('.dh-row-billing').find(r => r.text().includes('收入核对'))
+    expect(row!.find('.dh-rdot').text()).toBe('—')
+  })
+
   // 评审修补(task-3-fix-brief.md #2):recon 只在 await **之后**赋值,换月那一刻(curYm 已变、
   // 新回包未到)这一行仍挂着上个月的结论。reconSeq 只守晚到方向(旧回包不覆盖新月),不守这段空窗。
   it('换月后收入核对不留上一个月的值', async () => {
@@ -1167,6 +1184,44 @@ describe('数据中心首页 · 审核态与行动作(R2 T6)', () => {
     expect(w.find('.dh-cols').findAll('[title]')).toHaveLength(0)
   })
 
+  // 附表12 的交审只认「工资录入」(RBAC-SPEC §11.8):只有事后录入的财务专员那一行不画 —— 画了点下去恒 403。
+  // 破坏验证:actionsOf 去掉 submittable 那道筛 → 红
+  it('❗附表12 录完了:没有「工资录入」的人那一行不画「交审」,有的照常', async () => {
+    const salaryItem = { name: '附表12', tag: '附12', done: true, go: 'salary' } as DataHomeItemDTO
+    vi.mocked(reviewApi.list).mockResolvedValue(reviewFixture())
+    const items = [LEDGER_ITEM, salaryItem, ...overview().schedules.items.filter(i => i.go !== 'ledger')]
+    const w = await mountWith({ schedules: { done: 3, total: 9, items } }, { perms: EDITOR_PERMS })   // 有 entry:edit,没有 salary:edit
+    expect(rowByText(w, '附表12').findAll('.dh-abtn').map(b => b.text())).not.toContain('交审')
+    expect(btn(rowByText(w, '附表6'), '交审'), '别的附表照常').toBeTruthy()
+
+    useAuthStore().permissions = [...EDITOR_PERMS, 'salary:edit']
+    await flushPromises()
+    expect(btn(rowByText(w, '附表12'), '交审')).toBeTruthy()
+  })
+
+  // 录审分离(RBAC-SPEC §12):自己交的那行,审核员看到的「通过」「退回」按不动;系统管理员不受限。
+  // 破坏验证:actionsOf 的 approve/back 不滤 mine → 红;selfOnly 恒 false → 按钮消失 → 红
+  it('❗自己交的那行:「通过」「退回」按不动并说要别人审;系统管理员照常能点', async () => {
+    const fx = () => reviewFixture({
+      [`meters:${YM}`]: { status: 'submitted', submittedBy: 'li' },
+      [`params:${YM}`]: { status: 'submitted', submittedBy: 'wang' },
+    })
+    const w = await mountReview(fx(), [...EDITOR_PERMS, 'review:approve'])
+    const auth = useAuthStore()
+    auth.me = 'li'
+    await flushPromises()
+    for (const t of ['通过', '退回']) {
+      expect(btn(rowByText(w, '园区抄表'), t)!.attributes('disabled'), t).toBeDefined()
+      expect(tipOf(btn(rowByText(w, '园区抄表'), t)!.element)).toBe('这张表是你自己交的,要由别人通过或退回')
+    }
+    expect(btn(rowByText(w, '计费参数'), '通过')!.attributes('disabled'), '别人交的照常').toBeUndefined()
+
+    auth.superAdmin = true
+    await flushPromises()
+    expect(btn(rowByText(w, '园区抄表'), '通过')!.attributes('disabled')).toBeUndefined()
+    expect(btn(rowByText(w, '园区抄表'), '退回')!.attributes('disabled')).toBeUndefined()
+  })
+
   it('已审核的行出「撤销」,待审核的行出「通过」「退回」', async () => {
     const w = await mountReview(reviewFixture({
       [`params:${YM}`]: { status: 'approved' },
@@ -1399,5 +1454,21 @@ describe('审核条(R2 T7)', () => {
 
     await w.find('.dh-rvpill').trigger('click')
     expect(w.findAll('.dh-row').length).toBe(before)
+  })
+})
+
+// RBAC v3:V134 只给系统管理员和财务主管工资查看权,总经理 / 只读 / 审核员 / 财务专员点附表12 那一行原来直接撞「无权查看」页
+describe('数据中心首页 · 没有目标屏的查看权', () => {
+  // 破坏验证:go() 里 blocked 那一判删掉 → push 那条红;行上 class 去掉 lack 判断 → class 那条红
+  it('❗没有工资查看权:附表12 行不显示成可点,悬停与点击都写明缺「工资 · 查看」,不跳', async () => {
+    const w = await mountWith({}, { perms: EDITOR_PERMS.filter(p => p !== 'salary:view') })
+    const row = rowByText(w, '附表12')
+    expect(row.classes()).not.toContain('dh-row-clickable')
+    expect(tipOf(row.element)).toBe('需要「工资 · 查看」权限')
+    await row.trigger('click')
+    await flushPromises()
+    expect(push).not.toHaveBeenCalled()
+    expect(receipts.at(-1)?.text).toBe('需要「工资 · 查看」权限，请找系统管理员开通')
+    expect(rowByText(w, '月度台账').classes(), '对照:看得了的行照常可点').toContain('dh-row-clickable')
   })
 })

@@ -17,6 +17,7 @@ import { cpMeterApi, type CpStationDTO, type CpPowerUsageDTO } from '@/api/cpMet
 import type { ImportPayload } from '@/components/import/FpImportModal.vue'
 import { importBusy, settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
 import { useAuthStore, approxDirty } from '@/stores/auth'
+import { useAppConfigStore } from '@/stores/appConfig'
 import { useFormSheet } from '@/composables/useFormSheet'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
@@ -49,6 +50,7 @@ import { buildCpMeterTemplate, exportCpMeterMonth } from '@/utils/cpMeterExcel'
 
 const props = defineProps<{ vehicleType: 'car' | 'ebike' }>()
 const auth = useAuthStore()
+const appCfg = useAppConfigStore()
 // 新增充电桩弹卡带输入 → S 档全屏 sheet(styles/form-sheet.css)
 const sheet = useFormSheet()
 
@@ -460,7 +462,7 @@ async function onSimulate() {
   }
   const ok = await ask({
     title: `模拟填充 ${year.value} 全年？`,
-    body: '按附表7/8 充电汇总（万城万 / 小桔 / 叮叮充 / 电信）推导各桩月末充电记录与电表用电量（小桔按 60/40 拆快充1 / 慢充1，通道费 = 收益 × 5%，均为假设口径）。只填空位与既有「模拟」灰标记录，不覆盖手工录入和导入的数据。',
+    body: '按附表7/8 各运营商的充电汇总推导各桩月末充电记录与电表用电量（一个运营商有几根桩时按假设比例拆，通道费 = 收益 × 5%，均为假设口径）。只填空位与既有「模拟」灰标记录，不覆盖手工录入和导入的数据。',
     action: `模拟填充 ${year.value} 全年`,
   })
   if (!ok || !editMode.value || !canRun.value) return
@@ -567,8 +569,8 @@ async function onTemplate() {
           <template #leading><component :is="iconFor('upload')" :size="14" /></template>
           导入
         </Button>
-        <!-- 模拟填充=读附表7/8 整年批量派生(§5.3-⑥)→ billing-run,不是抄表权 -->
-        <Button v-if="editMode && canRun" variant="outline" size="sm" :disabled="simulating" @click="onSimulate">
+        <!-- 模拟填充=读附表7/8 整年批量派生(§5.3-⑥)→ billing-run,不是抄表权;客户园区不显(parkTools,2026-10-05 用户拍板「按你建议修改」;服务端同闸 DeployConfig) -->
+        <Button v-if="editMode && canRun && appCfg.parkTools" variant="outline" size="sm" :disabled="simulating" @click="onSimulate">
           <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>
           模拟填充
         </Button>
@@ -826,7 +828,7 @@ async function onTemplate() {
         <div class="cm-dlg-b fp-fsheet-bd">
           <Input v-model="stForm.name" label="桩名" placeholder="如:快充2" size="sm" />
           <div class="cm-dlg-row">
-            <Input v-model="stForm.operator" label="运营商" placeholder="如:小桔" size="sm" />
+            <Input v-model="stForm.operator" label="运营商" placeholder="如:XX充电" size="sm" />
             <div style="width:120px">
               <Select v-model="stForm.vehicleType" label="类型" :options="TYPE_OPTS" size="sm" />
             </div>

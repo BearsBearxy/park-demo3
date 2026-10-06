@@ -13,6 +13,8 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import type { ElecCostEntryDTO, ElecMeterDTO, ElecMetricsMonthDTO, ElecPriceCfgDTO } from '@/api/elecCost'
 import ElecAnalysisView from './ElecAnalysisView.vue'
+import { elecCostApi } from '@/api/elecCost'
+import { ourPark, customerPark } from '@/test-utils/appConfig'
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -142,5 +144,47 @@ describe('总表电费结构 · S 档并档', () => {
     expect(names, '夹具退化了:被并走的那一段还在图例里,这条测不出错位').not.toContain('一期·商业')
     const text = await readText()
     expect(text, `读数句点名的段不在图例 [${names.join(' | ')}] 里`).toContain('其余 4 项')
+  })
+})
+
+// 2026-10-05 用户拍板「按你建议修改」:客户园区没有模拟填充,两处空态提示不提它,也要说清去哪录。
+// 破坏验证:客户分支写回「先录入」→ 无费项那条红;双价那句客户分支加回「(或模拟填充)」→ 双价那条红
+describe('电费分析空态提示按部署说', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+  const open = async () => {
+    const w = mount(ElecAnalysisView, { global: { stubs: { RouterLink: true } } })
+    await flushPromises()
+    return w
+  }
+
+  it('❗双价参数未录:客户园区不提模拟填充;我园原句', async () => {
+    customerPark('0.29.0')
+    let w = await open()
+    expect(w.text()).toContain('公告价/执行价按月录于成本总览电价参数')
+    expect(w.text()).not.toContain('模拟填充')
+    w.unmount()
+    setActivePinia(createPinia())
+    ourPark()
+    w = await open()
+    expect(w.text()).toContain('公告价/执行价按月录于成本总览电价参数(或模拟填充)')
+    w.unmount()
+  })
+
+  it('❗一个费项都没有:客户园区说去成本总览录入,不提模拟填充;我园原句', async () => {
+    vi.mocked(elecCostApi.entries).mockImplementation(async () => [])
+    try {
+      customerPark('0.29.0')
+      let w = await open()
+      expect(w.text()).toContain('本屏依赖电费成本总览的总表/宿舍/运营费项月度值;请先到电费成本总览录入')
+      expect(w.text()).not.toContain('模拟填充')
+      w.unmount()
+      setActivePinia(createPinia())
+      ourPark()
+      w = await open()
+      expect(w.text()).toContain('本屏依赖电费成本总览的总表/宿舍/运营费项月度值;先录入或用模拟填充')
+      w.unmount()
+    } finally {
+      vi.mocked(elecCostApi.entries).mockImplementation(async (y: number, m: number) => entriesOf(y, m))
+    }
   })
 })

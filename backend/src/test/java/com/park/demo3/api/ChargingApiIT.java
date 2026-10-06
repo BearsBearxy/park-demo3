@@ -65,17 +65,18 @@ class ChargingApiIT extends AbstractMysqlIT {
         assertThat(ids8).containsExactly("dingding", "dianxin");
     }
 
-    // ── overview:无种子记录 → 范围 [2024..2025],currentYear=2024(对齐无数据口径) ──
+    // ── overview:无种子记录 → 范围 [去年..明年],currentYear=今年(2026-10-05 用户拍板;改前写死 [2024..2025]) ──
     @Test
-    void overview_noSeedData_deterministicEmptyRange() throws Exception {
+    void overview_noSeedData_lastYearToNext() throws Exception {
+        int now = com.park.demo3.common.YearSpan.thisYear();
         String body = utf8(mvc.perform(get("/api/charging/7/overview").header("Authorization", auth()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.currentYear").value(2024))
-                .andExpect(jsonPath("$.data.years.length()").value(2))
+                .andExpect(jsonPath("$.data.currentYear").value(now))
+                .andExpect(jsonPath("$.data.years.length()").value(3))
                 .andReturn());
         List<Integer> years = JsonPath.read(body, "$.data.years[*].year");
-        assertThat(years).containsExactly(2024, 2025);
+        assertThat(years).containsExactly(now - 1, now, now + 1);
         assertThat((Boolean) JsonPath.read(body, "$.data.years[0].hasData")).isFalse();
     }
 

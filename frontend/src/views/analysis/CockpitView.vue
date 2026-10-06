@@ -10,6 +10,7 @@ import { onReactivated } from '@/composables/onReactivated'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
+import { useViewGate } from '@/composables/useViewGate'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
@@ -167,6 +168,7 @@ function pickMonth(p: unknown): void {
 }
 /** 点期区的条 → 深链销售收入表那一期那个期区(上月的条落上月) */
 function onPhaseClick(p: unknown): void {
+  if (blocked('/sales-income')) return
   const e = p as EcClick, b = mb.value
   const ph = b && e.dataIndex != null ? b.phase.phases[e.dataIndex] : undefined
   if (!b || ph == null) return
@@ -209,6 +211,8 @@ const segTrendOption = computed<object | null>(() => {
   }
 })
 const go = (link: string): void => { void router.push(link) }
+// 跳到模块屏的入口:没有目标屏的查看权就置灰、悬停写明缺哪一项;图上的点没法置灰,点了说一句原因不跳(RBAC v3,master 0.28.0)
+const { lack, blocked } = useViewGate()
 /** 规则引擎异常条(AnaAnomaly):录入屏目标带期与定位;与 AnomalyView.goAnom 逐字同形。 */
 const goAnom = (a: AnaAnomaly): void => {
   const v = a.link.slice(1)
@@ -376,7 +380,7 @@ const goAnom = (a: AnaAnomaly): void => {
           <span class="hint">{{ mb.rules.hint }}</span>
         </div>
         <div v-if="mb.rules.rows.length" class="cv2-anoms">
-          <button v-for="r in mb.rules.rows" :key="r.a.id" type="button" class="cv2-anom" @click="goAnom(r.a)">
+          <button v-for="r in mb.rules.rows" :key="r.a.id" type="button" class="cv2-anom" :disabled="!!lack(r.a.link)" v-tip="lack(r.a.link)" @click="goAnom(r.a)">
             <span class="dot"></span><span class="tt">{{ r.title }}</span><span class="vv">{{ r.value }}</span>
           </button>
           <p v-for="t in mb.rules.refs" :key="t" class="ana-ref">{{ t }}</p>
@@ -487,7 +491,7 @@ const goAnom = (a: AnaAnomaly): void => {
               <td class="mono">¥{{ fint(r.recv) }}</td>
               <td class="mono">¥{{ fint(r.coll) }}</td>
               <td class="mono" style="color: var(--hue-red)">¥{{ fint(r.arr) }}</td>
-              <td><button class="cv2-link" @click="goLedger(r.name, r.company, arrModal!.ym)">查台账 →</button></td>
+              <td><button class="cv2-link" :disabled="!!lack('/ledger')" v-tip="lack('/ledger')" @click="goLedger(r.name, r.company, arrModal!.ym)">查台账 →</button></td>
             </tr>
           </tbody>
         </table>
@@ -508,6 +512,7 @@ const goAnom = (a: AnaAnomaly): void => {
 .cv2-anoms .ana-ref { margin: 0; }
 .cv2-anom { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: var(--surface-card); border-radius: 8px; padding: 9px 10px; cursor: pointer; font-family: var(--font-sans); text-align: left; transition: background var(--dur-fast) var(--ease-standard); }
 .cv2-anom:hover { background: var(--bg-hover); }
+.cv2-anom:disabled { opacity: 0.55; cursor: default; background: var(--surface-card); }
 /* C2-08 按压:按下换深一档 0ms 瞬到,松开走上面那条 120 回弹。 */
 .cv2-anom:active { background: var(--ink-100); transition-duration: 0ms; }
 .cv2-anom .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; background: var(--hue-blue); }
@@ -525,6 +530,7 @@ const goAnom = (a: AnaAnomaly): void => {
 .cv2-modal-h .x:hover { background: var(--bg-hover); color: var(--text-primary); }
 .cv2-link { border: none; background: transparent; color: var(--text-link); font-size: var(--fs-micro); cursor: pointer; font-family: var(--font-sans); }
 .cv2-link:hover { text-decoration: underline; }
+.cv2-link:disabled { color: var(--text-disabled); cursor: default; text-decoration: none; }
 .cv2-arr-sum { margin: 10px 0 0; font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono); }
 
 /* 手机档:5 列回测表 → 两行行卡(第一行 月末 + 实际 + 落在哪,第二行 预测 + 区间;字与桌面表逐格同源) */

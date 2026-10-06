@@ -214,6 +214,18 @@ describe('SchedYearGate 新增年份的字段报错(十件 ⑤)', () => {
   })
 })
 
+// 当前年角标:有数据的最大年写「最新」;一年数据都没有(新园区空库,当前年 = 今年)写「今年」
+describe('SchedYearGate 当前年角标', () => {
+  const tag = (years: { year: number; hasData: boolean }[], current: number) => mount(SchedYearGate, {
+    props: { icon: 'wallet', title: '附表13', sub: 's', current, storeKey: 'tag-test',
+      years: years.map((y) => ({ ...y, metric: y.hasData ? '¥1万' : '', label: '' })) },
+  }).find('.sm-yc-tag').text()
+  it('❗有数据:最大数据年写「最新」;一年都没有:今年写「今年」', () => {
+    expect(tag([{ year: 2024, hasData: false }, { year: 2025, hasData: true }, { year: 2026, hasData: false }], 2025)).toBe('最新')
+    expect(tag([{ year: 2025, hasData: false }, { year: 2026, hasData: false }, { year: 2027, hasData: false }], 2026)).toBe('今年')
+  })
+})
+
 describe('悬停说明换 v-tip(十件 ⑩)', () => {
   it('月胶囊:别人在编辑的月,悬停写谁在编辑', async () => {
     const seat = (p: Partial<Seat> & Pick<Seat, 'sid' | 'user' | 'editScopes' | 'self'>): Seat => ({

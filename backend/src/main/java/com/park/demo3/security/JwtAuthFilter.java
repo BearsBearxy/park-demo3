@@ -27,11 +27,15 @@ import java.io.IOException;
 public class JwtAuthFilter extends OncePerRequestFilter {
     private final JwtUtil jwt;
     private final UserPermissionCache cache;
-    public JwtAuthFilter(JwtUtil jwt, UserPermissionCache cache) { this.jwt = jwt; this.cache = cache; }
+    private final com.fasterxml.jackson.databind.ObjectMapper json;
+    public JwtAuthFilter(JwtUtil jwt, UserPermissionCache cache, com.fasterxml.jackson.databind.ObjectMapper json) {
+        this.jwt = jwt; this.cache = cache; this.json = json;
+    }
 
     @Override protected void doFilterInternal(@NonNull HttpServletRequest req, @NonNull HttpServletResponse res,
             @NonNull FilterChain chain) throws IOException, jakarta.servlet.ServletException {
         String h = req.getHeader("Authorization");
+        boolean mustChange = false;
         if (h != null && h.startsWith("Bearer ")) {
             try {
                 var claims = jwt.validateAndGetClaims(h.substring(7));
@@ -40,6 +44,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     var auth = new UsernamePasswordAuthenticationToken(ua.username(), null,
                             AuthorityUtils.createAuthorityList(ua.perms().toArray(new String[0])));
                     SecurityContextHolder.getContext().setAuthentication(auth);
+                    mustChange = cache.mustChangePassword(ua.username())
+                        && !SecurityPaths.BEFORE_PASSWORD_CHANGE.contains(req.getMethod() + " " + req.getRequestURI());
                 } else {
                     // 告诉前端这张为什么不认 —— 没有它,用户只会被默默踢回登录页,
                     // 不知道是自己账号在别处登了、还是改了密码、还是被停用。
@@ -51,6 +57,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     if (reason != null) res.setHeader("X-Auth-Reason", reason);
                 }
             } catch (Exception ignored) { /* 无效令牌 → 保持匿名,后续被 401 拦截 */ }
+        }
+        // 还带着管理员给的密码:改密页用不到的一律拦(SecurityPaths.BEFORE_PASSWORD_CHANGE)。写在 try 外面 ——
+        // 回包写失败要往外抛,不能被上面的 catch 吞掉再放行下去。
+        if (mustChange) {
+            res.setStatus(403);
+            res.setContentType("application/json;charset=UTF-8");
+            json.writeValue(res.getWriter(), com.park.demo3.common.Result.error(
+                com.park.demo3.common.ResultCode.PASSWORD_CHANGE_REQUIRED.code,
+                com.park.demo3.common.ResultCode.PASSWORD_CHANGE_REQUIRED.message));
+            return;
         }
         chain.doFilter(req, res);
     }

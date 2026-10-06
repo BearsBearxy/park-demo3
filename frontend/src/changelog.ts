@@ -44,6 +44,185 @@ export const CHANGELOG: ReleaseNote[] = [
     ],
     fixed: [],
   },
+  // 功能更新(RELEASE-NOTES-SPEC §2.1 第 1、2 问是):用户 2026-10-05 拍板「2按你建议，3，4一起做」。
+  // 新增 → 重点卡「操作日志的数据修改」:操作日志第 6 路(value_change_log,V138;ChangeLogService)。台账、园区抄表读数、工资、三大报表、
+  //   损益附表的手改逐格记,目标与阈值逐项记;导入不逐格记,照旧只有 import_log 那一行(AuditQueryMapper 的 import 分支:文件名 成功/总 行)。
+  //   「没有查看权的表不会列出」:SystemService.auditLogs 按查看者的查看权把 tbls / seeParam / seeImport / seeBilling / seeMeter 推进 SQL;
+  //   顺带计费参数行要 param:view、表档案行要 meter:view、导入行照导入中心的读规则、作废催缴单的行要 billing:view ——
+  //   内置角色只有系统管理员有 system:view、且什么权限都有,屏上看不出差别,不另写。
+  //   「「全部来源」里能按表筛」:SystemLogsView.srcOpts 只列回包 sources / tables 里的(屏上那一格默认叫「全部来源」)。重点卡不给「去看看」:操作日志只有系统管理 · 查看能进(同 0.28.0)。
+  // 新增「登录记录」:AuthService 记 login / login.fail,失败 detail 是 密码不对 / 没有这个账号 / 账号已停用(连错第 5 次另说锁了);
+  //   没有这个账号时不记敲进去的名字(常有人把密码敲进账号框)。核实(对照 master):AuthService 原来一行审计都不写。
+  //   「账号不存在的失败，15 分钟只记第 1、5 次」:没有这个账号按网络地址合一个桶,15 分钟(LoginRateLimiter.WINDOW_MS)只记第 1、第 5 次
+  //   (MAX_FAILURES,AuthService.loginFailed);锁住期间(429)的尝试也不记,字数放不下,不写。
+  // headline / 重点卡只点名记的那几张表(ChangeLogService.Tbl 6 张;附表6–11、办公水电、合同、租户等的手改不记;园区抄表以外的读数不记)。
+  // 改进(前四条是用法变了,按侧栏先后排;第五条「园区抄表」只是变快,排最后):
+  //   「损益附表」PnlService.apply:改到整月锁账的月(ReviewService.closedMonths;屏上那一行叫「本月锁账」)整次拒 423,
+  //     原句「2025 年 3 月已锁账（本月出账里「本月锁账」打了勾），改不了。要改，先请审核员撤销那个月其中一张表的审核。」
+  //     编辑态那几列只读、「填入」跳过(PnlTable lockedMonths)。核实(对照 master):save / importRows 是 clear + insert、挂 @NoReviewGuard,
+  //     锁账月照写。只改备注不碰月份,照存 —— 所以写「改到它的数」。
+  //   「经营分析的目标与阈值」:原来 localStorage 'fp-ana-settings' 每台浏览器一份(master anaSettings.ts 头注释;键里没有账号,
+  //     所以是「每台电脑一份」不是「每人一份」),现在 analysis_setting 一份,
+  //     PUT /api/analysis/settings 要 report:edit(角色屏上那一格叫「账簿报表」,AnaShell 的锁句同名);旧值不搬(用户拍板),模块加载时删掉那个键,
+  //     有权限的人重填前大家看到默认值。
+  //   「盈亏平衡与敏感性」固定成本系数滑杆:谁都能拖,拖动只重算本屏;有账簿报表编辑权的松手存一次(BreakevenView.onFrDone),
+  //     没有的只是看效果(BreakevenView.tryFr),不发请求,离开这一屏 / 刷新回到全园的数(用户 2026-10-05「两个都按你建议」;此前一版是置灰)。
+  //     不写「试算」:三大报表里「试算平衡」是记账用语,用户看不懂行话。
+  //     核实(对照 master):滑杆没有任何权限判断,@input 每格存一次(存进那台浏览器的 localStorage)。
+  //   「角色权限的改动记录」SystemService.permDiff;核实(对照 master):role.create / role.update 的 detail 是「权限 N 项」。
+  //   「园区抄表」导入变快(用户 2026-10-05「两个都按你建议」;只是变快,排在用法变了的四条后面):档案行攒批落库(MeterTimelineService.Batch)、
+  //     冻结月一批只查一遍,导入结果逐字节不变(MeterImportEquivalenceIT 钉快照)。本机测试库实测(同一用例 #perf,1,090 块表):
+  //     整年 14,280 行 223 秒 → 58 秒,3 个月 3,506 行 68 秒 → 13 秒;语句数 18.4 万 → 5 千。剩下的主要是写这么多行本身:测试库缓冲池只有 16MB,同样 1.4 万行前后像在默认 128MB 的库上写 6 秒、测试库 20 秒。
+  //     只写比例、不写「不到一分钟」(对抗复查 IMP-T2-changelog-claim):上面是造出来的册子,1,090 块表头一个月全是新建;
+  //     8a98896f 量的那本真实形状整年册子(13,080 行,nginx.conf 注释)改前要 345 秒,比造的这本重约 1.5 倍,改后没重量 ——
+  //     按比例约 90 秒。造的册子改后用时是改前的 26%(整年)、19%(3 个月),都在三分之一以内,所以写「不到原来的三分之一」;
+  //     真实形状那本的比例没量,发版前在同一台机器上新旧各导一次核一下。
+  // 金额不变:只加留痕、改谁能改目标与阈值;损益附表锁账月从能改变成拒,库里已有的数不动。
+  {
+    version: '0.30.0',
+    date: '2026-10-05',
+    headline: '台账等手改的数有记录，目标与阈值全园共用',
+    feature: {
+      icon: 'scroll-text',
+      title: '操作日志的数据修改',
+      desc: '系统管理员：在操作日志里能看到谁改了哪一格，从几改成几。台账、园区抄表读数、工资、三大报表、损益附表和目标与阈值都记。'
+        + '导入只记文件和行数。「全部来源」里能按表筛，没有查看权的表不会列出。',
+    },
+    added: [
+      { icon: 'log-in', title: '登录记录', desc: '系统管理员：操作日志里能查登录成功、失败和原因；账号不存在的失败，15 分钟只记第 1、5 次。' },
+    ],
+    improved: [
+      { icon: 'layers', title: '损益附表', desc: '已锁账的月原来能改；现在改到它的数，保存、导入都会被拒，先请审核员撤销那个月一张表的审核。' },
+      { icon: 'sliders-horizontal', title: '经营分析的目标与阈值', desc: '原来每台电脑一份，现在全园一份，有「账簿报表」权限才能改；原来填的不带过来，得重填。' },
+      { icon: 'scale-3d', title: '盈亏平衡与敏感性', desc: '固定成本系数原来一拖就存；现在谁都能拖着看效果，有「账簿报表」权限的人松手才改全园的数。', to: 'breakeven' },
+      { icon: 'shield-check', title: '角色权限的改动记录', desc: '系统管理员：原来只记权限共几项，现在写明加了哪几项、去了哪几项。' },
+      { icon: 'gauge', title: '园区抄表', desc: '一次导入一整年的抄表册，原来要等好几分钟，现在用时不到原来的三分之一。', to: 'meters' },
+    ],
+    fixed: [],
+  },
+  // 功能更新(RELEASE-NOTES-SPEC §2.1 第 2 问是:新增记账的单价默认值变了;第 3 问是:到期缺口折出来的份数变了)。
+  // 起因:2026-10-04 用户拍板产品要卖给别的园区,新园区从干净的起点建库(db/baseline),客户看得见的地方不再带我园的名字和数。
+  // 我园用户看得见的只有下面四条改进和两条修复;起点链、迁移守卫、FlywayChainGuard、部署开关(DeployConfig)、部署指南 §9 是给部署的人看的,不写。
+  // 2026-10-05 复查补的两条修复(都不改数):
+  //   「角色权限」:Perm.METER_READING_EDIT 的说明去掉「按年模拟填充」—— 三条 simulate 判的是表档案 / 计费口径 / 出账运行(PermissionRegistry)。
+  //   「电费成本总览」:空月副句的模拟填充分句改判 canPrice(按钮判 editC = param-policy:edit),只有录入权的账号不再读到。
+  // 客户园区才有的变化(部署开关、更新记录按装机版本、空库落今年、占位字典)我园看不到,不写。
+  // 「办公水电」(侧栏名「办公·三期水电」带期区,changelog.spec 不许写,用屏内页签名):UtilitiesRecordDrawer 原来写死 0.8123/4.15、0.7965/3.85,现在取本年记账月最晚、单价大于 0 的那条(UtilitiesView.lastPrice)。
+  // 「到期墙与续约」:expiry.logic 删了 MEDIAN_FACTORY_RENT(¥11,448.50,只有我园的数),缺口改按同屏「租金中位数」瓦折算(buildExpiryStats.medRent)。
+  // 「计费参数」:ParamRegistry / paramRegistry.ts 的说明去掉租户名、楼栋名和月份(paramRegistry.spec 守卫)。
+  // 「催缴单」:billNoticeLogic.PACKAGE_LABEL 与悬浮(按 priceKey 渲染,已生成的单和导出也显新名);BillNoticeService 新生成行的备注同口径,
+  //   库里已有的旧备注不动。说明里不写旧名:更新记录每个客户都翻得到,旧名是我园用语(2026-10-04 文案复查)。
+  // 「园区抄表」修复(用户 2026-10-05:「抄表整册导入被拒：超过 1MB 就被服务器挡掉，没有分批导入的办法」;对照 master 核实):
+  //   master 的 frontend/nginx.conf 没写 client_max_body_size,nginx 默认 1m;抄表整册一次 POST,一行约 300 字节(park_review 实测),
+  //   1m 约 3,400 行、3 个多月就被挡(413),一条都进不去。现在只有导入接口放到 16m(整年约 3.8MB),其余 /api 仍 1m;
+  //   导入接口等后端回话也从默认 60s 放到 900s(本机实测 3 个月 117 秒,60s 等不完会回 504,后端照样写完)。
+  //   还超的,失败卡原来只写「服务器返回 413」,现在说一次传不上去、怎么分几次导(importRun.failReason);504 不再说「一条都没写进去」。不改数。
+  // 金额不变:只改说明、默认值和折算口径,收费算法没动。
+  {
+    version: '0.29.0',
+    date: '2026-10-04',
+    headline: '单价预填本年已录的价，缺口按中位租金折算',
+    added: [],
+    improved: [
+      { icon: 'plug', title: '办公水电', desc: '两个页签的新增记账，单价原来预填固定的数，现在取本年记账月最晚的电价和水价；没录过就空着。' },
+      { icon: 'calendar-clock', title: '到期墙与续约', desc: '「续签率变一档」的缺口原来按固定厂房租金折户数，现在按「租金中位数」折份数，份数会变。' },
+      { icon: 'sliders-horizontal', title: '计费参数', desc: '各参数的说明去掉了租户、楼栋、月份和具体数值，两个参数名也去掉了座号和年份。' },
+      { icon: 'file-check-2', title: '催缴单', desc: '个别户每月收固定公共水电费的那一行，改叫「固定月额收取」了。' },
+    ],
+    fixed: [
+      '园区抄表：一次导入几个月的抄表册，原来会被服务器拒收，一条都导不进去',
+      '角色权限：「抄表」的说明原来写着含按年模拟填充，只勾它其实做不了',
+      '电费成本总览：不能改电价参数的账号，空月提示原来也说能模拟填充',
+    ],
+  },
+  // 小调整(RELEASE-NOTES-SPEC §2.1 四问都否):不改数的修复,不弹,只进铃铛「系统」一类。金额不变。
+  // 修复核实(对照 master):SessionService.open 在提交前就把新 tv / sid 写进权限快照;同时跑的一次 UserPermissionCache.reload
+  // (刚重启时 AdminInitializer 收尾那次、任何一次角色 / 账号保存)要是读到登录提交之前的库,就把 tv 改回旧的、sid 留新的,
+  // 刚签的令牌下一个请求 401、前端退回登录页(2026-10-04 实测:刚重启,新建的账号登进来调改密 401;一分钟后同样步骤不复现)。
+  // 现在 reload 取库与快照里较大的 tv;在事务里调的 reload 事务结束后再读一次库 —— 同一个窗口还会把刚建的号挤出快照,登录时新 sid 落空(SessionCacheRaceIT)。
+  // 改完密码换新令牌那一下同理,但「改完本机不掉线」是 0.28.0 才有的,不另写。
+  // headline 不写「不会再」、第一条修复只写实测过的「刚更新完」(2026-10-04 复查):另一位管理员保存账号 / 角色的那几毫秒里,他那次保存开始之后才建 / 才启用的号
+  // 登进来,新 sid 仍会落空、要再登一次(UserPermissionCache.reload 的 ponytail);在别处登录把这边挤掉是单会话的本意。
+  // 第二条修复核实(对照 master):SystemService 的 updateUser / setStatus / resetPassword / changeOwnPassword 都是整行
+  // users.updateById(u),u 是事务开头读的;停用在这之间提交,就被写回 status=1(AuthUserLostUpdateIT,改回整行写法即红)。
+  // 窗口:本人改密(验旧口令 + 算新哈希)、重置密码(算新哈希)是几百毫秒,编辑是毫秒级。
+  {
+    version: '0.28.1',
+    date: '2026-10-04',
+    headline: '更新后登录不再被退回，停用不再被改回启用',
+    added: [],
+    improved: [],
+    fixed: [
+      '登录：系统刚更新完就登进来，原来偶尔会马上被退回登录页',
+      '用户管理：停用的同一刻有人改它的密码或编辑它，原来会变回启用',
+    ],
+  },
+  // 功能更新(RELEASE-NOTES-SPEC §2.1 第 1、2 问是):RBAC v3「读写分开」(用户 2026-10-04 拍板,推翻 v2 拍板 #8 读全开、#11 工资全开)。
+  // 新增 9 个查看权限点 → 重点卡;左侧导航对一部分人变了(没有某模块查看权的人那几屏不列、园区股东多了报表层)→ 按 §4 第 5 条写进 headline。
+  // 「只有系统管理员和财务主管能看、能录入工资」:V134 迁移第 ② 段(salary:view 给 admin、finance_manager)+ V136(同时有 entry:edit
+  // 与 salary:view 的角色得「工资录入」salary:edit,种子里命中的也是这两个;财务专员从此录不了工资);「股东多了账簿与报表」:V134 第 ③ 段 nav_layers='analysis,reports'。
+  // 「电话只露前 3 后 4 位、账号只露后 4 位」:后端按契约 maskRules 打码;V134 之后现有角色除园区股东外都有主数据查看权。
+  // 「催缴单导出照常印完整账号」:GET /api/companies/payees 有出账与催缴单查看就给明文(RBAC-SPEC §11.8),收款公司窗与别处照样打码。
+  // 同版并入用户 2026-10-04「按你推荐」三件(RBAC-SPEC §12、§13):
+  //   「自己能改密码」(新增):IconRail 头像菜单、手机 MobileNavDrawer 的「修改密码」;后半句照改密页副标题(AuthService.reissueAfterPasswordChange)。
+  //   「自己交的表要别人审」:ReviewService.guardNotOwnSubmission,系统管理员不拦(推翻 RBAC-SPEC D16「系统不拦同一账号既录又审」)。
+  //   「用户管理与角色权限」:SystemService 的 guardRoleInRange / guardUserInRange,系统管理员不拦。
+  //   不写的:最后一个启用的系统管理员停不了、摘不掉角色(只在误操作时碰到,报错自己说清);带初始密码的令牌在别的页签直接跳改密页(边界情况)。
+  // 腾条数:原「角色权限」一条(按模块排成查看、编辑两列)并进重点卡说明「在角色权限里按模块勾查看和编辑」。
+  // 重点卡原写「工资、经营分析只有查看一项」:工资多了「工资录入」(V136),改成只说经营分析,角色屏副标题与配图第三行同步。
+  // 修复核实(对照 master):① SystemService.changeOwnPassword 改完 revokeAll 连本机一起作废 —— 强制改密改完落到首页,紧接着又被弹回登录页;
+  // ② resetPassword 一律 mustChangePassword=1,给自己重置也逼下次登录再改。
+  // 分支里来回、对 master 没有净变化的不写:损益附表 5 餐补费照常显示、只有工资录入的角色也出交审钮。
+  // 金额不变:只改谁能看、谁能改,取数与算法没动。
+  {
+    version: '0.28.0',
+    date: '2026-10-04',
+    headline: '查看和编辑分开授权，导航只列能看的屏',
+    feature: {
+      icon: 'shield-check',
+      title: '管理员能按模块授权查看',
+      desc: '在角色权限里按模块勾查看和编辑，勾编辑自动带上查看；经营分析只有查看一项。'
+        + '没有查看权的屏，导航、搜索和首页都不列；直接打开会写明缺哪一项。分析屏里跳不过去的按钮置灰。',
+    },
+    added: [
+      { icon: 'lock', title: '自己能改密码', desc: '点左下角头像，选「修改密码」；手机在导航菜单里。改完这台设备保持登录。' },
+    ],
+    improved: [
+      { icon: 'wallet', title: '附表 12 工资明细', desc: '原来能进系统的人都看得到工资明细，现在默认只有系统管理员和财务主管能看、能录入。' },
+      { icon: 'pie-chart', title: '股东能看报表', desc: '原来园区股东的左侧导航只有经营分析，现在多了账簿与报表。' },
+      { icon: 'badge-check', title: '自己交的表要别人审', desc: '原来有审核权的人能通过自己交的表，现在要由别人通过或退回；系统管理员不受限。' },
+      { icon: 'shield-check', title: '用户管理与角色权限', desc: '原来有管理权的人什么权限都能分，现在只能分自己有的；系统管理员账号只有系统管理员能改。' },
+      { icon: 'users', title: '联系电话与收款账号', desc: '没有主数据查看权的人，看到的电话只露前 3 后 4 位、账号只露后 4 位；催缴单导出照常印完整账号。' },
+    ],
+    fixed: [
+      '修改密码：改完初始密码，原来紧接着又被退回登录页',
+      '用户管理：给自己重置密码后，原来下次登录还要再改一遍',
+    ],
+  },
+  // 功能更新(RELEASE-NOTES-SPEC §2.1 第 2 问是):2026-10-03 安全审计第一批。没有新增,不写重点卡、不画配图。
+  // 用法变了的一条:抄表导入里改已有表的倍率另要表档案权限(F15,用户 2026-10-04 选方案 1)——
+  // 同一份册子,没有表档案权限的人导入,倍率不改、本行读数按档案倍率记、只给提示。已入库的读数与金额不回溯。
+  // 用户看不见、只写进 PR 描述的:登出请求原来不带令牌(服务端从没真正注销)、登录 / 数值 / 在场 / 编辑锁的输入上限、
+  // Tomcat 升级与关掉 multipart、nginx 只信内网给的来源 IP、报表导入后端不再替人建公司(界面导入器在调后端前已自己调建公司接口)、
+  // 远程授权批准时复核批准人与请求人此刻的权限、报表导入公司名首尾空格绕过审核闸(界面导入器已 trim,只有直调接口踩得到)、
+  // 分析层 tooltip 名字转义(只有名字里出现 <字母 这种写法才会吞字,真实名字碰不到)。
+  // 修复核实(对照 master):① 授权按账号存、登出不清,前端那发 DELETE /auth/elevate 又不带令牌 —— 重登后授权还在;
+  // ② SystemService.changeOwnPassword 直接 enc.matches,不限次;③ AdminInitializer 每次启动对不上就改回 ADMIN_PASSWORD。
+  {
+    version: '0.27.0',
+    date: '2026-10-04',
+    headline: '抄表导入改倍率要权限，退出即结束授权',
+    added: [],
+    improved: [
+      { icon: 'gauge', title: '园区抄表', desc: '原来导入抄表册会改掉表的倍率，现在没有表档案权限的人导入，倍率不改，读数照原倍率算。', to: 'meters' },
+      { icon: 'lock', title: '修改密码', desc: '原来当前密码输错可以一直重试，现在连错 5 次要等 15 分钟再试。' },
+    ],
+    fixed: [
+      '退出登录：原来主管给的临时授权还在，重新登录后照样能用',
+      '园区抄表：表倍率改过之后，把旧读数改到别的月份，原来仍按旧倍率算用量',
+      '系统管理员：在系统里改过的管理员密码，原来重新部署后会被改回',
+    ],
+  },
   // 小调整(RELEASE-NOTES-SPEC §2.1 四问皆否:不改金额的修复)→ PATCH,不弹,只进铃铛「系统」与更新记录。
   // 修复一行核实(对照线上 0.26.0):线上 CSS 的 --dur-base 被压成 .2s,rowMotion 用 parseFloat 读成 0.2(毫秒),
   // 展开 / 收起动画只剩 0.2ms 等于没有;本地开发样式不压缩(200ms)所以本地正常。utils/rowMotion.ts cssMs 认 s / ms。
@@ -179,7 +358,7 @@ export const CHANGELOG: ReleaseNote[] = [
   {
     version: '0.22.0',
     date: '2026-09-26',
-    headline: '池的电表和折入能按月改，二期合计会变',
+    headline: '池的电表和折入能按月改',
     feature: {
       icon: 'calendar-clock',
       title: '公共电核算的池能按月改',
@@ -190,7 +369,7 @@ export const CHANGELOG: ReleaseNote[] = [
     added: [],
     improved: [
       { icon: 'sliders-horizontal', title: '分摊标准小数位', desc: '原来在池的「高级」里改，现在到计费参数页改，能从某个月起改；新建池仍在「高级」里选。', to: 'params' },
-      { icon: 'sigma', title: '公共电核算的二期合计', desc: '五、六车间广告字灯池出应分摊，计入合计了。各月重新生成后才变，审过的月份和户的收费不变。', to: 'alloc' },
+      { icon: 'sigma', title: '公共电核算的期区合计', desc: '折给别的池的池也出应分摊，计入合计了。各月重新生成后才变，审过的月份和户的收费不变。', to: 'alloc' },
     ],
     fixed: [],
   },
@@ -256,7 +435,7 @@ export const CHANGELOG: ReleaseNote[] = [
   {
     version: '0.19.0',
     date: '2026-09-23',
-    headline: '楼栋损耗能填备注，一期多了一行总计',
+    headline: '楼栋损耗能填备注，多了一行对账总计',
     feature: {
       icon: 'pencil',
       title: '楼栋损耗',
@@ -265,7 +444,7 @@ export const CHANGELOG: ReleaseNote[] = [
       to: 'alloc-loss',
     },
     added: [
-      { icon: 'scale', title: '楼栋损耗的对账区', desc: '一期原来只对到 B–G 座，现在多一组含 A 座的总计。', to: 'alloc-loss' },
+      { icon: 'scale', title: '楼栋损耗的对账区', desc: '原来只对到共用供电的几栋，现在多一组全部楼栋的总计。', to: 'alloc-loss' },
     ],
     improved: [
       { icon: 'gauge', title: '公共电核算的用量单位', desc: '原来只有绑了多块表的池写单位，现在每个池都写：电「度」、水「吨」。', to: 'alloc' },
@@ -275,10 +454,10 @@ export const CHANGELOG: ReleaseNote[] = [
       { icon: 'siren', title: '园区抄表的期区', desc: '表的期区和它挂的楼栋对不上时，现在标「期区对不上」。', to: 'meters' },
     ],
     fixed: [
-      '楼栋损耗：一期的合计和对账行差一整栋，屏上没说为什么',
+      '楼栋损耗：合计和对账行差一整栋，屏上没说为什么',
       '公共电核算：只绑一块表的池，用量看不出是度还是吨',
       '公共电核算：下月才起租、或没有合同的租户，都被提示成「已退租」',
-      '园区抄表：一期的表里混进了一行二期二车间',
+      '园区抄表：一个期区的表里混进了别的期区的一行',
       '公共电核算：一楼租户被电梯池提示要加进去，加了也摊不到钱',
     ],
   },
@@ -540,12 +719,22 @@ export const CHANGELOG: ReleaseNote[] = [
 /** 当前跑在浏览器里的这一版(构建时由 vite.config.ts 注入)。 */
 export const APP_VERSION = __APP_VERSION__
 
-/** 按语义比版本号:逐位比数字,预发布后缀不参与。a 比 b 新返回正数。 */
+/**
+ * 按语义比版本号:逐位比数字;数字相同时带预发布后缀的更旧(0.10.0-beta.1 < 0.10.0),两个都带按后缀比。a 比 b 新返回正数。
+ * 2026-10-05 起客户园区按它判「装机那一版之后」(stores/update.ts notes),后缀不能再当没有。
+ */
 export function cmpVersion(a: string, b: string): number {
-  const x = a.split('-')[0].split('.').map(Number)
-  const y = b.split('-')[0].split('.').map(Number)
+  const [x, xp] = splitVersion(a)
+  const [y, yp] = splitVersion(b)
   for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0)
-  return 0
+  if (xp === yp) return 0
+  if (!xp || !yp) return xp ? -1 : 1
+  // ponytail: 后缀按自然序比(beta.2 < beta.10),没逐段套 semver「数字段低于字母段」那条;changelog 里只出现过 beta.N
+  return xp.localeCompare(yp, 'en', { numeric: true })
+}
+function splitVersion(v: string): [number[], string] {
+  const i = v.indexOf('-')
+  return [(i < 0 ? v : v.slice(0, i)).split('.').map(Number), i < 0 ? '' : v.slice(i + 1)]
 }
 
 /** 功能更新 = 版本号最后一位是 0(0.15.0、1.0.0);最后一位不是 0 的是小调整(RELEASE-NOTES-SPEC §1)。 */

@@ -96,7 +96,7 @@ public class MeterController {
     @Operation(summary = "新增读数(source=manual;factor_snap=当时表倍率;同表同月 409)") @PostMapping("/readings")
     public MeterReadingDTO createReading(@Valid @RequestBody MeterReadingReq req) { return svc.createReading(req); }
 
-    @Operation(summary = "编辑读数(月份/读数/备注;factor_snap 保持原快照)") @PutMapping("/readings/{id}")
+    @Operation(summary = "编辑读数(月份/读数/备注;月份不变时 factor_snap 保持原快照,挪月时取表档案当前倍率)") @PutMapping("/readings/{id}")
     public MeterReadingDTO updateReading(@PathVariable Integer id, @Valid @RequestBody MeterReadingReq req) {
         return svc.updateReading(id, req);
     }

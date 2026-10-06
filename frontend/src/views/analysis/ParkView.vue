@@ -15,7 +15,7 @@ import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
-import { fint, hues, inkA } from '@/components/ana/anaFmt'
+import { esc, fint, hues, inkA } from '@/components/ana/anaFmt'
 import { anaPalette } from '@/components/ana/anaTheme'
 import * as S from '@/components/ana/anaSentence'
 import { useViewport } from '@/composables/useViewport'
@@ -23,6 +23,7 @@ import { fetchBuildingDetail, fetchBuildings, fetchBuildingSummary, fetchContrac
 import { buildBuildingRows, buildPhaseRows, crossBuildings, liveContracts, unitOcc, vacantByFloor } from './park.logic'
 import { iconFor } from '@/components/ds/icon'
 import { canReach } from '@/nav/navAccess'
+import { useViewGate } from '@/composables/useViewGate'
 import { useAuthStore } from '@/stores/auth'
 import type { BuildingDTO, BuildingSummaryDTO } from '@/types/building'
 import { RENT_AREA_FACTOR, type ContractDTO } from '@/types/contract'
@@ -30,6 +31,7 @@ import type { TenantDTO } from '@/types/tenant'
 
 const PK = S.PARK
 const auth = useAuthStore()
+const { lack } = useViewGate()
 
 // S 档(≤600):明细表换两行行卡、散点与面积转换进「更多分析」折叠,主卡横条收窄几何。判视口不判容器(挂载前就判得出)。
 const { tier } = useViewport()
@@ -114,7 +116,7 @@ const mainOption = computed(() => {
       formatter: (p: { dataIndex: number; seriesIndex: number }) => {
         const r = rs[p.dataIndex], b = r && unitOf(r.id)
         if (!r) return ''
-        return `${r.name}<br/>${PK.rentHead} ${S.yuan(r.rentWan)}` + (b && b.unitCount ? `<br/>${PK.unitLegend[0]} ${S.unitLabel(unitOcc(b), b.unitCount)}` : `<br/>${PK.noUnitTag}`)
+        return `${esc(r.name)}<br/>${PK.rentHead} ${S.yuan(r.rentWan)}` + (b && b.unitCount ? `<br/>${PK.unitLegend[0]} ${S.unitLabel(unitOcc(b), b.unitCount)}` : `<br/>${PK.noUnitTag}`)
       },
     },
     title: { text: PK.rentHead, left: nameW, top: 4, textStyle: { fontSize: 11, fontWeight: 'normal', color: pal.label } },
@@ -221,7 +223,7 @@ const scatterOption = computed(() => {
     tooltip: {
       formatter: (p: { name: string; value: [number, number] }) => {
         const r = rows.value.find((x) => x.name === p.name)
-        return `${p.name}<br/>${p.value[0]} 户 · ${S.yuan(p.value[1])}` + (r && r.tenants ? `<br/>${PK.perHead} ${S.yi(r.rentWan * 10000 / r.tenants)}` : '')
+        return `${esc(p.name)}<br/>${p.value[0]} 户 · ${S.yuan(p.value[1])}` + (r && r.tenants ? `<br/>${PK.perHead} ${S.yi(r.rentWan * 10000 / r.tenants)}` : '')
       },
     },
     grid: { left: 52, right: 24, top: 30, bottom: 34 },   // top 30:纵轴名不顶出图框
@@ -264,7 +266,7 @@ const areaOption = computed(() => {
   return {
     tooltip: {
       trigger: 'axis', axisPointer: { type: 'shadow' },
-      formatter: (ps: { seriesName: string; name: string; value: number }[]) => `${ps[0]?.name ?? ''}<br/>` + ps.map((p) => `${p.seriesName} ${S.sqm(p.value)}`).join('<br/>'),
+      formatter: (ps: { seriesName: string; name: string; value: number }[]) => `${esc(ps[0]?.name)}<br/>` + ps.map((p) => `${esc(p.seriesName)} ${S.sqm(p.value)}`).join('<br/>'),
     },
     legend: { top: 0, data: [...PK.areaLegend] },
     grid: { left: 56, right: 12, top: 28, bottom: rot ? 64 : 26 },
@@ -385,15 +387,17 @@ const areaOption = computed(() => {
             <template v-if="selected"><p class="ana-read hold"><template v-if="unitRead">{{ unitRead }}</template></p></template>
             <p class="ana-ref hold"><template v-if="noEnd">{{ S.thin({ noEnd }).text }}</template></p>
             <!-- 单元格子只在楼栋管理的楼栋弹窗里画(10-04 用户定方案 B);楼栋管理页不认深链,只跳到页 -->
-            <div v-if="selB && canReach('/buildings', auth.navLayers, auth.can('system:view'))" class="pk-unit">
-              <RouterLink class="pk-go" to="/buildings">{{ selB.unitCount ? PK.unit.see : PK.unit.go }}</RouterLink>
+            <div v-if="selB && (canReach('/buildings', auth.navLayers, auth.can) || lack('/buildings'))" class="pk-unit">
+              <RouterLink v-if="canReach('/buildings', auth.navLayers, auth.can)" class="pk-go" to="/buildings">{{ selB.unitCount ? PK.unit.see : PK.unit.go }}</RouterLink>
+              <span v-else class="pk-go off" v-tip="lack('/buildings')">{{ selB.unitCount ? PK.unit.see : PK.unit.go }}</span>
             </div>
             <div class="pk-foot">
               <!-- 「左边」只在桌面成立;手机上主卡堆在上面,这句不出 -->
               <span v-if="!selected" class="pk-cue">{{ PK.pickCue }}</span>
               <!-- 合同管理页没有按楼栋筛的深链(只认 ?contractNo=),只跳到页 -->
-              <RouterLink v-if="DETAIL_N < detailAll.length && canReach('/contracts', auth.navLayers, auth.can('system:view'))"
+              <RouterLink v-if="DETAIL_N < detailAll.length && canReach('/contracts', auth.navLayers, auth.can)"
                           class="pk-all" to="/contracts">{{ PK.viewAll }}</RouterLink>
+              <span v-else-if="DETAIL_N < detailAll.length && lack('/contracts')" class="pk-all off" v-tip="lack('/contracts')">{{ PK.viewAll }}</span>
             </div>
           </div>
 
@@ -442,8 +446,9 @@ const areaOption = computed(() => {
                 <div v-else class="pk-thin">{{ S.thin({ few: areaStats.rentableN, field: PK.field.rentable, cant: PK.cant.occ }).text }}</div>
               </div>
               <!-- 跨层引导:楼栋管理属数据层,园区股东看不见那一层 -->
-              <RouterLink v-if="(areaOcc == null || areaStats.share == null) && canReach('/buildings', auth.navLayers, auth.can('system:view'))"
+              <RouterLink v-if="(areaOcc == null || areaStats.share == null) && canReach('/buildings', auth.navLayers, auth.can)"
                           class="pk-go" to="/buildings">{{ PK.goFill }}</RouterLink>
+              <span v-else-if="(areaOcc == null || areaStats.share == null) && lack('/buildings')" class="pk-go off" v-tip="lack('/buildings')">{{ PK.goFill }}</span>
             </div>
             <div class="pk-area-chart">
               <AnaEChart :option="areaOption" :height="280" />
@@ -477,6 +482,8 @@ const areaOption = computed(() => {
 .pk-all { margin-left: auto; color: var(--text-link); font-size: var(--fs-micro); white-space: nowrap; text-decoration: none; }
 .pk-all:hover, .pk-go:hover { text-decoration: underline; }
 .pk-go { display: inline-block; margin-top: 8px; font-size: var(--fs-micro); color: var(--text-link); text-decoration: none; }
+/* 没有目标屏的查看权(RBAC v3,master 0.28.0):不藏,置灰并悬停写明缺哪一项 */
+.pk-go.off, .pk-all.off { color: var(--text-disabled); cursor: default; text-decoration: none; }
 .pk-thin { margin-top: 2px; font-size: var(--fs-label); line-height: 18px; color: var(--text-secondary); }
 /* 面积转换:左指标竖排 + 右图;窄屏降为纵排 */
 .pk-area-body { display: flex; gap: 20px; align-items: stretch; }

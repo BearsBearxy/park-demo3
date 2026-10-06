@@ -181,6 +181,20 @@ class PvMeterApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.priceSnap").value(0.65))
                 .andExpect(jsonPath("$.data.revenue").value(1300.0));
+
+        // 同月内改日期:快照不动(界面只允许同月内挪)
+        mvc.perform(put("/api/pv-meter/readings/" + rid).header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"stationId\":" + sid + ",\"readDate\":\"2099-01-20\",\"genTotal\":2400,\"selfUse\":2000,\"gridFeed\":400}"))
+                .andExpect(jsonPath("$.data.priceSnap").value(0.65));
+
+        // 挪到别的月 = 在那个月新录一条:取站当前单价 0.8(2026-10-04 安全修复)。原来旧价 0.65 跟过去,
+        // 把旧价读数挪进别的月就能按旧价计那个月的收益。破坏验证:去掉 PvMeterService.updateReading 里跨月重取 → 拿到 0.65,红。
+        mvc.perform(put("/api/pv-meter/readings/" + rid).header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"stationId\":" + sid + ",\"readDate\":\"2099-03-10\",\"genTotal\":2400,\"selfUse\":2000,\"gridFeed\":400}"))
+                .andExpect(jsonPath("$.data.priceSnap").value(0.8))
+                .andExpect(jsonPath("$.data.revenue").value(1600.0));
     }
 
     // ── 抄表校验:同站同日 409 / 日期非法 400 / 负量 400 / 站不存在 409 / 无价站快照空收益 0 ──

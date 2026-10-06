@@ -53,13 +53,18 @@ final class BookTemplates {
         return TemplateDef.write(d);
     }
 
-    /** 附表10 office 版面(一期/宿舍,25 列 = layout.ts OFFICE 1:1)。 */
+    /**
+     * 附表10 office 版面(一期/宿舍,25 列 = layout.ts OFFICE 1:1)。
+     * 两个组名原来是我园楼栋「A座租金」「B-G座租金」:BookSeeder 每次启动给缺册的库补册,新园区库一起步就带着它们,
+     * 2026-10-04 用户拍板产品卖给别的园区、客户能读库,改成按物业类型叫(办公室 / 厂房)。只影响新建的册 —— 已有册的版本存在库里,
+     * seedMissing 不重写,我园屏上照旧(BaselineBootIT 起完应用后扫全库钉住)。组名只是表头,导入按列名认,不按组名。
+     */
     static String s10Office() {
         Def d = new Def(List.of(
-            new Group("g_a", "A座租金", List.of(
+            new Group("g_a", "办公室", List.of(
                 std("officeRent", "办公室租金", "rent", 104),
                 std("officeMgmtFee", "办公室企业管理服务费", "mgmt", 140))),
-            new Group("g_bg", "B-G座租金", List.of(
+            new Group("g_bg", "厂房", List.of(
                 std("factoryRent", "厂房租金", "rent", 96),
                 std("factoryMgmtFee", "厂房企业管理服务费", "mgmt", 130))),
             new Group("g_land", null, List.of(

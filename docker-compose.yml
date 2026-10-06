@@ -50,6 +50,17 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?未设置 ADMIN_PASSWORD。仓库种子口令 admin/admin123 众所周知,必须覆盖}
       VIEWER_PASSWORD: ${VIEWER_PASSWORD:-}   # 非空=创建只读账号 viewer(GET-only);留空则功能关闭(唯一可选项)
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?未设置 CORS_ALLOWED_ORIGINS(前端域名白名单,如 http://1.2.3.4)}
+      # 迁移链(2026-10-04):.env 不写 = 老链,我园生产照旧;新园区在 .env 写
+      # FLYWAY_LOCATIONS=classpath:db/baseline,classpath:db/common(空库起步,见 deploy/README-部署指南.md「新园区上线」)。
+      # 默认值与 application.yml 同一串:compose 不转这个变量的话,.env 里写了也到不了后端,新园区会被灌进我园数据
+      FLYWAY_LOCATIONS: ${FLYWAY_LOCATIONS:-classpath:db/migration,classpath:db/common}
+      # 空库跑老链默认拒绝启动(FlywayChainGuard);只有在空库上重建我园自己的库时才设 true
+      FLYWAY_ALLOW_LEGACY_ON_EMPTY: ${FLYWAY_ALLOW_LEGACY_ON_EMPTY:-false}
+      # 部署开关(2026-10-05,见 backend config/DeployConfig):.env 不写 = 我园生产照旧。新园区 gen-env.sh 写
+      # PARK_TOOLS_ENABLED=false(关三处模拟填充与损益附表自动补行)、RELEASE_BASELINE=装机那一版(更新记录只给看之后的)。
+      # 默认值与 application.yml 同值;compose 不转的话 .env 里写了也到不了后端
+      PARK_TOOLS_ENABLED: ${PARK_TOOLS_ENABLED:-true}
+      RELEASE_BASELINE: ${RELEASE_BASELINE:-0.0.0}
     depends_on:
       mysql:
         condition: service_healthy

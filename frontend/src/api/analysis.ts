@@ -1,4 +1,5 @@
 import http from './index'
+import type { AnaSettings } from '@/analysis/anaSettings'
 
 // paths per AnalysisController(/api/analysis/*,P3 只读聚合)。http unwraps Result envelope。
 // 仅 3 个「一次拉全」端点;其余分析取数走既有 api/*(pnl/s10/pv/elec/charging/utilities/report/...)。
@@ -37,4 +38,7 @@ export const analysisApi = {
   months: (): Promise<AnalysisMonthsDTO> => http.get('/analysis/months'),
   s10TenantMonths: (): Promise<AnalysisS10Row[]> => http.get('/analysis/s10-tenant-months'),
   ledgerTenantMonths: (): Promise<AnalysisLedgerRow[]> => http.get('/analysis/ledger-tenant-months'),
+  // 目标与阈值(全员一份,用户 2026-10-05 拍板第 2 条):只回存过的项;PUT 回存完后库里的一份
+  settings: (): Promise<Partial<AnaSettings>> => http.get('/analysis/settings'),
+  saveSettings: (patch: Partial<AnaSettings>): Promise<Partial<AnaSettings>> => http.put('/analysis/settings', patch),
 }

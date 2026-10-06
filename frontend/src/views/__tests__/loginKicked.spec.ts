@@ -68,6 +68,15 @@ describe('api 层 401 记原因', () => {
     http.defaults.adapter = (config) => Promise.reject({ config, response: { status: 401, statusText: '', headers, data: {}, config } })
   }
 
+  // 破坏验证:拦截器清单里去掉 'superAdmin' → 红(同机下一个人登录前,界面还按系统管理员画)
+  it('❗401 清身份时 superAdmin 一起清', async () => {
+    localStorage.setItem('token', LIVE)
+    localStorage.setItem('superAdmin', '1')
+    reply401({ 'x-auth-reason': 'relogin' })
+    await http.get('/tenants').catch(() => {})
+    expect(localStorage.getItem('superAdmin')).toBeNull()
+  })
+
   // 破坏验证:拦截器里去掉 `?? (tokenExpired(...) ? 'expired' : null)` → 红
   it('❗401 没带原因头、本地令牌已过期 ⇒ 记 expired', async () => {
     localStorage.setItem('token', EXPIRED)

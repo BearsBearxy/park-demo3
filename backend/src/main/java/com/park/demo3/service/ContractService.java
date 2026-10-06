@@ -9,6 +9,8 @@ import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.*;
 import com.park.demo3.entity.*;
 import com.park.demo3.mapper.*;
+import com.park.demo3.security.Perm;
+import com.park.demo3.security.SensitiveMask;
 import com.park.demo3.security.NoReviewGuard;
 import com.park.demo3.security.ReviewGuard;
 import com.park.demo3.security.ReviewKind;
@@ -146,8 +148,12 @@ public class ContractService {
         Map<Integer,String> tName = Map.of(t.getId(), t.getCompanyName());
 
         ContractDTO dto = toDTO(c, tName, bName, uFloor, extraUnitCounts(c.getId()), termStats(c.getId()));
+        // 联系人取的是 tenant 表现值,归 master 而不归 contract:只有 contract:view 的人拿到掩码(RBAC-SPEC §11 规则 5)
+        boolean plain = SensitiveMask.holds(Perm.MASTER_VIEW);
         ContractDetailDTO.TenantSnap snap = new ContractDetailDTO.TenantSnap(
-            t.getCompanyName(), t.getContactName(), t.getContactPhone(),
+            t.getCompanyName(),
+            plain ? t.getContactName() : SensitiveMask.name(t.getContactName()),
+            plain ? t.getContactPhone() : SensitiveMask.phone(t.getContactPhone()),
             t.getBusinessType(), t.getStatus()
         );
         List<Integer> extraIds = contractUnits.selectList(

@@ -13,6 +13,7 @@ import FPLoadError from '@/components/fp/FPLoadError.vue'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
 import { onReactivated } from '@/composables/onReactivated'
+import { useViewGate } from '@/composables/useViewGate'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
@@ -296,6 +297,8 @@ function goS10(t: MonitorTenant): void {
   tabs.openDeep('sales-income')
   void router.push(periodLink('sales-income', { p: periodOf(+ym.slice(0, 4), +ym.slice(5, 7)), co: t.phase ?? undefined, extra: { tenant: t.name } }))
 }
+// 跳到模块屏的入口:没有目标屏的查看权就置灰、悬停写明缺哪一项(RBAC v3,master 0.28.0)
+const { lack } = useViewGate()
 /** 规则引擎条(③ 收入中断 ④ 负值行):录入屏目标带期与定位(与驾驶舱同形)。 */
 const goAnom = (a: AnaAnomaly): void => {
   const v = a.link.slice(1)
@@ -479,15 +482,15 @@ const goAnom = (a: AnaAnomaly): void => {
                 <div class="mn-st-seg">
                   <button v-for="(k, i) in STATUS_KEYS" :key="k" type="button" :class="{ on: statusOf(r.id) === k }" @click="setStatus(r.id, k)">{{ M.status[i] }}</button>
                 </div>
-                <button v-if="r.a" type="button" class="mn-link" @click="goAnom(r.a)">{{ M.view }}</button>
+                <button v-if="r.a" type="button" class="mn-link" :disabled="!!lack(r.a.link)" v-tip="lack(r.a.link)" @click="goAnom(r.a)">{{ M.view }}</button>
               </div>
             </div>
           </div>
           <div class="mn-links">
-            <button type="button" class="mn-go" :disabled="!sel.company || !model.lastLedgerYm" @click="goLedger(sel)">
+            <button type="button" class="mn-go" :disabled="!sel.company || !model.lastLedgerYm || !!lack('/ledger')" v-tip="lack('/ledger')" @click="goLedger(sel)">
               {{ M.links[0] }}<component :is="iconFor('arrow-up-right')" :size="13" />
             </button>
-            <button type="button" class="mn-go" :disabled="!sel.months.length" @click="goS10(sel)">
+            <button type="button" class="mn-go" :disabled="!sel.months.length || !!lack('/sales-income')" v-tip="lack('/sales-income')" @click="goS10(sel)">
               {{ M.links[1] }}<component :is="iconFor('arrow-up-right')" :size="13" />
             </button>
           </div>
@@ -562,7 +565,7 @@ const goAnom = (a: AnaAnomaly): void => {
                 <div class="mn-st-seg">
                   <button v-for="(k, i) in STATUS_KEYS" :key="k" type="button" :class="{ on: statusOf(r.h.id) === k }" @click="setStatus(r.h.id, k)">{{ M.status[i] }}</button>
                 </div>
-                <button type="button" class="mn-link" @click="goPv(r.h)">{{ M.view }}</button>
+                <button type="button" class="mn-link" :disabled="!!lack('/pv-meter-analysis')" v-tip="lack('/pv-meter-analysis')" @click="goPv(r.h)">{{ M.view }}</button>
               </div>
             </div>
           </div>
@@ -622,6 +625,7 @@ const goAnom = (a: AnaAnomaly): void => {
 .mn-st-seg button.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-semibold); box-shadow: 0 0 0 1px var(--border-subtle); }
 .mn-link { border: none; background: transparent; color: var(--text-link); font-size: var(--fs-micro); cursor: pointer; font-family: var(--font-sans); }
 .mn-link:hover { text-decoration: underline; }
+.mn-link:disabled { color: var(--text-disabled); cursor: default; text-decoration: none; }
 /* 深链按钮 */
 .mn-links { display: flex; gap: 10px; margin-top: 10px; border-top: 1px solid var(--divider); padding-top: 10px; }
 .mn-go { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border-subtle); background: var(--surface-white); color: var(--text-secondary); border-radius: var(--radius-full); padding: 6px 14px; font-size: 12px; cursor: pointer; font-family: var(--font-sans); }

@@ -1,7 +1,7 @@
 // fin-balance v2 纯函数(spec §二.8):资产/负债双环 + 比率仪表(gauge ≤2,勿仪表盘泛滥)。
 // option 为纯 JSON(canvas 无法用 CSS 变量 → fpAnaTheme 字面色板)。单测 finBalance.logic.spec.ts。
 import { FP_ANA_THEME, anaPalette } from '@/components/ana/anaTheme'
-import { fint, hues, inkA } from '@/components/ana/anaFmt'
+import { esc, fint, hues, inkA } from '@/components/ana/anaFmt'
 
 export interface DonutSlice { label: string; value: number }
 
@@ -15,7 +15,7 @@ export function donutOption(slices: DonutSlice[], centerValue: string, centerLab
     tooltip: {
       trigger: 'item',
       formatter: (p: { name: string; value: number; percent: number }) =>
-        `${p.name}<br/>¥${fint(p.value / 1e4)}万 · ${p.percent}%`,
+        `${esc(p.name)}<br/>¥${fint(p.value / 1e4)}万 · ${p.percent}%`,
     },
     title: {
       text: centerValue, subtext: centerLabel, left: 'center', top: '38%',

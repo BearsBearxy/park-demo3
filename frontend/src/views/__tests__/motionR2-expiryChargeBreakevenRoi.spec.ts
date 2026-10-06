@@ -49,7 +49,11 @@ import PvRoiView from '@/views/analysis/PvRoiView.vue'
 import { fetchContracts, fetchPnlSummary, fetchPvAll, fetchPvPhases, fetchS10Rows } from '@/analysis/anaData'
 import { cpMeterApi } from '@/api/cpMeter'
 import { usePeriod } from '@/analysis/usePeriod'
-import { anaSettings, saveAnaSettings } from '@/analysis/anaSettings'
+import { __resetAnaSettingsForTest, anaSettings, loadAnaSettings } from '@/analysis/anaSettings'
+import { analysisApi } from '@/api/analysis'
+import { useAuthStore } from '@/stores/auth'
+import { receipt } from '@/utils/receipt'
+import http from '@/api'
 
 const STUBS = { global: { stubs: { RouterLink: true, teleport: true } } }
 const tick = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -70,6 +74,7 @@ beforeEach(() => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
   gate = null
+  __resetAnaSettingsForTest()   // 目标与阈值回默认(2026-10-05 起在库里,各用例自己给值)
 })
 afterEach(() => { vi.unstubAllGlobals() })
 
@@ -267,6 +272,8 @@ describe('盈亏平衡与敏感性', () => {
 
   it('❗C6-15:只有拖滑杆那一次三张图瞬到(顶层 0);换月照常 200 形变(option 不写动画键)', async () => {
     const fr = anaSettings.breakevenFixedRatio
+    useAuthStore().permissions = ['analysis:view', 'report:edit']
+    const save = vi.spyOn(analysisApi, 'saveSettings').mockImplementation(async (p) => p)
     const w = mount(BreakevenView, STUBS)
     await flushPromises()
     const p = usePeriod()
@@ -282,12 +289,156 @@ describe('盈亏平衡与敏感性', () => {
     await input.trigger('input')
     await flushPromises()
     expect(upd(), '拖滑杆那一次没瞬到').toEqual([0, 0, 0])
+    expect(w.find('.bev-try').exists(), '有编辑权也说「只是看看效果」').toBe(false)
+    // 2026-10-05 起系数在库里、全员一份(用户拍板第 2 条):拖的时候只改本屏,松手存一次。
+    // 破坏验证:@change 去掉 → 红;onFr 里改回 saveAnaSettings → 「拖动中就存了」红
+    expect(save, '拖动中就往库里存了').not.toHaveBeenCalled()
+    await input.trigger('change')
+    await flushPromises()
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith({ breakevenFixedRatio: fr === 0.3 ? 0.4 : 0.3 })
 
     p.setMonth(3)
     await flushPromises()
     expect(w.find('.ak-sub').text()).toContain('口径月 2026-03')
     expect(upd(), '换月被当成拖滑杆,瞬跳').toEqual([undefined, undefined, undefined])
-    saveAnaSettings({ breakevenFixedRatio: fr })
+    save.mockRestore()
+    w.unmount()
+  })
+
+  // 破坏验证:saveAnaSettings 去掉 finally 里的退回 → 红
+  it('❗松手存不上:系数退回库里原来的数,说清原因', async () => {
+    useAuthStore().permissions = ['analysis:view', 'report:edit']
+    const save = vi.spyOn(analysisApi, 'saveSettings').mockRejectedValueOnce({ code: 403, message: '无操作权限' })
+    const fail = vi.spyOn(receipt, 'fail')
+    const w = mount(BreakevenView, STUBS)
+    await flushPromises()
+    usePeriod().setYear(2026)
+    await flushPromises()
+    const input = w.find('.bev-slider input[type="range"]')
+    ;(input.element as HTMLInputElement).value = '0.3'
+    await input.trigger('input')
+    expect(anaSettings.breakevenFixedRatio, '拖的时候本屏即时重算').toBe(0.3)
+    await input.trigger('change')
+    await flushPromises()
+    expect(anaSettings.breakevenFixedRatio).toBe(0.62)
+    expect(fail).toHaveBeenCalledWith('无操作权限')
+    save.mockRestore()
+    fail.mockRestore()
+    w.unmount()
+  })
+
+  // 系数全园区一份,只有账簿报表编辑权能改(同顶栏「目标与阈值」弹层)。用户 2026-10-05「两个都按你建议」:
+  // 没有编辑权的人也能拖着看效果 —— 本屏即时重算,不发 PUT、不动全园那一份,重新进这一屏回到全园的数。
+  // 破坏验证:滑杆加回 :disabled → 红;onFr 去掉看效果分支(写进 anaSettings)→ 红;onFrDone 去掉早退 → 红;
+  // 去掉那一行说明 → 红;骨架去掉同一行 → 红
+  // 屏上不说「试算」:三大报表里「试算平衡」是记账用语,用户看不懂(对抗复查 UI-F6),改说「看看效果」。
+  // 权限名字典取不到时,拖一格重画一次不许跟着再取一次(对抗复查 UI-F5;破坏验证:那一行改回模板里直接调 lackText → 红)
+  it('❗没有账簿报表编辑权:能拖着看效果,本屏重算、不存,重进回到全园的数', async () => {
+    useAuthStore().permissions = ['analysis:view']
+    const save = vi.spyOn(analysisApi, 'saveSettings').mockImplementation(async (p) => p)
+    const get = vi.spyOn(http, 'get').mockRejectedValue(new Error('offline'))
+    const permGets = () => get.mock.calls.filter(([u]) => u === '/auth/perms').length
+    const w = mount(BreakevenView, STUBS)
+    expect(w.find('.ana-skel .bev-try').exists(), '骨架少了「只是看看效果」那一行,数据到了会往下推').toBe(true)
+    await flushPromises()
+    usePeriod().setYear(2026)
+    await flushPromises()
+    const input = w.find('.bev-slider input[type="range"]')
+    expect(input.attributes('disabled'), '滑杆还是置灰').toBeUndefined()
+    expect(w.find('.bev-try').text()).toMatch(/^拖动只是看看效果，不会保存；要改全园共用的数需要「.+」权限$/)
+    expect(w.find('.bev-slider').text()).toContain('(拖动即时重算保本点)')
+    const before = permGets()
+    for (const v of ['0.5', '0.4', '0.3']) {
+      ;(input.element as HTMLInputElement).value = v
+      await input.trigger('input')
+      await flushPromises()
+    }
+    expect(permGets(), '拖一格就去取一次权限名').toBe(before)
+    expect(w.find('.bev-slider .v').text(), '拖了本屏没重算').toBe('0.30')
+    expect(anaSettings.breakevenFixedRatio, '看效果的数漏进了全园那一份').toBe(0.62)
+    await input.trigger('change')
+    await flushPromises()
+    expect(save, '看效果也往库里存了').not.toHaveBeenCalled()
+    get.mockRestore()
+    w.unmount()
+
+    const w2 = mount(BreakevenView, STUBS)
+    await flushPromises()
+    expect(w2.find('.bev-slider .v').text(), '重进这一屏还是看效果的数').toBe('0.62')
+    expect((w2.find('.bev-slider input[type="range"]').element as HTMLInputElement).value).toBe('0.62')
+    save.mockRestore()
+    w2.unmount()
+  })
+
+  // 「两个都按你建议」(2026-10-05):看效果的数只在这一屏,离开就回到全园的数 —— 页签切走再切回是同一个实例(KeepAlive),也算离开
+  // (对抗复查 UI-F4)。破坏验证:onReactivated 里去掉 tryFr 清空 → 红
+  it('❗没有编辑权:看效果的数切走页签再切回,回到全园的数', async () => {
+    useAuthStore().permissions = ['analysis:view']
+    const alive = ref(true)
+    const w = mount(defineComponent({
+      setup: () => () => h(KeepAlive, null, { default: () => (alive.value ? h(BreakevenView) : null) }),
+    }), STUBS)
+    await flushPromises()
+    usePeriod().setYear(2026)
+    await flushPromises()
+    const input = w.find('.bev-slider input[type="range"]')
+    ;(input.element as HTMLInputElement).value = '0.3'
+    await input.trigger('input')
+    await flushPromises()
+    expect(w.find('.bev-slider .v').text()).toBe('0.30')
+    alive.value = false; await flushPromises()
+    alive.value = true; await flushPromises()
+    expect(w.find('.bev-slider .v').text(), '切回来还停在看效果的数').toBe('0.62')
+    w.unmount()
+  })
+
+  // 主管授权借得到账簿报表(不在不可借名单),这一屏开着时编辑权会来会走(对抗复查 UI-F1):
+  // 借到了,看效果的数作废、屏上回到全园的数,再拖就是改全园那一份;拖到一半到期,这一下按第一格时定,松手照样去存,
+  // 后端拒了 saveAnaSettings 退回库里的数 —— 全园那一份里不留一个没存上的数。
+  // 破坏验证:去掉 frLock 那条 watch → 「还停着看效果的数」红;onFr / onFrDone 改回每次现看 frLock → 「到期了松手没去存」红
+  it('❗这一屏开着时借到 / 到期编辑权:看效果的数不冒充全园的数;拖到一半到期,松手照样去存、存不上退回', async () => {
+    const auth = useAuthStore()
+    auth.permissions = ['analysis:view']
+    const save = vi.spyOn(analysisApi, 'saveSettings').mockImplementation(async (p) => p)
+    const fail = vi.spyOn(receipt, 'fail')
+    const w = mount(BreakevenView, STUBS)
+    await flushPromises()
+    usePeriod().setYear(2026)
+    await flushPromises()
+    const input = w.find('.bev-slider input[type="range"]')
+    const drag = async (v: string) => {
+      ;(input.element as HTMLInputElement).value = v
+      await input.trigger('input')
+      await flushPromises()
+    }
+    const done = async () => { await input.trigger('change'); await flushPromises() }
+    await drag('0.3')
+    await done()
+    expect(w.find('.bev-slider .v').text()).toBe('0.30')
+
+    auth.permissions = ['analysis:view', 'report:edit']   // 借到了
+    await flushPromises()
+    expect(w.find('.bev-try').exists()).toBe(false)
+    expect(w.find('.bev-slider .v').text(), '没了「只是看看效果」那一行,屏上还停着看效果的数').toBe('0.62')
+    await drag('0.5')
+    expect(w.find('.bev-slider .v').text(), '有了编辑权再拖,屏上不跟').toBe('0.50')
+    await done()
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenLastCalledWith({ breakevenFixedRatio: 0.5 })
+
+    save.mockRejectedValueOnce({ code: 403, message: '无操作权限' })
+    await drag('0.4')
+    auth.permissions = ['analysis:view']   // 拖到一半到期
+    await flushPromises()
+    await drag('0.35')
+    await done()
+    expect(save, '到期了松手没去存,没存上的数留在全园那一份里').toHaveBeenCalledTimes(2)
+    expect(save).toHaveBeenLastCalledWith({ breakevenFixedRatio: 0.35 })
+    expect(anaSettings.breakevenFixedRatio, '存不上没退回库里的数').toBe(0.5)
+    expect(fail).toHaveBeenCalledWith('无操作权限')
+    save.mockRestore()
+    fail.mockRestore()
     w.unmount()
   })
 
@@ -322,7 +473,7 @@ describe('盈亏平衡与敏感性', () => {
 })
 
 // ── 光伏投资回收 ─────────────────────────────────────────────────────
-const PHASES: PvPhaseDTO[] = [{ id: 'p1', name: '一期', short: '一期', online: '2024-01' }]
+const PHASES: PvPhaseDTO[] = [{ id: 'p1', name: '一期', short: '一期', online: '2024-01', cost: 14_786_883.99 }]
 const rec = (i: number, fee: number): PvRecordDTO => ({
   id: i, phase: 'p1', phaseName: '一期', acctMonth: `2025-0${i}`, occurMonth: `2025-0${i}`,
   selfKwh: 1000, selfAmt: fee * 0.6, gridKwh: 500, gridAmt: fee * 0.4, gen: 1500, fee, note: null, source: 'manual',
@@ -381,8 +532,9 @@ describe('光伏投资回收', () => {
   })
 
   it('❗改投资额:图与进度条不重挂,--pct 原地变(clip-path 过渡 200)', async () => {
-    const invest = anaSettings.pvInvestment
-    saveAnaSettings({ pvInvestment: 1000 })
+    // 投资额从库里来(2026-10-05 起全员一份):屏上用的是库里那个数,不是默认的「按各期成本」
+    vi.spyOn(analysisApi, 'settings').mockResolvedValueOnce({ pvInvestment: 1000 })
+    await loadAnaSettings()
     const w = mount(PvRoiView, STUBS)
     await flushPromises()
     expect(w.find('.ana-skel').exists(), '数据到了还是骨架').toBe(false)
@@ -392,12 +544,59 @@ describe('光伏投资回收', () => {
     // 累计 270 万 ÷ 投资 1000 万
     expect(fill.style.getPropertyValue('--pct')).toBe('27.0%')
 
-    saveAnaSettings({ pvInvestment: 500 })
+    anaSettings.pvInvestment = 500
     await flushPromises()
     expect(w.find('.roi2-bar-fill').element, '进度条被重挂了').toBe(fill)
     expect(fill.style.getPropertyValue('--pct')).toBe('54.0%')
     charts(w).forEach((el, i) => expect(el, `第 ${i} 张图被卸载重挂了`).toBe(before[i]))
-    saveAnaSettings({ pvInvestment: invest })
+    w.unmount()
+  })
+
+  // 2026-10-04 用户拍板产品卖给别的园区:投资额不再写死我园 1478.7 万 —— 没填取各期工程成本合计,两样都没有出空态
+  it('❗投资额没填:取各期工程成本合计;各期也没有成本就出空态,不按 0 算回收', async () => {
+    const kpi = (w: ReturnType<typeof mount>, label: string) =>
+      w.findAll('.av2-kpi').find((k) => k.find('.l').text() === label)!.find('.v').text()
+    vi.mocked(fetchPvPhases).mockResolvedValue([{ ...PHASES[0], cost: 10_000_000 }])
+    let w = mount(PvRoiView, STUBS)
+    await flushPromises()
+    // 累计 270 万 ÷ 各期成本合计 1000 万
+    expect((w.find('.roi2-bar-fill').element as HTMLElement).style.getPropertyValue('--pct')).toBe('27.0%')
+    expect(kpi(w, '工程总投资')).toBe('¥1,000.0 万')
+    expect(kpi(w, '综合回收进度')).toBe('27.0%')
+    w.unmount()
+    vi.mocked(fetchPvPhases).mockResolvedValue([{ ...PHASES[0], cost: null }])
+    w = mount(PvRoiView, STUBS)
+    await flushPromises()
+    expect(w.find('.roi2-bar').exists(), '没有投资额还画了回收进度').toBe(false)
+    expect(w.text()).toContain('光伏投资额未填')
+    w.unmount()
+    // 新园区起点库的占位期别:成本列 NOT NULL,落的是列默认 0(2026-10-05 用户拍板「按你建议修改」)—— 也按「未填」出空态,不出 NaN
+    vi.mocked(fetchPvPhases).mockResolvedValue([{ ...PHASES[0], cost: 0 }, { ...PHASES[0], id: 'p2', cost: 0 }])
+    w = mount(PvRoiView, STUBS)
+    await flushPromises()
+    expect(w.find('.roi2-bar').exists(), '成本 0 还画了回收进度').toBe(false)
+    expect(w.text()).toContain('光伏投资额未填')
+    expect(w.text()).not.toContain('NaN')
+    // KPI 行也不给确定的 ¥0 / 0%:那个 0 是没填
+    expect(kpi(w, '工程总投资')).toBe('—')
+    expect(kpi(w, '综合回收进度')).toBe('—')
+    w.unmount()
+  })
+
+  // 2026-10-05 复查:新园区起点库带三个占位期别(一期~三期),只录了一期的客户原来读到「3 期」;
+  // 我园三期都有记账,仍是 3。破坏验证:脚注改回 rows.length → 第一段读到 3,红
+  it('❗分期卡脚注只数有记账月的期', async () => {
+    const foot = (w: ReturnType<typeof mount>) => w.findAll('.ana-ref').find((e) => e.text().includes('柱=自消纳+上网'))!.text()
+    const three = [PHASES[0], { ...PHASES[0], id: 'p2', name: '二期', short: '二期' }, { ...PHASES[0], id: 'p3', name: '三期', short: '三期' }]
+    vi.mocked(fetchPvPhases).mockResolvedValue(three)
+    let w = mount(PvRoiView, STUBS)
+    await flushPromises()
+    expect(foot(w), '只有一期有记账').toBe('1 期有记账 · 柱=自消纳+上网 · 万元')
+    w.unmount()
+    vi.mocked(fetchPvAll).mockResolvedValue([...RECORDS, { ...rec(4, 1), phase: 'p2' }, { ...rec(5, 1), phase: 'p3' }])
+    w = mount(PvRoiView, STUBS)
+    await flushPromises()
+    expect(foot(w), '我园三期都有记账').toBe('3 期有记账 · 柱=自消纳+上网 · 万元')
     w.unmount()
   })
 })

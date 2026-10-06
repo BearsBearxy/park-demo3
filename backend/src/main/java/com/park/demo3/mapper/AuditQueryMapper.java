@@ -7,11 +7,18 @@ import org.apache.ibatis.annotations.Select;
 import java.util.List;
 
 /**
- * 操作日志时间线:五张来源表 union 后按时间倒序（RBAC-SPEC §7.2）。review_log 是 R1 加的第 4 张,
+ * 操作日志时间线:六张来源表 union 后按时间倒序（RBAC-SPEC §7.2）。review_log 是 R1 加的第 4 张,
  * 它没有 authorizer 列(审核不走提权,没有「代他人执行」这回事),照 import 分支写 NULL AS authorizer。
  * meter_archive_log 是第 5 张(METER-TIMELINE-SPEC §5「档案写入进操作日志:表 · 月 · 旧 → 新 · 来源」):
  * action = 「assign|status . insert|update|delete」;target = 表名 · 起始月(表删了回落 #id,档案史不挂外键);
  * detail = 状态行比状态、归属行比企业名称原文(完整前后像在抽屉「档案变更」)· 来源 · 文件名 · 行定位。
+ * value_change_log 是第 6 张(V138,用户 2026-10-05 拍板的「数据修改记录」):action = 表名(前端翻成「改台账」……),
+ * target = 行定位 · 列名,detail = 改前 → 改后(没有的一边写 —;整批摘要行只有说明)。
+ *
+ * **谁看得见哪几行也在这里做**(同日拍板:看得到操作日志不等于看得到工资):seeParam / seeImport / seeMeter / tbls 由
+ * SystemService.auditLogs 按查看者的查看权算好;看不见的分支整路 1=0(不能去掉分支 —— UNION ALL 的拼法靠 src 判断),
+ * value_change_log 按 tbl IN (tbls);auth_audit_log 里催缴单的行看 seeBilling、删表的行看 seeMeter。
+ * page / count / actors 三处同一套条件,条数和下拉才对得上。
  *
  * **分页与筛选都在 SQL 里做**,不是捞进内存再切。param_change_log 随每次改参数增长,
  * 全捞正是 QueryHygieneTest 防的那种「返回行数只涨不跌」。
@@ -41,7 +48,8 @@ public interface AuditQueryMapper {
                  authorizer AS authorizer
           FROM param_change_log
           <where>
-            <if test="actor != null and actor != ''">actor = #{actor}</if>
+            <if test="!seeParam">1=0</if>
+            <if test="actor != null and actor != ''">AND actor = #{actor}</if>
             <if test="from != null">AND ts &gt;= #{from}</if>
             <if test="to != null">AND ts &lt; #{to}</if>
           </where>
@@ -56,7 +64,8 @@ public interface AuditQueryMapper {
                  NULL AS authorizer
           FROM import_log
           <where>
-            <if test="actor != null and actor != ''">operator = #{actor}</if>
+            <if test="!seeImport">1=0</if>
+            <if test="actor != null and actor != ''">AND operator = #{actor}</if>
             <if test="from != null">AND created_at &gt;= #{from}</if>
             <if test="to != null">AND created_at &lt; #{to}</if>
           </where>
@@ -67,7 +76,9 @@ public interface AuditQueryMapper {
                  target AS target, detail AS detail, authorizer AS authorizer
           FROM auth_audit_log
           <where>
-            <if test="actor != null and actor != ''">actor = #{actor}</if>
+            <if test="!seeBilling">action NOT LIKE 'bill-notice.%'</if>
+            <if test="!seeMeter">AND action &lt;&gt; 'meter.delete'</if>
+            <if test="actor != null and actor != ''">AND actor = #{actor}</if>
             <if test="from != null">AND ts &gt;= #{from}</if>
             <if test="to != null">AND ts &lt; #{to}</if>
           </where>
@@ -104,33 +115,71 @@ public interface AuditQueryMapper {
                  NULL AS authorizer
           FROM meter_archive_log l LEFT JOIN meter m ON m.id = l.meter_id
           <where>
-            <if test="actor != null and actor != ''">l.operator = #{actor}</if>
+            <if test="!seeMeter">1=0</if>
+            <if test="actor != null and actor != ''">AND l.operator = #{actor}</if>
             <if test="from != null">AND l.at &gt;= #{from}</if>
             <if test="to != null">AND l.at &lt; #{to}</if>
           </where>
         </if>
+        <if test="src == null">UNION ALL</if>
+        <if test="src == null or src == 'change'">
+          SELECT 'change' AS source, id AS rid, at AS ts, actor AS actor, tbl AS action,
+                 CONCAT(row_ref, IF(field = '', '', CONCAT(' · ', field))) AS target,
+                 IF(old_val IS NULL AND new_val IS NULL, IFNULL(note, ''),
+                    CONCAT(IFNULL(old_val, '—'), ' → ', IFNULL(new_val, '—'), IFNULL(CONCAT('  ', note), ''))) AS detail,
+                 authorizer AS authorizer
+          FROM value_change_log
+          <where>
+            <choose>
+              <when test="tbls.isEmpty()">1=0</when>
+              <otherwise>tbl IN <foreach collection="tbls" item="x" open="(" separator="," close=")">#{x}</foreach></otherwise>
+            </choose>
+            <if test="tbl != null">AND tbl = #{tbl}</if>
+            <if test="actor != null and actor != ''">AND actor = #{actor}</if>
+            <if test="from != null">AND at &gt;= #{from}</if>
+            <if test="to != null">AND at &lt; #{to}</if>
+          </where>
+        </if>
         """;
 
-    /** 末位键 rid 让排序成为全序 —— 见类注释第 2 条，没有它翻页会重复/漏行。 */
-    @Select("<script>SELECT source, ts, actor, action, target, detail, authorizer FROM (" + BRANCHES
+    /** 末位键 rid 让排序成为全序 —— 见类注释第 2 条，没有它翻页会重复/漏行。
+     *  外层列序 = AuditRowDTO 构造参数序(MyBatis 按列序往 record 里填),加列要两边同一位置一起加。 */
+    @Select("<script>SELECT source, rid, ts, actor, action, target, detail, authorizer FROM (" + BRANCHES
           + ") u ORDER BY u.ts DESC, u.source, u.rid DESC LIMIT #{size} OFFSET #{offset}</script>")
-    List<AuditRowDTO> page(@Param("src") String src, @Param("actor") String actor,
+    List<AuditRowDTO> page(@Param("src") String src, @Param("tbl") String tbl, @Param("actor") String actor,
                            @Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to,
+                           @Param("seeParam") boolean seeParam, @Param("seeImport") boolean seeImport,
+                           @Param("seeBilling") boolean seeBilling, @Param("seeMeter") boolean seeMeter,
+                           @Param("tbls") List<String> tbls,
                            @Param("size") int size, @Param("offset") int offset);
 
     @Select("<script>SELECT COUNT(*) FROM (" + BRANCHES + ") u</script>")
-    long count(@Param("src") String src, @Param("actor") String actor,
-               @Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
+    long count(@Param("src") String src, @Param("tbl") String tbl, @Param("actor") String actor,
+               @Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to,
+               @Param("seeParam") boolean seeParam, @Param("seeImport") boolean seeImport,
+               @Param("seeBilling") boolean seeBilling, @Param("seeMeter") boolean seeMeter,
+               @Param("tbls") List<String> tbls);
 
-    /** 筛选下拉用:出现过的操作人（三表并集，去重）。 */
+    /** 筛选下拉用:出现过的操作人（各表并集，去重）。看不见的行里的人也不列 —— 和 BRANCHES 同一套条件。 */
     @Select("""
+        <script>
         SELECT DISTINCT a FROM (
-          SELECT actor a FROM param_change_log
-          UNION SELECT operator FROM import_log
-          UNION SELECT actor FROM auth_audit_log
+          SELECT actor a FROM param_change_log <if test="!seeParam">WHERE 1=0</if>
+          UNION SELECT operator FROM import_log <if test="!seeImport">WHERE 1=0</if>
+          UNION SELECT actor FROM auth_audit_log WHERE 1=1
+            <if test="!seeBilling">AND action NOT LIKE 'bill-notice.%'</if>
+            <if test="!seeMeter">AND action &lt;&gt; 'meter.delete'</if>
           UNION SELECT actor FROM review_log
-          UNION SELECT operator FROM meter_archive_log
-        ) x WHERE a IS NOT NULL AND a <> '' ORDER BY a
+          UNION SELECT operator FROM meter_archive_log <if test="!seeMeter">WHERE 1=0</if>
+          UNION SELECT actor FROM value_change_log WHERE
+            <choose>
+              <when test="tbls.isEmpty()">1=0</when>
+              <otherwise>tbl IN <foreach collection="tbls" item="x" open="(" separator="," close=")">#{x}</foreach></otherwise>
+            </choose>
+        ) x WHERE a IS NOT NULL AND a &lt;&gt; '' ORDER BY a
+        </script>
         """)
-    List<String> actors();
+    List<String> actors(@Param("seeParam") boolean seeParam, @Param("seeImport") boolean seeImport,
+                        @Param("seeBilling") boolean seeBilling, @Param("seeMeter") boolean seeMeter,
+                        @Param("tbls") List<String> tbls);
 }

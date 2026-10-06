@@ -1,14 +1,14 @@
 <script setup lang="ts">
 // 0.26.0 重点「导入进度」的配图:导入弹窗里换上的进度卡缩样,四行 —— 标题「正在导入 N 条」、真进度条、「第 k 段 / 已写入 a / N 条」、逐段写入那一步。
 // 记号照 components/import/ImportProgressCard.vue 的 .ipc-h / .ipc-bar / .ipc-sub / .ipc-steps 抄,字压到 12 / 11。
-// 数照画布 11-A(附表 10 · 2025 年:26 段、1,648 条、写到第 16 段时已写入 962 条)。
+// 数是示意(2026-10-04 用户拍板产品卖给别的园区,配图每个客户都看得到,不再用我园那次导入的规模)。
 </script>
 
 <template>
-  <div class="h">正在导入 <b>1,648</b> 条</div>
+  <div class="h">正在导入 <b>120</b> 条</div>
   <div class="bar"><i /></div>
-  <div class="sub"><span>第 16 段</span><span>已写入 <b>962</b> / 1,648 条</span></div>
-  <div class="st"><span class="spin" />逐段写入<em>15 / 26 段</em></div>
+  <div class="sub"><span>第 5 段</span><span>已写入 <b>70</b> / 120 条</span></div>
+  <div class="st"><span class="spin" />逐段写入<em>4 / 8 段</em></div>
 </template>
 
 <style scoped>

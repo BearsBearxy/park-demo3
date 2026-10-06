@@ -165,7 +165,7 @@ const matrixYears = computed(() => {
   if (!ov) return []
   const extra = extraYears.value
   const dataYears = ov.years.filter(y => hasYearData(y))
-  // ⚠ ov.currentYear = 最大数据年,不是自然年:范围与「当前年」标签都按自然年(SPEC §5 v3 口径:
+  // ⚠ ov.currentYear = 最大数据年(一条数据都没有时 = 今年、currentMonth = 0),不是自然年:范围与「当前年」标签都按自然年(SPEC §5 v3 口径:
   // 数据年∪当前自然年∪手工年);cur 月标记才用 ov.currentYear/currentMonth(=最近有数据月)
   const natural = new Date().getFullYear()
   return buildYearRows(dataYears, natural, extra).map(({ year: y, manual }) => ({

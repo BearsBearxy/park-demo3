@@ -459,7 +459,7 @@ export function perKwCard(snap: AnaSnapshot, rows: ReadingRow[], prevRows: Readi
       : prevRows && !ly ? [pvDashLy(m == null ? `${y - 1}年同期` : `去年${monthLabel(m)}`)] : []),
   ]
   const anchor = +(snap.crit.anchorHours * snap.crit.yieldRatio).toFixed(1)
-  const anchorDay = m == null ? anchor / yDays : null
+  const anchorDay = m == null && anchor > 0 ? anchor / yDays : null   // 合格线没配(0)就不画那条线
   return {
     rows: out,
     heads: m == null || pmLabel == null ? [PV.online, PVK.vsY(y - 1)] : [vsLabel(pmLabel), PVK.vsLY(m)],

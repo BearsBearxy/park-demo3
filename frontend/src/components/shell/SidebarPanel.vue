@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import { fpFindLayer } from '@/nav/fpNav'
 import { autoOpenTitles } from '@/nav/navFold'
-import { visibleLayers } from '@/nav/navAccess'
+import { visibleLayers, visibleSections } from '@/nav/navAccess'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
 import SidebarNav from '@/components/ds/SidebarNav.vue'
@@ -15,11 +15,11 @@ const router = useRouter()
 const tabs = useTabsStore()
 const auth = useAuthStore()
 
-// 与 IconRail 同口径:按角色的 navLayers 过滤('system' 层不进 navLayers,按 system:view 判)
-const layers = computed(() => visibleLayers(auth.navLayers, auth.can('system:view')))
+// 与 IconRail 同口径:按角色的 navLayers 与各屏查看权过滤('system' 层不进 navLayers)
+const layers = computed(() => visibleLayers(auth.navLayers, auth.can))
 
 // ponytail: route-derived, same pattern as IconRail
-// 当前屏属于不可见层时(读全开,深链能进)不展开那一层的目录,退回第一个可见层
+// 当前屏属于不可见层时(有查看权、只是层不在导航里,深链能进)不展开那一层的目录,退回第一个可见层
 const activeLayer = computed(() => {
   const L = fpFindLayer((route.meta as Record<string, string>).value ?? '')
   return layers.value.includes(L) ? L : (layers.value[0] ?? L)
@@ -29,9 +29,9 @@ const activeValue = computed(() =>
   (route.meta as Record<string, string>).value ?? ''
 )
 
-// Map FP_NAV sections → DS SidebarNav shape (drop `kind`)
+// Map FP_NAV sections → DS SidebarNav shape (drop `kind`);没有查看权的屏不列(visibleSections)
 const sections = computed(() =>
-  activeLayer.value.sections.map(s => ({
+  visibleSections(activeLayer.value, auth.can).map(s => ({
     title: s.title,
     items: s.items.map(it => ({
       value: it.value,

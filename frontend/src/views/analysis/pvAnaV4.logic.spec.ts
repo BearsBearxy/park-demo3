@@ -423,6 +423,9 @@ describe('perKwCard —— 各栋每千瓦日均发电(新卡)', () => {
     expect(y.hint).toBe('11 栋楼 · 按在网天数平均 · 和2024年比 · kWh')
     expect(y.anchorDay).toBeCloseTo(807.5 / 365, 9)
     expect(y.anchorLabel).toBe('合格线 2.21（一年 807.5）')
+    // 锚点没填(0,新园区库里没这条参数):不画合格线,不套我园的 950
+    const none = perKwCard(buildSnapshot({ ...INPUT, gran: 'year', crit: { anchorHours: 0 } }), ROWS, PREV, 0.4)
+    expect([none.anchorDay, none.anchorLabel]).toEqual([null, null])
     // 夹具整年只到 8/28:每栋都不满一年,在网列写天数
     expect(y.rows.find(r => r.name === 'B座')!.cols[0]).toBe(`${daysIn(ROWS, '2025', [1]).length} 天`)
   })
@@ -495,6 +498,14 @@ describe('critFoot', () => {
     expect(f.baseNote).toBe(`平时范围按 2月1日–${+base.to.slice(0, 2)}月${+base.to.slice(3)}日 的 ${base.n} 天算`)
     expect(f.tail).toBe('全园一起少发时，这张图看不出来')
     expect(critFoot(SNAP, null).baseNote).toBeNull()
+  })
+  // 2026-10-04 用户拍板产品卖给别的园区:锚点没填(新园区库里没这条参数)就不判,不套我园的 950。
+  // 2026-10-06 改稿判据脚不再列年等效(挪回合格线卡),所以只钉「各栋不出年等效那条」+ 判据脚里没有这一项
+  it('❗锚点没填(0):各栋不出年等效那条;判据脚不列年等效;对照:有锚点照常出', () => {
+    expect(SNAP_Y.facts.some(f => f.kind === 'yield')).toBe(true)
+    const none = buildSnapshot({ ...INPUT, gran: 'year', crit: { anchorHours: 0 } })
+    expect(none.facts.some(f => f.kind === 'yield')).toBe(false)
+    expect(critFoot(none, null).items.map(i => i.key)).toEqual(['band', 'run', 'cover'])
   })
   it('❗放宽过「含并网初期」、选中栋是年内才并网的 → 「含这栋刚并网那段」;年初就在的栋只放宽同批 → 「含别的楼刚并网的月份」', () => {
     const f = row('F座')

@@ -6,6 +6,8 @@ import com.park.demo3.mapper.*;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -54,6 +56,17 @@ public class UserPermissionCache {
     /** status≠1 的账号名。不进 snapshot(那样就有权限了),单独记,只用来给 401 说理由。 */
     private volatile Set<String> disabled = Set.of();
 
+    /** 系统管理员角色的标识。预置、建后不可改、不可删(SystemService)。 */
+    public static final String SUPER_ADMIN_ROLE = "admin";
+    /**
+     * 持系统管理员角色的启用账号。系统管理分级与录审分离都放过他们 ——
+     * 用户 2026-10-04 拍板「我需要一个超级管理员的账号都能调试整个软件，录审不分离在超级管理，其他分离」。
+     * 按角色 code 认,不按权限点认:别人的角色可以被勾满全部权限,那也不等于系统管理员。
+     */
+    private volatile Set<String> superAdmins = Set.of();
+    /** 启用、且 must_change_password=1 的账号:除改密页要用的几条接口外一律拦(JwtAuthFilter)。跟着 reload 走,改完密码当场清。 */
+    private volatile Set<String> mustChange = Set.of();
+
     public UserPermissionCache(AuthUserMapper users, AuthUserRoleMapper userRoles,
                                AuthRoleMapper roles, AuthRolePermMapper rolePerms,
                                ElevationStore elevations) {
@@ -66,6 +79,21 @@ public class UserPermissionCache {
 
     /** 任何 auth_user / auth_role / auth_role_perm / auth_user_role 的写操作之后必须调。 */
     public synchronized void reload() {
+        // 在事务里调的(SystemService 的写方法),事务结束后再 reload 一次(2026-10-04,对抗复查 R1 / R2)。
+        // 事务里这次读得到本事务没提交的写(@Transactional 测试靠它),可从它到提交之间,别的线程的 reload
+        // (AdminInitializer、另一个人的保存)读的是提交前的库、发布在它后面:刚建 / 刚启用的号不在快照里,
+        // 登录时 applySession 找不到人、新 sid 落空,401;刚改完的密码又被放回 mustChange,新令牌 403 回改密页;
+        // 刚停用的号又回到快照、没了「已停用」的理由。事务结束后这次读的是库里真有的,监视器又把它排在那些
+        // 读得早的 reload 后面,最后发布的就是对的。回滚也重读:事务里那次发布的是没落库的权限,不能留着 ——
+        // 前提是这时还查得了库:afterCompletion 跑在连接归还之前,这次 reload 用的还是事务那条连接。
+        // ponytail: 事务要是因为连接断了才结束,这里的 reload 照样抛,Spring 只记一行错误日志,快照停在事务里那份
+        //           (含没落库的写)直到下一次 reload;要补就把这里的 reload 放进 REQUIRES_NEW 的 TransactionTemplate,另取一条连接。
+        // ponytail: 开得更早的事务里那次 reload(REPEATABLE READ 旧视图)在它提交前会发布旧快照:权限、tv 提交后这里补正;
+        // 可这期间新建 / 新启用的号登录,applySession 找不到人,新 sid 落空、补不回来,他要重新登录一次。
+        if (TransactionSynchronizationManager.isSynchronizationActive())
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCompletion(int status) { reload(); }
+            });
         // reload 会重建整张快照,而会话 id 不在它查的那几张表里 —— 不先存下来,
         // 任何一次角色变更都会把所有人的 sid 抹成 null,下一个请求全部 401。
         Map<String, String> liveSid = new HashMap<>();
@@ -83,7 +111,9 @@ public class UserPermissionCache {
             .map(AuthUser::getUsername).collect(Collectors.toUnmodifiableSet());
         // 只装 status=1 的账号:停用的查不到 → 下一个请求就 401,不必等令牌过期
         List<AuthUser> active = users.selectList(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getStatus, 1));
-        if (active.isEmpty()) { snapshot = Map.of(); return; }
+        if (active.isEmpty()) { snapshot = Map.of(); superAdmins = Set.of(); mustChange = Set.of(); return; }
+        mustChange = active.stream().filter(u -> Integer.valueOf(1).equals(u.getMustChangePassword()))
+            .map(AuthUser::getUsername).collect(Collectors.toUnmodifiableSet());
 
         Map<Integer, AuthRole> roleById = roles.selectList(null).stream()
             .collect(Collectors.toMap(AuthRole::getId, r -> r, (a, b) -> a));
@@ -97,6 +127,7 @@ public class UserPermissionCache {
         }
 
         Map<String, UserAuth> next = new HashMap<>();
+        Set<String> admins = new HashSet<>();
         for (AuthUser u : active) {
             Set<String> perms = new HashSet<>();
             // 多角色是并集 —— 现实里有「主管兼管理员」。导航层同理取并集,否则兼岗的人会少看到东西。
@@ -105,6 +136,7 @@ public class UserPermissionCache {
             for (Integer rid : rolesByUser.getOrDefault(u.getId(), List.of())) {
                 perms.addAll(permsByRole.getOrDefault(rid, Set.of()));
                 AuthRole r = roleById.get(rid);
+                if (r != null && SUPER_ADMIN_ROLE.equals(r.getCode())) admins.add(u.getUsername());
                 if (r != null && r.getName() != null && !r.getName().isBlank()) roleNames.add(r.getName());
                 if (r != null && r.getNavLayers() != null) {
                     for (String s : r.getNavLayers().split(",")) {
@@ -118,17 +150,36 @@ public class UserPermissionCache {
             if (layers.isEmpty()) layers.addAll(List.of("data", "reports", "analysis"));
             // sessionId 从 auth_session 现查会让 reload 多一次 join;它只在登录时才变,
             // 由 applySession 定点写进来。reload 拿不到就给 null —— 见 applySession 的注释。
-            int tv = u.getTokenVersion() == null ? 0 : u.getTokenVersion();
+            // tv 取库与快照里较大的那个(2026-10-04)。这次读可能早于某次登录/踢人的提交:open 已经 applySession、
+            // 还没提交时别的线程 reload(AdminInitializer、任何一次角色/账号保存),或者 reload 跑在开得更早的事务里
+            // (SystemService 的写方法,REPEATABLE READ 读的是事务第一次读那一刻)。照库里的旧数发布,就和快照里的
+            // 新 sid 拼成一对,刚签的令牌 401,直到下一次 reload(实测:刚重启时新号登录后改密)。库里已提交的
+            // token_version 只增不减(只有 SessionService.bump 写它、在库里 +1;整行写回旧值的写法 2026-10-04 已去掉),
+            // 快照里的要么是某个已提交的值,要么是还没提交 / 被回滚的那次 bump,所以大的就是新的(被回滚的见下面 ponytail)。
+            // 没把 applySession 挪到 afterCommit:补不上「reload 跑在更早的事务里」那种,而且在调用方自己的事务里
+            // (@Transactional 测试里的登录)永远等不到提交、快照永远不改。
+            // ponytail: 被回滚的 open/revokeAll 留在快照里的 tv 不退回 —— 改前也退不回(sid 已换),那人重登一次即对齐。
+            UserAuth prev = snapshot.get(u.getUsername());
+            int tv = Math.max(u.getTokenVersion() == null ? 0 : u.getTokenVersion(), prev == null ? 0 : prev.tokenVersion());
             String sid = liveSid.get(u.getUsername());
-            next.put(u.getUsername(), new UserAuth(u.getUsername(), Set.copyOf(perms), List.copyOf(layers),
+            // 编辑隐含同组查看(RBAC-SPEC §11 规则 1):在这里展开、不落库 —— 后端判定(authorities)、
+            // /auth/me 与登录回包拿到的都是展开后的集合,角色屏存的仍是勾选的原样
+            next.put(u.getUsername(), new UserAuth(u.getUsername(), Set.copyOf(Perm.withImplied(perms)), List.copyOf(layers),
                                                    List.copyOf(roleNames), tv, sid, reason.get(u.getUsername())));
         }
         snapshot = Map.copyOf(next);
+        superAdmins = Set.copyOf(admins);
         log.info("permission cache reloaded: {} active users", snapshot.size());
     }
 
     /** 找不到 = 账号不存在或已停用。 */
     public UserAuth get(String username) { return username == null ? null : snapshot.get(username); }
+
+    /** 还带着管理员给的密码、没改过。 */
+    public boolean mustChangePassword(String username) { return username != null && mustChange.contains(username); }
+
+    /** 启用且持系统管理员角色。 */
+    public boolean isSuperAdmin(String username) { return username != null && superAdmins.contains(username); }
 
     /** 这个账号存在且被停用了。只给「令牌签名有效」之后用 —— 拿它回答陌生人就成了枚举口。 */
     public boolean isDisabled(String username) { return username != null && disabled.contains(username); }
@@ -138,11 +189,15 @@ public class UserPermissionCache {
      *
      * **为什么不复用 reload()**:reload 的第一件事是 {@code elevations.revokeAllUsers()} ——
      * 登录是高频动作,每次登录都清掉所有人的提权授权,等于随便谁登录一次全公司都要重新叫主管点头。
-     * 这里只换一个 entry,不碰提权,也不重查那四张表。
+     * 这里只换一个 entry,只清**这个人自己**的提权,也不重查那四张表。
      *
      * sid 传 null = 这个账号当前没有活着的会话(被踢/登出),此后它的令牌一律不认。
      */
     public synchronized void applySession(String username, int tokenVersion, String sessionId, String reason) {
+        // 授权跟着会话走(ELEVATION-SPEC:登出即结束授权)。登录、登出、改密都经过这里 —— 会话一换,
+        // 主管给的临时授权作废。原来授权按账号存、熬过登出与重登,只靠前端发一次即发即弃的
+        // DELETE /auth/elevate,而那一发根本没带令牌(安全审计 F88 / F01)。
+        elevations.revokeAll(username);
         UserAuth cur = snapshot.get(username);
         if (cur == null) return;   // 停用/不存在的账号不进快照,也就没有会话可言
         Map<String, UserAuth> next = new HashMap<>(snapshot);

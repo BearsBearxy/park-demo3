@@ -92,12 +92,13 @@ S10Service svc = new S10Service(records, tenants, bm, pm, rg);
         assertThat(ov.summaries().get(3).tenantCount()).isEqualTo(0);
     }
 
-    @Test void overview_noData_baseRange() {
+    @Test void overview_noData_lastYearToNext() {   // 2026-10-05 用户拍板:无数据取今年(改前写死 [2024..2025])
+        int now = com.park.demo3.common.YearSpan.thisYear();
         Mockito.when(records.selectList(null)).thenReturn(List.of());
         S10OverviewDTO ov = svc.overview();
-        assertThat(ov.years()).containsExactly(2024, 2025);
-        assertThat(ov.currentYear()).isEqualTo(2024);
-        assertThat(ov.currentMonth()).isEqualTo(0);
+        assertThat(ov.years()).containsExactly(now - 1, now, now + 1);
+        assertThat(ov.currentYear()).isEqualTo(now);
+        assertThat(ov.currentMonth()).isEqualTo(0);   // 仍是 0:前端拿它判已录到几月,填今月会把空月标成已录
     }
 
     // ── save:新行 upsert(insert),既有 slot upsert(update) ──

@@ -2,7 +2,7 @@
 // 0.23.0 重点「续签能选递增」的配图:续签框「这一期记成」二选一(选中递增)+ 续签链上前一段的「已递增」。
 // 字照 ContractNewDialog 的 LINK_OPTS 一字不差;选项框色照 .ct-link / .ct-link.on 抄,链 chip 照 FPContractChain 的
 // .cc-chip / .cc-seq / .cc-esc 抄,徽标直接用 FPContractStatus(renewed + label「已递增」,与抽屉里同一条路径)。
-// 字号压到 12 / 11,高度压在「本次更新」卡片文字栏以内。合同号取线上真实形状(S10-0156 两段)。
+// 字号压到 12 / 11,高度压在「本次更新」卡片文字栏以内。合同号只取「编号#段」的形状,不用我园真号(2026-10-04 用户拍板产品卖给别的园区)。
 import FPContractStatus from '@/components/fp/FPContractStatus.vue'
 </script>
 
@@ -11,7 +11,7 @@ import FPContractStatus from '@/components/fp/FPContractStatus.vue'
   <div class="opt"><span class="dot" />续签（换新约）</div>
   <div class="opt on"><span class="dot" />递增（同一份合同到年限涨价）</div>
   <div class="chain">
-    <span class="seq">1</span><span class="no">S10-0156#1</span><FPContractStatus status="renewed" label="已递增" />
+    <span class="seq">1</span><span class="no">HT-0001#1</span><FPContractStatus status="renewed" label="已递增" />
   </div>
 </template>
 

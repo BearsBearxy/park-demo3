@@ -52,7 +52,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
   vi.setSystemTime(new Date('2025-06-15T00:00:00'))
-  useAuthStore().permissions = ['entry:edit']
+  useAuthStore().permissions = ['salary:edit']
   receipts.splice(0)
   vi.mocked(salaryApi.overview).mockResolvedValue(OVERVIEW)
   vi.mocked(salaryApi.records).mockImplementation((_y: number, m: number) => Promise.resolve(monthOf(m)))

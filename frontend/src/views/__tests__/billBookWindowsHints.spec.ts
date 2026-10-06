@@ -36,7 +36,7 @@ vi.mock('@/api/bills', () => ({ billsApi: { paymap: vi.fn(), setPaymap: vi.fn() 
 vi.mock('@/api/billDelivery', async (orig) => ({
   ...(await orig<typeof import('@/api/billDelivery')>()),
   companyBookApi: {
-    list: vi.fn(), create: vi.fn(), update: vi.fn(),
+    list: vi.fn(), payees: vi.fn(), create: vi.fn(), update: vi.fn(),
     addAccount: vi.fn(), updateAccount: vi.fn(), deleteAccount: vi.fn(),
   },
 }))
@@ -115,6 +115,7 @@ beforeEach(() => {
   vi.mocked(billsApi.paymap).mockResolvedValue([{ tenantId: 11, feeKey: 'elecStd', companyId: 7 }])
   vi.mocked(billsApi.setPaymap).mockResolvedValue()
   vi.mocked(companyBookApi.list).mockResolvedValue(structuredClone(COMPANIES))
+  vi.mocked(companyBookApi.payees).mockResolvedValue(structuredClone(COMPANIES))
 })
 afterEach(() => {
   while (askQueue.length) answer(false)
@@ -712,6 +713,13 @@ async function openExport() {
 }
 
 describe('导出通知单', () => {
+  // 用户 2026-10-04 拍板:下拉里与印在单上的都是账号明文。破坏验证:ExportNoticeWindow 换回 companyBookApi.list → 红
+  it('❗账户下拉取催缴单那份收款账户(明文),不取主数据那份(没有主数据查看时是掩码)', async () => {
+    await openExport()
+    expect(companyBookApi.payees).toHaveBeenCalledTimes(1)
+    expect(companyBookApi.list).not.toHaveBeenCalled()
+  })
+
   it('❗缺收款公司的户:就地标记,不是只有圆点', async () => {
     const w = await openExport()
     const row = w.findAll('.ex-table tbody tr').find(r => r.text().includes('乙物流'))!

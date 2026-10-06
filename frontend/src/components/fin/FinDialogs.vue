@@ -98,7 +98,7 @@ function submitRow() {
         <div class="fin-dlg-b fp-fsheet-bd">
           <div class="fin-field">
             <div class="lab">子类名称</div>
-            <input ref="inputRef" class="fin-in" :class="{ err }" v-model="name" :placeholder="dlg.placeholder || '如:一期租户'"
+            <input ref="inputRef" class="fin-in" :class="{ err }" v-model="name" :placeholder="dlg.placeholder || '如:厂房租户'"
               @input="err = ''" @keydown.enter="submitRow" />
             <p class="fp-field-err"><template v-if="err">{{ err }}</template></p>
           </div>

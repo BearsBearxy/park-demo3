@@ -19,6 +19,9 @@
     <mybatis-plus.version>3.5.7</mybatis-plus.version>
     <jjwt.version>0.12.6</jjwt.version>
     <springdoc.version>2.6.0</springdoc.version>
+    <!-- Boot 3.3.5 自带 Tomcat 10.1.31:multipart 不限段数(CVE-2025-48988/48976),匿名 POST 登录口即可耗尽线程。
+         Boot 3.3.x 已出 OSS 支持期,升 Boot 另排期;先在同一版本线上覆盖到修复版(安全审计 G2a)。 -->
+    <tomcat.version>10.1.60</tomcat.version>
   </properties>
   <dependencies>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
@@ -67,7 +70,10 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
-          <argLine>-Dapi.version=1.44</argLine>
+          <!-- user.timezone=UTC:与 CI 同口径。本机是悉尼时区,2026-10-04 夏令时跳过 02:00–02:59;共享测试库里
+               flyway_schema_history.installed_on(DATETIME,按 UTC 墙钟写)落在这一小时的行,Connector/J 按本地时区
+               解析会抛 HOUR_OF_DAY: 2 -> 3,所有 IT 起不了上下文。 -->
+          <argLine>-Dapi.version=1.44 -Duser.timezone=UTC</argLine>
           <!-- 冷启动一次全量:testcontainers 拉起 MySQL 8 + 跑完 110 个 Flyway 迁移,
                Windows/WSL2 上实测 15+ min。900s 会在 0 失败的情况下把构建判成超时失败,
                让"全量绿"这道门永远合不上 —— 给足余量,真卡死仍有兜底 -->

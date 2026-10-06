@@ -453,15 +453,15 @@ describe('mergeMaintRows 改造三:维护费块按纸单合并成一行(2026-08-
 
   // 包干行:落库借 share_elec_floor / share_green_water 两个键(后端收款映射与损耗基数白名单不动),
   // 靠 price_key 认;行名显被替掉的项名就是假话。
-  it('孵化协议固定收取:行名不显「楼层公共」,悬浮说清每月多少、替掉了哪几项', () => {
+  it('固定月额收取:行名不显「楼层公共」,悬浮说清每月多少、替掉了哪几项', () => {
     const pkg = l({ feeKey: 'share_elec_floor', priceKey: 'share_elec_fixed', priceSnap: 232, amount: 232, note: '孵化协议固定收取' })
     const rs = mergeMaintRows([pkg])
-    expect(labels(rs)).toEqual(['孵化协议固定收取'])
+    expect(labels(rs)).toEqual(['固定月额收取'])
     expect(rowsOf(rs)[0].title)
-      .toBe('孵化协议固定收取 —— 按协议每月固定 232 元,已包含楼层公共、电梯、路灯三项,不再另计')
+      .toBe('固定月额收取 —— 每月固定 232 元,已包含楼层公共、电梯、路灯三项,不再另计')
     expect(billFeeTitle(pkg)).toBe(rowsOf(rs)[0].title)
     const w = l({ feeKey: 'share_green_water', priceKey: 'share_water_fixed', priceSnap: 155, amount: 155 })
-    expect(billFeeTitle(w)).toBe('孵化协议固定收取 —— 按协议每月固定 155 元,已包含绿化水公摊,不再另计')
+    expect(billFeeTitle(w)).toBe('固定月额收取 —— 每月固定 155 元,已包含绿化水公摊,不再另计')
     // 借了 share_green_water 键但不是按面积摊 → 备注列不许写「面积×公摊单价」
     expect(rowsOf(mergeMaintRows([w]))[0].note).toBeNull()
     // 同键的普通公摊行不受影响(price_key 不是包干键)

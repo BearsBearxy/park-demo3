@@ -1,10 +1,9 @@
 // src/views/analysis/expiry.logic.ts — expiry 屏纯数据变换(v2 抽出,口径与 v1 一致,数值不变):
 // 合同快照统计 / 金额 Pareto(TopN 柱 + 累计占比线)/ Top10 集中度环 — ECharts option 纯函数。
 // 锚点(2026-07-08 dev 库):合同 282 份、月租合计 4,671,702.21、有租金 235、日期缺失 282、Top10 55.8%。
-import { hues, quantile } from '@/components/ana/anaFmt'
+import { esc, hues, quantile } from '@/components/ana/anaFmt'
 import { anaPalette } from '@/components/ana/anaTheme'
 import type { ContractDTO } from '@/types/contract'
-import { isInForce } from './TenantPeer.logic'
 
 export interface ExpiryStats {
   total: number
@@ -64,7 +63,7 @@ export function paretoOption(p: ParetoData): object {
     tooltip: {
       trigger: 'axis', axisPointer: { type: 'shadow' },
       formatter: (ps: { name: string; seriesName: string; value: number }[]) =>
-        ps[0].name + ps.map((x) => `<br/>${x.seriesName} ${x.seriesName === '累计占比' ? x.value + '%' : '¥' + x.value.toFixed(1) + '万'}`).join(''),
+        esc(ps[0].name) + ps.map((x) => `<br/>${esc(x.seriesName)} ${x.seriesName === '累计占比' ? x.value + '%' : '¥' + x.value.toFixed(1) + '万'}`).join(''),
     },
     legend: { top: 0, data: ['月租金', '累计占比'] },
     xAxis: {
@@ -126,7 +125,7 @@ export function wallOption(w: ExpiryWall): object {
     tooltip: {
       trigger: 'axis', axisPointer: { type: 'shadow' },
       formatter: (ps: { name: string; value: number; dataIndex: number }[]) =>
-        `${ps[0].name}<br/>¥${ps[0].value}万 · ${w.quarters[ps[0].dataIndex].count} 份合同`,
+        `${esc(ps[0].name)}<br/>¥${ps[0].value}万 · ${w.quarters[ps[0].dataIndex].count} 份合同`,
     },
     xAxis: { type: 'category', data: w.quarters.map((q) => q.label), axisLabel: { fontSize: 11 } },
     yAxis: { type: 'value', name: '万/月', axisLabel: { formatter: (v: number) => String(v) } },
@@ -143,7 +142,7 @@ export function concentrationOption(top10Sum: number, rentSum: number): object {
   const rest = Math.max(0, rentSum - top10Sum)
   const { blue, pale } = hues()
   return {
-    tooltip: { formatter: (p: { name: string; value: number; percent: number }) => `${p.name}<br/>¥${(p.value / 10000).toFixed(1)}万/月 · ${p.percent}%` },
+    tooltip: { formatter: (p: { name: string; value: number; percent: number }) => `${esc(p.name)}<br/>¥${(p.value / 10000).toFixed(1)}万/月 · ${p.percent}%` },
     series: [{
       type: 'pie', radius: ['58%', '80%'], center: ['50%', '50%'],
       label: { show: false }, labelLine: { show: false },
@@ -801,109 +800,27 @@ export function sensitivitySentence(rows: SensitivityRow[]): string | null {
 }
 
 /* ---------- F1(修复轮1,design-boards):板上收尾行 ----------
- * board-expiry.txt 最后一行「历史 20% · 缺口 44 万/月,约等于 15 户中型厂房」——原实现整句没做
- * (grep「缺口」「中型厂房」零命中,报告未做清单里也没提)。它算得出来:缺口 = 今天的月租
- * (todayRent,即 rentRoll.months[0].locked)− 按历史续签率(rows 里 tag==='历史' 那档)推出的
- * 末月月租,直接读 rows 已经算好的 finalRentWan,不重算 sensitivityFinalRent(同一个数不能算两次
- * 各出各的账)。
+ * 「历史 20% · 缺口 44 万/月,约合 15 份合同的中位租金」:缺口 = 今天的月租(todayRent,即
+ * rentRoll.months[0].locked)− 按历史续签率(rows 里 tag==='历史' 那档)推出的末月月租,直接读 rows
+ * 已经算好的 finalRentWan,不重算 sensitivityFinalRent(同一个数不能算两次各出各的账)。
  *
- * 「中型厂房」口径查库定,不是拍脑袋。但 F3(对抗复查)坐实:改前那条 SQL 的「在租」判据读的是
- * c.status 原始列(`status IN ('active','expiring')`)——本仓早写死规矩(ContractService.java:97,
- * TenantPeer.logic.ts isInForce 同一口径镜像了后端 inForceOn):status 列只存人工态,合同到期后
- * 它不会自动改成 expired,「在租/将到期」一律要按日期区间派生,不该在候选查询里就先按 status
- * 筛一道(旧实现连候选集合本身都用 status IN ('active','expiring') 圈的,这道预筛同样会漏——
- * 库里有 1 份纯厂房类合同 status='renewed' 但日期区间明明还覆盖今天,旧候选集合直接把它排除在外,
- * 分母从一开始就不完整)。改法:候选查询只排除 status='draft'(与 isInForce 自己的排除条件一致),
- * 「在租」与否完全交给 medianFactoryRent() 用 isInForce 按日期现判。
- *
- * 实测(park_demo3,2026-09-11):候选(纯厂房类,status<>'draft'、kind='normal')129 份,按
- * isInForce 过滤后 54 份真在租,中位数 ¥11,448.50。改前那条按 status IN ('active','expiring')
- * 预筛的候选只有 103 份(漏了 1 份 status='renewed' 但仍在租的),就算重新套 isInForce 也只筛得出
- * 53 份——53 vs 54 这一份差额正是"候选阶段就不该用 status 筛"的证据,不是巧合(诚实记录:本轮
- * 开发时先犯过这个错,53 份中位数会落在 ¥11,808,靠上面这条"候选与在租两处 status 都别用"的判据
- * 才抓出来,断言 fixture 里也把这个真实的反例钉了一条,见 expiry.logic.spec.ts)。
- *   SELECT c.id, c.monthly_rent, c.start_date, c.end_date, c.status FROM contract c
- *     JOIN contract_billing_term t ON t.contract_id=c.id
- *     WHERE c.status<>'draft' AND c.kind='normal'
- *     GROUP BY c.id, c.monthly_rent, c.start_date, c.end_date, c.status
- *     HAVING SUM(t.property_type<>'factory')=0 AND SUM(t.property_type='factory')>0 ORDER BY c.id;
- * 这批候选会随合同新签/到期漂移,不是常量;expiry.logic.spec.ts 里有断言把 MEDIAN_FACTORY_RENT
- * 的值钉死,谁改动 FACTORY_RENT_CANDIDATES 或 MEDIAN_FACTORY_RENT_ASOF 不同步改断言就会被看见。
+ * 折算用的「一户」= 同屏「租金中位数」瓦那个数(buildExpiryStats.medRent),由调用方传进来。
+ * 2026-10-04 用户拍板产品卖给别的园区:原来这里写死了我园 129 份纯厂房合同的「月租, 起止日」和由它算出的
+ * 中位数常量 ¥11,448.50,随包下发给每个客户,还按我园的数给别的园区折算户数 —— 删掉,改用客户自己的合同现算。
+ * 合同列表不带计费行的物业类型,挑不出「纯厂房」,所以不再叫「中型厂房」,只说按租金中位数。
+ * 中位数拿不到(没有带租金的合同)整句不出。
  *
  * gap 四舍五入到「万」之后若 ≤0(续签率已经够,或差额小到不足 0.5 万),说一句「已经守住」,
  * 不说「缺口 0 万」或「缺口 −44 万」这种读不通的话。
  */
-type FactoryRentCandidate = readonly [rent: number, startDate: string, endDate: string]
-// 候选:纯厂房类合同(billing_term 全部行 property_type='factory'),status<>'draft'、kind='normal'
-// (park_demo3 实测,2026-09-11,129 份——SQL 见上方注释)。候选阶段不按 status 再细分(不管
-// 'active' 还是 'renewed'),「在租」全部交给下面 medianFactoryRent() 用 isInForce(日期区间)现判。
-const FACTORY_RENT_CANDIDATES: readonly FactoryRentCandidate[] = [
-  [31453.00, '2023-07-14', '2026-07-13'], [29172.50, '2023-11-01', '2029-08-06'], [2020.03, '2023-10-17', '2026-10-16'],
-  [21597.00, '2022-12-01', '2025-11-30'], [43004.00, '2025-12-01', '2028-11-30'], [38952.30, '2022-12-22', '2025-12-21'],
-  [26720.64, '2026-03-03', '2029-03-02'], [32270.00, '2023-03-01', '2026-02-28'], [22863.60, '2026-05-23', '2028-05-22'],
-  [27017.31, '2023-07-17', '2029-07-16'], [1224.25, '2023-11-24', '2025-11-23'], [2160.06, '2023-07-20', '2024-07-19'],
-  [5064.40, '2023-11-01', '2026-07-18'], [56316.58, '2023-08-21', '2025-08-20'], [4529.25, '2026-09-11', '2029-09-10'],
-  [13744.50, '2023-09-15', '2026-09-14'], [13744.50, '2023-09-19', '2026-09-18'], [19923.75, '2029-10-15', '2032-10-14'],
-  [11808.00, '2023-10-10', '2026-10-09'], [1015.79, '2024-01-01', '2025-12-31'], [120631.04, '2030-01-01', '2032-12-31'],
-  [73807.00, '2029-10-12', '2032-10-11'], [1699.03, '2025-12-01', '2028-11-30'], [2944.16, '2023-03-01', '2026-02-28'],
-  [7319.60, '2026-09-01', '2029-08-31'], [3977.80, '2026-09-01', '2029-08-31'], [3968.00, '2023-09-01', '2026-08-31'],
-  [3331.43, '2023-10-01', '2024-09-30'], [2840.28, '2023-10-10', '2026-10-09'], [3689.00, '2026-09-01', '2029-08-31'],
-  [3772.00, '2023-08-25', '2026-08-24'], [1719.40, '2026-04-25', '2028-04-24'], [1619.92, '2023-08-01', '2025-07-31'],
-  [14910.92, '2023-08-01', '2026-07-31'], [9688.50, '2023-07-25', '2026-07-24'], [5851.80, '2023-09-10', '2024-09-09'],
-  [3819.28, '2024-01-10', '2025-01-09'], [11852.24, '2027-01-01', '2028-12-31'], [2854.00, '2026-05-25', '2029-05-24'],
-  [1532.96, '2023-07-15', '2024-07-14'], [6457.61, '2029-10-01', '2032-09-30'], [6457.61, '2029-10-01', '2032-09-30'],
-  [4177.96, '2023-12-16', '2026-12-15'], [10987.00, '2024-01-01', '2026-12-31'], [5689.12, '2027-01-01', '2028-12-31'],
-  [20075.48, '2023-10-01', '2026-09-30'], [7738.80, '2023-10-01', '2026-09-30'], [3869.90, '2023-11-25', '2026-11-24'],
-  [5107.00, '2023-11-15', '2026-11-14'], [2247.61, '2029-11-15', '2032-11-14'], [361444.45, '2023-01-01', '2025-12-31'],
-  [101626.13, '2028-10-10', '2031-10-09'], [31458.00, '2022-09-15', '2025-09-14'], [27169.48, '2028-10-19', '2031-10-18'],
-  [25083.71, '2025-11-03', '2028-11-02'], [61336.00, '2022-11-04', '2025-11-03'], [162853.44, '2022-09-16', '2031-09-15'],
-  [15129.38, '2022-12-26', '2031-12-25'], [24999.84, '2023-01-01', '2028-07-23'], [21214.70, '2025-12-10', '2028-12-09'],
-  [12100.00, '2026-08-23', '2029-08-22'], [5920.06, '2026-07-10', '2029-07-09'], [8990.30, '2026-07-04', '2028-07-03'],
-  [67320.00, '2026-10-30', '2029-10-29'], [12503.04, '2023-05-17', '2026-05-16'], [1024.70, '2023-01-01', '2024-02-29'],
-  [30700.66, '2028-12-26', '2031-12-25'], [38264.68, '2026-03-16', '2029-03-15'], [2988.00, '2023-12-01', '2026-11-30'],
-  [23581.76, '2025-12-01', '2028-11-30'], [13749.99, '2026-05-17', '2029-05-16'], [9782.88, '2026-07-25', '2028-07-24'],
-  [3665.23, '2026-09-01', '2029-08-31'], [19970.81, '2026-10-01', '2029-09-30'], [7988.15, '2026-10-01', '2029-09-30'],
-  [3994.02, '2026-11-25', '2029-11-24'], [4743.12, '2026-11-15', '2029-11-14'], [3223.20, '2026-12-01', '2028-11-30'],
-  [11211.12, '2027-01-01', '2028-12-31'], [39109.00, '2022-12-01', '2025-11-30'], [24320.40, '2023-03-03', '2026-03-02'],
-  [20814.00, '2023-05-23', '2026-05-22'], [4117.50, '2023-09-11', '2026-09-10'], [15750.00, '2023-10-15', '2026-10-14'],
-  [17325.00, '2026-10-15', '2029-10-14'], [104896.00, '2027-01-01', '2029-12-31'], [95360.00, '2024-01-01', '2026-12-31'],
-  [58543.00, '2023-10-12', '2026-10-11'], [64303.00, '2026-10-12', '2029-10-11'], [1559.03, '2022-12-01', '2025-11-30'],
-  [6712.00, '2023-09-01', '2026-08-31'], [3674.00, '2023-09-01', '2026-08-31'], [3395.00, '2023-09-01', '2026-08-31'],
-  [1592.00, '2023-04-25', '2026-04-24'], [10864.40, '2024-01-01', '2026-12-31'], [2609.00, '2023-05-25', '2026-05-24'],
-  [5250.00, '2023-10-01', '2026-09-30'], [5705.70, '2026-10-01', '2029-09-30'], [5250.00, '2023-10-01', '2026-09-30'],
-  [5705.70, '2026-10-01', '2029-09-30'], [5244.20, '2024-01-01', '2026-12-31'], [1910.00, '2023-11-15', '2026-11-14'],
-  [2037.40, '2026-11-15', '2029-11-14'], [90009.26, '2025-10-10', '2028-10-09'], [81886.40, '2022-10-10', '2025-10-09'],
-  [21574.00, '2022-10-19', '2025-10-18'], [23685.50, '2025-10-19', '2028-10-18'], [22845.00, '2022-11-03', '2025-11-02'],
-  [19315.00, '2022-12-10', '2025-12-09'], [11000.00, '2023-08-23', '2026-08-22'], [5381.97, '2023-07-10', '2026-07-09'],
-  [8173.00, '2023-07-04', '2026-07-03'], [61200.00, '2023-10-30', '2026-10-29'], [24344.50, '2022-12-26', '2025-12-25'],
-  [26743.05, '2025-12-26', '2028-12-25'], [31662.75, '2020-03-16', '2023-03-15'], [34806.53, '2023-03-16', '2026-03-15'],
-  [4595.84, '2021-07-10', '2027-07-09'], [10109.00, '2023-06-13', '2026-06-12'], [11089.00, '2026-06-13', '2029-06-12'],
-  [2020.03, '2023-07-01', '2025-06-30'], [35712.50, '2024-01-15', '2027-01-14'], [4199.15, '2022-12-01', '2025-11-30'],
-  [588.00, '2022-12-01', '2025-11-30'], [1256.60, '2023-04-10', '2024-04-09'], [3674.00, '2023-09-20', '2029-09-19'],
-  [16322.51, '2026-08-01', '2029-07-31'], [17875.26, '2029-08-01', '2032-07-31'], [2840.28, '2023-01-01', '2023-09-30'],
-]
-export const MEDIAN_FACTORY_RENT_ASOF = '2026-09-11'   // 与上面 SQL 同一次实测的日期锚点(全局约束①:显式传入)
-
-/**
- * 纯厂房类「在租」合同 monthly_rent 中位数(F3,对抗复查)。「在租」复用 isInForce
- * (TenantPeer.logic.ts,镜像后端 ContractService.inForceOn 的日期区间口径)——候选查询只排除
- * status='draft',与 isInForce 自己的排除条件一致(不在候选阶段就先按 active/expiring 圈一遍,
- * 那正是旧实现漏掉 1 份 renewed-但-仍在租合同的原因)。
- */
-export function medianFactoryRent(candidates: readonly FactoryRentCandidate[], asOf: string): number | null {
-  const inForce = candidates.filter(([, startDate, endDate]) =>
-    isInForce({ status: 'active', kind: 'normal', startDate, endDate }, asOf))
-  return inForce.length ? quantile(inForce.map(([rent]) => rent), 0.5) : null
-}
-
-export const MEDIAN_FACTORY_RENT = medianFactoryRent(FACTORY_RENT_CANDIDATES, MEDIAN_FACTORY_RENT_ASOF)!   // 元/月;54/129 份真在租,¥11,448.50
-
-export function sensitivityGapSentence(rows: SensitivityRow[], todayRent: number, medianFactoryRent = MEDIAN_FACTORY_RENT): string | null {
+export function sensitivityGapSentence(rows: SensitivityRow[], todayRent: number, medianRent: number | null = null): string | null {
   const hist = rows.find((r) => r.tag === '历史')
   if (!hist || todayRent <= 0) return null
   const gap = todayRent - hist.finalRentWan * 10000
   const gapWan = Math.round(gap / 10000)
   if (gapWan <= 0) return `历史${hist.ratePct}% · 已经守住今天的租金,没有缺口`
-  const units = Math.max(1, Math.round(gap / medianFactoryRent))
-  return `历史${hist.ratePct}% · 缺口${gapWan}万/月,约等于${units}户中型厂房`
+  if (medianRent == null || !(medianRent > 0)) return null
+  const units = Math.max(1, Math.round(gap / medianRent))
+  // 分母是带租金合同的月租中位数(按份,含宿舍小单、商铺),不是「户」—— 同屏别处也都说「份」
+  return `历史${hist.ratePct}% · 缺口${gapWan}万/月,约合${units}份合同的中位租金`
 }

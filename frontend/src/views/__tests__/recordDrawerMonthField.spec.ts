@@ -22,7 +22,7 @@ const CASES: Case[] = [
   { name: '附表12 工资', comp: SalaryRecordDrawer, props: { initMonth: 9 },
     fill: { name: '张三' }, fields: [['所属月份', 'acctMonth', '2026-09']] },
   { name: '办公·三期水电', comp: UtilitiesRecordDrawer, props: { no: 13, name: '办公水电', icon: 'droplets' },
-    fill: { elecQty: '10' }, fields: [['记账月份', 'acctMonth', '2026-01'], ['所属月份', 'belongMonth', '2026-01']] },
+    fill: { elecQty: '10', elecPrice: '1' }, fields: [['记账月份', 'acctMonth', '2026-01'], ['所属月份', 'belongMonth', '2026-01']] },
 ]
 
 const pickers = (w: VueWrapper) => w.findAllComponents({ name: 'DatePicker' }).filter((p) => p.props('mode') === 'month')

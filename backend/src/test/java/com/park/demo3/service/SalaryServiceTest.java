@@ -19,7 +19,7 @@ class SalaryServiceTest {
     SalaryRecordMapper records = Mockito.mock(SalaryRecordMapper.class);
         // 审核闸(R1 T7)在这一层不是被测对象:桩掉,让这些用例继续只钉派生/归一口径
     com.park.demo3.security.ReviewGuard rg = Mockito.mock(com.park.demo3.security.ReviewGuard.class);
-SalaryService svc = new SalaryService(records, rg);
+SalaryService svc = new SalaryService(records, rg, Mockito.mock(ChangeLogService.class));
 
     static BigDecimal bd(double v) { return BigDecimal.valueOf(v); }
 

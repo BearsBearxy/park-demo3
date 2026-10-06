@@ -133,7 +133,7 @@ public class PvMeterService {
         return toReadingDTO(readings.selectById(r.getId()), station.getName());
     }
 
-    // PUT:改日期/三量/备注;station 与 price_snap 保持不变(快照语义)
+    // PUT:改日期/三量/备注;station 不变。price_snap:同月内改日期保持原快照,挪到别的月时取站当前单价
     @NoReviewGuard(reason = "光伏分栋抄表是附表6 的下游派生第二本账,不回写 pv_record;spec §7.1 无键,本轮不进审核")
     public PvReadingDTO updateReading(Integer id, PvReadingReq req) {
         PvReading r = readings.selectById(id);
@@ -142,11 +142,16 @@ public class PvMeterService {
         PvReading clash = readings.selectByStationAndDate(r.getStationId(), date);
         if (clash != null && !clash.getId().equals(id))
             throw new BizException(ResultCode.CONFLICT, "该电站该日期已有抄表记录");
+        PvStation station = stations.selectById(r.getStationId());
+        // 跨月挪 = 在新月份新录一条:单价快照取站当前单价(同 createReading)。原来旧快照原样跟过去 ——
+        // 站单价改过之后,把旧价读数挪进别的月,那个月的光伏收益就按旧价计(2026-10-04 安全修复,同园区抄表挪月)。
+        // 同月内改日期(界面只允许这样)不动快照:月度收益本来就含它,挪日期改变不了什么。
+        if (!java.time.YearMonth.from(date).equals(java.time.YearMonth.from(r.getReadDate())))
+            r.setPriceSnap(station == null ? null : station.getPriceYuan());
         r.setReadDate(date);
         fillQuantities(r, req.genTotal(), req.selfUse(), req.gridFeed(), req.note());
         r.setSource("manual");   // 手工改写统一 manual:覆盖 simulated 即「真实替换模拟」,再模拟不回写(同 CpMeterService 口径)
         readings.updateById(r);
-        PvStation station = stations.selectById(r.getStationId());
         return toReadingDTO(readings.selectById(id), station == null ? null : station.getName());
     }
 

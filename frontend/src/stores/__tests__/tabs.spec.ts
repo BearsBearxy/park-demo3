@@ -8,6 +8,7 @@ import { useTabsStore, HOME, NEWTAB, tabMeta } from '../tabs'
 import { useAuthStore, approxDirty } from '@/stores/auth'
 import { _resetViewportForTest } from '@/composables/useViewport'
 import { askQueue, answer } from '@/utils/ask'
+import { ALL_VIEWS } from '@/test-utils/perms'
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -542,5 +543,41 @@ describe('页签模型 · 离开确认(数不准的改动数不报处数)', () =
     const off = editOn('meters')
     expect(await bodyOf(s, 'meters')).toBe('这页正在编辑，关闭后没保存的内容会丢。')
     off()
+  })
+})
+
+describe('页签模型 · 看不了的屏不留(RBAC v3 读写分开)', () => {
+  // 破坏验证:tabs.ts 里那条 watch(permissions) 删掉 → 红
+  it('❗新权限到了:看不了的屏从页签条、最近打开、最近关闭里清掉;首页和看得了的留着', async () => {
+    const s = useTabsStore()
+    const auth = useAuthStore()
+    auth.permissions = [...ALL_VIEWS]
+    await nextTick()
+    s.openBackground('ledger')
+    s.openBackground('salary')
+    s.openBackground('tenants')
+    s.close('tenants')
+    s.recent = ['salary', 'ledger', 'tenants']
+    expect(vals(s)).toEqual([HOME, 'ledger', 'salary'])
+    expect(s.closed).toEqual(['tenants'])
+    auth.permissions = ['entry:view']            // 工资、租户都看不了了
+    await nextTick()
+    expect(vals(s)).toEqual([HOME, 'ledger'])
+    expect(s.recent).toEqual(['ledger'])
+    expect(s.closed).toEqual([])
+  })
+
+  // 破坏验证:那条 watch 加 { immediate: true } → 红(建 store 那一刻按本地旧权限把页签全清了)
+  it('❗建 store 时不按本地存的那份权限清:那份可能是上一版留下的,等新权限到了再说', async () => {
+    localStorage.setItem('username', 'zhou')
+    localStorage.setItem('permissions', JSON.stringify(['entry:edit']))   // 上一版:还没有查看权这一说
+    localStorage.setItem('fp-app-tabs:zhou', JSON.stringify(['ledger', 'meters']))
+    setActivePinia(createPinia())
+    const s = useTabsStore()
+    await nextTick()
+    expect(vals(s)).toEqual([HOME, 'ledger', 'meters'])
+    useAuthStore().permissions = ['entry:edit', 'entry:view']   // refreshMe 拿回展开后的新权限
+    await nextTick()
+    expect(vals(s)).toEqual([HOME, 'ledger'])
   })
 })

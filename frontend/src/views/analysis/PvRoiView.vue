@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 光伏投资回收(pv-roi)v2 — spec §二.14:累计收益爬坡线 + 投资额 markLine(交点=预估回收点
 // markPoint 标注)+ 回收进度条 + 分期收益柱(点柱→该期月度明细卡)。
-// 数据 = pv_record 全月份(fetchPvAll,口径与 v1 一致);投资额=「目标与阈值」pvInvestment(万,localStorage)。
+// 数据 = pv_record 全月份(fetchPvAll,口径与 v1 一致);投资额=「目标与阈值」pvInvestment(万;2026-10-05 起在库里、全园一份)。
 // 分栋抄表分析已独立成屏(pv-meter-analysis,PV-ANALYSIS-SPEC §00):本屏只留附表6 口径的投资回收。
 // 数据变换纯函数抽于 pvRoi.logic.ts(单测)。
 import { computed, onMounted, ref, watch } from 'vue'
@@ -37,7 +37,10 @@ onMounted(async () => {
   }
 })
 
-const invest = computed(() => anaSettings.pvInvestment * 10000) // 设置为万元 → 元
+// 设置为万元 → 元;没填(0)按各期工程成本合计。两样都没有 → 下面出空态,不按 0 算回收
+const invest = computed(() => (anaSettings.pvInvestment > 0
+  ? anaSettings.pvInvestment * 10000
+  : phases.value.reduce((a, p) => a + (p.cost ?? 0), 0)))
 
 // ── 分期汇总(v1 rows 同口径)+ 全园合计 ──
 const rows = computed(() => phaseSummaries(phases.value, records.value))
@@ -146,9 +149,12 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
   <!-- §五:期间无关屏(全周期累计,pv_record 全月份),隐期间控件显口径徽章 -->
   <AnaShell period-mode="none" scope-chip="全周期累计">
     <template #kpis>
-      <AnaKpiTile label="工程总投资（含税）" :value="finWan(invest)" note="右上「目标与阈值」设置" />
+      <!-- 投资额两个来源:设了用设的,没设用各期工程成本合计(库里只记了成本,没记含不含税,标签不写「含税」)。
+           两样都没有(新园区占位期别成本是列默认 0)时投资额与回收进度写「—」:那个 0 是没填,不是量出来的 0(2026-10-05 复查) -->
+      <AnaKpiTile label="工程总投资" :value="invest > 0 ? finWan(invest) : '—'"
+        :note="anaSettings.pvInvestment > 0 ? '目标与阈值里设定' : '各期工程成本合计'" />
       <AnaKpiTile label="累计电费收益" :value="finWan(tot.cum)" :note="cumPts.length + ' 个记账月'" />
-      <AnaKpiTile label="综合回收进度" :value="rpct(tot.recovery)" note="= 累计收益 ÷ 总投资" />
+      <AnaKpiTile label="综合回收进度" :value="invest > 0 ? rpct(tot.recovery) : '—'" note="= 累计收益 ÷ 总投资" />
       <AnaKpiTile label="年化电费收益" :value="finWan(tot.annual)" note="按各期已记账月折算" />
       <AnaKpiTile label="预估回收周期" :value="tot.payback ? tot.payback.toFixed(1) + ' 年' : '—'"
         :note="hitYm ? '预估回收点 ' + hitYm : '按年化外推'" />
@@ -215,6 +221,11 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
         to="/pv-income"
         to-text="去录入光伏收益"
       />
+      <AnaEmpty
+        v-else-if="!(invest > 0)"
+        label="光伏投资额未填"
+        hint="点右上角「目标与阈值」，填光伏投资（万元）后才能算回收进度；全园区共用这一个数，要有「账簿报表」权限才能填"
+      />
 
       <template v-else>
         <div class="av2-grid">
@@ -251,7 +262,8 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
             <div class="av2-card-h"><span class="t">分期收益(自消纳 + 上网)</span><span class="hint"><span class="hint-desk">点击柱子查看该期月度明细</span><span class="hint-touch">点柱看该期月度明细</span></span></div>
             <AnaEChart :option="phaseOpt" :height="300" @chart-click="onPhaseClick" />
             <p class="ana-read">全园合计 {{ finWan(tot.cum) }}，自消纳占 {{ tot.cum ? rpct(tot.selfAmt / tot.cum) : '—' }}</p>
-            <p class="ana-ref">{{ rows.length }} 期 · 柱=自消纳+上网 · 万元</p>
+            <!-- 只数有记账月的期:新园区起点库带三个占位期别(一期~三期),只录了一期的客户原来读到「3 期」(2026-10-05 复查) -->
+            <p class="ana-ref">{{ rows.filter((x) => x.months).length }} 期有记账 · 柱=自消纳+上网 · 万元</p>
           </div>
 
           <!-- span4:选中期月度明细卡 -->

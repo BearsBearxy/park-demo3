@@ -1,6 +1,7 @@
 package com.park.demo3.service;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
+import com.park.demo3.config.DeployConfig;
 import com.park.demo3.dto.*;
 import com.park.demo3.entity.*;
 import com.park.demo3.mapper.*;
@@ -68,17 +69,21 @@ public class ElecCostService {
     private final MonthlyLedgerMapper ledgers;
     private final AllocResultMapper allocResults;   // P-B 桥:单向读分摊结果Σ(elec-cost→P-B,spec §5)
     private final ReviewGuard reviewGuard;
+    // 缺源提示里的「(可模拟填充)」只在我园写:客户园区没有模拟填充(2026-10-05 用户拍板「按你建议修改」),
+    // 同屏工具栏已不显按钮,提示还指着它就自相矛盾
+    private final String simHint;
 
     public ElecCostService(ElecMeterMapper meters, ElecCostEntryMapper entries, ElecPriceCfgMapper cfgs,
                            ElecRecordMapper elecRecords, PvRecordMapper pvRecords, OfficeRecordMapper officeRecords,
                            PvReadingMapper pvReadings, CpReadingMapper cpReadings, CpPowerUsageMapper cpPowers,
                            S10RecordMapper s10Records, MonthlyLedgerMapper ledgers, AllocResultMapper allocResults,
-                           ReviewGuard reviewGuard) {
+                           ReviewGuard reviewGuard, DeployConfig deploy) {
         this.meters = meters; this.entries = entries; this.cfgs = cfgs;
         this.elecRecords = elecRecords; this.pvRecords = pvRecords; this.officeRecords = officeRecords;
         this.pvReadings = pvReadings; this.cpReadings = cpReadings; this.cpPowers = cpPowers;
         this.s10Records = s10Records; this.ledgers = ledgers; this.allocResults = allocResults;
         this.reviewGuard = reviewGuard;
+        this.simHint = deploy.parkTools() ? "(可模拟填充)" : "";
     }
 
     /**
@@ -525,7 +530,7 @@ public class ElecCostService {
                 .subtract(nz(eff.get("master|pf_reward")));
             if (!eff.containsKey("master|tou_industrial") && !eff.containsKey("master|basic_industrial")
                     && !eff.containsKey("master|commercial") && !eff.containsKey("dorm|usage"))
-                missing.add("总表电费支出未录(可模拟填充)");
+                missing.add("总表电费支出未录" + simHint);
             BigDecimal pvSelf = BigDecimal.ZERO, pvGrid = BigDecimal.ZERO;   // 附6 当月无行视为 0(无光伏月合理)
             for (PvRecord r : ctx.pvs()) {
                 pvSelf = pvSelf.add(nz(r.getSelfAmt()));
@@ -543,7 +548,7 @@ public class ElecCostService {
             BigDecimal selfRevenue = BigDecimal.ZERO;
             if (readings.isEmpty()) missing.add("光伏分栋抄表当月无记录");
             for (PvReading r : readings) selfRevenue = selfRevenue.add(nz(r.getSelfUse()).multiply(nz(r.getPriceSnap())));
-            if (!eff.containsKey("master|pv_grid_income")) missing.add("光伏上网收益未录(可模拟填充)");
+            if (!eff.containsKey("master|pv_grid_income")) missing.add("光伏上网收益未录" + simHint);
             out.add(metric("pvInvestIncome", "光伏投资收益",
                 "分栋抄表消纳收益(自消纳×单价快照) + 光伏上网收益(本模型)",
                 missing, selfRevenue.add(nz(eff.get("master|pv_grid_income")))));
@@ -565,7 +570,7 @@ public class ElecCostService {
             BigDecimal income = BigDecimal.ZERO;
             if (ctx.ledgerRows().isEmpty()) missing.add("台账当月无数据(基本用电费收入)");
             for (MonthlyLedger l : ctx.ledgerRows()) income = income.add(nz(l.getBasicElectricity()));
-            if (!eff.containsKey("master|basic_industrial")) missing.add("总表基本电费未录(可模拟填充)");
+            if (!eff.containsKey("master|basic_industrial")) missing.add("总表基本电费未录" + simHint);
             out.add(metric("basicElecProfit", "基本用电费收益",
                 "台账基本用电费收入 Σ − 总表工业基本电费(本模型)",
                 missing, income.subtract(nz(eff.get("master|basic_industrial")))));
@@ -590,7 +595,7 @@ public class ElecCostService {
         // 6 经营性用电费用 = 运营性电表费用 Σ − 分摊额度 Σ(本模型 ops 5 表)
         {
             List<String> missing = eff.containsKey("ops|usage")
-                ? List.of() : List.of("运营性电表费用未录(可模拟填充)");
+                ? List.of() : List.of("运营性电表费用未录" + simHint);
             out.add(metric("opsElecCost", "经营性用电费用",
                 "运营性电表费用 Σ − 分摊额度 Σ",
                 missing, nz(eff.get("ops|usage")).subtract(nz(eff.get("ops|allocated")))));

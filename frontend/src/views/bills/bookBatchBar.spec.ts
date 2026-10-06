@@ -24,7 +24,7 @@ vi.mock('@/api/alloc', () => ({
 vi.mock('@/api/bills', () => ({ billsApi: { paymap: vi.fn(() => Promise.resolve([])), setPaymap: vi.fn() } }))
 vi.mock('@/api/billDelivery', async (orig) => ({
   ...(await orig<typeof import('@/api/billDelivery')>()),
-  companyBookApi: { list: vi.fn(() => Promise.resolve([])) },
+  companyBookApi: { list: vi.fn(() => Promise.resolve([])), payees: vi.fn(() => Promise.resolve([])) },
 }))
 
 import api from '@/api'

@@ -32,6 +32,18 @@ class LoginRateLimitIT extends AbstractMysqlIT {
         login("10.77.0.1", "ratelimit-probe-other", "wrong-pass", 401);
     }
 
+    /**
+     * 限流桶按库里的规范用户名分,不按原样输入。auth_user.username 的排序规则不分重音与全半角,
+     * 「ádmin」「ａdmin」都登得进 admin —— 按输入组键的话每种写法各一个桶,5 次锁定能无限绕(2026-10-03 对抗复查)。
+     * 破坏验证:AuthService.login 改回 LoginRateLimiter.key(clientIp(), req.username()) → 第 6 次拿到 0,红。
+     */
+    @Test
+    void spellingVariantsShareTheAccountsBucket() throws Exception {
+        for (String v : new String[]{"ádmin", "admín", "ａdmin", "ádmín", "admiñ"})
+            login("10.77.0.3", v, "wrong-pass", 401);
+        login("10.77.0.3", "admin", "admin123", 429);
+    }
+
     @Test
     void successResetsFailureCount() throws Exception {
         for (int i = 0; i < 4; i++) login("10.77.0.2", "admin", "wrong-pass", 401);

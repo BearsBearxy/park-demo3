@@ -1349,7 +1349,7 @@ async function delPool() {
               <span class="meta">{{ m.meterType ?? '' }}</span>
               <button v-if="signOf(m.meterId) != null" type="button" class="pl-sign"
                       :class="{ neg: signOf(m.meterId)! < 0 }"
-                      v-tip="'点一下切换:这块表的量是加进这个池,还是从池里扣掉(广告字分表 / 火炬园 / 招商子表这类要扣)'"
+                      v-tip="'点一下切换:这块表的量是加进这个池,还是从池里扣掉(分表、转供户这类要扣)'"
                       @click.prevent="toggleSign(m.meterId)">
                 {{ signOf(m.meterId)! < 0 ? '从池里扣掉' : '加进池' }}
               </button>
@@ -1386,7 +1386,7 @@ async function delPool() {
             </button>
           </div>
           <Select v-model="form.feeKey" label="这笔钱进催缴单的哪一项" :options="FEE_OPTS" size="sm" />
-          <Input v-model="form.note" label="备注" placeholder="如:电梯用电加170度" size="sm" />
+          <Input v-model="form.note" label="备注" placeholder="如:补抄 100 度" size="sm" />
           <button class="pl-more" @click="advOpen = !advOpen">
             <component :is="iconFor(advOpen ? 'chevron-down' : 'chevron-right')" :size="13" />
             高级:分摊标准算式 · 四舍五入位数 · 折入链

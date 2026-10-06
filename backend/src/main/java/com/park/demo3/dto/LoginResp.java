@@ -7,7 +7,9 @@ import java.util.List;
  * 内部标识摆到用户脸上。空表 = 这个账号一个角色都没挂,由前端派生兜底并标「（派生）」。
  * username 是给前端做"这是我自己"判断用的(用户管理屏要把自己那行的停用按钮预先置灰) ——
  * 后端有自锁守卫兜底,但让用户点一个注定 409 的按钮是坏体验。别让前端去解 JWT 的 sub 猜。
+ * superAdmin = 持系统管理员角色(UserPermissionCache.isSuperAdmin):屏上据此决定「自己交的能不能自己审」、
+ * 角色矩阵里自己没有的权限要不要置灰。判据仍在后端,前端只决定画法。
  */
 public record LoginResp(String token, String username, String displayName, String role,
                         List<String> permissions, List<String> navLayers, List<String> roleNames,
-                        boolean mustChangePassword) {}
+                        boolean mustChangePassword, boolean superAdmin) {}

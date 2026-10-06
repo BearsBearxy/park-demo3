@@ -11,6 +11,7 @@ import { useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
+import { useViewGate } from '@/composables/useViewGate'
 import AnaShell from './AnaShell.vue'
 import { usePeriod } from '@/analysis/usePeriod'
 import { anaSettings } from '@/analysis/anaSettings'
@@ -26,6 +27,7 @@ import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import FPStateTag from '@/components/fp/FPStateTag.vue'
 import * as S from '@/components/ana/anaSentence'
+import { esc } from '@/components/ana/anaFmt'
 import { anaPalette } from '@/components/ana/anaTheme'
 import { splitGaps, tenantEnergyOption, tenantEnergyReads, tenantLedger } from '@/components/ana/tenantEnergyChart'
 import { detectSpikes } from './monitor.logic'
@@ -330,7 +332,7 @@ const scatterOption = computed(() => {
   const axisX = { lineStyle: { color: p.axis } }
   return {
     grid: { left: 72, right: 28, top: 30, bottom: 40 },
-    tooltip: { formatter: (q: { data?: { name?: string; value?: number[] } }) => (q.data?.value ? `${q.data.name}<br/>${T.axis.rent} ${S.yi(q.data.value[0])} · ${M.value} ${S.yi(q.data.value[1])}` : '') },
+    tooltip: { formatter: (q: { data?: { name?: string; value?: number[] } }) => (q.data?.value ? `${esc(q.data.name)}<br/>${T.axis.rent} ${S.yi(q.data.value[0])} · ${M.value} ${S.yi(q.data.value[1])}` : '') },
     xAxis: { type: xLog.value ? 'log' : 'value', logBase: 10, name: T.axis.rent, nameLocation: 'middle', nameGap: 24, nameTextStyle: { fontSize: 11, color: p.label },
       axisLabel: { formatter: (v: number) => S.yi(v), fontSize: 11, color: p.label }, axisLine: { show: true, ...axisX }, axisTick: { show: false }, splitLine: { lineStyle: { color: p.grid } } },
     yAxis: { type: 'value', name: M.value, nameTextStyle: { fontSize: 11, color: p.label, align: 'right' }, max: metric.value === 'elec' ? Math.ceil(yMax / 20000) * 20000 : undefined, axisLabel: { formatter: (v: number) => S.yi(v) } },
@@ -375,6 +377,8 @@ const yLed = computed(() => {
     .map((r) => ({ ym: ledYmOf(r), co: r.companyName, recv: r.receivable, coll: r.collected, end: r.balanceEnd }))
   return tenantLedger({ rows: rs, width: W.ledger, allFees: true, tableYms: lms.value })
 })
+// 跳到模块屏的入口:没有目标屏的查看权就置灰、悬停写明缺哪一项(RBAC v3,master 0.28.0)
+const { lack } = useViewGate()
 
 // 第二排:选中户电费和水费大图 = 异常提醒中心那张(1–12 月每格都标,缺月留空;突变、灰带取异常屏的模型)
 const yTrend = computed(() => {
@@ -569,7 +573,7 @@ function goArrears() {
               <div class="av2-card-h"><span class="t">{{ S.teArrearsCard }}<FPStateTag v-if="lFall" tone="muted" style="margin-left: 8px">显示 {{ mL(ledYm!) }}</FPStateTag></span></div>
               <p class="ana-read hold">{{ arrCard.read }}</p>
               <p v-for="t in arrCard.refs" :key="t" class="ana-ref">{{ t }}</p>
-              <button v-if="ledYm" class="te-go" @click="goArrears">{{ T.goArrears }}</button>
+              <button v-if="ledYm" class="te-go" :disabled="!!lack('/fin-cashflow')" v-tip="lack('/fin-cashflow')" @click="goArrears">{{ T.goArrears }}</button>
             </div>
           </div>
           <div v-if="yTrend" class="av2-card av2-s12 te2-col">
@@ -577,7 +581,7 @@ function goArrears() {
             <div data-w="trend" :ref="trackTrend"><AnaEChart :option="yTrend.option" :height="300" /></div>
             <p class="ana-read hold">{{ yTrend.read }}</p>
             <p v-for="t in yTrend.refs" :key="t" class="ana-ref">{{ t }}</p>
-            <button class="te-go" @click="goAnomaly">{{ T.go }}</button>
+            <button class="te-go" :disabled="!!lack('/anomaly')" v-tip="lack('/anomaly')" @click="goAnomaly">{{ T.go }}</button>
           </div>
           <div v-if="yMove" class="av2-card av2-s12">
             <div class="av2-card-h">
@@ -596,13 +600,13 @@ function goArrears() {
             <div class="av2-card-h"><span class="t">{{ tenantCard.title }}</span></div>
             <p v-for="t in tenantCard.reads" :key="t" class="ana-read hold">{{ t }}</p>
             <p v-for="t in tenantCard.refs" :key="t" class="ana-ref">{{ t }}</p>
-            <button class="te-go" @click="goAnomaly">{{ T.go }}</button>
+            <button class="te-go" :disabled="!!lack('/anomaly')" v-tip="lack('/anomaly')" @click="goAnomaly">{{ T.go }}</button>
           </div>
           <div class="av2-card av2-s6 te2-col">
             <div class="av2-card-h"><span class="t">{{ S.teArrearsCard }}<FPStateTag v-if="lFall" tone="muted" style="margin-left: 8px">显示 {{ mL(ledYm!) }}</FPStateTag></span></div>
             <p class="ana-read hold">{{ arrCard.read }}</p>
             <p v-for="t in arrCard.refs" :key="t" class="ana-ref">{{ t }}</p>
-            <button v-if="ledYm" class="te-go" @click="goArrears">{{ T.goArrears }}</button>
+            <button v-if="ledYm" class="te-go" :disabled="!!lack('/fin-cashflow')" v-tip="lack('/fin-cashflow')" @click="goArrears">{{ T.goArrears }}</button>
           </div>
           <div class="av2-card av2-s12">
             <div class="av2-card-h">
@@ -642,4 +646,5 @@ function goArrears() {
 .te2-col > .av2-card-h + * { margin-top: 0; }
 .te-go { display: block; align-self: flex-start; margin-top: auto; padding: 8px 0 0; border: none; background: transparent; color: var(--text-link); font-family: var(--font-sans); font-size: var(--fs-micro); line-height: var(--lh-snug); text-align: left; cursor: pointer; }
 .te-go:hover { text-decoration: underline; }
+.te-go:disabled { color: var(--text-disabled); cursor: default; text-decoration: none; }
 </style>

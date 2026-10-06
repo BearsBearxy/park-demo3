@@ -75,7 +75,9 @@ class QueryHygieneTest {
     // 不随月份累积——逐月涨的是台账/读数行,不是档案行);公司表个位数。
     // softIndex 语义上必须全量(含退租户,账面名唯一解析),按 id 收敛做不到。
     static final Map<String, Integer> BOUNDED = Map.ofEntries(
-        entry("SystemService.java", 4),    // 2026-08-22 P1:角色列表 2 处 + 账号列表 2 处
+        entry("SystemService.java", 5),    // 2026-08-22 P1:角色列表 2 处 + 账号列表 2 处;
+                                           // 2026-10-04 账号列表 +1 处 auth_role_perm(算每行「能不能管」要对方的权限并集,
+                                           // 停用的号不在 UserPermissionCache 里,只能现查)
         entry("LedgerService.java", 3),    // 2026-08-23 V105 软引用:save 懒载/renameRow/importRows 的 tenants 全量 softIndex
         entry("S10Service.java", 3),       // 2026-08-23 V105 软引用:save/renameRow/importRows 同上
         entry("BookService.java", 1));     // 2026-08-23 账册种子:seedMissing 启动一次全量 companies(个位数)

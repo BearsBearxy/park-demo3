@@ -2,6 +2,7 @@ package com.park.demo3.service;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.common.ExtraFees;
+import com.park.demo3.common.YearSpan;
 import com.park.demo3.dto.BookDtos.ArchivedColDTO;
 import com.park.demo3.dto.DeleteResultDTO;
 import com.park.demo3.dto.ImportError;
@@ -37,7 +38,6 @@ import java.util.stream.Collectors;
 
 @Service
 public class S10Service {
-    private static final int BASE_YEAR = 2024;   // 年份范围下界(确定性,不读系统时钟)
     private final S10RecordMapper records;
     private final TenantMapper tenants;
     private final BookService bookService;
@@ -108,16 +108,15 @@ public class S10Service {
         return r2(t);
     }
 
-    // ── overview:年份范围 [min(BASE_YEAR,minData) .. maxData+1];currentYear=maxData;currentMonth=该年最大数据月 ──
+    // ── overview:年份范围 [min(2024,minData) .. maxData+1];currentYear=maxData;currentMonth=该年最大数据月;
+    //    无数据 → [去年..明年](YearSpan),currentMonth 仍是 0(前端拿它判「已录到几月」,不能填今月) ──
     public S10OverviewDTO overview() {
         List<S10Record> all = records.selectList(null);
         Map<Integer, List<S10Record>> byYear = all.stream()
             .collect(Collectors.groupingBy(r -> yearOf(r.getAcctMonth())));
 
-        int maxDataYear = byYear.keySet().stream().mapToInt(Integer::intValue).max().orElse(0);
-        int upper = maxDataYear == 0 ? BASE_YEAR + 1 : maxDataYear + 1;   // 无数据 → [2024..2025]
-        int currentYear = maxDataYear == 0 ? upper - 1 : maxDataYear;     // 无数据 → 上界-1
-        int lo = Math.min(BASE_YEAR, byYear.keySet().stream().mapToInt(Integer::intValue).min().orElse(BASE_YEAR));
+        YearSpan span = YearSpan.of(byYear.keySet());
+        int currentYear = span.current();
 
         // currentMonth = currentYear 的最大数据月(无数据 → 0)
         int currentMonth = byYear.getOrDefault(currentYear, List.of()).stream()
@@ -125,7 +124,7 @@ public class S10Service {
 
         List<Integer> yearList = new ArrayList<>();
         List<S10YearDTO> summaries = new ArrayList<>();
-        for (int y = lo; y <= upper; y++) {
+        for (int y = span.lo(); y <= span.hi(); y++) {
             yearList.add(y);
             List<S10Record> rows = byYear.getOrDefault(y, List.of());
             int recordedMonths = (int) rows.stream().map(r -> monthOf(r.getAcctMonth())).distinct().count();

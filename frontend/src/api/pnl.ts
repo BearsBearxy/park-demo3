@@ -8,10 +8,11 @@ export const pnlApi = {
     http.get(`/pnl/${schedule}/overview`),
   year: (schedule: string, year: number): Promise<PnlYearDTO> =>
     http.get(`/pnl/${schedule}/${year}`),
-  // 保存整年(clear+insert)
-  save: (schedule: string, year: number, body: { rows: PnlRowDTO[] }): Promise<PnlYearDTO> =>
-    http.put(`/pnl/${schedule}/${year}`, body),
-  // 导入整 (schedule,year) clear+insert
+  // 保存整年:服务端只写变了的格,改到整月锁账的月整次拒(423,message 是给人看的整句)。
+  // auto = 打开年表时自动补行(PnlScheduleView.tryGenerate),只让数据修改记录注明是自动补的
+  save: (schedule: string, year: number, body: { rows: PnlRowDTO[] }, auto = false): Promise<PnlYearDTO> =>
+    http.put(`/pnl/${schedule}/${year}`, body, auto ? { params: { auto: true } } : undefined),
+  // 导入整 (schedule,year):同上只写变了的格、改到整月锁账的月整次拒
   import: (schedule: string, year: number, body: { rows: PnlRowDTO[] }): Promise<ImportResultDTO> =>
     http.post(`/pnl/${schedule}/import`, body, { params: { year } }),
 }

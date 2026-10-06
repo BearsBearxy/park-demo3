@@ -6,6 +6,7 @@ import { nextTick } from 'vue'
 import { useTabsStore, HOME, NEWTAB } from '@/stores/tabs'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
+import { ALL_VIEWS } from '@/test-utils/perms'
 import { useUiStore } from '@/stores/ui'
 
 const r = vi.hoisted(() => ({ value: 'home', push: vi.fn() }))
@@ -31,7 +32,7 @@ beforeEach(() => {
   r.push.mockImplementation(landNav)
   const auth = useAuthStore()
   auth.me = 'zhou'
-  auth.permissions = ['ledger:edit']
+  auth.permissions = ['ledger:edit', ...ALL_VIEWS]   // RBAC v3:首页只列看得了的屏
 })
 
 const tileNames = (w: ReturnType<typeof mount>) => w.findAll('.hm-tile .tl').map(x => x.text())
@@ -103,5 +104,33 @@ describe('首页', () => {
     const w = mount(HomeView)
     await w.find('.hm-search').trigger('click')
     expect(useUiStore().paletteReq).toBe(1)
+  })
+})
+
+describe('首页 · 按查看权滤(RBAC v3)', () => {
+  // 破坏验证:收藏格子的 v-for 改回 favs.list → 红;recent 的 seen 去掉 → 红
+  it('❗收藏和最近打开里看不了的屏不列;收藏只是不显示、不删,权限回来原样回来', async () => {
+    const favs = useFavoritesStore()
+    favs.toggle('ledger')
+    favs.toggle('salary')                              // 预置的本月出账 + 台账 + 工资
+    useTabsStore().recent = ['salary', 'ledger']
+    const auth = useAuthStore()
+    auth.permissions = ['entry:view']                  // 没有工资查看权
+    const w = mount(HomeView)
+    await nextTick()
+    expect(tileNames(w)).toEqual(['本月出账', '月度台账'])
+    expect(w.find('.hm-hint').text()).toBe('2 个 · 在页面上点 ☆ 加进来')
+    expect(w.findAll('.hm-rec-r .nm').map(x => x.text())).toEqual(['月度台账'])
+    expect(favs.list, '收藏表里没删').toContain('salary')
+    auth.permissions = [...ALL_VIEWS]
+    await nextTick()
+    expect(tileNames(w)).toEqual(['本月出账', '月度台账', '附表12 工资明细'])
+  })
+
+  // 破坏验证:.hm-entry 上的 v-if="canBilling" 去掉 → 红
+  it('❗看不了本月出账的人(股东):手机入口条整条不出', () => {
+    useAuthStore().permissions = ['analysis:view', 'report:view']
+    const w = mount(HomeView)
+    expect(w.find('.hm-entry').exists()).toBe(false)
   })
 })

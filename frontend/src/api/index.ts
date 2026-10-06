@@ -27,6 +27,9 @@ export function readUser(): string | null {
 export type AuthReason = 'relogin' | 'password' | 'disabled' | 'self' | 'expired'
 export const AUTH_REASON_KEY = 'authReason'
 
+/** 账号还带着管理员给的密码(初始 / 被别人重置的)没改:服务端除改密页用到的几条外一律 403 + 这个 body.code(后端 ResultCode) */
+export const PASSWORD_CHANGE_REQUIRED = 428
+
 /** 令牌的 exp 已经过了。解析不了按没过(交给后端判),口径同 stores/auth.ts 的 notExpired。
  *  载荷是 base64url,先换回 atob 认的字母表 —— 不换的话载荷里碰上 - / _ 就解析失败,当成没过期。 */
 function tokenExpired(t: string | null): boolean {
@@ -93,6 +96,33 @@ http.interceptors.request.use((config) => {
   return config
 })
 
+// ── 令牌刚换的那一拍(改密 / 给自己重置密码,RBAC-SPEC §13.2) ─────────────────────────
+// 服务端先作废旧令牌、回包才带来新令牌。这中间拿旧令牌发出去的请求(在场心跳每 3 秒一拍,同一浏览器
+// 别的标签页也在发)撞 401 —— 不是被踢,是令牌刚换。照常清身份会把刚换上的新令牌一起抹掉,把改密的人
+// 自己踢回登录页(用户 2026-10-04 报的就是「改完又被退回登录页」)。所以清之前先看两件事:
+//   ① storage 里已经是另一张了 → 这个 401 说的是一张不用了的令牌,用新的重发一次;
+//   ② 原因是 password、令牌还没换 → 改密的回包可能还在路上,等它落地(至多 PW_SWAP_WAIT_MS)再重发。
+//      等不来才是真的被改了密码(别的设备、管理员重置),照常清身份 —— 代价是被踢的那一下晚到 3 秒。
+// 每个请求只重发一次,重发再 401 就照常清。
+const PW_SWAP_WAIT_MS = 3000
+type Retriable = { headers?: Record<string, unknown>; _authRetried?: boolean }
+
+/** 这个请求发出去时带的是哪张令牌 */
+function sentToken(cfg: Retriable | undefined): string | null {
+  const h = cfg?.headers?.Authorization
+  return typeof h === 'string' && h.startsWith('Bearer ') ? h.slice(7) : null
+}
+
+/** 等 storage 里的令牌换成别的(不是空)。换了回 true */
+async function tokenReplaced(old: string, ms: number): Promise<boolean> {
+  for (let waited = 0; ; waited += 100) {
+    const now = readToken()
+    if (now !== old) return !!now
+    if (waited >= ms) return false
+    await new Promise((r) => setTimeout(r, 100))
+  }
+}
+
 // Unwrap Result envelope; reject on non-zero code; stub 401 handler
 http.interceptors.response.use(
   (response) => {
@@ -105,12 +135,21 @@ http.interceptors.response.use(
   },
   async (error) => {
     if (error.response?.status === 401) {
+      const cfg = error.config as Retriable | undefined
+      const sent = sentToken(cfg)
+      if (cfg && sent && !cfg._authRetried) {
+        const now = readToken()
+        if ((!!now && now !== sent) || (error.response?.headers?.['x-auth-reason'] === 'password' && await tokenReplaced(sent, PW_SWAP_WAIT_MS))) {
+          cfg._authRetried = true
+          return http(cfg as AxiosRequestConfig)
+        }
+      }
       // 后端说明这张令牌为什么不认(X-Auth-Reason);没说、而本地令牌已经到点了,就是登录过期(06-E 登录页组)。
       // 要在下面清令牌**之前**判。
       const reason = error.response?.headers?.['x-auth-reason'] ?? (tokenExpired(readToken()) ? 'expired' : null)
       // permissions/navLayers/mustChangePassword 必须一起清:留在 storage 里,
       // 同一台机器下一个人登录会继承前一个人的权限(或被前一个人的改密标志拦住)
-      for (const k of ['token', 'username', 'displayName', 'role', 'permissions', 'navLayers', 'mustChangePassword']) {
+      for (const k of ['token', 'username', 'displayName', 'role', 'permissions', 'navLayers', 'mustChangePassword', 'superAdmin']) {
         localStorage.removeItem(k)
         sessionStorage.removeItem(k)
       }
@@ -123,6 +162,18 @@ http.interceptors.response.use(
         location.href = '/login?redirect=' + encodeURIComponent(location.pathname + location.search)
       }
       return Promise.reject(error)
+    }
+    // 带着管理员给的密码还没改(用户 2026-10-04 拍板,改前只有路由守卫拦):本页还不知道 ——
+    // 比如别的标签页刚用初始密码登进来,本页沿用了那张令牌。整页跳改密页,不报错、不退出登录;
+    // 整页跳而不是 router 跳:外壳上的轮询(在场心跳、版本检查)跟着页面一起停,不在改密页背后接着撞。
+    // 标志写进令牌所在那一轨,刷新后 store 读回来,路由守卫把人留在改密页。
+    if (error.response?.status === 403 && error.response?.data?.code === PASSWORD_CHANGE_REQUIRED) {
+      ;(localStorage.getItem('token') ? localStorage : sessionStorage).setItem('mustChangePassword', '1')
+      if (!location.pathname.startsWith('/change-password')) {
+        location.href = '/change-password'
+        return new Promise(() => {})   // 页面马上换掉:不交给调用方,免得它报一句一闪而过的错
+      }
+      return Promise.reject(error.response.data)
     }
     // 非 2xx 也解包 Result 信封：校验错误(HTTP 400)/只读角色写拦截(HTTP 403)的后端中文 message
     // 直达视图 alert，不再退化成英文 AxiosError 文案（HTTP 状态口径见后端 GlobalExceptionHandler 头注释）

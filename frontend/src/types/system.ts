@@ -1,11 +1,15 @@
 // 系统管理(RBAC-SPEC §10 P1)DTO —— 与后端 /api/system/** 契约一一对应。
 // 读也要管:GET 需 system:view,非 GET 需 system:edit(RBAC-SPEC §5.1)。
 
-/** 13 个权限点之一(顺序由后端 Perm.ALL 决定,前端不排序) */
+/** 权限点之一(顺序由后端 Perm.ALL 决定,前端不排序) */
 export interface PermDTO {
   key: string
   label: string
   hint: string
+  /** 所属模块(RBAC v3):master contract param meter billing entry salary report analysis system other。旧后端不带 → 按 other */
+  group?: string
+  /** view = 模块查看;edit = 模块编辑(包含查看);other = 不属于哪个模块的(审核、编辑锁、提权)。旧后端不带 → 按 other */
+  kind?: 'view' | 'edit' | 'other'
 }
 
 /** 3 个业务导航层:data / reports / analysis(与 fpNav.ts 的 NavLayer.id 同值) */
@@ -31,6 +35,8 @@ export interface RoleDTO {
   perms: string[]
   userCount: number
   remark?: string | null
+  /** 当前操作人能不能改它(系统管理分级,RBAC-SPEC §12):后端用守卫同一条判据算。旧后端不带 → 按能改 */
+  manageable?: boolean
 }
 
 export interface RoleReq {
@@ -58,6 +64,8 @@ export interface UserDTO {
   mustChangePassword: boolean
   roles: UserRoleRefDTO[]
   createdAt: string
+  /** 当前操作人能不能改这个账号(停用、重置密码、改角色),同 RoleDTO.manageable */
+  manageable?: boolean
 }
 
 export interface UserCreateReq {
@@ -84,9 +92,10 @@ export interface UserQuery {
 // 合进通用表就得塞 JSON,那两屏的历史查询反而难写。归一只发生在**展示层**,即下面这个形状。
 
 /** 日志来源:param=计费参数 · import=导入 · auth=账号与角色 · review=审核(R1 起的第 4 路)·
- *  meter=表档案(METER-TIMELINE-SPEC §5,第 5 路,读 meter_archive_log)。
- *  后端只认这五个值,别的返 400(白名单在 SystemService)。 */
-export type AuditSource = 'param' | 'import' | 'auth' | 'review' | 'meter'
+ *  meter=表档案(METER-TIMELINE-SPEC §5,第 5 路,读 meter_archive_log)·
+ *  change=数据修改(V138 value_change_log,用户 2026-10-05 拍板:台账/读数/工资/报表/损益附表/目标与阈值的手改逐格记)。
+ *  后端只认这六个值,别的返 400(白名单在 SystemService)。 */
+export type AuditSource = 'param' | 'import' | 'auth' | 'review' | 'meter' | 'change'
 
 export interface AuditRowDTO {
   source: AuditSource
@@ -94,7 +103,8 @@ export interface AuditRowDTO {
   actor: string
   /** 来源各有各的取值:param=set/delete/recalc/migrate · import=complete/partial/rejected ·
    *  auth=user.create/role.update/… · review=submit/approve/return/withdraw ·
-   *  meter=assign|status . insert|update|delete(target=「表名 · 起始月」,detail=「旧 → 新 · 来源」) */
+   *  meter=assign|status . insert|update|delete(target=「表名 · 起始月」,detail=「旧 → 新 · 来源」) ·
+   *  change=表名 monthly_ledger/salary_record/…(target=「行 · 列」,detail=「改前 → 改后」) */
   action: string
   target: string
   detail: string
@@ -111,11 +121,17 @@ export interface AuditPageDTO {
   size: number
   /** 三表出现过的操作人并集,给筛选下拉用 */
   actors: string[]
+  /** 这个账号看得见哪几张表的数据修改记录(后端按查看权算),给「按表筛」用 */
+  tables: string[]
+  /** 这个账号看得见哪几路来源(后端按查看权算);来源下拉只列这些,看不见的一路选了只会是 0 条 */
+  sources?: string[]
 }
 
 export interface AuditQuery {
   /** 空 = 全部 */
   src?: string
+  /** 只看某张表的数据修改记录(monthly_ledger/salary_record/…);给了它 src 只能是 change 或不给 */
+  tbl?: string
   /** 操作人用户名,空 = 全部 */
   actor?: string
   /** YYYY-MM-DD,含当天 00:00 */

@@ -11,7 +11,7 @@ import { fetchContracts, fetchTenants } from '@/analysis/anaData'
 import type { ContractDTO } from '@/types/contract'
 import type { TenantDTO } from '@/types/tenant'
 import { iconFor } from '@/components/ds/icon'
-import { hues, inkA } from '@/components/ana/anaFmt'
+import { esc, hues, inkA } from '@/components/ana/anaFmt'
 import { anaPalette } from '@/components/ana/anaTheme'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
@@ -143,7 +143,7 @@ const donutData = computed(() => {
 const donutOption = computed<object>(() => ({
   tooltip: {
     formatter: (p: { data?: { name?: string; value?: number; share?: number } }) =>
-      p.data ? `${p.data.name}<br/>¥${((p.data.value ?? 0) / 10000).toFixed(1)}万 · ${p.data.share}%` : '',
+      p.data ? `${esc(p.data.name)}<br/>¥${((p.data.value ?? 0) / 10000).toFixed(1)}万 · ${p.data.share}%` : '',
   },
   series: [{
     type: 'pie', radius: ['52%', '78%'], center: ['50%', '50%'],
@@ -220,9 +220,9 @@ const boxOption = computed<object>(() => ({
       if (p.seriesIndex === 1) {   // 中位横线 → 组统计
         const r = boxRows.value[p.dataIndex ?? -1]
         if (!r) return ''
-        return `${r.name}(${r.n} 份)<br/>中位 ${r.stats[2]}${u} · 均值 ${r.mean}${u}<br/>IQR ${r.stats[1]}~${r.stats[3]}${u}`
+        return `${esc(r.name)}(${r.n} 份)<br/>中位 ${r.stats[2]}${u} · 均值 ${r.mean}${u}<br/>IQR ${r.stats[1]}~${r.stats[3]}${u}`
       }
-      return p.data?.name ? `${p.data.name}<br/>${p.data.value?.[1]}${u}` : ''
+      return p.data?.name ? `${esc(p.data.name)}<br/>${p.data.value?.[1]}${u}` : ''
     },
   },
   // x 用数值轴承载抖动,整数刻度映射期区名

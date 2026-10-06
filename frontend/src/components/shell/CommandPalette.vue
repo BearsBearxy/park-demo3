@@ -22,7 +22,7 @@ const idx = ref(0)
 const inputRef = ref<HTMLInputElement | null>(null)
 
 // 不可见层的屏不进面板;跟着 navLayers 走(换账号后重算,不能只 build 一次)
-const allPages = computed(() => buildAllPages(auth.navLayers, auth.can('system:view')))
+const allPages = computed(() => buildAllPages(auth.navLayers, auth.can))
 
 const groups = computed(() =>
   filterPages(query.value, allPages.value, tabs.recent)

@@ -11,6 +11,7 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { fpBuildRoutes } from '@/nav/fpNav'
+import { canViewPage } from '@/nav/navAccess'
 import { useAuthStore } from '@/stores/auth'
 import { useViewport } from '@/composables/useViewport'
 import { askLeave } from '@/utils/ask'
@@ -361,6 +362,22 @@ export const useTabsStore = defineStore('tabs', () => {
     ctx.value = {}
     active.value = ''
     intent = null
+  })
+
+  // RBAC v3(读写分开,用户 2026-10-04 拍板):没有查看权的屏不留在页签条、最近打开、最近关闭里。
+  // 等**新拿到的**权限再清 —— 登录、App 挂载时的 refreshMe 都会整个换掉 permissions。不在建 store 时
+  // 按本地存的那份清:那份可能是上一版留下的(那时还没有查看权),一清就把人开着的页签全清没了。
+  // 当前这一屏要是也看不了,router/index.ts 里 isReady 之后那个 watch 会把它换成「无权查看」页;这里只管列表,当前这格不弃状态(否则先重挂一遍再走)。
+  watch(() => useAuthStore().permissions, () => {
+    const auth = useAuthStore()
+    const ok = (v: string) => !ROUTES[v] || canViewPage(v, auth.can)
+    const gone = tabs.value.filter(t => !ok(t.value)).map(t => t.value)
+    if (gone.length) {
+      tabs.value = tabs.value.filter(t => ok(t.value))
+      for (const v of gone) if (v !== active.value) dropState(v)
+    }
+    if (!recent.value.every(ok)) recent.value = recent.value.filter(ok)
+    if (!closed.value.every(ok)) closed.value = closed.value.filter(ok)
   })
 
   return {

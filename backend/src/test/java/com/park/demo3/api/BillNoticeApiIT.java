@@ -798,7 +798,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         assertThat(pkg.get("priceKey")).isEqualTo("share_elec_fixed");
         assertThat(pkg.get("priceScope")).isEqualTo("tenant:" + t);
         assertThat(pkg.get("ruleBranch")).isEqualTo("fixed");
-        assertThat(pkg.get("note")).isEqualTo("孵化协议固定收取");
+        assertThat(pkg.get("note")).isEqualTo("公共电费按固定月额收取");
         assertThat(((Number) pkg.get("poolRuleId")).intValue()).isEqualTo(rFloor);
         // ③ 水包干:原 8.00 绿化水行不落,改落 155.00 并回挂原池
         Map<String, Object> wpkg = one(feeLines(body, "share_green_water"));
@@ -981,7 +981,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         String body = detail(soleNoticeId(nym, ch[0]));
         Map<String, Object> fire = one(feeLines(body, "share_elec_fire"));   // one=断言仅一条(30 元原行已被吞)
         assertThat(d(fire.get("amount"))).isEqualTo(88.88);
-        assertThat((String) fire.get("note")).contains("照抄源册实收");
+        assertThat((String) fire.get("note")).isEqualTo("消防按固定月额收取");
         Map<String, Object> loss = one(feeLines(body, "share_elec_loss"));
         assertThat(d(loss.get("baseSnap"))).isEqualTo(808.88);
         assertThat(d(loss.get("amount"))).isEqualTo(80.89);

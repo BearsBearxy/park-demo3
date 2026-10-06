@@ -3,7 +3,7 @@
 //    已流失 = 台账首期在租 ∩ 末期缺席;s10 逐月出现/消失 = 相邻有数月名单对比。
 // ② ECharts option 构建(风险象限散点 / 出现·消失正负柱)— 纯函数,jsdom 单测友好。
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
-import { hues, inkA } from '@/components/ana/anaFmt'
+import { esc, hues, inkA } from '@/components/ana/anaFmt'
 
 export type Tier = 'high' | 'mid' | 'low'
 
@@ -168,7 +168,7 @@ export function churnScatterOption(list: ChurnRow[], overallRate: number): objec
     grid: { left: 52, right: 30, top: 30, bottom: 42 },   // right/top 留白:markLine 标签画在图内不裁切
     tooltip: {
       formatter: (p: { data: ScatterDatum }) =>
-        `${p.data.name}<br/>s10收入环比 ${p.data.rawMom >= 0 ? '+' : ''}${p.data.rawMom}%` +
+        `${esc(p.data.name)}<br/>s10收入环比 ${p.data.rawMom >= 0 ? '+' : ''}${p.data.rawMom}%` +
         `<br/>收款率 ${p.data.value[1]}%<br/>风险分 ${p.data.score} · 月应收 ¥${(p.data.recv / 10000).toFixed(1)}万`,
     },
     xAxis: { type: 'value', name: '收入变化(环比%)', nameLocation: 'middle', nameGap: 26, axisLabel: { formatter: (v: number) => (v > 0 ? '+' : '') + v } },
@@ -204,7 +204,7 @@ export function churnFlowOption(flows: ChurnFlow[]): object {
     tooltip: {
       trigger: 'axis',
       formatter: (ps: { seriesName: string; value: number; name: string }[]) =>
-        ps[0].name + ps.map((p) => `<br/>${p.seriesName} ${Math.abs(p.value)} 户`).join(''),
+        esc(ps[0].name) + ps.map((p) => `<br/>${esc(p.seriesName)} ${Math.abs(p.value)} 户`).join(''),
     },
     legend: { top: 0, data: ['新出现', '消失'] },
     xAxis: { type: 'category', data: flows.map((f) => f.label) },

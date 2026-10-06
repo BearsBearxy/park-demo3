@@ -18,6 +18,7 @@ import FPEmpty from '@/components/fp/FPEmpty.vue'
 import { ask } from '@/utils/ask'
 import { IMPORT_TYPES, runImport, type ImportCtx, type ImportTypeEntry } from '@/utils/importRegistry'
 import { useAuthStore } from '@/stores/auth'
+import { canViewPage } from '@/nav/navAccess'
 import { useZonesStore } from '@/stores/zones'
 import { importLogApi } from '@/api/importLog'
 import { companyApi, ledgerApi } from '@/api/ledger'
@@ -28,7 +29,7 @@ import type { ImportLogOverviewDTO, ImportLogDTO } from '@/types/importLog'
 import type { CompanyDTO } from '@/types/ledger'
 
 // 权限挂在 import kind 上而非本屏(RBAC §5.6):无该模块写权限的磁贴不显示。
-// 下方「导入记录」表不过滤 —— 读全开,谁都能看谁导了什么。
+// 下方「导入记录」表不过滤 —— 进得来这一屏(数据层任一查看或报表查看)就能看谁导了什么,只有文件名、行数、操作人。
 const auth = useAuthStore()
 const visibleTypes = computed(() => IMPORT_TYPES.filter(t => auth.can(t.module)))
 const zones = useZonesStore()
@@ -197,7 +198,9 @@ async function runEntry(payload: ImportPayload, fileName: string, p?: ImportRunP
   if (!activeKey.value) return null
   viewTo.value = null
   const res = await runImport(activeKey.value, payload, { ...ctx.value, _run: p }, fileName)
-  viewTo.value = viewLink(activeKey.value, ctx.value, payload as unknown[])
+  // 看不了目标屏就不出「去查看」(RBAC v3):查看不可提权,请主管借到某类导入写权的人,不一定看得了它导进去的那一屏
+  const link = viewLink(activeKey.value, ctx.value, payload as unknown[])
+  viewTo.value = link && canViewPage(link.path, auth.can) ? link : null
   return settle(res, p, reload)
 }
 

@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
  */
 public record AuditRowDTO(
     String source,        // param(计费参数) / import(导入) / auth(账号与角色)
+    long rid,             // 来源表里的 id。source + rid 才是一行的身份 —— ts/target/detail 会撞(同一秒的「登录 127.0.0.1」一模一样)
     LocalDateTime ts,
     String actor,
     String action,

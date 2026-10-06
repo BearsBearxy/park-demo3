@@ -65,6 +65,8 @@ public class ApprovalService {
     /** 能批这几个权限点的同事。在线的排前面 —— 挑一个不在线的人等于白等两分钟。 */
     public List<AuthorizerDTO> candidates(List<String> perms) {
         List<String> want = clean(perms);
+        // 不可提权的点没人批得了;不拦的话这里就成了「谁有 salary:view」的花名册,任何已登录账号都能查
+        want.forEach(ApprovalService::requireElevatable);
         String me = me();
         Map<String, PresenceStore.Seat> seats = presence.online().stream()
             .collect(Collectors.toMap(PresenceStore.Seat::user, Function.identity(), (a, b) -> a));
@@ -91,12 +93,7 @@ public class ApprovalService {
         List<String> perms = clean(req.perms());
         for (String p : perms) {
             if (!Perm.exists(p)) throw new BizException(ResultCode.BAD_REQUEST, "未知权限点:" + p);
-            // 与当场授权同一张不可提权名单 —— 换条路径不该换规矩，
-            // 否则 system:* 就有了一个绕过去的后门。
-            if (!Perm.elevatable(p)) {
-                throw new BizException(ResultCode.FORBIDDEN,
-                    "「" + Perm.label(p) + "」不能靠授权获得，必须本人登录自己的账号去改。");
-            }
+            requireElevatable(p);
         }
         if (isBlank(req.approver())) throw new BizException(ResultCode.BAD_REQUEST, "没有选择授权人");
         if (req.approver().equals(me())) throw new BizException(ResultCode.CONFLICT, "不能请自己授权");
@@ -148,6 +145,18 @@ public void decide(String id, DecideReq req) {
         // 复用当场授权那套护栏：限流、空跑 BCrypt 防用户名枚举、失败进审计。
         // 批准时验的是**自己的**密码 —— 那正是这条路径比当场授权更安全的地方。
         if (req.approve()) elevation.verifyOwnPassword(req.password(), "elevate.remote");
+        // 批准这一刻再核一次我**现在**还有没有这些权限。发起时核过一次(request),但两分钟有效期里
+        // 我可能已被管理员摘掉了角色 —— 不复核的话,失了权的人照样能把这几项借出去 30 分钟(安全审计 F24)。
+        // 只拦批准:拒绝不授出任何东西,失权的人照样能把请求拒掉。
+        if (req.approve()) {
+            UserPermissionCache.UserAuth mine = cache.get(me());
+            if (mine == null || !mine.perms().containsAll(seen.perms()))
+                throw new BizException(ResultCode.FORBIDDEN, "你现在已经没有这些权限，批准不了；可以拒绝这条请求");
+            // 请求人那一侧也复核:发出请求后被停用或被改成不能请求授权的角色,批下去就等于给降了权的人发了 30 分钟授权
+            UserPermissionCache.UserAuth asker = cache.get(seen.requester());
+            if (asker == null || !asker.perms().contains(Perm.ELEVATE_REQUEST))
+                throw new BizException(ResultCode.CONFLICT, "请求人的账号已停用或已不能请求授权，这条请求批准不了；可以拒绝它");
+        }
 
         ApprovalStore.Pending p = store.take(id, me());
         if (p == null) throw new BizException(ResultCode.CONFLICT, "这条请求已经处理过或已过期");
@@ -193,6 +202,14 @@ public void decide(String id, DecideReq req) {
     private static List<String> clean(List<String> perms) {
         if (perms == null || perms.isEmpty()) throw new BizException(ResultCode.BAD_REQUEST, "没有要授权的权限");
         return List.copyOf(new LinkedHashSet<>(perms));
+    }
+
+    /** 与当场授权同一张不可提权名单 —— 换条路径不该换规矩,否则 system:* 就有了一个绕过去的后门。 */
+    private static void requireElevatable(String p) {
+        if (Perm.exists(p) && !Perm.elevatable(p)) {
+            throw new BizException(ResultCode.FORBIDDEN,
+                "「" + Perm.label(p) + "」不能靠授权获得，必须本人登录自己的账号去改。");
+        }
     }
 
     private static boolean isBlank(String s) { return s == null || s.isBlank(); }

@@ -1,5 +1,5 @@
 // usePeriod 单测:注入月份派生范围/夹取/步进跳稀疏月/边界禁用/粒度切换。
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { __resetPeriodForTest, providePeriodMonths, usePeriod, ymOf } from './usePeriod'
 
 // 真实数据形状:稀疏月份(s10 只有 5 期)+ 跨年
@@ -60,6 +60,61 @@ describe('providePeriodMonths', () => {
     const p = usePeriod()
     // 2023-05 不在可用月份 → 夹到 2025-10
     expect(p.sel.value).toEqual({ gran: 'month', year: 2025, month: 10 })
+  })
+
+  // 2026-10-05 用户拍板「按你建议修改」:新园区空库(一个可用月都没有)落今年今月,不停在 0 年;不写 localStorage
+  it('没有任何可用月 → 落今年今月(读时钟),不落 0 年、不持久化', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2031, 6, 15))
+    try {
+      providePeriodMonths([])
+      const p = usePeriod()
+      expect(p.sel.value).toEqual({ gran: 'month', year: 2031, month: 7 })
+      expect(localStorage.getItem('fp-ana-period')).toBeNull()
+      // 后来有了数据:今月不在可用月里 → 照旧夹到最新月
+      providePeriodMonths(MONTHS)
+      expect(p.sel.value).toEqual({ gran: 'month', year: 2025, month: 10 })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('有可用月就不读时钟:今月正好在可用月里,默认期也照旧落最新月', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2025, 6, 15))   // 2025-07 在 MONTHS 里
+    try {
+      providePeriodMonths(MONTHS)
+      expect(usePeriod().sel.value).toEqual({ gran: 'month', year: 2025, month: 10 })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // 新浏览器(本机没存过期间):月份注入前各屏已按 sel 取数 —— 不许是 0 年(会先打一发 ?year=0 被拒)。
+  // 注入后照旧夹到最近有损益的月,今月恰好在可用月里也不停在今月(有数据时最终落点不读时钟)。
+  // 破坏验证:loadSel 默认值写回 {0,0} → 第一句红;去掉 pristine(只看 isValid)→ 第二句红
+  it('❗本机没存过期间:注入前是今年今月;注入后照旧落最近有损益的月', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2025, 6, 15))   // 2025-07,在 MONTHS 里
+    try {
+      localStorage.clear()
+      vi.resetModules()
+      const m = await import('./usePeriod')
+      const p = m.usePeriod()
+      expect(p.sel.value).toEqual({ gran: 'month', year: 2025, month: 7 })
+      m.providePeriodMonths(MONTHS, ['2025-06'])
+      expect(p.sel.value).toEqual({ gran: 'month', year: 2025, month: 6 })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('本机存过、仍有效的期间:照旧留着,不夹', async () => {
+    localStorage.setItem('fp-ana-period', JSON.stringify({ gran: 'month', year: 2025, month: 2 }))
+    vi.resetModules()
+    const m = await import('./usePeriod')
+    m.providePeriodMonths(MONTHS, ['2025-06'])
+    expect(m.usePeriod().sel.value).toEqual({ gran: 'month', year: 2025, month: 2 })
   })
 
   it('乱序/重复输入被排序去重', () => {

@@ -28,7 +28,7 @@ class CompanyServiceTest {
     // 删公司要过审核闸(见 CompanyService.delete):本类是纯单元测试,mock 一个不拦的闸,
     // 闸本身的行为由 ReviewGuardIT 钉,挂点由 ReviewGuardMasterDataIT 钉
     com.park.demo3.security.ReviewGuard rg = Mockito.mock(com.park.demo3.security.ReviewGuard.class);
-    CompanyService svc = new CompanyService(cm, am, lm, ram, rcm, racm, nm, bm, rg);
+    CompanyService svc = new CompanyService(cm, am, lm, ram, rcm, racm, nm, bm, rg, Mockito.mock(ChangeLogService.class));
 
     ManagementCompany co(int id, String name) {
         ManagementCompany c = new ManagementCompany();
@@ -106,5 +106,36 @@ class CompanyServiceTest {
             .isInstanceOf(BizException.class)
             .satisfies(e -> assertThat(((BizException) e).getCode()).isEqualTo(404));
         Mockito.verify(cm, Mockito.never()).deleteById(ArgumentMatchers.anyInt());
+    }
+
+    // RBAC v3:个人卡户名对没有主数据查看权的人打码。提权拿到 master:edit 的人(查看不可提权)把个人卡改成对公,
+    // 写回守卫把掩码「张*」还原成真名,回包按新类型不打码 —— 收款人全名就换出来了。所以这一步要主数据查看。
+    // 破坏验证:updateAccount 里那条 personal 判断删掉 → 第一条红
+    @Test void updateAccount_personalToBank_withoutMasterView_403() {
+        Mockito.when(am.selectById(5)).thenReturn(personalCard());
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        assertThatThrownBy(() -> svc.updateAccount(5, new com.park.demo3.dto.CompanyAccountReq(
+                "bank", "张*", null, null, null, null, null)))
+            .isInstanceOf(BizException.class)
+            .satisfies(e -> assertThat(((BizException) e).getCode()).isEqualTo(403));
+        Mockito.verify(am, Mockito.never()).updateById(ArgumentMatchers.any(com.park.demo3.entity.CompanyAccount.class));
+    }
+
+    @Test void updateAccount_personalToBank_withMasterView_ok() {
+        Mockito.when(am.selectById(5)).thenReturn(personalCard());
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+            new org.springframework.security.authentication.TestingAuthenticationToken("u", null, "master:view"));
+        try {
+            svc.updateAccount(5, new com.park.demo3.dto.CompanyAccountReq("bank", "张*", null, null, null, null, null));
+            Mockito.verify(am).updateById(ArgumentMatchers.any(com.park.demo3.entity.CompanyAccount.class));
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+    }
+
+    private static com.park.demo3.entity.CompanyAccount personalCard() {
+        com.park.demo3.entity.CompanyAccount a = new com.park.demo3.entity.CompanyAccount();
+        a.setId(5); a.setCompanyId(1); a.setKind("personal"); a.setAccountName("张三"); a.setAccountNo("6222000011112222");
+        return a;
     }
 }

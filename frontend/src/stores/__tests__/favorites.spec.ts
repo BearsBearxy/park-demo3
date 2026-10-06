@@ -4,13 +4,15 @@ import { nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 import { useFavoritesStore, MAX_FAVS } from '../favorites'
 import { useAuthStore } from '@/stores/auth'
+import { ALL_VIEWS } from '@/test-utils/perms'
 
 beforeEach(() => {
   setActivePinia(createPinia())
   localStorage.clear()
 })
 
-function login(who: string, permissions: string[] = ['ledger:edit']) {
+// RBAC v3:后端给的权限集已展开「编辑隐含查看」;这里默认带全部业务查看权
+function login(who: string, permissions: string[] = ['ledger:edit', ...ALL_VIEWS]) {
   const auth = useAuthStore()
   auth.me = who
   auth.permissions = permissions
@@ -27,8 +29,14 @@ describe('收藏', () => {
   })
 
   it('零写权限的人(总经理、股东)预置经营驾驶舱', () => {
-    login('gm', [])
+    login('gm', [...ALL_VIEWS])
     expect(useFavoritesStore().list).toEqual(['cockpit'])
+  })
+
+  // 破坏验证:favorites.ts 预置那句去掉 canViewPage → 红
+  it('❗预置的那一屏看不了(RBAC v3)就不预置,不放一格点进去是「无权查看」的收藏', () => {
+    login('rpt', ['report:view'])                  // 零写权限 → 本该落驾驶舱,可他没有分析查看权
+    expect(useFavoritesStore().list).toEqual([])
   })
 
   it('❗键已经在(哪怕是空的)就不再预置 —— 删光了不能自己长回来', () => {
@@ -82,7 +90,7 @@ describe('收藏', () => {
     const f = useFavoritesStore()
     f.toggle('ledger')
     auth.me = 'li'
-    auth.permissions = []
+    auth.permissions = [...ALL_VIEWS]
     await nextTick()
     await nextTick()
     expect(f.list).toEqual(['cockpit'])

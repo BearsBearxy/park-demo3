@@ -45,7 +45,7 @@ vi.mock('@/api/building', () => ({ buildingApi: { list: vi.fn() } }))
 vi.mock('@/api/bills', () => ({ billsApi: { paymap: vi.fn(), setPaymap: vi.fn() } }))
 vi.mock('@/api/billDelivery', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/api/billDelivery')>(),
-  companyBookApi: { list: vi.fn() },
+  companyBookApi: { list: vi.fn(), payees: vi.fn() },
   billDeliveryApi: { confirm: vi.fn(), markExported: vi.fn() },
 }))
 vi.mock('@/api/locks', () => ({
@@ -105,6 +105,7 @@ beforeEach(() => {
   vi.mocked(contractApi.list).mockResolvedValue([])
   vi.mocked(buildingApi.list).mockResolvedValue([])
   vi.mocked(companyBookApi.list).mockResolvedValue([])
+  vi.mocked(companyBookApi.payees).mockResolvedValue([])
   vi.mocked(billsApi.paymap).mockResolvedValue([])
 })
 

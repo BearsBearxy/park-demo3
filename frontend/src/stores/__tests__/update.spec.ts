@@ -2,6 +2,7 @@
 // 断言钉的是「什么时候弹 / 什么时候出提示条」这两件会上屏的事。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
+import { ourPark } from '@/test-utils/appConfig'
 import { useUpdateStore, POLL_MS, POPUP_DELAY_MS } from '../update'
 import { useAuthStore } from '../auth'
 import { CHANGELOG } from '@/changelog'
@@ -23,7 +24,7 @@ function login(who = 'zhou') {
 
 describe('update store', () => {
   beforeEach(() => {
-    setActivePinia(createPinia())
+    setActivePinia(createPinia()); ourPark()
     localStorage.clear()
     vi.useFakeTimers()
   })

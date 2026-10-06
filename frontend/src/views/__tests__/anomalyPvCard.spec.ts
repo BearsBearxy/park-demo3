@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { grantViews } from '@/test-utils/perms'
 import { PV_READING_DTOS, PV_ROWS, PV_STATION_DTOS } from '@/views/analysis/__fixtures__/pvRules.fixture'
 
 const R = vi.hoisted(() => ({ push: vi.fn() }))
@@ -46,6 +47,7 @@ const TITLE = '光伏触发规则的楼栋'
 let w: VueWrapper | null = null
 beforeEach(() => {
   setActivePinia(createPinia())
+  grantViews()   // RBAC v3(master 0.28.0):没有光伏屏的查看权时「查看分析」置灰,这里给全部业务查看权
   vi.clearAllMocks()
   localStorage.clear()
   __resetPeriodForTest()

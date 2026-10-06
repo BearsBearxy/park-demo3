@@ -50,9 +50,13 @@ class SystemApiIT extends AbstractMysqlIT {
         // 被拦的人恰恰是不该看到账号与角色配置的
         mvc.perform(get("/api/system/users").header("Authorization", hdr(v)))
            .andExpect(status().isForbidden())
-           .andExpect(jsonPath("$.message").value("无访问权限：账号与角色管理仅对系统管理员开放"));
+           .andExpect(jsonPath("$.message").value("无查看权限：需要「系统管理 · 查看」，请联系系统管理员在角色里勾上"));
         mvc.perform(get("/api/system/roles").header("Authorization", hdr(v)))
            .andExpect(status().isForbidden());
+        // 写被拒写明缺的是「管理」那一项;不说「仅对系统管理员开放」—— 这一段按权限点放行,不按角色
+        mvc.perform(post("/api/system/users").header("Authorization", hdr(v)).contentType("application/json").content("{}"))
+           .andExpect(status().isForbidden())
+           .andExpect(jsonPath("$.message").value("无修改权限：需要「系统管理 · 管理」，请联系系统管理员在角色里勾上"));
         // 对照：业务数据他读得到，证明挡住的是 system 段而不是他整个账号
         mvc.perform(get("/api/tenants").header("Authorization", hdr(v)))
            .andExpect(status().isOk());
@@ -127,13 +131,13 @@ class SystemApiIT extends AbstractMysqlIT {
     void cannotStripOwnSystemEdit() throws Exception {
         String t = admin();
         int adminRoleId = roleIdOf(t, "admin");
-        // 把 admin 角色的权限改成"只剩一项主数据" → 等于摘掉自己的 system:edit，保存后进不了这个页面
+        // 把 admin 角色的权限改成"只剩一项主数据" → 等于摘掉自己的 system:edit，保存后改不了账号和角色
         String body = utf8(mvc.perform(put("/api/system/roles/" + adminRoleId)
                 .header("Authorization", hdr(t)).contentType("application/json")
                 .content("{\"name\":\"系统管理员\",\"navLayers\":[\"data\"],\"perms\":[\"master:edit\"]}")
         ).andExpect(status().isOk()).andReturn());
         assertThat((int) JsonPath.read(body, "$.code")).isEqualTo(409);
-        assertThat((String) JsonPath.read(body, "$.message")).contains("再也进不了这个页面");
+        assertThat((String) JsonPath.read(body, "$.message")).contains("不能再改账号和角色");
     }
 
     @Test
@@ -206,13 +210,15 @@ class SystemApiIT extends AbstractMysqlIT {
             String nt = JsonPath.read(me, "$.data.token");
             List<String> perms = JsonPath.read(me, "$.data.permissions");
             assertThat(perms).as("缓存已刷新，新账号拿到 finance_clerk 的权限").isNotEmpty();
+            // 带着初始密码时业务接口一律 428(RBAC-SPEC §13.4);当他已改过 —— 放在上面那条之后,它 reload 不掩盖建号漏 reload
+            passwordAlreadyChanged(uname);
 
             // 而且真能用：他有 entry:edit，写台账不该 403
             mvc.perform(post("/api/tenants").header("Authorization", hdr(nt))
                     .contentType("application/json").content("{}"))
                .andExpect(status().isForbidden());          // 没有 master:edit → 403
             mvc.perform(get("/api/tenants").header("Authorization", hdr(nt)))
-               .andExpect(status().isOk());                 // 读全开
+               .andExpect(status().isOk());                 // V134 给专员的 master:view
         } finally {
             cleanup(uname);
         }
@@ -231,7 +237,8 @@ class SystemApiIT extends AbstractMysqlIT {
         int id = JsonPath.read(created, "$.data.id");
         try {
             String victim = login(uname, "init-pass-123");
-            mvc.perform(get("/api/tenants").header("Authorization", hdr(victim)))
+            // 没挂角色 = 零权限,v3 起业务 GET 一律 403(读也默认拒绝);用任何已登录都能读的 /auth/me 当靶子
+            mvc.perform(get("/api/auth/me").header("Authorization", hdr(victim)))
                .andExpect(status().isOk());
 
             mvc.perform(post("/api/system/users/" + id + "/status").header("Authorization", hdr(t))
@@ -239,7 +246,7 @@ class SystemApiIT extends AbstractMysqlIT {
                .andExpect(status().isOk());
 
             // 同一个令牌，仍在有效期内 → 401
-            mvc.perform(get("/api/tenants").header("Authorization", hdr(victim)))
+            mvc.perform(get("/api/auth/me").header("Authorization", hdr(victim)))
                .andExpect(status().isUnauthorized());
         } finally {
             cleanup(uname);
@@ -264,6 +271,7 @@ class SystemApiIT extends AbstractMysqlIT {
                 .contentType("application/json")
                 .content("{\"username\":\"" + uname + "\",\"displayName\":\"铃铛测试人\","
                        + "\"password\":\"init-pass-123\",\"roleIds\":[" + rid + "]}")).andReturn()), "$.data.id");
+        passwordAlreadyChanged(uname);
         String u = login(uname, "init-pass-123");
         int adminBefore = noticeCount("admin");
 
@@ -350,12 +358,13 @@ class SystemApiIT extends AbstractMysqlIT {
             String tok = JsonPath.read(before, "$.data.token");
             assertThat((boolean) JsonPath.read(before, "$.data.mustChangePassword")).isTrue();
 
-            // 当前密码错 → 400
+            // 当前密码错 → 401(与提权口令错同一道门 ElevationService.verifyOwnPassword)
             String wrong = utf8(mvc.perform(post("/api/auth/change-password").header("Authorization", hdr(tok))
                     .contentType("application/json")
                     .content("{\"currentPassword\":\"nope-nope-1\",\"newPassword\":\"brand-new-123\"}")
             ).andExpect(status().isOk()).andReturn());
-            assertThat((int) JsonPath.read(wrong, "$.code")).isEqualTo(400);
+            assertThat((int) JsonPath.read(wrong, "$.code")).isEqualTo(401);
+            assertThat((String) JsonPath.read(wrong, "$.message")).isEqualTo("当前密码不正确");
 
             // 新旧相同 → 400
             String same = utf8(mvc.perform(post("/api/auth/change-password").header("Authorization", hdr(tok))
@@ -373,6 +382,41 @@ class SystemApiIT extends AbstractMysqlIT {
                     .content("{\"username\":\"" + uname + "\",\"password\":\"brand-new-123\"}")).andReturn());
             assertThat((int) JsonPath.read(after, "$.code")).isEqualTo(0);
             assertThat((boolean) JsonPath.read(after, "$.data.mustChangePassword")).isFalse();
+        } finally {
+            cleanup(uname);
+        }
+    }
+
+    /**
+     * 改密校验旧口令要限流、要留痕(安全审计 F03)。原来直接 enc.matches:一张令牌就能不限次猜口令,
+     * 「新密码不能与当前相同」那句还会告诉他猜中了,库里一行痕迹都没有。
+     * 破坏验证:① SystemService 改回 enc.matches → 第 6 次拿到的不是 429,红;
+     *          ② 去掉 changeOwnPassword 上的 noRollbackFor → .deny 审计随回滚消失,条数断言红。
+     */
+    @Test
+    void changeOwnPassword_wrongCurrent_isRateLimitedAndAudited() throws Exception {
+        String t = admin();
+        String uname = "it-pwdlock-" + System.nanoTime();
+        mvc.perform(post("/api/system/users").header("Authorization", hdr(t)).contentType("application/json")
+                .content("{\"username\":\"" + uname + "\",\"displayName\":\"改密限流\","
+                       + "\"password\":\"init-pass-123\",\"roleIds\":[]}")).andReturn();
+        try {
+            String tok = login(uname, "init-pass-123");
+            // 猜中的那一下用的就是「新旧相同」:锁之前它回「新密码不能与当前相同」,锁之后一律 429
+            for (int i = 1; i <= 5; i++) {
+                String r = utf8(mvc.perform(post("/api/auth/change-password").header("Authorization", hdr(tok))
+                        .contentType("application/json")
+                        .content("{\"currentPassword\":\"guess-" + i + "-xx\",\"newPassword\":\"guess-" + i + "-xx\"}"))
+                        .andReturn());
+                assertThat((int) JsonPath.read(r, "$.code")).as("第 %d 次猜错", i).isEqualTo(401);
+            }
+            String locked = utf8(mvc.perform(post("/api/auth/change-password").header("Authorization", hdr(tok))
+                    .contentType("application/json")
+                    .content("{\"currentPassword\":\"init-pass-123\",\"newPassword\":\"init-pass-123\"}"))
+                    .andReturn());
+            assertThat((int) JsonPath.read(locked, "$.code")).as("锁住后连猜中的也不回答").isEqualTo(429);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM auth_audit_log WHERE actor = ? AND action = ?",
+                Integer.class, uname, "user.change-password.deny")).isEqualTo(5);
         } finally {
             cleanup(uname);
         }

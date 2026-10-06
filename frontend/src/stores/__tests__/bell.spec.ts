@@ -2,6 +2,7 @@
 // 夹具走真心跳:服务端状态放在 server 里,api.put('/presence/ping') 按它回 —— 数从哪来和线上同一条路。
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
+import { ourPark } from '@/test-utils/appConfig'
 import { nextTick } from 'vue'
 import api from '@/api'
 import { useBellStore } from '../bell'
@@ -89,7 +90,7 @@ const calls = (m: unknown, url: string) =>
 
 describe('铃铛记号', () => {
   beforeEach(() => {
-    setActivePinia(createPinia())
+    setActivePinia(createPinia()); ourPark()
     localStorage.clear()
     vi.clearAllMocks()
     server = { approvals: [], pendingReviews: 0, myReturned: 0, notices: [], systemSeen: null, reviews: [], returned: [] }
@@ -191,7 +192,7 @@ describe('铃铛记号', () => {
 
 describe('系统组的蓝点(看过存服务端,失败退回本机)', () => {
   beforeEach(() => {
-    setActivePinia(createPinia())
+    setActivePinia(createPinia()); ourPark()
     localStorage.clear()
     vi.clearAllMocks()
     server = { approvals: [], pendingReviews: 0, myReturned: 0, notices: [], systemSeen: null, reviews: [], returned: [] }
@@ -243,7 +244,7 @@ describe('系统组的蓝点(看过存服务端,失败退回本机)', () => {
     useUpdateStore().serverVersion = '99.0.0'
     await bell.openPanel()
     expect(localStorage.getItem('fp-bell-sys:zhou')).toBe('n:99.0.0')
-    setActivePinia(createPinia())       // 重开页面
+    setActivePinia(createPinia()); ourPark()       // 重开页面
     const again = await boot()
     useUpdateStore().serverVersion = '99.0.0'
     expect(again.blue).toBe(false)
@@ -291,7 +292,7 @@ describe('系统组的蓝点(看过存服务端,失败退回本机)', () => {
 
 describe('面板明细', () => {
   beforeEach(() => {
-    setActivePinia(createPinia())
+    setActivePinia(createPinia()); ourPark()
     localStorage.clear()
     vi.clearAllMocks()
     server = { approvals: [], pendingReviews: 0, myReturned: 0, notices: [], systemSeen: null, reviews: [], returned: [] }

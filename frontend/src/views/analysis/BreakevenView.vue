@@ -15,7 +15,9 @@ import { iconFor } from '@/components/ds/icon'
 import { STATUS, fnum } from '@/components/ana/anaFmt'
 import { usePeriod, ymOf, type PeriodSel } from '@/analysis/usePeriod'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
-import { anaSettings, saveAnaSettings } from '@/analysis/anaSettings'
+import { anaSettings, anaSettingsLock, saveAnaSettings } from '@/analysis/anaSettings'
+import { lackText } from '@/composables/useViewGate'
+import { receipt } from '@/utils/receipt'
 import { fetchPnlSummary, fetchS10Rows, type PnlSummary } from '@/analysis/anaData'
 import type { AnalysisS10Row } from '@/api/analysis'
 import { anchorMonth, calcBe, conclusionText, cvpOption, s10UsedOf, splitData, splitOption, tornadoItems, tornadoOption } from './breakeven.logic'
@@ -34,7 +36,9 @@ async function reload() {
 onMounted(reload)
 // 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
 // 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
-onReactivated(() => { void reload() })
+// 没有编辑权的人拖出来看效果的数也在这里作废:离开这一屏就回到全园的数(「两个都按你建议」2026-10-05;
+// 不清的话切回来 KPI、保本点都按那个数算,屏上没有一个字说它不是全园的数)。
+onReactivated(() => { tryFr.value = null; void reload() })
 // 换年在途(C5-02):旧内容留在原地退让,图不卸载;过 200ms 才亮、退场立刻
 const staleShown = useDeferredFlag(loading)
 // 屏上画着的那一期(C5-02 ①):换年在途时 sel.year 已是新年、summary 还是旧年 —— 这段时间口径月与横幅
@@ -69,11 +73,14 @@ const monthUsed = computed(() => anchor.value.month)
 const ymUsed = computed(() =>
   summary.value && monthUsed.value != null ? summary.value.year + '-' + String(monthUsed.value).padStart(2, '0') : null)
 
-// ── CVP 模型(月度口径;系数滑杆/顶栏改动 → anaSettings 响应式即时重算) ──
+// ── CVP 模型(月度口径;有编辑权的人拖滑杆 / 顶栏改动 → anaSettings,没有的人拖 → tryFr,只重算本屏) ──
+// tryFr:没有账簿报表编辑权的人拖出来看效果的数,只在本屏(见下方滑杆);null = 用全园那一份。
+const tryFr = ref<number | null>(null)
+const fr = computed(() => tryFr.value ?? anaSettings.breakevenFixedRatio)
 const be = computed(() => {
   const s = summary.value, m = monthUsed.value
   if (!s || m == null) return null
-  return calcBe(s.revenue[m - 1] ?? 0, s.cost[m - 1] ?? 0, anaSettings.breakevenFixedRatio)
+  return calcBe(s.revenue[m - 1] ?? 0, s.cost[m - 1] ?? 0, fr.value)
 })
 const s10Used = computed(() => s10UsedOf(s10.value, ymUsed.value))
 
@@ -82,7 +89,7 @@ const s10Used = computed(() => s10UsedOf(s10.value, ymUsed.value))
 // 三个 option 本就因 be 变而重算,重算发生在 onFr 触发的这次 flush 里,flush 完摘掉。
 let sliding = false
 // 首进占位瓦的副行(隐形):第三张的静态说明在窄瓦里折三行,其余按真副行的长度留
-const KPI_HOLD = ['保本 ¥000.0万', '当月收入 ¥000.0万', '扣除随收入变动的成本后剩余(边际贡献率)', '系数 0.00(滑杆可调)', '口径月 0000-00', '口径月 0000-00']
+const KPI_HOLD = ['保本 ¥000.0万', '当月收入 ¥000.0万', '扣除随收入变动的成本后剩余(边际贡献率)', '系数 0.00', '口径月 0000-00', '口径月 0000-00']
 const cvpOpt = computed(() => (be.value ? cvpOption(be.value, sliding) : {}))
 const torOpt = computed(() => (be.value ? tornadoOption(tornadoItems(be.value, s10Used.value), sliding) : {}))
 const split = computed(() =>
@@ -92,12 +99,38 @@ const splitOpt = computed(() => splitOption(split.value, sliding))
 // §C4 人话结论行(数据模板抽纯函数;全负空态下不显,空态提示已说清)
 const conclusion = computed(() => (be.value && ymUsed.value ? conclusionText(be.value, ymUsed.value) : ''))
 
-// 固定成本系数滑杆(spec §二.12:改动即时重算;与顶栏「目标与阈值」同源持久化)
+// 固定成本系数滑杆(spec §二.12:改动即时重算;与顶栏「目标与阈值」同一个数)。
+// 2026-10-05 起这个数在库里、全员一份(用户拍板第 2 条):拖的时候只改本屏(即时重算),松手才存 ——
+// 每拖一格存一次,操作日志里一次拖动就是几十行。
+// 没有账簿报表编辑权的人:0.30.0 初稿让滑杆置灰;用户 2026-10-05「两个都按你建议」改成也能拖着看效果 ——
+// 拖出来的数只进 tryFr(本屏即时重算),不动 anaSettings(顶栏弹层、别的屏仍是全园那一份),松手不存;
+// 离开这一屏(含页签切走再切回,见上面 onReactivated)或刷新就回到全园的数。
+// 屏上不说「试算」:三大报表里「试算平衡」是记账用语,用户看不懂行话。
+const frLock = computed(anaSettingsLock)
+// 滑杆下那一行(骨架里同一行)。算好存着:直接写进模板,拖一格重画一次就去取一次权限名(字典取不到时一格一个请求)
+const frNote = computed(() => (frLock.value ? '拖动只是看看效果，不会保存；要改全园共用的数' + lackText(['report:edit']) : ''))
+// 账簿报表借得到(主管授权,不在不可借名单),这一屏开着时编辑权会来会走:一变,看效果的数作废 ——
+// 不然借到之后那行说明没了,屏上还停着看效果的数,像是全园的数
+watch(() => !!frLock.value, () => { tryFr.value = null })
+// 这一下拖动改不改全园那一份,按第一格时定,松手照它收尾:拖到一半授权到期,照样去存,后端拒了 saveAnaSettings 退回库里的数,
+// 不在全园那一份里留一个没存上的数(借到要先过授权弹窗,拖着的时候借不到)。null = 没在拖
+let editing: boolean | null = null
 function onFr(e: Event) {
   const v = Number((e.target as HTMLInputElement).value)
+  const x = Number.isFinite(v) ? v : 0
   sliding = true
-  saveAnaSettings({ breakevenFixedRatio: Number.isFinite(v) ? v : 0 })
+  editing ??= !frLock.value
+  if (editing) anaSettings.breakevenFixedRatio = x
+  else tryFr.value = x
   void nextTick(() => { sliding = false })
+}
+function onFrDone() {
+  const ed = editing
+  editing = null
+  if (!ed) return   // 看效果:一个请求都不发(后端 report:edit 门也会拒,但不该让人看到「没存上」)
+  // 存不上 saveAnaSettings 自己退回库里的数,这里只说一句
+  saveAnaSettings({ breakevenFixedRatio: anaSettings.breakevenFixedRatio })
+    .catch((e) => receipt.fail((e as { message?: string })?.message ?? '系数没存上，已退回原来的数'))
 }
 </script>
 
@@ -111,7 +144,7 @@ function onFr(e: Event) {
         <AnaKpiTile label="安全边际" :value="be.safety != null ? be.safety.toFixed(0) + ' pt' : '—'"
           :note="'当月收入 ¥' + wan(be.rev) + '万'" />
         <AnaKpiTile label="收入留存率" :value="(be.cm * 100).toFixed(0) + '%'" note="扣除随收入变动的成本后剩余(边际贡献率)" />
-        <AnaKpiTile label="月固定成本" :value="'¥' + wan(be.fixed) + '万'" :note="'系数 ' + be.fr.toFixed(2) + '(滑杆可调)'" />
+        <AnaKpiTile label="月固定成本" :value="'¥' + wan(be.fixed) + '万'" :note="'系数 ' + be.fr.toFixed(2)" />
         <AnaKpiTile label="月净利" profit :value="(be.profit >= 0 ? '¥' : '−¥') + wan(Math.abs(be.profit)) + '万'" :note="'口径月 ' + ymUsed" />
         <AnaKpiTile label="s10 开票收入" :value="s10Used ? '¥' + wan(s10Used.total) + '万' : '—'"
           :note="s10Used ? '口径月 ' + s10Used.ym : '附表10 未录入'" />
@@ -124,7 +157,8 @@ function onFr(e: Event) {
 
     <!-- 首进:版式已知就不转圈(C6-01)。块高逐块照它顶替的那块 —— 页头 44(.ak-h-ic 40 /
          标题行 20 + 4 + 副标行 20)、结论条一行 20、卡头 20(.av2-card-h 下距 8 合 28)、
-         三张图 300 / 300 / 250(各自 :height 字面值,AnaSkelChart 与图同表降档)、系数滑杆一行 20。
+         三张图 300 / 300 / 250(各自 :height 字面值,AnaSkelChart 与图同表降档)、系数滑杆一行 20
+         (没有账簿报表的人下面多一行「只是看看效果」,与真版式同一行)。
          数据到了原地硬切,不做淡入;KPI 行由 .anx-kpis 的 min-height 94 兜位。 -->
     <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <div v-if="loading && !summary" class="ak-page ana-skel">
@@ -144,6 +178,7 @@ function onFr(e: Event) {
           <div class="av2-card-h"><span class="t">保本点测算</span><span class="hint">本量利 CVP · 收入/总成本交点=保本</span></div>
           <AnaSkelChart :height="300" />
           <div class="bev-slider"><span class="k">固定成本系数</span><span class="fp-shim" style="flex: 1; height: 20px"></span><span class="k">(拖动即时重算保本点)</span></div>
+          <p v-if="frNote" class="bev-try">{{ frNote }}</p>
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">哪个因素对利润影响最大</span><span class="hint">各驱动 ±10% · 龙卷风图</span></div>
@@ -196,10 +231,12 @@ function onFr(e: Event) {
           <AnaEChart :option="cvpOpt" :height="300" />
           <div class="bev-slider">
             <span class="k">固定成本系数</span>
-            <input type="range" min="0" max="1" step="0.01" :value="anaSettings.breakevenFixedRatio" @input="onFr" />
+            <input type="range" min="0" max="1" step="0.01" :value="fr" @input="onFr" @change="onFrDone" />
             <span class="v mono">{{ be.fr.toFixed(2) }}</span>
             <span class="k">(拖动即时重算保本点)</span>
           </div>
+          <!-- 谁都能拖(用户 2026-10-05「两个都按你建议」);没有账簿报表的人多一行说清只是看看效果(frNote,骨架里同一行) -->
+          <p v-if="frNote" class="bev-try">{{ frNote }}</p>
         </div>
 
         <div class="av2-card av2-s4">
@@ -226,4 +263,5 @@ function onFr(e: Event) {
 .bev-slider .k { font-size: var(--fs-micro); color: var(--text-muted); white-space: nowrap; }
 .bev-slider .v { font-size: 12px; font-weight: 600; color: var(--text-primary); }
 .bev-slider input[type='range'] { flex: 1; min-width: 80px; max-width: 240px; accent-color: var(--fill-blue); }
+.bev-try { margin: 2px 2px 0; font-size: var(--fs-micro); color: var(--text-muted); }
 </style>

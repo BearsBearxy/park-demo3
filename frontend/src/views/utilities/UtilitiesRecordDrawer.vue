@@ -1,7 +1,9 @@
 <script setup lang="ts">
 // 右抽屉「新增记账」— 1:1 from screen-utilities.jsx UtDrawer(163-235),用共享 FPDrawer 壳。
 // 记账月 + 所属月(年/月 select)+ 电费(用电量/单价)+ 水费(用水量/单价)+ 自动金额;
-// 单价默认随 tab:office 0.8123/4.15、phase3 0.7965/3.85。校验:至少填用电量或用水量。
+// 单价预填本年最近一条记录的价(lastPrice),本年还没有记录就空着 —— 原来写死的是我园电价水价,
+// 卖给别的园区(2026-10-04 用户拍板)客户只填量就会按我们的价落库;取库里的数,我园照旧不用每次手填。
+// 校验:至少填用电量或用水量;填了哪样的量,就得填哪样的单价。
 import { ref, computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
@@ -15,18 +17,17 @@ const props = defineProps<{
   icon: string
   initYear: number
   years: number[]     // overview 年份范围
+  lastPrice?: { elec?: number; water?: number }   // 本年最近一条记录的单价
 }>()
 const emit = defineEmits<{ close: []; save: [req: OfficeRecordReq] }>()
-
-const isOffice = props.no === 13
 
 // 记账月 / 所属月 YYYY-MM(改前各是年下拉 + 月下拉,月默认 1 月)
 const acct = ref(`${props.initYear}-01`)
 const belong = ref(`${props.initYear}-01`)
 const elecQty = ref('')
-const elecPrice = ref(isOffice ? '0.8123' : '0.7965')
+const elecPrice = ref(props.lastPrice?.elec != null ? String(props.lastPrice.elec) : '')
 const waterQty = ref('')
-const waterPrice = ref(isOffice ? '4.15' : '3.85')
+const waterPrice = ref(props.lastPrice?.water != null ? String(props.lastPrice.water) : '')
 const note = ref('')
 
 // 可选范围 = overview 年份范围的首年 1 月 … 末年 12 月(改前年下拉只列这些年,月 1–12 随便选)
@@ -36,8 +37,9 @@ const ymMax = computed(() => props.years.length ? `${Math.max(...props.years)}-1
 const num = (v: string) => { const n = parseFloat(v); return isNaN(n) ? 0 : n }
 const elecAmt = computed(() => num(elecQty.value) * num(elecPrice.value))
 const waterAmt = computed(() => num(waterQty.value) * num(waterPrice.value))
-// 至少填一组量(jsx 176)
-const valid = computed(() => !!elecQty.value || !!waterQty.value)
+// 至少填一组量(jsx 176);单价不再预填,填了量没填价会按 0 元落库,所以量和价要成对
+const valid = computed(() => (!!elecQty.value || !!waterQty.value)
+  && (!elecQty.value || !!elecPrice.value) && (!waterQty.value || !!waterPrice.value))
 
 const yuan = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 

@@ -32,7 +32,12 @@ public class LoginRateLimiter {
 
     /** 用户名一律小写入键：Admin / ADMIN 与 admin 必须算同一个桶，否则改个大小写就绕开了 */
     public static String key(String ip, String username) {
-        return ip + "|" + username.toLowerCase(Locale.ROOT);
+        return ip + "|" + user(username);
+    }
+
+    /** 键里的用户名那半。登录记进操作日志时用同一个写法(用户 2026-10-05 拍板),一个人不会被拆成两个名字。 */
+    public static String user(String username) {
+        return username.toLowerCase(Locale.ROOT);
     }
 
     public boolean isLocked(String key) {
@@ -42,10 +47,11 @@ public class LoginRateLimiter {
         return c != null && now < c.lockedUntil();
     }
 
-    public void recordFailure(String key) {
+    /** 记一次失败,返回这个键当前窗口里的失败次数(登录失败进操作日志时按它决定记不记,见 AuthService.loginFailed)。 */
+    public int recordFailure(String key) {
         long now = clock.getAsLong();
         // compute 保证同键并发下计数不丢（多个请求同时打同一 ip|username 是爆破的常态）
-        buckets.compute(key, (k, c) -> {
+        return buckets.compute(key, (k, c) -> {
             boolean locked = c != null && now < c.lockedUntil();
             // ⚠ 锁定期内不得走「窗口过期 → 重置」这一支:windowStart 是**首次**失败时刻,
             //   lockedUntil 是**第 5 次**失败 + 15min。首次远早于第 5 次时(如失败落在 0/1/2/3/14min),
@@ -53,7 +59,7 @@ public class LoginRateLimiter {
             if (!locked && (c == null || now - c.windowStart() >= WINDOW_MS)) return new Counter(1, now, 0);
             int fails = c.failures() + 1;
             return new Counter(fails, c.windowStart(), fails >= MAX_FAILURES ? now + LOCK_MS : c.lockedUntil());
-        });
+        }).failures();
     }
 
     public void reset(String key) { buckets.remove(key); }

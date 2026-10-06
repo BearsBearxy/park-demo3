@@ -14,6 +14,7 @@
 import { computed, onDeactivated, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
+import { useViewGate } from '@/composables/useViewGate'
 import AnaShell from './AnaShell.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
@@ -131,7 +132,8 @@ async function loadCrit(y: number): Promise<Criteria> {
       return typeof v === 'number' && isFinite(v) ? v : d
     }
     return {
-      anchorHours: n('pv_yield_anchor_h', DEFAULT_CRITERIA.anchorHours),
+      // 锚点没配 = 0 = 不判年等效(2026-10-04:默认 950 是我园实测,别的园区不能套),屏上写明没填
+      anchorHours: n('pv_yield_anchor_h', 0),
       coverMonth: n('pv_crit_cover_month', DEFAULT_CRITERIA.coverMonth),
       ledger: n('pv_crit_ledger', DEFAULT_CRITERIA.ledger),
       yieldRatio: n('pv_crit_yield_ratio', DEFAULT_CRITERIA.yieldRatio),
@@ -139,7 +141,8 @@ async function loadCrit(y: number): Promise<Criteria> {
       bandRun: n('pv_band_run', DEFAULT_CRITERIA.bandRun),
       minOnlineDays: DEFAULT_CRITERIA.minOnlineDays,
     }
-  } catch { return { ...DEFAULT_CRITERIA } /* 用默认值,屏照常出 */ }
+  // 接口失败:其余判据线用默认值、屏照常出;锚点照样按「没填」走 —— DEFAULT_CRITERIA 里的 950 是我园实测,不能套给别的园区
+  } catch { return { ...DEFAULT_CRITERIA, anchorHours: 0 } }
 }
 
 /** 上网单价(计费参数 pv_grid_price)按月取:后端 priceCfg 已按「当月有值用当月,否则用默认」解析好,
@@ -285,12 +288,15 @@ const foot = computed(() => (snap.value ? critFoot(snap.value, selId.value) : nu
 
 // 「去改」落计费参数「光伏分栋判据」区(section=pv,S21 §5.7)。adopt=YYYY-12 只在会话还没有出账月时认领(常数存 12 月的约定,PvAnalysis §01);
 // 已选期的会话不动 —— 它不是选月,不能用 p= / ym=(那两个是显式深链,会覆盖组级期;2026-09-03 P0a 复查 P0A-2)。
+// 跳到模块屏的入口:没有目标屏的查看权就置灰、悬停写明缺哪一项;图上的点、整行点击没法置灰,点了说一句原因不跳(RBAC v3)
+const { lack, blocked } = useViewGate()
 function gotoParams() {
   tabs.openDeep('params')
   void router.push({ path: '/params', query: { adopt: `${year.value}-12`, section: 'pv' } })
 }
 /** 板数与单块标称功率在分栋运营账里录(光伏发电屏的 meter 那本;不带 mode 会落到本机记住的那本,默认汇总本) */
 function goMeter(): void {
+  if (blocked('/pv-income?mode=meter')) return
   tabs.openDeep('pv-income')
   void router.push({ path: '/pv-income', query: { mode: 'meter' } })
 }
@@ -572,7 +578,7 @@ onDeactivated(() => { drawerOpen.value = false })
           <div v-if="foot" class="pma-b2">
             <div class="pma-b2-r">
               <span v-for="c in foot.items" :key="c.key">{{ c.text }}</span>
-              <button class="pma-lk" @click="gotoParams">去改</button>
+              <button class="pma-lk" :disabled="!!lack('/params')" v-tip="lack('/params')" @click="gotoParams">去改</button>
             </div>
             <div class="pma-b2-r">
               <span v-tip="foot.baseNote" class="base">{{ foot.baseNote }}</span>
@@ -621,9 +627,14 @@ onDeactivated(() => { drawerOpen.value = false })
                 <span class="hint">{{ anchor.hint }}</span>
                 <span v-if="anchor.badge" class="pma-badge">{{ anchor.badge }}</span>
               </div>
-              <PvAnchorBars :data="anchor" :sel-id="selId" @pick="pickStation" />
-              <p class="ana-read hold"></p>
-              <p v-for="r in anchor.refs" :key="r.text" class="ana-ref">{{ r.text }}</p>
+              <!-- 合格线没配(新园区库里没有「光伏年等效利用小时锚点」,master 0.29.0):不套我园的 950,写明没填 -->
+              <template v-if="anchor.anchorDay > 0">
+                <PvAnchorBars :data="anchor" :sel-id="selId" @pick="pickStation" />
+                <p class="ana-read hold"></p>
+                <p v-for="r in anchor.refs" :key="r.text" class="ana-ref">{{ r.text }}</p>
+              </template>
+              <AnaEmpty v-else label="合格线没填" hint="在计费参数里填好「光伏年等效利用小时锚点」，才算得出合格线"
+                        to="/params" to-text="去计费参数" />
             </div>
             <div v-if="ledgerSc" class="av2-card av2-s12">
               <div class="av2-card-h">
@@ -797,6 +808,7 @@ onDeactivated(() => { drawerOpen.value = false })
   color: var(--text-link); font-size: 11px; white-space: nowrap;
 }
 .av2-card-h .pma-lk { margin-left: auto; }
+.pma-lk:disabled { color: var(--text-disabled); cursor: default; }
 
 @media (max-width: 1100px) {
   .pma-sec { min-height: 0; }

@@ -14,11 +14,12 @@ export interface Group { label?: string; elec?: boolean; water?: boolean; leaves
 //   shopMgmt→shopMgmtFee, elevator→elevatorMaint, transformer→transformerMaint,
 //   landTax→landUseTax, network→networkFee, access→accessMaint。
 const OFFICE: Group[] = [
-  { label: 'A座租金', leaves: [
+  // 两个组名原是我园楼栋「A座 / B-G座」,随包下发;2026-10-04 用户拍板产品卖给别的园区,与后端 BookTemplates 同步改成按物业类型叫
+  { label: '办公室', leaves: [
     { colId: 'officeRent', label: '办公室租金' },
     { colId: 'officeMgmtFee', label: '办公室企业管理服务费' },
   ] },
-  { label: 'B-G座租金', leaves: [
+  { label: '厂房', leaves: [
     { colId: 'factoryRent', label: '厂房租金' },
     { colId: 'factoryMgmtFee', label: '厂房企业管理服务费' },
   ] },

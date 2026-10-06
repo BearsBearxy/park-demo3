@@ -83,6 +83,14 @@ describe('人话铁律(spec §5.2)', () => {
       if (d.pairedWith) expect(paramDef(d.pairedWith), `${d.key} 配套键`).toBeDefined()
     }
   })
+  // 2026-10-04 用户拍板产品卖给别的园区:注册表随包下发、也经 /params 返回(后端那份靠上面的 fixture 逐键比对),
+  // 不许再写回我园的楼栋、期区、租户名、具体月份。
+  it('label/formula/hint 不含我园的楼栋、期区、租户名、具体月份', () => {
+    // 复查补了四类:孵化(我园孵化器协议)、广告字(我园二期灯池)、原册(我园源册)、「2023 年」这种写法的年份
+    const OURS = /座|车间|招商|火炬|源册|原册|孵化|广告字|[一二三四]期|\d{4}-\d{2}|20\d\d\s*年|永龙|可莱恩|芷泉|广联|力美|曹小芳|刘彪|邓宇峰/
+    for (const d of PARAM_DEFS)
+      for (const t of [d.label, d.formula, d.hint]) if (t) expect(OURS.test(t), `${d.key}: ${t}`).toBe(false)
+  })
   it('户级可编辑键 = 允许 tenant 作用域的 16 键(④ 区新增例外 / 系数簿键源)', () => {
     expect(PARAM_DEFS.filter(d => d.tenantEditable).map(d => d.key)).toEqual([
       'sharp_as_peak_ratio', 'loss_base_park_amount', 'mgmt_fee', 'mgmt_fee_commercial', 'capacity_fee', 'water',

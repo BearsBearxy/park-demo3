@@ -58,7 +58,7 @@ vi.mock('@/api/building', () => ({ buildingApi: { list: vi.fn() } }))
 vi.mock('@/api/bills', () => ({ billsApi: { paymap: vi.fn(), setPaymap: vi.fn() } }))
 vi.mock('@/api/billDelivery', async (o) => ({
   ...await o<typeof import('@/api/billDelivery')>(),
-  companyBookApi: { list: vi.fn() },
+  companyBookApi: { list: vi.fn(), payees: vi.fn() },
   billDeliveryApi: { confirm: vi.fn(), markExported: vi.fn() },
 }))
 vi.mock('@/api/locks', () => ({
@@ -140,6 +140,7 @@ beforeEach(() => {
   vi.mocked(contractApi.list).mockResolvedValue(CONTRACTS)
   vi.mocked(buildingApi.list).mockResolvedValue([building(1, 'A座'), building(2, 'B座')])
   vi.mocked(companyBookApi.list).mockResolvedValue([])
+  vi.mocked(companyBookApi.payees).mockResolvedValue([])
   vi.mocked(billsApi.paymap).mockResolvedValue([])
   vi.mocked(ask).mockResolvedValue(true)
 })
@@ -194,6 +195,16 @@ describe('P4-D1 标题行:八个按钮收成四个(画布 05-A)', () => {
     const e = await open()
     await enterEdit(e)
     expect(e.find('.bn-actions').text()).not.toMatch(/生成/)
+  })
+})
+
+// 用户 2026-10-04 拍板:催缴单上的收款账号,能进这一屏(出账与催缴单 · 查看)就给明文 —— 导出不再因缺主数据查看置灰。
+// 破坏验证:loadCompanies 换回 companyBookApi.list → 红
+describe('收款账户取催缴单那份', () => {
+  it('❗进屏取 payees(账号明文),不取主数据那份 list(没有主数据查看时是掩码)', async () => {
+    await open()
+    expect(companyBookApi.payees).toHaveBeenCalledTimes(1)
+    expect(companyBookApi.list).not.toHaveBeenCalled()
   })
 })
 

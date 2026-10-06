@@ -21,6 +21,8 @@ import com.park.demo3.mapper.MonthlyLedgerMapper;
 import com.park.demo3.mapper.ReportAccountMapper;
 import com.park.demo3.mapper.ReportAmountMapper;
 import com.park.demo3.mapper.ReportCustomRowMapper;
+import com.park.demo3.security.Perm;
+import com.park.demo3.security.SensitiveMask;
 import com.park.demo3.security.NoReviewGuard;
 import com.park.demo3.security.ReviewGuard;
 import com.park.demo3.security.ReviewKind;
@@ -47,27 +49,40 @@ public class CompanyService {
 
     private final BookService bookService;
     private final ReviewGuard reviewGuard;
+    private final ChangeLogService changes;
 
     public CompanyService(ManagementCompanyMapper companies, CompanyAccountMapper accounts,
                           MonthlyLedgerMapper ledger,
                           ReportAmountMapper reportAmounts, ReportCustomRowMapper reportCustomRows,
                           ReportAccountMapper reportAccounts, BillNoticeMapper notices,
-                          BookService bookService, ReviewGuard reviewGuard) {
+                          BookService bookService, ReviewGuard reviewGuard, ChangeLogService changes) {
         this.companies = companies; this.accounts = accounts; this.ledger = ledger;
         this.reportAmounts = reportAmounts; this.reportCustomRows = reportCustomRows;
         this.reportAccounts = reportAccounts; this.notices = notices;
         this.bookService = bookService;
         this.reviewGuard = reviewGuard;
+        this.changes = changes;
     }
 
     /** 删公司会跨全部年份清掉这四把键的数据,scope 恒是 companyId。 */
     private static final List<ReviewKind> COMPANY_SCOPED =
         List.of(ReviewKind.LEDGER, ReviewKind.REPORT_IS, ReviewKind.REPORT_BS, ReviewKind.REPORT_TB);
 
-    public List<CompanyDTO> list() {
+    public List<CompanyDTO> list() { return list(SensitiveMask.holds(Perm.MASTER_VIEW)); }
+
+    /**
+     * 催缴单上印的收款公司与账户(GET /api/companies/payees)。用户 2026-10-04 拍板「按你推荐」:通知单要发给租户付款,
+     * 有「出账与催缴单 · 查看」就给账号与个人卡户名的明文;别处(主数据、收款公司窗)仍按 master:view 打码。
+     * 读规则只放 billing:view,这里再判一次:哪天读规则被放宽,放进来的人拿到的也只是掩码。
+     */
+    public List<CompanyDTO> listForNotice() {
+        return list(SensitiveMask.holds(Perm.MASTER_VIEW) || SensitiveMask.holds(Perm.BILLING_VIEW));
+    }
+
+    private List<CompanyDTO> list(boolean plainAccounts) {
         Map<Integer, List<CompanyAccountDTO>> byCompany = accounts.selectList(
                 new QueryWrapper<CompanyAccount>().orderByAsc("sort_no", "id"))
-            .stream().map(CompanyService::toDTO)
+            .stream().map(a -> toDTO(a, plainAccounts))
             .collect(Collectors.groupingBy(CompanyAccountDTO::companyId,
                 LinkedHashMap::new, Collectors.toList()));
         return companies.selectList(new QueryWrapper<ManagementCompany>()
@@ -163,8 +178,13 @@ public class CompanyService {
             }
         }
         bookService.dropLedgerBook(id);   // 册随司退场;模板版本在全局链上,不跟着走
-        ledger.delete(new QueryWrapper<MonthlyLedger>().eq("company_id", id));
-        reportAmounts.delete(new QueryWrapper<ReportAmount>().eq("company_id", id));
+        int ledgerGone = ledger.delete(new QueryWrapper<MonthlyLedger>().eq("company_id", id));
+        int reportGone = reportAmounts.delete(new QueryWrapper<ReportAmount>().eq("company_id", id));
+        // 数据修改记录(用户 2026-10-05 拍板第 4 条):整家公司各年各月一起删,不逐格记(几年的台账能有上万格),各记一行摘要
+        if (ledgerGone > 0)
+            changes.summary(ChangeLogService.Tbl.LEDGER, c.getName(), "删除了这家公司，它名下 " + ledgerGone + " 行台账（所有年月）一并删掉");
+        if (reportGone > 0)
+            changes.summary(ChangeLogService.Tbl.REPORT, c.getName(), "删除了这家公司，它名下 " + reportGone + " 格三大报表金额（所有年月）一并删掉");
         reportCustomRows.delete(new QueryWrapper<ReportCustomRow>().eq("company_id", id));
         reportAccounts.delete(new QueryWrapper<ReportAccount>().eq("company_id", id));
         companies.deleteById(id);
@@ -195,6 +215,10 @@ public class CompanyService {
         CompanyAccount a = accounts.selectById(id);
         if (a == null) throw new BizException(ResultCode.NOT_FOUND, "收款账户不存在");
         requireKind(req.kind());
+        // 个人卡改成别的类型:写回守卫把掩码户名还原成真名,回包又按新类型不打码 —— 没有主数据查看权的人
+        // (靠提权拿到 master:edit,查看不可提权)改一次类型就能读到收款人全名
+        if ("personal".equals(a.getKind()) && !"personal".equals(req.kind()) && !SensitiveMask.holds(Perm.MASTER_VIEW))
+            throw new BizException(ResultCode.FORBIDDEN, "把个人卡改成别的类型需要「" + Perm.label(Perm.MASTER_VIEW) + "」权限");
         apply(a, req);
         accounts.updateById(a);
         clearOtherDefaults(a);
@@ -206,8 +230,11 @@ public class CompanyService {
 
     private static void apply(CompanyAccount a, CompanyAccountReq req) {
         a.setKind(req.kind());
-        if (req.accountName() != null) a.setAccountName(blankToNull(req.accountName()));
-        if (req.accountNo() != null)   a.setAccountNo(blankToNull(req.accountNo()));
+        // 提交的是现值的掩码 = 没改(没有 master:view 的人表单里回填的就是掩码,RBAC-SPEC §11 规则 5)
+        if (req.accountName() != null) a.setAccountName(blankToNull(
+            SensitiveMask.keepIfMasked(req.accountName(), a.getAccountName(), SensitiveMask::name)));
+        if (req.accountNo() != null)   a.setAccountNo(blankToNull(
+            SensitiveMask.keepIfMasked(req.accountNo(), a.getAccountNo(), SensitiveMask::account)));
         if (req.bankName() != null)    a.setBankName(blankToNull(req.bankName()));
         if (req.isDefault() != null)   a.setIsDefault(req.isDefault() ? 1 : 0);
         if (req.sortNo() != null)      a.setSortNo(req.sortNo());
@@ -261,9 +288,14 @@ public class CompanyService {
             c.getFullName(), c.getStatus(), accts);
     }
 
-    private static CompanyAccountDTO toDTO(CompanyAccount a) {
-        return new CompanyAccountDTO(a.getId(), a.getCompanyId(), a.getKind(), a.getAccountName(),
-            a.getAccountNo(), a.getBankName(),
+    // 账号(各 kind 一律,收款码标识可能就是手机号)与个人卡户名(就是收款人姓名)没有 master:view 给掩码;
+    // 对公 / 微信 / 支付宝的户名是公司名、开户行不打码(RBAC-SPEC §11 规则 5)
+    private static CompanyAccountDTO toDTO(CompanyAccount a) { return toDTO(a, SensitiveMask.holds(Perm.MASTER_VIEW)); }
+
+    private static CompanyAccountDTO toDTO(CompanyAccount a, boolean plain) {
+        String name = plain || !"personal".equals(a.getKind()) ? a.getAccountName() : SensitiveMask.name(a.getAccountName());
+        return new CompanyAccountDTO(a.getId(), a.getCompanyId(), a.getKind(), name,
+            plain ? a.getAccountNo() : SensitiveMask.account(a.getAccountNo()), a.getBankName(),
             a.getIsDefault() != null && a.getIsDefault() == 1, a.getSortNo(), a.getRemark());
     }
 }

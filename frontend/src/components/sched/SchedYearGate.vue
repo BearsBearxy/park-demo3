@@ -20,7 +20,7 @@ const props = defineProps<{
   title: string
   sub: string
   years: YearCard[]
-  current: number          // 最新年(蓝高亮 + 「最新」角标)
+  current: number          // 最新年(蓝高亮 + 角标):有数据 = 最大数据年;一年数据都没有 = 今年(YearSpan)
   footer?: string
   storeKey: string         // localStorage 受管年份键(每附表/实例唯一,如 'pv' / 'charging-7')
   backLabel?: string       // 传入即显示返回按钮(台账/报表把门放在公司之后,需回上一层;附表不传,原样)
@@ -123,7 +123,8 @@ function submit() {
         </div>
         <div class="sm-yc-head">
           <div class="sm-yc-year">{{ y.year }}<span class="u">年</span></div>
-          <span v-if="y.year === current" class="sm-yc-tag">最新</span>
+          <!-- 一年数据都没有(新园区空库)时当前年是今年:那张卡写「今年」,不把没数据的年叫「最新」(2026-10-05 复查) -->
+          <span v-if="y.year === current" class="sm-yc-tag">{{ y.hasData ? '最新' : '今年' }}</span>
         </div>
         <div v-if="y.hasData" class="sm-yc-foot">
           <div class="sm-yc-metric">{{ y.metric }}</div>

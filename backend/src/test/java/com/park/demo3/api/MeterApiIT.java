@@ -116,6 +116,26 @@ class MeterApiIT extends AbstractMysqlIT {
         org.junit.jupiter.api.Assertions.assertNotNull(meterMapper.selectById(id));
     }
 
+    // 挪月 = 在新月份新录一条:快照取表档案当前倍率(2026-10-04 安全修复)。原来旧快照跟过去,
+    // 档案倍率改过之后把旧倍率的旧读数挪进本月,本月就按旧倍率计了。月份不变的编辑仍保持原快照(见下一条用例)。
+    // 破坏验证:去掉 MeterService.updateReading 里挪月重取快照那句 → 拿到 500,红。
+    @Test
+    void reading_movedToAnotherMonth_takesTheCurrentFactor() throws Exception {
+        int id = createMeter("IT挪月表", "500");
+        int rid = postId("/api/meters/readings",
+                "{\"meterId\":" + id + ",\"ym\":\"2099-06\",\"prevTotal\":0,\"currTotal\":1}");
+        mvc.perform(put("/api/meters/" + id).header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT挪月表\",\"factor\":9999}"))
+                .andExpect(jsonPath("$.code").value(0));
+        mvc.perform(put("/api/meters/readings/" + rid).header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"meterId\":" + id + ",\"ym\":\"2099-07\",\"prevTotal\":0,\"currTotal\":1}"))
+                .andExpect(jsonPath("$.data.ym").value("2099-07"))
+                .andExpect(jsonPath("$.data.factorSnap").value(9999.0))
+                .andExpect(jsonPath("$.data.usageTotal").value(9999.0));
+    }
+
     // ── 读数:倍率快照口径——录入后改表倍率,历史用量不漂移;同表同月 409;用量派生 ──
     @Test
     void reading_factorSnapshot_usageDerived() throws Exception {

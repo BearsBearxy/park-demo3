@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
+import { ourPark } from '@/test-utils/appConfig'
 import { useAuthStore } from '@/stores/auth'
 import { useUpdateStore } from '@/stores/update'
 
@@ -25,18 +26,19 @@ vi.mock('@/api', () => ({
   sessionDrifted: vi.fn(() => false),
 }))
 // 当前版本 = 夹具第一段;store 与组件都读这个模块。
-vi.mock('@/changelog', () => {
+vi.mock('@/changelog', async (orig) => {
   const CHANGELOG = [
     { version: '9.9.9', date: '2026-09-18', headline: '当前版本', added: [{ icon: 'sun', title: '新屏甲', desc: '说明', to: 'tenants' }], improved: [], fixed: [] },
     { version: '9.8.0', date: '2026-08-01', headline: '上一版', added: [{ icon: 'sun', title: '旧屏乙', desc: '说明', to: 'contracts' }], improved: [], fixed: [] },
   ]
-  return { CHANGELOG, APP_VERSION: '9.9.9', noteOf: (v: string) => CHANGELOG.find((n) => n.version === v) }
+  // 2026-10-05:store 要拿 cmpVersion 比装机版本,真函数照用
+  return { ...(await orig<typeof import('@/changelog')>()), CHANGELOG, APP_VERSION: '9.9.9', noteOf: (v: string) => CHANGELOG.find((n) => n.version === v) }
 })
 
 import ChangelogDialog from '../ChangelogDialog.vue'
 
 beforeEach(() => {
-  setActivePinia(createPinia())
+  setActivePinia(createPinia()); ourPark()
   localStorage.clear()
   document.body.innerHTML = ''
   push.mockClear()

@@ -17,4 +17,15 @@ public final class SecurityPaths {
         "/actuator/health", "/actuator/health/**",
         "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**",
     };
+
+    /**
+     * 带着管理员给的密码(must_change_password=1)还能调的接口,「方法 路径」原样比,别的一律 403 / body.code 428。
+     * 就是改密页实际会调到的这几条:改密、退出登录是页面上的两个按钮;me / elevate 是 App 挂载时各取一次
+     * (刷新权限、恢复授权胶囊),都只读本人自己的东西。改前只有前端路由守卫拦,拿初始密码换来的令牌
+     * 直接调接口照样全通(安全审计 F02 / F40,用户 2026-10-04 拍板)。
+     * 登录本身不看令牌,请求头里捎着一张没改密的旧令牌也不该把登录挡掉。
+     */
+    public static final java.util.Set<String> BEFORE_PASSWORD_CHANGE = java.util.Set.of(
+        "POST /api/auth/change-password", "POST /api/auth/logout",
+        "GET /api/auth/me", "GET /api/auth/elevate", "POST /api/auth/login");
 }
