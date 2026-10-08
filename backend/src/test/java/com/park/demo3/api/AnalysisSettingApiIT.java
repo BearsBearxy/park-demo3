@@ -38,16 +38,17 @@ class AnalysisSettingApiIT extends AbstractMysqlIT {
     void reloadCacheAfterRollback() { cache.reload(); }
 
     /**
-     * 破坏验证:PermissionRegistry 的 PUT 规则改成 analysis:view → 只读的人存上了,403 那句红;
+     * 破坏验证:PermissionRegistry 的 PUT 规则改成分析屏查看 → 只读的人存上了,403 那句红;
      * save() 里不调 changes.record → 记录那句红;「改前」不取默认值(没存过记 —)→ 记录那句红;
      * 去掉下限判断 → 收缴率 40 存上了,400 那句红。
      */
     @Test
-    void onlyReportEditCanChange_everyoneReadsTheSameCopy_everyChangeIsLogged() throws Exception {
+    void onlyTheOwningScreensEditCanChange_everyoneReadsTheSameCopy_everyChangeIsLogged() throws Exception {
         jdbc.update("DELETE FROM analysis_setting");   // 事务里删,用例结束回滚
         String a = admin();
-        String viewer = login(mkUser(a, "it-ana-view", mkRole(a, "it_ana_view", "[\"analysis:view\"]")), PASS);
-        String editorName = mkUser(a, "it-ana-edit", mkRole(a, "it_ana_edit", "[\"analysis:view\",\"report:edit\"]"));
+        String viewer = login(mkUser(a, "it-ana-view", mkRole(a, "it_ana_view", "[\"cockpit:view\"]")), PASS);
+        // v4(RBAC-SPEC §15.6):六项各归一屏,收缴率目标归现金流量分析、光伏投资归光伏投资回收
+        String editorName = mkUser(a, "it-ana-edit", mkRole(a, "it_ana_edit", "[\"fin-cashflow:edit\",\"pv-roi:edit\"]"));
         String editor = login(editorName, PASS);
 
         // 没存过:一项都不回(前端用默认值)
@@ -74,13 +75,24 @@ class AnalysisSettingApiIT extends AbstractMysqlIT {
             List.of("经营分析", "光伏投资 (万)", "按各期工程成本合计", "1478.7"),
             List.of("经营分析", "光伏投资 (万)", "1478.7", "按各期工程成本合计"));
 
-        // 有账簿报表、没有经营分析查看权的账号(内置角色没有这种,客户能配):PUT 只回它送来的那几项。
-        // 回整份的话,一次值没变的「保存」就把要 analysis:view 才读得到的光伏投资额等读走了(对抗复查 SEC-7)。
+        // 只能改一项的账号:PUT 只回它送来的那几项。回整份的话,一次值没变的「保存」就把别的项读走了(对抗复查 SEC-7)。
         // 破坏验证:save() 改回 return get() → 红
-        String repOnly = login(mkUser(a, "it-ana-rep", mkRole(a, "it_ana_rep", "[\"report:edit\"]")), PASS);
+        String repOnly = login(mkUser(a, "it-ana-rep", mkRole(a, "it_ana_rep", "[\"fin-cashflow:edit\"]")), PASS);
         String echo = save(repOnly, "{\"collectTarget\":95}");
         assertThat((int) JsonPath.read(echo, "$.code")).as(echo).isZero();
         assertThat(JsonPath.<Map<String, Object>>read(echo, "$.data")).containsOnlyKeys("collectTarget");
+
+        // 每一项要它归属那一屏的编辑:只有「出租与楼栋 · 编辑」的人改收缴率目标 403、改出租率目标照存;
+        // 一次带两项、其中一项不归他 → 整次 403,哪一项都不存
+        // 破坏验证:AnalysisSettingService 去掉按项 require → 第一条红
+        String parkOnly = login(mkUser(a, "it-ana-park", mkRole(a, "it_ana_park", "[\"park:edit\"]")), PASS);
+        String denied = save(parkOnly, "{\"collectTarget\":90}");
+        assertThat((int) JsonPath.read(denied, "$.code")).as(denied).isEqualTo(403);
+        assertThat((String) JsonPath.read(denied, "$.message")).contains("现金流量分析 · 编辑");
+        assertThat((int) JsonPath.read(save(parkOnly, "{\"occTarget\":92,\"collectTarget\":90}"), "$.code")).isEqualTo(403);
+        assertThat(JsonPath.<Map<String, Object>>read(fetch(viewer), "$.data")).doesNotContainKey("occTarget");
+        assertThat((int) JsonPath.read(save(parkOnly, "{\"occTarget\":92}"), "$.code")).isZero();
+        assertThat(num(fetch(viewer), "$.data.occTarget")).isEqualTo(92.0);
 
         // 超范围 / 不认识的项:整次不存,说清哪一项、该填多少
         String bad = save(editor, "{\"churnTh\":70,\"collectTarget\":40}");

@@ -92,7 +92,7 @@ public class MeterService {
     private final MeterBookSeenMapper bookSeen;    // 本月册子已核(SPEC §10):导入记、撤销与批删删、列表读
     private final BillNoticeLineMapper noticeLines; // 删表前查 fk_line_meter(RESTRICT):先说清在哪几个月的单里,不撞 FK
     private final TenantMapper tenants;             // 批删被已确认的单挡住时点户名
-    private final PermissionGuard perms;            // 批删连带删草稿催缴单 = 出账运行那一档(同 generate)
+    private final PermissionGuard perms;            // 批删 / 删表连带删草稿催缴单 = 催缴单 · 编辑;导入改倍率 = 园区抄表 · 表档案
     private final AuditLogService audit;            // 删表(连带删掉的催缴单)不可逆,要留痕
     private final ChangeLogService changes;         // 手改读数逐格留改前改后(用户 2026-10-05 拍板第 4 条)
 
@@ -742,7 +742,7 @@ public class MeterService {
     /**
      * 删草稿/已作废催缴单之前的同一道闸(批删整月的单、删表时明细里有它的那几张共用)。statuses 须是锁定读
      * (FOR UPDATE)读到的:并发提交的确认读得到。有已确认/已导出(含历史签发)→ 409 locked;只有草稿/已作废而
-     * 没勾 → 409 ask;勾了 → 催缴单这几个月的审核锁 423 + 出账运行权限(与 generate 先删 draft/void 再重出同一道闸)。
+     * 没勾 → 409 ask;勾了 → 催缴单这几个月的审核锁 423 +「催缴单 · 编辑」(与 generate 先删 draft/void 再重出同一道闸)。
      * 只判不写:真正的删(dropNotices)由调用方在自己其余的检查之后做。
      */
     private void guardOpenNotices(List<String> statuses, java.util.Collection<String> months, boolean drop,
@@ -751,7 +751,7 @@ public class MeterService {
         if (statuses.isEmpty()) return;
         if (!drop) throw new BizException(ResultCode.CONFLICT, ask);
         reviewGuard.assertEditable(ReviewKind.BILL_NOTICES, months, null);
-        perms.require(Perm.BILLING_RUN_EDIT, "催缴单");
+        perms.require(Perm.BILL_NOTICES_EDIT);
     }
 
     // 明细行与告警随单 FK CASCADE 连删(V89 fk_line_notice、V126 fk_warn_notice)
@@ -1243,12 +1243,12 @@ public class MeterService {
                     && row.factor().compareTo(archived) != 0;                                    // G7 会写回档案
                 boolean movesSnap = row.factor() != null && row.factor().compareTo(current) != 0;
                 if (movesArchive || movesSnap) {
-                    if (canFactor == null) canFactor = perms.has(Perm.METER_MASTER_EDIT);
+                    if (canFactor == null) canFactor = perms.has(Perm.METERS_ARCHIVE);
                     if (!canFactor) {
                         factorDenied = true;
                         factorKept = current;
                         factorNote = "表「" + hit.meter.getName() + "」本行倍率 " + plain(row.factor()) + " 与系统里现有的 "
-                            + plain(current) + " 不同:没有「" + Perm.label(Perm.METER_MASTER_EDIT) + "」权限,倍率没有改"
+                            + plain(current) + " 不同:没有「" + Perm.label(Perm.METERS_ARCHIVE) + "」权限,倍率没有改"
                             + (read ? ",本行读数按 " + plain(current) + " 计" : "");
                     }
                 }

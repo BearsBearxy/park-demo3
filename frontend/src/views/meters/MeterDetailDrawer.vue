@@ -57,11 +57,11 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; reload: [] }>()
 
 // RBAC v2:一个编辑模式,两把权限(RBAC-SPEC §6 点名本文件)——
-// 档案页与合同绑定(倍率/位置/归属/绑定/删表)= meter-master:edit;历史读数增删改 = meter-reading:edit。
+// 档案页与合同绑定(倍率/位置/归属/绑定/删表)= meters:archive;历史读数增删改 = meters:edit。
 // 无权那半边照常显示全部数据,只是不出编辑控件。
 const auth = useAuthStore()
-const editProfile = computed(() => props.editMode && auth.can('meter-master:edit'))
-const editReading = computed(() => props.editMode && auth.can('meter-reading:edit'))
+const editProfile = computed(() => props.editMode && auth.can('meters:archive'))
+const editReading = computed(() => props.editMode && auth.can('meters:edit'))
 
 const m = computed(() => props.row?.m ?? null)
 

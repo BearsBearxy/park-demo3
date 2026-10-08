@@ -178,7 +178,7 @@ async function open(readings: MeterReadingDTO[] = READINGS_OK) {
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['meter-reading:edit', 'meter-master:edit']
+  useAuthStore().permissions = ['meters:edit', 'meters:archive']
   useBillingPeriodStore().pick(2025, 3)
   for (const k of Object.keys(query)) delete query[k]
   vi.clearAllMocks()

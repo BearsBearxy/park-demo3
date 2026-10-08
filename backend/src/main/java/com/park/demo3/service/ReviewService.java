@@ -325,7 +325,7 @@ public class ReviewService {
     public void submit(String rawKey) {
         ReviewKey key = ReviewKey.parse(rawKey);
         requireAnyPerm(key.kind().perms(),
-            "没有「" + key.kind().label() + "」的录入权限,交不了审");
+            "交审「" + key.kind().label() + "」需要" + Perm.needText(key.kind().perms()));
 
         ReviewState s = states.selectById(key.raw());
         String cur = s == null ? "entered" : s.getStatus();
@@ -432,7 +432,7 @@ public class ReviewService {
         ReviewKey key = ReviewKey.parse(rawKey);
         // 顺序照 submit:先权限后状态 —— 没有这张表录入权的人,连「它现在是什么态」都不该从报错里读出来
         requireAnyPerm(key.kind().perms(),
-            "没有「" + key.kind().label() + "」的录入权限,撤不了审");
+            "撤回「" + key.kind().label() + "」的交审需要" + Perm.needText(key.kind().perms()));
         ReviewState s = requireStatus(key, "submitted", "撤回");
 
         // me() 取不到时回的是**空串不是 null**,反过来写(s.getSubmittedBy().equals(me()))在这一列为空时 NPE

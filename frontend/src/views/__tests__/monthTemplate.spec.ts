@@ -109,7 +109,7 @@ const heads = (w: { findAll: (s: string) => { text: () => string }[] }) =>
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['entry:edit']
+  useAuthStore().permissions = ['ledger:edit', 'sales-income:edit']
   vi.mocked(booksApi.list).mockImplementation((screen: string) =>
     Promise.resolve(screen === 's10' ? [s10Tip] : [ledgerTip]))
   vi.mocked(booksApi.templateAt).mockReset()

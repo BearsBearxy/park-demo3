@@ -143,11 +143,12 @@ class ChargingImportApiIT extends AbstractMysqlIT {
 
     // ── scheduleNo 非白名单 → 404(code in body) ──
     @Test
-    void import_badScheduleNo_returns404InBody() throws Exception {
+    void import_badScheduleNo_isDeniedAtTheUrl() throws Exception {
+        // v4 起附表号按段拆到屏,7 / 8 之外落显式拒绝(RBAC-SPEC §15.5 铁律 4),到不了 service 那道 404
         mvc.perform(post("/api/charging/99/import").header("Authorization", auth())
                 .contentType("application/json").content("{\"rows\":[]}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(404));
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403));
     }
 
     @Test

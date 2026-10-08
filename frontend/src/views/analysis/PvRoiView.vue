@@ -11,7 +11,7 @@ import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import { fetchPvAll, fetchPvPhases } from '@/analysis/anaData'
-import { anaSettings } from '@/analysis/anaSettings'
+import { anaSettings, anaSettingsLock } from '@/analysis/anaSettings'
 import { finWan } from '@/utils/finFmt'
 import { fnum, hues } from '@/components/ana/anaFmt'
 import { CALLOUT, calloutMark } from '@/components/ana/anaTheme'
@@ -41,6 +41,12 @@ onMounted(async () => {
 const invest = computed(() => (anaSettings.pvInvestment > 0
   ? anaSettings.pvInvestment * 10000
   : phases.value.reduce((a, p) => a + (p.cost ?? 0), 0)))
+// 投资额没填时的空态副句:改不了的人多半句写明要哪一项(RBAC v4:光伏投资归本屏的编辑)。
+// computed 是懒的:只在那张空态卡画出来时才碰登录态
+const investHint = computed(() => {
+  const lock = anaSettingsLock('pvInvestment')
+  return '点右上角「目标与阈值」，填光伏投资（万元）后才能算回收进度' + (lock ? '；' + lock : '')
+})
 
 // ── 分期汇总(v1 rows 同口径)+ 全园合计 ──
 const rows = computed(() => phaseSummaries(phases.value, records.value))
@@ -224,7 +230,7 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
       <AnaEmpty
         v-else-if="!(invest > 0)"
         label="光伏投资额未填"
-        hint="点右上角「目标与阈值」，填光伏投资（万元）后才能算回收进度；全园区共用这一个数，要有「账簿报表」权限才能填"
+        :hint="investHint"
       />
 
       <template v-else>

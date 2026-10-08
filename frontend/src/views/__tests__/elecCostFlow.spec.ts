@@ -97,10 +97,10 @@ const METRICS: ElecMetricDTO[] = [
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  // param-policy:edit 必须在权限种子里 —— commitCfg/onSimulate 判的是 editC
+  // elec-cost:price 必须在权限种子里 —— commitCfg/onSimulate 判的是 editC
   // (= editMode && !loadErr && canPrice)。缺了它 canPrice 恒假,把 editC 里的
   // editMode 项删掉(浏览态守卫没了)测试照样绿,⑦ 那两条断言等于没写。
-  useAuthStore().permissions = ['entry:edit', 'param-policy:edit']
+  useAuthStore().permissions = ['elec-cost:edit', 'elec-cost:price']
   vi.clearAllMocks()
   localStorage.clear()
   for (const k of Object.keys(query)) delete query[k]
@@ -358,7 +358,7 @@ describe('电费成本总览 · ⑦ 浏览态下每个写函数都打不出去',
     // ⚠ 前置状态必须做足(本仓栽过四次):entries 有值(commitAmount/commitNote 的
     //   cur/e 才存在,否则在自己原有的早退分支就 return 了)、mForm 填好、ask 恒真(beforeEach)、
     //   cfgs 有行 —— 守卫删掉照样绿的断言等于没写。
-    // ⚠ commitCfg/onSimulate 判 editC:param-policy:edit 已在权限种子里(见 beforeEach),
+    // ⚠ commitCfg/onSimulate 判 editC:elec-cost:price 已在权限种子里(见 beforeEach),
     //   让「editC 里的 editMode 项被删」这种破坏真的能走到发请求那一步。
     vi.mocked(elecCostApi.entries).mockResolvedValue(ENTRIES as never)
     vi.mocked(elecCostApi.upsertEntry).mockResolvedValue(ENTRIES[0] as never)
@@ -898,7 +898,7 @@ describe('电费成本总览 · 提示件(S4)', () => {
   const emptySub = (x: ReturnType<typeof mount>) => x.findAll('.ec-listcard')[0].find('.fp-empty.ec-empty').text()
   it('❗空月那句:只有录入权(没有计费口径权)不提模拟填充', async () => {
     ourPark()
-    useAuthStore().permissions = ['entry:edit']
+    useAuthStore().permissions = ['elec-cost:edit']
     const w = await toTable()
     expect(emptySub(w)).toContain('进入「编辑模式」后可以逐格录入金额,或点「导入」上传 Excel。')
     expect(emptySub(w)).not.toContain('模拟填充')

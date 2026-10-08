@@ -124,9 +124,9 @@ public class DataHomeService {
             new DataHomeOverviewDTO.Period(year, month, year + "年" + month + "月"),
             months,
             buildBlockers(contractNoLine, paramStale, ps.staleSources()),
-            // 本月出账对数据层任一 view 开放,催缴单总额另按 billing:view 判:没有就只报张数(RBAC-SPEC §11 规则 5)
+            // 催缴单总额另按「催缴单 · 查看」判:没有就只报张数(RBAC-SPEC §15.6)
             buildChain(ps.priceOk(), ps.priceTotal(), readings, pool, loss, notices.size(),
-                SensitiveMask.holds(Perm.BILLING_VIEW) ? noticeTotal : null, noticeWarn,
+                SensitiveMask.holds(Perm.BILL_NOTICES_VIEW) ? noticeTotal : null, noticeWarn,
                 (nym.startsWith(ym.substring(0, 4)) ? "" : nym.substring(0, 4) + "年")   // 12 月那批的单在次年
                     + Integer.parseInt(nym.substring(5, 7)) + "月的单"),
             new DataHomeOverviewDTO.Schedules(done, 13, items));

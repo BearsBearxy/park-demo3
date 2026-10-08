@@ -53,7 +53,7 @@ const INTERACTIVE_STATE =
 /** v-if / v-else-if 同一个形状，一起抓。前面必须是空白，免得别的属性名尾巴误命中 */
 const VIF_TAG = /<([a-zA-Z][\w-]*)((?:"[^"]*"|'[^']*'|[^>"'])*?)\sv-(?:else-)?if="([^"]*)"((?:"[^"]*"|'[^']*'|[^>"'])*)>/g
 
-/** 条件里的字符串字面量要先抠掉：auth.can('master:edit') 里的 edit 是权限码，不是编辑态 */
+/** 条件里的字符串字面量要先抠掉：auth.can('buildings:edit') 里的 edit 是权限码，不是编辑态 */
 const stripLiterals = (s: string) => s.replace(/'[^']*'|"[^"]*"|`[^`]*`/g, "''")
 
 /**

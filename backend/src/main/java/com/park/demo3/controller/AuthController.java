@@ -68,9 +68,9 @@ public class AuthController {
     @GetMapping("/elevate")
     public java.util.List<GrantDTO> currentElevation() { return elevation.current(); }
 
-    // 权限点字典。/api/system/perms 也返回同一份,但那条要 system:view ——
-    // 而提权弹窗要给**财务专员**看「你缺的是哪几项」,他没有 system:view。
-    // 这是个纯静态目录(键+人话名+说明+模块键+种类),零敏感信息,读规则表里 /api/auth/perms 任何已登录可读。
+    // 权限点字典。/api/system/perms 也返回同一份,但那条要「角色权限 · 查看」——
+    // 而提权弹窗要给**财务专员**看「你缺的是哪几项」,他没有它。
+    // 这是个纯静态目录(键+人话名+说明+所属屏+种类),零敏感信息,读规则表里 /api/auth/perms 任何已登录可读。
     // 前端据此渲染,不许自己硬编码权限点:加一个时它要自动出现。
     @io.swagger.v3.oas.annotations.Operation(summary = "权限点字典(任何已登录账号可读,提权弹窗用)")
     @GetMapping("/perms")

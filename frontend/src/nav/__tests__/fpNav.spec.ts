@@ -34,7 +34,7 @@ describe('fpNav', () => {
     expect(r['bill-notices'].layer).toBe('data')
     expect(r['bill-notices'].page).toBe('催缴单')
     expect(r['bill-notices'].kind).toBe('billNotices')
-    // 系统管理层(RBAC-SPEC §4):不进 navLayers,可见性按 system:view
+    // 系统管理层(RBAC-SPEC §4):不进 navLayers,可见性按三屏各自的查看
     expect(r['sys-users'].layer).toBe('system')
     expect(r['sys-roles'].layerLabel).toBe('系统管理')
     // 操作日志(§7 P2):三张来源表 union 的只读时间线

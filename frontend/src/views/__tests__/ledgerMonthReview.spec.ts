@@ -72,7 +72,7 @@ async function open() {
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['entry:edit']
+  useAuthStore().permissions = ['ledger:edit']
   vi.clearAllMocks()
   vi.setSystemTime(new Date('2026-06-15T00:00:00'))
   vi.mocked(booksApi.list).mockResolvedValue([bookA])

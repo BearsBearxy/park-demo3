@@ -4,7 +4,7 @@
 // ⚠ 全屏没有「删除账号」:账号只停用不删除(RBAC-SPEC §8)。删掉的账号名下有导入记录、
 //   系数簿修改历史、审核痕迹,真删了这些记录成孤儿,追责链断掉。后端也没有 DELETE /system/users。
 //
-// system 层的读门是 system:view(RBAC v3 起每个模块都有查看点):无 system:edit 的人进得来、看得见全部账号与角色,
+// 读门是「用户管理 · 查看」(v4 起每屏一项):没有「用户管理 · 编辑」的人进得来、看得见全部账号与角色,
 //   只是所有写按钮不渲染 —— 与其它屏「显示但不能改」同一口径。
 import { ref, computed, watch, onMounted, onBeforeUnmount, h, withDirectives } from 'vue'
 import { vTip } from '@/directives/tip'
@@ -35,7 +35,7 @@ import { useFormSheet } from '@/composables/useFormSheet'
 const auth = useAuthStore()
 // 新建账号 / 重置密码两个弹卡带输入 → S 档全屏 sheet(styles/form-sheet.css);停用 / 启用确认走 ask(十件 ⑨)。
 const sheet = useFormSheet()
-const canEdit = computed(() => auth.can('system:edit'))
+const canEdit = computed(() => auth.can('sys-users:edit'))
 // 系统管理分级(RBAC-SPEC §12,用户 2026-10-04 拍板):不是系统管理员的,只能管「不是系统管理员、权限全在自己手里」的
 // 账号与角色。后端按守卫同一条判据给了 manageable,这里照着置灰并说为什么 —— 不让人点进一个注定 403 的弹窗。
 const rangeTip = (u: UserDTO) => (u.roles.some(r => r.code === 'admin')
@@ -191,7 +191,7 @@ const columns = computed<SortableColumn<UserDTO>[]>(() => {
       render: (u: UserDTO) => h('span', { style: { color: 'var(--text-muted)', fontSize: '12px' } }, fmtTime(u.createdAt)),
     },
   ]
-  // 无 system:edit 时整列不渲染(而不是渲染一排点了会 403 的按钮)
+  // 无 sys-users:edit 时整列不渲染(而不是渲染一排点了会 403 的按钮)
   if (canEdit.value) {
     cols.push({
       key: 'ops', header: '操作', width: '250px', align: 'right' as const,

@@ -7,6 +7,8 @@ import FPConfirmHost from '@/components/fp/FPConfirmHost.vue'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
 import { askQueue } from '@/utils/ask'
+import { grantViews } from '@/test-utils/perms'
+import { receipts } from '@/utils/receipt'
 
 /**
  * 链路条 / 期间条(2026-08-28 设计稿 §⑤)。
@@ -31,7 +33,27 @@ function mk(current = 'alloc') {
 }
 
 describe('FPStepStrip', () => {
-  beforeEach(() => { vi.clearAllMocks(); setActivePinia(createPinia()); localStorage.clear() })
+  beforeEach(() => { vi.clearAllMocks(); setActivePinia(createPinia()); localStorage.clear(); grantViews() })
+
+  // RBAC v4:看不了的那一步置灰、悬停写缺哪一项,点了不跳(不把人送进「无权查看」页)。
+  // 破坏验证:去掉 :disabled="!!lack(s.value)" → 第一条红;go() 里去掉 blocked → 第二条红
+  it('❗看不了的那一步:置灰、悬停写缺「园区抄表 · 查看」,别的步照常', () => {
+    useAuthStore().permissions = useAuthStore().permissions.filter(p => p !== 'meters:view')
+    const w = mk()
+    const step = (t: string) => w.findAll('.fss-step').find(s => s.text() === t)!
+    expect(step('园区抄表').attributes('disabled')).toBeDefined()
+    expect(step('楼栋损耗').attributes('disabled')).toBeUndefined()
+    expect((step('园区抄表').element as HTMLElement & { _tip?: { text: string } })._tip?.text).toBe('需要「园区抄表 · 查看」权限')
+  })
+
+  it('❗看不了的那一步:直接走 go(窄档箭头 / 面板同一条)不跳,说一句原因', async () => {
+    useAuthStore().permissions = useAuthStore().permissions.filter(p => p !== 'meters:view')
+    const w = mk()
+    ;(w.vm as unknown as { go: (s: Step) => void }).go(STEPS[1])
+    await flushPromises()
+    expect(push).not.toHaveBeenCalled()
+    expect(receipts.at(-1)?.text).toContain('请找系统管理员开通')
+  })
 
   // ❗TAB-BAR-SPEC §2 例外:同一条出账工序链上一步一步走,在当前页签里换,不开新页签
   it('❗点别的工序:在当前页签里换(盖过「内容区里点出来的开在右边」)', async () => {

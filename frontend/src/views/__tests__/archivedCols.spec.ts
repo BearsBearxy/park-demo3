@@ -64,7 +64,7 @@ function ledgerCell(w: ReturnType<typeof mountLedger>, label: string) {
 describe('归档列 · 台账', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    useAuthStore().permissions = ['entry:edit']
+    useAuthStore().permissions = ['ledger:edit']
   })
 
   it('月度 DTO 的 archivedCols 进「已归档」组,浏览态显示已发生的钱', () => {
@@ -127,7 +127,7 @@ vi.mock('vue-router', () => ({
 describe('归档列 · 附表10', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    useAuthStore().permissions = ['entry:edit']
+    useAuthStore().permissions = ['sales-income:edit']
   })
 
   it('S10View 把本月 archivedCols 喂给版面,归档列出现在表头', async () => {

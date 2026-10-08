@@ -43,13 +43,13 @@ beforeEach(() => {
   vi.clearAllMocks()
   askQueue.splice(0)
   receipts.splice(0)
-  useAuthStore().permissions = ['entry:edit']
+  useAuthStore().permissions = ['utilities:edit']
 })
 
 const hdr = (props: Record<string, unknown> = {}) => mount(SchedHeader, {
   props: {
     icon: 'wallet', title: '附表10 · 销售收入', year: 2025,
-    edit: true, perm: 'entry:edit', scope: null, showImport: true, ...props,
+    edit: true, perm: 'utilities:edit', scope: null, showImport: true, ...props,
   },
 })
 const importBtn = (w: ReturnType<typeof hdr>) => w.findAll('button').find(b => b.text().includes('导入 Excel'))!

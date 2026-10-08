@@ -101,7 +101,7 @@ describe('分析屏的跨层链接必须问过 canReach', () => {
     expect(offenders,
       `分析屏上有通往别的层的链接没问过「这个人回得来吗」。园区股东只有经营分析层,\n`
       + `点进去之后侧边栏里没有那一层的入口,他自己回不来。\n`
-      + `改法:v-if 里加 canReach('<目标>', auth.navLayers, auth.can('system:view'))。\n${offenders.join('\n')}`)
+      + `改法:v-if 里加 canReach('<目标>', auth.navLayers, auth.can)。\n${offenders.join('\n')}`)
       .toEqual([])
     // 一条跨层链接都没有也是合法状态(全改用 AnaEmpty 了),所以这里不设下限;
     // 空扫由上面「扫到了几个文件」与「正则自证」两条挡着。

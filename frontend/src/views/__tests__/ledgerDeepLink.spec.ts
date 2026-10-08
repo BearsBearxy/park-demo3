@@ -55,7 +55,7 @@ import { ledgerApi, companyApi } from '@/api/ledger'
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['entry:edit']
+  useAuthStore().permissions = ['ledger:edit']
   vi.clearAllMocks()
   for (const k of Object.keys(query)) delete query[k]
   // ?tenant= 命中行会 scrollIntoView,jsdom 没实现(既有两份 spec 的 tenant 都是空串,没踩到)

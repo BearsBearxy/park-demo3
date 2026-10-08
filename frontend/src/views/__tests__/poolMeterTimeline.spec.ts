@@ -95,7 +95,7 @@ interface Vm { openPoolDlg: (r?: AllocPoolRowDTO) => void; form: { meters: { met
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['billing-run:edit', 'param-policy:edit']
+  useAuthStore().permissions = ['alloc:edit', 'alloc:pools']
   vi.mocked(metersApi.meterReadings).mockReset()
 })
 

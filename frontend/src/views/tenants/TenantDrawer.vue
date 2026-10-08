@@ -113,20 +113,20 @@ const subtitle = computed(() => {
     </template>
 
     <template #footer>
-      <Button v-if="auth.can('master:edit')" variant="danger" size="sm" :disabled="delBusy" @click="askDelete">
+      <Button v-if="auth.can('tenants:edit')" variant="danger" size="sm" :disabled="delBusy" @click="askDelete">
         <template #leading>
           <component :is="iconFor('trash-2')" :size="14" />
         </template>
         删除
       </Button>
-      <Button v-if="auth.can('master:edit')" variant="gray" size="sm" @click="emit('edit')">
+      <Button v-if="auth.can('tenants:edit')" variant="gray" size="sm" @click="emit('edit')">
         <template #leading>
           <component :is="iconFor('pencil')" :size="14" />
         </template>
         编辑
       </Button>
-      <!-- 新增合同=合同写(contract:edit),与租户档案的 master:edit 分属两个权限点 -->
-      <Button v-if="auth.can('contract:edit')" variant="filled" size="sm">
+      <!-- 新增合同=合同写(contracts:edit),与租户档案的 tenants:edit 分属两个权限点 -->
+      <Button v-if="auth.can('contracts:edit')" variant="filled" size="sm">
         <template #leading>
           <component :is="iconFor('plus')" :size="14" />
         </template>

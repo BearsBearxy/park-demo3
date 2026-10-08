@@ -35,6 +35,7 @@ import {
 } from '@/utils/paramCenterLogic'
 import { LOSS_BASE_FORM_B_TEMPLATE, PARAM_DEFS, paramDef, writePlan, type ParamMode } from '@/utils/paramRegistry'
 import { useAuthStore, approxDirty } from '@/stores/auth'
+import { useViewGate } from '@/composables/useViewGate'
 import { useZonesStore } from '@/stores/zones'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { chainStepsOf, noticeYmOf } from '@/nav/billingChain'
@@ -62,7 +63,7 @@ import { useEditMode } from '@/composables/useEditMode'
 
 const auth = useAuthStore()
 // RBAC:月度录入(照抄供电局账单)、长期计费口径、重算(跑一次出账)—— 三扇门
-const canRun = computed(() => auth.can('billing-run:edit'))
+const canRun = computed(() => auth.can('params:recalc'))
 const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
 const idOf = (scope: string) => Number(scope.slice(scope.indexOf(':') + 1))
 
@@ -73,7 +74,7 @@ const idOf = (scope: string) => Number(scope.slice(scope.indexOf(':') + 1))
 const reviewLabel = computed(() => `计费参数 · ${ym.value}`)
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
         lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip, reviewKeys } =
-  useEditMode(['param-monthly:edit', 'param-policy:edit', 'billing-run:edit'], {
+  useEditMode(['params:monthly', 'params:edit', 'params:recalc'], {
     scope: () => S.paramCenter(year.value, month.value),
     // 审核键(§7.1):计费参数每月一把。ym 为空 = 还在选期门,没有月可审。
     reviewKey: () => (ym.value ? `params:${ym.value}` : null),
@@ -170,6 +171,7 @@ function refreshChanges() {
 //    期归 useChainDeepPeriod;分析层来的 adopt=YYYY-12 只认领不覆盖;edit=1 只进编辑态,不自动弹卡 ──
 const route = useRoute()
 const router = useRouter()
+const { blocked } = useViewGate()
 const tabs = useTabsStore()
 const sec = ref<Sec>('park')
 const parkOpen = reactive({ monthly: true, constant: true })
@@ -575,6 +577,7 @@ async function submitEx() {
 }
 // 深链协议同 gotoParams:KeepAlive 缓存实例只在 setup 消费 query,不换 epoch 就读不到
 function gotoCoefBook() {
+  if (blocked('/bill-notices')) return   // 系数簿长在催缴单屏上:看不了那一屏就不跳
   tabs.openFresh('bill-notices', { pin: true })
   // 催缴单屏的 p 是催缴单月(收费月)= 本月 +1;它落期时折回本月,系数簿照旧开本月(billingChain「催缴单的月份」)
   router.push({ path: '/bill-notices', query: { p: noticeYmOf(ym.value), coef: '1' } })

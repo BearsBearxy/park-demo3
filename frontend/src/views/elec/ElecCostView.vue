@@ -50,9 +50,9 @@ const auth = useAuthStore()
 const appCfg = useAppConfigStore()
 // 新增电表弹卡带输入 → S 档全屏 sheet(styles/form-sheet.css)
 const sheet = useFormSheet()
-// RBAC:费项/表名录入是 entry;电价参数是计费口径,归 param-policy(simulate 会写 price-cfg,同门)
-const canEntry = computed(() => auth.can('entry:edit'))
-const canPrice = computed(() => auth.can('param-policy:edit'))
+// RBAC:费项/表名录入 = 附表11 编辑;电价参数单列「附表11 电费成本 · 电价口径」(simulate 会写 price-cfg,同门)
+const canEntry = computed(() => auth.can('elec-cost:edit'))
+const canPrice = computed(() => auth.can('elec-cost:price'))
 
 // ── 编辑模式(EDIT-MODE-SPEC v2):不跨会话,组件 ref;KeepAlive 切页签回来也回浏览态(安全默认) ──
 // 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
@@ -65,7 +65,7 @@ const canPrice = computed(() => auth.can('param-policy:edit'))
 const reviewLabel = computed(() => `园区电费模型 · ${acctMonth.value}`)
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
         lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip, reviewKeys } =
-  useEditMode(['entry:edit', 'param-policy:edit'], {
+  useEditMode(['elec-cost:edit', 'elec-cost:price'], {
     scope: () => S.elecCost(year.value, month.value),
     // 改动数(02-A 离开确认):金额 / 备注 / 电价都是即时提交,没有草稿;开着的新增电表 / 导入弹窗算一处
     dirty: approxDirty(() => (meterDlg.value || importing.value ? 1 : 0)),

@@ -13,7 +13,7 @@ export function periodNote(selected: string, used: string): string {
 <script setup lang="ts">
 // P3 分析层外壳(视觉 1:1 app/screen-analysis.jsx anx-* 工具条):
 // 期间控制(按月/按年/年月下拉/步进,可用范围由真数据派生)+「目标与阈值」设置弹层
-// (2026-10-05 起存库、全员一份,没有账簿报表编辑权的人只读,见 analysis/anaSettings.ts)。
+// (2026-10-05 起存库、全员一份;v4 起每一项要所属那一屏的编辑权,见 analysis/anaSettings.ts)。
 // 期间/阈值均为模块级单例 —— 屏组件直接 import usePeriod()/anaSettings 消费,切屏不丢。
 // v2(2026-07-08):工具条右侧对比开关(仅当屏传 compare 支持集才显示;useCompare 单例,屏自行
 // 同支持集调 useCompare 读 mode)+ 可选 #kpis 槽(紧贴工具条下,.av2-kpis 容器)。均可选 → 现屏零改动。
@@ -24,7 +24,7 @@ import { Comment, Fragment, computed, onMounted, onUnmounted, ref, useSlots, wat
 import { iconFor } from '@/components/ds/icon'
 import { fetchAvailableMonths } from '@/analysis/anaData'
 import { providePeriodMonths, usePeriod } from '@/analysis/usePeriod'
-import { anaSettings, anaSettingsLock, resetAnaSettings, saveAnaSettings } from '@/analysis/anaSettings'
+import { ANA_SETTING_SCREEN, anaSettings, anaSettingsLock, resetAnaSettings, saveAnaSettings } from '@/analysis/anaSettings'
 import { receipt } from '@/utils/receipt'
 import { useCompare, type CompareMode } from '@/analysis/useCompare'
 import AnaPill from '@/components/ana/AnaPill.vue'
@@ -146,12 +146,22 @@ onUnmounted(() => {
   document.removeEventListener('keydown', onKey, true)
 })
 
-// 目标与阈值全员一份(用户 2026-10-05 拍板第 2 条):没有账簿报表编辑权的人框都置灰,弹层里写一句原因。
+// 目标与阈值全员一份(用户 2026-10-05 拍板第 2 条)。RBAC v4(2026-10-09):六项各归一屏,改哪一项要那一屏的编辑权 ——
+// 改不了的框各自置灰、悬停写缺哪一项;弹层里一句总说明。「恢复默认」只送自己能改的那几项,一项都改不了时置灰。
 // 只在弹层打开时才算(弹层在 v-if 里):不开弹层的屏和测试不碰登录态。
-const lock = computed(anaSettingsLock)
+type SettingKey = keyof typeof ANA_SETTING_SCREEN
+const SETTING_KEYS = Object.keys(ANA_SETTING_SCREEN) as SettingKey[]
+const locks = computed(() => Object.fromEntries(SETTING_KEYS.map((k) => [k, anaSettingsLock(k)])) as Record<SettingKey, string>)
+const editable = computed(() => SETTING_KEYS.filter((k) => !locks.value[k]))
+// 只锁一项:那一项的原话(写明要哪一屏的编辑);锁两项以上:一句总说明,哪一项要哪一屏看框上的悬停
+const lockNote = computed(() => {
+  const off = SETTING_KEYS.filter((k) => locks.value[k])
+  if (off.length === 1) return locks.value[off[0]]
+  return off.length ? '全园区共用这一份目标与阈值，置灰的项各要它所属那一屏的编辑权限才能改（停在框上看是哪一屏）' : ''
+})
 const failed = (e: unknown) => receipt.fail((e as { message?: string })?.message ?? '没存上，请重试')
 
-async function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedRatio' | 'pvInvestment' | 'spikeTh', e: Event) {
+async function onNum(key: SettingKey, e: Event) {
   const el = e.target as HTMLInputElement
   const v = Number(el.value)
   try {
@@ -228,21 +238,21 @@ async function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakeven
           </button>
           <div v-if="pop" class="anx-pop" @click.stop>
             <h4>目标与阈值</h4>
-            <p v-if="lock" class="anx-lock">{{ lock }}</p>
+            <p v-if="lockNote" class="anx-lock">{{ lockNote }}</p>
             <div class="anx-fld"><label>出租率目标 (%)</label>
-              <input type="number" min="50" max="100" :disabled="!!lock" :value="anaSettings.occTarget" @change="onNum('occTarget', $event)" /></div>
+              <input type="number" min="50" max="100" :disabled="!!locks.occTarget" v-tip="locks.occTarget" :value="anaSettings.occTarget" @change="onNum('occTarget', $event)" /></div>
             <div class="anx-fld"><label>收缴率目标 (%)</label>
-              <input type="number" min="50" max="100" :disabled="!!lock" :value="anaSettings.collectTarget" @change="onNum('collectTarget', $event)" /></div>
+              <input type="number" min="50" max="100" :disabled="!!locks.collectTarget" v-tip="locks.collectTarget" :value="anaSettings.collectTarget" @change="onNum('collectTarget', $event)" /></div>
             <div class="anx-fld"><label>风险线/流失预警 (分)</label>
-              <input type="number" min="30" max="90" :disabled="!!lock" :value="anaSettings.churnTh" @change="onNum('churnTh', $event)" /></div>
+              <input type="number" min="30" max="90" :disabled="!!locks.churnTh" v-tip="locks.churnTh" :value="anaSettings.churnTh" @change="onNum('churnTh', $event)" /></div>
             <div class="anx-fld"><label>能耗突变阈值 (%)</label>
-              <input type="number" min="10" max="200" :disabled="!!lock" :value="anaSettings.spikeTh" @change="onNum('spikeTh', $event)" /></div>
+              <input type="number" min="10" max="200" :disabled="!!locks.spikeTh" v-tip="locks.spikeTh" :value="anaSettings.spikeTh" @change="onNum('spikeTh', $event)" /></div>
             <div class="anx-fld"><label>固定成本占比</label>
-              <input type="number" min="0" max="1" step="0.01" :disabled="!!lock" :value="anaSettings.breakevenFixedRatio" @change="onNum('breakevenFixedRatio', $event)" /></div>
+              <input type="number" min="0" max="1" step="0.01" :disabled="!!locks.breakevenFixedRatio" v-tip="locks.breakevenFixedRatio" :value="anaSettings.breakevenFixedRatio" @change="onNum('breakevenFixedRatio', $event)" /></div>
             <div class="anx-fld"><label>光伏投资 (万)</label>
-              <input type="number" min="0" :disabled="!!lock" :value="anaSettings.pvInvestment || ''" placeholder="按各期成本" @change="onNum('pvInvestment', $event)" /></div>
+              <input type="number" min="0" :disabled="!!locks.pvInvestment" v-tip="locks.pvInvestment" :value="anaSettings.pvInvestment || ''" placeholder="按各期成本" @change="onNum('pvInvestment', $event)" /></div>
             <div style="display: flex; justify-content: space-between; margin-top: 4px">
-              <button class="anx-link" :disabled="!!lock" @click="resetAnaSettings().catch(failed)">恢复默认</button>
+              <button class="anx-link" :disabled="!editable.length" @click="resetAnaSettings(editable).catch(failed)">恢复默认</button>
               <button class="anx-link" style="color: var(--text-primary); font-weight: 600" @click="pop = false">完成</button>
             </div>
           </div>

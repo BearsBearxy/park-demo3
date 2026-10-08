@@ -6,7 +6,7 @@ import { join } from 'node:path'
 //
 // 2026-08-22 用户截图抓到：月度台账对只读账号显示了「保存」「取消」。根因是
 //
-//     <Button v-if="!edit && auth.can('entry:edit')">编辑模式</Button>
+//     <Button v-if="!edit && auth.can('ledger:edit')">编辑模式</Button>
 //     <template v-else>  <Button>取消</Button><Button>保存</Button>  </template>
 //
 // P0 给 v-if 加权限判断之前，条件只是 `!edit`，v-else 正好等于「在编辑态」。加上

@@ -130,12 +130,12 @@ describe('api 层 401:令牌刚换的那一拍', () => {
   // 破坏验证:拦截器去掉「storage 里已是另一张 → 重发」那一档 → 红
   it('❗旧令牌在途、回来时本机已换上新令牌:用新的重发一次,身份不清', async () => {
     localStorage.setItem('token', 'old')
-    localStorage.setItem('permissions', '["entry:view"]')
+    localStorage.setItem('permissions', '["ledger:view"]')
     const sent = firstDenied(() => localStorage.setItem('token', 'new'), 'relogin')
     await expect(http.get('/presence/ping')).resolves.toBe('fine')
     expect(sent).toEqual(['Bearer old', 'Bearer new'])
     expect(localStorage.getItem('token')).toBe('new')
-    expect(localStorage.getItem('permissions')).toBe('["entry:view"]')
+    expect(localStorage.getItem('permissions')).toBe('["ledger:view"]')
     expect(sessionStorage.getItem(AUTH_REASON_KEY)).toBeNull()
   })
 

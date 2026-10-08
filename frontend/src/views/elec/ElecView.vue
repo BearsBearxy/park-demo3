@@ -221,7 +221,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
           sub="对外电费进项 · 电量电费(分时)+ 基本电费 · 一期 / 二期 / 三期 · 金额单位 元"
           :year="year"
           :edit="edit"
-          perm="entry:edit"
+          perm="elec-cost:edit"
           :review-keys="reviewKeys"
           @back="goGate"
           @toggle-edit="edit = !edit"

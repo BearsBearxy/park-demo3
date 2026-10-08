@@ -45,7 +45,7 @@ describe('BookRail 账册栏', () => {
     expect(w.emitted('create')).toHaveLength(1)
   })
 
-  it('canManage=false 不渲染底部管理区(company:manage 门)', () => {
+  it('canManage=false 不渲染底部管理区(ledger:company 门)', () => {
     const w = mk({ canManage: false })
     expect(w.find('.br-create').exists()).toBe(false)
     expect(w.find('.br-delete').exists()).toBe(false)

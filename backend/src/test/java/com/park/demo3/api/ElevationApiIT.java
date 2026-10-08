@@ -57,11 +57,11 @@ class ElevationApiIT extends AbstractMysqlIT {
             // ③ 主管走过来,在专员的屏幕上输自己的账号密码
             String granted = body(mvc.perform(post("/api/auth/elevate").header("Authorization", hdr(ct))
                 .contentType("application/json")
-                .content("{\"perms\":[\"param-policy:edit\"],\"authorizer\":\"" + boss + "\",\"password\":\"" + PASS + "\"}")
+                .content("{\"perms\":[\"params:edit\"],\"authorizer\":\"" + boss + "\",\"password\":\"" + PASS + "\"}")
             ).andExpect(status().isOk()).andReturn());
             assertThat((int) JsonPath.read(granted, "$.code")).isEqualTo(0);
             List<String> perms = JsonPath.read(granted, "$.data[*].perm");
-            assertThat(perms).containsExactly("param-policy:edit");
+            assertThat(perms).containsExactly("params:edit");
 
             // ④ 同一个令牌,不重登 —— 现在改得动了
             assertCode(put("/api/params").header("Authorization", hdr(ct))
@@ -69,7 +69,7 @@ class ElevationApiIT extends AbstractMysqlIT {
 
             // ⑤ ⚠⚠ **这一步是全套里最要紧的一条断言。**
             //
-            //    授权只发了 param-policy 一项,而 URL 层收「policy 或 monthly 任一」——
+            //    授权只发了计费参数编辑一项,而 URL 层收「编辑、月度录入、系数簿任一」——
             //    所以此刻 MONTHLY_BODY **过得了 URL 那道门**,能不能挡住全看
             //    ParamService 里按 cfg_key 的细分判定(PermissionGuard)。
             //
@@ -83,8 +83,8 @@ class ElevationApiIT extends AbstractMysqlIT {
                 .contentType("application/json").content(MONTHLY_BODY)).andReturn());
             assertThat((int) JsonPath.read(stillDenied, "$.code")).isEqualTo(403);
             assertThat((String) JsonPath.read(stillDenied, "$.message"))
-                .as("必须是 ParamService 细分门的文案,不是通用 403")
-                .contains("月度计费录入");
+                .as("必须是 ParamService 细分门的文案(只缺月度录入这一项),不是 URL 门那句(三项其中一项)")
+                .isEqualTo("无修改权限：需要「计费参数 · 月度录入」，请联系系统管理员在角色里勾上");
 
             // ⑥ 审计记了两个人。这条挂掉就等于整个功能白做
             String log = body(mvc.perform(get("/api/system/logs").param("actor", clerk).param("size", "50")
@@ -110,11 +110,11 @@ class ElevationApiIT extends AbstractMysqlIT {
         String clerk = mkUser(a, "it-elev-sys", "finance_clerk");
         try {
             String ct = login(clerk, PASS);
-            // admin 本人是有 system:edit 的 —— 所以拒绝理由只能是「这一项不可提权」,
-            // 不是「授权人没有」。这条防的是有人图省事把 system:* 从名单里拿掉。
+            // admin 本人是有「角色权限 · 编辑」的 —— 所以拒绝理由只能是「这一项不可提权」,
+            // 不是「授权人没有」。这条防的是有人图省事把系统管理三屏从名单里拿掉。
             String r = body(mvc.perform(post("/api/auth/elevate").header("Authorization", hdr(ct))
                 .contentType("application/json")
-                .content("{\"perms\":[\"system:edit\"],\"authorizer\":\"admin\",\"password\":\"admin123\"}")
+                .content("{\"perms\":[\"sys-roles:edit\"],\"authorizer\":\"admin\",\"password\":\"admin123\"}")
             ).andReturn());
             assertThat((int) JsonPath.read(r, "$.code")).isEqualTo(403);
             assertThat((String) JsonPath.read(r, "$.message")).contains("不能靠当场授权获得").contains("永久管理员账号");
@@ -124,7 +124,7 @@ class ElevationApiIT extends AbstractMysqlIT {
                 .contentType("application/json")
                 .content("{\"perms\":[\"salary:edit\"],\"authorizer\":\"admin\",\"password\":\"admin123\"}")
             ).andReturn());
-            assertThat((String) JsonPath.read(r, "$.message")).isEqualTo("「工资录入」不能靠当场授权获得，要请系统管理员在角色里开通。");
+            assertThat((String) JsonPath.read(r, "$.message")).isEqualTo("「附表12 工资明细 · 编辑」不能靠当场授权获得，要请系统管理员在角色里开通。");
 
             // 而且真的没拿到:system 段仍然进不去
             mvc.perform(get("/api/system/users").header("Authorization", hdr(ct)))
@@ -139,7 +139,7 @@ class ElevationApiIT extends AbstractMysqlIT {
         String v = login("viewer", "viewer123");
         mvc.perform(post("/api/auth/elevate").header("Authorization", hdr(v))
             .contentType("application/json")
-            .content("{\"perms\":[\"master:edit\"],\"authorizer\":\"admin\",\"password\":\"admin123\"}"))
+            .content("{\"perms\":[\"buildings:edit\"],\"authorizer\":\"admin\",\"password\":\"admin123\"}"))
            .andExpect(status().isForbidden());
     }
 
@@ -154,7 +154,7 @@ class ElevationApiIT extends AbstractMysqlIT {
             String ct = login(clerk, PASS);
             String r = body(mvc.perform(post("/api/auth/elevate").header("Authorization", hdr(ct))
                 .contentType("application/json")
-                .content("{\"perms\":[\"param-policy:edit\"],\"authorizer\":\"" + peer + "\",\"password\":\"" + PASS + "\"}")
+                .content("{\"perms\":[\"params:edit\"],\"authorizer\":\"" + peer + "\",\"password\":\"" + PASS + "\"}")
             ).andReturn());
             assertThat((int) JsonPath.read(r, "$.code")).isEqualTo(403);
             assertThat((String) JsonPath.read(r, "$.message")).contains("本人也没有");
@@ -173,7 +173,7 @@ class ElevationApiIT extends AbstractMysqlIT {
             String ct = login(clerk, PASS);
             String r = body(mvc.perform(post("/api/auth/elevate").header("Authorization", hdr(ct))
                 .contentType("application/json")
-                .content("{\"perms\":[\"param-policy:edit\"],\"authorizer\":\"" + boss + "\",\"password\":\"nope-nope\"}")
+                .content("{\"perms\":[\"params:edit\"],\"authorizer\":\"" + boss + "\",\"password\":\"nope-nope\"}")
             ).andReturn());
             assertThat((int) JsonPath.read(r, "$.code")).isEqualTo(401);
 
@@ -195,7 +195,7 @@ class ElevationApiIT extends AbstractMysqlIT {
             // 放行的话审计里会出现「张三授权张三」—— 看似有责任人,实则没有。
             String r = body(mvc.perform(post("/api/auth/elevate").header("Authorization", hdr(bt))
                 .contentType("application/json")
-                .content("{\"perms\":[\"param-policy:edit\"],\"authorizer\":\"" + boss + "\",\"password\":\"" + PASS + "\"}")
+                .content("{\"perms\":[\"params:edit\"],\"authorizer\":\"" + boss + "\",\"password\":\"" + PASS + "\"}")
             ).andReturn());
             assertThat((int) JsonPath.read(r, "$.code")).isEqualTo(409);
             assertThat((String) JsonPath.read(r, "$.message")).contains("不能给自己授权");
@@ -213,7 +213,7 @@ class ElevationApiIT extends AbstractMysqlIT {
             String ct = login(clerk, PASS);
             mvc.perform(post("/api/auth/elevate").header("Authorization", hdr(ct))
                 .contentType("application/json")
-                .content("{\"perms\":[\"param-policy:edit\"],\"authorizer\":\"" + boss + "\",\"password\":\"" + PASS + "\"}"))
+                .content("{\"perms\":[\"params:edit\"],\"authorizer\":\"" + boss + "\",\"password\":\"" + PASS + "\"}"))
                .andExpect(status().isOk());
             assertCode(put("/api/params").header("Authorization", hdr(ct))
                 .contentType("application/json").content(POLICY_BODY), 0);
@@ -241,7 +241,7 @@ class ElevationApiIT extends AbstractMysqlIT {
             String ct = login(clerk, PASS);
             mvc.perform(post("/api/auth/elevate").header("Authorization", hdr(ct))
                 .contentType("application/json")
-                .content("{\"perms\":[\"param-policy:edit\"],\"authorizer\":\"" + boss + "\",\"password\":\"" + PASS + "\"}"))
+                .content("{\"perms\":[\"params:edit\"],\"authorizer\":\"" + boss + "\",\"password\":\"" + PASS + "\"}"))
                .andExpect(status().isOk());
             assertCode(put("/api/params").header("Authorization", hdr(ct))
                 .contentType("application/json").content(POLICY_BODY), 0);
@@ -271,7 +271,7 @@ class ElevationApiIT extends AbstractMysqlIT {
             long t0 = System.currentTimeMillis();
             String onsite = body(mvc.perform(post("/api/auth/elevate").header("Authorization", hdr(ct))
                 .contentType("application/json")
-                .content("{\"perms\":[\"param-policy:edit\"],\"authorizer\":\"" + boss + "\",\"password\":\"" + PASS + "\"}"))
+                .content("{\"perms\":[\"params:edit\"],\"authorizer\":\"" + boss + "\",\"password\":\"" + PASS + "\"}"))
                 .andExpect(status().isOk()).andReturn());
             long t1 = System.currentTimeMillis();
             assertThat((List<String>) JsonPath.read(onsite, "$.data[*].source")).containsExactly("onsite");
@@ -284,7 +284,7 @@ class ElevationApiIT extends AbstractMysqlIT {
             // ② 远程:专员发请求,主管在自己电脑上用自己的密码批
             String req = body(mvc.perform(post("/api/auth/approvals").header("Authorization", hdr(ct))
                 .contentType("application/json")
-                .content("{\"perms\":[\"param-policy:edit\"],\"approver\":\"" + boss
+                .content("{\"perms\":[\"params:edit\"],\"approver\":\"" + boss
                        + "\",\"page\":\"计费参数\",\"action\":\"修改计费口径\"}"))
                 .andExpect(status().isOk()).andReturn());
             String id = JsonPath.read(req, "$.data.id");
@@ -320,7 +320,7 @@ class ElevationApiIT extends AbstractMysqlIT {
             String bt = login(boss, PASS);
             String req = body(mvc.perform(post("/api/auth/approvals").header("Authorization", hdr(ct))
                 .contentType("application/json")
-                .content("{\"perms\":[\"param-policy:edit\"],\"approver\":\"" + boss
+                .content("{\"perms\":[\"params:edit\"],\"approver\":\"" + boss
                        + "\",\"page\":\"计费参数\",\"action\":\"修改计费口径\"}"))
                 .andExpect(status().isOk()).andReturn());
             String id = JsonPath.read(req, "$.data.id");
@@ -357,7 +357,7 @@ class ElevationApiIT extends AbstractMysqlIT {
             String bt = login(boss, PASS);
             String req = body(mvc.perform(post("/api/auth/approvals").header("Authorization", hdr(ct))
                 .contentType("application/json")
-                .content("{\"perms\":[\"param-policy:edit\"],\"approver\":\"" + boss
+                .content("{\"perms\":[\"params:edit\"],\"approver\":\"" + boss
                        + "\",\"page\":\"计费参数\",\"action\":\"修改计费口径\"}"))
                 .andExpect(status().isOk()).andReturn());
             String id = JsonPath.read(req, "$.data.id");

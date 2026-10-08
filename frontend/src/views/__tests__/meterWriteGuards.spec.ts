@@ -174,7 +174,7 @@ interface MeterVm {
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['meter-reading:edit', 'meter-master:edit']
+  useAuthStore().permissions = ['meters:edit', 'meters:archive']
   useBillingPeriodStore().pick(2025, 3)          // 期由出账月矩阵选定,这里直接落到 2025-03
   for (const k of Object.keys(query)) delete query[k]
   vi.clearAllMocks()
@@ -640,7 +640,7 @@ describe('园区抄表 · 导入结果与批删预览报档案改动(SPEC §3.2 
   })
 
   it('❗批量删除本期 · 只有草稿/已作废的单:出勾选项报张数,勾上才带 dropDraftNotices,删完报删了几张单', async () => {
-    useAuthStore().permissions = ['meter-reading:edit', 'meter-master:edit', 'billing-run:edit']
+    useAuthStore().permissions = ['meters:edit', 'meters:archive', 'bill-notices:edit']
     const w = await open()
     const vm = vmOf(w)
     const notices = { draftNotices: 245, voidNotices: 3, lockedNotices: 0, lockedTenants: [] }
@@ -665,7 +665,7 @@ describe('园区抄表 · 导入结果与批删预览报档案改动(SPEC §3.2 
   })
 
   it('❗批量删除本期 · 有已确认/已导出的单:列户名(最多 5 户,余者等 N 户),确认键禁用', async () => {
-    useAuthStore().permissions = ['meter-reading:edit', 'meter-master:edit', 'billing-run:edit']
+    useAuthStore().permissions = ['meters:edit', 'meters:archive', 'bill-notices:edit']
     const w = await open()
     const vm = vmOf(w)
     vm.editMode = true
@@ -686,7 +686,7 @@ describe('园区抄表 · 导入结果与批删预览报档案改动(SPEC §3.2 
     expect(confirmBtn(w).attributes('disabled')).toBeUndefined()
   })
 
-  // 对抗复查 R-F5:连带删草稿单后端另要 billing-run:edit(提权 / 自定义角色只拿得到抄表两项)
+  // 对抗复查 R-F5:连带删草稿单后端另要 bill-notices:edit(提权 / 自定义角色只拿得到抄表两项)
   it('❗批量删除本期 · 有草稿单但没有出账权限:不给勾,写明要出账权限,确认键禁用', async () => {
     const w = await open()
     const vm = vmOf(w)
@@ -696,10 +696,10 @@ describe('园区抄表 · 导入结果与批删预览报档案改动(SPEC §3.2 
     vm.delTyped = YM
     await flushPromises()
     expect(w.findAll('.mt5-del-ck'), '没有出账权限还出了勾选项').toHaveLength(2)
-    expect(w.find('.mt5-del-nobill').text()).toBe('2025-04 有 4 张草稿催缴单(这个月的读数出在那批单上),连带删除要出账权限;请有出账权限的人来删,或先到催缴单屏处理')
+    expect(w.find('.mt5-del-nobill').text()).toBe('2025-04 有 4 张草稿催缴单(这个月的读数出在那批单上),连带删除要「催缴单 · 编辑」权限;请有这项权限的人来删,或先到催缴单屏处理')
     expect(confirmBtn(w).attributes('disabled'), '勾不了还能点确认,点了只会 409').toBeDefined()
     // 同一份预览只补上出账权限 → 勾选项回来、确认键放行:上面那几下是权限禁的
-    useAuthStore().permissions = ['meter-reading:edit', 'meter-master:edit', 'billing-run:edit']
+    useAuthStore().permissions = ['meters:edit', 'meters:archive', 'bill-notices:edit']
     await flushPromises()
     expect(w.findAll('.mt5-del-ck')).toHaveLength(3)
     expect(w.find('.mt5-del-nobill').exists()).toBe(false)
@@ -708,7 +708,7 @@ describe('园区抄表 · 导入结果与批删预览报档案改动(SPEC §3.2 
 
   // 对抗复查 R-F4:弹窗开着时别人生成了这个月 → 执行 409 让人勾,弹窗得跟着重拉,不然没有框可勾
   it('❗批量删除本期 · 执行被 409 退回:重拉预览,新出现的草稿单勾选项跟上', async () => {
-    useAuthStore().permissions = ['meter-reading:edit', 'meter-master:edit', 'billing-run:edit']
+    useAuthStore().permissions = ['meters:edit', 'meters:archive', 'bill-notices:edit']
     const w = await open()
     const vm = vmOf(w)
     vm.editMode = true

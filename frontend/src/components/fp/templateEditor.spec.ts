@@ -80,7 +80,7 @@ const chain: TemplateVersion[] = [
   { id: 21, ver: 2, note: null, createdBy: 'admin', createdAt: '2026-08-10T09:00:00', current: true },
 ]
 
-function mountPanel(over: { canEdit?: boolean; canSwitch?: boolean; monthHasData?: boolean;
+function mountPanel(over: { canEdit?: boolean; canSwitch?: boolean; monthHasData?: boolean; editPerm?: string;
                            book?: Book; versions?: TemplateVersion[];
                            year?: number; month?: number } = {}) {
   return mount(TemplateEditorPanel, {
@@ -90,6 +90,7 @@ function mountPanel(over: { canEdit?: boolean; canSwitch?: boolean; monthHasData
       versions: over.versions ?? versions, saving: false,
       canEdit: over.canEdit ?? true,
       canSwitch: over.canSwitch ?? true,
+      editPerm: over.editPerm ?? 'ledger:template',
       monthHasData: over.monthHasData ?? false,
       // 锁键 = pin 键 = (册, 年, 月)。面板此前不知道自己在哪个月,锁只好按册加 ——
       // 而 saveTemplate / pin 两个写口带的都是 (bookId, year, month)。
@@ -334,6 +335,23 @@ describe('TemplateEditorPanel · 别名录入', () => {
 })
 
 describe('TemplateEditorPanel · 编辑锁的作用域与旁路', () => {
+  // 台账、附表10 两屏共用本面板,各自的「账册模板」是两项权限(RBAC §15.7):编辑登记带宿主传的那一项,
+  // 「结束授权」前才问得对人 —— 写死一个键,另一屏靠授权编辑的人结束授权时这一屏不在名单里
+  // 破坏验证:useEditLock 第四参写回死的 ['ledger:template'] → 第一条断言红
+  it('❗进编辑登记的权限点 = 宿主传的 editPerm:自己角色有它,结束授权那一问不列;没有就列', async () => {
+    const auth = useAuthStore()
+    auth.permissions = ['sales-income:template']
+    const w = mountPanel({ editPerm: 'sales-income:template' })
+    await w.find('button.te-editbtn').trigger('click')
+    await flushPromises()
+    await w.findAll('input.te-name')[0].setValue('厂房租金合计')
+    expect(auth.dirtyTotal, '前置:登记上了、有改动').toBeGreaterThan(0)
+    expect(auth.dirtyScreens()).toEqual([])
+    auth.permissions = ['ledger:template']
+    expect(auth.dirtyScreens()).toHaveLength(1)
+    w.unmount()
+  })
+
   it('占的是本月那把锁,不是整本册的', async () => {
     // PR #9 之后写入单位是 (册,年,月):saveTemplate / pin 带的都是这三个。
     // 锁到册会平白挡住别人改同一册的别的月份 —— 而设计 P4 明说「同册其他月份不动」。
@@ -447,7 +465,7 @@ describe('TemplateEditorPanel · 版本选择器', () => {
     w.unmount()
   })
 
-  // 第17权限点 book-template:switch。与第16点互不代替(spec P8):无换版权仍可编辑模板
+  // 「更换版本」(ledger:version / sales-income:version)与「账册模板」互不代替(spec P8):无换版权仍可编辑模板
   it('canSwitch=false:选择器置灰、编辑态不出「切到此版」,但编辑门照开', async () => {
     const w = mountPanel({ canSwitch: false, book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
     expect(verTrigger(w).attributes('disabled')).toBeDefined()

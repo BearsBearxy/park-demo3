@@ -102,11 +102,16 @@ const ROW_KINDS: Record<string, string[]> = {
  * 查不到回 null —— 调用方按「不给跳转」处理,不猜。
  */
 export function screenOfKind(kind: string): string | null {
+  // 附表7/8 一行装两把键,行的 go 写的是汽车那屏;v4 起电动车是另一屏(查看权也分开),电动车的键去电动车那屏
+  if (kind === 'charging-ebike') return 'ebike-charging'
   const row = BOOKING_ROWS.find(r => (ROW_KINDS[r.key] ?? []).includes(kind))
   if (row?.go) return row.go
   // 出账链五步:kind code === 屏 value
   return (ROW_KINDS[kind] ?? []).includes(kind) ? kind : null
 }
+
+// SUBMIT_PERMS 搬到了 types/review(审核动作簇 FPReviewActions 也按它判),这里转出,原来的 import 不用改
+export { SUBMIT_PERMS } from '@/types/review'
 
 /** 进展序。取「最不进展」用它比大小 —— 一行显示已审核而底下挂着没交审的公司是自相矛盾。 */
 const RANK: Record<ReviewStatus, number> = { entered: 0, returned: 1, submitted: 2, approved: 3 }

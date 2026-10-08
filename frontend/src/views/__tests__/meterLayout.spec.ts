@@ -145,7 +145,7 @@ const tipOf = (el: Element) => (el as HTMLElement & { _tip?: { text: string } })
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['meter-reading:edit', 'meter-master:edit']
+  useAuthStore().permissions = ['meters:edit', 'meters:archive']
   useBillingPeriodStore().pick(2025, 3)
   vi.clearAllMocks()
   localStorage.clear()

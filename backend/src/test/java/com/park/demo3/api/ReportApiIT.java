@@ -167,12 +167,13 @@ class ReportApiIT extends AbstractMysqlIT {
         assertThat(((Number) JsonPath.read(p, "$.data.amounts.1.cur")).doubleValue()).isEqualTo(500.0);
     }
 
-    // ── 非法 statement 'xx' → 体内 code 400(HTTP 200);'bs'/'tb' 已合法(见 bs_*/tb_* 用例) ──
+    // ── 非法 statement 'xx' → 403:v4 起三张报表按段拆到屏(is / bs / tb),其余写法落读规则表的显式拒绝
+    //    (RBAC-SPEC §15.5 铁律 4),到不了 service 那道 400 ──
     @Test
-    void illegalStatement_returns400InBody() throws Exception {
+    void illegalStatement_isDeniedAtTheUrl() throws Exception {
         mvc.perform(get("/api/reports/xx/1/2025/10").header("Authorization", auth()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(400));
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403));
     }
 
     // ── bs: PUT 保存 field='end' → GET 读回 → 重存覆盖(clear+insert) ──

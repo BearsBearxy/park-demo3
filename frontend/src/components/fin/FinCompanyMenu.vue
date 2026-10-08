@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // 公司下拉(画布 09 ReportIS / ReportPickEmpty / ReportStates)—— 三大报表的公司选择,取代左栏
 // (BOOK-WORKBENCH-SPEC §7-2 三大报表例外)。同一颗挂两处:期间条「‹ 换期 年-月 [公司 ▾]」与选期矩阵标题
-// 「利润表 • [公司 ▾]」。面板:全部汇总(N 家)、各公司(当前打勾);有 master:edit 才出底部
-// 「新增公司 / 重命名 / 删除(红)」,后两颗作用于当前打勾那家,停在「全部汇总」时置灰不挪位。
+// 「利润表 • [公司 ▾]」。面板:全部汇总(N 家)、各公司(当前打勾);底部「新增公司 / 重命名 / 删除(红)」各看各的权限
+// (RBAC v4:新增 / 删除 = canAddDel「月度台账 · 新增删除公司」,重命名 = canRename「催缴单 · 收款公司」;一项都没有不出这一栏),
+// 后两颗作用于当前打勾那家,停在「全部汇总」时置灰不挪位。
 // 编辑中(locked)只写公司名、不给下拉 —— 换公司会丢草稿,稿上编辑态那一格是纯文字。
 // 浮层规矩照抄 FPMoreMenu:点外关走 document capture(带 open 守卫),Esc 只关自己不冒泡。
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
@@ -11,7 +12,10 @@ import { iconFor } from '@/components/ds/icon'
 const props = defineProps<{
   companies: { id: number | string; name: string }[]
   current: number | 'all' | null
-  canManage: boolean
+  /** 新增 / 删除公司 */
+  canAddDel: boolean
+  /** 重命名公司 */
+  canRename: boolean
   /** 编辑中:只写名字 */
   locked?: boolean
   /** lg = 矩阵标题那一档(跟 h2 同行) */
@@ -77,10 +81,10 @@ function act(e: 'add' | 'rename' | 'remove') {
         <span class="fcm-l">{{ c.name }}</span>
         <component :is="iconFor('check')" v-if="current === c.id" :size="14" class="fcm-ck" />
       </button>
-      <div v-if="canManage" class="fcm-foot">
-        <button type="button" class="fcm-a" @click="act('add')">新增公司</button>
-        <button type="button" class="fcm-a" :disabled="current === 'all'" @click="act('rename')">重命名</button>
-        <button type="button" class="fcm-a del" :disabled="current === 'all'" @click="act('remove')">删除</button>
+      <div v-if="canAddDel || canRename" class="fcm-foot">
+        <button v-if="canAddDel" type="button" class="fcm-a" @click="act('add')">新增公司</button>
+        <button v-if="canRename" type="button" class="fcm-a" :disabled="current === 'all'" @click="act('rename')">重命名</button>
+        <button v-if="canAddDel" type="button" class="fcm-a del" :disabled="current === 'all'" @click="act('remove')">删除</button>
       </div>
     </div>
   </div>

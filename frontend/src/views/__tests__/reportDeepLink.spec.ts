@@ -39,6 +39,7 @@ import { pnlApi } from '@/api/pnl'
 import { reconApi } from '@/api/recon'
 import { useAuthStore } from '@/stores/auth'
 import { useTabsStore } from '@/stores/tabs'
+import { viewsOf } from '@/test-utils/perms'
 
 type Screen = typeof PnlScheduleView | typeof ReconView
 const OPTS = { global: { stubs: { Teleport: true, RouterLink: true, 'router-link': true } } }
@@ -60,7 +61,7 @@ async function keptAlive(C: Screen) {
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['report:edit']
+  useAuthStore().permissions = [...viewsOf('reports'), 'rent-pnl:edit', 'reconciliation:edit']   // v3 的 report:edit 落到这两屏
   vi.clearAllMocks()
   localStorage.clear()
   for (const k of Object.keys(query)) delete query[k]

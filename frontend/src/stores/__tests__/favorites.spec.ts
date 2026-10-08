@@ -4,7 +4,7 @@ import { nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 import { useFavoritesStore, MAX_FAVS } from '../favorites'
 import { useAuthStore } from '@/stores/auth'
-import { ALL_VIEWS } from '@/test-utils/perms'
+import { ALL_VIEWS, viewsOf } from '@/test-utils/perms'
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -35,7 +35,7 @@ describe('收藏', () => {
 
   // 破坏验证:favorites.ts 预置那句去掉 canViewPage → 红
   it('❗预置的那一屏看不了(RBAC v3)就不预置,不放一格点进去是「无权查看」的收藏', () => {
-    login('rpt', ['report:view'])                  // 零写权限 → 本该落驾驶舱,可他没有分析查看权
+    login('rpt', viewsOf('reports'))               // 零写权限 → 本该落驾驶舱,可他没有驾驶舱那一屏的查看
     expect(useFavoritesStore().list).toEqual([])
   })
 

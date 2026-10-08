@@ -50,8 +50,8 @@ const props = defineProps<{
 const emit = defineEmits<{ close: [] }>()
 
 const auth = useAuthStore()
-// RBAC:系数簿改的是计费口径,不能沿用宿主催缴单页的 billing 权(那是 billing 直通 param 的漏洞)
-const canEdit = computed(() => auth.can('param-policy:edit'))
+// RBAC:系数簿单列一项「催缴单 · 系数簿」,不沿用宿主催缴单页的编辑权(改的是每户单价系数,不是出单)
+const canEdit = computed(() => auth.can('bill-notices:coef'))
 // 无权的账号也看得到「编辑模式」按钮(只要能请求提权),点了弹主管授权窗 —— ELEVATION-SPEC。
 // 藏掉的话财务专员只会以为系数簿是只读的。
 const asking = ref<string[] | null>(null)
@@ -86,7 +86,7 @@ watch(editMode, (on) => { if (!on) lock.release() })
 
 async function onEditBtn() {
   if (loadErr.value) return   // 没读到就不进编辑(授权窗批下来走的也是这里)
-  if (!canEdit.value) { asking.value = ['param-policy:edit']; return }
+  if (!canEdit.value) { asking.value = ['bill-notices:coef']; return }
   if (await lock.acquire(S.coefBook(effYear.value, effMonth.value))) editMode.value = true
 }
 async function onTaken() {
@@ -98,7 +98,7 @@ async function onTaken() {
 //   而本窗口退出时又会被别的页面挡住结束不了。
 const meId = Symbol('coef-book')
 const screen = useScreen()
-watch(editMode, (on) => { if (on) auth.openEditor(meId, screen, dirtyN, ['param-policy:edit']); else auth.closeEditor(meId) })
+watch(editMode, (on) => { if (on) auth.openEditor(meId, screen, dirtyN, ['bill-notices:coef']); else auth.closeEditor(meId) })
 onUnmounted(() => auth.closeEditor(meId))
 const stash = ref<CoefStash>(new Map())
 

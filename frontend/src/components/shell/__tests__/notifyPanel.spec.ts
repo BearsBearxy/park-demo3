@@ -7,6 +7,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createPinia, setActivePinia } from 'pinia'
 import { ourPark } from '@/test-utils/appConfig'
+import { grantViews } from '@/test-utils/perms'
+import { receipts } from '@/utils/receipt'
 import { landNav } from '@/test-utils/landNav'
 import { usePresenceStore } from '@/stores/presence'
 import { useUpdateStore } from '@/stores/update'
@@ -66,7 +68,7 @@ const minsAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString()
 
 const AP: Pending = {
   id: 'a1', requester: 'zhang', requesterName: '张会计', requesterRole: '会计',
-  perms: ['meter-reading:edit'], permLabels: ['抄表读数'],
+  perms: ['meters:edit'], permLabels: ['抄表读数'],
   page: '园区抄表 · 2026 年', action: '改读数', impact: '影响 B座 3 块表', leftMs: 102_000,
 }
 const RV: PendingItem & { submittedByName: string } = {
@@ -98,6 +100,8 @@ const heads = () => np().findAll('.np-gh').map((h) => h.text())
 
 beforeEach(() => {
   setActivePinia(createPinia()); ourPark()
+  grantViews()   // 点进去的那几屏都看得了;看不了的那条另写
+  receipts.splice(0)
   vi.clearAllMocks()
   for (const k of Object.keys(localStorage)) if (k.startsWith('fp-app-')) localStorage.removeItem(k)
   Object.assign(bell, { red: 0, reviews: [], returned: [], notices: [], noticesErr: null, noticesLoaded: true,
@@ -231,6 +235,30 @@ describe('铃铛面板 · 待审 / 被退回逐张列出', () => {
     open()
     await rowOf('月度台账').trigger('click')
     expect(tabs.tabs.map((t) => t.value)).toEqual(['home', 'ledger'])
+  })
+
+  // RBAC v4 §15.1 第 4 条:自建审核角色(审核 + 部分屏查看)点到看不了的那一屏,说一句缺哪一项、不跳、面板不关。
+  // 字典没取(api.get 回空):回执里也是屏名,不是 ledger:view。
+  // 破坏验证:go() 去掉 blocked → 红
+  it('❗看不了那张表所在的屏:不跳、不关面板,回执写缺「月度台账 · 查看」', async () => {
+    useAuthStore().permissions = ['review:approve', 'data-home:view', 'meters:view']
+    Object.assign(bell, { red: 1, reviews: [RV] })
+    open()
+    await rowOf('月度台账').trigger('click')
+    expect(push).not.toHaveBeenCalled()
+    expect(w!.emitted('close')).toBeFalsy()
+    expect(receipts.map((r) => r.text)).toEqual(['需要「月度台账 · 查看」权限，请找系统管理员开通'])
+  })
+
+  // 附表7/8 一行装两把键;v4 起电动车是另一屏,电动车的键去电动车那屏(只看得了电动车的人也进得去)
+  // 破坏验证:screenOfKind 去掉 charging-ebike 那一行 → 红(落到汽车那屏、被挡下)
+  it('❗电动车充电桩的待审 → 电动车那屏', async () => {
+    useAuthStore().permissions = ['review:approve', 'ebike-charging:view']
+    Object.assign(bell, { red: 1, reviews: [{ ...RV, key: 'charging-ebike:2026-08', kind: 'charging-ebike', scope: null,
+      period: '2026-08', label: '附表8 电动车充电桩 2026-08' }] })
+    open()
+    await rowOf('电动车').trigger('click')
+    expect(push).toHaveBeenCalledWith({ path: '/ebike-charging', query: { p: '2026-08' } })
   })
 
   // 破坏验证:returnedSub 不写理由 → 红

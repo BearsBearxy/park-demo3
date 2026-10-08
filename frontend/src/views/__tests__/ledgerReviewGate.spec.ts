@@ -75,7 +75,7 @@ describe('台账审核闸(编辑入口的第三条路)', () => {
     vi.clearAllMocks()
     vi.mocked(api.get).mockImplementation(() => Promise.resolve([]) as never)
     vi.mocked(api.post).mockResolvedValue({ granted: true, holder: null } as never)
-    useAuthStore().permissions = ['entry:edit']
+    useAuthStore().permissions = ['ledger:edit']
   })
 
   // 破坏验证:删掉 onEnterEdit 开头那一行 → 红
@@ -181,7 +181,7 @@ describe('台账审核闸(编辑入口的第三条路)', () => {
   })
 
   // 破坏验证:把 :can-edit 改成写死 true → 红
-  it('❗无 entry:edit 的账号整簇不画 —— 与旁边那颗编辑按钮同一道门', async () => {
+  it('❗无 ledger:edit 的账号整簇不画 —— 与旁边那颗编辑按钮同一道门', async () => {
     useAuthStore().permissions = []
     const w = mk({ reviewKey: KEY })
     await flushPromises()

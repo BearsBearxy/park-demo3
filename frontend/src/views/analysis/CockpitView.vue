@@ -384,7 +384,7 @@ const goAnom = (a: AnaAnomaly): void => {
             <span class="dot"></span><span class="tt">{{ r.title }}</span><span class="vv">{{ r.value }}</span>
           </button>
           <p v-for="t in mb.rules.refs" :key="t" class="ana-ref">{{ t }}</p>
-          <button type="button" class="cv2-all" @click="go('/anomaly')">{{ ALL }} →</button>
+          <button type="button" class="cv2-all" :disabled="!!lack('/anomaly')" v-tip="lack('/anomaly')" @click="go('/anomaly')">{{ ALL }} →</button>
         </div>
         <AnaEmpty v-else :label="mb.rules.refs.join('') || undefined" to="/anomaly" :to-text="ALL" />
       </div>
@@ -520,6 +520,7 @@ const goAnom = (a: AnaAnomaly): void => {
 .cv2-anom .vv { flex: 0 0 auto; font-size: var(--fs-micro); font-weight: var(--fw-semibold); font-family: var(--font-mono); color: var(--text-primary); }
 .cv2-all { border: none; background: transparent; color: var(--text-link); font-size: var(--fs-micro); cursor: pointer; font-family: var(--font-sans); padding: 4px 0 0; text-align: center; }
 .cv2-all:hover { text-decoration: underline; }
+.cv2-all:disabled { color: var(--text-disabled); cursor: default; text-decoration: none; }
 /* 弹层 */
 /* 全屏模态遮罩 → --z-modal(300)。开:遮罩淡入 + 卡上浮,与 FPDrawer 同款 200(C5-06);关:v-if 瞬时 */
 .cv2-mask { position: fixed; inset: 0; z-index: var(--z-modal); background: rgba(28, 28, 28, 0.35); display: grid; place-items: center; opacity: 0; animation: fp-fade-in var(--dur-base) var(--ease-out) forwards; }

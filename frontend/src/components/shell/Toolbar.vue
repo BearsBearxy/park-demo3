@@ -149,8 +149,8 @@ const ctxText = computed(() => {
           <kbd class="fp-kbd">Ctrl K</kbd>
         </button>
       </ShellTip>
-      <!-- 操作记录:SystemLogsView 早就写好了,此前只差这根线(需 system:view) -->
-      <ShellTip v-if="auth.can('system:view')" title="操作记录" sub="谁在什么时候改了什么">
+      <!-- 操作记录:SystemLogsView 早就写好了,此前只差这根线(需「操作日志 · 查看」) -->
+      <ShellTip v-if="auth.can('sys-logs:view')" title="操作记录" sub="谁在什么时候改了什么">
         <IconButton aria-label="操作记录" @click="router.push('/sys-logs')">
           <History :size="16" />
         </IconButton>

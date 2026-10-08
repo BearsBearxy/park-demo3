@@ -192,10 +192,10 @@ const router = useRouter()
 const tabs = useTabsStore()
 // 跳到模块屏的入口:没有目标屏的查看权就置灰、悬停写明缺哪一项(RBAC v3)
 const { lack } = useViewGate()
-// 联系人与电话归「主数据」查看权,没有的人拿到的是服务端遮过的(RBAC v3),导出提示跟着说实话
+// 联系人与电话归「租户管理 · 查看」(RBAC v4;v3 是主数据查看),没有的人拿到的是服务端遮过的,导出提示跟着说实话
 const auth = useAuthStore()
-const exportTip = computed(() => (auth.can('master:view') ? '逐户账龄明细+联系方式,金额为元'
-  : `逐户账龄明细,金额为元;完整联系方式${lackText(['master:view'])},导出里的联系人和电话只显示一部分`))
+const exportTip = computed(() => (auth.can('tenants:view') ? '逐户账龄明细+联系方式,金额为元'
+  : `逐户账龄明细,金额为元;完整联系方式${lackText(['tenants:view'])},导出里的联系人和电话只显示一部分`))
 function goLedger(tenant: string, company: string, ym: string) {
   drillYm.value = null
   tabs.openDeep('ledger')

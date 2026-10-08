@@ -115,13 +115,14 @@ class ChargingDeleteApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data.rows.length()").value(0));
     }
 
-    // ── clearImported scheduleNo 非白名单 → 404(code in body) ──
+    // ── clearImported scheduleNo 非白名单 → 403:v4 起附表号按段拆到屏(7 汽车 / 8 电动车),
+    //    其余写法落写规则表的显式拒绝(RBAC-SPEC §15.5 铁律 4),到不了 service 那道 404 ──
     @Test
-    void clearImported_badScheduleNo_returns404InBody() throws Exception {
+    void clearImported_badScheduleNo_isDeniedAtTheUrl() throws Exception {
         mvc.perform(delete("/api/charging/99/imported").header("Authorization", auth())
                 .param("year", "2098"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(404));
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403));
     }
 
     // ── clearImported year 越界 → 400 ──

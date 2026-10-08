@@ -118,16 +118,17 @@ public LockDTO takeover(String scope, TakeoverReq req) {
     }
 
     /**
-     * 一个 edit 权都没有的账号占锁毫无意义 —— 只会变成谁都解不开的堵。
+     * 一个写权(编辑或专有动作)都没有的账号占锁毫无意义 —— 只会变成谁都解不开的堵。
      *
-     * ponytail: 只查「有没有任一 :edit」，不按 scope 反查该屏具体要哪一档。
+     * ponytail: 只查「有没有任一写权」，不按 scope 反查该屏具体要哪一档。
      *   真正的门在 WriteAccessManager 那 126 个写端点上，锁只是前置的协作信号；
      *   按 scope 映射权限点要再维护一张表，而它能多挡住的只有「有 A 屏权限的人去占 B 屏的锁」——
      *   内部系统、有审计、可接管，不值那张表。
      */
     private void requireSomeEditPerm() {
         UserPermissionCache.UserAuth ua = cache.get(me());
-        boolean any = ua != null && ua.perms().stream().anyMatch(p -> p.endsWith(":edit"));
+        // 专有动作(催缴单 · 签发 等)不以 :edit 结尾也是写(RBAC-SPEC §15.6)
+        boolean any = ua != null && ua.perms().stream().anyMatch(Perm::isWrite);
         if (!any) throw new BizException(ResultCode.FORBIDDEN, "只读账号不能占用编辑锁");
     }
 

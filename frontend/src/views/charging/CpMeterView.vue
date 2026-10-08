@@ -49,6 +49,9 @@ import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 import { buildCpMeterTemplate, exportCpMeterMonth } from '@/utils/cpMeterExcel'
 
 const props = defineProps<{ vehicleType: 'car' | 'ebike' }>()
+/** 车型 → 屏(权限点前缀)。汽车、电动车两屏共用本组件和一张桩表 */
+const screenOf = (t: string) => (t === 'car' ? 'car-charging' : 'ebike-charging')
+const scr = screenOf(props.vehicleType)
 const auth = useAuthStore()
 const appCfg = useAppConfigStore()
 // 新增充电桩弹卡带输入 → S 档全屏 sheet(styles/form-sheet.css)
@@ -65,16 +68,16 @@ const fy = (n: number) => '¥' + n.toLocaleString('en-US', { minimumFractionDigi
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
         lockedBy, evictedBy, lockScope, onTaken } =
-  useEditMode(['meter-master:edit', 'meter-reading:edit', 'billing-run:edit'], {
+  useEditMode([`${scr}:archive`, `${scr}:reading`], {
     scope: () => S.cpMeter(props.vehicleType, year.value),
     // 改动数(02-A 离开确认):桩名 / 电表值即时提交,没有草稿;抽屉里开着的记录行、新增桩 / 导入弹窗算一处
     dirty: approxDirty(() => (adding.value || editId.value != null || stationDlg.value || importing.value ? 1 : 0)),
   })
-// RBAC v2:桩库档案(桩名/运营商/增删)= meter-master:edit;充电记录/电表用电量/导入 = meter-reading:edit;
-// 模拟填充在本屏是「读附表7/8 整年批量派生」,属出账运行 = billing-run:edit(RBAC-SPEC §5.3-⑥)。
-const canMaster = computed(() => auth.can('meter-master:edit'))
-const canReading = computed(() => auth.can('meter-reading:edit'))
-const canRun = computed(() => auth.can('billing-run:edit'))
+// RBAC v4:桩库档案(桩名/运营商/增删)= <本屏>:archive;充电记录/电表用电量/导入 = <本屏>:reading。
+// 模拟填充一次写汽车、电动车两种桩一整年的记录,两屏的「分桩读数」都要(RBAC-SPEC §15.3)。
+const canMaster = computed(() => auth.can(`${scr}:archive`))
+const canReading = computed(() => auth.can(`${scr}:reading`))
+const canRun = computed(() => auth.can('car-charging:reading') && auth.can('ebike-charging:reading'))
 // ⚠ 三处都要 `&& !loadErr` —— 逐字照兄弟屏 PvMeterView(2026-08-29/30 三轮对抗复查后的形状)。
 //   本月记录没加载成功时表里是逐桩**伪造的零**(rows 按 stations 铺),放行录入 = 对着假底数写真数据。
 const editStation = computed(() => editMode.value && !loadErr.value && canMaster.value)
@@ -410,7 +413,9 @@ async function delStation() {
 const stationDlg = ref(false)
 const stForm = ref({ name: '', operator: '', vehicleType: props.vehicleType as string })
 const stErr = ref('')
-const TYPE_OPTS = [{ value: 'car', label: '汽车' }, { value: 'ebike', label: '电动车' }]
+// 只列有桩库权的车型(后端按请求的车型判 <屏>:archive)
+const TYPE_OPTS = computed(() => [{ value: 'car', label: '汽车' }, { value: 'ebike', label: '电动车' }]
+  .filter(o => auth.can(`${screenOf(o.value)}:archive`)))
 function openStationDlg() {
   stForm.value = { name: '', operator: '', vehicleType: props.vehicleType }
   stErr.value = ''
@@ -446,7 +451,7 @@ async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunP
 const simulating = ref(false)
 const presence = usePresenceStore()
 async function onSimulate() {
-  if (!editMode.value || !canRun.value) return   // 模拟填充=整年批量派生,billing-run 权
+  if (!editMode.value || !canRun.value) return   // 模拟填充=两种桩整年的读数,两屏的读数权都要
   if (simulating.value) return
   // ⚠ simulate(year) 是**全类型**的:后端同时读附表7+8、写 car 与 ebike 两型的记录与电表行,
   //   而本屏只持 S.cpMeter(当前型, year) 一把锁 —— 不查对面就是绕过另一屏的期锁写对方的账。
@@ -545,7 +550,7 @@ async function onTemplate() {
           <p class="cm-sub">逐桩按日期记条,自动汇月 · 充电量/手续费/收益从平台对账单抄录 · 电量 kWh / 金额 元</p>
         </div>
       </div>
-      <!-- 桩增删=桩库档案(EDIT-MODE-SPEC + meter-master:edit) -->
+      <!-- 桩增删=桩库档案(EDIT-MODE-SPEC + 本屏 :archive) -->
       <Button v-if="editStation" variant="outline" size="sm" @click="openStationDlg">
         <template #leading><component :is="iconFor('plus')" :size="14" /></template>
         新增充电桩

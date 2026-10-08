@@ -51,6 +51,6 @@ public class ChargingController {
 
     @Operation(summary = "批量删除（按 id；seed 同等可删，skipped 恒 0）") @DeleteMapping("/batch")
     public DeleteResultDTO batchDelete(@PathVariable int no, @Valid @RequestBody S10BatchDeleteReq req) {
-        return svc.batchDelete(req.ids());
+        return svc.batchDelete(no, req.ids());
     }
 }

@@ -16,7 +16,8 @@ import { iconFor } from '@/components/ds/icon'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
 import FPStateTag from '@/components/fp/FPStateTag.vue'
 import { receipt } from '@/utils/receipt'
-import { useViewGate } from '@/composables/useViewGate'
+import { lackText, useViewGate } from '@/composables/useViewGate'
+import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps<{
   year: number
@@ -32,6 +33,9 @@ const router = useRouter()
 const tabs = useTabsStore()
 // RBAC v3:「去改台账 / 附表10」要目标屏的查看权。园区股东(只有分析与报表查看)进得来这一屏,没有台账查看 → 置灰写原因
 const { lack } = useViewGate()
+// RBAC v4:标记 / 取消核实要「收入核对 · 编辑」(v3 不判,只能看的人点下去后端 403)。没有时弹窗照开(看金额、跳台账),确认钮置灰写原因
+const auth = useAuthStore()
+const markLack = computed(() => (auth.can('reconciliation:edit') ? '' : lackText(['reconciliation:edit'])))
 
 // ── 左清单状态 ──
 const seg = ref<ReconSeg>('all')
@@ -335,8 +339,8 @@ async function confirmMark(e = selected.value, n = note.value.trim() || null) {
             <button class="rc-pop-btn" :disabled="!!lack('/ledger')" v-tip="lack('/ledger')" @click="jumpLedger"><component :is="iconFor('arrow-right')" :size="12" />去改台账</button>
             <button class="rc-pop-btn" :disabled="!!lack('/sales-income')" v-tip="lack('/sales-income')" @click="jumpS10"><component :is="iconFor('arrow-right')" :size="12" />去改附表10</button>
           </div>
-          <textarea v-model="note" :disabled="selected.marked" placeholder="核对备注(可选):说明差异原因与处理方式…"></textarea>
-          <button class="rc-pop-confirm" :class="{ undo: selected.marked }" :disabled="busy" @click="confirmMark()">
+          <textarea v-model="note" :disabled="selected.marked || !!markLack" placeholder="核对备注(可选):说明差异原因与处理方式…"></textarea>
+          <button class="rc-pop-confirm" :class="{ undo: selected.marked }" :disabled="busy || !!markLack" v-tip="markLack" @click="confirmMark()">
             <component v-if="!selected.marked" :is="iconFor('check')" :size="14" />
             {{ selected.marked ? '取消核实' : '标记已核实' }}
           </button>

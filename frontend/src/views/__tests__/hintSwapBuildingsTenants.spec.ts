@@ -70,7 +70,7 @@ const btn = (text: string) => [...document.body.querySelectorAll('button')].find
 let w: VueWrapper | null = null
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['master:edit', 'contract:edit']
+  useAuthStore().permissions = ['buildings:edit', 'tenants:edit', 'contracts:edit']
   askQueue.splice(0)
   receipts.splice(0)
   localStorage.clear()

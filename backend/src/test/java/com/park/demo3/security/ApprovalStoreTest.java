@@ -36,7 +36,7 @@ import static org.mockito.Mockito.*;
  */
 class ApprovalStoreTest {
 
-    private static final List<String> PERMS = List.of("param-policy:edit");
+    private static final List<String> PERMS = List.of("params:edit");
     private static final ApprovalStore.Context CTX = new ApprovalStore.Context(
         "计费参数 · 一泽 2025-06", "修改 loss_rate · A 座", "本月 A 座 41 户的催缴单金额");
 
@@ -71,7 +71,7 @@ class ApprovalStoreTest {
     void theRequestCarriesTheContextTheApproverNeedsToJudge() {
         // 防批准疲劳的唯一手段。当场授权时主管看得见专员的屏幕；远程批准看不见，
         // 所以「哪一屏、改什么、影响多少户」必须跟着请求走 ——
-        // 只写「张三申请 param-policy:edit」的话，这功能会退化成看见弹窗就点同意。
+        // 只写「张三申请 params:edit」的话，这功能会退化成看见弹窗就点同意。
         store.request("zhangsan", "张三", "finance_clerk", PERMS, "boss-a", CTX);
 
         ApprovalStore.Pending p = store.inboxOf("boss-a").get(0);

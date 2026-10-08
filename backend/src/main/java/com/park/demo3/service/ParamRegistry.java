@@ -22,7 +22,18 @@ public final class ParamRegistry {
     public record Def(String key, Table table, String label, String unit, Group group, Set<ScopeKind> scopes,
                       String defaultMode, boolean monthlyCheck, ValueKind valueKind,
                       Map<Integer, String> enumOptions, String formula, String hint,
-                      String pairedWith /* 成对写的配套键(电力管理费双键),无=null */) {}
+                      String pairedWith /* 成对写的配套键(电力管理费双键),无=null */,
+                      boolean coefBook /* 催缴单「系数簿」能写的户级键(RBAC-SPEC §15.6),见 COEF_BOOK */) {}
+
+    /**
+     * 催缴单「系数簿」能写的 12 个键:系数簿的 10 个价目键加它们写计划里的配套键(mgmt_fee_commercial、water_pipe)。
+     * 只有「催缴单 · 系数簿」、没有「计费参数 · 编辑」的人,PUT /api/params 只能写这几个键的户级作用域(ParamService)。
+     * 不按「户级、非月度」笼统放:那样会多出 loss_base_form_b{bid}(按栋)和 loss_base_park_meter(引用型),
+     * 前端系数簿特意排除了这两个(coefBookLogic.spec.ts 钉着)。
+     */
+    private static final Set<String> COEF_BOOK = Set.of("mgmt_fee", "capacity_fee", "water", "elec_package",
+        "share_elec_fixed", "share_water_fixed", "green_rate", "lamp_rate", "fire_amount_fixed", "loss_base_form",
+        "mgmt_fee_commercial", "water_pipe");
 
     /** 前缀键:loss_base_form_b{楼栋id} 按楼栋(损耗链)区分的损耗基数形态 —— 注册一条模板,get() 按前缀匹配 */
     public static final String LOSS_BASE_FORM_B_TEMPLATE = "loss_base_form_b{bid}";
@@ -60,12 +71,14 @@ public final class ParamRegistry {
     private static void price(String key, String label, String unit, Group group, Set<ScopeKind> scopes, String mode,
                               boolean monthlyCheck, ValueKind kind, Map<Integer, String> opts, String formula, String hint,
                               String pairedWith) {
-        DEFS.put(key, new Def(key, Table.PRICE, label, unit, group, scopes, mode, monthlyCheck, kind, opts, formula, hint, pairedWith));
+        DEFS.put(key, new Def(key, Table.PRICE, label, unit, group, scopes, mode, monthlyCheck, kind, opts, formula, hint, pairedWith,
+            COEF_BOOK.contains(key)));
     }
     private static void alloc(String key, String label, String unit, Group group, Set<ScopeKind> scopes, String mode,
                               boolean monthlyCheck, ValueKind kind, Map<Integer, String> opts, String formula, String hint,
                               String pairedWith) {
-        DEFS.put(key, new Def(key, Table.ALLOC, label, unit, group, scopes, mode, monthlyCheck, kind, opts, formula, hint, pairedWith));
+        DEFS.put(key, new Def(key, Table.ALLOC, label, unit, group, scopes, mode, monthlyCheck, kind, opts, formula, hint, pairedWith,
+            COEF_BOOK.contains(key)));
     }
 
     static {

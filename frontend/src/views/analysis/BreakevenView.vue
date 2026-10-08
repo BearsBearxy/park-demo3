@@ -74,7 +74,7 @@ const ymUsed = computed(() =>
   summary.value && monthUsed.value != null ? summary.value.year + '-' + String(monthUsed.value).padStart(2, '0') : null)
 
 // ── CVP 模型(月度口径;有编辑权的人拖滑杆 / 顶栏改动 → anaSettings,没有的人拖 → tryFr,只重算本屏) ──
-// tryFr:没有账簿报表编辑权的人拖出来看效果的数,只在本屏(见下方滑杆);null = 用全园那一份。
+// tryFr:没有本屏编辑权的人拖出来看效果的数,只在本屏(见下方滑杆);null = 用全园那一份。
 const tryFr = ref<number | null>(null)
 const fr = computed(() => tryFr.value ?? anaSettings.breakevenFixedRatio)
 const be = computed(() => {
@@ -102,14 +102,15 @@ const conclusion = computed(() => (be.value && ymUsed.value ? conclusionText(be.
 // 固定成本系数滑杆(spec §二.12:改动即时重算;与顶栏「目标与阈值」同一个数)。
 // 2026-10-05 起这个数在库里、全员一份(用户拍板第 2 条):拖的时候只改本屏(即时重算),松手才存 ——
 // 每拖一格存一次,操作日志里一次拖动就是几十行。
-// 没有账簿报表编辑权的人:0.30.0 初稿让滑杆置灰;用户 2026-10-05「两个都按你建议」改成也能拖着看效果 ——
+// 没有本屏编辑权的人:0.30.0 初稿让滑杆置灰;用户 2026-10-05「两个都按你建议」改成也能拖着看效果 ——
 // 拖出来的数只进 tryFr(本屏即时重算),不动 anaSettings(顶栏弹层、别的屏仍是全园那一份),松手不存;
 // 离开这一屏(含页签切走再切回,见上面 onReactivated)或刷新就回到全园的数。
 // 屏上不说「试算」:三大报表里「试算平衡」是记账用语,用户看不懂行话。
-const frLock = computed(anaSettingsLock)
+// RBAC v4(2026-10-09):这个数归本屏,改它要「盈亏平衡与敏感性 · 编辑」(anaSettings.ANA_SETTING_SCREEN)。
+const frLock = computed(() => anaSettingsLock('breakevenFixedRatio'))
 // 滑杆下那一行(骨架里同一行)。算好存着:直接写进模板,拖一格重画一次就去取一次权限名(字典取不到时一格一个请求)
-const frNote = computed(() => (frLock.value ? '拖动只是看看效果，不会保存；要改全园共用的数' + lackText(['report:edit']) : ''))
-// 账簿报表借得到(主管授权,不在不可借名单),这一屏开着时编辑权会来会走:一变,看效果的数作废 ——
+const frNote = computed(() => (frLock.value ? '拖动只是看看效果，不会保存；要改全园共用的数' + lackText(['breakeven:edit']) : ''))
+// 本屏编辑借得到(主管授权,不在不可借名单),这一屏开着时编辑权会来会走:一变,看效果的数作废 ——
 // 不然借到之后那行说明没了,屏上还停着看效果的数,像是全园的数
 watch(() => !!frLock.value, () => { tryFr.value = null })
 // 这一下拖动改不改全园那一份,按第一格时定,松手照它收尾:拖到一半授权到期,照样去存,后端拒了 saveAnaSettings 退回库里的数,
@@ -127,7 +128,7 @@ function onFr(e: Event) {
 function onFrDone() {
   const ed = editing
   editing = null
-  if (!ed) return   // 看效果:一个请求都不发(后端 report:edit 门也会拒,但不该让人看到「没存上」)
+  if (!ed) return   // 看效果:一个请求都不发(后端 breakeven:edit 门也会拒,但不该让人看到「没存上」)
   // 存不上 saveAnaSettings 自己退回库里的数,这里只说一句
   saveAnaSettings({ breakevenFixedRatio: anaSettings.breakevenFixedRatio })
     .catch((e) => receipt.fail((e as { message?: string })?.message ?? '系数没存上，已退回原来的数'))
@@ -158,7 +159,7 @@ function onFrDone() {
     <!-- 首进:版式已知就不转圈(C6-01)。块高逐块照它顶替的那块 —— 页头 44(.ak-h-ic 40 /
          标题行 20 + 4 + 副标行 20)、结论条一行 20、卡头 20(.av2-card-h 下距 8 合 28)、
          三张图 300 / 300 / 250(各自 :height 字面值,AnaSkelChart 与图同表降档)、系数滑杆一行 20
-         (没有账簿报表的人下面多一行「只是看看效果」,与真版式同一行)。
+         (没有本屏编辑权的人下面多一行「只是看看效果」,与真版式同一行)。
          数据到了原地硬切,不做淡入;KPI 行由 .anx-kpis 的 min-height 94 兜位。 -->
     <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <div v-if="loading && !summary" class="ak-page ana-skel">
@@ -235,7 +236,7 @@ function onFrDone() {
             <span class="v mono">{{ be.fr.toFixed(2) }}</span>
             <span class="k">(拖动即时重算保本点)</span>
           </div>
-          <!-- 谁都能拖(用户 2026-10-05「两个都按你建议」);没有账簿报表的人多一行说清只是看看效果(frNote,骨架里同一行) -->
+          <!-- 谁都能拖(用户 2026-10-05「两个都按你建议」);没有本屏编辑权的人多一行说清只是看看效果(frNote,骨架里同一行) -->
           <p v-if="frNote" class="bev-try">{{ frNote }}</p>
         </div>
 

@@ -76,7 +76,7 @@ const fire = (w: number, h: number) => ro.fire(w, h)
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['billing-run:edit']
+  useAuthStore().permissions = ['alloc-loss:edit']
   ro = stubWideTable('ll-wrap')
 })
 // 只还原自己打的桩:vi.restoreAllMocks() 会把上面 vi.mock 里 reviewApi 的 mockResolvedValue 一起抹掉,

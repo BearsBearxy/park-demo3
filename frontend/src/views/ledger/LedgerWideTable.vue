@@ -78,12 +78,12 @@ const emit = defineEmits<{
 // (取消/保存/换期/切册/深链换期),漏一条就是一把没人认领的锁。
 // ⚠ 第二个参数是权限守卫。宿主 LedgerView 是裸的 `const edit = ref(false)`,**不走 useEditMode** ——
 //   所以铁律①在这一屏没有任何实现:点了「结束授权」人还留在编辑态,锁还被 ping 续着。
-//   权限点与上面那个编辑按钮同源(entry:edit),不新开一个 prop。
+//   权限点与上面那个编辑按钮同源(ledger:edit),不新开一个 prop。
 // 口径:原页底 ⓘ 说明行(.lg-foot)删掉,挂到合计行「合计」两个字上(LIST-PAGE-SPEC §2.1)
 const FOOT_TIP = '本月应收合计 = 各费用项之和;本月结余 = 上月结余 + 应收 − 本月收款。不归本公司收的费用列保持留空。'
 const lock = useEditLock(() => { if (props.edit) emit('cancel') },
-                          () => auth.can('entry:edit'),
-                          () => props.dirty ?? 0, ['entry:edit'])
+                          () => auth.can('ledger:edit'),
+                          () => props.dirty ?? 0, ['ledger:edit'])
 const { lockedBy, evictedBy } = lock
 /** 这一期此刻被谁占着 —— 取自在场表，不用点按钮撞门(设计稿 C-2)。 */
 const heldByOther = lock.watchScope(() => props.lockScope ?? null)
@@ -377,11 +377,11 @@ async function onBack() {
         <span v-if="edit" class="lg-s-lock on" v-tip="'小屏可录入,建议在桌面端操作'">
           <component :is="iconFor('lock')" :size="16" />编辑中 · 建议桌面
         </span>
-        <span v-else-if="auth.can('entry:edit') && reviewNote" class="lg-s-lock ro"
+        <span v-else-if="auth.can('ledger:edit') && reviewNote" class="lg-s-lock ro"
               v-tip="reviewBlock?.tip">
           <component :is="iconFor('lock')" :size="16" />{{ reviewNote }}
         </span>
-        <button v-else-if="auth.can('entry:edit')" type="button" class="lg-s-lock"
+        <button v-else-if="auth.can('ledger:edit')" type="button" class="lg-s-lock"
                 :class="{ held: !!heldByOther }" @click="onEnterEdit">
           <component :is="iconFor(heldByOther ? 'lock' : 'pencil')" :size="16" />
           {{ heldByOther ? heldByOther.displayName : '编辑' }}
@@ -445,7 +445,7 @@ async function onBack() {
             <template #leading><component :is="iconFor('download')" :size="14" /></template>
             导出 Excel
           </Button>
-          <!-- 账册模板(BOOK-WORKBENCH §3):两态常驻,浏览态主行;编辑权限门在面板内(book-template:edit) -->
+          <!-- 账册模板(BOOK-WORKBENCH §3):两态常驻,浏览态主行;编辑权限门在面板内(ledger:template) -->
           <Button variant="outline" size="sm" @click="emit('edit-template')">
             <template #leading><component :is="iconFor('table-2')" :size="14" /></template>
             账册模板
@@ -454,13 +454,13 @@ async function onBack() {
 
         <!-- 交审动作簇:两态常驻,长在主控区(浏览态的「编辑模式」/ 编辑态的「取消 保存」)**左边**,
              同高同圆角(per-screen-review §01)。主控位一个像素不动。
-             门与编辑按钮同源(裸 entry:edit,这一屏没有 elevate:request 兜底)—— 两套门会让
+             门与编辑按钮同源(裸 ledger:edit,这一屏没有 elevate:request 兜底)—— 两套门会让
              同一行里出现「能交审但没有编辑按钮」。
              ⚠ 编辑态画什么由组件按 `:edit` 自己定:动作按钮一颗不画(交审交的是**库里那一份**,
                而编辑态手上是 draft),但「已退回」那颗 chip 留着 —— 人正是照着那句理由在改。
                改前是靠「整簇长在 v-else 分支里」实现的:那是第二份判据,而且顺手把 chip 也藏了。 -->
         <FPReviewActions :keys="reviewKeys" :label="reviewLabel" :edit="edit"
-                         :can-edit="auth.can('entry:edit')" />
+                         :can-edit="auth.can('ledger:edit')" />
 
         <template v-if="edit">
           <!-- ⑤ 主控区(恒右):取消紧邻保存,保存 filled 恒最右 -->
@@ -473,14 +473,14 @@ async function onBack() {
 
         <!-- S 档:这颗锁按钮长在第二行工具行里(稿 §1 注释③),这里不再出第二颗 -->
         <template v-else-if="!isS">
-          <!-- ⚠ 编辑模式入口带权限门:无 entry:edit 不显示(2026-08-22 v-else 语义坑,勿改回 v-else 兜底) -->
+          <!-- ⚠ 编辑模式入口带权限门:无 ledger:edit 不显示(2026-08-22 v-else 语义坑,勿改回 v-else 兜底) -->
           <!-- 锁位就长在这颗按钮上(设计稿 §05):min-width 定死,三态换文案不换宽度。 -->
           <!-- 审核闸(§7.5):已审核 / 待审核时按钮位换成同尺寸禁用药丸(与 .lg-lockbtn 同 min-width)。 -->
-          <span v-if="auth.can('entry:edit') && reviewNote" class="lg-lockbtn lg-reviewpill"
+          <span v-if="auth.can('ledger:edit') && reviewNote" class="lg-lockbtn lg-reviewpill"
                 v-tip="reviewBlock?.tip">
             <component :is="iconFor('lock')" :size="14" />{{ reviewNote }}
           </span>
-          <Button v-else-if="auth.can('entry:edit')" variant="outline" size="sm"
+          <Button v-else-if="auth.can('ledger:edit')" variant="outline" size="sm"
                   class="lg-lockbtn" :class="{ held: !!heldByOther }" @click="onEnterEdit">
             <template #leading>
               <span v-if="heldByOther" class="lg-lockav" :class="{ dim: heldByOther.idle }">{{ heldByOther.displayName.slice(0, 1) }}</span>
@@ -522,7 +522,7 @@ async function onBack() {
       </div>
       <!-- 「单位：元」在工具条右端(原页底 ⓘ 说明行,LIST-PAGE-SPEC §2.1) -->
       <span class="lg-toolbar-r">
-        <span class="lg-toolbar-note">{{ edit ? '点击单元格编辑数值,不收的费用列留空即可,应收/结余自动计算;勾选行可批量删除' : auth.can('entry:edit') ? '只读 · 点击「编辑模式」录入 · 点击租户名查看明细' : '只读 · 点击租户名查看明细' }}</span>
+        <span class="lg-toolbar-note">{{ edit ? '点击单元格编辑数值,不收的费用列留空即可,应收/结余自动计算;勾选行可批量删除' : auth.can('ledger:edit') ? '只读 · 点击「编辑模式」录入 · 点击租户名查看明细' : '只读 · 点击租户名查看明细' }}</span>
         <span class="lg-unit">单位：元</span>
       </span>
     </div>

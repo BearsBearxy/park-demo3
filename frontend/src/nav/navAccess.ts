@@ -1,5 +1,5 @@
-// src/nav/navAccess.ts — 导航可见性(RBAC-SPEC v3「读写分开」,用户 2026-10-04 拍板):
-// 两道门叠在一起 —— 层看 navLayers(角色屏「导航可见层」),屏看这一屏的**查看权限**(PAGE_VIEW)。
+// src/nav/navAccess.ts — 导航可见性(RBAC-SPEC v3「读写分开」2026-10-04;v4「细到菜单单项」§15,2026-10-09):
+// 两道门叠在一起 —— 层看 navLayers(角色屏「导航可见层」),屏看这一屏的**查看权限**(`<屏>:view`)。
 // 没有查看权的屏:导航、搜索、首页、页签条都不列;直接打开落「无权查看」页(router 守卫)。
 // 刻意不在 fpNav.ts 源头过滤:fpAllPages()/fpBuildRoutes() 还要喂路由表、tabs store、TabStrip,
 // 源头砍掉会连路由记录一起没,跳转直接 404。这里只过滤「导航入口」。
@@ -8,46 +8,25 @@ import { FP_NAV, fpBuildRoutes, type NavLayer, type NavSection } from './fpNav'
 /** 判权函数:传 auth.can(角色给的 + 主管授权的;*:view 不可提权,所以查看权只会是角色给的)。 */
 export type Can = (perm: string) => boolean
 
-// 数据层任一查看权:本月出账、导入中心的门(工资也算 —— 只管工资的人也要能进本月出账看录没录)
-const DATA_ANY = ['master:view', 'contract:view', 'param:view', 'meter:view', 'billing:view', 'entry:view', 'salary:view']
-// 光伏 / 充电桩一屏两本账:报送台账归台账与附表,分栋(分桩)运营账归抄表;路由门是两者任一
-const BOOKS = ['entry:view', 'meter:view']
-/** 数据层逐屏;报表 / 分析 / 系统三层整层一项,见 LAYER_VIEW。 */
-const DATA_VIEW: Record<string, readonly string[]> = {
-  'data-home': DATA_ANY,
-  buildings: ['master:view'], tenants: ['master:view'],
-  contracts: ['contract:view'],
-  params: ['param:view'],
-  meters: ['meter:view'],
-  alloc: ['billing:view'], 'alloc-loss': ['billing:view'], 'bill-notices': ['billing:view'],
-  ledger: ['entry:view'], 'sales-income': ['entry:view'], 'elec-cost': ['entry:view'], utilities: ['entry:view'],
-  salary: ['salary:view'],
-  'pv-income': BOOKS, 'car-charging': BOOKS, 'ebike-charging': BOOKS,
-  // 导入中心也收报表导入
-  import: [...DATA_ANY, 'report:view'],
-}
-const LAYER_VIEW: Record<string, readonly string[]> = {
-  reports: ['report:view'], analysis: ['analysis:view'], system: ['system:view'],
-}
-/** 带 ?mode= 的深链只认那一本账的权限 */
-const MODE_VIEW: Record<string, readonly string[]> = { summary: ['entry:view'], meter: ['meter:view'] }
-
 /** 屏 value → 元信息。导航表是常量,建一次。 */
 const ROUTES = fpBuildRoutes()
+/** 跨屏三项:不属于任何一屏。 */
+export const CROSS_PERMS = ['review:approve', 'lock:takeover', 'elevate:request'] as const
+const screenOf = (p: string) => p.slice(0, p.lastIndexOf(':'))
 
 /**
- * 这一屏要哪几项查看权(任一即可)。to 是 value 或带 / ? # 的地址都行。
+ * 这一屏要哪项查看权:v4(RBAC-SPEC §15)起一屏一项 `<屏>:view`,`?mode=` 不再分权。to 是 value 或带 / ? # 的地址都行。
  * null = 不设门:首页、新标签页、改密页这类不在导航里的,以及不认识的地址(认不出来是导航表的问题,
  * 不该表现成「无权查看」)。导航里每一屏都有一项,navAccess.spec 逐屏钉着。
  */
 export function viewPermsOf(to: string): readonly string[] | null {
-  const [path, query = ''] = to.replace(/^\//, '').split('#')[0].split('?')
-  const meta = ROUTES[path]
-  if (!meta) return null
-  const mode = new URLSearchParams(query).get('mode')
-  if (mode && MODE_VIEW[mode] && DATA_VIEW[path] === BOOKS) return MODE_VIEW[mode]
-  return DATA_VIEW[path] ?? LAYER_VIEW[meta.layer] ?? null
+  const path = to.replace(/^\//, '').split(/[?#]/)[0]
+  return ROUTES[path] ? [`${path}:view`] : null
 }
+/** 屏级写权:前缀是导航里的一屏、动作不是 view。只读判定用它。 */
+export const isScreenWrite = (p: string) => !!ROUTES[screenOf(p)] && !p.endsWith(':view')
+/** 认得的键:屏级键或跨屏三项。快照里有认不得的(0.32 留在浏览器里的旧键)就重取一次 /auth/me。 */
+export const isKnownPerm = (p: string) => !!ROUTES[screenOf(p)] || (CROSS_PERMS as readonly string[]).includes(p)
 
 /** 看不看得了这一屏。 */
 export function canViewPage(to: string, can: Can): boolean {
@@ -112,7 +91,7 @@ export function visibleLayers(navLayers: string[], can: Can): NavLayer[] {
 
 /** 登录落地页。必须落在**这个角色看得见的层里**,否则人一进来就在一个侧边栏没有入口的屏上,
  *  像页面坏了。底三档:数据层 → 本月出账;有业务层但没数据层(园区股东)→ 驾驶舱;
- *  一个业务层都没有、只有系统管理权限(客户自建的"纯管理员")→ 用户管理。
+ *  一个业务层都没有、只有系统管理权限(客户自建的"纯管理员")→ 系统管理层第一块看得了的屏(systemHome)。
  *  最后那档预置角色打不到(7 个预置角色都带全部业务层),但客户建得出来。
  *
  *  P5 在前面加两档,判的是「**这个人进系统是来干什么的**」——「看得见」只是及格线:
@@ -120,11 +99,11 @@ export function visibleLayers(navLayers: string[], can: Can): NavLayer[] {
  *  · readonly:零 `:edit` 的人(总经理 / 股东 / 只读账号)落在一屏全是录入按钮、
  *    而每颗都按不动的清单上,是把"你什么都不能做"当成开场白。驾驶舱才是他要看的。
  *  两档的次序不能反:审核员本身零 `:edit`(D16 录审分离),readonly 在前会把他也送去驾驶舱。 */
-export function landingPath(navLayers: string[], canSystemView = false,
+export function landingPath(navLayers: string[], systemHome: string | null = null,
                             opts: { readonly?: boolean; reviewer?: boolean } = {}): string {
   if (opts.reviewer && navLayers.includes('data')) return '/data-home'
   if (opts.readonly && navLayers.includes('analysis')) return '/cockpit'
   if (navLayers.includes('data')) return '/data-home'
   if (navLayers.length) return '/cockpit'
-  return canSystemView ? '/sys-users' : '/cockpit'
+  return systemHome ?? '/cockpit'
 }

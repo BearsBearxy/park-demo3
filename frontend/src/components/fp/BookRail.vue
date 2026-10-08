@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 账册工作台左轨(BOOK-WORKBENCH-SPEC §5/§7-2):本屏账册一键切换 + 公司/账册管理入口。
-// canManage = company:manage(第15权限点):新增与删除入口并排在底部管理区——
+// canManage = ledger:company(第15权限点):新增与删除入口并排在底部管理区——
 // 删除不放行内(用户拍板 2026-08-24:hover 删除钮夹在选册点击目标中间,易误触且与新增分家);
 // 点「删除账册」只发 delete 事件,选哪一册在宿主的两步弹窗里定。
 import { Plus, Trash2 } from 'lucide-vue-next'
@@ -57,7 +57,7 @@ defineEmits<{
         <span v-if="b.tag || b.ver != null" class="br-ver">{{ b.tag ?? 'v' + b.ver }}</span>
       </div>
     </div>
-    <!-- 底部管理区(company:manage 门):新增与删除并排,与选册行为分离。
+    <!-- 底部管理区(ledger:company 门):新增与删除并排,与选册行为分离。
          宿主要别的动作组合(三大报表要三个:新增/重命名/删除公司)就传 #manage 整块接管。 -->
     <div v-if="canManage" class="br-manage">
       <slot name="manage">

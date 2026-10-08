@@ -83,7 +83,7 @@ const STATIONS_WITH_NOMETER = [
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['meter-master:edit', 'meter-reading:edit']
+  useAuthStore().permissions = ['pv-income:archive', 'pv-income:reading']
   vi.clearAllMocks()
   localStorage.clear()
   for (const k of Object.keys(query)) delete query[k]

@@ -20,6 +20,7 @@ import { approvalsApi, type Pending } from '@/api/approvals'
 import type { Notice } from '@/api/notices'
 import { parseReviewKey, type PendingItem } from '@/types/review'
 import { screenOfKind } from '@/views/data-home/monthClose.logic'
+import { useViewGate } from '@/composables/useViewGate'
 import { periodLink } from '@/nav/deepLink'
 import { BRAND } from '@/brand'
 import Avatar from '@/components/ds/Avatar.vue'
@@ -100,14 +101,18 @@ const hasResults = computed(() => bell.notices.length > 0 || !!bell.noticesErr
   || (resultsPending.value && presence.unseenResults > 0))
 const hasSystem = computed(() => !!bell.newVersion || bell.changelogUnread)
 
+const { blocked } = useViewGate()
+
 /**
  * 点一行 → 那张表所在的屏与月,在当前页签打开、换一个新实例(深链才读得到 ?p)。
+ * 看不了那一屏(只勾了审核和部分屏查看的自建审核角色)就说一句缺哪一项、不跳,面板不关(RBAC-SPEC §15.1 第 4 条)。
  * kind → 屏走 monthClose.logic 的 screenOfKind(不另列一份);scope 是数字的当 co 传(台账公司 / 附10 期区 /
  * 报表公司),附13/14 的 office|phase3 走 extra.tab。认不出屏就去本月出账 —— 不猜,猜错比不跳更坏。
  */
 function go(kind: string, scope: string | null, period: string) {
   const v = screenOfKind(kind)
   if (!v) { goDataHome(); return }
+  if (blocked('/' + v)) return
   close()
   const co = scope != null && /^\d+$/.test(scope) ? Number(scope) : undefined
   const tab = scope === 'office' || scope === 'phase3' ? scope : undefined
@@ -115,6 +120,7 @@ function go(kind: string, scope: string | null, period: string) {
   void router.push(periodLink(v, { p: period, co, extra: tab ? { tab } : undefined }))
 }
 function goDataHome() {
+  if (blocked('/data-home')) return
   close()
   tabs.open('data-home')
   void router.push('/data-home')

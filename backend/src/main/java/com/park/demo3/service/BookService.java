@@ -48,13 +48,20 @@ public class BookService {
     private final S10RecordMapper s10Rows;
     private final AuditLogService audit;
     private final BookPinService pinSvc;
+    private final com.park.demo3.security.PermissionGuard guard;   // 模板写 / 换版按账册所属屏判(URL 只有 bookId)
 
     public BookService(LedgerBookMapper books, BookTemplateVersionMapper versions,
                        ManagementCompanyMapper companies, MonthlyLedgerMapper ledgerRows,
-                       S10RecordMapper s10Rows, AuditLogService audit, BookPinService pinSvc) {
+                       S10RecordMapper s10Rows, AuditLogService audit, BookPinService pinSvc,
+                       com.park.demo3.security.PermissionGuard guard) {
         this.books = books; this.versions = versions; this.companies = companies;
         this.ledgerRows = ledgerRows; this.s10Rows = s10Rows; this.audit = audit;
-        this.pinSvc = pinSvc;
+        this.pinSvc = pinSvc; this.guard = guard;
+    }
+
+    /** 账册所属屏的动作(RBAC-SPEC §15.6):台账册 → ledger:<动作>,附表10 期区册 → sales-income:<动作>。认提权。 */
+    private void requireBookAction(LedgerBook b, String action) {
+        guard.require(("s10".equals(b.getScreen()) ? "sales-income" : "ledger") + ":" + action);
     }
 
     // ── 种子(BookSeeder 启动调用,幂等):每公司一台账册,附表10 四期区册(§8) ──
@@ -304,6 +311,7 @@ public class BookService {
     public TemplateSaveResultDTO saveTemplate(Integer bookId, TemplateSaveReq req) {
         LedgerBook b = books.selectById(bookId);
         if (b == null) throw new BizException(ResultCode.NOT_FOUND, "账册不存在");
+        requireBookAction(b, "template");
         int year = req.year(), month = req.month();
         Integer chainId = chainBookId(b);
         Integer owner = ownerIdOf(b);
@@ -349,6 +357,7 @@ public class BookService {
     public BookDTO pinVersion(Integer bookId, PinReq req) {
         LedgerBook b = books.selectById(bookId);
         if (b == null) throw new BizException(ResultCode.NOT_FOUND, "账册不存在");
+        requireBookAction(b, "version");
         Integer owner = ownerIdOf(b);
         assertMonthEditable(b, owner, req.year(), req.month());
         BookTemplateVersion target = versions.byBook(chainBookId(b)).stream()

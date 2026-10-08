@@ -22,6 +22,7 @@ import { useScreen } from '@/composables/useTabShells'
 import { iconFor } from '@/components/ds/icon'
 import { useViewport } from '@/composables/useViewport'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
+import { useViewGate } from '@/composables/useViewGate'
 
 export interface Step {
   /** fpNav 路由值，点击 push('/' + value) */
@@ -59,6 +60,8 @@ const props = defineProps<{
 const emit = defineEmits<{ back: [] }>()
 
 const router = useRouter()
+// 看不了的那一步:条上置灰、悬停写缺哪一项;窄档箭头 / 面板点到它时说一句原因、不跳(RBAC §15.1-4)
+const { lack, blocked } = useViewGate()
 
 // 「换出账月 / 换期」= 切账期:这一屏有没保存的改动先走离开确认(画布 02-A,EDIT-MODE-SPEC §6.1),
 // 点「继续编辑」期不变;0 处改动直接换。拦在按钮上,不在 useEditMode 换期那个 watch 里 —— 那边期已经换了,只能事后 exit。
@@ -69,7 +72,7 @@ async function back() {
 
 function go(s: Step) {
   // 点当前屏什么都不做：再 push 一次自己只会把浏览状态（筛选、滚动位置）冲掉
-  if (s.value === props.current) return
+  if (s.value === props.current || blocked('/' + s.value)) return
   // 同一条工序链上一步一步走,在当前页签里换(TAB-BAR-SPEC §2 例外)—— 显式登记,
   // 盖过「内容区里点出来的 = 开在右边」的默认,否则五步铺满五个页签
   useTabsStore().open(s.value)
@@ -157,7 +160,8 @@ function pick(s: Step) {
           class="fss-step"
           :class="[s.state, { on: s.value === current }]"
           :aria-current="s.value === current ? 'page' : undefined"
-          v-tip="s.title"
+          :disabled="!!lack(s.value)"
+          v-tip="lack(s.value) || s.title"
           @click="go(s)"
         >
           <i v-if="s.state" class="fss-pip" :class="s.state" />{{ s.label }}
@@ -178,10 +182,15 @@ function pick(s: Step) {
           class="fss-sheet-item"
           :class="[s.state, { on: s.value === current }]"
           :aria-current="s.value === current ? 'page' : undefined"
+          :disabled="!!lack(s.value)"
           @click="pick(s)"
         >
           <i v-if="s.state" class="fss-pip" :class="s.state" />
-          <span class="fss-sheet-label">{{ s.title ?? s.label }}</span>
+          <!-- 看不了的那一步:置灰,原因写在名字下面(触屏没有悬停,同宽档 v-tip 那一句) -->
+          <span class="fss-sheet-txt">
+            <span class="fss-sheet-label">{{ s.title ?? s.label }}</span>
+            <span v-if="lack(s.value)" class="fss-sheet-why">{{ lack(s.value) }}</span>
+          </span>
         </button>
       </div>
     </FPDrawer>
@@ -254,7 +263,8 @@ function pick(s: Step) {
 /* C2-03 ④ 按压:.on 是 cursor:default 的当前步,不压。 */
 .fss-step:active:not(.on):not(:disabled) { background: var(--ink-100); transition-duration: 0ms; }
 .fss-step.done { color: var(--text-secondary); }
-.fss-step:hover:not(.on) { color: var(--text-primary); background: var(--ink-050); }
+.fss-step:hover:not(.on):not(:disabled) { color: var(--text-primary); background: var(--ink-050); }
+.fss-step:disabled { opacity: .45; cursor: not-allowed; }
 
 /* 当前步:白药丸 + 投影(与 Segmented 的 .on 同一手法)。只换背景与色,尺寸不动。 */
 .fss-step.on {
@@ -374,5 +384,7 @@ function pick(s: Step) {
 }
 .fss-sheet-item.on { background: var(--surface-sunken); color: var(--text-primary); }
 .fss-sheet-item:active:not(.on) { background: var(--ink-050); }
-.fss-sheet-label { flex: 1 1 auto; min-width: 0; }
+.fss-sheet-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.fss-sheet-item:disabled { cursor: not-allowed; color: var(--text-muted); }
+.fss-sheet-why { font-size: var(--fs-micro); color: var(--text-muted); }
 </style>

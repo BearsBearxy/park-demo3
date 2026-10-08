@@ -37,6 +37,24 @@ class ParamPermissionSplitTest {
         assertThat(byGroup).as("① 区键集非空,否则这条断言是空跑").isNotEmpty();
     }
 
+    /**
+     * 系数簿白名单(RBAC-SPEC §15.6):只有「催缴单 · 系数簿」的人 PUT /api/params 只能写这 12 个键的户级作用域。
+     * 恰好 12 个、都能设到户、都不是月度键;按栋的损耗基数形态与引用型的园区损耗表不在里面(前端系数簿特意排除了它们)。
+     * 破坏验证:COEF_BOOK 加上 loss_base_park_meter → 第一条红。
+     */
+    @Test
+    void coefBookWhitelistIsTheTwelveTenantPriceKeys() {
+        List<String> coef = ParamRegistry.all().stream().filter(Def::coefBook).map(Def::key).sorted().toList();
+        assertThat(coef).containsExactlyInAnyOrder("mgmt_fee", "capacity_fee", "water", "elec_package",
+            "share_elec_fixed", "share_water_fixed", "green_rate", "lamp_rate", "fire_amount_fixed", "loss_base_form",
+            "mgmt_fee_commercial", "water_pipe");
+        assertThat(ParamRegistry.all().stream().filter(Def::coefBook)).allSatisfy(d -> {
+            assertThat(d.scopes()).as(d.key()).contains(ParamRegistry.ScopeKind.TENANT);
+            assertThat(d.monthlyCheck()).as(d.key()).isFalse();
+        });
+        assertThat(ParamRegistry.get("loss_base_form_b3").coefBook()).as("按栋的损耗基数形态").isFalse();
+    }
+
     @Test
     void everyKeyFallsOnExactlyOneSideOfTheLine() {
         // 没有第三档:不是月度录入就是计费口径。新增 Group 时这条会红,提醒去补权限判定。

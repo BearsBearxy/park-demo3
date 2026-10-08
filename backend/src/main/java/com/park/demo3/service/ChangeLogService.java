@@ -9,7 +9,9 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 
@@ -30,20 +32,39 @@ import java.util.function.Function;
 public class ChangeLogService {
 
     /**
-     * 记哪张表,以及谁能看它的记录:跟那张表本身的查看权走(用户拍板:看得到操作日志不等于看得到工资)。
+     * 记哪张表,以及谁能看它的记录:跟那张表本身所在屏的查看走(用户拍板:看得到操作日志不等于看得到工资)。
+     * viewPerms 任一即可(RBAC-SPEC §15.6);report_amount、pnl_row 一张表管好几屏,再按行定位过滤({@link #REF_PREFIX_VIEW})。
      * 判定在 SystemService.auditLogs,下推进 SQL。顺序 = 操作日志筛选下拉里的顺序。
      */
     public enum Tbl {
-        LEDGER("monthly_ledger", Perm.ENTRY_VIEW),
-        METER_READING("meter_reading", Perm.METER_VIEW),
-        SALARY("salary_record", Perm.SALARY_VIEW),
-        REPORT("report_amount", Perm.REPORT_VIEW),
-        PNL("pnl_row", Perm.REPORT_VIEW),
-        ANALYSIS_SETTING("analysis_setting", Perm.ANALYSIS_VIEW);
+        LEDGER("monthly_ledger", List.of("ledger:view")),
+        METER_READING("meter_reading", List.of(Perm.METERS_VIEW)),
+        SALARY("salary_record", List.of("salary:view")),
+        REPORT("report_amount", List.of("income-statement:view", "balance-sheet:view", "trial-balance:view")),
+        PNL("pnl_row", List.of("rent-pnl:view", "elec-pnl:view", "water-pnl:view", "ops-pnl:view", "expense-pnl:view")),
+        // 20 个分析屏都看得到这份设置
+        ANALYSIS_SETTING("analysis_setting", Perm.SCREENS.stream().filter(x -> "analysis".equals(x.layer()))
+            .map(x -> x.value() + ":view").toList());
 
         public final String code;
-        public final String viewPerm;
-        Tbl(String code, String viewPerm) { this.code = code; this.viewPerm = viewPerm; }
+        public final List<String> viewPerms;
+        Tbl(String code, List<String> viewPerms) { this.code = code; this.viewPerms = viewPerms; }
+    }
+
+    /**
+     * report_amount / pnl_row 的行按行定位前缀分屏:「利润表 · 」开头的要利润表查看……「附表1 」开头的要附表1 查看。
+     * 行定位由 ReportService / PnlService 写(报表名 · 公司 · 年月 · 行;附表名 · 年 · 行),删公司那条摘要也按报表分条写(CompanyService)。
+     */
+    public static final Map<String, String> REF_PREFIX_VIEW = new LinkedHashMap<>();
+    static {
+        REF_PREFIX_VIEW.put("利润表 · ", "income-statement:view");
+        REF_PREFIX_VIEW.put("资产负债表 · ", "balance-sheet:view");
+        REF_PREFIX_VIEW.put("科目余额表 · ", "trial-balance:view");
+        REF_PREFIX_VIEW.put("附表1 ", "rent-pnl:view");
+        REF_PREFIX_VIEW.put("附表2 ", "elec-pnl:view");
+        REF_PREFIX_VIEW.put("附表3 ", "water-pnl:view");
+        REF_PREFIX_VIEW.put("附表4 ", "ops-pnl:view");
+        REF_PREFIX_VIEW.put("附表5 ", "expense-pnl:view");
     }
 
     /** 一格:行定位、列名、改前、改后。before = null 是新加的格,after = null 是删掉的格。值可以是数值或文字。 */

@@ -92,7 +92,7 @@ function mountPanel(tier: 's' | 'm' | 'l' | 'xl') {
   return mount(TemplateEditorPanel, {
     props: {
       open: true, book: BOOK, versions: CHAIN, saving: false,
-      canEdit: true, canSwitch: true, monthHasData: false, year: 2026, month: 3,
+      canEdit: true, canSwitch: true, editPerm: 'ledger:template', monthHasData: false, year: 2026, month: 3,
     },
     global: { stubs: { teleport: true } },
   })

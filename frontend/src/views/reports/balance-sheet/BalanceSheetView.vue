@@ -54,7 +54,7 @@ const TOTAL_TIP = '期末资产总计应等于负债合计与所有者权益合�
 const selected = ref(new Set<string | number>())
 
 const {
-  canEdit, canManageCo, reviewKey, reviewNote, reviewTip, reviewLabelOf,
+  canEdit, canAddDelCo, canRenameCo, reviewKey, reviewNote, reviewTip, reviewLabelOf,
   companyId, year, month, edit, saving,
   companies, companiesLoaded, period, periodErr, entered, draft, dirty, dlg,
   isAll, companyName, finCompanies,
@@ -362,12 +362,12 @@ async function onExport() {
     <!-- 公司清单未到位 -->
     <div v-if="!companiesLoaded" class="page-loading"><span class="page-spin" /></div>
 
-    <!-- 一家公司都没有:「新增公司」进空态,有 master:edit 才出 -->
+    <!-- 一家公司都没有:「新增公司」进空态,有「月度台账 · 新增删除公司」才出 -->
     <template v-else-if="companyId === null">
       <h2 class="finw-h2">资产负债表</h2>
       <div class="finw-empty">
         <FPEmpty sub="资产负债表 按公司 × 年月分期">还没有管理公司
-          <template v-if="canManageCo" #action>
+          <template v-if="canAddDelCo" #action>
             <Button variant="outline" size="md" @click="onNewCompany">
               <template #leading><component :is="iconFor('plus')" :size="16" /></template>
               新增公司
@@ -382,7 +382,7 @@ async function onExport() {
       <div class="finw-head">
         <h2 class="finw-title">
           <span class="ic"><component :is="iconFor('scale')" :size="18" /></span>资产负债表<i class="finw-dot" aria-hidden="true">•</i>
-          <FinCompanyMenu size="lg" :companies="finCompanies" :current="companyId" :can-manage="canManageCo"
+          <FinCompanyMenu size="lg" :companies="finCompanies" :current="companyId" :can-add-del="canAddDelCo" :can-rename="canRenameCo"
                           @pick="pickCompany" @add="onNewCompany" @rename="onEditCompany()" @remove="onDeleteCompany()" />
         </h2>
         <p class="finw-sub">选择月份进入该期报表 · 每个年月是一期独立报表</p>
@@ -406,7 +406,7 @@ async function onExport() {
         <!-- 本期在途(换公司不换期 / 重试 / 子类增删后重读)的唯一信号;旧内容原地退让(.fp-stale 带 pointer-events:none) -->
         <FPLoadBar :on="veil" />
         <FinPeriodBar :period="periodOf(year, month)" :edit="edit" :companies="finCompanies" :company-id="companyId"
-                      :can-manage="canManageCo" @back="backToMatrix" @pick="pickCompany($event, true)"
+                      :can-add-del="canAddDelCo" :can-rename="canRenameCo" @back="backToMatrix" @pick="pickCompany($event, true)"
                       @add="onNewCompany" @rename="onEditCompany()" @remove="onDeleteCompany()">
           <FPStepStrip :steps="periodSteps" current="balance-sheet" :period="stripLabel" :query="stripQuery" hide-back />
         </FinPeriodBar>

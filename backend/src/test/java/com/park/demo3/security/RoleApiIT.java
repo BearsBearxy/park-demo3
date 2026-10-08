@@ -6,7 +6,6 @@ import com.park.demo3.entity.AuthRole;
 import com.park.demo3.entity.AuthRolePerm;
 import com.park.demo3.mapper.AuthRoleMapper;
 import com.park.demo3.mapper.AuthRolePermMapper;
-import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -31,12 +30,13 @@ class RoleApiIT extends AbstractMysqlIT {
     @Autowired AuthRoleMapper roles;
     @Autowired AuthRolePermMapper rolePerms;
 
+    /** 预置角色勾的、新代码认得的权限点:V140 只增不删,旧键行还在库里,新代码一律当不存在(RBAC-SPEC §15.8)。 */
     private Set<String> permsOf(String roleCode) {
         AuthRole r = roles.selectOne(Wrappers.<AuthRole>lambdaQuery().eq(AuthRole::getCode, roleCode));
-        assertThat(r).as("预置角色 %s 不存在(V101 种子被改坏了?)", roleCode).isNotNull();
+        assertThat(r).as("预置角色 %s 不存在(种子被改坏了?)", roleCode).isNotNull();
         return rolePerms.selectList(Wrappers.<AuthRolePerm>lambdaQuery()
                 .eq(AuthRolePerm::getRoleId, r.getId()))
-            .stream().map(AuthRolePerm::getPerm).collect(Collectors.toSet());
+            .stream().map(AuthRolePerm::getPerm).filter(Perm::exists).collect(Collectors.toSet());
     }
 
     private String login(String user, String pass) throws Exception {
@@ -46,25 +46,23 @@ class RoleApiIT extends AbstractMysqlIT {
         return JsonPath.read(body, "$.data.token");
     }
 
-    // ══ V101 预置角色种子 ══
+    // ══ 预置角色种子(v4,V140 迁移后) ══
 
     @Test
     void adminRoleHoldsEveryPermission() {
-        // **这条防的是一类会静默烂掉的东西**:将来往 Perm.ALL 加第 15 个权限点,
-        // 却忘了同步 V101 的 admin 种子 —— 系统管理员会安静地做不了那件新事,没有任何报错。
+        // **这条防的是一类会静默烂掉的东西**:将来往 Perm.ALL 加一项,却忘了同步 admin 的种子迁移 ——
+        // 系统管理员会安静地做不了那件新事,没有任何报错。
         assertThat(permsOf("admin"))
-            .as("系统管理员必须持有 Perm.ALL 的全部权限点;新增权限点时记得补种子迁移")
-            .containsExactlyInAnyOrderElementsOf(Perm.ALL);
+            .as("系统管理员必须持有 Perm.ALL 的全部 107 项;新增权限点时记得补种子迁移")
+            .containsExactlyInAnyOrderElementsOf(Perm.ALL).hasSize(107);
     }
 
     /**
-     * 第 18 个权限点 review:approve(SIDEBAR-UX-REDESIGN §7.3)。四处齐了才算加完:
-     * 常量 / ALL(决定角色屏矩阵行序) / META(矩阵渲染读的是它 —— 只加 ALL 永远勾不上) /
-     * NOT_ELEVATABLE。少任一处这条就红。
+     * review:approve(SIDEBAR-UX-REDESIGN §7.3)。四处齐了才算加完:常量 / ALL / META / 不可提权。少任一处这条就红。
      */
     @Test
     void perm18_reviewApprove_isRegisteredEverywhere() {
-        assertThat(Perm.ALL).hasSize(28).contains(Perm.REVIEW_APPROVE);   // v3(V134)加了 9 个查看点,V136 加了工资录入
+        assertThat(Perm.ALL).hasSize(107).contains(Perm.REVIEW_APPROVE);
         assertThat(Perm.META.stream().map(Perm.Meta::key)).contains(Perm.REVIEW_APPROVE);
         assertThat(Perm.elevatable(Perm.REVIEW_APPROVE))
             .as("审核不是能当场借的权限(§7.3):借得到就等于录入方能请主管借一次权把自己录的东西审掉")
@@ -74,60 +72,16 @@ class RoleApiIT extends AbstractMysqlIT {
         assertThat(com.park.demo3.common.ResultCode.CONFLICT.code).isEqualTo(409);
     }
 
-    /** v3(V134,2026-10-04):除园区股东外每个角色都带这 8 个查看点;工资另算,只给 admin 与财务主管。 */
-    private static final List<String> EIGHT_VIEWS = List.of(Perm.MASTER_VIEW, Perm.CONTRACT_VIEW, Perm.PARAM_VIEW,
-        Perm.METER_VIEW, Perm.BILLING_VIEW, Perm.ENTRY_VIEW, Perm.REPORT_VIEW, Perm.ANALYSIS_VIEW);
-
-    private static List<String> plusViews(String... perms) {
-        List<String> out = new java.util.ArrayList<>(EIGHT_VIEWS);
-        out.addAll(List.of(perms));
-        return out;
-    }
-
-    /** reviewer 是第 7 个预置角色:只审不录 —— 只有 review:approve,一个 :edit 都没有(D16);V134 起带 8 个查看点。 */
-    @Test
-    void reviewerRoleIsSeeded_withReviewApproveOnly() {
-        assertThat(permsOf("reviewer")).containsExactlyInAnyOrderElementsOf(plusViews(Perm.REVIEW_APPROVE));
-    }
-
+    /** RBAC-SPEC §15.4:七个预置角色迁移后的屏级权限与 v3 逐格相等(那张表逐格写在 PresetRolesV4)。 */
     @Test
     void presetRolesMatchSpec() {
-        // 钉住 RBAC-SPEC §3 的角色矩阵。改这里之前先改规范,别让代码和文档对不上。
-        assertThat(permsOf("finance_manager"))
-            .as("财务主管 = 除 system 外的业务全部 + 授权接管 + 可请求提权 + 8 个查看点 + 工资查看(V134)与录入(V136)")
-            .containsExactlyInAnyOrderElementsOf(plusViews(
-                Perm.MASTER_EDIT, Perm.CONTRACT_EDIT, Perm.PARAM_POLICY_EDIT, Perm.PARAM_MONTHLY_EDIT,
-                Perm.METER_MASTER_EDIT, Perm.METER_READING_EDIT, Perm.BILLING_RUN_EDIT,
-                Perm.BILLING_ISSUE_EDIT, Perm.ENTRY_EDIT, Perm.REPORT_EDIT, Perm.LOCK_TAKEOVER,
-                Perm.ELEVATE_REQUEST, Perm.SALARY_VIEW, Perm.SALARY_EDIT));
-
+        PresetRolesV4.EXPECTED.forEach((code, want) ->
+            assertThat(permsOf(code)).as(code).containsExactlyInAnyOrderElementsOf(want));
         assertThat(permsOf("finance_clerk"))
-            .as("财务专员 = 抄读数/台账附表录入/出账运行/报表。"
-              + "⚠ V104 起**不含 param-monthly**:月度电价决定每一户的账单,收归主管级,"
-              + "专员每月请主管当场授权一次(ELEVATION-SPEC 让这条从'不可行'变成'可行')")
-            .containsExactlyInAnyOrderElementsOf(plusViews(
-                Perm.METER_READING_EDIT, Perm.BILLING_RUN_EDIT,
-                Perm.ENTRY_EDIT, Perm.REPORT_EDIT, Perm.ELEVATE_REQUEST));
-        assertThat(permsOf("finance_clerk"))
-            .as("V134 + V136:专员看不到工资也录不了工资 —— 工资的查看与录入只给 admin 与财务主管")
-            .doesNotContain(Perm.SALARY_VIEW, Perm.SALARY_EDIT);
-        assertThat(permsOf("finance_clerk"))
-            .as("电价与计费口径都必须在专员手上之外 —— 这两项一起构成'账单数字'那道门")
-            .doesNotContain(Perm.PARAM_MONTHLY_EDIT, Perm.PARAM_POLICY_EDIT);
-
-        // ── 三个只读角色不再完全相同(2026-08-22 用户拍板,ELEVATION-SPEC §1) ──
-        // 总经理是做业务的人,遇到要改的东西可以请主管当场授权;
-        // 只读账号与园区股东**连问都不能问** —— 他们连编辑模式按钮都不该看见。
-        // v3(V134):总经理与只读账号照旧看得到除工资外的全部;园区股东只有经营分析 + 报表。
-        assertThat(permsOf("gm"))
-            .as("总经理:零写权限,但可请求提权;8 个查看点")
-            .containsExactlyInAnyOrderElementsOf(plusViews(Perm.ELEVATE_REQUEST));
-        assertThat(permsOf("viewer"))
-            .as("只读账号:只有 8 个查看点 —— 有 elevate:request 就等于给了他编辑模式入口")
-            .containsExactlyInAnyOrderElementsOf(EIGHT_VIEWS);
-        assertThat(permsOf("shareholder"))
-            .as("园区股东:只有经营分析 + 报表的查看,没有 elevate:request")
-            .containsExactlyInAnyOrder(Perm.ANALYSIS_VIEW, Perm.REPORT_VIEW);
+            .as("专员看不到工资也录不了工资;电价与计费口径都在专员手上之外 —— 这两项一起构成「账单数字」那道门")
+            .doesNotContain("salary:view", Perm.SALARY_EDIT, Perm.PARAMS_MONTHLY, Perm.PARAMS_EDIT);
+        assertThat(permsOf("viewer")).as("只读账号连问都不能问").doesNotContain(Perm.ELEVATE_REQUEST);
+        assertThat(permsOf("reviewer")).as("只审不录:一个写权都没有").noneMatch(Perm::isWrite);
         assertThat(roles.selectOne(Wrappers.<AuthRole>lambdaQuery().eq(AuthRole::getCode, "shareholder"))
                 .getNavLayers()).as("园区股东看经营分析与报表两层(V134)").isEqualTo("analysis,reports");
     }
@@ -161,7 +115,7 @@ class RoleApiIT extends AbstractMysqlIT {
                 .contentType("application/json").content("{}"))
            .andExpect(status().isForbidden())
            .andExpect(jsonPath("$.code").value(403))
-           .andExpect(jsonPath("$.message").value("无操作权限：当前账号没有修改这项数据的权限（可查看，如需修改请联系管理员开通）"));
+           .andExpect(jsonPath("$.message").value("无修改权限：需要「租户管理 · 编辑」，请联系系统管理员在角色里勾上"));
         mvc.perform(delete("/api/tenants/999999").header("Authorization", "Bearer " + t))
            .andExpect(status().isForbidden())
            .andExpect(jsonPath("$.code").value(403));

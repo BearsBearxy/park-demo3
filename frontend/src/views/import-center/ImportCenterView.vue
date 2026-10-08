@@ -28,10 +28,10 @@ import { chargingApi } from '@/api/charging'
 import type { ImportLogOverviewDTO, ImportLogDTO } from '@/types/importLog'
 import type { CompanyDTO } from '@/types/ledger'
 
-// 权限挂在 import kind 上而非本屏(RBAC §5.6):无该模块写权限的磁贴不显示。
-// 下方「导入记录」表不过滤 —— 进得来这一屏(数据层任一查看或报表查看)就能看谁导了什么,只有文件名、行数、操作人。
+// 权限挂在 import kind 上而非本屏(RBAC §15.7):没有它导进去的那一屏的写权,磁贴不显示。
+// 下方「导入记录」表不过滤 —— 进得来这一屏(导入中心 · 查看)就能看谁导了什么,只有文件名、行数、操作人。
 const auth = useAuthStore()
-const visibleTypes = computed(() => IMPORT_TYPES.filter(t => auth.can(t.module)))
+const visibleTypes = computed(() => IMPORT_TYPES.filter(t => t.module.some(p => auth.can(p))))
 const zones = useZonesStore()
 
 const overview = ref<ImportLogOverviewDTO | null>(null)   // §6 加载信号

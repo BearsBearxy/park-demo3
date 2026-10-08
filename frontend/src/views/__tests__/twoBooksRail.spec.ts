@@ -48,8 +48,8 @@ vi.mock('vue-router', () => ({
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  // RBAC v3:两本账各要各的查看权(报送台账 entry:view,运营账 meter:view)
-  useAuthStore().permissions = ['entry:edit', 'meter-master:edit', 'meter-reading:edit', 'entry:view', 'meter:view']
+  // RBAC v4:一屏一项查看看两本;写按本分(报送台账 = 本屏编辑,电站档案 / 分栋读数 = 两个专有动作)
+  useAuthStore().permissions = ['pv-income:view', 'pv-income:edit', 'pv-income:archive', 'pv-income:reading']
   vi.clearAllMocks()
   localStorage.clear()
   for (const k of Object.keys(query)) delete query[k]
@@ -135,14 +135,14 @@ describe('光伏 · 一屏两本账', () => {
     expect(w.findAll('.br-item')[0].classes()).toContain('on')
   })
 
-  // RBAC v3:只有抄表查看的人只有运营账那本;报送台账的期区 / 总览接口只对台账与附表(或分析)开放,取了就是 403。
-  // 破坏验证:PvView 的 onMounted 里 if (METER_ONLY) return 删掉 → 红
-  it('❗只有抄表查看:左栏只剩运营账,进屏不取报送台账的期区与总览', async () => {
-    useAuthStore().permissions = ['meter:view']
+  // RBAC v4:一项「附表6 光伏发电 · 查看」看两本,报送台账的期区 / 总览接口对它放行,进屏照取。
+  // 破坏验证:MODES 改回按权限滤 / onMounted 加回早退 → 红
+  it('❗只有本屏查看:两本都列,进屏取报送台账的期区与总览', async () => {
+    useAuthStore().permissions = ['pv-income:view']
     const w = await open()
-    expect(w.findAll('.br-item').map(i => i.find('.br-name').text())).toEqual(['分栋运营账'])
-    expect(pvApi.phases).not.toHaveBeenCalled()
-    expect(pvApi.overview).not.toHaveBeenCalled()
+    expect(w.findAll('.br-item').map(i => i.find('.br-name').text())).toEqual(['报送台账', '分栋运营账'])
+    expect(pvApi.phases).toHaveBeenCalled()
+    expect(pvApi.overview).toHaveBeenCalled()
   })
 
   it('两支各自的返回箭头随功能门一起退场 —— 左栏就是出路', async () => {
@@ -196,12 +196,12 @@ describe('三屏一致性门禁', () => {
       expect(guards, `${rel} 的写函数自守少于 2 处(onCreate + onImport)`).toBeGreaterThanOrEqual(2)
     })
 
-  // 充电桩与光伏同一接法,只钉接线(行为由上面光伏那条挂载测钉)。破坏验证:ChargingView 的守卫删掉 → 红
+  // 充电桩与光伏同一接法,只钉接线(行为由上面光伏那条挂载测钉)。破坏验证:ChargingView 的 MODES 加回按权限滤 → 红
   it.each(['/pv/PvView.vue', '/charging/ChargingView.vue'])(
-    '%s 没有报送台账那本时,进屏与切回都不取它的接口(RBAC v3)', (rel) => {
+    '%s 一屏一项查看看两本:左栏不按权限滤,进屏照取报送台账的接口(RBAC v4)', (rel) => {
       const s = readFileSync(join(VIEWS, rel), 'utf8')
-      expect(s).toMatch(/onMounted\(async \(\) => \{\s*if \(METER_ONLY\) return/)
-      expect(s).toContain('onReactivated(() => { if (!METER_ONLY) void refresh()')
+      expect(s).toContain('const MODES = [...ALL_MODES]')
+      expect(s).not.toContain('METER_ONLY')
     })
 
   it.each(['/pv/PvMeterView.vue', '/charging/CpMeterView.vue', '/elec/ElecCostView.vue'])(
@@ -329,18 +329,20 @@ describe('附表族即时落库屏 · 新增抽屉 / 导入窗算 1 处改动', 
     })
 })
 
-describe('光伏 · 两本账按查看权(RBAC v3)', () => {
-  // 破坏验证:PvView 的 MODES 改回 ALL_MODES(不按 can 滤)→ 红
-  it('❗只有抄表查看权:左栏只剩分栋运营账,进屏就落在它上面', async () => {
-    useAuthStore().permissions = ['meter:view']
+describe('光伏 · 屏级编辑分界(RBAC v4)', () => {
+  const EMPTY_YEAR = { year: 2025, phases: [], rows: [],
+    total: { gen: 0, fee: 0, selfKwh: 0, selfAmt: 0, gridKwh: 0, gridAmt: 0 } } as PvYearDTO
+  // 编辑入口认本屏的编辑,不认别的附表屏 —— 附表7 的编辑权不让附表6 出「编辑模式」。
+  // 破坏验证:PvView 的 SchedHeader perm 写成 car-charging:edit / 模块级的任一附表编辑 → 红
+  it('❗只有附表7 编辑:附表6 报送台账没有「编辑模式」;补上附表6 编辑就有', async () => {
+    query.p = '2025'
+    vi.mocked(pvApi.records).mockResolvedValue(EMPTY_YEAR)
+    useAuthStore().permissions = ['pv-income:view', 'car-charging:edit']
     const w = await open()
-    expect(w.findAll('.br-item .br-name').map(i => i.text())).toEqual(['分栋运营账'])
-    expect(w.find('.sm-gate').exists(), '不落报送台账').toBe(false)
-  })
-
-  it('只有台账查看权:左栏只剩报送台账', async () => {
-    useAuthStore().permissions = ['entry:view']
-    const w = await open()
-    expect(w.findAll('.br-item .br-name').map(i => i.text())).toEqual(['报送台账'])
+    expect(w.find('.sm-gate').exists(), '前置:已经进了 2025 年的表').toBe(false)
+    expect(w.find('.lc-lockbtn').exists()).toBe(false)
+    useAuthStore().permissions = ['pv-income:view', 'car-charging:edit', 'pv-income:edit']
+    await flushPromises()
+    expect(w.find('.lc-lockbtn').exists()).toBe(true)
   })
 })

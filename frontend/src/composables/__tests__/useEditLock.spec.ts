@@ -23,7 +23,7 @@ vi.mock('@/api', () => ({
   sessionDrifted: vi.fn(() => false),
 }))
 
-const PERMS = ['entry:edit']
+const PERMS = ['ledger:edit']
 const SCOPE = 'ledger:3:2025-06'
 
 /** 后端 POST /api/locks/{scope} 的两种回答 */
@@ -418,10 +418,10 @@ describe('握着锁 = 这一屏在编辑(auth.editors)', () => {
   it('❗acquire 登记时带上第四参 perms:全是自己角色给的 → 结束授权那一问不列;靠授权就列', async () => {
     const screen = `lock-screen-${++n}`
     let lock!: ReturnType<typeof useEditLock>
-    const Host = defineComponent({ setup() { lock = useEditLock(undefined, undefined, () => 3, ['entry:edit']); return () => null } })
+    const Host = defineComponent({ setup() { lock = useEditLock(undefined, undefined, () => 3, ['ledger:edit']); return () => null } })
     mount(defineComponent({ render: () => h(shellOf(`${screen}:0`, Host)) }))
     const auth = useAuthStore()
-    auth.permissions = ['entry:edit']
+    auth.permissions = ['ledger:edit']
     vi.mocked(api.post).mockResolvedValueOnce(GRANTED as never)
     await lock.acquire(SCOPE)
     expect(auth.dirtyOn(screen), '前置:登记上了').toBe(3)
@@ -431,23 +431,25 @@ describe('握着锁 = 这一屏在编辑(auth.editors)', () => {
     lock.release()
   })
 
-  // 那三处宿主真的递了(挂载太重,源码钉)。破坏验证:任一处删掉第四参 → 那一条红
+  // 那三处宿主真的递了(挂载太重,源码钉)。v4 起键按屏:三大报表 / 账册模板由宿主按屏传进来(变量),台账写死本屏编辑。
+  // 破坏验证:任一处删掉第四参 → 那一条红
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   it.each([
-    ['components/fin/useFinStatementScreen.ts', 'report:edit'],
-    ['components/fp/TemplateEditorPanel.vue', 'book-template:edit'],
-    ['views/ledger/LedgerWideTable.vue', 'entry:edit'],
+    ['components/fin/useFinStatementScreen.ts', 'editPerm'],
+    ['components/fp/TemplateEditorPanel.vue', 'props.editPerm'],
+    ['views/ledger/LedgerWideTable.vue', `'ledger:edit'`],
   ])('❗%s 的 useEditLock 带 [%s]', (rel, perm) => {
     const src = readFileSync(join(__dirname, '../..', rel), 'utf8')
-    expect(src).toMatch(new RegExp(`useEditLock\\([\\s\\S]{0,200}?\\['${perm}'\\]\\)`))
+    expect(src).toMatch(new RegExp(`useEditLock\\([\\s\\S]{0,200}?\\[${esc(perm)}\\]\\)`))
   })
-  // 不握锁、自己登记的三处同理
+  // 不握锁、自己登记的三处同理(收款公司窗:新增公司靠「月度台账 · 新增删除公司」,其余靠「催缴单 · 收款公司」)
   it.each([
-    ['views/bills/CompanyBookWindow.vue', 'master:edit'],
-    ['views/contracts/ContractNewDialog.vue', 'contract:edit'],
-    ['views/system/SystemRolesView.vue', 'system:edit'],
+    ['views/bills/CompanyBookWindow.vue', `creating.value ? 'ledger:company' : 'bill-notices:payee'`],
+    ['views/contracts/ContractNewDialog.vue', `'contracts:edit'`],
+    ['views/system/SystemRolesView.vue', `'sys-roles:edit'`],
   ])('❗%s 的 openEditor 带 [%s]', (rel, perm) => {
     const src = readFileSync(join(__dirname, '../..', rel), 'utf8')
-    expect(src).toMatch(new RegExp(`auth\\.openEditor\\(meId, screen, [^\\n]{0,60}?\\['${perm}'\\]\\)`))
+    expect(src).toMatch(new RegExp(`auth\\.openEditor\\(meId, screen, [^\\n]{0,60}?\\[${esc(perm)}\\]\\)`))
   })
 
   // useEditMode 把 dirty 同时交给自己那条登记和底下的锁:任一处漏传,缺省的 1 会加进来 → 3。
@@ -484,9 +486,9 @@ describe('握着锁 = 这一屏在编辑(auth.editors)', () => {
     const { lock } = host()
     const auth = useAuthStore()
     vi.mocked(api.post).mockResolvedValueOnce([
-      { perm: 'entry:edit', permLabel: '月度录入', authorizer: 'boss', authorizerName: '主管', expiresAt: Date.now() + 600_000 },
+      { perm: 'ledger:edit', permLabel: '月度录入', authorizer: 'boss', authorizerName: '主管', expiresAt: Date.now() + 600_000 },
     ] as never)
-    await auth.requestElevation(['entry:edit'], 'boss', 'x')
+    await auth.requestElevation(['ledger:edit'], 'boss', 'x')
     lock().release()                      // 没握过锁:不许顺手把刚拿到的授权结束掉
     expect(api.delete).not.toHaveBeenCalledWith('/auth/elevate')
     vi.mocked(api.post).mockResolvedValueOnce(GRANTED as never)

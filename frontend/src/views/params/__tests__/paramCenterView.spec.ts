@@ -15,7 +15,7 @@ import { receipts } from '@/utils/receipt'
 // RBAC:本屏三扇门(月度录入 / 计费口径 / 重算),空权限进来是浏览态没有写入口
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['param-monthly:edit', 'param-policy:edit', 'billing-run:edit']
+  useAuthStore().permissions = ['params:monthly', 'params:edit', 'params:recalc']
   // 每条用例从同一份深链起步
   for (const k of Object.keys(query)) delete query[k]
   query.ym = '2024-02'

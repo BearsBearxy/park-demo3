@@ -9,6 +9,8 @@ import java.util.regex.Pattern;
 /**
  * 审核键的 kind 白名单(SIDEBAR-UX-REDESIGN §7.1)。键格式 `kind[:scope]:period`。
  *
+ * v4(RBAC-SPEC §15.6):交审权 = 那一屏的编辑。楼栋损耗另认公共电核算的编辑 —— 公共电核算一次交两把键。
+ *
  * **kind→perm 这张表是新写的,不是「复用 RBAC-SPEC §5.2」** —— §5.2 是 126 条
  * URL 路径 → 权限点的有序表,不是以 kind 为主键的表,而且那个映射对 params
  * (policy / monthly 两档)与 elec-cost 根本不是函数。交审要的是「这张表的 edit 权」,
@@ -24,24 +26,24 @@ import java.util.regex.Pattern;
  */
 public enum ReviewKind {
 
-    PARAMS        ("params",         "计费参数",      ScopeShape.NONE,    List.of(Perm.PARAM_POLICY_EDIT, Perm.PARAM_MONTHLY_EDIT), true),
-    METERS        ("meters",         "园区抄表",      ScopeShape.NONE,    List.of(Perm.METER_READING_EDIT), true),
-    ALLOC         ("alloc",          "公共电核算",    ScopeShape.NONE,    List.of(Perm.BILLING_RUN_EDIT),   true),
-    ALLOC_LOSS    ("alloc-loss",     "楼栋损耗",      ScopeShape.NONE,    List.of(Perm.BILLING_RUN_EDIT),   true),
-    BILL_NOTICES  ("bill-notices",   "催缴单",        ScopeShape.NONE,    List.of(Perm.BILLING_RUN_EDIT),   true),
-    LEDGER        ("ledger",         "月度台账",      ScopeShape.COMPANY, List.of(Perm.ENTRY_EDIT),         true),
-    S10           ("s10",            "附表10",        ScopeShape.PHASE,   List.of(Perm.ENTRY_EDIT),         true),
+    PARAMS        ("params",         "计费参数",      ScopeShape.NONE,    List.of(Perm.PARAMS_EDIT, Perm.PARAMS_MONTHLY), true),
+    METERS        ("meters",         "园区抄表",      ScopeShape.NONE,    List.of("meters:edit"),   true),
+    ALLOC         ("alloc",          "公共电核算",    ScopeShape.NONE,    List.of("alloc:edit"),    true),
+    ALLOC_LOSS    ("alloc-loss",     "楼栋损耗",      ScopeShape.NONE,    List.of("alloc-loss:edit", "alloc:edit"), true),
+    BILL_NOTICES  ("bill-notices",   "催缴单",        ScopeShape.NONE,    List.of(Perm.BILL_NOTICES_EDIT), true),
+    LEDGER        ("ledger",         "月度台账",      ScopeShape.COMPANY, List.of("ledger:edit"),   true),
+    S10           ("s10",            "附表10",        ScopeShape.PHASE,   List.of("sales-income:edit"), true),
     SALARY        ("salary",         "附表12",        ScopeShape.NONE,    List.of(Perm.SALARY_EDIT),        true),   // 2026-10-04 起工资写拆成 salary:edit
-    UTILITIES     ("utilities",      "办公·三期水电", ScopeShape.FIXED,   List.of(Perm.ENTRY_EDIT),         true),
-    PV            ("pv",             "附表6",         ScopeShape.NONE,    List.of(Perm.ENTRY_EDIT),         true),
-    CHARGING_CAR  ("charging-car",   "附表7",         ScopeShape.NONE,    List.of(Perm.ENTRY_EDIT),         true),
-    CHARGING_EBIKE("charging-ebike", "附表8",         ScopeShape.NONE,    List.of(Perm.ENTRY_EDIT),         true),
-    ELEC_COST     ("elec-cost",      "附表11",        ScopeShape.NONE,    List.of(Perm.ENTRY_EDIT),         true),
+    UTILITIES     ("utilities",      "办公·三期水电", ScopeShape.FIXED,   List.of("utilities:edit"), true),
+    PV            ("pv",             "附表6",         ScopeShape.NONE,    List.of("pv-income:edit"), true),
+    CHARGING_CAR  ("charging-car",   "附表7",         ScopeShape.NONE,    List.of("car-charging:edit"), true),
+    CHARGING_EBIKE("charging-ebike", "附表8",         ScopeShape.NONE,    List.of("ebike-charging:edit"), true),
+    ELEC_COST     ("elec-cost",      "附表11",        ScopeShape.NONE,    List.of("elec-cost:edit"), true),
     // 园区电费模型没有清单行(本月出账屏记账列 8 行里没有它),所以两条随之而来:
     //   ① 交审前置不走「清单行 done」,改判「该月 elec_cost_entry 有行」(见 ReviewService);
     //   ② 不进整月锁账的键集合 —— 否则锁账永远达不成,且 P2 已落地的六项计数要跟着改
     //      (§12:计数与审核键集合必须与屏内同源,假绿栽过三次)。
-    ELEC_MODEL    ("elec-model",     "园区电费模型",  ScopeShape.NONE,    List.of(Perm.ENTRY_EDIT),         false),
+    ELEC_MODEL    ("elec-model",     "园区电费模型",  ScopeShape.NONE,    List.of("elec-cost:edit"), false),
 
     // ── 三大报表(2026-09-08,用户拍板「每个录入屏都要审核」) ──────────────────
     // 一张报表 × 一家公司 × 一个月一把键。三个 statement 是三个 kind 而不是一个 kind 的
@@ -53,9 +55,9 @@ public enum ReviewKind {
     //   在没导报表的月份**永远达不成**。与 ELEC_MODEL 那个 false 的区别:那把键连清单行都
     //   没有(所以永远交不了审,是个洞);这三把有清单行,交得了、审得过,只是不参与锁账判据。
     //   等报表变成每月必做,把这一位翻真即可,别的都不用动。
-    REPORT_IS     ("report-is",      "利润表",        ScopeShape.COMPANY, List.of(Perm.REPORT_EDIT),        false),
-    REPORT_BS     ("report-bs",      "资产负债表",    ScopeShape.COMPANY, List.of(Perm.REPORT_EDIT),        false),
-    REPORT_TB     ("report-tb",      "科目余额表",    ScopeShape.COMPANY, List.of(Perm.REPORT_EDIT),        false);
+    REPORT_IS     ("report-is",      "利润表",        ScopeShape.COMPANY, List.of("income-statement:edit"), false),
+    REPORT_BS     ("report-bs",      "资产负债表",    ScopeShape.COMPANY, List.of("balance-sheet:edit"), false),
+    REPORT_TB     ("report-tb",      "科目余额表",    ScopeShape.COMPANY, List.of("trial-balance:edit"), false);
 
     /** kind code → report_amount.statement 的值('is' / 'bs' / 'tb')。不是这三把键就回 null。 */
     public String statement() {

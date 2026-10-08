@@ -101,7 +101,7 @@ interface Vm { openPoolDlg: (r?: AllocPoolRowDTO) => void; submitPool: () => Pro
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['billing-run:edit', 'param-policy:edit']
+  useAuthStore().permissions = ['alloc:edit', 'alloc:pools', 'params:view']
   vi.mocked(allocApi.updateRule).mockClear()
   vi.mocked(metersApi.meterReadings).mockReset()
   vi.mocked(paramsApi.list).mockReset().mockResolvedValue([])

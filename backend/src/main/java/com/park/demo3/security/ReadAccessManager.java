@@ -63,15 +63,19 @@ public class ReadAccessManager implements AuthorizationManager<RequestAuthorizat
     }
 
     /**
-     * GET 被拒的 403 文案。不能用通用那句 —— 它写的是「可查看,如需修改…」,对读被拒是反的。
-     * 写明缺哪一项、去找谁:用户拿着这句话去找系统管理员,管理员一眼知道该勾哪一格。
+     * GET 被拒的 403 文案:写明缺哪一屏的哪一项、去找谁 —— 用户拿着这句话去找系统管理员,管理员一眼知道该勾哪一格。
+     * 一个接口被十几屏共用时不把十几个屏名糊进一句(Perm.needText)。
      */
     public static String deniedMessage(Object need) {
-        if (need instanceof List<?> l && !l.isEmpty()) {
-            List<String> labels = l.stream().map(p -> "「" + Perm.label(String.valueOf(p)) + "」").toList();
-            String what = labels.size() == 1 ? labels.get(0) : String.join("或", labels) + "其中一项";
-            return "无查看权限：需要" + what + "，请联系系统管理员在角色里勾上";
-        }
+        if (need instanceof List<?> l && !l.isEmpty())
+            return "无查看权限：需要" + Perm.needText(l.stream().map(String::valueOf).toList()) + "，请联系系统管理员在角色里勾上";
         return "无查看权限：这项数据没有对你的账号开放，请联系系统管理员";
+    }
+
+    /** 写被拒的 403 文案(v4):同样写屏名;need 为空(表里没有 / 显式拒绝)只说没开放。 */
+    public static String writeDeniedMessage(Object need) {
+        if (need instanceof List<?> l && !l.isEmpty())
+            return "无修改权限：需要" + Perm.needText(l.stream().map(String::valueOf).toList()) + "，请联系系统管理员在角色里勾上";
+        return "无修改权限：这个操作没有对你的账号开放，请联系系统管理员";
     }
 }

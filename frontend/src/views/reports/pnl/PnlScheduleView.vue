@@ -37,6 +37,7 @@ import FpImportModal from '@/components/import/FpImportModal.vue'
 import PnlTable from './PnlTable.vue'
 import { receipt } from '@/utils/receipt'
 import { useAppConfigStore } from '@/stores/appConfig'
+import { useAuthStore } from '@/stores/auth'
 import { ask } from '@/utils/ask'
 
 const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
@@ -45,6 +46,9 @@ const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.me
 const route = useRoute()
 const meta = route.meta as { value?: string; icon?: string }
 const config = PNL_SCHEDULES.find(c => c.route === meta.value) ?? PNL_SCHEDULES[0]
+// 本屏的编辑权(RBAC v4:五张损益附表各一项,屏 value = 路由 meta.value = config.route)
+const editPerm = `${config.route}:edit`
+const auth = useAuthStore()
 const icon = meta.icon ?? 'trending-up'
 const sub = `园区全局年度矩阵 · ${config.groupCol} × 科目细分 × 12 月 · 单位:元`
 
@@ -122,6 +126,8 @@ const generatedYears = new Set<number>()   // 每年会话内只试一次,成败
 const appCfg = useAppConfigStore()
 async function tryGenerate(y: number) {
   if (year.value !== y || edit.value || generatedYears.has(y)) return   // 竞态/编辑态守卫
+  // 补行是整年 PUT:只看得了的人进年也发,后端拒了静默,白跑一趟。不记 generatedYears:借到编辑权后再进这一年照常补
+  if (!auth.can(editPerm)) return
   // 客户园区不补:补的是我园母册的科目名(2026-10-05 用户拍板「按你建议修改」,DeployConfig)。
   // 配置还没到先等它(拿到后 ensure 不再发请求):不等的话我园刷新后深链直落这一年会漏补,之后没有人再触发它。
   // 拉失败照旧不补、不记 generatedYears —— 配置到了下次进年还能补(我园)
@@ -464,7 +470,7 @@ const { note: deepNote } = useDeepPeriod({
           :sub="sub"
           :year="year"
           :edit="edit"
-          perm="report:edit"
+          :perm="editPerm"
           desk-hint
           @back="goGate"
           @toggle-edit="toggleEdit"

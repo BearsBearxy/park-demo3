@@ -267,7 +267,7 @@ describe('在场', () => {
     vi.mocked(api.put).mockResolvedValue({
       users: [], evicted: null,
       approvals: [{ id: 'a1', requester: 'zhangsan', requesterName: '张三', requesterRole: null,
-                    perms: ['param-policy:edit'], permLabels: ['计费口径'],
+                    perms: ['alloc:pools'], permLabels: ['计费口径'],
                     page: '计费参数 · 一泽 2025-06', action: '修改 loss_rate · A 座',
                     impact: '本月 A 座 41 户', leftMs: 92_000 }],
       outcome: null,

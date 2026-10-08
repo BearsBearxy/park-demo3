@@ -37,6 +37,19 @@ import java.util.List;
  */
 public interface AuditQueryMapper {
 
+    /**
+     * 报表金额与损益附表一张表管好几屏(RBAC-SPEC §15.6):这两张表的行再按行定位前缀过滤,
+     * prefixes = 查看者看得了的那几屏的前缀(ChangeLogService.REF_PREFIX_VIEW)。别的表不受影响。
+     * 第二行是 0.30–0.32 写下的「删除公司」报表摘要:row_ref 是裸公司名,不以任何一张报表开头(0.33 起按三张表分条写)。
+     * 它记的是三张报表一起删,三张里看得了任一张就给看(能走到这里已经过了 tbl IN tbls,即至少有一张报表的查看);
+     * 不加这一行它谁都看不到,系统管理员也看不到。三个报表名与 REF_PREFIX_VIEW 的前三项是同一份字面量。
+     */
+    String REF_FILTER = """
+        (tbl NOT IN ('report_amount', 'pnl_row')
+         OR (tbl = 'report_amount' AND row_ref NOT LIKE '利润表 · %' AND row_ref NOT LIKE '资产负债表 · %' AND row_ref NOT LIKE '科目余额表 · %')
+         <if test="!prefixes.isEmpty()">OR <foreach collection="prefixes" item="p" open="(" separator=" OR " close=")">row_ref LIKE CONCAT(#{p}, '%')</foreach></if>)
+        """;
+
     String BRANCHES = """
         <if test="src == null or src == 'param'">
           SELECT 'param' AS source, id AS rid, ts AS ts, actor AS actor,
@@ -135,6 +148,7 @@ public interface AuditQueryMapper {
               <otherwise>tbl IN <foreach collection="tbls" item="x" open="(" separator="," close=")">#{x}</foreach></otherwise>
             </choose>
             <if test="tbl != null">AND tbl = #{tbl}</if>
+            AND """ + REF_FILTER + """
             <if test="actor != null and actor != ''">AND actor = #{actor}</if>
             <if test="from != null">AND at &gt;= #{from}</if>
             <if test="to != null">AND at &lt; #{to}</if>
@@ -150,7 +164,7 @@ public interface AuditQueryMapper {
                            @Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to,
                            @Param("seeParam") boolean seeParam, @Param("seeImport") boolean seeImport,
                            @Param("seeBilling") boolean seeBilling, @Param("seeMeter") boolean seeMeter,
-                           @Param("tbls") List<String> tbls,
+                           @Param("tbls") List<String> tbls, @Param("prefixes") List<String> prefixes,
                            @Param("size") int size, @Param("offset") int offset);
 
     @Select("<script>SELECT COUNT(*) FROM (" + BRANCHES + ") u</script>")
@@ -158,7 +172,7 @@ public interface AuditQueryMapper {
                @Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to,
                @Param("seeParam") boolean seeParam, @Param("seeImport") boolean seeImport,
                @Param("seeBilling") boolean seeBilling, @Param("seeMeter") boolean seeMeter,
-               @Param("tbls") List<String> tbls);
+               @Param("tbls") List<String> tbls, @Param("prefixes") List<String> prefixes);
 
     /** 筛选下拉用:出现过的操作人（各表并集，去重）。看不见的行里的人也不列 —— 和 BRANCHES 同一套条件。 */
     @Select("""
@@ -176,10 +190,11 @@ public interface AuditQueryMapper {
               <when test="tbls.isEmpty()">1=0</when>
               <otherwise>tbl IN <foreach collection="tbls" item="x" open="(" separator="," close=")">#{x}</foreach></otherwise>
             </choose>
+            AND """ + REF_FILTER + """
         ) x WHERE a IS NOT NULL AND a &lt;&gt; '' ORDER BY a
         </script>
         """)
     List<String> actors(@Param("seeParam") boolean seeParam, @Param("seeImport") boolean seeImport,
                         @Param("seeBilling") boolean seeBilling, @Param("seeMeter") boolean seeMeter,
-                        @Param("tbls") List<String> tbls);
+                        @Param("tbls") List<String> tbls, @Param("prefixes") List<String> prefixes);
 }

@@ -25,7 +25,7 @@ const props = withDefaults(defineProps<{
   year: number
   edit: boolean
   /** 本屏写权限键(RBAC-SPEC)。无此权限时编辑与导入按钮不渲染,数据照常显示。
-   *  必填 —— 7 个消费屏各传各的(附表族 entry:edit,附表12 salary:edit,损益附表 report:edit)。 */
+   *  必填 —— 消费屏各传本屏的编辑键(附表6 pv-income:edit、附表12 salary:edit、损益附表各自的 <屏>:edit…)。 */
   perm: string
   /** perm 不可提权(附表12 的工资录入,用户 2026-10-04 拍板):没有它的人请主管也借不到 ——
    *  编辑按钮置灰、写明缺哪一项,不弹授权窗;交审一并不画(后端交审附表12 也认这一项)。不传 = 照旧可请主管授权 */

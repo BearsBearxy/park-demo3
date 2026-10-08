@@ -49,6 +49,9 @@ const MATRIX_BOOK = {}
 
 const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
 
+/** 三张报表各自的编辑权(写字面量:前端权限点字面量门禁要扫得到)。 */
+const EDIT_PERM = { is: 'income-statement:edit', bs: 'balance-sheet:edit', tb: 'trial-balance:edit' } as const
+
 export function useFinStatementScreen(opts: {
   stmt: 'is' | 'bs' | 'tb'
   /** 审核 kind。**由屏写死传进来,不在这里用 stmt 拼** —— 拼出来的字面量不出现在
@@ -66,12 +69,14 @@ export function useFinStatementScreen(opts: {
 }) {
   const { stmt } = opts
 
-  // 三大报表的录入 = report(RBAC §2)。无权时正文照常显示,只是没有「编辑模式」入口。
-  // 公司增删改写的是 management_company,归 master 不归 report(RBAC §5.6:删公司同事务级联删
-  // 该公司 monthly_ledger + report_*)—— 公司下拉底部那三颗与空态「新增公司」吃 canManageCo。
+  // 三大报表的录入 = 本屏的编辑(RBAC v4 §15.7:利润表 / 资产负债表 / 科目余额表各一项)。无权时正文照常显示,只是没有「编辑模式」入口。
+  // 公司不归报表:新增 / 删除公司挂月度台账(删公司同事务级联删该公司 monthly_ledger + report_*),
+  // 改名挂催缴单的收款公司(后端写规则 §15.5.2 #33 / #34)—— 公司下拉底部三颗与空态「新增公司」各看各的。
   const auth = useAuthStore()
-  const canEdit = computed(() => auth.can('report:edit'))
-  const canManageCo = computed(() => auth.can('master:edit'))
+  const editPerm = EDIT_PERM[stmt]
+  const canEdit = computed(() => auth.can(editPerm))
+  const canAddDelCo = computed(() => auth.can('ledger:company'))
+  const canRenameCo = computed(() => auth.can('bill-notices:payee'))
 
   // ── 状态机 ───────────────────────────────────────────────
   // null 只在公司清单到手前存在(空库也可能一直是 null);'all' → 全部汇总(只读)
@@ -349,7 +354,7 @@ export function useFinStatementScreen(opts: {
   const lockScope = () => S.report(stmt, companyId.value, year.value, month.value)
   // 被接管时**只退编辑态,不清草稿** —— 他还要把没保存的东西复制走。
   // 改动数接进 auth.editors:页签橙点、关页签 / 退出登录的离开确认都按它(0 处不弹)
-  const lock = useEditLock(() => { edit.value = false }, () => canEdit.value, () => dirty.value, ['report:edit'])
+  const lock = useEditLock(() => { edit.value = false }, () => canEdit.value, () => dirty.value, [editPerm])
   const { lockedBy, evictedBy } = lock
   /** 这一期此刻被谁占着 —— 取自在场表，不用点按钮撞门（设计稿 C-2）。 */
   const heldByOther = lock.watchScope(lockScope)
@@ -563,7 +568,7 @@ export function useFinStatementScreen(opts: {
   }
 
   return {
-    canEdit, canManageCo, reviewKey, reviewNote, reviewTip, reviewLabelOf,
+    canEdit, canAddDelCo, canRenameCo, reviewKey, reviewNote, reviewTip, reviewLabelOf,
     companyId, year, month, edit, saving, maxYear,
     companies, companiesLoaded, yearMonths, period, periodErr, entered, draft, dirty, dlg,
     isAll, company, companyName, finCompanies,

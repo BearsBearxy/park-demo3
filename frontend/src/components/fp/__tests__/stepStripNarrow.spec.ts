@@ -12,6 +12,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 
 import FPStepStrip, { type Step } from '@/components/fp/FPStepStrip.vue'
+import { grantViews } from '@/test-utils/perms'
+import { useAuthStore } from '@/stores/auth'
 import { _resetViewportForTest } from '@/composables/useViewport'
 
 const push = vi.fn()
@@ -69,6 +71,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   setActivePinia(createPinia())
   localStorage.clear()
+  grantViews()   // 每一步都看得了(屏间跳转先问目标屏查看权)
 })
 afterEach(() => {
   live.forEach(w => w.unmount())
@@ -251,6 +254,22 @@ describe('§5.9 S 档面板', () => {
     expect(push).toHaveBeenCalledWith('/bill-notices')
     expect(document.querySelectorAll('.fss-sheet-item'), '面板关掉').toHaveLength(0)
     expect(w.find('.fss-nav').exists(), '条还在').toBe(true)
+  })
+
+  // RBAC v4 §15.1 第 4 条:看不了的那一步在面板里置灰、原因写在名字下面(触屏没有悬停)。看得了的照常。
+  // 破坏验证:面板项去掉 :disabled → disabled 那条红;去掉 fss-sheet-why → 原因那条红(点了不走另由 go() 里的 blocked 兜着)
+  it('❗面板里看不了的那一步:置灰,名字下面写缺哪一项,点了不走', async () => {
+    mockMatchMedia(390)
+    useAuthStore().permissions = ['params:view', 'meters:view', 'alloc:view', 'alloc-loss:view']   // 没有催缴单
+    await openSheet(CHAIN5, 'alloc')
+    const items = Array.from(document.querySelectorAll<HTMLButtonElement>('.fss-sheet-item'))
+    const bill = items.find(el => el.textContent?.includes('催缴单'))!
+    expect(bill.disabled).toBe(true)
+    expect(bill.querySelector('.fss-sheet-why')!.textContent).toBe('需要「催缴单 · 查看」权限')
+    expect(items.filter(el => el.disabled), '只灰那一步').toHaveLength(1)
+    bill.click()
+    await nextTick()
+    expect(push).not.toHaveBeenCalled()
   })
 
   it('宽档不挂这个面板 —— 桌面点胶囊直接走,没有中间一层', async () => {

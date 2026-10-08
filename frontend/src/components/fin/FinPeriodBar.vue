@@ -14,7 +14,8 @@ defineProps<{
   edit: boolean
   companies: { id: number | string; name: string }[]
   companyId: number | 'all' | null
-  canManage: boolean
+  canAddDel: boolean
+  canRename: boolean
 }>()
 const emit = defineEmits<{ back: []; pick: [id: number | 'all']; add: []; rename: []; remove: [] }>()
 </script>
@@ -26,7 +27,7 @@ const emit = defineEmits<{ back: []; pick: [id: number | 'all']; add: []; rename
     </button>
     <span class="fpb-period">{{ period }}</span>
     <i class="fpb-sep" aria-hidden="true" />
-    <FinCompanyMenu :companies="companies" :current="companyId" :can-manage="canManage" :locked="edit"
+    <FinCompanyMenu :companies="companies" :current="companyId" :can-add-del="canAddDel" :can-rename="canRename" :locked="edit"
                     @pick="emit('pick', $event)" @add="emit('add')" @rename="emit('rename')" @remove="emit('remove')" />
     <i class="fpb-sep" aria-hidden="true" />
     <slot />

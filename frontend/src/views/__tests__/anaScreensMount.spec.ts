@@ -13,7 +13,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { grantViews } from '@/test-utils/perms'
+import { grantViews, viewsOf } from '@/test-utils/perms'
+import { useAuthStore } from '@/stores/auth'
 import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Component } from 'vue'
@@ -544,34 +545,60 @@ describe('分析屏挂载冒烟 · 屏清单与目录一致', () => {
   })
 })
 
+async function mountsWithContent(comp: Component, min: number) {
+  const vueErrors: string[] = []
+  const vueWarns: string[] = []
+  wrapper = mount(comp, {
+    global: {
+      stubs: { RouterLink: true, teleport: true },
+      config: {
+        errorHandler: (err, _vm, info) => { vueErrors.push(`${info}: ${String(err)}`) },
+        warnHandler: (msg) => { vueWarns.push(msg) },
+      },
+    },
+  })
+  await settle()
+
+  // ① 挂载与取数期间零异常 —— 暂时性死区 / 取数形状不对抛的 TypeError 都落在这里
+  expect({
+    vueErrors,
+    vueWarns,
+    rejections: rejections.map(String),
+    consoleError: spyErr.mock.calls.map((c) => c.map(String).join(' ')),
+    consoleWarn: spyWarn.mock.calls.map((c) => c.map(String).join(' ')),
+  }).toEqual({ vueErrors: [], vueWarns: [], rejections: [], consoleError: [], consoleWarn: [] })
+
+  // ② 数据到齐:骨架摘掉了,且真有内容 —— 被 catch 吞掉的失败(屏退成空态 / 失败卡)落在这里
+  const root = wrapper.element as HTMLElement
+  expect(root.querySelectorAll('[class*="-skel"], .fp-shim, .page-spin').length, '数据到齐了还挂着骨架').toBe(0)
+  const content = root.querySelectorAll('.stub-chart, svg:not(.lucide), tbody tr').length
+  expect(content, `内容块 ${content} < ${min}(图桩 / 自绘 svg / 表格行)`).toBeGreaterThanOrEqual(min)
+}
+
 describe('分析屏挂载冒烟 · 挂上、取数、出内容(挡整屏空白)', () => {
   it.each(SCREENS)('❗$name', async ({ comp, min }) => {
-    const vueErrors: string[] = []
-    const vueWarns: string[] = []
-    wrapper = mount(comp, {
-      global: {
-        stubs: { RouterLink: true, teleport: true },
-        config: {
-          errorHandler: (err, _vm, info) => { vueErrors.push(`${info}: ${String(err)}`) },
-          warnHandler: (msg) => { vueWarns.push(msg) },
-        },
-      },
-    })
-    await settle()
+    await mountsWithContent(comp, min)
+  })
+})
 
-    // ① 挂载与取数期间零异常 —— 暂时性死区 / 取数形状不对抛的 TypeError 都落在这里
-    expect({
-      vueErrors,
-      vueWarns,
-      rejections: rejections.map(String),
-      consoleError: spyErr.mock.calls.map((c) => c.map(String).join(' ')),
-      consoleWarn: spyWarn.mock.calls.map((c) => c.map(String).join(' ')),
-    }).toEqual({ vueErrors: [], vueWarns: [], rejections: [], consoleError: [], consoleWarn: [] })
-
-    // ② 数据到齐:骨架摘掉了,且真有内容 —— 被 catch 吞掉的失败(屏退成空态 / 失败卡)落在这里
-    const root = wrapper.element as HTMLElement
-    expect(root.querySelectorAll('[class*="-skel"], .fp-shim, .page-spin').length, '数据到齐了还挂着骨架').toBe(0)
-    const content = root.querySelectorAll('.stub-chart, svg:not(.lucide), tbody tr').length
-    expect(content, `内容块 ${content} < ${min}(图桩 / 自绘 svg / 表格行)`).toBeGreaterThanOrEqual(min)
+// RBAC v4(2026-10-09,RBAC-SPEC §15.1):只给某一屏查看权的角色,打开那一屏照样挂上、取数、出内容。
+// v1 的病根是「分析层依赖各模块的查看权」,股东账号做出来是空壳(§0.1)。后端那一半(这屏的读接口不 403)由 ScreenPermIT 钉;
+// 这里钉前端:不拿别屏的查看权当取数 / 画图的前提。
+// 破坏验证:CockpitView 的取数加一道 can('ledger:view') 门(v3 式的「分析依赖模块查看」)→ 只有 CockpitView 这条红
+const VALUE_OF: Record<string, string> = {
+  AnomalyView: 'anomaly', BreakevenView: 'breakeven', BudgetView: 'budget', ChargingAnalysisView: 'charging-analysis',
+  ChurnView: 'churn', CockpitView: 'cockpit', ElecAnalysisView: 'elec-analysis', ExpenseView: 'fin-expense',
+  ExpiryView: 'expiry', FinBalanceView: 'fin-balance', FinCashflowView: 'fin-cashflow', FinPnlView: 'fin-pnl',
+  ParkEnergyView: 'park-energy', ParkView: 'park', PnlAnalysisView: 'pnl-analysis', PvMeterAnaView: 'pv-meter-analysis',
+  PvRoiView: 'pv-roi', TenantEnergyView: 'tenant-energy', TenantPeerView: 'tenant-peer', TenantPortfolioView: 'tenant-portfolio',
+}
+describe('分析屏挂载冒烟 · 只给本屏的查看权', () => {
+  it('屏 → 导航 value 的对照表正好是分析层 20 屏', () => {
+    expect(Object.keys(VALUE_OF).sort()).toEqual(SCREENS.map((x) => x.name).sort())
+    expect(Object.values(VALUE_OF).map((v) => `${v}:view`).sort()).toEqual([...viewsOf('analysis')].sort())
+  })
+  it.each(SCREENS)('❗$name', async ({ name, comp, min }) => {
+    useAuthStore().permissions = [`${VALUE_OF[name]}:view`]
+    await mountsWithContent(comp, min)
   })
 })

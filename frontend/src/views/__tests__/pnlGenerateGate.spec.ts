@@ -53,7 +53,7 @@ async function open() {
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['report:edit']
+  useAuthStore().permissions = ['rent-pnl:view', 'rent-pnl:edit']   // RBAC v4:附表1 本屏的编辑
   vi.clearAllMocks()
   localStorage.clear()
   query.p = '2025-06'   // 深链直落 2025 年表 → pickYear → tryGenerate
@@ -120,6 +120,31 @@ describe('损益附表自动补行只在我园', () => {
     const w = await open()
     expect(pnlApi.save).not.toHaveBeenCalled()
     ourPark()
+    await (w.vm as unknown as { pickYear: (y: number) => Promise<void> }).pickYear(2025)
+    await flushPromises()
+    expect(pnlApi.save).toHaveBeenCalledTimes(1)
+  })
+})
+
+// RBAC v4(2026-10-09,RBAC-SPEC §15.7):补行是整年 PUT,要本屏的编辑。只看得了的人进年也发,后端拒了静默,白跑一趟。
+// 夹具不退化:有别的附表(附表2)的编辑、唯独没有本屏的 —— 只给查看分不出「按屏判」和「有任一报表编辑就行」。
+// 破坏验证:tryGenerate 去掉 can(editPerm) 那一行 → 这两条红(第二条前半段也断言没补);
+//          把这一行挪到 generatedYears.add 之后 → 只有第二条红(借到编辑权后这一年再也不补)
+describe('损益附表自动补行要本屏的编辑', () => {
+  it('❗只有附表1 查看(另有附表2 编辑):进年不补、不保存', async () => {
+    ourPark()
+    useAuthStore().permissions = ['rent-pnl:view', 'elec-pnl:view', 'elec-pnl:edit']
+    await open()
+    expect(pnlApi.year).toHaveBeenCalledWith('s1', 2025)
+    expect(pnlApi.save).not.toHaveBeenCalled()
+  })
+
+  it('❗没有编辑时那次不算「试过」:借到本屏编辑后再进这一年照常补', async () => {
+    ourPark()
+    useAuthStore().permissions = ['rent-pnl:view']
+    const w = await open()
+    expect(pnlApi.save).not.toHaveBeenCalled()
+    useAuthStore().permissions = ['rent-pnl:view', 'rent-pnl:edit']
     await (w.vm as unknown as { pickYear: (y: number) => Promise<void> }).pickYear(2025)
     await flushPromises()
     expect(pnlApi.save).toHaveBeenCalledTimes(1)

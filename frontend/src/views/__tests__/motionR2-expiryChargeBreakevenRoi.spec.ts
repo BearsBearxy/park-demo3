@@ -272,7 +272,7 @@ describe('盈亏平衡与敏感性', () => {
 
   it('❗C6-15:只有拖滑杆那一次三张图瞬到(顶层 0);换月照常 200 形变(option 不写动画键)', async () => {
     const fr = anaSettings.breakevenFixedRatio
-    useAuthStore().permissions = ['analysis:view', 'report:edit']
+    useAuthStore().permissions = ['breakeven:view', 'breakeven:edit']
     const save = vi.spyOn(analysisApi, 'saveSettings').mockImplementation(async (p) => p)
     const w = mount(BreakevenView, STUBS)
     await flushPromises()
@@ -308,7 +308,7 @@ describe('盈亏平衡与敏感性', () => {
 
   // 破坏验证:saveAnaSettings 去掉 finally 里的退回 → 红
   it('❗松手存不上:系数退回库里原来的数,说清原因', async () => {
-    useAuthStore().permissions = ['analysis:view', 'report:edit']
+    useAuthStore().permissions = ['breakeven:view', 'breakeven:edit']
     const save = vi.spyOn(analysisApi, 'saveSettings').mockRejectedValueOnce({ code: 403, message: '无操作权限' })
     const fail = vi.spyOn(receipt, 'fail')
     const w = mount(BreakevenView, STUBS)
@@ -328,14 +328,15 @@ describe('盈亏平衡与敏感性', () => {
     w.unmount()
   })
 
-  // 系数全园区一份,只有账簿报表编辑权能改(同顶栏「目标与阈值」弹层)。用户 2026-10-05「两个都按你建议」:
+  // 系数全园区一份,只有「盈亏平衡与敏感性 · 编辑」能改(RBAC v4;同顶栏「目标与阈值」弹层)。用户 2026-10-05「两个都按你建议」:
   // 没有编辑权的人也能拖着看效果 —— 本屏即时重算,不发 PUT、不动全园那一份,重新进这一屏回到全园的数。
   // 破坏验证:滑杆加回 :disabled → 红;onFr 去掉看效果分支(写进 anaSettings)→ 红;onFrDone 去掉早退 → 红;
-  // 去掉那一行说明 → 红;骨架去掉同一行 → 红
+  // 去掉那一行说明 → 红;骨架去掉同一行 → 红;frNote 的权限点写回 report:edit → 红
+  // 夹具不退化:有别的分析屏的编辑(出租与楼栋、光伏投资回收),唯独没有本屏的 —— 只给查看分不出「按屏判」和「有任一编辑就行」
   // 屏上不说「试算」:三大报表里「试算平衡」是记账用语,用户看不懂(对抗复查 UI-F6),改说「看看效果」。
   // 权限名字典取不到时,拖一格重画一次不许跟着再取一次(对抗复查 UI-F5;破坏验证:那一行改回模板里直接调 lackText → 红)
-  it('❗没有账簿报表编辑权:能拖着看效果,本屏重算、不存,重进回到全园的数', async () => {
-    useAuthStore().permissions = ['analysis:view']
+  it('❗没有本屏编辑权:能拖着看效果,本屏重算、不存,重进回到全园的数', async () => {
+    useAuthStore().permissions = ['breakeven:view', 'park:edit', 'pv-roi:edit']
     const save = vi.spyOn(analysisApi, 'saveSettings').mockImplementation(async (p) => p)
     const get = vi.spyOn(http, 'get').mockRejectedValue(new Error('offline'))
     const permGets = () => get.mock.calls.filter(([u]) => u === '/auth/perms').length
@@ -346,7 +347,8 @@ describe('盈亏平衡与敏感性', () => {
     await flushPromises()
     const input = w.find('.bev-slider input[type="range"]')
     expect(input.attributes('disabled'), '滑杆还是置灰').toBeUndefined()
-    expect(w.find('.bev-try').text()).toMatch(/^拖动只是看看效果，不会保存；要改全园共用的数需要「.+」权限$/)
+    // 字典取不到(上面 http.get 拒了):按导航表拼屏名,不退回权限点原名(英文键不上屏)
+    expect(w.find('.bev-try').text()).toBe('拖动只是看看效果，不会保存；要改全园共用的数需要「盈亏平衡与敏感性 · 编辑」权限')
     expect(w.find('.bev-slider').text()).toContain('(拖动即时重算保本点)')
     const before = permGets()
     for (const v of ['0.5', '0.4', '0.3']) {
@@ -374,7 +376,7 @@ describe('盈亏平衡与敏感性', () => {
   // 「两个都按你建议」(2026-10-05):看效果的数只在这一屏,离开就回到全园的数 —— 页签切走再切回是同一个实例(KeepAlive),也算离开
   // (对抗复查 UI-F4)。破坏验证:onReactivated 里去掉 tryFr 清空 → 红
   it('❗没有编辑权:看效果的数切走页签再切回,回到全园的数', async () => {
-    useAuthStore().permissions = ['analysis:view']
+    useAuthStore().permissions = ['breakeven:view']
     const alive = ref(true)
     const w = mount(defineComponent({
       setup: () => () => h(KeepAlive, null, { default: () => (alive.value ? h(BreakevenView) : null) }),
@@ -393,13 +395,13 @@ describe('盈亏平衡与敏感性', () => {
     w.unmount()
   })
 
-  // 主管授权借得到账簿报表(不在不可借名单),这一屏开着时编辑权会来会走(对抗复查 UI-F1):
+  // 主管授权借得到本屏编辑(不在不可借名单),这一屏开着时编辑权会来会走(对抗复查 UI-F1):
   // 借到了,看效果的数作废、屏上回到全园的数,再拖就是改全园那一份;拖到一半到期,这一下按第一格时定,松手照样去存,
   // 后端拒了 saveAnaSettings 退回库里的数 —— 全园那一份里不留一个没存上的数。
   // 破坏验证:去掉 frLock 那条 watch → 「还停着看效果的数」红;onFr / onFrDone 改回每次现看 frLock → 「到期了松手没去存」红
   it('❗这一屏开着时借到 / 到期编辑权:看效果的数不冒充全园的数;拖到一半到期,松手照样去存、存不上退回', async () => {
     const auth = useAuthStore()
-    auth.permissions = ['analysis:view']
+    auth.permissions = ['breakeven:view']
     const save = vi.spyOn(analysisApi, 'saveSettings').mockImplementation(async (p) => p)
     const fail = vi.spyOn(receipt, 'fail')
     const w = mount(BreakevenView, STUBS)
@@ -417,7 +419,7 @@ describe('盈亏平衡与敏感性', () => {
     await done()
     expect(w.find('.bev-slider .v').text()).toBe('0.30')
 
-    auth.permissions = ['analysis:view', 'report:edit']   // 借到了
+    auth.permissions = ['breakeven:view', 'breakeven:edit']   // 借到了
     await flushPromises()
     expect(w.find('.bev-try').exists()).toBe(false)
     expect(w.find('.bev-slider .v').text(), '没了「只是看看效果」那一行,屏上还停着看效果的数').toBe('0.62')
@@ -429,7 +431,7 @@ describe('盈亏平衡与敏感性', () => {
 
     save.mockRejectedValueOnce({ code: 403, message: '无操作权限' })
     await drag('0.4')
-    auth.permissions = ['analysis:view']   // 拖到一半到期
+    auth.permissions = ['breakeven:view']   // 拖到一半到期
     await flushPromises()
     await drag('0.35')
     await done()
@@ -581,6 +583,27 @@ describe('光伏投资回收', () => {
     expect(kpi(w, '工程总投资')).toBe('—')
     expect(kpi(w, '综合回收进度')).toBe('—')
     w.unmount()
+  })
+
+  // RBAC v4:光伏投资归本屏的编辑。投资额没填的空态里,改不了的人多半句写明要哪一项;改得了的人不说权限。
+  // 夹具不退化:没有本屏编辑、但有别的分析屏编辑(盈亏平衡)。破坏验证:investHint 去掉 lock 那半句 → 第一段红;
+  // 改成不判 lock 一律加 → 第二段红
+  it('❗投资额没填:没有本屏编辑权的人,空态副句写明要「光伏投资回收 · 编辑」', async () => {
+    const get = vi.spyOn(http, 'get').mockRejectedValue(new Error('offline'))   // 字典取不到 → 按导航表拼屏名
+    vi.mocked(fetchPvPhases).mockResolvedValue([{ ...PHASES[0], cost: null }])
+    useAuthStore().permissions = ['pv-roi:view', 'breakeven:edit']
+    let w = mount(PvRoiView, STUBS)
+    await flushPromises()
+    expect(w.text()).toContain('光伏投资额未填')
+    expect(w.text()).toContain('填光伏投资（万元）后才能算回收进度；全园区共用这一份目标与阈值，需要「光伏投资回收 · 编辑」权限才能改')
+    w.unmount()
+    useAuthStore().permissions = ['pv-roi:view', 'pv-roi:edit']
+    w = mount(PvRoiView, STUBS)
+    await flushPromises()
+    expect(w.text()).toContain('填光伏投资（万元）后才能算回收进度')
+    expect(w.text(), '改得了的人不该看到权限那半句').not.toContain('全园区共用')
+    w.unmount()
+    get.mockRestore()
   })
 
   // 2026-10-05 复查:新园区起点库带三个占位期别(一期~三期),只录了一期的客户原来读到「3 期」;

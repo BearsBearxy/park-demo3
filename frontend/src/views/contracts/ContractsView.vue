@@ -335,13 +335,13 @@ async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunP
           租赁合同与续签 · 主数据 · 共 {{ summary ? displayBase.length : '…' }} 份
         </p>
       </div>
-      <!-- 导入=计费字段(BILL-FORWARD 刀1 二次返工);无 contract:edit 无写入口(RBAC-SPEC §2) -->
+      <!-- 导入=计费字段(BILL-FORWARD 刀1 二次返工);无 contracts:edit 无写入口(RBAC-SPEC §2) -->
       <div style="display:flex;gap:8px">
-        <Button v-if="auth.can('contract:edit')" variant="outline" size="sm" @click="importing = true">
+        <Button v-if="auth.can('contracts:edit')" variant="outline" size="sm" @click="importing = true">
           <template #leading><component :is="iconFor('upload')" :size="14" /></template>
           导入计费字段
         </Button>
-        <Button v-if="auth.can('contract:edit')" variant="filled" size="sm" @click="showNew = true">
+        <Button v-if="auth.can('contracts:edit')" variant="filled" size="sm" @click="showNew = true">
           <template #leading><component :is="iconFor('plus')" :size="14" /></template>
           新增合同
         </Button>

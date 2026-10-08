@@ -4,6 +4,7 @@ import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.mapper.AnalysisSettingMapper;
 import com.park.demo3.security.NoReviewGuard;
+import com.park.demo3.security.PermissionGuard;
 import com.park.demo3.service.ChangeLogService.Cell;
 import com.park.demo3.service.ChangeLogService.Tbl;
 import org.springframework.stereotype.Service;
@@ -19,7 +20,8 @@ import java.util.Map;
 
 /**
  * 经营分析「目标与阈值」(V138 analysis_setting)。用户 2026-10-05 拍板「2按你建议，3，4一起做」第 2 条:
- * 从各人浏览器挪进库 —— 全员看同一份;只有「账簿报表」编辑权能改(PermissionRegistry 的 PUT 规则);
+ * 从各人浏览器挪进库 —— 全员看同一份。v4(RBAC-SPEC §15.6):六项各归一屏,改哪一项要那一屏的编辑
+ * (PermissionRegistry 对 PUT 放行六屏编辑任一,这里按项判);
  * 每改一项进操作日志(ChangeLogService,和保存同一个事务,记不进去就不存)。
  * 没存过的项不落行:屏上用前端 anaSettings.ts 的默认值。
  */
@@ -33,25 +35,29 @@ public class AnalysisSettingService {
      *   没存过的项屏上显示的就是默认值,改前记默认值才对得上人看到的。改默认值两边一起改。
      */
     enum Key {
-        occTarget("出租率目标 (%)", "50", "100", "90"),
-        collectTarget("收缴率目标 (%)", "50", "100", "96"),
-        churnTh("风险线/流失预警 (分)", "30", "90", "60"),
-        spikeTh("能耗突变阈值 (%)", "10", "200", "40"),
-        breakevenFixedRatio("固定成本占比", "0", "1", "0.62"),
-        pvInvestment("光伏投资 (万)", "0", "100000000", "0");
+        occTarget("出租率目标 (%)", "50", "100", "90", "park"),
+        collectTarget("收缴率目标 (%)", "50", "100", "96", "fin-cashflow"),
+        churnTh("风险线/流失预警 (分)", "30", "90", "60", "churn"),
+        spikeTh("能耗突变阈值 (%)", "10", "200", "40", "anomaly"),
+        breakevenFixedRatio("固定成本占比", "0", "1", "0.62", "breakeven"),
+        pvInvestment("光伏投资 (万)", "0", "100000000", "0", "pv-roi");
 
         final String label;
         final BigDecimal min, max, dflt;
-        Key(String label, String min, String max, String dflt) {
+        /** 归哪一屏:改它要 `<screen>:edit`。 */
+        final String screen;
+        Key(String label, String min, String max, String dflt, String screen) {
             this.label = label; this.min = new BigDecimal(min); this.max = new BigDecimal(max); this.dflt = new BigDecimal(dflt);
+            this.screen = screen;
         }
     }
 
     private final AnalysisSettingMapper mapper;
     private final ChangeLogService changes;
+    private final PermissionGuard guard;
 
-    public AnalysisSettingService(AnalysisSettingMapper mapper, ChangeLogService changes) {
-        this.mapper = mapper; this.changes = changes;
+    public AnalysisSettingService(AnalysisSettingMapper mapper, ChangeLogService changes, PermissionGuard guard) {
+        this.mapper = mapper; this.changes = changes; this.guard = guard;
     }
 
     /** 存过的项;没存过的不回(前端用默认值)。 */
@@ -63,8 +69,9 @@ public class AnalysisSettingService {
 
     /**
      * 改几项。先全部校验,有一项不对整次不存;值没变的项不写也不记。
-     * 只回送来的那几项(存进库的样子,四位小数):PUT 只要「账簿报表」,读要「经营分析 · 查看」——
-     * 回整份的话,没有分析查看权的账号一次值没变的保存就能读走光伏投资额等(2026-10-05 对抗复查 SEC-7)。
+     * 一次可带多项,每一项要它归属那一屏的编辑(认提权),有一项不够整次 403。
+     * 只回送来的那几项(存进库的样子,四位小数):写只要某一屏的编辑 —— 回整份的话,
+     * 只能改一项的账号一次值没变的保存就能读走别的项(2026-10-05 对抗复查 SEC-7)。
      */
     @Transactional
     @NoReviewGuard(reason = "目标与阈值是分析屏的判断线(收缴率目标、风险线等),不是哪个月的账;"
@@ -80,6 +87,7 @@ public class AnalysisSettingService {
                 throw bad("「" + k.label + "」要在 " + k.min.toPlainString() + " 到 " + k.max.toPlainString() + " 之间");
             next.put(k, v.setScale(4, RoundingMode.HALF_UP));
         }
+        for (Key k : next.keySet()) guard.require(k.screen + ":edit");
         Map<String, BigDecimal> now = stored();
         String me = AuditLogService.actor();
         LocalDateTime at = LocalDateTime.now();

@@ -9,6 +9,14 @@ vi.mock('@/api/ledger', () => ({
 vi.mock('@/api/budget', () => ({ budgetApi: { import: vi.fn(), all: vi.fn() } }))
 vi.mock('@/api/tenant', () => ({ tenantApi: { list: vi.fn() } }))
 vi.mock('@/api/building', () => ({ buildingApi: { list: vi.fn() } }))
+vi.mock('@/analysis/anaData', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/analysis/anaData')>()),
+  fetchPnlSummary: vi.fn().mockResolvedValue({ revenue: [] }),
+}))
+import { setActivePinia, createPinia } from 'pinia'
+import { useAuthStore } from '@/stores/auth'
+import { fetchPnlSummary } from '@/analysis/anaData'
+import { isKnownPerm } from '@/nav/navAccess'
 import { deriveStatus, runImport, parserProps, IMPORT_TYPES, type ImportCtx } from './importRegistry'
 import http from '@/api/index'
 import { importLogApi } from '@/api/importLog'
@@ -376,6 +384,50 @@ describe('ledger run — Pick[] 段分支', () => {
 })
 
 // ── budget run:勾选年段平铺成单 payload,一次 import 聚合(解析器单测见 importBudget.spec.ts) ──
+// RBAC v4:每块导入磁贴挂它导进去的那一屏的写权(§15.7),键名打错字当场红
+describe('导入类型的权限 = 目标屏的写权', () => {
+  const mod = (key: string) => IMPORT_TYPES.find(t => t.key === key)!.module
+  it('每条都非空,且都是认得的屏级写权', () => {
+    for (const t of IMPORT_TYPES) {
+      expect(t.module.length, t.key).toBeGreaterThan(0)
+      for (const p of t.module) expect(isKnownPerm(p) && !p.endsWith(':view'), `${t.key} ${p}`).toBe(true)
+    }
+  })
+  it('同族的几块各归各的屏', () => {
+    expect([mod('charging_7'), mod('charging_8')]).toEqual([['car-charging:edit'], ['ebike-charging:edit']])
+    expect(['pnl_s1', 'pnl_s2', 'pnl_s3', 'pnl_s4', 'pnl_s5'].map(mod)).toEqual(
+      [['rent-pnl:edit'], ['elec-pnl:edit'], ['water-pnl:edit'], ['ops-pnl:edit'], ['expense-pnl:edit']])
+    expect(['report_is', 'report_bs', 'report_tb'].map(mod)).toEqual(
+      [['income-statement:edit'], ['balance-sheet:edit'], ['trial-balance:edit']])
+    expect(mod('cpMeter')).toEqual(['car-charging:reading', 'ebike-charging:reading'])
+    expect(mod('budget')).toEqual(['import:edit'])
+  })
+})
+
+// 预算弹窗打开时预取五张损益附表的收入合计做核对(fetchPnlSummary 一次拉五张,缺一张整个失败)。
+// 读规则不对导入中心放行 /api/pnl/**:少一张查看就不取,弹窗上说这次不核对(RBAC §15.7)。
+describe('budget modalProps — 损益附表收入核对按查看权', () => {
+  const entry = IMPORT_TYPES.find(t => t.key === 'budget')!
+  const PNL_VIEWS = ['rent-pnl:view', 'elec-pnl:view', 'water-pnl:view', 'ops-pnl:view', 'expense-pnl:view']
+  const NOTE = '。有的损益附表你看不了，这次导入不拿它们的收入合计核对预算。'
+  beforeEach(() => { setActivePinia(createPinia()); vi.mocked(fetchPnlSummary).mockClear() })
+
+  // 破坏验证:canPnl 恒真(不判查看就取)→ 第一条红;sub 不拼那一句 → 第一条红
+  it('❗少一张损益附表查看:不预取,提示行说这次不核对', () => {
+    useAuthStore().permissions = ['import:edit', ...PNL_VIEWS.slice(0, 4)]
+    const p = entry.modalProps({})
+    expect(fetchPnlSummary).not.toHaveBeenCalled()
+    expect(p.sub).toContain(NOTE)
+  })
+
+  it('五张都看得了:按年预取,提示行不多那一句', () => {
+    useAuthStore().permissions = ['import:edit', ...PNL_VIEWS]
+    const p = entry.modalProps({})
+    expect(fetchPnlSummary).toHaveBeenCalled()
+    expect(p.sub).not.toContain(NOTE)
+  })
+})
+
 describe('budget run — 年段平铺', () => {
   const entry = IMPORT_TYPES.find(t => t.key === 'budget')!
   beforeEach(() => vi.clearAllMocks())

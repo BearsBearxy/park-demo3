@@ -15,13 +15,12 @@ import java.util.List;
  * **业务层**的权限判定(含提权)。
  *
  * 绝大多数写端点在 {@link WriteAccessManager} 那一道就判完了,业务代码无感。
- * 这个类只给「URL 判不了、必须看请求体才知道要哪个权限」的少数几处用 ——
- * 现在有三处:PUT /api/params 按 cfg_key 分月度录入 / 计费口径两档;按账期批删读数连带删草稿催缴单要 billing-run;
- * 抄表导入改已有表的倍率要 meter-master(MeterService.importRows,2026-10-03 安全审计 F15)。
+ * 这个类只给「URL 判不了、必须看请求体才知道要哪个权限」的几处用(RBAC-SPEC §15.6):计费参数按键分档、
+ * 删读数 / 删表连带删草稿催缴单、抄表导入改倍率、账册模板按账册所属屏、分桩运营账按车型、目标与阈值按项。
  *
  * ⚠ 这一处曾经**只写在注释里没有实现**(2026-08-22 发现):PermissionRegistry 给 PUT /api/params
- *   登记的是「policy 或 monthly 任一」,而 ParamService 里没有细分判定 ——
- *   于是只有 param-monthly:edit 的财务专员,绕开前端直接调 API 就能改任何一个计费口径键。
+ *   登记的是「两档任一」,而 ParamService 里没有细分判定 ——
+ *   于是只有月度录入权的财务专员,绕开前端直接调 API 就能改任何一个计费口径键。
  *   前端把按钮藏了,后端的门是开的。加新的「URL 判不了」的规则时,实现和注释必须一起落地。
  */
 @Component
@@ -47,10 +46,16 @@ public class PermissionGuard {
         return true;
     }
 
-    /** 没有就 403。what 是给人看的东西名,如「计费口径」。 */
-    public void require(String perm, String what) {
-        if (has(perm)) return;
-        throw new BizException(ResultCode.FORBIDDEN,
-            "没有修改「" + what + "」的权限。可以查看,如需修改请点编辑模式旁的授权按钮,请主管当场授权。");
+    /** 没有就 403。 */
+    public void require(String perm) { requireAny(List.of(perm)); }
+
+    /**
+     * 任一(认提权),都没有就 403。文案与写规则表被拒同一句(RBAC-SPEC §15.6):v4 新加的判权点上,
+     * 原来那句「可以查看、点编辑模式旁的授权按钮」常常不成立 —— 只有抄表编辑的人删本期时连带删草稿催缴单,
+     * 他可能根本看不了催缴单。前端缺权时自己弹授权窗,这句只是兜底。
+     */
+    public void requireAny(List<String> anyOf) {
+        for (String p : anyOf) if (has(p)) return;
+        throw new BizException(ResultCode.FORBIDDEN, ReadAccessManager.writeDeniedMessage(anyOf));
     }
 }

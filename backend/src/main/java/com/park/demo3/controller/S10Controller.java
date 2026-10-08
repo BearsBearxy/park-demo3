@@ -26,6 +26,19 @@ public class S10Controller {
         return svc.yearSummary(year);
     }
 
+    /**
+     * 报表中心勾稽③(营业收入交叉)只要四个期区的月合计(RBAC-SPEC §15.5.1 #52a):逐个取逐租户宽表的总计
+     * (含自定义列,和前端原来取的是同一个数),没有行的期区给 0,不带租户。读规则对报表中心放行这一条,
+     * 宽表本身只给附表10 本屏 —— v3 让报表查看读整张宽表,只为取一个合计。
+     */
+    @Operation(summary = "四个期区某年某月的合计（{1: 合计, 2: …, 3: …, 4: …}，不带租户）") @GetMapping("/month-totals")
+    public java.util.Map<Integer, java.math.BigDecimal> monthTotals(@RequestParam @Min(2000) @Max(2100) int year,
+                                                                     @RequestParam @Min(1) @Max(12) int month) {
+        java.util.Map<Integer, java.math.BigDecimal> out = new java.util.LinkedHashMap<>();
+        for (int phase = 1; phase <= 4; phase++) out.put(phase, svc.month(phase, year, month).grandTotal());
+        return out;
+    }
+
     @Operation(summary = "某期某年某月逐租户宽表（稀疏读，含列合计/总计）") @GetMapping("/{phase}/{year}/{month}")
     public S10MonthDTO month(@PathVariable @Min(1) @Max(4) int phase,
                              @PathVariable @Min(2000) @Max(2100) int year,

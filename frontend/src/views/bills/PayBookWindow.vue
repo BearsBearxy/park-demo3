@@ -44,7 +44,7 @@ const emit = defineEmits<{ close: []; saved: [] }>()
 
 const auth = useAuthStore()
 // RBAC:收款簿改的是单据的收款公司归属 —— 与催缴单的收款槽同一扇门
-const canEdit = computed(() => auth.can('billing-issue:edit'))
+const canEdit = computed(() => auth.can('bill-notices:issue'))
 // 无权账号也看得到「编辑模式」,点了弹主管授权窗(ELEVATION-SPEC)
 const asking = ref<string[] | null>(null)
 const canAsk = computed(() => canEdit.value || auth.can('elevate:request'))
@@ -65,7 +65,7 @@ const editMode = ref(false)
 const meId = Symbol('pay-book')
 const screen = useScreen()
 // 改动数 = 暂存条数(EDIT-MODE-SPEC §6.1):关页签 / 关浏览器按它问,0 条不拦
-watch(editMode, (on) => { if (on) auth.openEditor(meId, screen, () => stash.value.size, ['billing-issue:edit']); else auth.closeEditor(meId) })
+watch(editMode, (on) => { if (on) auth.openEditor(meId, screen, () => stash.value.size, ['bill-notices:issue']); else auth.closeEditor(meId) })
 // 铁律①(EDIT-MODE-SPEC v4):授权到期 / 点了「结束授权」→ 当场退回浏览态。
 // 本窗口不走 useEditMode,也没有编辑锁(收款簿改的是 bill_pay_company,不进出账链快照),
 // 所以那道守卫既不在 useEditMode 里、也不在 useEditLock 里 —— 只能在这儿补一条。
@@ -398,7 +398,7 @@ async function onClose() {
         </Button>
       </template>
       <Button v-else-if="canAsk && !loading" variant="outline" size="sm" :disabled="!!loadErr"
-              @click="canEdit ? (editMode = true) : (asking = ['billing-issue:edit'])">
+              @click="canEdit ? (editMode = true) : (asking = ['bill-notices:issue'])">
         <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
         编辑模式
       </Button>

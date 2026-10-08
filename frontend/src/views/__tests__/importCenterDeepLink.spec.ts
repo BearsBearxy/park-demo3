@@ -39,11 +39,13 @@ interface Vm {
   importing: boolean
 }
 const vmOf = (w: { vm: unknown }) => w.vm as Vm
+/** 用例导的几类(台账 / 附表10 / 办公水电)各自那一屏的编辑与查看 */
+const ENTRY = ['ledger:edit', 'ledger:view', 'sales-income:edit', 'sales-income:view', 'utilities:edit', 'utilities:view']
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  // 后端给的是展开后的权限集(编辑隐含同组查看);附表12 的导入要工资录入(隐含工资查看,2026-10-04 起)
-  useAuthStore().permissions = ['entry:edit', 'entry:view', 'salary:edit', 'salary:view']
+  // 后端给的是展开后的权限集(动作隐含本屏查看);附表12 的导入要工资编辑(隐含工资查看)
+  useAuthStore().permissions = [...ENTRY, 'salary:edit', 'salary:view']
   vi.clearAllMocks()
   for (const k of Object.keys(query)) delete query[k]
   vi.setSystemTime(new Date('2025-06-15T00:00:00'))
@@ -54,6 +56,30 @@ beforeEach(() => {
   vi.mocked(ledgerApi.month).mockResolvedValue({ rows: [] } as never)
   vi.mocked(booksApi.list).mockResolvedValue([])
   vi.mocked(runImport).mockResolvedValue({ imported: 1, skipped: 0, errors: [] })
+})
+
+// RBAC v4:磁贴按它导进去的那一屏的写权显示,不按模块。破坏验证:某条 module 写成兄弟屏 / 写成模块级多屏 → 红
+describe('导入中心磁贴按目标屏的编辑权', () => {
+  const keysWith = async (perms: string[]) => {
+    useAuthStore().permissions = ['import:view', ...perms]
+    const w = mount(ImportCenterView, { global: { stubs: { Teleport: true } } })
+    await flushPromises()
+    return (w.vm as unknown as { visibleTypes: { key: string }[] }).visibleTypes.map(t => t.key)
+  }
+  it('❗只有附表7 编辑:只有汽车充电桩那一块,附表8 / 附表6 不出', async () => {
+    expect(await keysWith(['car-charging:edit'])).toEqual(['charging_7'])
+  })
+  it('❗只有附表2 编辑:损益附表只出附表2 那一块', async () => {
+    expect(await keysWith(['elec-pnl:edit'])).toEqual(['pnl_s2'])
+  })
+  it('❗充电桩明细:汽车、电动车任一屏的分桩读数都出;只有档案不出', async () => {
+    expect(await keysWith(['ebike-charging:reading'])).toEqual(['cpMeter'])
+    expect(await keysWith(['car-charging:archive', 'ebike-charging:archive'])).toEqual([])
+  })
+  it('❗年度预算只认导入中心编辑;合同两块只认合同编辑', async () => {
+    expect(await keysWith(['import:edit'])).toEqual(['budget'])
+    expect(await keysWith(['contracts:edit'])).toEqual(['billingTerms', 'contractFull'])
+  })
 })
 
 async function open() {
@@ -140,7 +166,7 @@ describe('导入中心 · 导后「去查看」', () => {
   //   (导入中心按 salary:edit 出磁贴);留着守 canViewPage 这一判 —— 请主管借到导入写权的人(查看不可提权)也是这一路。
   // 破坏验证:runEntry 里 canViewPage 那一判去掉 → 红(原来点了就落「无权查看」页)
   it('❗看不了目标屏(导工资但没有工资查看)不给「去查看」,结果卡照旧', async () => {
-    useAuthStore().permissions = ['entry:edit', 'entry:view']
+    useAuthStore().permissions = [...ENTRY]
     const w = await open()
     await runVia(w, 'salary', {}, [{ year: 2025, month: 4, records: [] }], 'salary.xlsx')
     expect(w.find('.irc').exists()).toBe(true)

@@ -21,7 +21,7 @@ const props = defineProps<{
 const emit = defineEmits<{ close: [] }>()
 
 const auth = useAuthStore()
-const canDrop = computed(() => auth.can('billing-run:edit'))
+const canDrop = computed(() => auth.can('bill-notices:edit'))
 const STATUS: Record<string, string> = { draft: '草稿', void: '已作废', confirmed: '已确认', exported: '已导出', issued: '已签发' }
 const isOpen = (s: string) => s === 'draft' || s === 'void'
 // 勾选项原文:后端没勾时的 409 逐字引用它(MeterService.delete)
@@ -93,7 +93,7 @@ async function confirm() {
           <input v-model="tick" type="checkbox" >
           <span>同时删掉这 {{ imp.draftCount }} 张{{ kinds }}催缴单(这几张单上的是上个月的水电,那几个抄表月会显示需重算,重算后按现在的读数重出)</span>
         </label>
-        <p v-else class="dd-lk">删这些草稿单要有「出账运行」权限。请有这项权限的同事来删这块表。</p>
+        <p v-else class="dd-lk">删这些草稿单要有「催缴单 · 编辑」权限。请有这项权限的同事来删这块表。</p>
       </template>
     </template>
 

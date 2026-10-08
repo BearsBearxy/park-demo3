@@ -1,7 +1,7 @@
 import { watch } from 'vue'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { fpBuildRoutes } from '@/nav/fpNav'
-import { canViewPage } from '@/nav/navAccess'
+import { canViewPage, isKnownPerm } from '@/nav/navAccess'
 import { useAuthStore } from '@/stores/auth'
 import { useTabsStore } from '@/stores/tabs'
 import { useUiStore } from '@/stores/ui'
@@ -75,7 +75,7 @@ const VIEWS: Record<string, RouteRecordRaw['component']> = {
   'anomaly': () => import('@/views/analysis/AnomalyView.vue'),
   'elec-analysis': () => import('@/views/analysis/ElecAnalysisView.vue'),
   'charging-analysis': () => import('@/views/analysis/ChargingAnalysisView.vue'),
-  // 系统管理(整层按 system:view 显隐,见 nav/navAccess.ts)
+  // 系统管理(每屏按自己的 sys-*:view 显隐,见 nav/navAccess.ts)
   'sys-users': () => import('@/views/system/SystemUsersView.vue'),
   'sys-roles': () => import('@/views/system/SystemRolesView.vue'),
   'sys-logs': () => import('@/views/system/SystemLogsView.vue'),
@@ -129,9 +129,9 @@ const router = createRouter({
   ],
 })
 
-// 升级到 v3 后第一次打开:本地存的还是 v2 登录时那份权限(一个 :view 都没有)。拿它判,所有人停着的屏
+// 升级后第一次打开:本地存的还是旧版登录时那份权限(0.32 的模块键 master:view 之类,v4 一个都不认)。拿它判,所有人停着的屏
 // 都先被送进「无权查看」页、图标栏一层不剩,等 App 的 refreshMe 回来才各自弹回去;refreshMe 失败就一直停着。
-// 所以这种「旧快照」先重取一次再判。只试一次:真有零查看权的账号,不该每跳一次都打一发 /auth/me。
+// 所以快照里有认不得的键就先重取一次再判。只试一次:不该每跳一次都打一发 /auth/me。
 let staleChecked = false
 
 router.beforeEach(async (to) => {
@@ -158,8 +158,7 @@ router.beforeEach(async (to) => {
   }
   // RBAC v3「读写分开」(用户 2026-10-04 拍板,推翻 v2 的读全开):每一屏都有查看权限,没有就落「无权查看」页,
   // 写明缺哪一项、去找系统管理员开。不拦的话手打地址能进到一个「后端 403、页面只剩报错」的屏,看着像系统坏了。
-  // 判 fullPath 而不是 path:光伏 / 充电桩带 ?mode=meter 的深链只认抄表查看权(nav/navAccess.viewPermsOf)。
-  if (auth.isAuthed && !staleChecked && !auth.permissions.some((p) => p.endsWith(':view'))) {
+  if (auth.isAuthed && !staleChecked && auth.permissions.some((p) => !isKnownPerm(p))) {
     staleChecked = true
     await auth.refreshMe()
   }
@@ -168,10 +167,10 @@ router.beforeEach(async (to) => {
   }
   // 目标与阈值在库里、全员一份(用户 2026-10-05 拍板第 2 条):进分析层的屏之前先取到,
   // 屏上不先按默认值画一遍、再跳成库里的数。只有第一次真的等,之后是现成的。
-  // 没有账簿报表编辑权的人连权限名字典一起取(同时发):盈亏平衡滑杆下那一行写「需要「账簿报表」权限」
-  // (「两个都按你建议」2026-10-05),首帧就是人话名,不先闪一下 report:edit。取不到也放行(loadPermDict 自己兜住)。
+  // 权限名字典一起取(同时发):六项目标与阈值各归一屏(v4),谁都可能缺其中几项,滑杆 / 输入框下那一行写
+  // 「需要「盈亏平衡与敏感性 · 编辑」…」,首帧就是人话名,不先闪一下英文键。取不到也放行(loadPermDict 自己兜住)。
   if (auth.isAuthed && (to.meta as Record<string, unknown>).layer === 'analysis')
-    await Promise.all([loadAnaSettings(), auth.can('report:edit') ? null : loadPermDict()])
+    await Promise.all([loadAnaSettings(), loadPermDict()])
 })
 
 router.afterEach((to, _from, failure) => {

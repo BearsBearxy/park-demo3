@@ -75,7 +75,7 @@ interface Vm { openPoolDlg: (r?: AllocPoolRowDTO) => void }
 const mounted: VueWrapper[] = []
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['billing-run:edit', 'param-policy:edit']
+  useAuthStore().permissions = ['alloc:edit', 'alloc:pools']
   vi.mocked(allocApi.memberDiff).mockResolvedValue([
     { ruleId: 23, poolName: 'A座·电梯', added: [cand(5, '新户')], removed: [cand(6, '旧户')] },
   ])

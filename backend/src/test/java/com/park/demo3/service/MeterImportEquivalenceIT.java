@@ -63,8 +63,8 @@ class MeterImportEquivalenceIT extends AbstractMysqlIT {
 
     private static final Path GOLDEN = Path.of("src/test/resources/meter-import/equivalence.txt");
     private static final String Z = "p77", Z2 = "p78", MINE = "('p77','p78')";
-    private static final List<String> ADMIN = List.of(Perm.METER_MASTER_EDIT, Perm.METER_READING_EDIT);
-    private static final List<String> CLERK = List.of(Perm.METER_READING_EDIT);
+    private static final List<String> ADMIN = List.of(Perm.METERS_ARCHIVE, "meters:edit");
+    private static final List<String> CLERK = List.of("meters:edit");
 
     private final List<String> batches = new ArrayList<>();
     private int sortBase;

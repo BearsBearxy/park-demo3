@@ -106,7 +106,8 @@ const actions = (w: VueWrapper) => w.findAll('.fh-r button, .fh-r .fp-emb-rv').m
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['master:edit', 'report:edit']
+  // v3 的 master:edit + report:edit 落到 v4:三张报表各自的编辑 + 公司新增删除(月度台账)+ 公司改名(催缴单收款公司)
+  useAuthStore().permissions = [...FIN_PERMS]
   vi.clearAllMocks()
   localStorage.clear()
   vi.setSystemTime(new Date('2025-06-15T00:00:00'))
@@ -115,6 +116,13 @@ beforeEach(() => {
   vi.mocked(reviewApi.list).mockResolvedValue([] as never)
 })
 afterEach(() => { document.body.innerHTML = '' })
+
+const EDIT = { is: 'income-statement:edit', bs: 'balance-sheet:edit', tb: 'trial-balance:edit' } as const
+const FIN_PERMS = [...Object.values(EDIT), 'ledger:company', 'bill-notices:payee']
+const footBtns = async (w: VueWrapper) => {
+  await w.find('.fpb .fcm-btn').trigger('click')
+  return w.findAll('.fcm-foot button').map(b => b.text())
+}
 
 const VIEWS = [
   { name: '利润表', view: IncomeStatementView, stmt: 'is' as const, rel: 'views/reports/income-statement/IncomeStatementView.vue' },
@@ -170,6 +178,30 @@ describe.each(VIEWS)('$name · 期间条 / 公司下拉 / 撤掉的东西', ({ n
   it('❗录了数:按钮是 导出 Excel · 交审 1 月 · 编辑模式', async () => {
     const w = await openBody(view)
     expect(actions(w)).toEqual(['导出 Excel', '交审 1 月', '编辑模式'])
+  })
+
+  // RBAC v4(2026-10-09,RBAC-SPEC §15.7):三张报表的编辑各是一项。夹具不退化:另两张报表的编辑都有,唯独没有本屏的。
+  // 破坏验证:useFinStatementScreen 的 editPerm 改回一把通用键 / 写死成利润表 → 红
+  it('❗编辑按本屏:另两张报表的编辑都有、本屏没有 → 没有「编辑模式」,也不画交审', async () => {
+    useAuthStore().permissions = [...VIEWS.filter(v => v.stmt !== stmt).map(v => EDIT[v.stmt]), 'ledger:company', 'bill-notices:payee']
+    const w = await openBody(view)
+    expect(actions(w)).toEqual(['导出 Excel'])
+  })
+
+  // 公司不归报表:新增 / 删除挂「月度台账 · 新增删除公司」,改名挂「催缴单 · 收款公司」(后端写规则 §15.5.2 #33 / #34)。
+  // 破坏验证:FinCompanyMenu 三颗任一条的 v-if 换成另一项 / 去掉 → 对应那段红;底栏 v-if 只认 canAddDel → 第一段红
+  it('❗公司下拉底部各看各的:只有收款公司 → 只有「重命名」;只有新增删除公司 → 「新增公司」「删除」', async () => {
+    useAuthStore().permissions = [EDIT[stmt], 'bill-notices:payee']
+    let w = await openBody(view)
+    expect(await footBtns(w)).toEqual(['重命名'])
+    w.unmount()
+    useAuthStore().permissions = [EDIT[stmt], 'ledger:company']
+    w = await openBody(view)
+    expect(await footBtns(w)).toEqual(['新增公司', '删除'])
+    w.unmount()
+    useAuthStore().permissions = [EDIT[stmt]]
+    w = await openBody(view)
+    expect(await footBtns(w), '两项都没有:不出底栏').toEqual([])
   })
 
   // 破坏验证:loadPeriod 的 catch 去掉 → 一直转圈,红

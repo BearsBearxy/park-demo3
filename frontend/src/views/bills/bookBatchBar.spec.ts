@@ -66,7 +66,7 @@ async function openPay() {
 describe('编辑态批量条不加行', () => {
   // 破坏验证:把 .cb-unibar 挪回表格上方单独一行(<div v-if="editMode" class="cb-unibar"> 在 .cb-wrap 前)→ 红
   it('❗系数簿:进编辑态表格前面还是「工具条 + 说明行」两块,工具条换成了统一修改条', async () => {
-    useAuthStore().permissions = ['param-policy:edit']
+    useAuthStore().permissions = ['bill-notices:coef']
     await openCoef()
     const before = blocks('cb-wrap')
     expect(before).toEqual(['cb-controls', 'cb-hint', 'cb-wrap'])
@@ -82,7 +82,7 @@ describe('编辑态批量条不加行', () => {
 
   // 破坏验证:同上,.pb-unibar 挪回单独一行 → 红
   it('❗收款簿:同上', async () => {
-    useAuthStore().permissions = ['billing-issue:edit']
+    useAuthStore().permissions = ['bill-notices:issue']
     await openPay()
     const before = blocks('pb-wrap')
     expect(before).toEqual(['pb-controls', 'pb-hint', 'pb-wrap'])
@@ -98,7 +98,7 @@ describe('编辑态批量条不加行', () => {
 describe('弹窗头上挂授权胶囊', () => {
   async function elevate() {
     vi.mocked(api.get).mockResolvedValueOnce([{
-      perm: 'param-policy:edit', permLabel: '计费口径', authorizer: 'zhang', authorizerName: '张经理', expiresAt: Date.now() + 1_721_500,
+      perm: 'bill-notices:coef', permLabel: '催缴单 · 系数簿', authorizer: 'zhang', authorizerName: '张经理', expiresAt: Date.now() + 1_721_500,
     }] as never)
     await useAuthStore().refreshElevation()
   }

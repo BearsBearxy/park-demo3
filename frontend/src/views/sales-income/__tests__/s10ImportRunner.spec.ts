@@ -42,7 +42,7 @@ import type { SectionPick } from '@/components/import/FpImportModal.vue'
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['entry:edit']
+  useAuthStore().permissions = ['sales-income:edit']
   vi.clearAllMocks()
   vi.mocked(s10Api.getOverview).mockResolvedValue(overview)
   vi.mocked(s10Api.getMonth).mockImplementation((_ph: number, y: number, m: number) => Promise.resolve(monthOf(y, m)))

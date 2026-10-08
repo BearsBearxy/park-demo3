@@ -64,19 +64,23 @@ public class CompanyService {
         this.changes = changes;
     }
 
+    /** 三张报表的名字,与 ReportService.STATEMENT_NAME 同:数据修改记录的行定位以它开头。 */
+    private static final Map<String, String> STATEMENT_NAME = new LinkedHashMap<>(Map.of("is", "利润表"));
+    static { STATEMENT_NAME.put("bs", "资产负债表"); STATEMENT_NAME.put("tb", "科目余额表"); }
+
     /** 删公司会跨全部年份清掉这四把键的数据,scope 恒是 companyId。 */
     private static final List<ReviewKind> COMPANY_SCOPED =
         List.of(ReviewKind.LEDGER, ReviewKind.REPORT_IS, ReviewKind.REPORT_BS, ReviewKind.REPORT_TB);
 
-    public List<CompanyDTO> list() { return list(SensitiveMask.holds(Perm.MASTER_VIEW)); }
+    public List<CompanyDTO> list() { return list(SensitiveMask.holds(Perm.BILL_NOTICES_VIEW)); }
 
     /**
      * 催缴单上印的收款公司与账户(GET /api/companies/payees)。用户 2026-10-04 拍板「按你推荐」:通知单要发给租户付款,
-     * 有「出账与催缴单 · 查看」就给账号与个人卡户名的明文;别处(主数据、收款公司窗)仍按 master:view 打码。
-     * 读规则只放 billing:view,这里再判一次:哪天读规则被放宽,放进来的人拿到的也只是掩码。
+     * 有「催缴单 · 查看」就给账号与个人卡户名的明文(v4:账户维护挪到了催缴单屏的收款公司窗,两个出口同一判据)。
+     * 读规则只放催缴单查看,这里再判一次:哪天读规则被放宽,放进来的人拿到的也只是掩码。
      */
     public List<CompanyDTO> listForNotice() {
-        return list(SensitiveMask.holds(Perm.MASTER_VIEW) || SensitiveMask.holds(Perm.BILLING_VIEW));
+        return list(SensitiveMask.holds(Perm.BILL_NOTICES_VIEW));
     }
 
     private List<CompanyDTO> list(boolean plainAccounts) {
@@ -179,12 +183,17 @@ public class CompanyService {
         }
         bookService.dropLedgerBook(id);   // 册随司退场;模板版本在全局链上,不跟着走
         int ledgerGone = ledger.delete(new QueryWrapper<MonthlyLedger>().eq("company_id", id));
-        int reportGone = reportAmounts.delete(new QueryWrapper<ReportAmount>().eq("company_id", id));
-        // 数据修改记录(用户 2026-10-05 拍板第 4 条):整家公司各年各月一起删,不逐格记(几年的台账能有上万格),各记一行摘要
+        // 数据修改记录(用户 2026-10-05 拍板第 4 条):整家公司各年各月一起删,不逐格记(几年的台账能有上万格),各记一行摘要。
+        // 报表按三张表各删各记(RBAC-SPEC §15.6):操作日志按「利润表 · 」这类前缀给对应报表的查看者看,
+        // 裸公司名不以任何报表名开头,这条最不可逆的记录会谁都看不到;某张表 0 格就不记那一条
         if (ledgerGone > 0)
             changes.summary(ChangeLogService.Tbl.LEDGER, c.getName(), "删除了这家公司，它名下 " + ledgerGone + " 行台账（所有年月）一并删掉");
-        if (reportGone > 0)
-            changes.summary(ChangeLogService.Tbl.REPORT, c.getName(), "删除了这家公司，它名下 " + reportGone + " 格三大报表金额（所有年月）一并删掉");
+        for (Map.Entry<String, String> st : STATEMENT_NAME.entrySet()) {
+            int gone = reportAmounts.delete(new QueryWrapper<ReportAmount>().eq("company_id", id).eq("statement", st.getKey()));
+            if (gone > 0)
+                changes.summary(ChangeLogService.Tbl.REPORT, st.getValue() + " · " + c.getName(),
+                    "删除了这家公司，它名下 " + gone + " 格" + st.getValue() + "金额（所有年月）一并删掉");
+        }
         reportCustomRows.delete(new QueryWrapper<ReportCustomRow>().eq("company_id", id));
         reportAccounts.delete(new QueryWrapper<ReportAccount>().eq("company_id", id));
         companies.deleteById(id);
@@ -215,10 +224,10 @@ public class CompanyService {
         CompanyAccount a = accounts.selectById(id);
         if (a == null) throw new BizException(ResultCode.NOT_FOUND, "收款账户不存在");
         requireKind(req.kind());
-        // 个人卡改成别的类型:写回守卫把掩码户名还原成真名,回包又按新类型不打码 —— 没有主数据查看权的人
-        // (靠提权拿到 master:edit,查看不可提权)改一次类型就能读到收款人全名
-        if ("personal".equals(a.getKind()) && !"personal".equals(req.kind()) && !SensitiveMask.holds(Perm.MASTER_VIEW))
-            throw new BizException(ResultCode.FORBIDDEN, "把个人卡改成别的类型需要「" + Perm.label(Perm.MASTER_VIEW) + "」权限");
+        // 个人卡改成别的类型:写回守卫把掩码户名还原成真名,回包又按新类型不打码 —— 没有催缴单查看权的人
+        // (靠提权拿到收款公司这一项,查看不可提权)改一次类型就能读到收款人全名
+        if ("personal".equals(a.getKind()) && !"personal".equals(req.kind()) && !SensitiveMask.holds(Perm.BILL_NOTICES_VIEW))
+            throw new BizException(ResultCode.FORBIDDEN, "把个人卡改成别的类型需要「" + Perm.label(Perm.BILL_NOTICES_VIEW) + "」权限");
         apply(a, req);
         accounts.updateById(a);
         clearOtherDefaults(a);
@@ -230,7 +239,7 @@ public class CompanyService {
 
     private static void apply(CompanyAccount a, CompanyAccountReq req) {
         a.setKind(req.kind());
-        // 提交的是现值的掩码 = 没改(没有 master:view 的人表单里回填的就是掩码,RBAC-SPEC §11 规则 5)
+        // 提交的是现值的掩码 = 没改(没有催缴单查看的人表单里回填的就是掩码,RBAC-SPEC §15.6)
         if (req.accountName() != null) a.setAccountName(blankToNull(
             SensitiveMask.keepIfMasked(req.accountName(), a.getAccountName(), SensitiveMask::name)));
         if (req.accountNo() != null)   a.setAccountNo(blankToNull(
@@ -288,9 +297,9 @@ public class CompanyService {
             c.getFullName(), c.getStatus(), accts);
     }
 
-    // 账号(各 kind 一律,收款码标识可能就是手机号)与个人卡户名(就是收款人姓名)没有 master:view 给掩码;
-    // 对公 / 微信 / 支付宝的户名是公司名、开户行不打码(RBAC-SPEC §11 规则 5)
-    private static CompanyAccountDTO toDTO(CompanyAccount a) { return toDTO(a, SensitiveMask.holds(Perm.MASTER_VIEW)); }
+    // 账号(各 kind 一律,收款码标识可能就是手机号)与个人卡户名(就是收款人姓名)没有「催缴单 · 查看」给掩码;
+    // 对公 / 微信 / 支付宝的户名是公司名、开户行不打码(RBAC-SPEC §15.6)
+    private static CompanyAccountDTO toDTO(CompanyAccount a) { return toDTO(a, SensitiveMask.holds(Perm.BILL_NOTICES_VIEW)); }
 
     private static CompanyAccountDTO toDTO(CompanyAccount a, boolean plain) {
         String name = plain || !"personal".equals(a.getKind()) ? a.getAccountName() : SensitiveMask.name(a.getAccountName());

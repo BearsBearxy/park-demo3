@@ -43,7 +43,7 @@ function mk(props: Record<string, unknown> = {}) {
   return mount(SchedHeader, {
     props: {
       icon: 'wallet', title: '附表12 · 工资明细', year: 2025,
-      edit: false, perm: 'entry:edit', scope: 'sched:salary:2025-03',
+      edit: false, perm: 'utilities:edit', scope: 'sched:salary:2025-03',
       ...props,
     },
   })
@@ -53,7 +53,8 @@ beforeEach(() => {
   setActivePinia(createPinia())
   localStorage.clear()
   vi.clearAllMocks()
-  useAuthStore().permissions = ['entry:edit']
+  // 交审逐键判(canSubmitKey):本文件的审核键是 salary / pv,给这两张表的录入权
+  useAuthStore().permissions = ['utilities:edit', 'salary:edit', 'pv-income:edit']
 })
 
 describe('SchedHeader 编辑锁', () => {
@@ -115,7 +116,7 @@ describe('SchedHeader 编辑锁', () => {
 })
 
 // ELEVATION-SPEC §4.5「结束前先问」只问靠这份授权编辑的屏:页头登记时带上 perm
-// 破坏验证:openEditor 不带 [props.perm] → 自己角色有 entry:edit 也被列进那一问 → 第一条断言红
+// 破坏验证:openEditor 不带 [props.perm] → 自己角色有 utilities:edit 也被列进那一问 → 第一条断言红
 describe('SchedHeader 登记带权限点', () => {
   it('❗自己角色给的 perm:结束授权不退它,那一问不列;换成靠授权就列', async () => {
     const w = mk({ edit: false, scope: null, dirty: 2 })
@@ -169,7 +170,7 @@ describe('SchedHeader copyText 透传(被接管的「复制我的改动」)', ()
   const mkT = (extra: Record<string, unknown> = {}) => mount(SchedHeader, {
     props: {
       icon: 'wallet', title: '附表12 · 工资明细', year: 2025,
-      edit: false, perm: 'entry:edit', scope: 'sched:salary:2025-03', ...extra,
+      edit: false, perm: 'utilities:edit', scope: 'sched:salary:2025-03', ...extra,
     },
     global: { stubs: { teleport: true } },
   })
@@ -378,7 +379,7 @@ describe('SchedHeader 审核闸', () => {
   //   头一版只断言「点药丸没反应」,删掉 onToggleEdit 的闸照样全绿(药丸本来就点不动)。
   //   破坏验证:删掉 onToggleEdit 开头那一行 → 红。
   it('❗主管批完授权那一刻表已被审 → 照样进不去,也不占锁', async () => {
-    // 缺 entry:edit 但能请求提权 —— canAsk 为真,按钮才画得出来(只读账号连按钮都没有)
+    // 缺 utilities:edit 但能请求提权 —— canAsk 为真,按钮才画得出来(只读账号连按钮都没有)
     useAuthStore().permissions = ['elevate:request']
     const w = mk({ reviewKey: 'salary:2025-03' })
     await flushPromises()
@@ -394,7 +395,7 @@ describe('SchedHeader 审核闸', () => {
 
     // 主管批了 —— 权限这才齐(不补这一步 onToggleEdit 会在权限判那儿就返回,
     // 于是删掉审核闸也照样绿:头一版就栽在这里)
-    useAuthStore().permissions = ['elevate:request', 'entry:edit']
+    useAuthStore().permissions = ['elevate:request', 'utilities:edit']
     await w.findComponent({ name: 'FPElevateDialog' }).vm.$emit('elevated')
     await flushPromises()
     expect(w.emitted('toggle-edit'), '权限齐 ≠ 进得去').toBeUndefined()
@@ -409,7 +410,7 @@ describe('SchedHeader 审核闸', () => {
     await flushPromises()
     const btn = w.find('.lc-lockbtn')
     expect(btn.attributes('disabled'), '置灰').toBeDefined()
-    expect((btn.element as HTMLElement & { _tip?: { text: string } })._tip?.text).toBe('需要「salary:edit」权限')
+    expect((btn.element as HTMLElement & { _tip?: { text: string } })._tip?.text).toBe('需要「附表12 工资明细 · 编辑」权限')
     await btn.trigger('click')
     await flushPromises()
     expect(w.findComponent({ name: 'FPElevateDialog' }).props('perms'), '借不到就不弹授权窗').toBeNull()

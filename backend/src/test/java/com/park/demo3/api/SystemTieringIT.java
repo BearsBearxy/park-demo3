@@ -21,7 +21,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 /**
  * 系统管理分级(RBAC-SPEC §12,用户 2026-10-04 拍板「系统管理不分级反正我需要一个超级管理员的账号都能调试整个软件」)。
  *
- * 「只管账号的人」= 自建角色只有 system:view + system:edit。安全审计里他能走的四条升级路
+ * 「只管账号的人」= 自建角色只有用户管理与角色权限两屏的查看 / 编辑(v4,RBAC-SPEC §15)。安全审计里他能走的四条升级路
  * (F39 给自己的角色勾满 / F86 建一个系统管理员账号 / F38 重置管理员密码 / 停用管理员)这里逐条打一遍。
  *
  * 整类 @Transactional:建的角色、账号、改的状态全部回滚;快照不随库回滚,@AfterTransaction 重载一次(同 SystemApiIT)。
@@ -43,7 +43,7 @@ class SystemTieringIT extends AbstractMysqlIT {
         String a = admin();
         int adminRole = roleIdOf(a, "admin");
         int adminId = userIdOf(a, "admin");
-        int itRole = mkRole(a, "it_sysadm", "[\"system:view\",\"system:edit\"]");
+        int itRole = mkRole(a, "it_sysadm", "[\"sys-users:view\",\"sys-users:edit\",\"sys-roles:view\",\"sys-roles:edit\"]");
         String t = login(mkUser(a, "it-sysadm", itRole), PASS);
         // 第二个系统管理员:让「最后一个」那条不先出手,这里量的是分级本身
         mkUser(a, "it-adm2", adminRole);
@@ -53,9 +53,9 @@ class SystemTieringIT extends AbstractMysqlIT {
             .contentType("application/json")
             .content("{\"name\":\"只管账号\",\"navLayers\":[\"data\"],\"perms\":" + json(Perm.ALL) + "}")).andReturn());
         assertThat(codeOf(r1)).isEqualTo(403);
-        assertThat(msgOf(r1)).startsWith("角色里有你没有的权限：").contains("主数据");
+        assertThat(msgOf(r1)).startsWith("角色里有你没有的权限：").contains("本月出账 · 查看");
         assertThat(jdbc.queryForList("SELECT perm FROM auth_role_perm WHERE role_id=?", String.class, itRole))
-            .as("角色没被改").containsExactlyInAnyOrder("system:view", "system:edit");
+            .as("角色没被改").containsExactlyInAnyOrder("sys-users:view", "sys-users:edit", "sys-roles:view", "sys-roles:edit");
 
         // ② 建一个挂系统管理员角色的账号(F86)
         String uname = "it-sneak-" + System.nanoTime();
@@ -88,7 +88,7 @@ class SystemTieringIT extends AbstractMysqlIT {
     void superAdmin_isNotTiered_andTheLoginSaysSo() throws Exception {
         String a = admin();
         int adminRole = roleIdOf(a, "admin");
-        int itRole = mkRole(a, "it_sysadm", "[\"system:view\",\"system:edit\"]");
+        int itRole = mkRole(a, "it_sysadm", "[\"sys-users:view\",\"sys-users:edit\",\"sys-roles:view\",\"sys-roles:edit\"]");
         String it = mkUser(a, "it-sysadm", itRole);
 
         // 屏上置灰靠这两个字段:系统管理员 true,只管账号的人 false
@@ -115,18 +115,18 @@ class SystemTieringIT extends AbstractMysqlIT {
             "$.data[*].manageable")).containsOnly(true);
     }
 
-    /** 范围内的照常管;编辑隐含查看算进「我有的」(只勾了 system:edit 的人也有 system:view)。 */
+    /** 范围内的照常管;编辑隐含本屏查看算进「我有的」(只勾了两屏编辑的人也有两屏查看)。 */
     @Test
     void itAdmin_managesWhatIsWithinRange_butNotBiggerRoles() throws Exception {
         String a = admin();
-        int itRole = mkRole(a, "it_sysedit", "[\"system:edit\"]");
+        int itRole = mkRole(a, "it_sysedit", "[\"sys-users:edit\",\"sys-roles:edit\"]");
         String t = login(mkUser(a, "it-sysedit", itRole), PASS);
 
-        // 他的 system:view 是 system:edit 隐含的(角色里没勾)—— 只带 system:view 的角色照样能建、能派、能重置、能停用
+        // 他的两屏查看是两屏编辑隐含的(角色里没勾)—— 只带用户管理查看的角色照样能建、能派、能重置、能停用
         int small = JsonPath.read(body(mvc.perform(post("/api/system/roles").header("Authorization", hdr(t))
             .contentType("application/json")
             .content("{\"code\":\"it_sysview_" + System.nanoTime() % 100000 + "\",\"name\":\"只看账号\",\"navLayers\":[\"data\"],"
-                   + "\"perms\":[\"system:view\"]}")).andReturn()), "$.data.id");
+                   + "\"perms\":[\"sys-users:view\"]}")).andReturn()), "$.data.id");
         String u = "it-small-" + System.nanoTime();
         String created = body(mvc.perform(post("/api/system/users").header("Authorization", hdr(t))
             .contentType("application/json")
@@ -158,7 +158,7 @@ class SystemTieringIT extends AbstractMysqlIT {
             .content("{\"name\":\"财务专员\",\"navLayers\":[\"data\"],\"perms\":[]}")).andReturn());
         assertThat(codeOf(r2)).isEqualTo(403);
         assertThat(msgOf(r2)).startsWith("角色里有你没有的权限：");
-        int big = mkRole(a, "it_big", "[\"entry:edit\"]");
+        int big = mkRole(a, "it_big", "[\"ledger:edit\"]");
         assertThat(codeOf(body(mvc.perform(delete("/api/system/roles/" + big).header("Authorization", hdr(t))).andReturn())))
             .isEqualTo(403);
         // 系统管理员角色:哪怕只改名
@@ -189,7 +189,7 @@ class SystemTieringIT extends AbstractMysqlIT {
         int adminId = userIdOf(a, "admin");
         jdbc.update("UPDATE auth_user SET status=0 WHERE username<>'admin' AND id IN "
                   + "(SELECT user_id FROM auth_user_role WHERE role_id=?)", adminRole);
-        int itRole = mkRole(a, "it_sysadm", "[\"system:view\",\"system:edit\"]");
+        int itRole = mkRole(a, "it_sysadm", "[\"sys-users:view\",\"sys-users:edit\",\"sys-roles:view\",\"sys-roles:edit\"]");
         String t = login(mkUser(a, "it-sysadm", itRole), PASS);
 
         String off = body(mvc.perform(post("/api/system/users/" + adminId + "/status").header("Authorization", hdr(t))

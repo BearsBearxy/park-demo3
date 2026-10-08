@@ -80,13 +80,14 @@ import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
 import FPToast from '@/components/fp/FPToast.vue'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
+import { useViewGate } from '@/composables/useViewGate'
 
 const auth = useAuthStore()
 // RBAC:本屏两扇门不同权 —— 生成快照是「跑一次出账」,池配置是「改计费口径」。
 // 2026-08-22 起铁律改为「进得了编辑模式 ⇒ 本页权限一定齐」(EDIT-MODE-SPEC v3):编辑态里不再有
 // 点不动的控件,也不再有「点了转成授权请求」的包装。这个只用来画**浏览态**的文案与可点态
-// (param-policy:edit 仍由下面 useEditMode 的权限组把门,只是屏上不再单独取用)。
-const canGen = computed(() => auth.can('billing-run:edit'))
+// (alloc:pools 仍由下面 useEditMode 的权限组把门 —— 两项齐才进得了编辑态,编辑态里不再单独取用)。
+const canGen = computed(() => auth.can('alloc:edit'))
 
 // ── 编辑模式(EDIT-MODE-SPEC v3):切页签保留编辑态,只关浮层 ──
 // 两把键一起交:按钮自己写成「交审(2 项)」;两把态不同时各动各的那几把
@@ -95,7 +96,7 @@ const canGen = computed(() => auth.can('billing-run:edit'))
 const reviewLabel = computed(() => `公共电核算 · ${ym.value}`)
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
         lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip, reviewKeys } =
-  useEditMode(['billing-run:edit', 'param-policy:edit'], {
+  useEditMode(['alloc:edit', 'alloc:pools'], {
     scope: () => S.poolLedger(year.value, month.value),
     // 审核键(§7.1):本屏压**两把** —— 池结果与损耗结果是 AllocService.generate(ym)
     // 同一次算出来的,只认一把等于放行另一半。任一把锁着就锁(store.blockOf 的语义)。
@@ -531,10 +532,12 @@ function roRoundLine(ruleId: number): string {
 }
 const router = useRouter()
 const tabs = useTabsStore()
+const { blocked } = useViewGate()
 // 深链协议:KeepAlive 缓存实例只在 setup 消费 query,必须 openFresh;带 rule 一律落计费参数「公摊池」那一行,
 // 闪哪一格:带 key 就闪那一格(如取整位 round_scale),没带按 section(monthly=加减度数,constant=分摊基数;S21 §5.7);
 // edit=1:[去重算] 落地直接进编辑态(重算按钮只在编辑态出)
 function gotoParams(ruleId?: number, key: PoolParamKey | null = null, edit = false) {
+  if (blocked('/params')) return
   tabs.openFresh('params', { pin: true })
   const section = key === 'extra_qty' ? 'monthly' : 'constant'
   router.push({ path: '/params', query: { ym: ym.value, zone: zone.value, section,

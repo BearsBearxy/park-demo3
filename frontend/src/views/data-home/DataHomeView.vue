@@ -34,7 +34,7 @@ import FPReviewDialog from '@/components/fp/FPReviewDialog.vue'
 import { useBillingPeriodStore, YM } from '@/stores/billingPeriod'
 import { usePresenceStore } from '@/stores/presence'
 import { useReviewStore } from '@/stores/review'
-import { ownSubmission, SELF_REVIEW_TIP, type ReviewRow } from '@/types/review'
+import { ownSubmission, SELF_REVIEW_TIP, canSubmitKey as canSubmit, type ReviewRow } from '@/types/review'
 import { NAV_SCOPE_PREFIX, scopeTarget } from '@/utils/lockScopes'
 import { periodLink, periodOf } from '@/nav/deepLink'
 import { CHAIN, pipsOf, chainLabel, noticeYmOf } from '@/nav/billingChain'
@@ -66,7 +66,7 @@ function myChainLockPeriods(): string[] {
 // v-if="!ov"/v-else 分支之外,骨架态就在。2026-10-03 横条收尾:原先单独一行 32px 的主管条撤掉,
 // 「待批授权 N」与顶栏铃铛重复(点开的就是铃铛面板)整颗删;「谁在编辑」收成标题行一颗胶囊,点开列人。
 const editorsOpen = ref(false)
-const isSupervisor = computed(() => auth.can('lock:takeover') || auth.can('system:view'))
+const isSupervisor = computed(() => auth.can('lock:takeover') || auth.can('sys-users:view'))
 
 // 「谁在编辑」—— 一人一枚 chip,取 editScopes[0](裁定 4:32px 定高装不下 N 人 × M 把锁,
 // 要回答的是「谁卡在哪」而不是「都握了哪些锁」)。按 user 去重(不是 sid)—— presence 的单位是
@@ -278,8 +278,8 @@ async function loadRecon(ym: string) {
   // 「新月已上屏、新回包还没到」这段空窗 —— 不清的话这一行会在整年 12 个月重跑核对的窗口里,
   // 挂着上一个月的 ✓/○,与已经换好月的其余行(链五步/附表)对不上。
   recon.value = null
-  // 收入核对归报表(RBAC v3):没有报表查看权就不发,这一行照 hasData 闸显「—」(同取数失败)
-  if (!ym || !auth.can('report:view')) return
+  // 收入核对归它自己那一屏(RBAC v4):没有「收入核对 · 查看」就不发,这一行照 hasData 闸显「—」(同取数失败)
+  if (!ym || !auth.can('reconciliation:view')) return
   const year = +ym.slice(0, 4)
   const month = +ym.slice(5, 7)
   const res = await reconApi.overview(year).catch(() => null)
@@ -332,24 +332,13 @@ function reviewTip(key: string | undefined, status: string): string | undefined 
   return undefined
 }
 
-/**
- * 「有没有这张表的录入权」—— 这里只决定**按钮画不画**,是粗判。
- *
- * 真正的 kind→perm 表在后端 `ReviewKind.perms()`,前端不重列一份(§7.1 明写它不是
- * RBAC §5.2 那张表的复用,重列必漂移)。点下去由后端 403 兜底并把原话弹出来。
- * 代价写明:没有某张表 edit 权的人会看见一颗按不动的「交审」——比"少一张表的按钮
- * 且没人知道为什么"好。
- */
-const canSubmitAny = computed(() =>
-  ['entry:edit', 'salary:edit', 'billing-run:edit', 'param-policy:edit', 'param-monthly:edit', 'meter-reading:edit']
-    .some(p => auth.can(p)))
 const canApprove = computed(() => auth.can('review:approve'))
 /**
- * 粗判的唯一例外:附表12 的交审只认「工资录入」(salary:edit,不可提权;RBAC-SPEC §11.8)。
- * 它是唯一一张交审权不随「事后录入」走的表,只按上面那道粗判,种子里的财务专员每个月都会在这一行看到
- * 一颗点下去恒 403 的「交审」—— 而这一行他连点开都不能(没有工资查看)。只开这一个口子,不展开成 kind→perm 全表。
+ * 这把审核键我能不能交审:逐键判(RBAC-SPEC §15.7)。键的 kind = 第一个 `:` 前那段,查 SUBMIT_PERMS(与后端
+ * `ReviewKind.perms()` 逐条相同),任一就算。不能按行的 go 判:附表7/8 那一行装着汽车、电动车两把键,
+ * 只能交自己有编辑权的那一把。只认角色给的(hasOwn):后端交审不认提权,借来的编辑权点「交审」恒 403。
  */
-const submittable = (k: string) => !k.startsWith('salary:') || auth.can('salary:edit')
+const canSubmitKey = (k: string) => canSubmit(k, auth.hasOwn)
 
 /**
  * 这一行涉及的全部审核键。
@@ -375,23 +364,19 @@ function actionsOf(r: CloseRow) {
   const st = (k: string) => rowOf(k)?.status ?? null
   return {
     // 交审前置:该键已做(§7.2)。多键行按 chip 各自的 done 判 —— 只录了 A 公司就只交 A 公司。
-    submit: canSubmitAny.value
-      ? keys.filter(submittable).filter(k => {
-          const s = st(k)
-          if (s !== 'entered' && s !== 'returned') return false
-          const chip = (r.chips ?? []).find(c => c.reviewKey === k)
-          return chip ? chip.done : r.state === 'done'
-        })
-      : [],
+    submit: keys.filter(canSubmitKey).filter(k => {
+      const s = st(k)
+      if (s !== 'entered' && s !== 'returned') return false
+      const chip = (r.chips ?? []).find(c => c.reviewKey === k)
+      return chip ? chip.done : r.state === 'done'
+    }),
     // 自己交的不在里面(录审分离,types/review ownSubmission);整行全是自己交的 → selfOnly,按钮照画、按不动
     approve: canApprove.value ? keys.filter(k => st(k) === 'submitted' && !mine(k)) : [],
     back: canApprove.value ? keys.filter(k => st(k) === 'submitted' && !mine(k)) : [],
     selfOnly: canApprove.value && keys.some(k => st(k) === 'submitted') && keys.every(k => st(k) !== 'submitted' || mine(k)),
     undo: canApprove.value ? keys.filter(k => st(k) === 'approved') : [],
     /** 有交审资格但还没录完的键 —— 按钮要画出来但按不动(直接不画会让人以为界面坏了)。 */
-    submitPending: canSubmitAny.value
-      ? keys.filter(submittable).filter(k => (st(k) === 'entered' || st(k) === 'returned'))
-      : [],
+    submitPending: keys.filter(canSubmitKey).filter(k => (st(k) === 'entered' || st(k) === 'returned')),
   }
 }
 

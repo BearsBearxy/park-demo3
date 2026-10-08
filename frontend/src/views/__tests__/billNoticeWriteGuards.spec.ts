@@ -117,7 +117,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
   // 两扇门都给齐 —— 本组用例要证的是「有权限但在浏览态」,不是「没权限」
-  useAuthStore().permissions = ['billing-run:edit', 'billing-issue:edit']
+  useAuthStore().permissions = ['bill-notices:edit', 'bill-notices:issue']
   vi.mocked(billNoticesApi.list).mockResolvedValue(NOTICES as never)
   vi.mocked(billNoticesApi.detail).mockResolvedValue(DETAIL as never)
   vi.mocked(billNoticesApi.notes).mockResolvedValue([] as never)
