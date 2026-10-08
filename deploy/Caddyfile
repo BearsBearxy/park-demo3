@@ -34,6 +34,18 @@ atrilink.com, www.atrilink.com {
 # 不打进镜像:改一张图就重发一版镜像不划算,rsync 完即生效)。
 #
 # ⚠ 上线顺序不能反(同上面那条):先在万网加 promo 的 A 记录并确认解析生效,再改这个文件。
+# 演示站(2026-10-09):demo = 脱敏数据,new = 新园区空库。前端容器只在 docker-compose 的 profile demo 下才起,
+# 没起时这两个域名回 502、不影响上面的正式站。DNS 要先加 demo / new 两条 A 记录指向本机,证书才签得下来。
+demo.atrilink.com {
+	reverse_proxy frontend-demo:80
+	header Strict-Transport-Security "max-age=31536000"
+}
+
+new.atrilink.com {
+	reverse_proxy frontend-new:80
+	header Strict-Transport-Security "max-age=31536000"
+}
+
 promo.atrilink.com {
 	root * /srv/promo
 	file_server

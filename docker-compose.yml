@@ -75,6 +75,79 @@ services:
       backend:
         condition: service_healthy
 
+  # ── 演示站(2026-10-09 用户:一套空库看新园区装好的样子,一套放脱敏数据,由用户自己登录演示给客户看)。
+  # profile demo:.env 的 COMPOSE_PROFILES 加上 demo 才起(如 https,demo),不加则与原来一模一样。发版时跟正式站同一个镜像一起更新。
+  # 各用各的库和 MySQL 账号(只授权自己那个库,不用 root):演示站万一被打穿,碰不到正式库 park_demo3。
+  # 建库建账号、导入脱敏数据只做一次,步骤见 deploy/README-部署指南.md「演示站」。
+  # ⚠ 下面的口令变量不能写成 :? 必填:compose 不管 profile 开没开都会先插值全部服务,写成必填的话 .env 里没有它们时
+  #   正式站发版的 `docker compose up -d` 也会被拒。留空的后果只落在演示站自己身上(JWT 密钥不够长、库口令不对,起不来)。
+  backend-demo:
+    image: ${IMAGE_PREFIX:-ghcr.io/bearsbearxy/park-demo3}-backend:${IMAGE_TAG:-latest}
+    profiles: ["demo"]
+    restart: unless-stopped
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_NAME: park_demo
+      DB_USER: demo_site
+      DB_PASSWORD: ${DEMO_DB_PASSWORD:-}
+      SPRING_PROFILES_ACTIVE: prod
+      JWT_SECRET: ${DEMO_JWT_SECRET:-}
+      ADMIN_PASSWORD: ${DEMO_ADMIN_PASSWORD:-}
+      CORS_ALLOWED_ORIGINS: https://demo.atrilink.com
+      JAVA_TOOL_OPTIONS: -Xmx384m   # 2C4G 一台机跑三个后端:演示站各压在 384M 堆以内,超了只重启演示站,不挤正式站
+    mem_limit: 700m
+    networks:
+      default: {}
+      demo:
+        aliases: [backend]       # 前端镜像的 nginx 写死 proxy_pass http://backend:8080;在这张网里它就是本站后端
+    depends_on:
+      mysql:
+        condition: service_healthy
+  frontend-demo:
+    image: ${IMAGE_PREFIX:-ghcr.io/bearsbearxy/park-demo3}-frontend:${IMAGE_TAG:-latest}
+    profiles: ["demo"]
+    restart: unless-stopped
+    networks: [demo]            # 不挂默认网:那里的 backend 是正式站
+    depends_on:
+      backend-demo:
+        condition: service_healthy
+  backend-new:
+    image: ${IMAGE_PREFIX:-ghcr.io/bearsbearxy/park-demo3}-backend:${IMAGE_TAG:-latest}
+    profiles: ["demo"]
+    restart: unless-stopped
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_NAME: park_new
+      DB_USER: new_site
+      DB_PASSWORD: ${NEW_DB_PASSWORD:-}
+      SPRING_PROFILES_ACTIVE: prod
+      JWT_SECRET: ${NEW_JWT_SECRET:-}
+      ADMIN_PASSWORD: ${NEW_ADMIN_PASSWORD:-}
+      CORS_ALLOWED_ORIGINS: https://new.atrilink.com
+      # 新园区装机口径(同 deploy/gen-env.sh):起点链空库起步、关模拟填充、更新记录只给看装机之后的
+      FLYWAY_LOCATIONS: classpath:db/baseline,classpath:db/common
+      PARK_TOOLS_ENABLED: "false"
+      RELEASE_BASELINE: ${NEW_RELEASE_BASELINE:-0.32.0}
+      JAVA_TOOL_OPTIONS: -Xmx384m   # 2C4G 一台机跑三个后端:演示站各压在 384M 堆以内,超了只重启演示站,不挤正式站
+    mem_limit: 700m
+    networks:
+      default: {}
+      new:
+        aliases: [backend]       # 前端镜像的 nginx 写死 proxy_pass http://backend:8080;在这张网里它就是本站后端
+    depends_on:
+      mysql:
+        condition: service_healthy
+  frontend-new:
+    image: ${IMAGE_PREFIX:-ghcr.io/bearsbearxy/park-demo3}-frontend:${IMAGE_TAG:-latest}
+    profiles: ["demo"]
+    restart: unless-stopped
+    networks: [new]            # 不挂默认网:那里的 backend 是正式站
+    depends_on:
+      backend-new:
+        condition: service_healthy
+
   # HTTPS 终止层(2026-08-30)。profile 收起来:只有 .env 里写了 COMPOSE_PROFILES=https 才启动,
   # 所以本地开发 / 纯 IP 明文部署完全不受影响,`docker compose up -d` 一行不用改(CD 也就不用动)。
   # 服务器切 HTTPS 三步:.env 加 COMPOSE_PROFILES=https、WEB_PORT 从 80 改 8081(把 80 让给 caddy)、
@@ -94,8 +167,13 @@ services:
       - /opt/promo:/srv/promo:ro
       - caddy-data:/data       # 证书在这里,删卷=重新签发=撞 Let's Encrypt 周限额
       - caddy-config:/config
+    networks: [default, demo, new]   # 演示站前端只在自己的网里
     depends_on:
       - frontend
+
+networks:
+  demo:
+  new:
 
 volumes:
   mysql-data:

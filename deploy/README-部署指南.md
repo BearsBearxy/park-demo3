@@ -233,3 +233,26 @@ docker compose logs backend | grep -E "Migrating schema|Successfully applied|adm
   - 手写 `.env` 的新园区要自己补这两行。走起点链却漏了任一行（取到的是我园的默认值），后端拒绝启动，日志里写明要补哪两行；`RELEASE_BASELINE` 不是 `0.29.0` 这样的版本号（比如写成 `v0.29.0`）也拒绝启动（`DeployConfig`）。
 - 以后的迁移只写进 `backend/src/main/resources/db/common`（V138 起），两条链都会跑，**不许写任何园区的数据**；
   `db/migration` 和 `db/baseline` 都冻结了（见各目录 README，`MigrationLayoutTest` 会查）。
+
+## 10. 演示站（2026-10-09 起）
+
+用户 2026-10-09：一套空库看新园区装好的样子，一套放脱敏数据，由用户自己登录、演示给客户看（不对外发账号）。
+两套都和正式站在同一台机、用同一个镜像，发版时一起更新；各用各的库和 MySQL 账号，账号只授权自己那个库。
+
+| 域名 | 库 / 账号 | 里面是什么 |
+|---|---|---|
+| `demo.atrilink.com` | `park_demo` / `demo_site` | 我园数据脱敏版（`运维文档/脱敏演示库.py` 换名缩放，再清掉账号与登录日志），老迁移链 |
+| `new.atrilink.com` | `park_new` / `new_site` | 空库，新园区装好的样子（起点链、关模拟填充，同 §9） |
+
+一次性步骤（在 `/opt/demo3` 下）：
+
+1. 域名解析加 `demo`、`new` 两条 A 记录指向本机（先加，Caddy 才签得下证书）。
+2. `bash deploy/demo-sites.sh init`：`.env` 补六个演示站变量（`DEMO_*` / `NEW_*`，已有的不动），建两个库和两个账号。
+3. 把脱敏数据传上来，`bash deploy/demo-sites.sh load park_demo_export.sql.gz`。**必须在 `backend-demo` 第一次启动之前**：空库遇上老链后端会拒绝启动（`FlywayChainGuard`）。
+4. `.env` 的 `COMPOSE_PROFILES` 加上 `demo`（如 `COMPOSE_PROFILES=https,demo`），`docker compose up -d`。
+5. 登录：两站都是 `admin`，口令分别是 `.env` 里的 `DEMO_ADMIN_PASSWORD`、`NEW_ADMIN_PASSWORD`；进去后在「系统管理」建自己演示用的账号。
+
+- **还原演示数据**：再跑一次 `bash deploy/demo-sites.sh load <同一个文件>`（清空 `park_demo` 重灌）。空库那套要还原：`DROP DATABASE park_new` 后重新 `init`、`up -d`。
+- **关掉演示站**：`COMPOSE_PROFILES` 去掉 `demo`，再 `docker compose --profile demo rm -sf backend-demo frontend-demo backend-new frontend-new`。不删库也不影响正式站。
+- **内存**：2C4G 一台机跑三个后端。演示站每个后端堆压在 384M、容器 700M 封顶，超了只重启演示站自己。
+- **compose 里演示站的口令变量不能改成 `:?` 必填**：compose 不管 profile 开没开都会先插值全部服务，写成必填的话，`.env` 没有它们时正式站发版也会被拒。
