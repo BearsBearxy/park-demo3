@@ -9,6 +9,15 @@ export default defineConfig({
     vue(),
     // brand-title:把 index.html 里的 %BRAND_TITLE% 换成 src/brand.ts 的产品名(浏览器标签页标题)
     { name: 'brand-title', transformIndexHtml: (html) => html.replaceAll('%BRAND_TITLE%', BRAND_TITLE) },
+    // strip-comments:线上首页不带 index.html 里的注释(HTML 注释与内联 <style> 里的 CSS 注释)。注释写着内部文档名和源码路径,
+    // 谁都能看首页源码(渗透测试 I2,2026-10-08 用户「按你建议」)。只在 build 时做,开发时照旧看得到
+    {
+      name: 'strip-comments',
+      apply: 'build' as const,
+      transformIndexHtml: (html: string) => html
+        .replace(/<!--[\s\S]*?-->/g, '')
+        .replace(/<style>[\s\S]*?<\/style>/g, (css) => css.replace(/\/\*[\s\S]*?\*\//g, '')),
+    },
     // app-version:把版本号写成 dist/version.json。页面每隔几分钟取它一次,和自己编译进去的
     // __APP_VERSION__ 比 —— 不一样就是「服务器上已经是新版了」,底部提示条请人刷新
     // (VERSION-UPDATE-SPEC §6)。**必须不缓存**,nginx.conf 里有对应的 location。

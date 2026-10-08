@@ -35,7 +35,10 @@ public class ReviewController {
 
     @Operation(summary = "某月全部审核键的当前态(含派生 entered 与通过前置缺项)")
     @GetMapping
-    public List<ReviewRowDTO> list(@RequestParam String period) { return svc.list(period); }
+    // 月份不合格式原来会走到服务器出错(500),兄弟接口都回 400(渗透测试低置信观察 3)
+    public List<ReviewRowDTO> list(@RequestParam @jakarta.validation.constraints.Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String period) {
+        return svc.list(period);
+    }
 
     @Operation(summary = "某年已落库的审核行(编辑闸用;不含派生 entered,不算前置)")
     @GetMapping("/states")

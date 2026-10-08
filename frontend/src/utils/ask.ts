@@ -13,14 +13,24 @@ export interface AskOpts {
   cancel?: string
   /** 删除类:主按钮红、默认焦点在「取消」 */
   danger?: boolean
+  /** 要对方写一句(如原因):正文下出一个输入框,写了字主按钮才能点;用 askText 发 */
+  input?: { label: string; placeholder?: string }
 }
-export interface Asking extends AskOpts { resolve: (ok: boolean) => void }
+export interface Asking extends AskOpts { resolve: (ok: boolean) => void; text?: string }
 
 /** 排队的确认,队头正在显示 */
 export const askQueue = reactive<Asking[]>([])
 
 export function ask(o: AskOpts): Promise<boolean> {
   return new Promise((resolve) => { askQueue.push({ ...o, resolve }) })
+}
+
+/** 带输入框的确认:主按钮回填写的字(去掉首尾空白),取消回 null */
+export function askText(o: AskOpts & { input: NonNullable<AskOpts['input']> }): Promise<string | null> {
+  return new Promise((resolve) => {
+    const item: Asking = { ...o, text: '', resolve: (ok) => resolve(ok ? (item.text ?? '').trim() : null) }
+    askQueue.push(item)
+  })
 }
 
 /** 答复队头(FPConfirmHost 调):主按钮 true;取消 / Esc / 点外面 false */

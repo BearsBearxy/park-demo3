@@ -408,7 +408,7 @@ public class ParamService {
         if (month.isEmpty() && "month".equals(mode))
             throw new BizException(ResultCode.BAD_REQUEST, "月变键须指定生效月：" + key);
         if (req.value() != null && !valueOk(d, req.value()))
-            throw new BizException(ResultCode.BAD_REQUEST, "值不在「" + d.label() + "」的允许范围");
+            throw new BizException(ResultCode.BAD_REQUEST, rangeText(d));
         String note = req.note() == null || req.note().isBlank() ? null : req.note().trim();
         // 审核闸(§7.4「按被写数据的月判,不按 URL」):守 req.acctMonth,**不守形参 ym**。
         // ym 是「站在哪个月看」的 URL 月,PUT /api/price-cfg 那条路径硬传 null —— 按它判会既漏又误。
@@ -463,14 +463,26 @@ public class ParamService {
         return out;
     }
 
-    // 值域(spec §6):枚举须在字典里;布尔 0/1;整数与引用型(表/栋/池 id)须为整数;数值/比率/金额不设限
+    // 值域(spec §6):枚举须在字典里;布尔 0/1;整数与引用型(表/栋/池 id)须为整数;
+    // 金额 / 数值不能为负,比率在 0–1 —— 原来这三类不设限,能存负电价、50 倍的比例(渗透测试 F2,2026-10-08 用户「按你建议」)。
+    // SIGNED 是说明里写明能填负数的两项(ParamRegistry:损耗调整度数「负数少收」、公摊池加减度数「扣减填负数」),负数照收
+    static final Set<String> SIGNED = Set.of("loss_adj_qty", "extra_qty");
     private static boolean valueOk(Def d, BigDecimal v) {
         boolean integral = v.stripTrailingZeros().scale() <= 0;
         return switch (d.valueKind()) {
             case ENUM -> integral && d.enumOptions() != null && d.enumOptions().containsKey(v.intValue());
             case BOOL -> v.signum() == 0 || v.compareTo(BigDecimal.ONE) == 0;
             case INT, REF_METER, REF_BUILDING, REF_RULE -> integral;
-            default -> true;
+            case MONEY, NUMBER -> SIGNED.contains(d.key()) || v.signum() >= 0;
+            case RATE -> v.signum() >= 0 && v.compareTo(BigDecimal.ONE) <= 0;
+        };
+    }
+
+    private static String rangeText(Def d) {
+        return switch (d.valueKind()) {
+            case MONEY, NUMBER -> "「" + d.label() + "」不能是负数";
+            case RATE -> "「" + d.label() + "」要在 0 到 1 之间";
+            default -> "值不在「" + d.label() + "」的允许范围";
         };
     }
 

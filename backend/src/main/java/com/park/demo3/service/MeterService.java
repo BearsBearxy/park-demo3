@@ -64,7 +64,7 @@ import java.util.stream.Collectors;
 
 // 园区抄表(METER-SPEC)。P-A 刀:表档案+月度读数;分摊/损耗/账单是 P-B/P-C。
 // factor_snap 快照口径:读数落库时快照当时表倍率,之后改倍率不回溯历史(同 PvMeterService price_snap)。
-// 用量=(curr−prev)×factor_snap 派生绝不落库;漏抄/倒走由前端 meterLogic 派生只标不拦。
+// 用量=(curr−prev)×factor_snap 派生绝不落库;漏抄/倒走由前端 meterLogic 派生标出。倒走没写备注的、负读数,后端拒(readingProblem)。
 @Service
 public class MeterService {
     private static final Pattern YM = Pattern.compile("\\d{4}-\\d{2}");
@@ -227,6 +227,7 @@ public class MeterService {
         m.setKind(req.kind()); m.setZone(req.zone()); m.setName(name);
         m.setMeterType(blankToNull(req.meterType())); m.setDeviceType(req.deviceType());
         m.setCode(blankToNull(req.code()));
+        refuseBadFactor(req.factor());
         m.setFactor(one(req.factor()));   // 改倍率只影响之后新录读数,历史 factor_snap 不回溯
         if (identified) m.setSuspect(null);
         if (req.suspect() != null) m.setSuspect(blankToNull(req.suspect()));   // 显式值优先(三态见 MeterAssetReq)
@@ -775,6 +776,7 @@ public class MeterService {
 
     @Transactional
     public MeterReadingDTO createReading(MeterReadingReq req) {
+        refuseBadReading(prevOf(req), currOf(req), req.note());
         reviewGuard.assertEditable(ReviewKind.METERS, req.ym(), null);
         Meter m = meters.selectById(req.meterId());
         if (m == null) throw new BizException(ResultCode.CONFLICT, "表不存在");
@@ -833,6 +835,12 @@ public class MeterService {
         String oldYm = r.getYm();
         MeterReading was = new MeterReading();
         org.springframework.beans.BeanUtils.copyProperties(r, was);   // 改前(下面在 r 上原地改)
+        // 判改完落库的那一行:请求里空着的格 updateById 不写、库里原值留着(备注同理)
+        BigDecimal[] p = prevOf(req), c = currOf(req);
+        BigDecimal[] wp = {was.getPrevTotal(), was.getPrevSharp(), was.getPrevPeak(), was.getPrevFlat(), was.getPrevValley()};
+        BigDecimal[] wc = {was.getCurrTotal(), was.getCurrSharp(), was.getCurrPeak(), was.getCurrFlat(), was.getCurrValley()};
+        for (int k = 0; k < p.length; k++) { if (p[k] == null) p[k] = wp[k]; if (c[k] == null) c[k] = wc[k]; }
+        refuseBadReading(p, c, blankToNull(req.note()) != null ? req.note() : was.getNote());
         r.setYm(req.ym());
         // 挪月 = 在新月份新录一条:快照照 createReading 取表档案当前倍率。原来旧快照原样跟过去 ——
         // 档案倍率改过之后,删掉本月读数、把一条旧倍率的旧读数挪进本月填上本月的数,本月就按旧倍率计了
@@ -1142,6 +1150,13 @@ public class MeterService {
             if (blankToNull(row.ownership()) != null && !validOwnership(row.ownership().trim())) {
                 errors.add(new ImportError(i, name, "归属非法(tenant|share|ops|infra|park|register)")); continue;
             }
+            // 读数不对整行不导(档案也不动),同手工录入那道检查
+            String bad = readingProblem(
+                new BigDecimal[]{row.prevTotal(), row.prevSharp(), row.prevPeak(), row.prevFlat(), row.prevValley()},
+                new BigDecimal[]{row.currTotal(), row.currSharp(), row.currPeak(), row.currFlat(), row.currValley()},
+                row.note(), "本行「备注」列", "导入");
+            if (bad == null) bad = factorProblem(row.factor());
+            if (bad != null) { errors.add(new ImportError(i, name, bad)); continue; }
             String ym = row.ym();
             // G8:按位置 / 标识不认 M 月已拆的表(同址来的是换上去的新表);按编码照认,下面出提示
             Match hit = idx.resolve(row, name, x -> "removed".equals(statusOf(statusRows, x.getId(), ym))
@@ -1712,6 +1727,7 @@ public class MeterService {
         m.setTenantId(req.tenantId()); m.setBuildingId(req.buildingId());
         m.setOwnership(req.ownership() == null ? "share" : req.ownership());
         m.setSubName(blankToNull(req.subName())); m.setCode(blankToNull(req.code()));
+        refuseBadFactor(req.factor());
         m.setFactor(one(req.factor()));
         applyLoc(m, req.floorLabel(), req.side(), req.roomNo());
         // §F6 位置人工标志:与「按 spot 自动解析」有出入 = 人工设定,之后导入不再按 spot 重解析这一列。
@@ -1867,6 +1883,39 @@ public class MeterService {
         if (id == null) return "(未给楼栋)";
         String n = names.get(id);
         return n == null ? "楼栋#" + id : n;
+    }
+
+    // 渗透测试 F1(2026-10-08,用户「按你建议」):原来读数后端照单全收 —— 前端只标「倒走」不拦,直接调接口能写负读数、
+    // 本月比上月少,算出负用量进电费和公摊。现在:负数不收;本月比上月少(总或任一时段)要写明原因才收(换表、表走满重新计数)。
+    // 手工录入、编辑、整册导入三条路共用这一处。prev / curr 依次是 总 尖 峰 平 谷,空格 = 没抄,不比。
+    static String readingProblem(BigDecimal[] prev, BigDecimal[] curr, String note, String noteAt, String verb) {
+        for (BigDecimal[] vs : List.of(prev, curr))
+            for (BigDecimal v : vs) if (v != null && v.signum() < 0) return "读数不能是负数（" + plain(v) + "）";
+        if (blankToNull(note) != null) return null;
+        for (int k = 0; k < prev.length; k++)
+            if (prev[k] != null && curr[k] != null && curr[k].compareTo(prev[k]) < 0)
+                return (k == 0 ? "" : SEG_NAME[k] + "段") + "本月读数比上月少（上月 " + plain(prev[k]) + "，本月 " + plain(curr[k])
+                    + "）。如果是换表或表走满重新计数，要在" + noteAt + "写明原因才能" + verb;
+        return null;
+    }
+    private static final String[] SEG_NAME = {"", "尖", "峰", "平", "谷"};
+    private static BigDecimal[] prevOf(MeterReadingReq q) {
+        return new BigDecimal[]{q.prevTotal(), q.prevSharp(), q.prevPeak(), q.prevFlat(), q.prevValley()};
+    }
+    private static BigDecimal[] currOf(MeterReadingReq q) {
+        return new BigDecimal[]{q.currTotal(), q.currSharp(), q.currPeak(), q.currFlat(), q.currValley()};
+    }
+    private static void refuseBadReading(BigDecimal[] prev, BigDecimal[] curr, String note) {
+        String bad = readingProblem(prev, curr, note, "备注里", "保存");
+        if (bad != null) throw new BizException(ResultCode.BAD_REQUEST, bad);
+    }
+    // 倍率 ≤ 0:读数再正常,用量也是负的或 0,绕过上面那道检查(渗透测试 F1 复查,2026-10-09)。建表、改表、导入都过这一句
+    static String factorProblem(BigDecimal f) {
+        return f != null && f.signum() <= 0 ? "倍率要大于 0（" + plain(f) + "）" : null;
+    }
+    private static void refuseBadFactor(BigDecimal f) {
+        String bad = factorProblem(f);
+        if (bad != null) throw new BizException(ResultCode.BAD_REQUEST, bad);
     }
 
     private static void fill(MeterReading r, MeterReadingReq req) {

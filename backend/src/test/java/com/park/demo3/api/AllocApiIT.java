@@ -778,7 +778,7 @@ class AllocApiIT extends AbstractMysqlIT {
         int cIn = createMeter("IT-RC3普通座总表", "p1", "infra", null, bIn);
         int dIn = createMeter("IT-RC3普通座户表", "p1", "tenant", t, bIn);
         int mSup = createMeter("IT-RC3供电局总表", "p1", "ops", null, null);
-        reading(cEx, ym, "1000", "0");       // 换表回零:c_qty = −1000,正好抵消供电侧
+        reading(cEx, ym, "1000", "0,\"note\":\"换表回零\"");   // 换表回零:c_qty = −1000,正好抵消供电侧(比上月少要写原因,渗透测试 F1)
         reading(dEx, ym, "0", "50");
         reading(cIn, ym, "0", "800"); reading(dIn, ym, "0", "760");
         reading(mSup, ym, "0", "1000");

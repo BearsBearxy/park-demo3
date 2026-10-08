@@ -411,7 +411,8 @@ export function rowUsage(x: DraftBase & Pick<WorkbenchRow, 'factor'>, d: MeterDr
   return x.r?.usageTotal ?? null
 }
 
-// 校验红显(§7.4,只标不拦保存):倒走(用量<0);电表时段不符(segCheck 口径,段/总齐才可判)
+// 校验红显(§7.4):倒走(用量<0);电表时段不符(segCheck 口径,段/总齐才可判)。时段不符只标不拦;
+// 倒走没写备注的,保存时后端拒(2026-10-09 渗透测试 F1),报错句指到表明细的备注
 export function draftRowIssues(x: WorkbenchRow, d: MeterDraft | undefined): string[] {
   const issues: string[] = []
   const u = rowUsage(x, d)
@@ -431,6 +432,16 @@ export function draftReq(x: WorkbenchRow, d: MeterDraft | undefined, ym: string)
   const req: MeterReadingReq = { meterId: x.m.id, ym: x.r?.ym ?? ym, note: x.r?.note ?? null }
   for (const f of [...PREV_FIELDS, ...CURR_FIELDS]) req[f] = effVal(x, d, f)
   return req
+}
+
+// 本月比上月少(总或任一时段)又没有备注:后端拒(MeterService.readingProblem,2026-10-09 渗透测试 F1)。
+// 宽表没有备注格,MeterView 保存前问一句原因,写进这几块表本月的备注
+export function needsReason(req: MeterReadingReq): boolean {
+  if (req.note?.trim()) return false
+  return PREV_FIELDS.some((p, k) => {
+    const a = req[p], b = req[CURR_FIELDS[k]]
+    return a != null && b != null && b < a
+  })
 }
 
 // 本月还不在册的表录了本月读数:保存时后端会让它自本月起在册(SPEC §3.4 自愈,本月止任一格非空才算)。

@@ -10,7 +10,8 @@
 // 列宽按全量行算(numW / textW,不量 DOM):窗口化只渲染可视行,量 DOM 会随滚动变。同一份行集里只增不减。
 // 行窗口化虚拟滚动(§7 6.5):显示列表(flattenGroups)只渲染可视±12 项,前后 spacer tr 撑高,passive scroll+rAF 节流。
 // 草稿式编辑:编辑态「本月行至」是输入格(没有底数的行「上月行至」开放录入底数),draft 归属父层 MeterView,
-// 本组件只读取草稿 + emit cell-edit;用量 / 组小计 / 合计按草稿实时重算;校验红显不拦保存(§7.4)。
+// 本组件只读取草稿 + emit cell-edit;用量 / 组小计 / 合计按草稿实时重算;时段不符只红显不拦保存(§7.4),
+// 倒走没备注的保存前由 MeterView 问原因(2026-10-09)。
 // 键盘流(§7.3):Enter 总 →(尖)→ 峰 → 平 → 谷 → 下一块表的总;Tab 走原生 DOM 序。
 import { rowToggle } from '@/utils/rowToggle'
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, type Ref } from 'vue'

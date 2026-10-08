@@ -14,7 +14,7 @@ import FPLoadError from '@/components/fp/FPLoadError.vue'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
 import FPStateTag from '@/components/fp/FPStateTag.vue'
 import FPAlertChip from '@/components/fp/FPAlertChip.vue'
-import { ask } from '@/utils/ask'
+import { ask, askText } from '@/utils/ask'
 import { receipt } from '@/utils/receipt'
 import { vTip } from '@/directives/tip'
 import { onReactivated } from '@/composables/onReactivated'
@@ -30,7 +30,7 @@ import type { TenantDTO } from '@/types/tenant'
 import type { BuildingDTO } from '@/types/building'
 import {
   buildRows, filterRows, cardCounts, autoLinkEstimate, isPendingMeter,
-  draftDirtyIds, draftReq, healRows, bookGapText,
+  draftDirtyIds, draftReq, healRows, bookGapText, needsReason,
   type StatusFilter, type MeterDraft, type DraftField,
 } from '@/composables/useMeterWorkbench'
 import DatePicker from '@/components/ds/DatePicker.vue'
@@ -270,6 +270,19 @@ async function onSaveChanges() {
     // 问的这会儿编辑权可能被接管走了(弹窗不随 editMode 关):答完再自守一次
     if (!ok || !editMode.value || saving.value) return
   }
+  // 本月比上月少又没写备注的,后端不收(换表、表走满重新计数要写明原因):先问一句,写进这几块表本月的备注
+  const down = dirtyIds.value.map(id => rowById.value.get(id))
+    .filter((x): x is NonNullable<typeof x> => !!x && needsReason(draftReq(x, draft.get(x.m.id), ym.value)))
+  let reason: string | null = null
+  if (down.length) {
+    reason = await askText({
+      title: `${down.length} 块表本月读数比上月少，写一下原因再保存`,
+      body: `${down.slice(0, 5).map(x => x.tenantLabel ?? x.m.name).join('、')}${down.length > 5 ? ' 等' : ''}。原因会记在${down.length > 1 ? '这几块表' : '这块表'}本月读数的备注里。`,
+      input: { label: '原因', placeholder: '如：换表、表走满重新计数' },
+      action: '保存',
+    })
+    if (reason == null || !editMode.value || saving.value) return
+  }
   saving.value = true
   const fails: string[] = []
   for (const id of dirtyIds.value.slice()) {
@@ -277,6 +290,7 @@ async function onSaveChanges() {
     if (!x) { draft.delete(id); continue }   // 表已被删(抽屉侧):丢弃该草稿
     try {
       const req = draftReq(x, draft.get(id), ym.value)
+      if (reason && needsReason(req)) req.note = reason
       if (x.r) await metersApi.updateReading(x.r.id, req)
       else await metersApi.createReading(req)
       draft.delete(id)
