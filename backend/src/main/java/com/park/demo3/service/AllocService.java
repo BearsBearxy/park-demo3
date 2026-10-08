@@ -1127,6 +1127,10 @@ public class AllocService {
 
     // ── 手工行(孵化协议固定收取等):同键 upsert 置 manual;仅 manual 行可删 ──
     public AllocResultDTO saveManual(AllocManualReq req) {
+        // 负数用来冲减,照收,但要写明原因 —— 原来任意负金额都能静默落库(渗透测试 F3,2026-10-08 用户「按你建议」)
+        boolean negative = req.amount().signum() < 0 || (req.qty() != null && req.qty().signum() < 0);
+        if (negative && (req.note() == null || req.note().isBlank()))
+            throw new BizException(ResultCode.BAD_REQUEST, "金额或数量是负数时，要在备注里写明原因");
         reviewGuard.assertEditable(ReviewKind.ALLOC, req.ym(), null);
         AllocResult row = results.selectOne(new QueryWrapper<AllocResult>()
             .eq("tenant_id", req.tenantId()).eq("ym", req.ym()).eq("fee_key", req.feeKey()));

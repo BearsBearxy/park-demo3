@@ -58,7 +58,9 @@ public class SecurityConfig {
                 // 通用 403 文案是「不能改，但可查看」—— 那对 /api/system/** 是**反的**:
                 // 被拦的人恰恰不该看到账号与角色,文案单独写。
                 // 套通用文案会告诉他"你可以查看",而他点开只会得到又一个 403。
-                boolean system = req.getRequestURI() != null && req.getRequestURI().contains("/api/system/");
+                // 按解码后的路径判:原始 URI 里 /api/%73ystem/ 照样被上面的规则拦下,文案却选成了通用那句(渗透测试低置信观察 5)
+                String path = org.springframework.web.util.UrlPathHelper.defaultInstance.getPathWithinApplication(req);
+                boolean system = path.equals("/api/system") || path.startsWith("/api/system/");
                 // 读被拒同理(v3):通用那句告诉他「可查看」,而他刚刚就是看不了。写明缺哪一项、去找谁
                 // system 段按权限点放行(上面两条 requestMatchers),不按角色:不写「仅对系统管理员开放」——
                 // 分级(RBAC-SPEC §12)之后「系统管理员」专指 admin 角色,有系统管理权的别的角色也进得来

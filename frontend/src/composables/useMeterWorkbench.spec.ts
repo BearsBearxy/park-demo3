@@ -3,7 +3,7 @@ import {
   meterSearchHit, isMeaningfulName, isPendingMeter, isPlaceholderMeter,
   buildRows, rowStatus, cardCounts, matchStatus, filterRows,
   segUsage, segCheck, buildingTotals, groupByBuilding,
-  effVal, draftRowDirty, draftDirtyIds, rowUsage, draftRowIssues, draftReq, gridFooter, healRows, baseOpen,
+  effVal, draftRowDirty, draftDirtyIds, rowUsage, draftRowIssues, draftReq, gridFooter, healRows, baseOpen, needsReason,
   bindQueueBucket, bindReason, autoLinkEstimate, statusDims, bookTip, bookGapText, bookLine, BOOK_REDO,
   flattenGroups, buildWindow, offsetOf, touSegLines, ROW_H, GHEAD_H, SEG_H, RETIRED_H, floorRankOf,
   type WorkbenchRow, type WorkbenchFilter, type MeterDraft, type DisplayItem,
@@ -810,5 +810,21 @@ describe('offsetOf / buildWindow — 行窗口化虚拟滚动(§7 6.5)', () => {
     const w = buildWindow(list, 2020, 40 * ROW_H)          // 默认 buffer=12;半行相交
     expect(w.end - w.start).toBe(65)                       // 41 可视+24 缓冲
     expect((w.end - w.start) * 16).toBeLessThan(1200)
+  })
+})
+
+// 2026-10-09 渗透测试 F1:本月比上月少(总或任一时段)又没备注,后端拒;宽表保存前据此问原因(MeterView)
+describe('needsReason', () => {
+  const req = (o: Record<string, unknown>) => ({ meterId: 1, ym: '2099-01', ...o })
+  it('总或任一段比上月少、没有备注才要问', () => {
+    expect(needsReason(req({ prevTotal: 1000, currTotal: 5 }))).toBe(true)
+    expect(needsReason(req({ prevTotal: 100, currTotal: 200, prevPeak: 40, currPeak: 30 }))).toBe(true)
+    expect(needsReason(req({ prevTotal: 100, currTotal: 100 }))).toBe(false)
+    expect(needsReason(req({ prevTotal: 100, currTotal: null }))).toBe(false)     // 没抄不比
+    expect(needsReason(req({ prevTotal: null, currTotal: 5 }))).toBe(false)       // 没底数不比
+  })
+  it('已有备注(空白不算)就不问', () => {
+    expect(needsReason(req({ prevTotal: 1000, currTotal: 5, note: '换表' }))).toBe(false)
+    expect(needsReason(req({ prevTotal: 1000, currTotal: 5, note: '  ' }))).toBe(true)
   })
 })

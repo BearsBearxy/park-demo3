@@ -5,11 +5,17 @@
 // 层级 --z-confirm:导入窗、抽屉里也会问,要盖住一切弹窗。
 import { computed, nextTick, ref, watch, onBeforeUnmount, type ComponentPublicInstance } from 'vue'
 import Button from '@/components/ds/Button.vue'
+import Input from '@/components/ds/Input.vue'
 import { askQueue, answer } from '@/utils/ask'
 
 const cur = computed(() => askQueue[0] ?? null)
 // 正文里的数单独拎出来加粗(稿 02-A「这页有 3 处」、02-B「共 76 条」):奇数位是数
 const parts = computed(() => (cur.value?.body ?? '').split(/(\d[\d,.]*)/))
+
+// 带输入框的(askText):没写字主按钮不能点,回车 = 主按钮
+const canAct = computed(() => !cur.value?.input || !!cur.value.text?.trim())
+function act() { if (canAct.value) answer(true) }
+const card = ref<HTMLElement | null>(null)
 
 const cancelBtn = ref<ComponentPublicInstance | null>(null)
 const actBtn = ref<ComponentPublicInstance | null>(null)
@@ -34,6 +40,7 @@ watch(cur, async (c, prev) => {
   }
   if (!c) return
   await nextTick()
+  if (c.input) { card.value?.querySelector('input')?.focus(); return }
   ;((c.danger ? cancelBtn : actBtn).value?.$el as HTMLElement | undefined)?.focus()
 })
 
@@ -48,13 +55,15 @@ onBeforeUnmount(() => {
   <Teleport to="body">
     <Transition name="fch">
       <div v-if="cur" class="fch-scrim" @mousedown.self="answer(false)">
-        <div class="fch-card" role="alertdialog" aria-modal="true" aria-labelledby="fch-t"
+        <div ref="card" class="fch-card" role="alertdialog" aria-modal="true" aria-labelledby="fch-t"
              :aria-describedby="cur.body ? 'fch-b' : undefined">
           <h3 id="fch-t" class="fch-t">{{ cur.title }}</h3>
           <p v-if="cur.body" id="fch-b" class="fch-b"><template v-for="(p, i) in parts" :key="i"><b v-if="i % 2">{{ p }}</b><template v-else>{{ p }}</template></template></p>
+          <Input v-if="cur.input" v-model="cur.text" class="fch-in" :label="cur.input.label" :placeholder="cur.input.placeholder"
+                 maxlength="100" @keydown.enter.prevent="act" />
           <div class="fch-f">
             <Button ref="cancelBtn" variant="outline" @click="answer(false)">{{ cur.cancel ?? '取消' }}</Button>
-            <Button ref="actBtn" :variant="cur.danger ? 'danger' : 'filled'" @click="answer(true)">{{ cur.action }}</Button>
+            <Button ref="actBtn" :variant="cur.danger ? 'danger' : 'filled'" :disabled="!canAct" @click="act">{{ cur.action }}</Button>
           </div>
         </div>
       </div>
@@ -83,6 +92,7 @@ onBeforeUnmount(() => {
 .fch-t { margin: 0; font-size: var(--fs-h3); line-height: 24px; font-weight: var(--fw-semibold); color: var(--text-primary); }
 .fch-b { margin: 8px 0 0; font-size: var(--fs-body); line-height: 20px; color: var(--text-secondary); }
 .fch-b b { font-weight: var(--fw-semibold); color: var(--text-primary); }
+.fch-in { margin-top: 16px; }
 .fch-f { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
 
 .fch-enter-active { transition: opacity var(--dur-base) var(--ease-out); }

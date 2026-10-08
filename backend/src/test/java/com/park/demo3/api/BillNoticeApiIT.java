@@ -443,7 +443,8 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         int m = createMeter("elec", "p1", "IT出账账外电", t);
         jdbc.update("UPDATE tenant SET offbook=1 WHERE id=?", t);
         bind(m, c);
-        reading(m, ym, "\"prevTotal\":100,\"currTotal\":50");   // 读数回退 → 用量 -50
+        // 读数回退 → 用量 -50;2026-10-09 起本月比上月少要写原因才收(渗透测试 F1)
+        reading(m, ym, "\"prevTotal\":100,\"currTotal\":50,\"note\":\"换表\"");
 
         generate(nym);
         List<Map<String, Object>> rows = notices(nym, t);

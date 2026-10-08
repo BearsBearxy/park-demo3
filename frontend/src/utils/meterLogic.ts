@@ -1,4 +1,4 @@
-// 园区抄表异常标记(METER-SPEC §1):只标不拦——真实抄表就有漏抄/换表,拦了导不进。
+// 园区抄表异常标记(METER-SPEC §1):真实抄表就有漏抄/换表。漏抄、时段不符只标不拦;倒走没写备注的后端拒(2026-10-09)。
 // 纯函数,meterLogic.spec.ts 锁定。
 export interface MeterReadingFlags {
   missing: boolean       // 漏抄:本月总读数空(黄)

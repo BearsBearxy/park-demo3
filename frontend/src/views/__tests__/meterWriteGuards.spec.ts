@@ -15,7 +15,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { exportMeterMonth } from '@/utils/meterExcel'
 import api from '@/api'
-import { ask } from '@/utils/ask'
+import { ask, askText } from '@/utils/ask'
 import { receipts } from '@/utils/receipt'
 
 /**
@@ -79,7 +79,7 @@ vi.mock('@/api/review', () => ({
 }))
 vi.mock('@/api/params', () => ({ paramsApi: { status: () => Promise.resolve(null) } }))
 // 站内确认(十件 ⑨)替掉了原生 confirm():没挂 FPConfirmHost 时 ask() 永远不落地,这里直接给答复
-vi.mock('@/utils/ask', async (orig) => ({ ...(await orig<typeof import('@/utils/ask')>()), ask: vi.fn() }))
+vi.mock('@/utils/ask', async (orig) => ({ ...(await orig<typeof import('@/utils/ask')>()), ask: vi.fn(), askText: vi.fn() }))
 // FPStepStrip 里点链路条要 router.push;query 可变 —— 期间深链那条要在切回之间换掉 ?p=
 const query: Record<string, string> = {}
 vi.mock('vue-router', () => ({
@@ -789,10 +789,31 @@ describe('园区抄表 · 档案失败态与切回(E 修补)', () => {
       .toContain('已有本月读数的,改读数不会让它在册')
     vm.editMode = true
     await flushPromises()
-    vm.onCellEdit({ meterId: 2, field: 'currTotal', value: '50' })
+    vm.onCellEdit({ meterId: 2, field: 'currTotal', value: '150' })   // 不比上月 100 少:不牵扯问原因那一步
     await vm.onSaveChanges()
     await flushPromises()
     expect(vi.mocked(ask).mock.calls.some(c => String(c[0].body).includes('起在册'))).toBe(false)
-    expect(metersApi.updateReading).toHaveBeenCalledWith(14, expect.objectContaining({ meterId: 2, currTotal: 50 }))
+    expect(metersApi.updateReading).toHaveBeenCalledWith(14, expect.objectContaining({ meterId: 2, currTotal: 150 }))
+  })
+})
+
+// 2026-10-09 渗透测试 F1:本月比上月少又没备注,后端拒;宽表没有备注格,保存前问一句原因写进备注
+describe('园区抄表 · 比上月少要写原因', () => {
+  it('❗保存前问原因,写的字进这块表本月的备注;取消就一条都不存', async () => {
+    vi.mocked(metersApi.updateReading).mockResolvedValue(READINGS[0])
+    const w = await open()
+    const vm = vmOf(w)
+    vm.editMode = true
+    await flushPromises()
+    vm.onCellEdit({ meterId: 1, field: 'currTotal', value: '50' })   // 上月 100
+    vi.mocked(askText).mockResolvedValueOnce(null)
+    await vm.onSaveChanges()
+    await flushPromises()
+    expect(String(vi.mocked(askText).mock.calls[0][0].title)).toContain('本月读数比上月少')
+    expect(metersApi.updateReading).not.toHaveBeenCalled()
+    vi.mocked(askText).mockResolvedValueOnce('换表')
+    await vm.onSaveChanges()
+    await flushPromises()
+    expect(metersApi.updateReading).toHaveBeenCalledWith(11, expect.objectContaining({ currTotal: 50, note: '换表' }))
   })
 })
