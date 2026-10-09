@@ -581,11 +581,12 @@ p.sr-remark.ro { margin: 0; border: none; padding: 0; height: auto; color: var(-
 .sr-rowlbl { font-size: var(--fs-body); color: var(--text-primary); }
 .sr-rowhint { font-size: var(--fs-micro); color: var(--text-muted); line-height: 1.4; }
 
-/* 权限树:菜单 | 查看 | 编辑 | 其他动作(放不下就折行);外框横滚不裁内容 */
-.sr-treebox { overflow-x: auto; }
+/* 权限树:菜单 | 查看 | 编辑 | 其他动作(放不下就折行)。
+   表头贴着顶:树六七十行,滚下去要还看得见哪列是查看(用户 2026-10-09)。
+   外框平时不设 overflow —— 设了它就成了表头的滚动容器,表头只在它里面贴、跟着页面滚走;只在放不下 600 的窄档才横滚(见文件末的容器查询) */
 .sr-tree { display: flex; flex-direction: column; min-width: 600px; }
 .sr-tr { display: grid; grid-template-columns: minmax(200px, 1.4fr) 56px 56px minmax(0, 2fr); gap: 12px; align-items: center; padding: 8px; border-bottom: 1px solid var(--divider); }
-.sr-th { padding-top: 0; font-size: var(--fs-micro); font-weight: var(--fw-semibold); color: var(--text-muted); }
+.sr-th { position: sticky; top: 0; z-index: 2; background: var(--surface-white); font-size: var(--fs-micro); font-weight: var(--fw-semibold); color: var(--text-muted); }
 .sr-tr-l { background: var(--surface-card); font-size: var(--fs-body); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .sr-tr-g .sr-tl { padding-left: 16px; font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--text-secondary); }
 .sr-tr-s .sr-tl { padding-left: 16px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
@@ -623,6 +624,10 @@ p.sr-remark.ro { margin: 0; border: none; padding: 0; height: auto; color: var(-
 @container (max-width: 935px) {
   .sr-body { grid-template-columns: minmax(0, 1fr); }
   .sr-mem { order: -1; }
+}
+/* 放不下树的 600 最小宽:外框横滚不裁内容(这一档表头不再贴顶) */
+@container (max-width: 640px) {
+  .sr-treebox { overflow-x: auto; }
 }
 /* ── M/S 档(≤960):双栏降单列——角色列表在上、权限树在下(DOM 序即视觉序,无需重排)。
    权限树窄屏会超宽:外框显式横滚不裁内容(§5.4 口径)。
