@@ -34,6 +34,10 @@ atrilink.com, www.atrilink.com {
 # 不打进镜像:改一张图就重发一版镜像不划算,rsync 完即生效)。
 #
 # ⚠ 上线顺序不能反(同上面那条):先在万网加 promo 的 A 记录并确认解析生效,再改这个文件。
+# 其他园区 / 演示站:deploy/park.sh 每加一个园区写一个 ../parks/caddy/<名>.caddy(compose 挂到 /etc/caddy/parks),
+# 一个都没有时这一行什么也不做。
+import /etc/caddy/parks/*.caddy
+
 promo.atrilink.com {
 	root * /srv/promo
 	file_server

@@ -10,6 +10,8 @@
 #   本地/应急 docker compose up -d --build     → 照旧本地构建,产物打成同名 tag
 # 起因:2C4G 的云主机跑 vue-tsc + maven 会内存耗尽(v0.10.0-beta.1 部署实测),
 # 构建挪到 GitHub runner 后服务器只负责跑。镜像在 ghcr 上随私有仓库私有,拉取需 docker login。
+# 同一台机上的其他园区 / 演示站不写在这里:deploy/park.sh 给每个园区生成一份 ../parks/<名>.yml,
+# 并把它写进 .env 的 COMPOSE_FILE —— compose 自动把它们合进来,发版的 `docker compose up -d` 一起更新。见 README §10。
 services:
   mysql:
     image: mysql:8.0
@@ -92,6 +94,8 @@ services:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       # 宣传页静态文件(63MB)。只读挂载,不进镜像;目录不存在时 Caddy 起得来但 promo 站返 404。
       - /opt/promo:/srv/promo:ro
+      # 其他园区 / 演示站的域名(deploy/park.sh 生成,一园一个 .caddy;放在 /opt/demo3 外面,发版整树替换碰不到它)
+      - ${PARKS_DIR:-../parks}/caddy:/etc/caddy/parks:ro
       - caddy-data:/data       # 证书在这里,删卷=重新签发=撞 Let's Encrypt 周限额
       - caddy-config:/config
     depends_on:

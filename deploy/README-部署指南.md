@@ -233,3 +233,32 @@ docker compose logs backend | grep -E "Migrating schema|Successfully applied|adm
   - 手写 `.env` 的新园区要自己补这两行。走起点链却漏了任一行（取到的是我园的默认值），后端拒绝启动，日志里写明要补哪两行；`RELEASE_BASELINE` 不是 `0.29.0` 这样的版本号（比如写成 `v0.29.0`）也拒绝启动（`DeployConfig`）。
 - 以后的迁移只写进 `backend/src/main/resources/db/common`（V138 起），两条链都会跑，**不许写任何园区的数据**；
   `db/migration` 和 `db/baseline` 都冻结了（见各目录 README，`MigrationLayoutTest` 会查）。
+
+## 10. 同一台机再开一个园区 / 演示站（2026-10-09 起，不改仓库）
+
+用户 2026-10-09：「没有一个模板化的部署方式吗，每次都要改 docker compose？」—— 不用改。在 `/opt/demo3` 下一条命令：
+
+```bash
+bash deploy/park.sh add  <名> <域名>                        # 空库园区（新园区装好的样子：起点链、关模拟填充，同 §9）
+bash deploy/park.sh add  <名> <域名> --data <数据.sql.gz>    # 带数据（脱敏演示库，老迁移链）：先灌数据再启动
+read -rs PARK_DB_PASSWORD && export PARK_DB_PASSWORD        # 连客户 RDS：先输口令（不进命令行和 history）
+bash deploy/park.sh add  <名> <域名> --db-host <主机> --db-name <库> --db-user <账号>   # 连客户自己的 RDS（库要是空的，强制 TLS）
+bash deploy/park.sh load   <名> <数据.sql.gz>                # 只对 --data 建的演示园区：先备份到 /opt/parks/backup，再清空重灌
+bash deploy/park.sh list
+bash deploy/park.sh remove <名>                             # 停掉、摘域名；库留着
+```
+
+- **先做一件事**：域名解析加一条 A 记录指到本机，Caddy 才签得下证书。
+- **它做了什么**：生成 `/opt/parks/<名>.yml`（这个园区的后端 + 前端，口令写在里面，权限 600）和 `/opt/parks/caddy/<名>.caddy`（域名），
+  把 yml 追加进 `.env` 的 `COMPOSE_FILE`；本机库则建 `park_<名>` 和只授权这个库的账号 `<名>_site`（不用 root，园区之间、园区和正式库之间互相读不到）。
+  `/opt/parks` 在 `/opt/demo3` 外面，发版整树替换碰不到它；发版的 `docker compose up -d` 读 `.env` 的 `COMPOSE_FILE`，所有园区跟着一起更新、各自补数据库迁移。
+- **登录**：`admin`，口令 `grep ADMIN_PASSWORD /opt/parks/<名>.yml`；进去后在「系统管理」建这个园区的账号。
+- **服务名带园区名**（`<名>-backend` / `<名>-frontend`）：compose 会把服务名注册成网络别名，同叫 `backend` 的话正式站前端会被随机连到别的园区（本机实测撞过）。
+  前端镜像的 nginx 写死 `proxy_pass http://backend:8080`，所以园区前端只挂在本园区自己的网里，后端在那张网里别名 `backend`。
+- **内存**：每个园区后端堆 384M、容器 700M 封顶，空闲约 0.25G；2C4G 机器大约还能放两三个。空库第一次启动要建全部表，几个后端同时在跑时要两三分钟（健康检查等 5 分钟）。
+- **`remove` 不删库**；同名再 `add` 会被拒（库可能停在迁移半截），确定不要了先 `DROP DATABASE park_<名>`（园区名不许叫 `demo3`，免得和正式库 `park_demo3` 同名）。
+- **镜像版本**：脚本钉住正式站当前在跑的那一版（发版只在会话里 export `IMAGE_TAG`，`.env` 里没有），所有启动都带 `--no-deps`，不会连带重建正式站。
+  自己手动起某个园区时也要带上：`IMAGE_TAG=<提交号> docker compose up -d --no-deps <名>-backend <名>-frontend`。
+- **域名**：格式不对、和正式站或别的园区重复都会被拒；Caddy 在跑时先 `caddy validate`，不通过就撤回 —— 坏片段留在 import 目录里，下次 Caddy 重启时正式站也会断 HTTPS。
+- **灌数据**：导出不许带 `USE` / `CREATE DATABASE`（会写到别的库，原库名若是正式库就覆盖了它）；灌完 admin 口令一律改成占位符、其余账号停用。
+- **发版时某个园区起不来**：园区前端只等园区后端「启动」不等「健康」，所以发版不会被它挂住；正式站照常换成新版。`docker compose ps`、`docker compose logs <名>-backend` 看是哪一个。
