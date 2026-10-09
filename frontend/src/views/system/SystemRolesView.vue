@@ -520,19 +520,17 @@ async function remove(r: RoleDTO) {
 </template>
 
 <style scoped>
-/* 宽档铺满内容区高度(照楼栋损耗 .ll-page):权限树在右栏框里自己滚,表头贴框顶、保存条在框底,
-   不浮在页面上(用户 2026-10-09「不想要这种分离的」—— 贴页面滚动的表头上方、保存条下方都会露出滚过去的行) */
-.sr-page { display: flex; flex-direction: column; gap: 14px; height: 100%; min-height: 0; box-sizing: border-box; max-width: 1440px; margin: 0 auto; width: 100%; }
+.sr-page { display: flex; flex-direction: column; gap: 14px; box-sizing: border-box; max-width: 1440px; margin: 0 auto; width: 100%; }
 .sr-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .sr-title { margin: 0; font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .sr-sub { margin: 5px 0 0; font-size: var(--fs-label); color: var(--text-muted); }
 
 .sr-empty { padding: 40px 12px; text-align: center; color: var(--text-disabled); font-size: var(--fs-label); }
 
-.sr-split { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 232px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 16px; }
+.sr-split { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 16px; align-items: start; }
 
 /* 左栏 */
-.sr-list { display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow-y: auto; }
+.sr-list { display: flex; flex-direction: column; gap: 4px; }
 .sr-grp { padding: 8px 4px 2px; font-size: var(--fs-micro); font-weight: var(--fw-semibold); color: var(--text-muted); }
 .sr-item { display: flex; flex-direction: column; gap: 2px; padding: 9px 11px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-white); text-align: left; cursor: pointer; font-family: var(--font-sans); }
 .sr-item:hover { background: var(--surface-card); }
@@ -544,7 +542,7 @@ async function remove(r: RoleDTO) {
 
 /* 右栏 */
 /* container-type:成员栏放不放得在权限树右边,看的是右栏本身有多宽 —— 视口 1440 时左边导航一开,右栏只剩 770 上下(浏览器实测) */
-.sr-pane { container-type: inline-size; min-height: 0; display: flex; flex-direction: column; gap: 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface-white); padding: 16px 18px; }
+.sr-pane { container-type: inline-size; display: flex; flex-direction: column; gap: 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface-white); padding: 16px 18px; }
 .sr-pane.empty { align-items: center; justify-content: center; min-height: 220px; color: var(--text-disabled); font-size: var(--fs-label); }
 
 .sr-panehead { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--divider); }
@@ -565,7 +563,7 @@ async function remove(r: RoleDTO) {
 p.sr-remark.ro { margin: 0; border: none; padding: 0; height: auto; color: var(--text-muted); }
 
 /* 权限树 + 成员:宽屏两列,成员在右 */
-.sr-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; align-items: start; }
+.sr-body { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; align-items: start; }
 .sr-main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 
 .sr-sec { display: flex; flex-direction: column; }
@@ -584,11 +582,13 @@ p.sr-remark.ro { margin: 0; border: none; padding: 0; height: auto; color: var(-
 .sr-rowhint { font-size: var(--fs-micro); color: var(--text-muted); line-height: 1.4; }
 
 /* 权限树:菜单 | 查看 | 编辑 | 其他动作(放不下就折行)。
-   表头贴着 .sr-body(右栏里滚的那一块)的顶:树六七十行,滚下去要还看得见哪列是查看(用户 2026-10-09)。
-   外框平时不设 overflow —— 设了它就成了表头的滚动容器,表头只在它里面贴、跟着外面滚走;只在放不下 600 的窄档才横滚(见文件末的容器查询) */
+   只有表头这一行跟着页面滚、贴在内容区最顶上:树六七十行,滚下去要还看得见哪列是查看(用户 2026-10-09)。
+   top 取内容区内边距的负值(AppShell .fp-content 宽档 24px、≤960 16px):sticky 从内边距里侧算起,top:0 会停在离顶 24px,
+   上面那道缝里露出滚过去的行(用户「不想要这种分离的」,浏览器实测 top:0 偏 24、top:-24 贴边)。
+   外框平时不设 overflow —— 设了它就成了表头的滚动容器,表头只在它里面贴、跟着页面滚走;只在放不下 600 的窄档才横滚(见文件末的容器查询) */
 .sr-tree { display: flex; flex-direction: column; min-width: 600px; }
 .sr-tr { display: grid; grid-template-columns: minmax(200px, 1.4fr) 56px 56px minmax(0, 2fr); gap: 12px; align-items: center; padding: 8px; border-bottom: 1px solid var(--divider); }
-.sr-th { position: sticky; top: 0; z-index: 2; background: var(--surface-white); font-size: var(--fs-micro); font-weight: var(--fw-semibold); color: var(--text-muted); }
+.sr-th { position: sticky; top: -24px; z-index: 2; background: var(--surface-white); font-size: var(--fs-micro); font-weight: var(--fw-semibold); color: var(--text-muted); }
 .sr-tr-l { background: var(--surface-card); font-size: var(--fs-body); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .sr-tr-g .sr-tl { padding-left: 16px; font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--text-secondary); }
 .sr-tr-s .sr-tl { padding-left: 16px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
@@ -618,8 +618,7 @@ p.sr-remark.ro { margin: 0; border: none; padding: 0; height: auto; color: var(-
 .sr-cand .sr-mname { flex: 1 1 auto; }
 .sr-memact { flex: 0 0 auto; }
 
-/* 保存条在右栏框底(树在框里滚,它不跟着滚):权限树六七十行,不该滚到底才找得到「保存」 */
-.sr-act { flex: 0 0 auto; display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px; border-top: 1px solid var(--divider); }
+.sr-act { display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px; border-top: 1px solid var(--divider); }
 .sr-ro { margin: 0; padding-top: 12px; border-top: 1px solid var(--divider); font-size: var(--fs-micro); color: var(--text-muted); }
 
 /* 右栏内宽放不下「权限树 600 + 间距 16 + 成员 280」再留 40 余量:成员排到权限树上面整宽 */
@@ -636,10 +635,6 @@ p.sr-remark.ro { margin: 0; border: none; padding: 0; height: auto; color: var(-
    配置操作不优化(§11.1 系统管理配置明确不做),查看/勾选可用即可 ── */
 @media (max-width: 960px) {
   .sr-split { grid-template-columns: 1fr; }
-  /* 单列时不铺满高度:跟页面一起滚,表头不贴顶(贴页面滚动会露缝) */
-  .sr-page { height: auto; }
-  .sr-split { grid-template-rows: none; }
-  .sr-list, .sr-body { overflow: visible; }
-  .sr-th { position: static; }
+  .sr-th { top: -16px; }   /* 这一档内容区内边距 16 */
 }
 </style>
