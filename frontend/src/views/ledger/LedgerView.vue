@@ -13,6 +13,7 @@ import { S } from '@/utils/lockScopes'
 import { useRoute, useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
+import { useViewGate } from '@/composables/useViewGate'
 import { useReviewStore } from '@/stores/review'
 import type { ReviewStatus } from '@/types/review'
 import { companyApi, ledgerApi } from '@/api/ledger'
@@ -357,7 +358,7 @@ watch(() => matrixYears.value.map(r => r.year).join(','), () => {
   matrixYears.value.forEach(r => { void review.ensureYear(r.year) })
 }, { immediate: true })
 
-// ── 新增账册(§9 建司即建册,后端建公司时自动挂 v1 账册;company:manage 门) ──
+// ── 新增账册(§9 建司即建册,后端建公司时自动挂 v1 账册;ledger:company 门) ──
 async function createCompany(name: string) {
   try {
     const c = await companyApi.create(name)
@@ -370,7 +371,7 @@ async function createCompany(name: string) {
   }
 }
 
-// ── 删除公司(company:manage 第15权限点):左轨底部「删除账册」→ 两步弹窗(选册→输名确认) → 级联删库。
+// ── 删除公司(ledger:company 第15权限点):左轨底部「删除账册」→ 两步弹窗(选册→输名确认) → 级联删库。
 //    入口与「新增账册」并排,不放行内(用户拍板 2026-08-24:hover 钮夹在选册点击目标中间易误触) ──
 const delOpen = ref(false)
 const deleting = ref(false)
@@ -656,6 +657,7 @@ function onIssuesOpen(open: boolean) {
   if (open) ensureTenantsLoaded()
 }
 const router = useRouter()
+const { blocked } = useViewGate()
 const tabs = useTabsStore()
 
 const issueGroups = computed<IssueGroup[]>(() => groupUnbound(
@@ -726,6 +728,7 @@ function gotoTenants() {
   // 去加个别名就把台账那格换掉了,回来还得重新翻到这个月(2026-08-28 用户拍板)。
   // 也不能用 openFresh:那会 bump epoch 让 KeepAlive 丢掉台账实例,抽屉与月份一起没。
   // 这里不再关抽屉 —— onDeactivated 会关,并且记下来等回来复原。
+  if (blocked('/tenants')) return
   tabs.open('tenants', { pin: true })
   router.push('/tenants')
 }
@@ -735,13 +738,13 @@ function gotoTenants() {
   <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.3/§5.6 迁移(左轨收 chips、宽表 S 档单 sticky、
        矩阵横滚圈在 .lgw-matrix 内),摘掉 base.css 的 M↓ 屏级地板——表内自滚,屏根不再触发双重横滚 -->
   <div ref="lgwEl" class="lgw fp-fluid">
-    <!-- 左轨:本屏账册(账册即公司)常驻,一键切换;新增/删除公司入口走 company:manage(第15权限点) -->
+    <!-- 左轨:本屏账册(账册即公司)常驻,一键切换;新增/删除公司入口走 ledger:company(第15权限点) -->
     <aside class="lgw-rail">
       <div class="lgw-rail-t">台账账册</div>
       <BookRail
         :books="books"
         :active-id="activeBookId"
-        :can-manage="auth.can('company:manage')"
+        :can-manage="auth.can('ledger:company')"
         @select="(id) => selectBook(Number(id))"
         @create="newDlg = true"
         @delete="delOpen = true"
@@ -753,7 +756,7 @@ function gotoTenants() {
     <div ref="chipsEl" class="lgw-chips">
       <button v-for="b in books" :key="b.id" class="lgw-chip" :class="{ on: b.id === activeBookId }"
               @click="selectBook(b.id)">{{ b.name }}</button>
-      <template v-if="auth.can('company:manage')">
+      <template v-if="auth.can('ledger:company')">
         <button class="lgw-chip mng" @click="newDlg = true">＋ 新增</button>
         <button class="lgw-chip mng" @click="delOpen = true">删除</button>
       </template>
@@ -831,7 +834,7 @@ function gotoTenants() {
             <FPTenantIssuePanel
               :groups="issueGroups"
               :tenants="allTenants"
-              :can-act="edit && auth.can('entry:edit')"
+              :can-act="edit && auth.can('ledger:edit')"
               act-hint="编辑模式下可绑定"
               :on-bind="onBindIssue"
               @goto-tenants="gotoTenants"
@@ -847,7 +850,7 @@ function gotoTenants() {
           :prev-month="monthDto.prevMonth"
           :archived="monthDto.archivedCols"
           :tenants="bindOptions"
-          :can-bind="edit && auth.can('entry:edit')"
+          :can-bind="edit && auth.can('ledger:edit')"
           :on-bind="onBindRow"
           :on-rename="onRenameRow"
           @close="drawerRowKey = null"
@@ -873,15 +876,16 @@ function gotoTenants() {
   </div>
 
   <!-- 模板编辑器(「账册模板」两态常驻入口在宽表工具栏;save/pin 结果就地更新 book,列即时重算;
-       编辑走第16权限点 book-template:edit、换版走第17点 book-template:switch,无权时面板只读预览;
+       编辑走「月度台账 · 账册模板」(ledger:template)、换版走「月度台账 · 更换版本」(ledger:version),无权时面板只读预览;
        本月已录入(有非结转行)→ 模板定稿,面板置灰) -->
   <TemplateEditorPanel
     :open="tplOpen"
     :book="book"
     :versions="tplVersions"
     :saving="tplSaving"
-    :can-edit="auth.can('book-template:edit')"
-    :can-switch="auth.can('book-template:switch')"
+    :can-edit="auth.can('ledger:template')"
+    :can-switch="auth.can('ledger:version')"
+    edit-perm="ledger:template"
     :month-has-data="(monthDto?.rows ?? []).some(r => !r.carried)"
     :year="year"
     :month="month"
@@ -895,6 +899,7 @@ function gotoTenants() {
     :open="mapOpen"
     :unmatched="mapUnmatched"
     :existing-cols="mapExistingCols"
+    :can-change-template="auth.can('ledger:template')"
     @apply="onMapApply"
     @close="finishMap(null)"
   />
@@ -906,7 +911,7 @@ function gotoTenants() {
     @create="createCompany"
   />
 
-  <!-- 删除账册(company:manage):两步弹窗——选册 → 输公司名原文激活删除,级联不可恢复 -->
+  <!-- 删除账册(ledger:company):两步弹窗——选册 → 输公司名原文激活删除,级联不可恢复 -->
   <LedgerDeleteCompanyDialog
     v-if="delOpen"
     :books="delBooks"

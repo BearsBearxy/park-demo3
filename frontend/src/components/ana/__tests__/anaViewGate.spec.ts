@@ -1,4 +1,5 @@
 // 分析屏跳到模块屏的深链:没有目标屏的查看权时置灰、写明缺哪一项(RBAC v3,用户 2026-10-04 拍板第 8 条)。
+// v4(2026-10-09):一屏一项 `<屏>:view`,分析屏之间的跳转也要问目标屏(v3 里分析层一项全开,不用问)。
 // 「❗」开头的做过破坏验证。
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -14,14 +15,14 @@ import AnaEmpty from '../AnaEmpty.vue'
 // 人话名来自后端 Perm.META(/auth/perms),这里只给用到的一个
 vi.mock('@/api/perms', () => ({
   loadPermDict: () => Promise.resolve(),
-  permLabel: (k: string) => ({ 'entry:view': '台账与附表 · 查看' } as Record<string, string>)[k] ?? k,
+  permLabel: (k: string) => ({ 'ledger:view': '月度台账 · 查看', 'anomaly:view': '异常提醒中心 · 查看' } as Record<string, string>)[k] ?? k,
 }))
 
 const card = () => mount(AnaEmpty, {
   props: { label: '台账数据未录入', hint: '收缴率 = 台账 Σ实收 / Σ应收', to: '/ledger', toText: '去台账录入' },
   global: { stubs: { RouterLink: { template: '<a class="go"><slot /></a>' } } },
 })
-const NO_ENTRY = ALL_VIEWS.filter((p) => p !== 'entry:view')
+const NO_LEDGER = ALL_VIEWS.filter((p) => p !== 'ledger:view')
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -31,13 +32,13 @@ beforeEach(() => {
 describe('AnaEmpty 的「去录入」按查看权', () => {
   // 破坏验证:AnaEmpty 里 v-else-if="why" 那一段删掉 → 红(没有权限就整个不见了,人不知道本来有路)
   it('❗没有目标屏的查看权:按钮置灰、不是链接,下面一行写明缺哪一项、去找系统管理员', () => {
-    useAuthStore().permissions = NO_ENTRY
+    useAuthStore().permissions = NO_LEDGER
     const w = card()
     expect(w.find('a').exists()).toBe(false)
     const off = w.find('.go.off')
     expect(off.text()).toBe('去台账录入 →')
     expect(off.attributes('aria-disabled')).toBe('true')
-    expect(w.find('.why').text()).toBe('需要「台账与附表 · 查看」权限，请找系统管理员开通')
+    expect(w.find('.why').text()).toBe('需要「月度台账 · 查看」权限，请找系统管理员开通')
     expect(w.text(), '缺什么数照说').toContain('台账数据未录入')
   })
 
@@ -60,15 +61,17 @@ describe('AnaEmpty 的「去录入」按查看权', () => {
 
 describe('useViewGate', () => {
   // 破坏验证:blocked 里不发回执(只 return)→ 红;lack 恒返回 '' → 红
+  // v4:只给租户流失预警一屏 —— 本屏放行,同层的异常提醒中心照样要问(v3 一项 analysis:view 全开)
   it('❗图上的点 / 整行点击:缺权限说一句原因并拦下;看得了的放行、不出声', () => {
-    useAuthStore().permissions = ['analysis:view']
+    useAuthStore().permissions = ['churn:view']
     const { lack, blocked } = useViewGate()
-    expect(lack('/ledger?p=2025-06')).toBe('需要「台账与附表 · 查看」权限')
+    expect(lack('/ledger?p=2025-06')).toBe('需要「月度台账 · 查看」权限')
     expect(blocked('/ledger')).toBe(true)
-    expect(receipts.map((r) => r.text)).toEqual(['需要「台账与附表 · 查看」权限，请找系统管理员开通'])
+    expect(receipts.map((r) => r.text)).toEqual(['需要「月度台账 · 查看」权限，请找系统管理员开通'])
     expect(lack('/churn')).toBe('')
     expect(blocked('/churn')).toBe(false)
     expect(receipts).toHaveLength(1)
+    expect(lack('/anomaly'), '同在分析层也要问目标屏').toBe('需要「异常提醒中心 · 查看」权限')
   })
 })
 
@@ -82,6 +85,8 @@ describe('分析屏深链接线', () => {
     ['AnomalyView.vue', ':disabled="!!lack(r.a.link)"'], ['AnomalyView.vue', ":disabled=\"!!lack('/pv-meter-analysis')\""],
     ['CockpitView.vue', "if (blocked('/sales-income')) return"], ['CockpitView.vue', ':disabled="!!lack(r.a.link)"'],
     ['CockpitView.vue', ":disabled=\"!!lack('/ledger')\""],
+    // v4:驾驶舱「查看全部」去异常提醒中心,分析屏之间也按目标屏的查看权
+    ['CockpitView.vue', ":disabled=\"!!lack('/anomaly')\""],
     ['ChurnView.vue', "if (blocked('/ledger')) return"], ['ChurnView.vue', ":disabled=\"!!lack('/ledger')\""],
     // 2026-10-06 改稿:查台账 / 查附表10 两张单户图挪到异常提醒中心,这屏只剩「去异常提醒中心」「去现金流量」两个入口
     ['TenantEnergyView.vue', "!!lack('/anomaly')"], ['TenantEnergyView.vue', "!!lack('/fin-cashflow')"],

@@ -19,6 +19,41 @@
 import type { ReleaseNote } from '@/types/changelog'
 
 export const CHANGELOG: ReleaseNote[] = [
+  // 功能更新(RELEASE-NOTES-SPEC §2.1 第 1 问是):RBAC-SPEC §15 v4「权限细到菜单单项」,用户 2026-10-09 拍板 ①「全部单项真拆」②「加成员栏」。
+  // 新增 → 重点卡「角色权限」:SystemRolesView 的权限树(views/system/roleTree.ts:层 → 分组 → 屏,每屏查看 / 编辑 / 其他动作;
+  //   层和分组那一行的三态勾选框管整列)。「催缴单签发、账册模板」是 Perm.META 里挂在催缴单、月度台账两屏下的专有动作
+  //   (bill-notices:issue、ledger:template / sales-income:template)。「预置角色 … 能看能改的屏不变」= §15.4 预置 7 角色逐格等价,
+  //   RbacScreenPermsMigrationIT 钉着;所以只说预置角色 —— 自建角色有三处会变(§15.3 两张表:光伏 / 充电桩两本都看得到、
+  //   报表屏改名与新增删除公司),字数放不下,不写。
+  //   重点卡不给「去看看」:角色权限只有「角色权限 · 查看」能进(同 0.30.0 操作日志)。
+  // 新增「角色成员」:角色屏右边「本角色成员（N）」,增减随角色一起保存(PUT / POST /api/system/roles 的 addUserIds / removeUserIds),
+  //   后端与用户管理改角色同一条路径(SystemService.changeRoles)—— 所以写「和用户管理里改的是同一份」。
+  // 改进(都是用法变了,按侧栏先后排):
+  //   「步骤和卡片」:FPStepStrip 的步骤、ReportsHomeView 的卡片与行,原来 go() 直接 push、落「无权查看」页;
+  //     现在 useViewGate.lack 置灰、v-tip 写缺哪一项;手机窄档的步骤面板置灰、原因写在那一项下面(不靠悬停,所以不写「悬停」)
+//     (核实:对照 master,两处都不判权)。「每一屏单独勾查看、能改数据的屏另勾编辑」:51 屏里 17 屏只有查看。
+  //   「没有权限的提示」:无权查看页与置灰原因(useViewGate.lackText)、后端 403(Perm.needText)都按屏写;
+  //     核实(对照 master):navAccess 的门是模块键,NoAccessView 那句写「需要「台账与附表 · 查看」权限」。
+  // 金额不变:只改谁能看、谁能改,不动任何数。
+  {
+    version: '0.33.0',
+    date: '2026-10-09',
+    headline: '权限细到每一屏，角色里能直接加成员',
+    feature: {
+      icon: 'shield-check',
+      title: '角色权限',
+      desc: '系统管理员：每一屏单独勾「查看」，能改数据的屏另勾「编辑」，催缴单签发、账册模板这类动作挂在各自那一屏下。'
+        + '层和分组那一行点一下，整列全勾。预置角色升级后，能看能改的屏不变。',
+    },
+    added: [
+      { icon: 'users', title: '角色成员', desc: '系统管理员：角色权限页里列出用这个角色的账号，能添加、移出，和用户管理里改的是同一份。' },
+    ],
+    improved: [
+      { icon: 'lock', title: '步骤和卡片', desc: '出账各屏顶上的步骤、报表中心的卡片，原来点了才说看不了；现在置灰，写明缺哪一项。' },
+      { icon: 'shield-check', title: '没有权限的提示', desc: '原来写缺哪个模块，比如「台账与附表 · 查看」；现在写缺哪一屏，比如「月度台账 · 查看」。' },
+    ],
+    fixed: [],
+  },
   // 功能更新(RELEASE-NOTES-SPEC §2.1 第 2 问是:点保存结果不同了):2026-10-08 渗透测试报告,用户 10-09「按你建议」。
   // 「园区抄表」MeterService.readingProblem,手工新增 / 编辑 / 整册导入共用:负数不收;本月比上月少(总或尖峰平谷任一段)要有备注才收。
   //   宽表里没有备注格:保存前先问一句原因(MeterView.onSaveChanges + askText),写进这几块表本月的备注;抽屉那一行本来就有备注格。

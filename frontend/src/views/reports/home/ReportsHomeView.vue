@@ -6,7 +6,9 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
-import { loadHomeData, defaultPeriod, type HomeData } from '@/reports/reportsHome'
+import { loadHomeData, defaultPeriod, NO_VIEW, type HomeData } from '@/reports/reportsHome'
+import { useAuthStore } from '@/stores/auth'
+import { useViewGate } from '@/composables/useViewGate'
 import { iconFor } from '@/components/ds/icon'
 import Segmented from '@/components/ds/Segmented.vue'
 import FPStateTag from '@/components/fp/FPStateTag.vue'
@@ -15,6 +17,9 @@ import Card from '@/components/ds/Card.vue'
 import DatePicker from '@/components/ds/DatePicker.vue'
 
 const router = useRouter()
+// RBAC v4:只取看得了的那几张报表;看不了的卡 / 行照样列出、置灰,悬停写缺哪一项(§15.7)
+const auth = useAuthStore()
+const { lack } = useViewGate()
 const view = ref('目录')
 const year = ref(0)
 const month = ref(0)
@@ -23,12 +28,12 @@ const data = ref<HomeData | null>(null)   // §6 加载信号
 let seq = 0                                // 切年/月竞态守卫:只收最后一次请求
 async function load() {
   const reqId = ++seq
-  const d = await loadHomeData(year.value, month.value)
+  const d = await loadHomeData(year.value, month.value, auth.can)
   if (reqId === seq) data.value = d
 }
 
 onMounted(async () => {
-  const p = await defaultPeriod()          // F3 默认期:有数据取最新(不读时钟),没数据落今月
+  const p = await defaultPeriod(auth.can)  // F3 默认期:有数据取最新(不读时钟),没数据落今月
   year.value = p.year
   month.value = p.month
   await load()
@@ -43,6 +48,7 @@ const tabsStore = useTabsStore()
 // 期一跳转就丢 —— 用户在这里选定 2025 年 9 月、点开利润表,要重走公司→年→月三道门回到原地。
 // openFresh 是深链协议的一半:KeepAlive 缓存实例只在 setup 消费 query,不换 epoch 就读不到。
 function go(v: string) {
+  if (lack(v)) return   // 看不了的卡也在(置灰);div 卡没有 disabled,这里兜住
   tabsStore.openDeep(v)   // 页面里的链接 = 新页签紧挨本页右边(TAB-BAR-SPEC §2),报表中心不被换掉
   // 走 periodLink 带 co:'all'(SIDEBAR-UX-REDESIGN §4.2):三大报表直落「全部汇总」;损益附表 / 收入核对认得几个用几个
   router.push(periodLink(v, { p: periodOf(year.value, month.value), co: 'all' }))
@@ -61,6 +67,10 @@ const sections = computed(() =>
   })))
 
 const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
+// 「n / m 项已平」的 m 只数算得了的勾稽:看不了的那张报表不算(locked),不当成「待查」
+const tieTotal = computed(() => data.value?.tieout.filter(t => !t.locked).length ?? 0)
+// 值的位置写「待生成」/「没有查看权」时用浅色
+const dim = (v: string) => v === '待生成' || v === NO_VIEW
 </script>
 
 <template>
@@ -75,7 +85,7 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
              原来是一张块级描边卡 .rh-period-hero 常驻在期间视图顶上,把勾稽卡往下推),说明并进副句 -->
         <div class="rh-tl">
           <h2 class="rh-title">报表中心</h2>
-          <FPStateTag v-if="view === '期间'" :tone="okCount === data.tieout.length ? 'muted' : 'warn'">{{ okCount }} / {{ data.tieout.length }} 项已平</FPStateTag>
+          <FPStateTag v-if="view === '期间' && tieTotal" :tone="okCount === tieTotal ? 'muted' : 'warn'">{{ okCount }} / {{ tieTotal }} 项已平</FPStateTag>
         </div>
         <p class="rh-sub">{{ view === '期间' ? '先锁定期间,检查三大报表与各附表之间是否勾稽一致,再逐表查看' : '核算输出 · 单一事实来源 — 所有报表读取已录入的台账数据自动生成' }}</p>
       </div>
@@ -106,7 +116,8 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
       <div v-for="sec in sections" :key="sec.title">
         <h3 class="rh-section-t"><component :is="iconFor(sec.icon)" :size="16" />{{ sec.title }}</h3>
         <div class="rh-grid">
-          <div v-for="c in sec.cards" :key="c.key" class="rh-rc" @click="go(c.go)">
+          <div v-for="c in sec.cards" :key="c.key" class="rh-rc" :class="{ off: c.locked }" :aria-disabled="c.locked || undefined"
+               v-tip="lack(c.go)" @click="go(c.go)">
             <div class="rh-rc-top">
               <span class="rh-rc-icon"><component :is="iconFor(c.icon)" :size="19" /></span>
               <span style="min-width:0;flex:1">
@@ -117,7 +128,7 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
             </div>
             <div class="rh-rc-metric">
               <span class="rh-rc-mlabel">{{ c.metric }}</span>
-              <span class="rh-rc-mval" :style="c.value === '待生成' ? { color: 'var(--text-disabled)', fontSize: '15px' } : undefined">{{ c.value }}</span>
+              <span class="rh-rc-mval" :style="dim(c.value) ? { color: 'var(--text-disabled)', fontSize: '15px' } : undefined">{{ c.value }}</span>
             </div>
             <div class="rh-rc-foot">
               <span class="rh-rc-upd">数据截止 {{ c.updated }}</span>
@@ -133,7 +144,7 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
       <div>
         <h3 class="rh-section-t">
           <component :is="iconFor('git-compare')" :size="16" />本期勾稽
-          <span class="rh-section-cap">{{ data.year }}年{{ data.month }}月 · {{ okCount }} / {{ data.tieout.length }} 项已平</span>
+          <span class="rh-section-cap">{{ data.year }}年{{ data.month }}月<template v-if="tieTotal"> · {{ okCount }} / {{ tieTotal }} 项已平</template></span>
         </h3>
         <div class="rh-tie-strip">
           <div v-for="(t, i) in data.tieout" :key="i" class="rh-tie-tile">
@@ -141,7 +152,8 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
             <span class="rh-tie-tile-v">{{ t.value }}</span>
             <div class="rh-tie-tile-foot">
               <span class="rh-tie-tile-src">{{ t.a }} ↔ {{ t.b }}</span>
-              <span v-if="t.ok" class="rh-tie-ok"><component :is="iconFor('check-circle-2')" :size="13" />已平</span>
+              <span v-if="t.locked" class="rh-tie-off">{{ NO_VIEW }}</span>
+              <span v-else-if="t.ok" class="rh-tie-ok"><component :is="iconFor('check-circle-2')" :size="13" />已平</span>
               <span v-else class="rh-tie-bad"><component :is="iconFor('alert-triangle')" :size="13" />待查</span>
             </div>
           </div>
@@ -175,7 +187,8 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
               <td><span class="rh-tie-flow"><span class="rh-tie-chip">{{ t.b }}</span></span></td>
               <td class="rh-tie-num">{{ t.value }}</td>
               <td style="text-align:right">
-                <span v-if="t.ok" class="rh-tie-ok"><component :is="iconFor('check-circle-2')" :size="14" />已平</span>
+                <span v-if="t.locked" class="rh-tie-off">{{ NO_VIEW }}</span>
+                <span v-else-if="t.ok" class="rh-tie-ok"><component :is="iconFor('check-circle-2')" :size="14" />已平</span>
                 <span v-else class="rh-tie-bad"><component :is="iconFor('alert-triangle')" :size="14" />待查</span>
               </td>
               <td class="fp-fill" aria-hidden="true"></td>
@@ -188,9 +201,9 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
       <Card surface="white" :padding="0">
         <div class="rh-card-h">本期报表</div>
         <div>
-          <button v-for="c in data.cards" :key="c.key" class="rh-row" @click="go(c.go)">
+          <button v-for="c in data.cards" :key="c.key" class="rh-row" :disabled="c.locked" v-tip="lack(c.go)" @click="go(c.go)">
             <span class="rh-row-name">{{ c.name }}</span>
-            <span class="rh-row-val" :style="c.value === '待生成' ? { color: 'var(--text-disabled)' } : undefined">{{ c.value }}</span>
+            <span class="rh-row-val" :style="dim(c.value) ? { color: 'var(--text-disabled)' } : undefined">{{ c.value }}</span>
             <span v-if="c.tie === 'ok'" class="rh-tie-ok rh-row-tie"><component :is="iconFor('check-circle-2')" :size="13" />已平</span>
             <span v-else-if="c.tie === 'bad'" class="rh-tie-bad rh-row-tie"><component :is="iconFor('alert-triangle')" :size="13" />待查</span>
             <span v-else class="rh-row-pend">{{ c.tie === 'none' ? '—' : '待生成' }}</span>
@@ -223,6 +236,9 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
 .rh-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr)); gap:14px; }
 .rh-rc { display:flex; flex-direction:column; gap:14px; padding:18px; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--surface-white); cursor:pointer; transition:box-shadow var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard); }
 .rh-rc:hover { box-shadow:0 6px 20px rgba(28,28,28,.08); transform:translateY(-1px); }
+/* 看不了的报表:照样列出(人知道本来有这张),不浮起、不可点 */
+.rh-rc.off { cursor:default; opacity:.55; }
+.rh-rc.off:hover { box-shadow:none; transform:none; }
 .rh-rc-top { display:flex; align-items:flex-start; gap:11px; }
 .rh-rc-icon { width:38px; height:38px; border-radius:var(--radius-sm); background:var(--accent-slate); display:grid; place-items:center; color:var(--ink-900); flex:0 0 auto; }
 .rh-rc-name { font-size:var(--fs-body); font-weight:var(--fw-semibold); color:var(--text-primary); }
@@ -248,11 +264,13 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
 .rh-tie-num { font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-weight:var(--fw-semibold); color:var(--text-primary); text-align:right; }
 .rh-tie-ok { color:var(--hue-blue); display:inline-flex; align-items:center; gap:4px; font-weight:var(--fw-semibold); font-size:12.5px; }
 .rh-tie-bad { color:var(--hue-orange); display:inline-flex; align-items:center; gap:4px; font-weight:var(--fw-semibold); font-size:12.5px; }
+.rh-tie-off { color:var(--text-disabled); font-size:12.5px; }
 
 /* 本期报表列表行(原型 inline style → scoped,hover 用 CSS 替代 JS) */
 .rh-row { display:flex; align-items:center; gap:12px; width:100%; padding:13px 16px; border:none; background:transparent; cursor:pointer; text-align:left; font-family:var(--font-sans); border-bottom:1px solid var(--divider); color:var(--text-muted); transition:background var(--dur-fast) var(--ease-standard); }
 .rh-row:last-child { border-bottom:none; }
 .rh-row:hover { background:var(--bg-hover); }
+.rh-row:disabled { cursor:default; opacity:.55; background:transparent; }
 .rh-row-name { font-size:var(--fs-body); color:var(--text-primary); font-weight:var(--fw-medium); flex:1; min-width:0; white-space:nowrap; }
 .rh-row-val { font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:13px; color:var(--text-secondary); }
 .rh-row-tie { width:70px; justify-content:flex-end; }

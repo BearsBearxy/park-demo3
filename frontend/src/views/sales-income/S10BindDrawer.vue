@@ -14,7 +14,7 @@ const props = defineProps<{
   /** 槽标注(如「2026年12月 · 一期」),行 DTO 不含账期,由屏状态传入 */
   slotLabel: string
   tenants: FPTenantOption[]
-  /** 编辑模式 + entry:edit 才能绑/解/换;浏览态只显示状态(EDIT-MODE §1) */
+  /** 编辑模式 + sales-income:edit 才能绑/解/换;浏览态只显示状态(EDIT-MODE §1) */
   canBind: boolean
   onBind: (id: number, tenantId: number | null) => Promise<void>
   /** 行级改账面名(change 即提交;未绑定行改对名字自动配档;同槽同名 409) */

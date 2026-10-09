@@ -185,12 +185,13 @@ class PnlApiIT extends AbstractMysqlIT {
         assertThat(((Number) JsonPath.read(res, "$.data.rows[3].m[0]")).doubleValue()).isEqualTo(156121.32);
     }
 
-    // ── 非法 schedule 's9' → 体内 code 400(HTTP 200) ──
+    // ── 非法 schedule 's9' → 403:v4 起附表按段拆到屏(s1..s5),其余写法落读规则表的显式拒绝
+    //    (RBAC-SPEC §15.5 铁律 4),系统管理员也一样,到不了 service 那道 400 ──
     @Test
-    void illegalSchedule_s9_400() throws Exception {
+    void illegalSchedule_s9_isDeniedAtTheUrl() throws Exception {
         mvc.perform(get("/api/pnl/s9/overview").header("Authorization", auth()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(400));
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403));
     }
 
     // ── 无 token → 401 ──

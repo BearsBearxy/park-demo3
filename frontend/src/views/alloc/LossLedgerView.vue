@@ -22,6 +22,7 @@ import { S } from '@/utils/lockScopes'
 import { onReactivated } from '@/composables/onReactivated'
 import { useChainDeepPeriod } from '@/composables/useDeepPeriod'
 import { useEditMode } from '@/composables/useEditMode'
+import { useViewGate } from '@/composables/useViewGate'
 import { minTableH, textW, useWideTable, type HeightDims, type WideCol } from '@/composables/useWideTable'
 import { useTabsStore } from '@/stores/tabs'
 import { useZonesStore } from '@/stores/zones'
@@ -75,7 +76,7 @@ const ZONE_OPTS = computed(() => zones.list.filter(z => z.code !== 'dorm')
 const reviewLabel = computed(() => `楼栋损耗 · ${ym.value}`)
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
         lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip, reviewKeys } =
-  useEditMode(['billing-run:edit'], {
+  useEditMode(['alloc-loss:edit'], {
     // 楼栋损耗与公共电核算是 AllocService.generate(ym) 同一批算出来的,共占出账链那把月锁
     // (CONCURRENCY-SPEC §3.2)——不新开 `alloc-loss:*` 锁。
     scope: () => S.poolLedger(year.value, month.value),
@@ -216,11 +217,13 @@ const rateTitle = (u: AllocLossUnitDTO) => u.manualRate != null
 // ── 跳参数页(深链协议:KeepAlive 缓存实例只在 setup 消费 query,必须 openFresh) ──
 const router = useRouter()
 const tabs = useTabsStore()
+const { blocked } = useViewGate()
 const alertOpen = ref(false)
 // 一律落计费参数「楼栋损耗」区(S21 §5.7);点调整度数 / 加点格再带 building + key,滚到那一栋、闪那一格。
 // edit=1:[去重算] 落地直接进编辑态(重算按钮只在编辑态出)
 function gotoParams(buildingId?: number, key?: string, edit = false) {
   alertOpen.value = false   // 抽屉里点走的:本屏被 KeepAlive 缓存,不关的话切回来抽屉还盖着
+  if (blocked('/params')) return
   tabs.openFresh('params', { pin: true })
   router.push({ path: '/params', query: { ym: ym.value, zone: zone.value, section: 'loss',
     ...(buildingId != null ? { building: String(buildingId), key } : {}), ...(edit ? { edit: '1' } : {}) } })

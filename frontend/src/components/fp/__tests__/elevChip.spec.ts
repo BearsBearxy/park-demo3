@@ -26,9 +26,9 @@ const at = (h: number, m: number, s = 0) => new Date(2026, 9, 3, h, m, s).getTim
 const g = (perm: string, permLabel: string, authorizer: string, authorizerName: string, expiresAt: number): Grant =>
   ({ perm, permLabel, authorizer, authorizerName, expiresAt })
 /** 一份:张经理一次批了两项 */
-const ONE = [g('param-monthly:edit', '月度计费录入', 'zhang', '张经理', at(14, 32)), g('param-policy:edit', '计费口径', 'zhang', '张经理', at(14, 32))]
+const ONE = [g('params:monthly', '月度计费录入', 'zhang', '张经理', at(14, 32)), g('params:edit', '计费口径', 'zhang', '张经理', at(14, 32))]
 /** 两份:张经理 14:32 一份,李主管 14:47 一份 */
-const TWO = [g('param-monthly:edit', '月度计费录入', 'zhang', '张经理', at(14, 32)), g('param-policy:edit', '计费口径', 'li', '李主管', at(14, 47))]
+const TWO = [g('params:monthly', '月度计费录入', 'zhang', '张经理', at(14, 32)), g('params:edit', '计费口径', 'li', '李主管', at(14, 47))]
 
 let w: VueWrapper | null = null
 beforeEach(() => {
@@ -107,14 +107,14 @@ describe('一份授权', () => {
   // 破坏验证:FPElevChip 不看 remote(恒写「授权」、不出「远程批准」)→ 第一条红;grantBatches 不用 grantedAt、一律到期 − 30 分钟 → 第二条红
   //          (第一条批准 → 到期恰好 30 分钟,推算也对得上);没 grantedAt 时不推算 → 上面「逐字照稿」那条红
   it('❗远程批准:名后「远程批准」,时间行写「批准」,时刻取 grantedAt', async () => {
-    await chip([{ ...g('param-monthly:edit', '抄表', 'wang', '王主管', at(14, 11)), grantedAt: at(13, 41), source: 'remote' }])
+    await chip([{ ...g('params:monthly', '抄表', 'wang', '王主管', at(14, 11)), grantedAt: at(13, 41), source: 'remote' }])
     await openCard()
     expect(txt('.ec-kv dd:nth-of-type(1)')).toBe('王王主管远程批准')
     expect(txt('.ec-time')).toBe('13:41批准→14:11到期')
   })
 
   it('❗当场授权带了 grantedAt 就用它(不再拿到期 − 30 分钟推);不出「远程批准」', async () => {
-    await chip([{ ...g('param-monthly:edit', '抄表', 'zhang', '张经理', at(14, 32)), grantedAt: at(14, 0), source: 'onsite' }])
+    await chip([{ ...g('params:monthly', '抄表', 'zhang', '张经理', at(14, 32)), grantedAt: at(14, 0), source: 'onsite' }])
     await openCard()
     expect(txt('.ec-kv dd:nth-of-type(1)')).toBe('张张经理')
     expect(txt('.ec-time')).toBe('14:00授权→14:32到期')
@@ -139,7 +139,7 @@ describe('一份授权', () => {
 
   // 破坏验证:warn 阈值改成 < 30_000 → 红;卡片最后 1 分钟不收掉卡身 → 红
   it('❗最后 1 分钟:胶囊、卡里的钥匙和时间变橙;卡片只剩卡头和「到期后…」那句', async () => {
-    await chip([g('param-monthly:edit', '月度计费录入', 'zhang', '张经理', NOW.getTime() + 42_000)])
+    await chip([g('params:monthly', '月度计费录入', 'zhang', '张经理', NOW.getTime() + 42_000)])
     expect(w!.find('.ec-chip').text()).toBe('0:42')
     expect(w!.find('.ec-chip').classes()).toContain('warn')
     await openCard()
@@ -234,9 +234,9 @@ describe('结束授权', () => {
   // 破坏验证:dirtyScreens 不看登记的权限点(全列)→ 红;权限点里有一项不是自己的也当「不靠授权」→ 第二支红
   it('❗结束授权后它不退出编辑的屏不列:登记的权限点全是自己角色给的', async () => {
     const auth = await chip(ONE)
-    auth.permissions = ['meter-reading:edit']
-    auth.openEditor(Symbol('meters'), 'meters', () => 3, ['meter-reading:edit'])
-    auth.openEditor(Symbol('params'), 'params', () => 1, ['param-policy:edit'])
+    auth.permissions = ['meters:edit']
+    auth.openEditor(Symbol('meters'), 'meters', () => 3, ['meters:edit'])
+    auth.openEditor(Symbol('params'), 'params', () => 1, ['params:edit'])
     await openCard()
     card()!.querySelector<HTMLButtonElement>('.ec-f button')!.click()
     await flushPromises()
@@ -244,7 +244,7 @@ describe('结束授权', () => {
     answer(false)
     await flushPromises()
 
-    auth.openEditor(Symbol('meters2'), 'meters', () => 2, ['meter-reading:edit', 'meter-master:edit'])
+    auth.openEditor(Symbol('meters2'), 'meters', () => 2, ['meters:edit', 'meters:archive'])
     await openCard()
     card()!.querySelector<HTMLButtonElement>('.ec-f button')!.click()
     await flushPromises()
@@ -254,9 +254,9 @@ describe('结束授权', () => {
   // 破坏验证:没带权限点的那条(锁)不认同屏同函数的「带了的」那条 → 照旧列出、弹框 → 红
   it('❗同一屏同一个改动数函数:锁那条没带权限点,听带了的那条;只剩自己权限的改动 → 不问,直接结束', async () => {
     const auth = await chip(ONE)
-    auth.permissions = ['meter-reading:edit']
+    auth.permissions = ['meters:edit']
     const n = () => 3
-    auth.openEditor(Symbol('edit-mode'), 'meters', n, ['meter-reading:edit'])
+    auth.openEditor(Symbol('edit-mode'), 'meters', n, ['meters:edit'])
     auth.openEditor(Symbol('edit-lock'), 'meters', n)
     await openCard()
     card()!.querySelector<HTMLButtonElement>('.ec-f button')!.click()

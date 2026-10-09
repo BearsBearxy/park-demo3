@@ -55,15 +55,15 @@ const sheet = useFormSheet()
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
         lockedBy, evictedBy, lockScope, onTaken } =
-  useEditMode(['meter-master:edit', 'meter-reading:edit'], {
+  useEditMode(['pv-income:archive', 'pv-income:reading'], {
     scope: () => S.pvMeter(year.value),
     // 改动数(EDIT-MODE §6.1):行内格失焦即存,没存的只有开着的写入口 —— 抽屉里的新增 / 编辑行、新增电站弹窗、导入弹窗
     dirty: approxDirty(() => (adding.value || editId.value != null || stationDlg.value || importing.value ? 1 : 0)),
   })
-// RBAC v2:电站档案(名称/容量/单价/增删)= meter-master:edit;抄表记录与导入 = meter-reading:edit。
-// 模拟填充也判 master —— 它对缺单价的电站反写 price_yuan(RBAC-SPEC §5.3-⑤),是电站单价的写旁路。
-const canMaster = computed(() => auth.can('meter-master:edit'))
-const canReading = computed(() => auth.can('meter-reading:edit'))
+// RBAC v4:电站档案(名称/容量/单价/增删)= pv-income:archive;抄表记录与导入 = pv-income:reading。
+// 模拟填充也判档案 —— 它对缺单价的电站反写 price_yuan(RBAC-SPEC §5.3-⑤),是电站单价的写旁路。
+const canMaster = computed(() => auth.can('pv-income:archive'))
+const canReading = computed(() => auth.can('pv-income:reading'))
 // ⚠ 三处都要 `&& !loadErr` —— 逐字照兄弟屏 MeterView.vue:131 的 `editable`。
 //   本月读数没加载成功时表里是 13 行**伪造的零**(rows 按 stations 铺,aggByStation 拿不到就落 0),
 //   此时放行录入 = 让人对着假底数写真数据。对抗复查坐实的最狠一条:保存成功后 reload 撞抖动,
@@ -542,7 +542,7 @@ async function onTemplate() {
           <p class="pm-sub">按日期逐条抄表,自动汇月 · 电量 kWh / 收益 元 · 收益 = 自消纳 × 录入时单价快照</p>
         </div>
       </div>
-      <!-- 电站增删=配置操作,仅编辑态(EDIT-MODE-SPEC)+ meter-master:edit -->
+      <!-- 电站增删=配置操作,仅编辑态(EDIT-MODE-SPEC)+ pv-income:archive -->
       <Button v-if="editStation" variant="outline" size="sm" @click="openStationDlg">
         <template #leading><component :is="iconFor('plus')" :size="14" /></template>
         新增电站
@@ -567,7 +567,7 @@ async function onTemplate() {
           <template #leading><component :is="iconFor('upload')" :size="14" /></template>
           导入
         </Button>
-        <!-- 模拟填充会反写电站单价(§5.3-⑤)→ 判 meter-master,不是 meter-reading;客户园区不显(parkTools,2026-10-05 用户拍板「按你建议修改」;服务端同闸 DeployConfig) -->
+        <!-- 模拟填充会反写电站单价(§5.3-⑤)→ 判 pv-income:archive,不是 pv-income:reading;客户园区不显(parkTools,2026-10-05 用户拍板「按你建议修改」;服务端同闸 DeployConfig) -->
         <Button v-if="editStation && appCfg.parkTools" variant="outline" size="sm" :disabled="simulating" @click="onSimulate">
           <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>
           模拟填充

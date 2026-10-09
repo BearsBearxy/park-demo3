@@ -1,15 +1,15 @@
 // 系统管理(RBAC-SPEC §10 P1)DTO —— 与后端 /api/system/** 契约一一对应。
-// 读也要管:GET 需 system:view,非 GET 需 system:edit(RBAC-SPEC §5.1)。
+// v4(RBAC-SPEC §15)起三屏各自一项:用户管理 sys-users:*、角色权限 sys-roles:*、操作日志 sys-logs:view,按读写规则表逐接口放行。
 
 /** 权限点之一(顺序由后端 Perm.ALL 决定,前端不排序) */
 export interface PermDTO {
   key: string
   label: string
   hint: string
-  /** 所属模块(RBAC v3):master contract param meter billing entry salary report analysis system other。旧后端不带 → 按 other */
-  group?: string
-  /** view = 模块查看;edit = 模块编辑(包含查看);other = 不属于哪个模块的(审核、编辑锁、提权)。旧后端不带 → 按 other */
-  kind?: 'view' | 'edit' | 'other'
+  /** 所属那一屏(fpNav 的 item.value,RBAC v4);跨屏三项(审核、编辑锁授权、可请求提权)为 null */
+  screen?: string | null
+  /** view = 本屏查看;edit = 本屏编辑;action = 本屏专有动作(如催缴单签发);other = 跨屏三项。编辑与动作都隐含本屏查看 */
+  kind?: 'view' | 'edit' | 'action' | 'other'
 }
 
 /** 3 个业务导航层:data / reports / analysis(与 fpNav.ts 的 NavLayer.id 同值) */
@@ -46,6 +46,10 @@ export interface RoleReq {
   navLayers: string[]
   perms: string[]
   remark?: string
+  /** 本角色成员的增量(§15.9):和权限一起保存,同一个事务。带增量不带整份名单 —— 别人同时在用户管理里加的人不会被冲掉 */
+  addUserIds?: number[]
+  /** 只有 PUT 带 */
+  removeUserIds?: number[]
 }
 
 /** 用户行上的角色引用(不含 perms/navLayers,要完整角色去 /system/roles 取) */

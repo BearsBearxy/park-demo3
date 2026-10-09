@@ -37,7 +37,7 @@ beforeEach(() => {
   // 会让下一条的 open('tenants') 走「已开着,直接切过去」分支,页签纹丝不动
   for (const k of Object.keys(localStorage)) if (k.startsWith('fp-app-')) localStorage.removeItem(k)   // 按人存的 fp-app-tabs:<user> 也清
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['entry:edit']
+  useAuthStore().permissions = ['ledger:edit']
   vi.mocked(booksApi.list).mockResolvedValue([book])
   vi.mocked(booksApi.templateAt).mockResolvedValue(book)
   vi.mocked(companyApi.list).mockResolvedValue([

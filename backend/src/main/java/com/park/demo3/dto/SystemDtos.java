@@ -9,8 +9,9 @@ public final class SystemDtos {
     private SystemDtos() {}
 
     // ── 权限点字典(角色矩阵屏渲染用;前端不硬编码) ──
-    // group / kind 原样转自 Perm.Meta(v3):角色屏矩阵按模块分行、按「查看 / 编辑」分列
-    public record PermMeta(String key, String label, String hint, String group, String kind) {}
+    // screen / kind 原样转自 Perm.Meta(v4,RBAC-SPEC §15.2):角色屏按 fpNav 的层 → 分组 → 屏挂树;
+    // screen = 屏 value(跨屏三项为 null),kind ∈ view / edit / action / other
+    public record PermMeta(String key, String label, String hint, String screen, String kind) {}
     public record NavLayerMeta(String id, String label) {}
     public record PermCatalog(List<PermMeta> perms, List<NavLayerMeta> navLayers) {}
 
@@ -25,12 +26,17 @@ public final class SystemDtos {
             message = "标识只能用小写字母/数字/下划线,字母开头,2-32 位") String code,
         @NotBlank @Size(max = 32) String name,
         List<String> navLayers, List<String> perms,
-        @Size(max = 128) String remark) {}
+        @Size(max = 128) String remark,
+        List<Integer> addUserIds) {}
 
-    /** code 建后不可改 —— 代码里可能引用它。 */
+    /**
+     * code 建后不可改 —— 代码里可能引用它。成员带**增量**不带整份名单(RBAC-SPEC §15.9):
+     * 保存前别人在用户管理里给某人加了这个角色,整份名单会把他冲掉,增量不会。
+     */
     public record RoleUpdateReq(@NotBlank @Size(max = 32) String name,
                                 List<String> navLayers, List<String> perms,
-                                @Size(max = 128) String remark) {}
+                                @Size(max = 128) String remark,
+                                List<Integer> addUserIds, List<Integer> removeUserIds) {}
 
     // ── 用户 ──
     public record UserRoleBrief(Integer id, String code, String name) {}

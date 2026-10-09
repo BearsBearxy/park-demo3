@@ -137,3 +137,4 @@ db/migration/V136__salary_edit.sql 411786750
 db/migration/V137__admin_salary_edit.sql -1960940642
 db/common/V138__value_change_log.sql 1976840116
 db/common/V139__value_change_log_authorizer.sql 2013445857
+db/common/V140__rbac_screen_perms.sql 858750507

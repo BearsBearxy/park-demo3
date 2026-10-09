@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import com.park.demo3.security.Perm;
 import java.util.*;
 import java.util.regex.Pattern;
 
@@ -399,7 +400,7 @@ public class ParamService {
         if (!ParamRegistry.allowed(key, scope))
             throw new BizException(ResultCode.BAD_REQUEST, "参数键不在注册表：" + key + (scope.isEmpty() ? "" : "@" + scope));
         Def d = ParamRegistry.get(key);
-        requireWritePerm(d);
+        requireWritePerm(d, scope, newPoolBootstrap);
         boolean price = d.table() == Table.PRICE;
         String month = req.acctMonth() == null ? "" : req.acctMonth().trim();
         String mode = req.mode() == null || req.mode().isBlank() ? d.defaultMode() : req.mode().trim();
@@ -587,19 +588,19 @@ public class ParamService {
     }
 
     /**
-     * 唯一一处 URL 判不了的权限细分(PermissionRegistry 铁律外的那条例外)。
+     * URL 判不了的权限细分(RBAC-SPEC §15.6):PUT /api/params 放行「计费参数编辑、月度录入、催缴单系数簿」任一,这里按键判。
      *
-     * ① 区月度录入(每月照抄供电局账单的 14 个键)= param-monthly:edit,财务专员有;
-     * ②③④ 区长期计费口径 = param-policy:edit,要主管级。
-     *
-     * **判据用 monthlyCheck,与前端 ① 区的分组(Group.MONTHLY)一一对应** —— 两者已由
-     * ParamPermissionSplitTest 钉死。不对齐的话会出现「界面上有[修改]按钮,点下去 403」
-     * 或者反过来「界面藏了按钮,API 却放行」(后者正是本次修掉的洞)。
+     * ① 区月度录入(monthlyCheck,与前端 ① 区 Group.MONTHLY 一一对应,ParamPermissionSplitTest 钉着)= 计费参数 · 月度录入;
+     * 系数簿的 12 个白名单键(ParamRegistry.Def.coefBook)写户级作用域 = 计费参数 · 编辑 或 催缴单 · 系数簿;
+     * 其余长期口径 = 计费参数 · 编辑。
+     * 新建池落初始分母 / 加度 / 取整位(newPoolBootstrap,只有 AllocService.createRule 传)认「公共电核算 · 公摊池配置」:
+     * 建池本身就要它(写规则表),不认的话只勾了池配置的人建一个带初始分母的池就 403。
      */
-    private void requireWritePerm(Def d) {
-        guard.require(d.monthlyCheck() ? com.park.demo3.security.Perm.PARAM_MONTHLY_EDIT
-                                       : com.park.demo3.security.Perm.PARAM_POLICY_EDIT,
-                      d.monthlyCheck() ? "月度计费录入" : "计费口径");
+    private void requireWritePerm(Def d, String scope, boolean newPoolBootstrap) {
+        if (newPoolBootstrap) guard.requireAny(List.of(Perm.ALLOC_POOLS, Perm.PARAMS_EDIT));
+        else if (d.monthlyCheck()) guard.require(Perm.PARAMS_MONTHLY);
+        else if (d.coefBook() && scope.startsWith("tenant:")) guard.requireAny(List.of(Perm.PARAMS_EDIT, Perm.BILL_NOTICES_COEF));
+        else guard.require(Perm.PARAMS_EDIT);
     }
 
     private void log(String action, boolean price, String scope, String key, String month, String mode,

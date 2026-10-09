@@ -19,7 +19,6 @@ import type { PvPhaseDTO, PvOverviewDTO, PvYearDTO, PvRecordDTO, PvRecordReq, Pv
 import type { ImportPayload } from '@/components/import/FpImportModal.vue'
 import { settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
 import { loadViewMode, saveViewMode } from '@/utils/viewMode'
-import { useAuthStore } from '@/stores/auth'
 import BookRailShell from '@/components/fp/BookRailShell.vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -43,11 +42,8 @@ const ALL_MODES = [
   { id: 'meter', name: '分栋运营账', desc: '按栋 · 按日' },
 ] as const
 type Mode = (typeof ALL_MODES)[number]['id']
-// RBAC v3(读写分开):报送台账归台账与附表(entry:view),分栋运营账归抄表(meter:view),左栏只列看得了的那本。
-// 进得来这一屏就至少有一本(路由门是两者任一,nav/navAccess);带 ?mode= 的深链缺那一本的权限时守卫已经拦下。
-const MODES = ALL_MODES.filter(m => useAuthStore().can(m.id === 'meter' ? 'meter:view' : 'entry:view'))
-// 只有抄表查看的人没有报送台账那本:它的总览 / 年表接口只对台账与附表(或分析)开放,取了也是 403
-const METER_ONLY = MODES.length > 0 && MODES.every(m => m.id === 'meter')
+// RBAC v4(权限细到菜单单项):这一屏一项查看看两本;写按本分(报送台账 = 本屏编辑,档案 / 读数 = 两个专有动作)。
+const MODES = [...ALL_MODES]
 const MODE_SCREEN = 'pv-income'
 // 深链 ?mode=summary|meter 只在首载认(首页附表行走 openFresh,实例总是新的;SIDEBAR-UX-REDESIGN §5.1):
 // 盖过本机记住的那本,但不写回 —— 下面的 watch(mode) 非 immediate,只记用户自己的切换。
@@ -96,7 +92,7 @@ const { note: deepNote } = useDeepPeriod({
   dirty: () => (drawer.value || importing.value ? 1 : 0),
 })
 // KeepAlive 切回重读(spec §12):导入中心导完切回来,年表与总览不能还是导入前的(refresh = load(year) + reloadOverview)
-onReactivated(() => { if (!METER_ONLY) void refresh().catch(() => {}) })
+onReactivated(() => { void refresh().catch(() => {}) })
 
 // ⚠ 切账本必须退出编辑态。`edit` 由本层持有(useSchedScreen),锁却由子组件 SchedHeader 持有,
 //   还锁挂在 useEditLock 的 onUnmounted 上 —— 切走时 SchedHeader 卸载,**锁真的还了**,
@@ -119,7 +115,6 @@ const yearCards = computed<YearCard[]>(() =>
 
 // ── 进入屏:phases + overview(§6 取数前不渲染) ──────────
 onMounted(async () => {
-  if (METER_ONLY) return
   phases.value = await pvApi.phases()
   overview.value = await pvApi.overview()
 })
@@ -199,7 +194,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
           sub="逐月发电台账 · 自发自用、余电上网 · 电量 kWh / 金额 元"
           :year="year"
           :edit="edit"
-          perm="entry:edit"
+          perm="pv-income:edit"
           :review-keys="reviewKeys"
           @back="goGate"
           @toggle-edit="edit = !edit"

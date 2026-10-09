@@ -12,6 +12,10 @@ export const s10Api = {
   // 年聚合(phase→colId→12月Σ;供损益附表派生,P2-G)
   yearSummary: (year: number): Promise<S10YearSummaryDTO> =>
     http.get('/s10/year-summary', { params: { year } }),
+  // 四个期区这个月各自的合计(= getMonth(…).grandTotal,含自定义列;没有行的期区给 0)。报表中心勾稽③用:
+  // 只要合计,不读逐户宽表(RBAC v4:报表中心查看能取它,宽表只给附表10 本屏)
+  monthTotals: (year: number, month: number): Promise<Record<1 | 2 | 3 | 4, number>> =>
+    http.get('/s10/month-totals', { params: { year, month } }),
   saveRecord: (req: S10RecordReq): Promise<S10RecordDTO> => http.post('/s10', req),
   updateNote: (id: number, note: string | null): Promise<void> =>
     http.patch(`/s10/${id}/note`, { note }),

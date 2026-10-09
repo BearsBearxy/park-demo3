@@ -5,7 +5,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 
-const ROLES = [{ id: 1, code: 'admin', name: '系统管理员', builtin: true, navLayers: ['data'], perms: ['system:edit'], userCount: 1, remark: null }]
+const ROLES = [{ id: 1, code: 'admin', name: '系统管理员', builtin: true, navLayers: ['data'], perms: ['sys-users:edit'], userCount: 1, remark: null }]
 const USERS = [
   { id: 1, username: 'admin', displayName: '系统管理员', status: 1, mustChangePassword: false, roles: [ROLES[0]], createdAt: '2026-01-05T09:30:00' },
   { id: 2, username: 'zhang.kj', displayName: '张会计', status: 1, mustChangePassword: false, roles: [], createdAt: '2026-03-11T14:02:00' },
@@ -31,7 +31,7 @@ beforeEach(() => {
   setActivePinia(createPinia())
   localStorage.setItem('token', 'old')
   const auth = useAuthStore()
-  auth.permissions = ['system:view', 'system:edit']
+  auth.permissions = ['sys-users:view', 'sys-users:edit']
   auth.me = 'admin'
 })
 

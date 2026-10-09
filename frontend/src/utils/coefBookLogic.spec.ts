@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ParamRowDTO } from '@/api/params'
 import { paramDef } from './paramRegistry'
 import { groupByBuilding } from './billNoticeLogic'
+import registry from './__fixtures__/param-registry.json'
 import {
   COEF_KEYS, buildCoefRows, buildFloorPlan, buildPricePlan, coefMeta, floorMemberships,
   floorStashAfter, poolsOfFeeKey, resolveCoefPrice,
@@ -60,6 +61,14 @@ describe('COEF_KEYS 注册表', () => {
     for (const id of ['capacity_fee', 'green_rate', 'share_elec_fixed', 'share_water_fixed',
       'lamp_rate', 'fire_amount_fixed', 'loss_base_form'])
       expect(coefMeta(id).writes).toEqual([{ key: id }])
+  })
+  // 后端只许「催缴单 · 系数簿」写注册表里 coefBook 为真的键(RBAC-SPEC §15.6 ParamService):
+  // 系数簿真会写的键多一个,只有系数簿的人点保存就 403;少一个,后端白名单就多放了一个系数簿根本不写的键
+  it('价目键 ∪ 它们写计划里的键 = 注册表 coefBook 为真的 12 个键', () => {
+    const writes = COEF_KEYS.filter(k => !k.floorShare).flatMap(k => [k.id, ...k.writes.map(w => w.key)])
+    const coefBook = (registry as { key: string; coefBook: boolean }[]).filter(d => d.coefBook).map(d => d.key)
+    expect(coefBook).toHaveLength(12)
+    expect([...new Set(writes)].sort()).toEqual([...coefBook].sort())
   })
 })
 

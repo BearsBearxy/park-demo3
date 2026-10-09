@@ -139,7 +139,7 @@ async function openCoef() {
   return w
 }
 async function coefInEdit() {
-  useAuthStore().permissions = ['param-policy:edit']
+  useAuthStore().permissions = ['bill-notices:coef']
   const w = await openCoef()
   await (w.vm as unknown as CoefVm).onEditBtn()
   await settle()
@@ -321,7 +321,7 @@ describe('收款簿', () => {
   })
 
   it('❗有暂存关窗出离开确认;编辑态改动数 = 暂存条数', async () => {
-    useAuthStore().permissions = ['billing-issue:edit']
+    useAuthStore().permissions = ['bill-notices:issue']
     const w = await openPay()
     const vm = w.vm as unknown as PayVm
     vm.editMode = true
@@ -337,7 +337,7 @@ describe('收款簿', () => {
   })
 
   it('❗有暂存时切收款槽先问;点「继续编辑」槽和暂存都不动', async () => {
-    useAuthStore().permissions = ['billing-issue:edit']
+    useAuthStore().permissions = ['bill-notices:issue']
     const w = await openPay()
     const vm = w.vm as unknown as PayVm
     vm.editMode = true
@@ -353,7 +353,7 @@ describe('收款簿', () => {
   })
 
   it('❗退出编辑:不保存 → 再问放弃(退出编辑「收款簿」),放弃后退出', async () => {
-    useAuthStore().permissions = ['billing-issue:edit']
+    useAuthStore().permissions = ['bill-notices:issue']
     const w = await openPay()
     const vm = w.vm as unknown as PayVm
     vm.editMode = true
@@ -372,7 +372,7 @@ describe('收款簿', () => {
   })
 
   it('❗保存失败走失败回执带「重试」', async () => {
-    useAuthStore().permissions = ['billing-issue:edit']
+    useAuthStore().permissions = ['bill-notices:issue']
     const w = await openPay()
     const vm = w.vm as unknown as PayVm
     vm.editMode = true
@@ -387,7 +387,7 @@ describe('收款簿', () => {
   })
 
   it('❗保存成功走底部成功回执(4 秒自收),不是窗口里自己的成功条', async () => {
-    useAuthStore().permissions = ['billing-issue:edit']
+    useAuthStore().permissions = ['bill-notices:issue']
     const w = await openPay()
     const vm = w.vm as unknown as PayVm
     vm.editMode = true
@@ -401,8 +401,9 @@ describe('收款簿', () => {
 })
 
 // ─────────────────────────────── 收款公司 ───────────────────────────────
-async function openCompany() {
-  useAuthStore().permissions = ['master:edit']
+// RBAC v4:改名 / 账户 =「催缴单 · 收款公司」,新增公司 =「月度台账 · 新增删除公司」;默认两项都给
+async function openCompany(perms = ['bill-notices:payee', 'ledger:company']) {
+  useAuthStore().permissions = perms
   const w = mount(CompanyBookWindow, { props: { open: false }, ...stubs })
   mounted.push(w)
   await w.setProps({ open: true })
@@ -411,6 +412,23 @@ async function openCompany() {
 }
 
 describe('收款公司', () => {
+  // 破坏验证:「新增公司」的 v-if 改回 canEdit → 第一条红;表单 :disabled 改回 !canEdit → 第二条红
+  it('❗只有收款公司权:没有「新增公司」,已有公司照常能改', async () => {
+    const w = await openCompany(['bill-notices:payee'])
+    expect(w.find('.cw-item.add').exists()).toBe(false)
+    expect(w.find('.cw-pane input').attributes('disabled')).toBeUndefined()
+  })
+
+  it('❗只有新增删除公司权:已有公司只读、不能加账户;点「新增公司」表单能填、按钮写「新增」', async () => {
+    const w = await openCompany(['ledger:company'])
+    expect(w.find('.cw-pane input').attributes('disabled')).toBeDefined()
+    expect(w.findAll('.cw-pane button').some(b => b.text().includes('新增账户'))).toBe(false)
+    await w.find('.cw-item.add').trigger('click')
+    await settle()
+    expect(w.find('.cw-pane input').attributes('disabled')).toBeUndefined()
+    expect(w.findAll('.cw-pane button').some(b => b.text() === '新增')).toBe(true)
+  })
+
   it('❗加载失败:FPLoadError 换掉窗体,点重试重拉', async () => {
     vi.mocked(companyBookApi.list).mockRejectedValueOnce(new Error('拒绝访问'))
     const w = await openCompany()
@@ -514,7 +532,7 @@ describe('三个簿窗口 · 失败态与竞态', () => {
   // 破坏验证:onEditBtn 第一行 `if (loadErr.value) return` 删掉 → 直呼进了编辑态 → 红;
   //           FPEditModeButton 的 :disabled 去掉 → 红
   it('❗系数簿首载失败:编辑按钮置灰;直呼 onEditBtn 也进不了编辑态', async () => {
-    useAuthStore().permissions = ['param-policy:edit']
+    useAuthStore().permissions = ['bill-notices:coef']
     vi.mocked(paramsApi.list).mockRejectedValueOnce(new Error('网关超时'))
     const w = await openCoef()
     expect(w.findComponent(FPEditModeButton).props('disabled')).toBe(true)
@@ -541,7 +559,7 @@ describe('三个簿窗口 · 失败态与竞态', () => {
 
   // 破坏验证:load 成功支的 `if (my !== seq) return` 删掉 → 0.99 盖上来 → 红;catch 支的删掉 → 冒失败件 → 红
   it('❗系数簿两趟叠着发:先发的晚到,旧数不盖新数、失败不冒失败件', async () => {
-    useAuthStore().permissions = ['param-policy:edit']
+    useAuthStore().permissions = ['bill-notices:coef']
     const first = held<ParamRowDTO[]>(), second = held<ParamRowDTO[]>()
     vi.mocked(paramsApi.list).mockImplementationOnce(() => first.p).mockImplementationOnce(() => second.p)
     const w = await openCoef()
@@ -592,7 +610,7 @@ describe('三个簿窗口 · 失败态与竞态', () => {
 
   // 破坏验证:编辑模式按钮的 :disabled="!!loadErr" 去掉 → 红
   it('❗收款簿首载失败:编辑模式按钮置灰', async () => {
-    useAuthStore().permissions = ['billing-issue:edit']
+    useAuthStore().permissions = ['bill-notices:issue']
     vi.mocked(billsApi.paymap).mockRejectedValueOnce(new Error('连接被重置'))
     const w = await openPay()
     expect(payEditBtn(w).attributes('disabled')).toBeDefined()
@@ -635,7 +653,7 @@ describe('三个簿窗口 · 失败态与竞态', () => {
 
   // 破坏验证:guardDrop 答「是」后不清 stash → 红
   it('❗收款簿有暂存切槽:答「放弃改动并切换」→ 槽换了、暂存清空', async () => {
-    useAuthStore().permissions = ['billing-issue:edit']
+    useAuthStore().permissions = ['bill-notices:issue']
     const w = await openPay()
     const vm = w.vm as unknown as PayVmX
     vm.editMode = true
@@ -651,7 +669,7 @@ describe('三个簿窗口 · 失败态与竞态', () => {
 
   // 破坏验证:onSave 的自守去掉 `|| loadErr.value` → 红
   it('❗收款簿编辑中重拉失败:保存直呼也不提交', async () => {
-    useAuthStore().permissions = ['billing-issue:edit']
+    useAuthStore().permissions = ['bill-notices:issue']
     const w = await openPay()
     const vm = w.vm as unknown as PayVmX
     vm.editMode = true

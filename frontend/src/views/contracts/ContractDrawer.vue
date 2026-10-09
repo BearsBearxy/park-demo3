@@ -258,8 +258,8 @@ const contactLine = computed(() =>
         <FPContractStatus :status="contract.status"
                           :label="contract.status === 'renewed' && nextIsEscalation ? '已递增' : undefined" />
       </div>
-      <!-- 终止/删除/编辑/续签 四个写按钮同一权限点(RBAC-SPEC §2 contract:edit);无权时整条操作区不出现,详情照常显示 -->
-      <div v-if="auth.can('contract:edit')" class="cd-inline-actions">
+      <!-- 终止/删除/编辑/续签 四个写按钮同一权限点(RBAC-SPEC §2 contracts:edit);无权时整条操作区不出现,详情照常显示 -->
+      <div v-if="auth.can('contracts:edit')" class="cd-inline-actions">
         <Button variant="borderless" size="sm" :disabled="!canTerminate" @click="askTerminate = true">
           <template #leading><component :is="iconFor('x-circle')" :size="14" /></template>
           终止
@@ -351,7 +351,7 @@ const contactLine = computed(() =>
         <div class="cd-note">
           <FPNote v-if="(contract.unboundTermCount ?? 0) > 0" tone="warn" @action="emit('edit', contract)">
             租金行还没绑单元
-            <template v-if="auth.can('contract:edit')" #action>去绑定</template>
+            <template v-if="auth.can('contracts:edit')" #action>去绑定</template>
           </FPNote>
         </div>
         <!-- 连续费用网格:表头一次,按段分组(段带+费用行+小计),底部合同合计;字体/列沿 demo3 原生 -->

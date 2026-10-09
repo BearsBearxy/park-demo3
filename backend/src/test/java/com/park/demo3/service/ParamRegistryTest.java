@@ -166,6 +166,7 @@ class ParamRegistryTest {
             m.put("formula", d.formula());
             m.put("hint", d.hint());
             m.put("tenantEditable", d.scopes().contains(ScopeKind.TENANT));
+            m.put("coefBook", d.coefBook());   // 催缴单「系数簿」能写的键(RBAC-SPEC §15.6),前端 coefBookLogic.spec 对账
             m.put("pairedWith", d.pairedWith());
             out.add(m);
         }

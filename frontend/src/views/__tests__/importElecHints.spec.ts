@@ -49,7 +49,7 @@ beforeEach(() => {
   for (const k of Object.keys(query)) delete query[k]
   askQueue.splice(0)
   receipts.splice(0)
-  useAuthStore().permissions = ['entry:edit']
+  useAuthStore().permissions = ['elec-cost:edit']
   vi.mocked(importLogApi.overview).mockResolvedValue({ latestByType: [], history: [] })
   // 目标月已有两家:文件里有其中一家 → 覆盖 1 家
   vi.mocked(ledgerApi.month).mockResolvedValue({

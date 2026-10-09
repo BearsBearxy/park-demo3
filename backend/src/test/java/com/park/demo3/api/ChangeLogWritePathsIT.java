@@ -215,8 +215,9 @@ class ChangeLogWritePathsIT extends AbstractMysqlIT {
         call(delete("/api/companies/" + id + "?force=true"), t, null);
         assertThat(since(m0, "monthly_ledger", "IT改动记录公司%")).containsExactly(
             "IT改动记录公司 |  | null → null | 删除了这家公司，它名下 1 行台账（所有年月）一并删掉");
-        assertThat(since(m0, "report_amount", "IT改动记录公司%")).containsExactly(
-            "IT改动记录公司 |  | null → null | 删除了这家公司，它名下 1 格三大报表金额（所有年月）一并删掉");
+        // 报表按三张表各记一条(RBAC-SPEC §15.6):行定位以报表名开头,操作日志按它给对应报表的查看者看;0 格的表不记
+        assertThat(since(m0, "report_amount", "%IT改动记录公司%")).containsExactly(
+            "利润表 · IT改动记录公司 |  | null → null | 删除了这家公司，它名下 1 格利润表金额（所有年月）一并删掉");
     }
 
     // ── helpers ──

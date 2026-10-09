@@ -84,9 +84,9 @@ const USAGE_ROW: CpPowerUsageDTO = {
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  // billing-run:edit 必须在种子里 —— onSimulate 的守卫是 `!editMode || !canRun`,
+  // 两种桩的分桩读数权都必须在种子里 —— onSimulate 的守卫是 `!editMode || !canRun`(canRun = 汽车、电动车读数权都有),
   // 缺了它守卫删掉也 return,⑧ 那条断言等于没写。
-  useAuthStore().permissions = ['meter-master:edit', 'meter-reading:edit', 'billing-run:edit']
+  useAuthStore().permissions = ['car-charging:archive', 'car-charging:reading', 'ebike-charging:reading']
   vi.clearAllMocks()
   localStorage.clear()
   for (const k of Object.keys(query)) delete query[k]
@@ -1146,6 +1146,28 @@ describe('分桩充电明细 · 提示件(S4)', () => {
     expect(has(w), '我园生产').toBe(true)
     customerPark('0.29.0'); await flushPromises()
     expect(has(w), '客户园区').toBe(false)
+  })
+
+  // RBAC v4:模拟填充一次写汽车、电动车两种桩一整年的记录,两屏的「分桩读数」都要;新增桩的车型只列有桩库权的。
+  // 破坏验证:canRun 只判本屏读数 → 第一条红;TYPE_OPTS 不按 archive 滤 → 第二条红
+  it('❗只有汽车桩的读数权:模拟填充不出;补上电动车桩读数才出', async () => {
+    const has = (w: ReturnType<typeof mount>) => w.findAll('button').some(b => b.text().includes('模拟填充'))
+    useAuthStore().permissions = ['car-charging:archive', 'car-charging:reading']
+    const w = await toEdit()
+    ourPark(); await flushPromises()
+    expect(has(w)).toBe(false)
+    useAuthStore().permissions = ['car-charging:archive', 'car-charging:reading', 'ebike-charging:reading']
+    await flushPromises()
+    expect(has(w)).toBe(true)
+  })
+
+  it('❗新增桩的车型:只列有桩库权的那几种', async () => {
+    const w = await toEdit()
+    const opts = () => (w.vm as unknown as { TYPE_OPTS: { value: string }[] }).TYPE_OPTS.map(o => o.value)
+    expect(opts()).toEqual(['car'])
+    useAuthStore().permissions = [...useAuthStore().permissions, 'ebike-charging:archive']
+    await flushPromises()
+    expect(opts()).toEqual(['car', 'ebike'])
   })
 
   it('❗改动数:即时提交的格子算 0;抽屉里开着记录行算一处(关页签才问)', async () => {

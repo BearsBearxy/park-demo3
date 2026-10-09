@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
  *    没有第二条进门的路 —— 只能去数据库里手改。所以宁可挡住，也不能让它发生。
  *
  * ⚠ **分级**（{@code guard*InRange}，RBAC-SPEC §12）：系统管理员（持 admin 角色）什么都能改；
- *    别的有 system:edit 的人只能动「不是系统管理员、权限全在自己手里」的角色和账号。
+ *    别的有系统管理编辑权的人只能动「不是系统管理员、权限全在自己手里」的角色和账号。
  *    改前一个只管账号的人能给自己的角色勾满权限、建一个系统管理员账号、重置管理员的密码再登进去
  *    （安全审计 F86 / F38 / F39）。用户 2026-10-04 拍板：系统管理员不分级，其他人分。
  */
@@ -71,10 +71,10 @@ public class SystemService {
      *
      * **谁看得见哪几行**(用户 2026-10-05 拍板:看得到操作日志,不等于看得到工资和别的打不开的数据):
      * 一行说的是哪张表,就要那张表的查看权 —— 数据修改记录按 {@link ChangeLogService.Tbl#viewPerm},
-     * 计费参数那一路要「计费参数 · 查看」(里面是单价的改前改后),表档案那一路要「抄表 · 查看」。
-     * 导入那一路照导入中心自己的读规则(PermissionRegistry 里 /api/import-log/** 那一条,八个模块查看权任一):
-     * 只有「系统管理 · 查看」的账号打不开导入中心,这里也不给看工资表的文件名和人数;
-     * 账号与角色那一路里作废 / 撤回催缴单的行要「出账与催缴单 · 查看」,删表的行要「抄表 · 查看」;
+     * 计费参数那一路要「计费参数 · 查看」(里面是单价的改前改后),表档案那一路要「园区抄表 · 查看」。
+     * 导入那一路照导入中心自己的读规则(PermissionRegistry 里 /api/import-log/** 那一条,「导入中心 · 查看」):
+     * 只有系统管理权的账号打不开导入中心,这里也不给看工资表的文件名和人数;
+     * 账号与角色那一路里作废 / 撤回催缴单的行要「催缴单 · 查看」,删表的行要「园区抄表 · 查看」;
      * 审核那一路照旧全给 —— /api/review 本来就是任何登录账号都能读(审核状态与退回理由)。(对抗复查 SEC-2)
      * 判定下推进 SQL 的每个分支,条数、分页、操作人下拉三处一致;不靠前端藏。回包 sources = 看得见的来源,下拉只列它们。
      *
@@ -101,11 +101,14 @@ public class SystemService {
 
         UserPermissionCache.UserAuth me = cache.get(currentUsername());
         Set<String> mine = me == null ? Set.of() : me.perms();
-        boolean seeParam = mine.contains(Perm.PARAM_VIEW), seeMeter = mine.contains(Perm.METER_VIEW);
+        boolean seeParam = mine.contains(Perm.PARAMS_VIEW), seeMeter = mine.contains(Perm.METERS_VIEW);
         boolean seeImport = registry.resolveRead("/api/import-log/overview").stream().anyMatch(mine::contains);
-        boolean seeBilling = mine.contains(Perm.BILLING_VIEW);
+        boolean seeBilling = mine.contains(Perm.BILL_NOTICES_VIEW);
         List<String> tbls = Arrays.stream(ChangeLogService.Tbl.values())
-            .filter(x -> mine.contains(x.viewPerm)).map(x -> x.code).toList();
+            .filter(x -> x.viewPerms.stream().anyMatch(mine::contains)).map(x -> x.code).toList();
+        // 报表金额 / 损益附表一张表管好几屏:只给看得了的那几屏的行(按行定位前缀)
+        List<String> prefixes = ChangeLogService.REF_PREFIX_VIEW.entrySet().stream()
+            .filter(e -> mine.contains(e.getValue())).map(Map.Entry::getKey).toList();
         List<String> sources = new ArrayList<>();
         if (seeParam) sources.add("param");
         if (seeImport) sources.add("import");
@@ -116,17 +119,29 @@ public class SystemService {
 
         int p = Math.max(1, page);
         int sz = Math.min(200, Math.max(1, size));
-        long total = auditQuery.count(s, tb, a, f, t, seeParam, seeImport, seeBilling, seeMeter, tbls);
-        List<AuditRowDTO> rows = auditQuery.page(s, tb, a, f, t, seeParam, seeImport, seeBilling, seeMeter, tbls, sz, (p - 1) * sz);
+        long total = auditQuery.count(s, tb, a, f, t, seeParam, seeImport, seeBilling, seeMeter, tbls, prefixes);
+        List<AuditRowDTO> rows = auditQuery.page(s, tb, a, f, t, seeParam, seeImport, seeBilling, seeMeter, tbls, prefixes, sz, (p - 1) * sz)
+            .stream().map(SystemService::humanTarget).toList();
         return new AuditPageDTO(rows, total, p, sz,
-            auditQuery.actors(seeParam, seeImport, seeBilling, seeMeter, tbls), tbls, sources);
+            auditQuery.actors(seeParam, seeImport, seeBilling, seeMeter, tbls, prefixes), tbls, sources);
+    }
+
+    /**
+     * 提权授权的对象原样存的是「perm:键,键」(ElevationService / ApprovalService),回包前换成人话:
+     * 「权限：催缴单 · 签发、月度台账 · 编辑」。0.32 之前存的是旧键,走 Perm.LEGACY_LABELS(RBAC-SPEC §15.6)。
+     */
+    static AuditRowDTO humanTarget(AuditRowDTO r) {
+        if (r.target() == null || !r.target().startsWith("perm:")) return r;
+        String human = "权限：" + Arrays.stream(r.target().substring(5).split(","))
+            .map(String::trim).filter(x -> !x.isEmpty()).map(Perm::label).collect(Collectors.joining("、"));
+        return new AuditRowDTO(r.source(), r.rid(), r.ts(), r.actor(), r.action(), human, r.detail(), r.authorizer());
     }
 
     // ══════════ 字典 ══════════
 
     public PermCatalog catalog() {
         return new PermCatalog(
-            Perm.META.stream().map(m -> new PermMeta(m.key(), m.label(), m.hint(), m.group(), m.kind())).toList(),
+            Perm.META.stream().map(m -> new PermMeta(m.key(), m.label(), m.hint(), m.screen(), m.kind())).toList(),
             List.of(new NavLayerMeta("data", "数据中心"),
                     new NavLayerMeta("reports", "账簿与报表"),
                     new NavLayerMeta("analysis", "经营分析")));
@@ -135,9 +150,7 @@ public class SystemService {
     // ══════════ 角色 ══════════
 
     public List<RoleDTO> listRoles() {
-        Map<Integer, List<String>> permsByRole = rolePerms.selectList(null).stream()
-            .collect(Collectors.groupingBy(AuthRolePerm::getRoleId,
-                     Collectors.mapping(AuthRolePerm::getPerm, Collectors.toList())));
+        Map<Integer, List<String>> permsByRole = knownPermsOf(null);
         Map<Integer, Long> countByRole = userRoles.selectList(null).stream()
             .collect(Collectors.groupingBy(AuthUserRole::getRoleId, Collectors.counting()));
         return roles.selectList(Wrappers.<AuthRole>lambdaQuery().orderByAsc(AuthRole::getId))
@@ -145,20 +158,19 @@ public class SystemService {
     }
 
     private RoleDTO toDto(AuthRole r, Map<Integer, List<String>> permsByRole, Map<Integer, Long> countByRole) {
-        List<String> ps = new ArrayList<>(permsByRole.getOrDefault(r.getId(), List.of()));
-        // 按 Perm.ALL 的顺序回，前端矩阵才不会每次刷新跳来跳去
-        ps.sort(Comparator.comparingInt(Perm.ALL::indexOf));
+        List<String> ps = permsByRole.getOrDefault(r.getId(), List.of());   // 已按 Perm.ALL 排,前端的树才不会每次刷新跳来跳去
         return new RoleDTO(r.getId(), r.getCode(), r.getName(), r.getBuiltin() != null && r.getBuiltin() == 1,
             splitLayers(r.getNavLayers()), ps, countByRole.getOrDefault(r.getId(), 0L), r.getRemark(),
             inMyRange(UserPermissionCache.SUPER_ADMIN_ROLE.equals(r.getCode()), ps));
     }
 
-        @NoReviewGuard(reason = "角色权限配置,不是期间数据。它是**元权限** —— 改这里能改谁有 entry:edit,进审核会自锁(要改权限先请人审,而审核权本身也在这张表里)")
+        @NoReviewGuard(reason = "角色权限配置,不是期间数据。它是**元权限** —— 改这里能改谁有编辑权,进审核会自锁(要改权限先请人审,而审核权本身也在这张表里)")
 @Transactional
     public RoleDTO createRole(RoleCreateReq req) {
         if (roles.selectOne(Wrappers.<AuthRole>lambdaQuery().eq(AuthRole::getCode, req.code())) != null)
             throw new BizException(ResultCode.CONFLICT, "角色标识「" + req.code() + "」已存在");
         guardRoleInRange(null, validPerms(req.perms()));
+        List<AuthUser> adds = mustUsers(req.addUserIds());
         AuthRole r = new AuthRole();
         r.setCode(req.code());
         r.setName(req.name());
@@ -168,7 +180,11 @@ public class SystemService {
         roles.insert(r);
         replacePerms(r.getId(), req.perms());
         audit.log("role.create", "role:" + r.getCode(), permDiff(Set.of(), validPerms(req.perms())));
+        // 新建角色时也能直接挑成员(§15.9):权限写完再过成员的守卫,比的是这次保存之后的权限
+        Set<AuthUser> touched = new LinkedHashSet<>();
+        for (AuthUser u : adds) if (joinRole(u, r)) touched.add(u);
         cache.reload();
+        notifyRoleChanged(touched);
         return oneRole(r.getId());
     }
 
@@ -178,31 +194,39 @@ public class SystemService {
         AuthRole r = mustRole(id);
         // 预置角色的**权限与导航层可改**（「交付后客户自己调」的核心），只有 code 和"能不能删"是固定的
         List<String> next = validPerms(req.perms());
-        guardSelfKeepsSystemEdit(id, next);
-        // 原样保存不发通知:没改的东西写「你的权限被改了」是假话。备注不算 —— 持有人看不到它。
-        Set<String> before = rolePerms.selectList(Wrappers.<AuthRolePerm>lambdaQuery().eq(AuthRolePerm::getRoleId, id))
-            .stream().map(AuthRolePerm::getPerm).collect(Collectors.toSet());
+        guardSelfKeepsRolesEdit(id, next);
+        // 只认新键(RBAC-SPEC §15.8):旧键行不参与分级比较、不算「权限变了」,也不进日志 ——
+        // 原样读的话,非系统管理员保存任何一个还没在 0.33 存过的角色都 403「角色里有你没有的权限:…(旧版)」
+        Set<String> before = new HashSet<>(knownPermsOf(List.of(id)).getOrDefault(id, List.of()));
         // 改前也要比:比我大的角色,哪怕是往小里改也不归我动(F39:改自己挂的角色给自己加权限,改后那份拦住它)
         Set<String> both = new HashSet<>(before);
         both.addAll(next);
         guardRoleInRange(r, both);
+        List<Integer> addIds = safe(req.addUserIds()), removeIds = safe(req.removeUserIds());
+        if (addIds.stream().anyMatch(removeIds::contains))
+            throw new BizException(ResultCode.BAD_REQUEST, "同一个账号不能同时加入和移出");
+        List<AuthUser> adds = mustUsers(addIds), removes = mustUsers(removeIds);
+        // 原样保存不发通知:没改的东西写「你的权限被改了」是假话。备注不算 —— 持有人看不到它。
         boolean changed = !before.equals(new HashSet<>(next)) || !Objects.equals(r.getName(), req.name())
             || !Objects.equals(r.getNavLayers(), joinLayers(req.navLayers()));
         r.setName(req.name());
         r.setNavLayers(joinLayers(req.navLayers()));
         r.setRemark(req.remark());
         roles.updateById(r);
-        replacePerms(id, next);
-        audit.log("role.update", "role:" + r.getCode(), permDiff(before, next));
-        cache.reload();
+        replacePerms(id, next);   // 整组替换:这个角色的旧键行随之删掉
+        // 只改了成员不写这一条;成员的增减各记在被改的那个账号上(changeRoles)
+        if (changed) audit.log("role.update", "role:" + r.getCode(), permDiff(before, next));
+        Set<AuthUser> touched = new LinkedHashSet<>();
         if (changed) {
-            // 持这个角色的每个人(NoticeService.add 跳过操作人自己)
             List<Integer> holders = userRoles.selectList(Wrappers.<AuthUserRole>lambdaQuery().eq(AuthUserRole::getRoleId, id))
                 .stream().map(AuthUserRole::getUserId).toList();
-            if (!holders.isEmpty()) for (AuthUser h : users.selectBatchIds(holders))
-                notices.add(h.getUsername(), NoticeService.Kind.perms_changed,
-                    "你的角色「" + req.name() + "」的权限被改了", "刷新后生效", null);
+            if (!holders.isEmpty()) touched.addAll(users.selectBatchIds(holders));
         }
+        // 成员的守卫在权限写完之后跑,比的是这次保存之后的权限(§15.9 第 2 步)
+        for (AuthUser u : adds) if (joinRole(u, r)) touched.add(u);
+        for (AuthUser u : removes) if (leaveRole(u, r)) touched.add(u);
+        cache.reload();
+        notifyRoleChanged(touched);
         return oneRole(id);
     }
 
@@ -222,6 +246,63 @@ public class SystemService {
         cache.reload();
     }
 
+    // ══════════ 角色成员(RBAC-SPEC §15.9):与用户管理里改角色同一条路径 ══════════
+
+    /** 把 u 加进角色 r;已在里面什么都不做(返回 false)。 */
+    private boolean joinRole(AuthUser u, AuthRole r) {
+        Set<Integer> next = roleIdsOf(u.getId());
+        if (!next.add(r.getId())) return false;
+        return changeRoles(u, next, "加入角色「" + r.getName() + "」");
+    }
+
+    /** 把 u 移出角色 r;本来就不在什么都不做(返回 false)。 */
+    private boolean leaveRole(AuthUser u, AuthRole r) {
+        Set<Integer> next = roleIdsOf(u.getId());
+        if (!next.remove(r.getId())) return false;
+        return changeRoles(u, next, "移出角色「" + r.getName() + "」");
+    }
+
+    /**
+     * 改一个账号挂的角色。用户管理的整组改与角色屏成员栏的每一个增 / 删都走这里,守卫同一套:
+     * 不许改自己 → 不许摘掉最后一个启用的系统管理员(§12.3)→ 分级(§12.2)→ 按差集单行 INSERT / DELETE
+     * (不整组删了再插,免得和另一边同时改时互相覆盖)→ 审计。reload 与铃铛由调用方在全部成功后做一次。
+     *
+     * @return 角色集合真的变了
+     */
+    private boolean changeRoles(AuthUser u, Set<Integer> next, String auditDetail) {
+        Set<Integer> cur = roleIdsOf(u.getId());
+        if (cur.equals(next)) return false;
+        if (u.getUsername().equals(currentUsername()))
+            throw new BizException(ResultCode.CONFLICT, "不能修改自己的角色，请另一位管理员操作");
+        guardKeepsAnAdmin(u, true, next);
+        guardUserInRange(u, next);
+        for (Integer rid : cur) if (!next.contains(rid))
+            userRoles.delete(Wrappers.<AuthUserRole>lambdaQuery().eq(AuthUserRole::getUserId, u.getId()).eq(AuthUserRole::getRoleId, rid));
+        for (Integer rid : next) if (!cur.contains(rid)) {
+            AuthUserRole ur = new AuthUserRole();
+            ur.setUserId(u.getId());
+            ur.setRoleId(rid);
+            userRoles.insert(ur);
+        }
+        audit.log("user.update", "user:" + u.getUsername(), auditDetail);
+        return true;
+    }
+
+    /** 同一次保存里一人只发一条(按账号去重);NoticeService.add 照旧跳过操作人本人。 */
+    private void notifyRoleChanged(Collection<AuthUser> who) {
+        Set<String> sent = new HashSet<>();
+        for (AuthUser u : who)
+            if (sent.add(u.getUsername()))
+                notices.add(u.getUsername(), NoticeService.Kind.perms_changed, "你的角色或权限被改了", "刷新后生效", null);
+    }
+
+    /** 成员增量里的账号;有一个不存在就 404。 */
+    private List<AuthUser> mustUsers(List<Integer> ids) {
+        List<AuthUser> out = new ArrayList<>();
+        for (Integer uid : safe(ids).stream().distinct().toList()) out.add(mustUser(uid));
+        return out;
+    }
+
     // ══════════ 用户 ══════════
 
     public List<UserDTO> listUsers(String q, Integer status, Integer roleId) {
@@ -230,9 +311,7 @@ public class SystemService {
         Map<Integer, List<Integer>> rolesByUser = userRoles.selectList(null).stream()
             .collect(Collectors.groupingBy(AuthUserRole::getUserId,
                      Collectors.mapping(AuthUserRole::getRoleId, Collectors.toList())));
-        Map<Integer, List<String>> permsByRole = rolePerms.selectList(null).stream()
-            .collect(Collectors.groupingBy(AuthRolePerm::getRoleId,
-                     Collectors.mapping(AuthRolePerm::getPerm, Collectors.toList())));
+        Map<Integer, List<String>> permsByRole = knownPermsOf(null);
 
         String kw = q == null ? "" : q.trim().toLowerCase(Locale.ROOT);
         return users.selectList(Wrappers.<AuthUser>lambdaQuery().orderByAsc(AuthUser::getId)).stream()
@@ -280,18 +359,19 @@ public class SystemService {
     public UserDTO updateUser(Integer id, UserUpdateReq req) {
         AuthUser u = mustUser(id);
         boolean self = u.getUsername().equals(currentUsername());
+        Set<Integer> cur = roleIdsOf(id);
+        Set<Integer> next = existingRoleIds(req.roleIds());   // 不存在的角色 id 忽略(同改前 replaceRoles)
 
         // 自锁防护只针对**角色**：改错角色会把自己关在门外，而这系统没有第二条进门的路。
         // 改自己的显示名是无害的，不该一起拦 —— 初版守卫一刀切拦掉整个 updateUser，
         // 结果管理员连自己的名字都改不了（2026-08-22 用户反馈）。
-        if (self && rolesChanged(id, req.roleIds()))
+        if (self && !cur.equals(next))
             throw new BizException(ResultCode.CONFLICT,
                 "不能修改自己的角色。显示名可以改，角色请让另一位管理员来改 —— "
               + "万一改错把自己关在门外，这个系统没有第二条进门的路。");
 
-        boolean rolesDiff = !self && rolesChanged(id, req.roleIds());   // 先判再改,改完就比不出来了
-        if (rolesDiff) guardKeepsAnAdmin(u, true, safe(req.roleIds()));
-        guardUserInRange(u, rolesDiff ? safe(req.roleIds()) : null);
+        boolean rolesDiff = !cur.equals(next);
+        if (!rolesDiff) guardUserInRange(u, null);   // 角色要变时 changeRoles 里判(含改后那份)
         // 只写要改的列(2026-10-04)。整行 updateById(u) 会把事务开头读到的 status / token_version / 口令一起写回,
         // 盖掉这期间别人已提交的停用、踢人:改名的同时另一位管理员停用了他,停用被悄悄撤销、版本号往回走(AuthUserLostUpdateIT)。
         // 下面 setStatus / resetPassword / changeOwnPassword、AdminInitializer 同理。
@@ -299,17 +379,32 @@ public class SystemService {
         patch.setId(id);
         patch.setDisplayName(req.displayName());
         users.updateById(patch);
-        if (!self) replaceRoles(id, req.roleIds());   // 自己那行角色原样不动
-        audit.log("user.update", "user:" + u.getUsername(),
-            self ? "改显示名" : "角色 " + safe(req.roleIds()).size() + " 个");
+        // 角色走角色屏成员栏同一条路径(§15.9):守卫、按差集单行写、审计
+        if (rolesDiff) changeRoles(u, next, "角色：" + roleDiffText(cur, next));
+        else audit.log("user.update", "user:" + u.getUsername(), "改显示名");
         cache.reload();
-        if (rolesDiff) notices.add(u.getUsername(), NoticeService.Kind.perms_changed, "你的角色被改了", "刷新后生效", null);
+        if (rolesDiff) notifyRoleChanged(List.of(u));
         return oneUser(id);
     }
 
-    /** 传进来的角色集合与库里现有的是否不同（顺序无关；null 视为空集）。 */
-    private boolean rolesChanged(Integer userId, List<Integer> incoming) {
-        return !roleIdsOf(userId).equals(new HashSet<>(safe(incoming)));
+    /** 「加「X」；去「Y」」。 */
+    private String roleDiffText(Set<Integer> cur, Set<Integer> next) {
+        Map<Integer, String> name = roles.selectList(null).stream()
+            .collect(Collectors.toMap(AuthRole::getId, AuthRole::getName, (a, b) -> a));
+        List<String> parts = new ArrayList<>();
+        String add = next.stream().filter(x -> !cur.contains(x)).sorted()
+            .map(x -> "「" + name.getOrDefault(x, "#" + x) + "」").collect(Collectors.joining());
+        String del = cur.stream().filter(x -> !next.contains(x)).sorted()
+            .map(x -> "「" + name.getOrDefault(x, "#" + x) + "」").collect(Collectors.joining());
+        if (!add.isEmpty()) parts.add("加" + add);
+        if (!del.isEmpty()) parts.add("去" + del);
+        return String.join("；", parts);
+    }
+
+    private Set<Integer> existingRoleIds(List<Integer> ids) {
+        Set<Integer> out = new HashSet<>();
+        for (Integer rid : safe(ids)) if (rid != null && roles.selectById(rid) != null) out.add(rid);
+        return out;
     }
 
         @NoReviewGuard(reason = "停用/启用账号。出事时要能立刻停,等审核等于把安全动作排进业务队列")
@@ -398,13 +493,13 @@ public class SystemService {
     }
 
     /**
-     * 改角色权限时，不能把当前操作者自己的 system:edit 摘掉 —— 那等于当场锁门。
-     * 只在"这个角色是我自己挂着的、且改完我就没有 system:edit 了"时才拦。
+     * 改角色权限时，不能把当前操作者自己的「角色权限 · 编辑」摘掉 —— 有它就能把别的都改回来,没它等于当场锁门。
+     * 只在"这个角色是我自己挂着的、且改完我就没有它了"时才拦。按单个新键计数,旧键碰不到它。
      */
-    private void guardSelfKeepsSystemEdit(Integer roleId, List<String> nextPerms) {
-        if (nextPerms.contains(Perm.SYSTEM_EDIT)) return;          // 没摘掉,不用管
+    private void guardSelfKeepsRolesEdit(Integer roleId, List<String> nextPerms) {
+        if (nextPerms.contains(Perm.SYS_ROLES_EDIT)) return;          // 没摘掉,不用管
         UserPermissionCache.UserAuth me = cache.get(currentUsername());
-        if (me == null || !me.perms().contains(Perm.SYSTEM_EDIT)) return;
+        if (me == null || !me.perms().contains(Perm.SYS_ROLES_EDIT)) return;
 
         AuthUser self = users.selectOne(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getUsername, currentUsername()));
         if (self == null) return;
@@ -412,32 +507,62 @@ public class SystemService {
             .eq(AuthUserRole::getUserId, self.getId())).stream().map(AuthUserRole::getRoleId).toList();
         if (!myRoles.contains(roleId)) return;                     // 改的不是我挂的角色
 
-        // 我的其它角色里还有 system:edit 吗?有就随便改
+        // 我的其它角色里还有它吗?有就随便改
         boolean elsewhere = myRoles.stream().filter(r -> !r.equals(roleId)).anyMatch(r ->
             count(rolePerms.selectCount(Wrappers.<AuthRolePerm>lambdaQuery()
-                .eq(AuthRolePerm::getRoleId, r).eq(AuthRolePerm::getPerm, Perm.SYSTEM_EDIT))) > 0);
+                .eq(AuthRolePerm::getRoleId, r).eq(AuthRolePerm::getPerm, Perm.SYS_ROLES_EDIT))) > 0);
         if (!elsewhere)
             throw new BizException(ResultCode.CONFLICT,
-                "这一步会摘掉你自己的「系统管理 · 管理」权限，保存后你就不能再改账号和角色了。"
+                "这一步会摘掉你自己的「" + Perm.label(Perm.SYS_ROLES_EDIT) + "」权限，保存后你就不能再改角色了。"
               + "如果确实要收回，请先让另一位管理员操作。");
     }
 
     /**
-     * 角色权限加了哪几项、去了哪几项,用人话名(用户 2026-10-05 拍板:原来只记「权限 N 项」,看不出动了什么)。
-     * 加和去互不相交,全部 28 项一起加也在 detail 的 255 字以内(SystemServicePermDiffTest 钉着)。
+     * 角色权限加了哪几项、去了哪几项,按屏合并(RBAC-SPEC §15.6):「加：月度台账（查看、编辑）、催缴单（签发）；去：…；现共 K 项」。
+     * 107 项全加逐项写必超 auth_audit_log.detail 的 255 字:超了就截到放得下的最后一屏,后面写「等 N 屏」
+     * (SystemServicePermDiffTest 钉着)。
      */
     static String permDiff(Collection<String> before, Collection<String> after) {
         Set<String> b = new HashSet<>(before), a = new HashSet<>(after);
-        Comparator<String> byAll = Comparator.comparingInt(Perm.ALL::indexOf);
-        List<String> add = a.stream().filter(x -> !b.contains(x)).sorted(byAll).map(Perm::label).toList();
-        List<String> del = b.stream().filter(x -> !a.contains(x)).sorted(byAll).map(Perm::label).toList();
-        // 没增没减不说「权限没变」:那一行的动作是「改角色」(只改名 / 备注也走这里);新建时一项没勾也谈不上「没变」
+        List<String> add = byScreen(a.stream().filter(x -> !b.contains(x)).toList());
+        List<String> del = byScreen(b.stream().filter(x -> !a.contains(x)).toList());
+        // 没增没减不说「权限没变」:那一行的动作是「改角色」;新建时一项没勾也谈不上「没变」
         if (add.isEmpty() && del.isEmpty()) return a.isEmpty() ? "没勾任何权限" : "没动权限，共 " + a.size() + " 项";
+        String tail = "现共 " + a.size() + " 项";
+        int na = add.size(), nd = del.size();
+        String out = diffText(add, na, del, nd, tail);
+        while (out.length() > 255 && (na > 1 || nd > 1)) {
+            if (na >= nd) na--; else nd--;
+            out = diffText(add, na, del, nd, tail);
+        }
+        return out;
+    }
+
+    private static String diffText(List<String> add, int na, List<String> del, int nd, String tail) {
         List<String> parts = new ArrayList<>();
-        if (!add.isEmpty()) parts.add("加 " + add.size() + " 项：" + String.join("、", add));
-        if (!del.isEmpty()) parts.add("去 " + del.size() + " 项：" + String.join("、", del));
-        parts.add("现共 " + a.size() + " 项");
+        if (!add.isEmpty()) parts.add("加：" + firstOf(add, na));
+        if (!del.isEmpty()) parts.add("去：" + firstOf(del, nd));
+        parts.add(tail);
         return String.join("；", parts);
+    }
+
+    private static String firstOf(List<String> groups, int n) {
+        String head = String.join("、", groups.subList(0, n));
+        return n < groups.size() ? head + "等 " + groups.size() + " 屏" : head;
+    }
+
+    /** 按 Perm.ALL 顺序把键并到屏:「月度台账（查看、编辑）」;跨屏的键写自己的名字(「审核」)。 */
+    private static List<String> byScreen(List<String> keys) {
+        Map<String, List<String>> acts = new LinkedHashMap<>();
+        for (String k : keys.stream().sorted(Perm.BY_ALL).toList()) {
+            String label = Perm.label(k);
+            int dot = label.indexOf(" · ");
+            Perm.Screen scr = Perm.screen(k.substring(0, Math.max(0, k.lastIndexOf(':'))));
+            if (scr == null || dot < 0) acts.put(label, null);
+            else acts.computeIfAbsent(scr.label(), x -> new ArrayList<>()).add(label.substring(dot + 3));
+        }
+        return acts.entrySet().stream()
+            .map(e -> e.getValue() == null ? e.getKey() : e.getKey() + "（" + String.join("、", e.getValue()) + "）").toList();
     }
 
     // ══════════ 分级(RBAC-SPEC §12,用户 2026-10-04 拍板) ══════════
@@ -452,8 +577,8 @@ public class SystemService {
         if (iAmSuperAdmin()) return List.of();
         UserPermissionCache.UserAuth me = cache.get(currentUsername());
         Set<String> mine = me == null ? Set.of() : me.perms();
-        return Perm.withImplied(perms).stream().filter(p -> !mine.contains(p))
-            .sorted(Comparator.comparingInt(Perm.ALL::indexOf)).map(Perm::label).toList();
+        return Perm.withImplied(perms).stream().filter(p -> Perm.exists(p) && !mine.contains(p))
+            .sorted(Perm.BY_ALL).map(Perm::label).toList();
     }
 
     /** 屏上置灰的判据(RoleDTO / UserDTO.manageable),与下面两个守卫同一条。 */
@@ -538,11 +663,24 @@ public class SystemService {
             .stream().map(AuthUserRole::getRoleId).collect(Collectors.toSet());
     }
 
-    /** 这几个角色勾的权限点并集(库里原样,不展开隐含 —— beyondMe 会展开)。 */
+    /** 这几个角色勾的权限点并集(只认新键;不展开隐含 —— beyondMe 会展开)。 */
     private Set<String> permsOfRoles(Collection<Integer> roleIds) {
-        if (roleIds.isEmpty()) return Set.of();
-        return rolePerms.selectList(Wrappers.<AuthRolePerm>lambdaQuery().in(AuthRolePerm::getRoleId, roleIds))
-            .stream().map(AuthRolePerm::getPerm).collect(Collectors.toSet());
+        return knownPermsOf(roleIds).values().stream().flatMap(List::stream).collect(Collectors.toSet());
+    }
+
+    /**
+     * 角色 → 勾的权限点,**只认新键**、按 Perm.ALL 排(RBAC-SPEC §15.6 / §15.8)。读 auth_role_perm 的地方一律走它:
+     * 旧键行(V140 只增不删)不出现在角色屏、不参与分级比较和「权限变没变」的判断。roleIds = null 是全部角色。
+     */
+    private Map<Integer, List<String>> knownPermsOf(Collection<Integer> roleIds) {
+        if (roleIds != null && roleIds.isEmpty()) return Map.of();
+        var q = Wrappers.<AuthRolePerm>lambdaQuery();
+        if (roleIds != null) q.in(AuthRolePerm::getRoleId, roleIds);
+        Map<Integer, List<String>> out = new HashMap<>();
+        for (AuthRolePerm rp : rolePerms.selectList(q))
+            if (Perm.exists(rp.getPerm())) out.computeIfAbsent(rp.getRoleId(), k -> new ArrayList<>()).add(rp.getPerm());
+        out.values().forEach(l -> l.sort(Perm.BY_ALL));
+        return out;
     }
 
     private static String currentUsername() {

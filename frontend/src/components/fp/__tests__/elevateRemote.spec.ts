@@ -21,7 +21,7 @@ vi.mock('@/api/perms', () => ({
   loadPermDict: () => Promise.resolve(),
 }))
 
-const PERM = 'param-policy:edit'
+const PERM = 'params:edit'
 
 type Vm = { send: () => Promise<void>; picked: string | null; tab: string }
 

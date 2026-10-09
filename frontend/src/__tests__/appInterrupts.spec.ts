@@ -212,7 +212,7 @@ describe('临时授权到期 / 被系统提前收回:底部一句', () => {
 
 describe('多份:一份先到期', () => {
   const other = (leftMs: number): Grant =>
-    ({ perm: 'param-policy:edit', permLabel: '计费口径', authorizer: 'li', authorizerName: '李主管', expiresAt: Date.now() + leftMs })
+    ({ perm: 'alloc:pools', permLabel: '计费口径', authorizer: 'li', authorizerName: '李主管', expiresAt: Date.now() + leftMs })
 
   // 破坏验证:post 那个 watch 不分全到期 / 一份先到期(都说「授权已到期」)→ 红
   it('❗两份里先到期一份:「「月度台账」的授权已到期」,另一份还在', async () => {
@@ -257,7 +257,7 @@ describe('多份:一份先到期', () => {
     await flushPromises()
     expect(auth.grants.map((g) => g.permLabel), '前置:先到期那份掉了').toEqual(['计费口径'])
     let em!: ReturnType<typeof useEditMode>
-    mount(defineComponent({ setup() { em = useEditMode(['param-policy:edit']); return () => h('div') } }))
+    mount(defineComponent({ setup() { em = useEditMode(['alloc:pools']); return () => h('div') } }))
     em.editMode.value = true
     await nextTick()
     em.exit()

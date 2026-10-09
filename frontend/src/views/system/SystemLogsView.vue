@@ -8,7 +8,7 @@
 // ⚠ 服务端分页(不是前端切片):param_change_log 随每次改参数只涨不跌,全捞进内存再切迟早撑爆。
 //   换页、改筛选、窗口高度变导致每页行数变 —— 三条路径都必须重新发请求。
 //
-// 全屏只读,只需 system:view(整层无权时导航不显示、路由守卫也会兜),所以屏内不做任何权限判断。
+// 全屏只读,只需「操作日志 · 查看」(无权时导航不显示、路由守卫也会兜),所以屏内不做任何权限判断。
 import { ref, computed, onMounted, watch } from 'vue'
 import { onReactivated } from '@/composables/onReactivated'
 import { systemApi } from '@/api/system'

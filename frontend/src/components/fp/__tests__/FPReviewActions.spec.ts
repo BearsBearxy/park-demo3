@@ -12,6 +12,7 @@ import { useReviewStore } from '@/stores/review'
 import { reviewApi } from '@/api/review'
 import { receipts } from '@/utils/receipt'
 import { ownSubmission, type ReviewRow, type ReviewStatus } from '@/types/review'
+import api from '@/api'
 
 vi.mock('@/api/review', () => ({
   reviewApi: {
@@ -75,7 +76,8 @@ function mountWith(opts: {
   const auth = useAuthStore()
   auth.me = opts.me ?? 'zhangsan'
   auth.superAdmin = opts.superAdmin ?? false
-  auth.permissions = opts.perms ?? ['entry:edit']
+  // 缺省:本文件用到的三种键(附表12 / 公共电核算 / 光伏报送)的录入人 —— 交审逐键判(canSubmitKey)
+  auth.permissions = opts.perms ?? ['salary:edit', 'alloc-loss:edit', 'pv-income:edit']
   const w = mount(FPReviewActions, {
     props: {
       keys: opts.keys === undefined ? [KEY] : opts.keys,
@@ -120,7 +122,7 @@ describe('审核动作簇 FPReviewActions', () => {
 
   // 破坏验证:把 toApprove 的 inState('submitted') 改成 inState('submitted','entered') → 红
   it('❗未交审 · 审核员:不画一颗灰着的「通过」', () => {
-    const w = mountWith({ rows: [], perms: ['entry:edit', 'review:approve'] })
+    const w = mountWith({ rows: [], perms: ['salary:edit', 'review:approve'] })
     expect(labels(w)).not.toContain('通过')
     expect(labels(w)).not.toContain('退回')
   })
@@ -141,7 +143,7 @@ describe('审核动作簇 FPReviewActions', () => {
   it('❗待审核 · 审核员:画「通过」「退回」', () => {
     const w = mountWith({
       rows: [row(KEY, 'submitted', { submittedBy: 'lisi' })],
-      perms: ['entry:edit', 'review:approve'],
+      perms: ['salary:edit', 'review:approve'],
     })
     expect(labels(w)).toEqual(['通过', '退回'])
   })
@@ -167,7 +169,7 @@ describe('审核动作簇 FPReviewActions', () => {
   it('❗已审核 · 审核员:画「撤销审核」', () => {
     const w = mountWith({
       rows: [row(KEY, 'approved', { reviewedBy: '李审' })],
-      perms: ['entry:edit', 'review:approve'],
+      perms: ['salary:edit', 'review:approve'],
     })
     expect(labels(w)).toEqual(['撤销审核'])
   })
@@ -179,7 +181,7 @@ describe('审核动作簇 FPReviewActions', () => {
 
   // 破坏验证:toApprove 不滤自己交的(恒 toReview)→ 红;selfOnly 恒 false → 按钮整组消失 → 红
   it('❗待审核 · 自己交的、我又是审核员:「通过」「退回」照画但按不动,悬停说要别人审;撤回照常', async () => {
-    const w = mountWith({ rows: [row(KEY, 'submitted')], me: 'zhangsan', perms: ['entry:edit', 'review:approve'] })
+    const w = mountWith({ rows: [row(KEY, 'submitted')], me: 'zhangsan', perms: ['salary:edit', 'review:approve'] })
     expect(labels(w).sort()).toEqual(['撤回', '通过', '退回'].sort())
     for (const t of ['通过', '退回']) {
       expect(btnOf(w, t).attributes('disabled'), t).toBeDefined()
@@ -192,7 +194,7 @@ describe('审核动作簇 FPReviewActions', () => {
 
   // 破坏验证:ownSubmission 去掉 !superAdmin → 红
   it('❗系统管理员自己交的照样能自己审', async () => {
-    const w = mountWith({ rows: [row(KEY, 'submitted')], me: 'zhangsan', superAdmin: true, perms: ['entry:edit', 'review:approve'] })
+    const w = mountWith({ rows: [row(KEY, 'submitted')], me: 'zhangsan', superAdmin: true, perms: ['salary:edit', 'review:approve'] })
     expect(btnOf(w, '通过').attributes('disabled')).toBeUndefined()
     await click(w, '通过')
     expect(reviewApi.approve).toHaveBeenCalledWith(KEY)
@@ -202,7 +204,7 @@ describe('审核动作簇 FPReviewActions', () => {
   it('❗多键里混着自己交的:「通过」只发别人交的那几把,项数也只数它们', async () => {
     const w = mountWith({
       rows: [row(KEY, 'submitted'), row(KEY2, 'submitted', { submittedBy: 'lisi' })],
-      keys: [KEY, KEY2], me: 'zhangsan', perms: ['entry:edit', 'review:approve'],
+      keys: [KEY, KEY2], me: 'zhangsan', perms: ['salary:edit', 'review:approve'],
     })
     expect(btnOf(w, '通过').attributes('disabled')).toBeUndefined()
     await click(w, '通过')
@@ -239,7 +241,7 @@ describe('审核动作簇 FPReviewActions', () => {
   })
 
   // 审核员被放进来是为了通过 / 退回:没录入权的表不给「交审」—— 点下去后端恒 403(附表12 缺工资录入的审核员就是这样)
-  // 破坏验证:toSubmit 去掉 props.canEdit 那道 → 红
+  // 破坏验证:toSubmit 去掉 canSubmitKey 那道 → 红
   it('❗canEdit=false 但有审核权:录入中的表不画「交审」', () => {
     const w = mountWith({
       rows: [row(KEY, 'entered')],
@@ -250,10 +252,33 @@ describe('审核动作簇 FPReviewActions', () => {
     expect(labels(w).some((t) => t.startsWith('交审'))).toBe(false)
   })
 
+  // RBAC v4:交审逐键判、只认角色给的(后端 ReviewService.requireAnyPerm 查角色快照,不认提权)。
+  // 宿主给的 canEdit(编辑模式按钮画不画)对这几种人都是真:本屏有别的写权、或能请提权。
+  // 破坏验证:toSubmit 去掉 canSubmitKey → 两条都红;canSubmitKey 的 has 换成 auth.can(含提权)→ 「借来的」那条红
+  it('❗只有「园区抄表 · 表档案」、只能请提权的人:已录入的月不画「交审」', () => {
+    for (const perms of [['meters:archive'], ['meters:view', 'elevate:request']]) {
+      const w = mountWith({ rows: [], keys: ['meters:2025-06'], perms })
+      expect(labels(w), perms.join()).toEqual([])
+      w.unmount()
+    }
+  })
+
+  it('❗借来的「园区抄表 · 编辑」(主管当场授权)也不画「交审」', async () => {
+    localStorage.setItem('token', 't')   // refreshElevation 只在已登录时取
+    try {
+      vi.mocked(api.get).mockResolvedValueOnce([{ perm: 'meters:edit', permLabel: '园区抄表 · 编辑', authorizer: 'boss',
+        authorizerName: '王主管', expiresAt: Date.now() + 1_000_000 }] as never)
+      await useAuthStore().refreshElevation()
+      const w = mountWith({ rows: [], keys: ['meters:2025-06'], perms: ['meters:archive', 'elevate:request'] })
+      expect(useAuthStore().can('meters:edit'), '前提:借到了').toBe(true)
+      expect(labels(w)).toEqual([])
+    } finally { localStorage.removeItem('token') }
+  })
+
   // 没有审核权的只读账号仍然一颗都不画 —— 上面那条不是把门拆了
   it('❗canEdit=false 且无审核权:仍然整簇不渲染', () => {
     const w = mountWith({
-      rows: [row(KEY, 'submitted')], canEdit: false, perms: ['entry:view'], me: 'holder',
+      rows: [row(KEY, 'submitted')], canEdit: false, perms: ['salary:view'], me: 'holder',
     })
     expect(w.findAll('button')).toHaveLength(0)
   })
@@ -304,7 +329,7 @@ describe('审核动作簇 FPReviewActions', () => {
   it('❗编辑态:审核员的通过/退回/撤销也一并不画', () => {
     const w = mountWith({
       rows: [row(KEY, 'submitted', { submittedBy: 'lisi' })],
-      perms: ['entry:edit', 'review:approve'], edit: true,
+      perms: ['salary:edit', 'review:approve'], edit: true,
     })
     expect(labels(w)).toEqual([])
   })
@@ -313,7 +338,7 @@ describe('审核动作簇 FPReviewActions', () => {
 
   // 破坏验证:把 nSuffix 的 n > 1 改成 n > 99(恒不带) → 红
   it('❗多键:按钮文案带项数「交审（2 项）」', () => {
-    const w = mountWith({ rows: [], keys: [KEY, KEY2] })
+    const w = mountWith({ rows: [], keys: [KEY, KEY2], perms: ['salary:edit', 'alloc-loss:edit'] })
     expect(labels(w)).toEqual(['交审（2 项）'])
   })
 
@@ -362,7 +387,7 @@ describe('审核动作簇 FPReviewActions', () => {
 
   // 破坏验证:把 doSubmit 里的 submitAll(ks) 换成 submitAll([keys[0]]) → 红(只交了一把)
   it('❗多键交审一次交两把(公共电核算屏 alloc + alloc-loss)', async () => {
-    const w = mountWith({ rows: [], keys: [KEY, KEY2] })
+    const w = mountWith({ rows: [], keys: [KEY, KEY2], perms: ['salary:edit', 'alloc-loss:edit'] })
     await click(w, '交审（2 项）')
     bodyBtn('交审')!.click()
     await flushPromises()
@@ -376,7 +401,7 @@ describe('审核动作簇 FPReviewActions', () => {
   it('❗「退回」走 FPReviewDialog,理由必填后才发请求', async () => {
     const w = mountWith({
       rows: [row(KEY, 'submitted', { submittedBy: 'lisi' })],
-      perms: ['entry:edit', 'review:approve'],
+      perms: ['salary:edit', 'review:approve'],
     })
     await click(w, '退回')
     expect(document.body.textContent).toContain('退回 · 附表12 · 2025-06')
@@ -396,7 +421,7 @@ describe('审核动作簇 FPReviewActions', () => {
   it('❗「撤销审核」复用同一张卡,发的是 withdraw', async () => {
     const w = mountWith({
       rows: [row(KEY, 'approved', { reviewedBy: '李审' })],
-      perms: ['entry:edit', 'review:approve'],
+      perms: ['salary:edit', 'review:approve'],
     })
     await click(w, '撤销审核')
     expect(document.body.textContent).toContain('撤销审核 · 附表12 · 2025-06')
@@ -455,7 +480,7 @@ describe('审核动作簇 FPReviewActions', () => {
              row(YK('02'), 'submitted', { submittedBy: 'lisi' }),
              row(YK('03'), 'approved')],
       year: 2025, keys: [YK('01'), YK('02'), YK('03'), YK('04')],
-      perms: ['entry:edit', 'review:approve'],
+      perms: ['pv-income:edit', 'review:approve'],
     })
     // 04 库里没行 = 派生 entered → 只它一个够交审 → 写成「交审 4 月」
     expect(labels(w).sort())
@@ -497,7 +522,7 @@ describe('审核动作簇 FPReviewActions', () => {
   it('❗「通过」不预判上游前置:blockedBy 非空照样可点,409 由后端说', async () => {
     const w = mountWith({
       rows: [row(KEY, 'submitted', { submittedBy: 'lisi', blockedBy: ['计费参数'] })],
-      perms: ['entry:edit', 'review:approve'],
+      perms: ['salary:edit', 'review:approve'],
     })
     const b = w.findAll('button').find((x) => x.text().trim() === '通过')!
     expect(b.attributes('disabled')).toBeUndefined()
@@ -511,7 +536,7 @@ describe('审核动作簇 FPReviewActions', () => {
     ;(reviewApi.approve as ReturnType<typeof vi.fn>).mockRejectedValueOnce({ code: 409, message: '计费参数 当前是「已审核」,不能通过' })
     const w = mountWith({
       rows: [row(KEY, 'submitted', { submittedBy: 'lisi' })],
-      perms: ['entry:edit', 'review:approve'],
+      perms: ['salary:edit', 'review:approve'],
     })
     await click(w, '通过')
     expect(receipts.map(r => [r.tone, r.text])).toEqual([['fail', '计费参数 当前是「已审核」,不能通过']])

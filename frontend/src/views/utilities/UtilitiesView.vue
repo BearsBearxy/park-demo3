@@ -195,7 +195,7 @@ const onExport = () => guard('导出失败', async () => {
           :sub="meta.sub"
           :year="year"
           :edit="edit"
-          perm="entry:edit"
+          perm="utilities:edit"
           :review-keys="reviewKeys"
           @back="goGate"
           @toggle-edit="edit = !edit"

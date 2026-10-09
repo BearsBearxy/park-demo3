@@ -11,6 +11,7 @@ import { __resetAnaSettingsForTest, anaSettings } from '@/analysis/anaSettings'
 import { analysisApi } from '@/api/analysis'
 import { useAuthStore } from '@/stores/auth'
 import { receipt } from '@/utils/receipt'
+import { viewsOf } from '@/test-utils/perms'
 
 vi.mock('@/analysis/anaData', () => ({
   fetchAvailableMonths: () => Promise.resolve({ months: ['2025-01', '2025-06', '2025-10'], sources: {} }),
@@ -18,7 +19,10 @@ vi.mock('@/analysis/anaData', () => ({
 // 权限点人话名来自后端 Perm.META(/auth/perms);这里只给要用的一项
 vi.mock('@/api/perms', () => ({
   loadPermDict: () => Promise.resolve(),
-  permLabel: (k: string) => ({ 'report:edit': '账簿报表' } as Record<string, string>)[k] ?? k,
+  permLabel: (k: string) => ({
+    'park:edit': '出租与楼栋 · 编辑', 'fin-cashflow:edit': '现金流量分析 · 编辑', 'churn:edit': '租户流失预警 · 编辑',
+    'anomaly:edit': '异常提醒中心 · 编辑', 'breakeven:edit': '盈亏平衡与敏感性 · 编辑', 'pv-roi:edit': '光伏投资回收 · 编辑',
+  } as Record<string, string>)[k] ?? k,
 }))
 
 import AnaShell, { periodNote } from './AnaShell.vue'
@@ -211,8 +215,13 @@ describe('AnaShell 悬停说明', () => {
   })
 })
 
-// 目标与阈值存库、全员一份(用户 2026-10-05 拍板「2按你建议，3，4一起做」第 2 条):只有账簿报表编辑权能改
-describe('目标与阈值:库里一份,没有账簿报表编辑权只读', () => {
+// 目标与阈值存库、全员一份(用户 2026-10-05 拍板「2按你建议，3，4一起做」第 2 条)。
+// RBAC v4(2026-10-09,RBAC-SPEC §15.7):六项各归一屏,改哪一项要那一屏的编辑权(ANA_SETTING_SCREEN)
+const ALL_SIX = ['park:edit', 'fin-cashflow:edit', 'churn:edit', 'anomaly:edit', 'breakeven:edit', 'pv-roi:edit']
+// 弹层里六个框的顺序:出租率 / 收缴率 / 风险线 / 能耗突变 / 固定成本占比 / 光伏投资
+const LABELS = ['出租与楼栋 · 编辑', '现金流量分析 · 编辑', '租户流失预警 · 编辑', '异常提醒中心 · 编辑', '盈亏平衡与敏感性 · 编辑', '光伏投资回收 · 编辑']
+type TipEl2 = HTMLElement & { _tip?: { text: string } }
+describe('目标与阈值:库里一份,每一项要所属那一屏的编辑权', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     __resetAnaSettingsForTest()
@@ -220,24 +229,59 @@ describe('目标与阈值:库里一份,没有账簿报表编辑权只读', () =>
   })
   const openPop = async (w: VueWrapper) => { await w.find('.anx-icobtn').trigger('click') }
 
-  // 破坏验证:anaSettingsLock 恒返回 '' → 红;六个框里去掉任一个 :disabled → 红;恢复默认去掉 :disabled → 红
-  it('❗没有账簿报表编辑权:六个框和「恢复默认」都置灰,弹层里写一句原因', async () => {
-    useAuthStore().permissions = ['analysis:view']
+  // 破坏验证:anaSettingsLock 恒返回 '' → 红;六个框里去掉任一个 :disabled → 红;恢复默认的 :disabled 改回恒 false → 红;
+  //          ANA_SETTING_SCREEN 里任两项的屏对调 → 悬停那句红
+  it('❗六项的编辑一项都没有:六个框和「恢复默认」都置灰;每个框悬停写它要哪一屏的编辑,弹层里一句总说明', async () => {
+    useAuthStore().permissions = viewsOf('analysis')
     const w = mount(AnaShell)
     await flushPromises()
     await openPop(w)
     const inputs = w.findAll('.anx-pop input')
     expect(inputs).toHaveLength(6)
-    inputs.forEach((i, n) => expect(i.attributes('disabled'), `第 ${n + 1} 个框没置灰`).toBeDefined())
+    inputs.forEach((i, n) => {
+      expect(i.attributes('disabled'), `第 ${n + 1} 个框没置灰`).toBeDefined()
+      expect((i.element as TipEl2)._tip?.text).toBe(`全园区共用这一份目标与阈值，需要「${LABELS[n]}」权限才能改`)
+    })
     expect(w.findAll('.anx-pop button').find((b) => b.text() === '恢复默认')!.attributes('disabled')).toBeDefined()
-    expect(w.find('.anx-lock').text()).toBe('全园区共用这一份目标与阈值，需要「账簿报表」权限才能改')
+    expect(w.find('.anx-lock').text()).toBe('全园区共用这一份目标与阈值，置灰的项各要它所属那一屏的编辑权限才能改（停在框上看是哪一屏）')
     // 「完成」照常能点
     expect(w.findAll('.anx-pop button').find((b) => b.text() === '完成')!.attributes('disabled')).toBeUndefined()
   })
 
+  // 只有「出租与楼栋 · 编辑」:只有出租率目标能改;「恢复默认」只送这一项(不送别的五项 —— 后端会整次 403)。
+  // 夹具不退化:六项里一项能改、五项不能 —— 全能 / 全不能都分不出「按项判」和「一把锁管六个框」。
+  // 破坏验证:恢复默认改回送全部六项 → 红;onNum / 框的锁改回一把(任一项锁就全锁)→ 红
+  it('❗只有出租与楼栋的编辑:只有出租率目标能改,恢复默认只把这一项送回默认', async () => {
+    useAuthStore().permissions = [...viewsOf('analysis'), 'park:edit']
+    const save = vi.spyOn(analysisApi, 'saveSettings').mockResolvedValue({})
+    const w = mount(AnaShell)
+    await flushPromises()
+    await openPop(w)
+    const inputs = w.findAll('.anx-pop input')
+    expect(inputs.map((i) => i.attributes('disabled') === undefined)).toEqual([true, false, false, false, false, false])
+    expect((inputs[0].element as TipEl2)._tip, '能改的框不挂说明').toBeUndefined()
+    const reset = w.findAll('.anx-pop button').find((b) => b.text() === '恢复默认')!
+    expect(reset.attributes('disabled')).toBeUndefined()
+    await reset.trigger('click')
+    await flushPromises()
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith({ occTarget: 90 })
+  })
+
+  // 只锁一项时那句总说明换成那一项的原话(写明要哪一屏) —— 只差一项还让人逐个框去悬停找,不如直说。
+  // 破坏验证:lockNote 去掉 off.length === 1 那一档 → 红
+  it('❗只差一项(光伏投资回收):说明直接写要「光伏投资回收 · 编辑」', async () => {
+    useAuthStore().permissions = [...viewsOf('analysis'), ...ALL_SIX.filter((p) => p !== 'pv-roi:edit')]
+    const w = mount(AnaShell)
+    await flushPromises()
+    await openPop(w)
+    expect(w.findAll('.anx-pop input').map((i) => i.attributes('disabled') === undefined)).toEqual([true, true, true, true, true, false])
+    expect(w.find('.anx-lock').text()).toBe('全园区共用这一份目标与阈值，需要「光伏投资回收 · 编辑」权限才能改')
+  })
+
   // 破坏验证:onNum 的 catch 不把框放回原数 → 红;saveAnaSettings 不用回包覆盖 → 屏上数不对,红
-  it('❗有账簿报表编辑权:改一项就存进库,屏上用库里回来的数;存不上框里放回原数、说清原因', async () => {
-    useAuthStore().permissions = ['analysis:view', 'report:edit']
+  it('❗六项的编辑都有:改一项就存进库,屏上用库里回来的数;存不上框里放回原数、说清原因', async () => {
+    useAuthStore().permissions = [...viewsOf('analysis'), ...ALL_SIX]
     // 库里存四位小数:回包是库里那个数,屏上用回包的
     const save = vi.spyOn(analysisApi, 'saveSettings').mockResolvedValueOnce({ collectTarget: 95.1235 })
     const fail = vi.spyOn(receipt, 'fail')

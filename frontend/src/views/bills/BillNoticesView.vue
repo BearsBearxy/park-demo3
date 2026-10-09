@@ -39,6 +39,7 @@ import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
+import { useViewGate } from '@/composables/useViewGate'
 import { useChainDeepPeriod } from '@/composables/useDeepPeriod'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { chainStepsOf, noticeYmOf } from '@/nav/billingChain'
@@ -83,9 +84,9 @@ import {
 } from '@/utils/billNoticeExcel'
 
 const auth = useAuthStore()
-// RBAC:本屏两类写权分开 —— 派生(生成/备注)归 billing-run,对外闸门(确认/收款槽)归 billing-issue
-const mayRun = computed(() => auth.can('billing-run:edit'))
-const mayIssue = computed(() => auth.can('billing-issue:edit'))
+// RBAC:本屏两类写权分开 —— 派生(生成/备注)归 bill-notices:edit,对外闸门(确认/收款槽)归 bill-notices:issue
+const mayRun = computed(() => auth.can('bill-notices:edit'))
+const mayIssue = computed(() => auth.can('bill-notices:issue'))
 // EDIT-MODE-SPEC v2 §1:浏览态完全只读——重新生成(覆盖整月)、确认(不可逆单向流转)、批量、
 // 抽屉里的备注改写与收款公司指定,全部收进编辑态;导出/筛选/切期/展开是只读操作,不受管。
 // canRun / canIssue = 有对应权限 且 在编辑态,凡写入口与写函数守卫一律走它(漏一个就是裸写入口)。
@@ -99,7 +100,7 @@ const mayIssue = computed(() => auth.can('billing-issue:edit'))
 const reviewLabel = computed(() => `催缴单 · ${noticeYm.value}`)
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
         lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip, reviewKeys } =
-  useEditMode(['billing-run:edit', 'billing-issue:edit'], {
+  useEditMode(['bill-notices:edit', 'bill-notices:issue'], {
     scope: () => S.billNotices(year.value, month.value),
     // 审核键(§7.1)。与现有 draft→confirmed→exported(主管业务确认,V94)是两条轴,都保留。
     // 催缴单键按催缴单月(收费月)记;月锁仍是链月(抄表月)那一把,与另外四屏同占
@@ -198,8 +199,10 @@ const staleMsg = computed(() => staleText(status.value, 'bill'))
 // 深链协议:KeepAlive 缓存实例只在 setup 消费 query,必须 openFresh
 const router = useRouter()
 const tabs = useTabsStore()
+const { blocked } = useViewGate()
 // edit=1:[去重算] 落地直接进编辑态(参数页的重算按钮只在编辑态出)
 function gotoParams() {
+  if (blocked('/params')) return
   tabs.openFresh('params', { pin: true })
   router.push({ path: '/params', query: { ym: ym.value, edit: '1' } })
 }
@@ -231,7 +234,7 @@ const noticeAlertGroups = computed<AlertGroup[]>(() =>
   buildNoticeAlertGroups(phaseRows.value).map(g => ({
     key: g.key, title: g.title, desc: g.desc, tone: g.tone,
     items: g.items.map(it => ({ text: it.text, hint: it.hint, onClick: () => focusRow(it.tenantId) })),
-    action: { label: g.actionLabel, icon: 'arrow-right', run: () => { alertOpen.value = false; router.push(`/${g.route}`) } },
+    action: { label: g.actionLabel, icon: 'arrow-right', run: () => { if (blocked(`/${g.route}`)) return; alertOpen.value = false; router.push(`/${g.route}`) } },
   })))
 const allAlertGroups = computed<AlertGroup[]>(() => [...alertGroups.value, ...noticeAlertGroups.value])
 // FPAlertChip 的口径全站钉死 = Σ 各组 items.length,**无 items 的组按 1 计**。
@@ -423,7 +426,7 @@ const groupRent = (g: { rows: DisplayRow[] }) => r2(g.rows.reduce((s, r) => s + 
 const footTotal = computed(() => filtered.value.reduce((s, r) => s + (r.totalAmount ?? 0), 0))
 const footRent = computed(() => filtered.value.reduce((s, r) => s + (r.rent ?? 0), 0))
 
-// ── 系数簿窗口(S14):批量改系数;人人可打开只读查看(窗口内编辑模式自查 param-policy:edit) ──
+// ── 系数簿窗口(S14):批量改系数;人人可打开只读查看(窗口内编辑模式自查 bill-notices:coef) ──
 // ?coef=1(计费参数页的「系数簿」按钮)——本屏此前从不读 route,那个按钮从 b6ff7e6 起
 // 一直只是跳过来、窗口不开。账期由 useChainDeepPeriod 认(?p= 与旧 ?ym=,§4.2),落进五屏共读的组级期;本行只读 coef。
 const coefOpen = ref(useRoute().query.coef === '1')
@@ -1290,7 +1293,7 @@ function onMore(key: string) {
               <span class="val">{{ g.items.join('、') }}</span>
               <!-- 落点与屏级问题面板走同一条(router.push(`/${g.route}`)),不另造一条 -->
               <a v-if="g.route" class="go" href="#"
-                 @click.prevent="dlgOpen = false; router.push(`/${g.route}`)">{{ g.actionLabel }}</a>
+                 @click.prevent="!blocked(`/${g.route}`) && (dlgOpen = false, router.push(`/${g.route}`))">{{ g.actionLabel }}</a>
             </div>
             <em class="when">{{ WARN_WHEN }}</em>
           </div>

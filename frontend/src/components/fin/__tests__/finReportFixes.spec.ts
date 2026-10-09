@@ -76,7 +76,8 @@ const saveBtn = (w: VueWrapper) => w.findAll('.fh-r button').find(b => b.text() 
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['master:edit', 'report:edit']
+  // v3 的 master:edit + report:edit 落到 v4:三张报表各自的编辑 + 公司新增删除(月度台账)+ 公司改名(催缴单收款公司)
+  useAuthStore().permissions = ['income-statement:edit', 'balance-sheet:edit', 'trial-balance:edit', 'ledger:company', 'bill-notices:payee']
   vi.clearAllMocks()
   localStorage.clear()
   vi.setSystemTime(new Date('2025-06-15T00:00:00'))

@@ -58,6 +58,7 @@ public class AllocService {
     private final PriceCfgService priceCfg;          // 池引擎取价单一事实源(POOL-ENGINE-SPEC §3)
     private final ParamService params;               // S21:alloc_cfg 写路径(注册表门+变更日志)唯一入口
     private final ReviewGuard reviewGuard;
+    private final com.park.demo3.security.PermissionGuard guard;   // 系数簿改层份走 PUT /alloc/rules/{id}:只许改份额(updateRule)
 
     public AllocService(AllocRuleMapper rules, AllocRuleMeterMapper ruleMeters, AllocRuleMemberMapper ruleMembers,
                         AllocRuleLinkMapper ruleLinks, AllocRuleVersionMapper ruleVersions, MeterMapper meterMaster,
@@ -69,8 +70,9 @@ public class AllocService {
                         BillingTermUnitMapper termUnits,
                         UnitMapper units, ContractUnitMapper contractUnits,
                         ElecCostEntryMapper elecEntries, PriceCfgService priceCfg, ParamService params,
-                        ReviewGuard reviewGuard) {
+                        ReviewGuard reviewGuard, com.park.demo3.security.PermissionGuard guard) {
         this.reviewGuard = reviewGuard;
+        this.guard = guard;
         this.rules = rules; this.ruleMeters = ruleMeters; this.ruleMembers = ruleMembers; this.ruleLinks = ruleLinks;
         this.ruleVersions = ruleVersions; this.meterMaster = meterMaster;
         this.cfgs = cfgs; this.results = results; this.poolResults = poolResults;
@@ -669,6 +671,8 @@ public class AllocService {
         apply(r, req);   // 既有池:coefficient/extraQty/roundScale 入参忽略,分母/加度/取整位只在参数页按版本改
         // A1:名称 / 方法 / 费项 / 算式 / 基数键 / 备注在 alloc_rule 上不分月,改了对所有月生效(updateById 填 updatedAt 之前比)
         boolean allMonths = !r.equals(before);
+        if (!guard.has(com.park.demo3.security.Perm.ALLOC_POOLS) && !coefBookOnlyShares(before, allMonths, pm, pl, pb))
+            throw new BizException(ResultCode.FORBIDDEN, "只有「公共电核算 · 公摊池配置」能改这个池");
         rules.updateById(r);
         if (pb.write()) ruleMembers.deleteByRuleMonth(id, month);   // 只覆盖目标月,其他月已出账口径不动
         saveChildren(id, req, pb.write(), pm, pl);
@@ -686,6 +690,24 @@ public class AllocService {
         // 同时改了不分月的字段就记 ''(同改初始版),全部已生成月都点亮
         params.logRuleChange("set", id, r.getName(), n, allMonths ? "" : month);
         return ruleById(id, month);
+    }
+
+    /**
+     * 只有「催缴单 · 系数簿」、没有「公共电核算 · 公摊池配置」的人(写规则表对 PUT /alloc/rules/{id} 两者任一放行)
+     * 只许改二期电梯 / 消防池受益户的层份(RBAC-SPEC §15.6):① 池在二期且费项是电梯 / 消防;② 名称、方法、费项、定位、
+     * 算式、基数键、备注一个没变;③ 绑定表、折入链这次都不写;④ 受益户的租户集合不变,只有份额变。
+     * 只比「这次会真写的东西」,不比请求原文:系数簿从不带 ym 的 /alloc/rules 取 coefficient(初始版),分母按月改过版的池上
+     * 它和生效版不同,逐字段比会让只有系数簿的人每次改层份都 403;既有池上 apply 本来就忽略 coefficient / extraQty / roundScale。
+     */
+    private static boolean coefBookOnlyShares(AllocRule before, boolean ruleChanged, Part pm, Part pl, Part pb) {
+        return "p2".equals(before.getZone())
+            && (FEE_ELEVATOR.equals(before.getFeeKey()) || "share_elec_fire".equals(before.getFeeKey()))
+            && !ruleChanged && !pm.write() && !pl.write()
+            && tenantsOf(pb.was()).equals(tenantsOf(pb.now()));
+    }
+
+    private static Set<String> tenantsOf(Set<String> memberKeys) {
+        return memberKeys.stream().map(k -> k.substring(0, k.indexOf('|'))).collect(Collectors.toSet());
     }
 
     // D4 一个部分(绑定表 / 折入链)这次写不写。was=站在 M(空 = 初始版 '')的有效组,now=请求里的集合;

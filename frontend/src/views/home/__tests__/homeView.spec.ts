@@ -6,7 +6,7 @@ import { nextTick } from 'vue'
 import { useTabsStore, HOME, NEWTAB } from '@/stores/tabs'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
-import { ALL_VIEWS } from '@/test-utils/perms'
+import { ALL_VIEWS, viewsOf } from '@/test-utils/perms'
 import { useUiStore } from '@/stores/ui'
 
 const r = vi.hoisted(() => ({ value: 'home', push: vi.fn() }))
@@ -115,7 +115,7 @@ describe('首页 · 按查看权滤(RBAC v3)', () => {
     favs.toggle('salary')                              // 预置的本月出账 + 台账 + 工资
     useTabsStore().recent = ['salary', 'ledger']
     const auth = useAuthStore()
-    auth.permissions = ['entry:view']                  // 没有工资查看权
+    auth.permissions = ['data-home:view', 'ledger:view']   // 没有工资那一屏的查看
     const w = mount(HomeView)
     await nextTick()
     expect(tileNames(w)).toEqual(['本月出账', '月度台账'])
@@ -129,7 +129,7 @@ describe('首页 · 按查看权滤(RBAC v3)', () => {
 
   // 破坏验证:.hm-entry 上的 v-if="canBilling" 去掉 → 红
   it('❗看不了本月出账的人(股东):手机入口条整条不出', () => {
-    useAuthStore().permissions = ['analysis:view', 'report:view']
+    useAuthStore().permissions = [...viewsOf('analysis'), ...viewsOf('reports')]
     const w = mount(HomeView)
     expect(w.find('.hm-entry').exists()).toBe(false)
   })

@@ -28,6 +28,7 @@ import { parserProps, runImport } from '@/utils/importRegistry'
 import { tenantApi } from '@/api/tenant'
 import type { TenantDTO } from '@/types/tenant'
 import { useAuthStore } from '@/stores/auth'
+import { useViewGate } from '@/composables/useViewGate'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import FPAlertPanel from '@/components/fp/FPAlertPanel.vue'
@@ -412,7 +413,7 @@ function onMoreSelect(key: string) {
 }
 
 // ── 模板编辑(§3):两态常驻「账册模板」入口(浏览态主行/编辑态⋯,同台账口径),
-//    当前左轨选中的那一册;写权限由第16权限点 book-template:edit 门内控(canEdit 传面板) ──
+//    当前左轨选中的那一册;写权限由「附表10 销售收入 · 账册模板」(sales-income:template)门内控(canEdit 传面板) ──
 const tplOpen = ref(false)
 const tplVersions = ref<TemplateVersion[]>([])
 const tplSaving = ref(false)
@@ -506,6 +507,7 @@ async function closeImport() {
 // ── 未绑定问题抽屉(V105):附表10 与台账同一套语义 ─────────────
 const auth = useAuthStore()
 const router = useRouter()
+const { blocked } = useViewGate()
 const tabs = useTabsStore()
 const issuesOpen = ref(false)
 const allTenants = ref<TenantDTO[]>([])
@@ -550,6 +552,7 @@ async function onBindIssue(name: string, tenantId: number) {
 function gotoTenants() {
   issuesOpen.value = false
   // 页面里的链接 = 新页签紧挨本页右边(TAB-BAR-SPEC §2):附表10 不被换掉,回来还在这个月
+  if (blocked('/tenants')) return
   tabs.open('tenants', { pin: true })
   router.push('/tenants')
 }
@@ -612,7 +615,7 @@ async function onImportClick() {
       <!-- 左轨:本屏四册(期区),入口常驻(§7-3) -->
       <aside class="s10-rail">
         <div class="s10-rail-cap">账册</div>
-        <!-- 附表10 四册固定:公司管理入口(company:manage)恒关,不接 create/remove -->
+        <!-- 附表10 四册固定:公司管理入口(ledger:company)恒关,不接 create/remove -->
         <BookRail :books="books" :active-id="activeBookId" :can-manage="false" @select="(id) => selectBook(Number(id))" />
       </aside>
 
@@ -663,7 +666,7 @@ async function onImportClick() {
               sub="逐月、按期 / 宿舍汇总的租户总收款 · 一行一租户,列为各收款项目 · 金额单位 元"
               :year="year"
               :edit="edit"
-              perm="entry:edit"
+              perm="sales-income:edit"
               :dirty="dirty.size"
               :copy-text="draftAsTsv"
               @back="onBack"
@@ -730,7 +733,7 @@ async function onImportClick() {
                   <FPTenantIssuePanel
                     :groups="issueGroups"
                     :tenants="allTenants"
-                    :can-act="edit && auth.can('entry:edit')"
+                    :can-act="edit && auth.can('sales-income:edit')"
                     act-hint="编辑模式下可绑定"
                     :on-bind="onBindIssue"
                     @goto-tenants="gotoTenants"
@@ -811,21 +814,22 @@ async function onImportClick() {
       :row="bindRowTarget"
       :slot-label="`${year}年${month}月 · ${ZH_PHASE_ISSUE[phase]}`"
       :tenants="bindOptions"
-      :can-bind="edit && auth.can('entry:edit')"
+      :can-bind="edit && auth.can('sales-income:edit')"
       :on-bind="onBindRowCommit"
       :on-rename="onRenameRowCommit"
       @close="bindRowId = null"
     />
 
-    <!-- 模板编辑器(表格态入口,当前左轨选中的那一册的**本月**那版;编辑走 book-template:edit、
-         换版走第17点 book-template:switch;本月已录入 → 模板定稿,面板置灰) -->
+    <!-- 模板编辑器(表格态入口,当前左轨选中的那一册的**本月**那版;编辑走 sales-income:template、
+         换版走 sales-income:version;本月已录入 → 模板定稿,面板置灰) -->
     <TemplateEditorPanel
       :open="tplOpen"
       :book="activeBook"
       :versions="tplVersions"
       :saving="tplSaving"
-      :can-edit="auth.can('book-template:edit')"
-      :can-switch="auth.can('book-template:switch')"
+      :can-edit="auth.can('sales-income:template')"
+      :can-switch="auth.can('sales-income:version')"
+      edit-perm="sales-income:template"
       :month-has-data="monthData?.recorded === true"
       :year="year"
       :month="month"

@@ -102,7 +102,7 @@ interface Vm {
 beforeEach(() => {
   setActivePinia(createPinia())
   // RBAC:两扇门(生成=billing-run,池配置=param-policy)都给齐 —— 编辑态一点就进,守卫只剩锁与 editMode
-  useAuthStore().permissions = ['billing-run:edit', 'param-policy:edit']
+  useAuthStore().permissions = ['alloc:edit', 'alloc:pools']
   acquired.length = 0
   for (const k of Object.keys(query)) delete query[k]
 })

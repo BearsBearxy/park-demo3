@@ -15,7 +15,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// V134(RBAC v3 查看点)迁移本身的行为验证 —— 照 ReviewMigrationIT 的形状:把
+// V134(RBAC v3 查看点)迁移本身的行为验证(键是 v3 旧键原文:迁移文件写的就是它们,v4 的 Perm 已不认) —— 照 ReviewMigrationIT 的形状:把
 // db/migration/V134__rbac_view_perms.sql 从 classpath **原样重放**,验的是那个文件,不抄 SQL。
 //
 // ⚠ 断言前先把 Flyway 启动时种下的 9 个查看点删掉(system:view 不动)。不删的话,本次重放什么都没插
@@ -27,8 +27,8 @@ class RbacViewPermsMigrationIT extends AbstractMysqlIT {
     @Autowired JdbcTemplate jdbc;
     @Autowired UserPermissionCache cache;
 
-    private static final List<String> EIGHT = List.of(Perm.MASTER_VIEW, Perm.CONTRACT_VIEW, Perm.PARAM_VIEW,
-        Perm.METER_VIEW, Perm.BILLING_VIEW, Perm.ENTRY_VIEW, Perm.REPORT_VIEW, Perm.ANALYSIS_VIEW);
+    private static final List<String> EIGHT = List.of("master:view", "contract:view", "param:view",
+        "meter:view", "billing:view", "entry:view", "report:view", "analysis:view");
 
     private void applyMigration() {
         ResourceDatabasePopulator populator = new ResourceDatabasePopulator(
@@ -64,7 +64,15 @@ class RbacViewPermsMigrationIT extends AbstractMysqlIT {
         applyMigration();
         applyV136();   // V136 的断言前把 salary:edit 全删了,这里种回去(重放幂等)
         applyV137();
+        applyV140();   // 上面几个用例删 / 重放的是 v3 旧键;新代码只认 V140 的屏级键,同一容器里后面的 IT 要看到它们(RBAC-SPEC §15.8)
         cache.reload();
+    }
+
+    private void applyV140() {
+        ResourceDatabasePopulator populator = new ResourceDatabasePopulator(
+                new ClassPathResource("db/common/V140__rbac_screen_perms.sql"));
+        populator.setSqlScriptEncoding("UTF-8");
+        populator.execute(jdbc.getDataSource());
     }
 
     private int customRole(String code, String... perms) {
@@ -113,11 +121,11 @@ class RbacViewPermsMigrationIT extends AbstractMysqlIT {
             assertThat(viewsOf(code)).as(code + ":8 个查看点,不含工资").containsExactlyInAnyOrderElementsOf(EIGHT);
         }
         List<String> withSalary = new ArrayList<>(EIGHT);
-        withSalary.add(Perm.SALARY_VIEW);
+        withSalary.add("salary:view");
         for (String code : List.of("admin", "finance_manager")) {
             assertThat(viewsOf(code)).as(code + ":8 个查看点 + 工资").containsExactlyInAnyOrderElementsOf(withSalary);
         }
-        assertThat(viewsOf("shareholder")).containsExactlyInAnyOrder(Perm.ANALYSIS_VIEW, Perm.REPORT_VIEW);
+        assertThat(viewsOf("shareholder")).containsExactlyInAnyOrder("analysis:view", "report:view");
         assertThat(jdbc.queryForObject("SELECT nav_layers FROM auth_role WHERE code = 'shareholder'", String.class))
             .isEqualTo("analysis,reports");
         // 破坏验证:第 ④ 段删掉 → 前三条红;去掉 AND remark = 原句 → 最后一条红
@@ -140,9 +148,9 @@ class RbacViewPermsMigrationIT extends AbstractMysqlIT {
      */
     @Test
     void v136_grantsSalaryEditOnlyToRolesWithEntryEditAndSalaryView_andReplayAddsNoRows() {
-        customRole("it_v136_both", Perm.ENTRY_EDIT, Perm.SALARY_VIEW);
-        customRole("it_v136_entry", Perm.ENTRY_EDIT);
-        customRole("it_v136_view", Perm.SALARY_VIEW);
+        customRole("it_v136_both", "entry:edit", "salary:view");
+        customRole("it_v136_entry", "entry:edit");
+        customRole("it_v136_view", "salary:view");
         jdbc.update("DELETE FROM auth_role_perm WHERE perm = 'salary:edit'");
         jdbc.update("UPDATE auth_role SET remark = '录入/抄表/出账运行;不可改档案、合同、计费口径' WHERE code = 'finance_clerk'");
 
@@ -179,7 +187,7 @@ class RbacViewPermsMigrationIT extends AbstractMysqlIT {
 
         applyV137();
         assertThat(has("admin", Perm.SALARY_EDIT)).as("系统管理员恒能录工资").isTrue();
-        assertThat(has("admin", Perm.SALARY_VIEW)).as("查看一起种,角色屏不画出「编辑勾着、查看空着」").isTrue();
+        assertThat(has("admin", "salary:view")).as("查看一起种,角色屏不画出「编辑勾着、查看空着」").isTrue();
         assertThat(has("finance_clerk", Perm.SALARY_EDIT)).as("只给系统管理员").isFalse();
 
         int before = rows();

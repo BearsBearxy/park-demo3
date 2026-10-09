@@ -81,7 +81,7 @@ export const FP_NAV: NavLayer[] = [
       { value: 'elec-analysis', label: '电费成本分析', icon: 'zap', kind: 'ana' },
       { value: 'charging-analysis', label: '充电桩分析', icon: 'plug', kind: 'ana' } ] },
   ] },
-  // 第 4 层不进 navLayers:可见性直接跟 system:view 走(RBAC-SPEC §4),无权即整层不显示。
+  // 第 4 层不进 navLayers:可见性直接跟三屏各自的查看权走(RBAC-SPEC §4 / §15),一屏都看不了即整层不显示。
   { id: 'system', label: '系统管理', short: '系统', icon: 'settings', caption: '账号与权限 · 仅管理员可见', home: 'sys-users', sections: [
     { items: [
       { value: 'sys-users', label: '用户管理', icon: 'users', kind: 'system' },

@@ -18,11 +18,14 @@ import Button from '@/components/ds/Button.vue'
 import Input from '@/components/ds/Input.vue'
 import Select from '@/components/ds/Select.vue'
 import Segmented from '@/components/ds/Segmented.vue'
+import { lackText } from '@/composables/useViewGate'
 
 const props = defineProps<{
   open: boolean
   unmatched: UnmatchedHeader[]
   existingCols: { id: string; label: string }[]
+  /** 宿主传 can('ledger:template')。映射到现有列、新建自定义列都会升一版模板;没有这一项只能「本次忽略」 */
+  canChangeTemplate: boolean
 }>()
 
 const emit = defineEmits<{
@@ -36,7 +39,7 @@ const rows = ref<RowState[]>([])
 // 每次打开按当前未匹配列重置(新建列显示名预填原表头)
 watch(() => [props.open, props.unmatched] as const, () => {
   if (!props.open) return
-  rows.value = props.unmatched.map(u => ({ action: 'map', targetColId: '', newLabel: u.header }))
+  rows.value = props.unmatched.map(u => ({ action: props.canChangeTemplate ? 'map' : 'ignore', targetColId: '', newLabel: u.header }))
 }, { immediate: true })
 
 const colOptions = computed(() => props.existingCols.map(c => ({ value: c.id, label: c.label })))
@@ -47,7 +50,11 @@ const ACTIONS = [
   { value: 'ignore', label: '本次忽略' },
 ]
 
+// 没有模板权:两种会升版的去向置灰(.cmp-seglock)、点了不动,悬停说缺哪一项
+const lockTip = computed(() => (props.canChangeTemplate ? null : lackText(['ledger:template'])))
+
 function setAction(i: number, v: string) {
+  if (!props.canChangeTemplate && v !== 'ignore') return
   rows.value[i].action = v as ColDecision['action']
 }
 
@@ -81,7 +88,7 @@ function apply() {
           </span>
         </div>
         <div v-if="rows[i]" class="cmp-ctl">
-          <Segmented :model-value="rows[i].action" :options="ACTIONS" size="sm"
+          <Segmented v-tip="lockTip" :class="{ 'cmp-seglock': !canChangeTemplate }" :model-value="rows[i].action" :options="ACTIONS" size="sm"
                      @update:model-value="setAction(i, $event)" />
           <!-- 处置区定宽定高:切换三选一不得让行内其他内容移位(LAYOUT-STABILITY) -->
           <div class="cmp-slot">
@@ -133,6 +140,8 @@ function apply() {
   text-overflow: ellipsis;
 }
 .cmp-ctl { display: flex; align-items: center; gap: 12px; }
+/* 没有账册模板权:前两项(映射 / 新建,都会升版)置灰,只剩「本次忽略」 */
+.cmp-seglock :deep(.ds-seg-item:not(:last-child)) { opacity: .4; cursor: not-allowed; }
 /* 三态共用同一格:Select(sm 32px)/Input(sm 32px)/忽略占位 同高,切换零位移 */
 .cmp-slot { flex: 1; min-width: 0; height: 32px; display: flex; align-items: center; }
 .cmp-slot > * { width: 100%; }

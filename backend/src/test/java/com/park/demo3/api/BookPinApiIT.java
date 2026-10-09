@@ -429,11 +429,12 @@ class BookPinApiIT extends AbstractMysqlIT {
 
     @Test
     void perm17_isRegisteredAndRenderedInMatrix() {
-        assertThat(com.park.demo3.security.Perm.ALL).hasSize(28)   // v3(V134)加了 9 个查看点,V136 加了工资录入
-            .contains(com.park.demo3.security.Perm.BOOK_TEMPLATE_SWITCH);
+        // v4(RBAC-SPEC §15):换版按账册所属屏分成两项,月度台账与附表10 各一个
+        assertThat(com.park.demo3.security.Perm.ALL).hasSize(107)
+            .contains("ledger:version", "sales-income:version");
         assertThat(com.park.demo3.security.Perm.META.stream()
             .map(com.park.demo3.security.Perm.Meta::key))
-            .contains(com.park.demo3.security.Perm.BOOK_TEMPLATE_SWITCH);
+            .contains("ledger:version", "sales-income:version");
     }
 
     // ── 归档列显示(Task 5;spec §2)──

@@ -27,7 +27,7 @@ vi.mock('@/api/alloc', () => ({
   },
 }))
 
-const PERM = 'param-policy:edit'
+const PERM = 'bill-notices:coef'
 
 /**
  * **这份 spec 依赖「今天」,必须钉死。**

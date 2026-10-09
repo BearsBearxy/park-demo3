@@ -1,6 +1,6 @@
 // src/analysis/anaSettings.ts — 分析层目标与阈值。
 // 2026-10-05 用户拍板「2按你建议，3，4一起做」第 2 条:从各人浏览器挪进库(GET / PUT /api/analysis/settings)——
-// 全员看同一份;只有「账簿报表」编辑权能改(没有的人弹层只读、写一句原因);每改一项进操作日志。
+// 全员看同一份;每一项要它所属那一屏的编辑权才能改(RBAC v4,见 ANA_SETTING_SCREEN;没有的人那一项只读、写一句原因);每改一项进操作日志。
 // 浏览器里原来存的不搬(有权的人重填一次),旧键载入时删掉。
 // AnaShell 设置弹层编辑;各屏直接 import anaSettings 读(reactive 单例,改动即时联动)。
 // 进分析层的屏之前路由守卫先 await loadAnaSettings():屏上不会先按默认值画一遍、再跳成库里的数。
@@ -53,13 +53,25 @@ export async function saveAnaSettings(patch: Partial<AnaSettings>): Promise<void
   finally { Object.assign(anaSettings, saved) }
 }
 
-export function resetAnaSettings(): Promise<void> {
-  return saveAnaSettings({ ...ANA_SETTINGS_DEFAULT })
+/** 只把 keys 这几项恢复成默认(「恢复默认」只送自己能改的那几项,RBAC v4 §15.7)。 */
+export function resetAnaSettings(keys: readonly (keyof AnaSettings)[]): Promise<void> {
+  return saveAnaSettings(Object.fromEntries(keys.map((k) => [k, ANA_SETTINGS_DEFAULT[k]])))
 }
 
-/** 改不了时的一句原因(设置弹层用;盈亏平衡滑杆只看它空不空,那一行字自己写);能改返回 ''。store 用到时再取(同 useViewGate)。 */
-export function anaSettingsLock(): string {
-  return useAuthStore().can('report:edit') ? '' : `全园区共用这一份目标与阈值，${lackText(['report:edit'])}才能改`
+/** 每一项归哪一屏:改它要那一屏的「编辑」(RBAC v4 §15.7;后端 AnalysisSettingService.Key 的 screen 同一张表)。 */
+export const ANA_SETTING_SCREEN: Record<keyof AnaSettings, string> = {
+  occTarget: 'park',
+  collectTarget: 'fin-cashflow',
+  churnTh: 'churn',
+  spikeTh: 'anomaly',
+  breakevenFixedRatio: 'breakeven',
+  pvInvestment: 'pv-roi',
+}
+
+/** 这一项改不了时的一句原因(设置弹层、盈亏平衡滑杆用);能改返回 ''。store 用到时再取(同 useViewGate)。 */
+export function anaSettingsLock(key: keyof AnaSettings): string {
+  const p = `${ANA_SETTING_SCREEN[key]}:edit`
+  return useAuthStore().can(p) ? '' : `全园区共用这一份目标与阈值，${lackText([p])}才能改`
 }
 
 /** 测试用:回到没取过库的样子 */

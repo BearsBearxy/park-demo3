@@ -105,7 +105,7 @@ interface Vm {
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['billing-run:edit']
+  useAuthStore().permissions = ['alloc-loss:edit', 'params:view']
   vi.mocked(allocApi.loss).mockResolvedValue(structuredClone(LOSS))
   vi.mocked(allocApi.saveLossNote).mockClear()
   vi.mocked(allocApi.saveLossNote).mockResolvedValue(undefined)

@@ -315,7 +315,7 @@ class ReviewApiIT extends AbstractMysqlIT {
      * 交审的 kind→perm 收窄 —— 这张表(ReviewKind.perms())的唯一消费点,也是它存在的全部理由。
      *
      * URL 层对 submit 放行的是「任一相关 edit 权」(要哪个权限点看 key 里的 kind,URL 判不出来),
-     * 所以只有 entry:edit 的人**请求打得进来**,必须由 service 拦下他交 alloc 的审。
+     * 所以只有附表11 编辑的人**请求打得进来**,必须由 service 拦下他交 alloc 的审。
      * 这条红了就说明 kind→perm 那张表形同虚设。
      */
     @Test
@@ -325,7 +325,7 @@ class ReviewApiIT extends AbstractMysqlIT {
         int roleId = JsonPath.read(body(mvc.perform(MockMvcRequestBuilders.post("/api/system/roles")
             .header("Authorization", hdr(a)).contentType("application/json")
             .content("{\"code\":\"" + role + "\",\"name\":\"只录附表\",\"navLayers\":[\"data\"],"
-                   + "\"perms\":[\"entry:edit\"]}")).andReturn()), "$.data.id");
+                   + "\"perms\":[\"elec-cost:edit\"]}")).andReturn()), "$.data.id");
         String u = "it-eo-" + System.nanoTime();
         try {
             mvc.perform(MockMvcRequestBuilders.post("/api/system/users")
@@ -337,12 +337,12 @@ class ReviewApiIT extends AbstractMysqlIT {
             String t = login(u, PASS);
             seedElecCostEntry();
 
-            // alloc 要的是 billing-run:edit —— 请求打得进来(URL 层放行 entry:edit),被 service 拦下
+            // alloc 要的是「公共电核算 · 编辑」—— 请求打得进来(URL 层放行任一能交审的编辑),被 service 拦下
             String r = body(doPost("/api/review/alloc:" + YM + "/submit", t));
             assertThat((int) JsonPath.read(r, "$.code")).isEqualTo(403);
             assertThat((String) JsonPath.read(r, "$.message")).contains("公共电核算");
 
-            // 同一个人交 elec-model 的审没问题 —— 它要的正是 entry:edit
+            // 同一个人交 elec-model 的审没问题 —— 它要的正是「附表11 电费成本 · 编辑」
             ok(doPost("/api/review/" + MODEL + "/submit", t));
         } finally {
             cleanup(u);
@@ -364,7 +364,7 @@ class ReviewApiIT extends AbstractMysqlIT {
         int roleId = JsonPath.read(body(mvc.perform(MockMvcRequestBuilders.post("/api/system/roles")
             .header("Authorization", hdr(a)).contentType("application/json")
             .content("{\"code\":\"" + role + "\",\"name\":\"录审兼岗\",\"navLayers\":[\"data\"],"
-                   + "\"perms\":[\"entry:edit\",\"review:approve\"]}")).andReturn()), "$.data.id");
+                   + "\"perms\":[\"elec-cost:edit\",\"review:approve\"]}")).andReturn()), "$.data.id");
         String u = "it-rr-" + System.nanoTime();
         try {
             mvc.perform(MockMvcRequestBuilders.post("/api/system/users")

@@ -87,8 +87,8 @@ class AuditTrailIT extends AbstractMysqlIT {
             .containsExactly("2031-01 · 测试员甲 · 基本工资");
         assertThat(total(logs(a, "?src=change&tbl=monthly_ledger&actor=" + actor))).isEqualTo(2);
 
-        // 只有「系统管理 · 查看」:一行都看不到,下拉里没有这个人,也没有可筛的表;计费参数、表档案两路也是空的
-        String onlyLogs = login(mkUser(a, "it-logs-only", mkRole(a, "it_logs_only", "[\"system:view\"]")), PASS);
+        // 只有「操作日志 · 查看」:一行都看不到,下拉里没有这个人,也没有可筛的表;计费参数、表档案两路也是空的
+        String onlyLogs = login(mkUser(a, "it-logs-only", mkRole(a, "it_logs_only", "[\"sys-logs:view\"]")), PASS);
         String none = logs(onlyLogs, "?size=50&actor=" + actor);
         assertThat(total(none)).as("看不到工资和台账的人,操作日志里也不该冒出它们的改前改后").isZero();
         assertThat(total(logs(onlyLogs, "?tbl=salary_record&actor=" + actor))).isZero();
@@ -100,7 +100,7 @@ class AuditTrailIT extends AbstractMysqlIT {
 
         // 加上「工资 · 查看」:只看到工资那一行,台账两行照样看不到
         String salaryViewer = login(mkUser(a, "it-logs-sal",
-            mkRole(a, "it_logs_sal", "[\"system:view\",\"salary:view\"]")), PASS);
+            mkRole(a, "it_logs_sal", "[\"sys-logs:view\",\"salary:view\"]")), PASS);
         String sal = logs(salaryViewer, "?size=50&actor=" + actor);
         assertThat(JsonPath.<List<String>>read(sal, "$.data.rows[*].target")).containsExactly("2031-01 · 测试员甲 · 基本工资");
         assertThat(total(sal)).isEqualTo(1);
@@ -126,7 +126,7 @@ class AuditTrailIT extends AbstractMysqlIT {
     @Test
     void loginSuccessAndFailureAreLogged_withNormalisedUsernameAndIp_neverThePassword() throws Exception {
         String a = admin();
-        String u = mkUser(a, "it-Login", mkRole(a, "it_login", "[\"entry:view\"]"));
+        String u = mkUser(a, "it-Login", mkRole(a, "it_login", "[\"ledger:view\"]"));
         String norm = u.toLowerCase(Locale.ROOT);
         String ip = "10.88." + (System.nanoTime() % 200) + "." + (System.nanoTime() % 199 + 1);
         String nobody = "it-nobody-" + System.nanoTime() % 1000000;
@@ -195,7 +195,7 @@ class AuditTrailIT extends AbstractMysqlIT {
         assertThat(JsonPath.<List<String>>read(logs(a, "?size=1"), "$.data.sources"))
             .containsExactly("param", "import", "auth", "review", "meter", "change");
 
-        String onlyLogs = login(mkUser(a, "it-vis-only", mkRole(a, "it_vis_only", "[\"system:view\"]")), PASS);
+        String onlyLogs = login(mkUser(a, "it-vis-only", mkRole(a, "it_vis_only", "[\"sys-logs:view\"]")), PASS);
         String none = logs(onlyLogs, "?size=50&actor=" + actor);
         assertThat(JsonPath.<List<String>>read(none, "$.data.rows[*].action")).containsExactly("role.update");
         assertThat(total(logs(onlyLogs, "?src=import&actor=" + importer))).isZero();
@@ -203,7 +203,7 @@ class AuditTrailIT extends AbstractMysqlIT {
         assertThat(JsonPath.<List<String>>read(none, "$.data.sources")).containsExactly("auth", "review");
 
         String wider = login(mkUser(a, "it-vis-mb",
-            mkRole(a, "it_vis_mb", "[\"system:view\",\"master:view\",\"billing:view\"]")), PASS);
+            mkRole(a, "it_vis_mb", "[\"sys-logs:view\",\"bill-notices:view\",\"import:view\"]")), PASS);
         String w = logs(wider, "?size=50&actor=" + actor);
         assertThat(JsonPath.<List<String>>read(w, "$.data.rows[*].action"))
             .containsExactlyInAnyOrder("bill-notice.void", "role.update");
@@ -214,21 +214,88 @@ class AuditTrailIT extends AbstractMysqlIT {
 
     // ══════════ ③ 角色权限改了哪几项 ══════════
 
-    /** 破坏验证:updateRole 的 detail 改回「权限 N 项」→ 红。 */
+    /** 破坏验证:updateRole 的 detail 改回「权限 N 项」或不按屏合并 → 红。 */
     @Test
     void roleChangesRecordWhichPermissionsWereAddedAndRemoved() throws Exception {
         String a = admin();
-        int id = mkRole(a, "it_diff", "[\"entry:view\"]");
+        int id = mkRole(a, "it_diff", "[\"ledger:view\"]");
         String target = "role:" + jdbc.queryForObject("SELECT code FROM auth_role WHERE id=?", String.class, id);
         mvc.perform(put("/api/system/roles/" + id).header("Authorization", hdr(a)).contentType("application/json")
-            .content("{\"name\":\"改权限\",\"navLayers\":[\"data\"],\"perms\":[\"report:view\",\"salary:view\"]}"));
+            .content("{\"name\":\"改权限\",\"navLayers\":[\"data\"],\"perms\":[\"income-statement:view\",\"salary:view\"]}"));
         mvc.perform(put("/api/system/roles/" + id).header("Authorization", hdr(a)).contentType("application/json")
-            .content("{\"name\":\"改名不改权限\",\"navLayers\":[\"data\"],\"perms\":[\"report:view\",\"salary:view\"]}"));
+            .content("{\"name\":\"改名不改权限\",\"navLayers\":[\"data\"],\"perms\":[\"income-statement:view\",\"salary:view\"]}"));
         assertThat(jdbc.queryForList("SELECT detail FROM auth_audit_log WHERE target=? ORDER BY id", String.class, target))
             .containsExactly(
-                "加 1 项：台账与附表 · 查看；现共 1 项",
-                "加 2 项：工资 · 查看、报表 · 查看；去 1 项：台账与附表 · 查看；现共 2 项",
+                "加：月度台账（查看）；现共 1 项",
+                "加：附表12 工资明细（查看）、利润表（查看）；去：月度台账（查看）；现共 2 项",
                 "没动权限，共 2 项");
+    }
+
+    /**
+     * 报表金额、损益附表一张表管好几屏(RBAC-SPEC §15.6):按行定位前缀给对应屏的查看者看 ——
+     * 只有利润表查看的人看不到资产负债表的改动,只有附表1 查看的看不到附表2。
+     * 删一家三张报表都有数的公司:按三张表各记一条摘要,只有利润表查看的人只看到「利润表 · {公司}」那一条
+     * (改前记一条裸公司名,按前缀过滤后谁都看不到,系统管理员也看不到)。
+     * 破坏验证:AuditQueryMapper.REF_FILTER 恒真 → 只看利润表的人看到 4 行,红;
+     *          CompanyService.delete 改回一次删光记一条裸公司名 → 「利润表 · 」那条红。
+     */
+    @Test
+    void reportAndPnlRowsShowOnlyToViewersOfThatStatement_andCompanyDeletionIsLoggedPerStatement() throws Exception {
+        String a = admin();
+        String actor = "it_rep_" + System.nanoTime() % 1000000;
+        asUser(actor, () -> {
+            changes.record(Tbl.REPORT, "利润表 · 测试公司 · 2031-01 · 行次 1", "本月数", 1, 2);
+            changes.record(Tbl.REPORT, "资产负债表 · 测试公司 · 2031-01 · 行次 1", "期末数", 1, 2);
+            changes.record(Tbl.PNL, "附表1 租金损益明细 · 2031 年 · 甲", "1月", 1, 2);
+            changes.record(Tbl.PNL, "附表2 电费损益明细 · 2031 年 · 乙", "1月", 1, 2);
+        });
+        assertThat(total(logs(a, "?src=change&actor=" + actor))).isEqualTo(4);
+        String is = login(mkUser(a, "it-rep-is",
+            mkRole(a, "it_rep_is", "[\"sys-logs:view\",\"income-statement:view\",\"rent-pnl:view\"]")), PASS);
+        String seen = logs(is, "?src=change&size=50&actor=" + actor);
+        assertThat(JsonPath.<List<String>>read(seen, "$.data.rows[*].target")).containsExactlyInAnyOrder(
+            "利润表 · 测试公司 · 2031-01 · 行次 1 · 本月数", "附表1 租金损益明细 · 2031 年 · 甲 · 1月");
+        assertThat(total(seen)).isEqualTo(2);
+        assertThat(JsonPath.<List<String>>read(seen, "$.data.tables")).containsExactly("report_amount", "pnl_row");
+        assertThat(JsonPath.<List<String>>read(seen, "$.data.actors")).contains(actor);
+        String bsOnly = login(mkUser(a, "it-rep-bs", mkRole(a, "it_rep_bs", "[\"sys-logs:view\",\"balance-sheet:view\"]")), PASS);
+        assertThat(JsonPath.<List<String>>read(logs(bsOnly, "?src=change&actor=" + actor), "$.data.rows[*].target"))
+            .containsExactly("资产负债表 · 测试公司 · 2031-01 · 行次 1 · 期末数");
+
+        // 删一家三张报表都有数的公司(本类事务回滚)
+        String coName = "IT删司测试" + System.nanoTime() % 100000;
+        int coId = JsonPath.read(body(mvc.perform(post("/api/companies").header("Authorization", hdr(a))
+            .contentType("application/json").content("{\"name\":\"" + coName + "\"}")).andReturn()), "$.data.id");
+        for (String st : List.of("is", "bs", "tb"))
+            jdbc.update("INSERT INTO report_amount (company_id, statement, year, month, row_key, field, amount, created_at, updated_at)"
+                + " VALUES (?, ?, 2031, 1, 'r1', 'cur', 10, NOW(), NOW())", coId, st);
+        assertThat((int) JsonPath.read(body(mvc.perform(delete("/api/companies/" + coId).param("force", "true")
+            .header("Authorization", hdr(a))).andReturn()), "$.code")).isZero();
+        assertThat(JsonPath.<List<String>>read(logs(a, "?tbl=report_amount&size=50&actor=admin"), "$.data.rows[*].target"))
+            .contains("利润表 · " + coName, "资产负债表 · " + coName, "科目余额表 · " + coName);
+        List<String> mine = JsonPath.read(logs(is, "?tbl=report_amount&size=50&actor=admin"), "$.data.rows[*].target");
+        assertThat(mine).contains("利润表 · " + coName)
+            .doesNotContain("资产负债表 · " + coName, "科目余额表 · " + coName, coName);
+    }
+
+    /**
+     * 0.30–0.32 线上写下的「删除公司」报表摘要 row_ref 是裸公司名(0.33 起才按三张表分条、带报表名)。
+     * 升级后系统管理员、看得了任一张报表的人照样看得到;一张报表都看不了的人看不到(这一路整张表都不给)。
+     * 夹具照 origin/master 的 CompanyService.delete 原样写一行(ChangeLogService.summary:field 空、只有说明)。
+     * 破坏验证:REF_FILTER 去掉裸公司名那一行 → 前两条红。
+     */
+    @Test
+    void legacyCompanyDeletionSummaryWithBareCompanyName_staysVisibleToReportViewers() throws Exception {
+        String a = admin();
+        String actor = "it_old_" + System.nanoTime() % 1000000;
+        jdbc.update("INSERT INTO value_change_log (at, actor, tbl, row_ref, field, note) VALUES (NOW(), ?, 'report_amount', "
+            + "'旧版删掉的公司', '', '删除了这家公司，它名下 3 格三大报表金额（所有年月）一并删掉')", actor);
+        assertThat(JsonPath.<List<String>>read(logs(a, "?tbl=report_amount&actor=" + actor), "$.data.rows[*].target"))
+            .as("系统管理员").containsExactly("旧版删掉的公司");
+        String tb = login(mkUser(a, "it-old-tb", mkRole(a, "it_old_tb", "[\"sys-logs:view\",\"trial-balance:view\"]")), PASS);
+        assertThat(total(logs(tb, "?tbl=report_amount&actor=" + actor))).as("只看科目余额表的").isEqualTo(1);
+        String ledger = login(mkUser(a, "it-old-ld", mkRole(a, "it_old_ld", "[\"sys-logs:view\",\"ledger:view\"]")), PASS);
+        assertThat(total(logs(ledger, "?src=change&actor=" + actor))).as("一张报表都看不了的").isZero();
     }
 
     // ══════════ helpers ══════════

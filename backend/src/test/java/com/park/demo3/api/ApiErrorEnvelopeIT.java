@@ -67,6 +67,6 @@ class ApiErrorEnvelopeIT extends AbstractMysqlIT {
         HttpResponse<String> r = send(at("/api/%73ystem/users").header("Authorization", "Bearer " + token).GET());
         assertThat(r.statusCode()).isEqualTo(403);
         assertThat((String) JsonPath.read(r.body(), "$.message"))
-                .isEqualTo(ReadAccessManager.deniedMessage(List.of(Perm.SYSTEM_VIEW)));
+                .isEqualTo(ReadAccessManager.deniedMessage(List.of(Perm.SYS_USERS_VIEW, Perm.SYS_ROLES_VIEW)));
     }
 }

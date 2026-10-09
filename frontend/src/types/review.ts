@@ -83,6 +83,38 @@ export const ownSubmission = (r: ReviewRow | null, me: string | null, superAdmin
   !superAdmin && !!me && r?.submittedBy === me
 export const SELF_REVIEW_TIP = '这张表是你自己交的,要由别人通过或退回'
 
+/**
+ * 审核 kind → 交审要哪一屏的编辑权(任一即可)。与后端 `ReviewKind.perms()` 逐条相同(RBAC-SPEC §15.6);
+ * 交审权 = 那一屏的编辑。楼栋损耗认两把:公共电核算一次交两张表(alloc + alloc-loss)。
+ */
+export const SUBMIT_PERMS: Record<string, readonly string[]> = {
+  params: ['params:edit', 'params:monthly'],
+  meters: ['meters:edit'],
+  alloc: ['alloc:edit'],
+  'alloc-loss': ['alloc-loss:edit', 'alloc:edit'],
+  'bill-notices': ['bill-notices:edit'],
+  ledger: ['ledger:edit'],
+  s10: ['sales-income:edit'],
+  salary: ['salary:edit'],
+  utilities: ['utilities:edit'],
+  pv: ['pv-income:edit'],
+  'charging-car': ['car-charging:edit'],
+  'charging-ebike': ['ebike-charging:edit'],
+  'elec-cost': ['elec-cost:edit'],
+  'elec-model': ['elec-cost:edit'],
+  'report-is': ['income-statement:edit'],
+  'report-bs': ['balance-sheet:edit'],
+  'report-tb': ['trial-balance:edit'],
+}
+
+/**
+ * 这把审核键我能不能交审 / 撤回:键的 kind(第一个 `:` 前)查 SUBMIT_PERMS,任一就算。
+ * has 传 `auth.hasOwn`(只认角色给的,不认提权):后端 ReviewService.requireAnyPerm 查的是角色权限快照,
+ * 借来的编辑权交不了审;只有「园区抄表 · 表档案」或只能请提权的人更交不了 —— 照编辑模式按钮画就是一颗点了 403 的「交审」。
+ */
+export const canSubmitKey = (key: string, has: (perm: string) => boolean): boolean =>
+  (SUBMIT_PERMS[key.slice(0, key.indexOf(':'))] ?? []).some(has)
+
 /** 待审明细的一条(后端 ReviewDtos.PendingItemDTO)。label 是后端拼好的人话名,前端不再拼。 */
 export interface PendingItem {
   key: string

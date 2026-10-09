@@ -1,6 +1,8 @@
 // 报表中心聚合器 + 勾稽 4 项纯函数 — P2-F spec F1-F8。零后端:全走既有端点客端聚合。
 // 勾稽算法复用 computeRow/computeBsRow/tbTotals(公式归前端);容差 0.005;
 // loadHomeData 用 Promise.allSettled 容错:任一源失败该卡「待生成」、相关勾稽 value='—',整体不抛。
+// RBAC v4(2026-10-09,RBAC-SPEC §15.7):只取看得了的那几张;看不了的卡照样列出,值写「没有查看权」,
+// 相关勾稽不算(locked)。附表10 那一边只取四个期区的月合计(/s10/month-totals),不再读整张逐户宽表。
 import { computeBsRow } from './balanceSheet'
 import { computeRow } from './incomeStatement'
 import { tbTotals, type TbAccount, type TbAmounts } from './trialBalance'
@@ -12,6 +14,7 @@ import { s10Api } from '@/api/s10'
 import { finSigned } from '@/utils/finFmt'
 import type { ReportPeriodDTO } from '@/types/report'
 import type { ReconMonth, ReconMonthMeta, ReconOverview, ReconStatus } from '@/types/recon'
+import type { Can } from '@/nav/navAccess'
 
 export type HomeCardKey = 'is' | 'bs' | 'tb' | 's1' | 's2' | 's3' | 's4' | 's5' | 'recon'
 export type TieState = 'ok' | 'bad' | 'none' | 'pending'
@@ -23,9 +26,10 @@ export interface HomeCard {
   icon: string
   go: string          // fpNav 路由值,卡点击 push
   metric: string
-  value: string       // 数值格式化串 | '待生成'
+  value: string       // 数值格式化串 | '待生成' | NO_VIEW
   updated: string     // 数据截止,如 '2025年9月';无数据 '—'
   tie: TieState
+  locked: boolean     // 没有这张报表的查看权:卡照样列出、置灰
 }
 
 export interface TieItem {
@@ -34,6 +38,7 @@ export interface TieItem {
   b: string
   value: string       // 金额/户数;不可算 '—'
   ok: boolean
+  locked: boolean     // 看不了算它要的那张报表:不算、不计入「n / m 项已平」
 }
 
 export interface HomeData {
@@ -58,6 +63,8 @@ export const HOME_CARDS: readonly HomeCardMeta[] = [
 ]
 
 export const TIE_TOL = 0.005
+/** 看不了的卡上那个值的位置写这句(不写「待生成」:那是说没录,这里是不让看)。 */
+export const NO_VIEW = '没有查看权'
 
 type Amounts = Record<string, Record<string, number>>
 
@@ -69,7 +76,7 @@ const TIE_META = {
   recon:  { label: '收入核对',       a: '月度台账',             b: '附表10' },
 } as const
 
-const pendingTie = (k: keyof typeof TIE_META): TieItem => ({ ...TIE_META[k], value: '—', ok: false })
+const pendingTie = (k: keyof typeof TIE_META, locked = false): TieItem => ({ ...TIE_META[k], value: '—', ok: false, locked })
 
 // ── 勾稽① 资产负债表平衡:computeBsRow(30) ⇄ computeBsRow(53) ──
 // ponytail: 勾稽忽略自定义子类行(计划定死 customChildrenSum=()=>null);报表屏内自有精确视图
@@ -77,36 +84,36 @@ export function tieBs(bsAmounts: Amounts): TieItem {
   const leaf = (no: number) => bsAmounts[String(no)]?.end ?? 0
   const assets = computeBsRow(30, leaf, () => null)
   const liabEq = computeBsRow(53, leaf, () => null)
-  return { ...TIE_META.bs, value: finSigned(assets), ok: Math.abs(assets - liabEq) <= TIE_TOL }
+  return { ...TIE_META.bs, value: finSigned(assets), ok: Math.abs(assets - liabEq) <= TIE_TOL, locked: false }
 }
 
 // ── 勾稽② 试算平衡:tbTotals 期末借 ⇄ 期末贷(一级合并口径) ──
 export function tieTb(tbData: ReportPeriodDTO): TieItem {
   const totals = tbTotals((tbData.accounts ?? []) as TbAccount[], tbData.amounts as TbAmounts)
-  return { ...TIE_META.tb, value: finSigned(totals.endDr), ok: Math.abs(totals.endDr - totals.endCr) <= TIE_TOL }
+  return { ...TIE_META.tb, value: finSigned(totals.endDr), ok: Math.abs(totals.endDr - totals.endCr) <= TIE_TOL, locked: false }
 }
 
 // ── 勾稽③ 营业收入交叉:利润表行1(cur) ⇄ Σ s10 四期月合计 ──
-// s10 月合计取 S10MonthDTO.grandTotal(types/s10.ts:后端派生的 25 费用列总计),无需 Σ rows。
+// s10 月合计取 /s10/month-totals:后端逐期区 S10Service.month(…).grandTotal(含自定义列),与改前读宽表取的同一个数。
 export function tieIncome(isAmounts: Amounts, s10MonthTotals: number[]): TieItem {
   const leaf = (no: number, field: string) => isAmounts[String(no)]?.[field] ?? 0
   const rev = computeRow(1, 'cur', leaf, () => null)
   const s10 = s10MonthTotals.reduce((a, b) => a + b, 0)
   const ok = Math.abs(rev - s10) <= TIE_TOL
-  return { ...TIE_META.income, value: ok ? finSigned(rev) : `${finSigned(rev)} ⇄ ${finSigned(s10)}`, ok }
+  return { ...TIE_META.income, value: ok ? finSigned(rev) : `${finSigned(rev)} ⇄ ${finSigned(s10)}`, ok, locked: false }
 }
 
 // ── 勾稽④ 收入核对:该月 diff+miss=0 即平 ──
 export function tieRecon(meta: ReconMonthMeta): TieItem {
   const n = meta.diffCount + meta.missCount
-  return { ...TIE_META.recon, value: `${n} 户待处理`, ok: n === 0 }
+  return { ...TIE_META.recon, value: `${n} 户待处理`, ok: n === 0, locked: false }
 }
 
 // ── 期间默认(F3):recon overview 最大 hasData 月(确定性,不读时钟)→ 取不到才落今年今月 ──
 // 改前取不到落写死的种子期 {2025,9}(我园数据),新园区空库打开报表首页就是 2025 年 9 月。
-// 2026-10-05 用户拍板「按你建议修改」:没数据时读时钟取今月。
-export async function defaultPeriod(): Promise<{ year: number; month: number }> {
-  try {
+// 2026-10-05 用户拍板「按你建议修改」:没数据时读时钟取今月。看不了收入核对(v4)就不问它,直接落今月。
+export async function defaultPeriod(can: Can): Promise<{ year: number; month: number }> {
+  if (can('reconciliation:view')) try {
     const ov = await reconApi.overview()
     const months = ov.months.filter(m => m.hasData).map(m => m.month)
     if (months.length) return { year: ov.year, month: Math.max(...months) }
@@ -116,6 +123,8 @@ export async function defaultPeriod(): Promise<{ year: number; month: number }> 
 }
 
 const settled = <T>(r: PromiseSettledResult<T>): T | null => (r.status === 'fulfilled' ? r.value : null)
+/** 看得了才取;看不了给 null(和取失败一样不算,但卡上另写 NO_VIEW)。 */
+const when = <T>(ok: boolean, f: () => Promise<T>): Promise<T | null> => (ok ? f() : Promise.resolve(null))
 const hasAmounts = (d: ReportPeriodDTO | null): d is ReportPeriodDTO =>
   !!d && Object.keys(d.amounts).length > 0
 
@@ -134,17 +143,19 @@ function reconMeta(ov: ReconOverview | null, mo: ReconMonth | null, month: numbe
 const tieState = (has: boolean, t: TieItem): TieState =>
   !has || t.value === '—' ? 'pending' : t.ok ? 'ok' : 'bad'
 
-export async function loadHomeData(year: number, month: number): Promise<HomeData> {
-  const [core, pnls, s10s] = await Promise.all([
+export async function loadHomeData(year: number, month: number, can: Can): Promise<HomeData> {
+  const sees = (k: HomeCardKey) => can(`${HOME_CARDS.find(m => m.key === k)!.go}:view`)
+  const [core, pnls] = await Promise.all([
     Promise.allSettled([
-      reportApi.allPeriod('is', year, month),
-      reportApi.allPeriod('bs', year, month),
-      reportApi.allPeriod('tb', year, month),
-      reconApi.overview(year),
-      reconApi.month(year, month),
+      when(sees('is'), () => reportApi.allPeriod('is', year, month)),
+      when(sees('bs'), () => reportApi.allPeriod('bs', year, month)),
+      when(sees('tb'), () => reportApi.allPeriod('tb', year, month)),
+      when(sees('recon'), () => reconApi.overview(year)),
+      when(sees('recon'), () => reconApi.month(year, month)),
+      // 勾稽③只在看得了利润表时算(附表10 那一边报表中心查看就能取,只是四个合计)
+      when(sees('is'), () => s10Api.monthTotals(year, month)),
     ]),
-    Promise.allSettled(PNL_SCHEDULES.map(c => pnlApi.overview(c.schedule))),
-    Promise.allSettled([1, 2, 3, 4].map(ph => s10Api.getMonth(ph, year, month))),
+    Promise.allSettled(PNL_SCHEDULES.map(c => when(can(`${c.route}:view`), () => pnlApi.overview(c.schedule)))),
   ])
 
   const isD = settled(core[0])
@@ -152,20 +163,19 @@ export async function loadHomeData(year: number, month: number): Promise<HomeDat
   const tbD = settled(core[2])
   const reconOv = settled(core[3])
   const reconMo = settled(core[4])
+  const s10T = settled(core[5])
 
   // 空 amounts 视同无数据(F6「待生成」);tb 另需科目树
   const isHas = hasAmounts(isD)
   const bsHas = hasAmounts(bsD)
   const tbHas = hasAmounts(tbD) && (tbD.accounts?.length ?? 0) > 0
-  const s10Totals = s10s.every(r => r.status === 'fulfilled')
-    ? s10s.map(r => (r as PromiseFulfilledResult<{ grandTotal: number }>).value.grandTotal)
-    : null
+  const s10Totals = s10T ? [1, 2, 3, 4].map(ph => s10T[ph as 1 | 2 | 3 | 4] ?? 0) : null
   const rMeta = reconMeta(reconOv, reconMo, month)
 
-  const t1 = bsHas ? tieBs(bsD.amounts) : pendingTie('bs')
-  const t2 = tbHas ? tieTb(tbD as ReportPeriodDTO) : pendingTie('tb')
-  const t3 = isHas && s10Totals ? tieIncome(isD.amounts, s10Totals) : pendingTie('income')
-  const t4 = rMeta ? tieRecon(rMeta) : pendingTie('recon')
+  const t1 = bsHas ? tieBs(bsD.amounts) : pendingTie('bs', !sees('bs'))
+  const t2 = tbHas ? tieTb(tbD as ReportPeriodDTO) : pendingTie('tb', !sees('tb'))
+  const t3 = isHas && s10Totals ? tieIncome(isD.amounts, s10Totals) : pendingTie('income', !sees('is'))
+  const t4 = rMeta ? tieRecon(rMeta) : pendingTie('recon', !sees('recon'))
   const tieout = [t1, t2, t3, t4]
 
   const upd = `${year}年${month}月`
@@ -202,6 +212,8 @@ export async function loadHomeData(year: number, month: number): Promise<HomeDat
       : { metric: '已录行数', value: '待生成', updated: '—', tie: 'pending' }
   })
 
-  const cards = HOME_CARDS.map(m => ({ ...m, ...dyn[m.key] }))
+  const cards = HOME_CARDS.map(m => sees(m.key)
+    ? { ...m, ...dyn[m.key], locked: false }
+    : { ...m, metric: dyn[m.key].metric, value: NO_VIEW, updated: '—', tie: 'none' as const, locked: true })
   return { cards, tieout, year, month }
 }

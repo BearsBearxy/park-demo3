@@ -24,7 +24,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * v3「读写分开」(RBAC-SPEC §11,2026-10-04 用户拍板)端到端:真登录,真走 SecurityConfig → ReadAccessManager。
+ * 读写分开(RBAC-SPEC §11)在 v4(§15,每屏一个查看)下的端到端:真登录,真走 SecurityConfig → ReadAccessManager。
  *
  * 不带 @Transactional:要用新建账号登录(权限缓存走 reload 那条路径)。账号与自建角色 @AfterEach 用 jdbc 删掉;
  * 业务数据落在独占的 2080 年或带 IT-V3 前缀的行,各用例 finally 里删。
@@ -56,75 +56,86 @@ class ReadPermissionIT extends AbstractMysqlIT {
         cache.reload();
     }
 
-    // ══ 规则 2:读默认拒绝,缺查看点就 403,文案写明缺哪一项 ══
+    // ══ 读默认拒绝,缺查看就 403,文案写明缺哪一屏(K10:needText 三档) ══
 
     /**
-     * 破坏验证:SecurityConfig 的 GET 规则改回 .authenticated() → 两条 403 断言红;
-     *          accessDeniedHandler 对 GET 仍套 FORBIDDEN 通用句 → 文案断言红。
+     * 破坏验证:SecurityConfig 的 GET 规则改回 .authenticated() → 403 断言红;
+     *          ReadAccessManager.deniedMessage 不走 Perm.needText(把十几个屏名糊在一句) → 「等 12 项」那条红。
      */
     @Test
-    void withoutContractView_contractReadsAre403_andTheMessageNamesTheMissingPerm() throws Exception {
-        String t = userWith(Perm.MASTER_VIEW);
+    void withoutContractsView_contractReadsAre403_andTheMessageNamesTheMissingScreens() throws Exception {
+        String t = userWith("buildings:view");
 
         MvcResult r = mvc.perform(get("/api/contracts/1/terminate-preview")
                 .header("Authorization", hdr(t))).andReturn();
         assertThat(r.getResponse().getStatus()).isEqualTo(403);
         assertThat((String) JsonPath.read(body(r), "$.message"))
-            .isEqualTo("无查看权限：需要「合同 · 查看」，请联系系统管理员在角色里勾上");
-        assertThat(statusOf(get("/api/contracts/summary"), t)).isEqualTo(403);
-        // 对照:同一个账号读主数据是 200 —— 挡住的是合同这一块,不是整个账号
+            .isEqualTo("无查看权限：需要「合同管理 · 查看」，请联系系统管理员在角色里勾上");
+        // 2–3 项:「A」或「B」其中一项
+        assertThat((String) JsonPath.read(body(mvc.perform(get("/api/contracts/1").header("Authorization", hdr(t))).andReturn()),
+                "$.message"))
+            .isEqualTo("无查看权限：需要「合同管理 · 查看」或「租户对标 · 查看」其中一项，请联系系统管理员在角色里勾上");
+        // 4 项及以上:按 ALL 顺序取前两项,写总数 —— /api/tenants 被 12 屏共用
+        assertThat((String) JsonPath.read(body(mvc.perform(get("/api/tenants").header("Authorization", hdr(t))).andReturn()),
+                "$.message"))
+            .isEqualTo("无查看权限：需要「租户管理 · 查看」「合同管理 · 查看」等 12 项中的任一项，请联系系统管理员在角色里勾上");
+        // 对照:同一个账号读楼栋是 200 —— 挡住的是别的屏,不是整个账号
         assertThat(statusOf(get("/api/buildings"), t)).isEqualTo(200);
     }
 
-    // ══ 规则 4 + 7:园区股东 = analysis:view + report:view,分析独立放行 ══
+    // ══ 园区股东 = 报表 10 屏 + 分析 20 屏 + 导入中心(v3 就打得开导入中心),分析独立放行 ══
 
     /**
-     * 分析专用接口、分析白名单里的模块接口与报表(含科目余额表)都能读;模块自己的明细(租户详情、合同终止预览、
-     * 抄表、台账、公摊结果、催缴单)与工资读不到。
-     * 破坏验证:读规则 /api/tenants/summary 去掉 ANALYSIS_VIEW → 白名单那一格红;
-     *          SecurityConfig 的 GET 改回 .authenticated() → 「不应能读」那一格红。
+     * 分析屏实际调到的模块接口能读(不要求对应数据屏的查看);数据屏自己的明细与工资读不到。
+     * v4 收紧的两条:租户 / 合同的 KPI 汇总(/summary)分析层不调,只给本屏。
+     * 破坏验证:读规则 /api/contracts/{id} 去掉 tenant-peer → 「应能读」那一格红;
+     *          /api/tenants/summary 放回分析 → 「不应能读」那一格红。
      */
     @Test
-    void shareholder_readsAnalysisAndItsWhitelist_butNotModuleDetailOrSalary() throws Exception {
+    void shareholder_readsWhatItsScreensCall_butNotModuleDetailOrSalary() throws Exception {
         String t = userInRole(roleIdOf("shareholder"));
         List<String> perms = JsonPath.read(body(mvc.perform(get("/api/auth/me").header("Authorization", hdr(t)))
             .andReturn()), "$.data.permissions");
-        assertThat(perms).containsExactlyInAnyOrder(Perm.ANALYSIS_VIEW, Perm.REPORT_VIEW);
+        List<String> want = new ArrayList<>();
+        for (Perm.Screen s : Perm.SCREENS)
+            if (!"data".equals(s.layer()) && !"system".equals(s.layer())) want.add(s.value() + ":view");
+        want.add("import:view");
+        assertThat(perms).as("报表 10 + 分析 20 + 导入中心;/auth/me 不带旧键").containsExactlyInAnyOrderElementsOf(want);
 
         int tenantId = jdbc.queryForObject("SELECT MIN(id) FROM tenant", Integer.class);
         int contractId = jdbc.queryForObject("SELECT MIN(id) FROM contract", Integer.class);
-        for (String ok : List.of("/api/analysis/months", "/api/tenants/summary", "/api/contracts/summary",
-                "/api/buildings/summary", "/api/tenants", "/api/contracts", "/api/contracts/" + contractId,
-                "/api/companies", "/api/budget/all", "/api/pnl/s2/2025", "/api/reports/is/1/2025/10",
-                "/api/reports/is/1/years", "/api/reports/tb/1/2025/10", "/api/review/pending", "/api/notices")) {
+        for (String ok : List.of("/api/analysis/months", "/api/buildings/summary", "/api/tenants", "/api/contracts",
+                "/api/contracts/" + contractId, "/api/companies", "/api/budget/all", "/api/pnl/s2/2025",
+                "/api/reports/is/1/2025/10", "/api/reports/is/1/years", "/api/reports/tb/1/2025/10",
+                "/api/import-log/overview", "/api/review/pending", "/api/notices")) {
             assertThat(statusOf(get(ok), t)).as("股东应能读 " + ok).isEqualTo(200);
         }
-        for (String no : List.of("/api/tenants/" + tenantId, "/api/contracts/" + contractId + "/terminate-preview",
-                "/api/meters", "/api/ledger/companies/1/years", "/api/alloc/years", "/api/bill-notices",
-                "/api/salary/overview", "/api/salary/records?year=2025&month=1")) {
+        for (String no : List.of("/api/tenants/" + tenantId, "/api/tenants/summary", "/api/contracts/summary",
+                "/api/contracts/" + contractId + "/terminate-preview", "/api/meters", "/api/ledger/companies/1/years",
+                "/api/alloc/years", "/api/bill-notices", "/api/salary/overview", "/api/salary/records?year=2025&month=1")) {
             assertThat(statusOf(get(no), t)).as("股东不应能读 " + no).isEqualTo(403);
         }
         // 可批人接口不收不可提权的点 —— 收的话它就是「谁有工资查看权」的花名册,任何已登录账号都能查。
         // 破坏验证:ApprovalService.candidates 去掉 requireElevatable → 第一条红
         assertThat((int) JsonPath.read(getBody("/api/auth/approvals/candidates?perms=salary:view", t), "$.code"))
             .isEqualTo(403);
-        assertThat((int) JsonPath.read(getBody("/api/auth/approvals/candidates?perms=entry:edit", t), "$.code"))
+        assertThat((int) JsonPath.read(getBody("/api/auth/approvals/candidates?perms=ledger:edit", t), "$.code"))
             .as("对照:可提权的点照常列人").isZero();
     }
 
-    // ══ 规则 5:敏感字段服务端打码 ══
+    // ══ 敏感字段服务端打码:联系人归「租户管理 · 查看」,收款账号归「催缴单 · 查看」 ══
 
     /**
-     * 没有 master:view 的人(这里只有 analysis:view + contract:view)读到的租户联系人、合同详情里的租户快照、
-     * 个人卡户名与收款账号都是掩码,有 master:view 的人是明文;写回时提交掩码 = 没改。
+     * 没有租户查看与催缴单查看的人(这里是合同查看 + 现金流量分析)读到的租户联系人、合同详情里的租户快照、
+     * 个人卡户名与收款账号都是掩码;写回时提交掩码 = 没改。
      * 破坏验证:TenantService.buildTenantDto 的 plain 恒 true → 租户掩码断言红;
      *          CompanyService.toDTO 的 plain 恒 true → 账号掩码断言红;
-     *          TenantService.update 去掉 keepIfMasked → 写回断言红(库里变成星号)。
+     *          TenantService 的别名明文改回含导入中心 / 不含数据层 → 别名那两条之一红。
      */
     @Test
-    void sensitiveFieldsAreMaskedServerSide_withoutMasterView() throws Exception {
-        String ana = userWith(Perm.ANALYSIS_VIEW, Perm.CONTRACT_VIEW);
-        String anaOnly = userWith(Perm.ANALYSIS_VIEW, Perm.REPORT_VIEW);   // 股东那一档:没有任何数据层查看
+    void sensitiveFieldsAreMaskedServerSide_withoutTenantsOrBillNoticesView() throws Exception {
+        String ana = userWith("contracts:view", "fin-cashflow:view");
+        String anaOnly = userWith("park:view", "income-statement:view", "import:view");   // 没有数据层 17 屏的查看
         String name = "IT-V3打码户" + System.nanoTime();
         int tid = JsonPath.read(body(mvc.perform(post("/api/tenants").header("Authorization", hdr(admin))
             .contentType("application/json")
@@ -136,7 +147,6 @@ class ReadPermissionIT extends AbstractMysqlIT {
             .content("{\"kind\":\"personal\",\"accountName\":\"李四\",\"accountNo\":\"6222020200112345678\","
                    + "\"bankName\":\"工商银行\"}")).andReturn()), "$.data.id");
         try {
-            // 租户列表:按 id 取这一行
             String path = "$.data[?(@.id==" + tid + ")]";
             Map<String, Object> masked = one(JsonPath.read(getBody("/api/tenants", ana), path));
             assertThat(masked.get("contactPhone")).isEqualTo("138****5678");
@@ -145,13 +155,12 @@ class ReadPermissionIT extends AbstractMysqlIT {
             assertThat(plain.get("contactPhone")).isEqualTo("13812345678");
             assertThat(plain.get("contactName")).isEqualTo("王小明");
 
-            // 别名里是老板姓名:有数据层查看的(这里是合同查看)要拿它对户,给明文;只有分析 / 报表查看的逐项打码。
-            // 破坏验证:buildTenantDto 的 aliasPlain 恒 true → 「宋**,冯*」那条红
+            // 别名里是老板姓名:有数据层 17 屏任一查看的(这里是合同查看)要拿它对户,给明文;
+            // 只有报表 / 分析 / 导入中心查看的逐项打码(园区股东迁移后有导入中心查看,含了它他就多拿到别名明文)
             assertThat(masked.get("aliases")).isEqualTo("宋测试，冯测");
             assertThat(one(JsonPath.read(getBody("/api/tenants", anaOnly), path)).get("aliases")).isEqualTo("宋**,冯*");
 
-            // 写回:提交的是现值的掩码 = 没改(提权拿到 master:edit 的人表单里回填的就是它)
-            // 破坏验证:TenantService.update 的 aliases 去掉 keepIfMasked → 库里别名变成「宋**,冯*」
+            // 写回:提交的是现值的掩码 = 没改
             mvc.perform(put("/api/tenants/" + tid).header("Authorization", hdr(admin)).contentType("application/json")
                 .content("{\"companyName\":\"" + name + "\",\"businessType\":\"测试\",\"status\":1,\"aliases\":\"宋**,冯*\","
                        + "\"contactName\":\"王**\",\"contactPhone\":\"138****5678\"}"))
@@ -159,7 +168,7 @@ class ReadPermissionIT extends AbstractMysqlIT {
             assertThat(jdbc.queryForMap("SELECT contact_name n, contact_phone p, aliases a FROM tenant WHERE id=?", tid))
                 .containsEntry("n", "王小明").containsEntry("p", "13812345678").containsEntry("a", "宋测试，冯测");
 
-            // 合同详情里的租户快照:取的是 tenant 表现值,归 master,只有 contract:view 的人拿掩码
+            // 合同详情里的租户快照:取的是 tenant 表现值,归租户屏,只有合同查看的人拿掩码
             Map<String, Object> c = jdbc.queryForMap("SELECT c.id id, t.contact_phone p FROM contract c "
                 + "JOIN tenant t ON t.id = c.tenant_id WHERE CHAR_LENGTH(t.contact_phone) >= 11 ORDER BY c.id LIMIT 1");
             String phone = (String) c.get("p");
@@ -193,12 +202,12 @@ class ReadPermissionIT extends AbstractMysqlIT {
     }
 
     /**
-     * 本月出账枢纽对数据层任一 view 开放,催缴单那一步的「· ¥总额」另按 billing:view 判。独占 2080-03 / 2080-04。
+     * 本月出账只要「本月出账 · 查看」,催缴单那一步的「· ¥总额」另按「催缴单 · 查看」判。独占 2080-03 / 2080-04。
      * 破坏验证:DataHomeService 把 noticeTotal 无条件传进 buildChain → 「不含 ¥」断言红。
      */
     @Test
-    void dataHome_noticeTotalNeedsBillingView() throws Exception {
-        String t = userWith(Perm.ENTRY_VIEW);
+    void dataHome_noticeTotalNeedsBillNoticesView() throws Exception {
+        String t = userWith("data-home:view");
         jdbc.update("INSERT INTO tenant(company_name, business_type) VALUES('IT-V3首页户', 'factory')");
         int tid = jdbc.queryForObject("SELECT MAX(id) FROM tenant", Integer.class);
         try {
@@ -215,17 +224,16 @@ class ReadPermissionIT extends AbstractMysqlIT {
         }
     }
 
-    // ══ 工资:读只认 salary:view,写只认 salary:edit(用户 2026-10-04 拍板「按你推荐」);entry:edit 两样都不给 ══
+    // ══ 工资:读只认 salary:view,写只认 salary:edit;月度台账编辑两样都不给 ══
 
     /**
-     * 破坏验证:读规则 /api/salary/** 改成 ENTRY_VIEW → 专员读 403 两条红;
-     *          PermissionRegistry 把 "/api/salary" 放回事后录入那一组 → 专员写 403 那几条红;
-     *          Perm.META 里 SALARY_EDIT 的 group 写成 entry → 「录入员读得到」那条红(salary:edit 不再隐含 salary:view)。
+     * 破坏验证:读规则 /api/salary/** 改成台账查看 → 录入员读 403 两条红;
+     *          PermissionRegistry 把 "/api/salary" 挂到台账编辑 → 录入员写 403 那几条红。
      */
     @Test
-    void salary_readsNeedSalaryView_writesNeedSalaryEdit_entryEditGetsNeither() throws Exception {
-        String clerk = userWith(Perm.ENTRY_EDIT);
-        String hr = userWith(Perm.SALARY_VIEW);
+    void salary_readsNeedSalaryView_writesNeedSalaryEdit_ledgerEditGetsNeither() throws Exception {
+        String clerk = userWith("ledger:edit");
+        String hr = userWith("salary:view");
         String payroll = userWith(Perm.SALARY_EDIT);
         String created = body(mvc.perform(post("/api/salary/records").header("Authorization", hdr(payroll))
             .contentType("application/json")
@@ -235,11 +243,10 @@ class ReadPermissionIT extends AbstractMysqlIT {
         try {
             assertThat((String) JsonPath.read(created, "$.data.name")).as("回包整行:写的人本来就看得见").isEqualTo("IT-V3工资人");
             assertThat(statusOf(get("/api/salary/records?year=2080&month=1"), payroll))
-                .as("录入员读得到:salary:edit 隐含 salary:view").isEqualTo(200);
+                .as("录入员读得到:salary:edit 隐含本屏查看").isEqualTo(200);
 
             assertThat(statusOf(get("/api/salary/overview"), clerk)).isEqualTo(403);
             assertThat(statusOf(get("/api/salary/records?year=2080&month=1"), clerk)).isEqualTo(403);
-            // 六条写路径,只有 entry:edit 的一条都过不去(salary_record 只有 SalaryService 写)
             String json = "application/json";
             assertThat(statusOf(post("/api/salary/records").contentType(json)
                 .content("{\"acctMonth\":\"2080-01\",\"name\":\"IT-V3专员\",\"base\":1}"), clerk)).isEqualTo(403);
@@ -251,7 +258,6 @@ class ReadPermissionIT extends AbstractMysqlIT {
             assertThat(statusOf(delete("/api/salary/imported?year=2080&month=1"), clerk)).isEqualTo(403);
             assertThat(statusOf(delete("/api/salary/batch").contentType(json)
                 .content("{\"ids\":[" + id + "]}"), clerk)).isEqualTo(403);
-            // 只能看的也写不了
             assertThat(statusOf(patch("/api/salary/records/" + id + "/note").contentType(json)
                 .content("{\"note\":\"x\"}"), hr)).isEqualTo(403);
 
@@ -263,15 +269,13 @@ class ReadPermissionIT extends AbstractMysqlIT {
     }
 
     /**
-     * 餐补逐月合计(用户 2026-10-04 拍板「按你推荐」):只有报表查看的人读得到 12 个月的合计,读不到逐人明细。独占 2080 年。
-     * 破坏验证:删掉读规则 /api/salary/lunch-totals → 报表查看 200 那条红(落进 /api/salary/** 只认 salary:view);
-     *          SalaryService.lunchTotals 不按年过滤 → 2079 年那行混进一月,一月合计红;
-     *          out 初值填 0 → 二月 null 那条红。
+     * 餐补逐月合计:损益附表一屏的查看就读得到 12 个月的合计,读不到逐人明细。独占 2080 年。
+     * 破坏验证:删掉读规则 /api/salary/lunch-totals → 附表1 查看 200 那条红(落进 /api/salary/** 只认 salary:view)。
      */
     @Test
-    void lunchTotals_reportViewReadsMonthlySums_butNotPerPersonRows() throws Exception {
-        String report = userWith(Perm.REPORT_VIEW);
-        String entry = userWith(Perm.ENTRY_VIEW);
+    void lunchTotals_pnlViewReadsMonthlySums_butNotPerPersonRows() throws Exception {
+        String report = userWith("rent-pnl:view");
+        String ledger = userWith("ledger:view");
         jdbc.update("INSERT INTO salary_record(acct_month, emp_idx, name, lunch, source) VALUES "
             + "('2080-01', 1, 'IT-V3餐补甲', 300.00, 'manual'), ('2080-01', 2, 'IT-V3餐补乙', 150.50, 'manual'), "
             + "('2080-03', 1, 'IT-V3餐补甲', 0.00, 'manual'), ('2079-01', 1, 'IT-V3餐补丙', 999.00, 'manual')");
@@ -284,22 +288,22 @@ class ReadPermissionIT extends AbstractMysqlIT {
 
             assertThat(statusOf(get("/api/salary/records?year=2080&month=1"), report))
                 .as("逐人明细仍只给工资查看").isEqualTo(403);
-            assertThat(statusOf(get("/api/salary/lunch-totals?year=2080"), entry)).isEqualTo(403);
+            assertThat(statusOf(get("/api/salary/lunch-totals?year=2080"), ledger)).isEqualTo(403);
         } finally {
             jdbc.update("DELETE FROM salary_record WHERE name LIKE 'IT-V3餐补%'");
         }
     }
 
     /**
-     * 催缴单收款账户(用户 2026-10-04 拍板「按你推荐」):有 billing:view 就在 /api/companies/payees 拿到明文 ——
-     * 通知单要发给租户付款;同一个人读 /api/companies(主数据、收款公司窗)仍是掩码;没有 billing:view 的读 /payees 直接 403。
-     * 破坏验证:读规则 /api/companies/payees 并上 ENTRY_VIEW → 「台账查看 403」那条红;
-     *          CompanyService.listForNotice 只认 MASTER_VIEW → 「催缴单查看拿明文」两条红。
+     * 收款账户(v4):账户维护挪到了催缴单屏的收款公司窗,有「催缴单 · 查看」在 /payees 与 /companies 都拿明文;
+     * 没有它的(月度台账查看)读 /companies 是掩码、读 /payees 直接 403。
+     * 破坏验证:读规则 /api/companies/payees 并上台账查看 → 「台账查看 403」那条红;
+     *          CompanyService.list 只按 listForNotice 那条判 → 「/companies 明文」那条红。
      */
     @Test
-    void billNoticePayees_billingViewSeesFullAccount_elsewhereStaysMasked() throws Exception {
-        String billing = userWith(Perm.BILLING_VIEW);
-        String entry = userWith(Perm.ENTRY_VIEW);
+    void payees_billNoticesViewSeesFullAccount_othersMasked() throws Exception {
+        String billing = userWith("bill-notices:view");
+        String ledger = userWith("ledger:view");
         int companyId = jdbc.queryForObject("SELECT MIN(id) FROM management_company", Integer.class);
         int aid = JsonPath.read(body(mvc.perform(post("/api/companies/" + companyId + "/accounts")
             .header("Authorization", hdr(admin)).contentType("application/json")
@@ -310,32 +314,38 @@ class ReadPermissionIT extends AbstractMysqlIT {
             Map<String, Object> full = one(JsonPath.read(getBody("/api/companies/payees", billing), acct));
             assertThat(full.get("accountNo")).isEqualTo("6222020200112345678");
             assertThat(full.get("accountName")).isEqualTo("李四");
-            Map<String, Object> masked = one(JsonPath.read(getBody("/api/companies", billing), acct));
-            assertThat(masked.get("accountNo")).as("别处照旧打码").isEqualTo("****5678");
-            assertThat(masked.get("accountName")).isEqualTo("李*");
+            assertThat(one(JsonPath.read(getBody("/api/companies", billing), acct)).get("accountNo"))
+                .as("收款公司窗同一判据").isEqualTo("6222020200112345678");
 
-            assertThat(statusOf(get("/api/companies/payees"), entry)).isEqualTo(403);
-            assertThat(one(JsonPath.read(getBody("/api/companies", entry), acct)).get("accountNo")).isEqualTo("****5678");
+            assertThat(statusOf(get("/api/companies/payees"), ledger)).isEqualTo(403);
+            Map<String, Object> masked = one(JsonPath.read(getBody("/api/companies", ledger), acct));
+            assertThat(masked.get("accountNo")).isEqualTo("****5678");
+            assertThat(masked.get("accountName")).isEqualTo("李*");
         } finally {
             jdbc.update("DELETE FROM company_account WHERE id=?", aid);
         }
     }
 
-    // ══ 规则 1:编辑隐含查看,在装载快照时展开,不落库 ══
+    // ══ 编辑 / 专有动作隐含本屏查看,在装载快照时展开,不落库,不跨屏 ══
 
-    /** 破坏验证:UserPermissionCache 不调 Perm.withImplied → /api/contracts 的 200 与 me 里的 contract:view 红。 */
+    /**
+     * 破坏验证:UserPermissionCache 不调 Perm.withImplied → /api/contracts 的 200 与 me 里的两项查看红;
+     *          IMPLIED_VIEW 漏了专有动作(只认 :edit 结尾) → ledger:view 那一项红。
+     */
     @Test
-    void editImpliesView_atLoadTime_notStored_andEntryEditNeverSalary() throws Exception {
-        String t = userWith(Perm.CONTRACT_EDIT, Perm.ENTRY_EDIT);
+    void actionsImplyOwnScreenView_atLoadTime_notStored_notAcrossScreens() throws Exception {
+        String t = userWith("contracts:edit", "ledger:company");
         List<String> perms = JsonPath.read(getBody("/api/auth/me", t), "$.data.permissions");
-        assertThat(perms).containsExactlyInAnyOrder(Perm.CONTRACT_EDIT, Perm.ENTRY_EDIT,
-            Perm.CONTRACT_VIEW, Perm.ENTRY_VIEW);
+        assertThat(perms).as("新增删除公司只带出月度台账查看,不带出报表屏")
+            .containsExactlyInAnyOrder("contracts:edit", "contracts:view", "ledger:company", "ledger:view");
         assertThat(statusOf(get("/api/contracts"), t)).isEqualTo(200);
+        assertThat(statusOf(get("/api/ledger/companies/1/years"), t)).isEqualTo(200);
+        assertThat(statusOf(get("/api/reports/is/1/years"), t)).isEqualTo(403);
         assertThat(statusOf(get("/api/salary/overview"), t)).isEqualTo(403);
 
         List<String> stored = jdbc.queryForList("SELECT perm FROM auth_role_perm WHERE role_id=?", String.class,
             roles.get(roles.size() - 1));
-        assertThat(stored).as("隐含的查看不落库").containsExactlyInAnyOrder(Perm.CONTRACT_EDIT, Perm.ENTRY_EDIT);
+        assertThat(stored).as("隐含的查看不落库").containsExactlyInAnyOrder("contracts:edit", "ledger:company");
     }
 
     // ── helpers ──────────────────────────────────────────────────────────

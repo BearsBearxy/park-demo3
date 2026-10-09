@@ -19,7 +19,7 @@ import { iconFor } from '@/components/ds/icon'
 import { useAuthStore } from '@/stores/auth'
 import { receipt } from '@/utils/receipt'
 import { useReviewStore } from '@/stores/review'
-import { ownSubmission, periodOfKey, SELF_REVIEW_TIP, type ReviewRow, type ReviewStatus } from '@/types/review'
+import { canSubmitKey, ownSubmission, periodOfKey, SELF_REVIEW_TIP, type ReviewRow, type ReviewStatus } from '@/types/review'
 
 const props = withDefaults(defineProps<{
   /** 这一屏此刻**看得见**的那几把键。null / 空 = 整簇不渲染。
@@ -109,9 +109,11 @@ const inState = (...ss: ReviewStatus[]) =>
 // 每个动作各自作用于「此刻正处在对应态的那几把键」,不先把多键折成一个态再统一发。
 // 折的话公共电核算屏(alloc + alloc-loss)一把 entered 一把 submitted 时,submitAll 会把
 // 已交审的那把再交一次 —— 吃一个 409,而屏上看不出是哪把出的错。
-// 交审只给宿主说能编辑这张表的人(canEdit):纯审核员、附表12 缺「工资录入」的人点下去后端恒 403
-// (ReviewKind.perms(),交审要这张表的录入权)。show 放审核员进来是为了通过 / 退回,不是为了交审。
-const toSubmit = computed(() => (props.canEdit ? inState('entered', 'returned') : []))
+// 交审逐键判,与后端同一份判据(types/review canSubmitKey ↔ ReviewKind.perms(),RBAC-SPEC §15.6):
+// 只认角色给的(hasOwn),不认提权 —— 后端 requireAnyPerm 查的是角色权限快照。不按宿主的 canEdit 判:
+// canEdit = 编辑模式按钮画不画,本屏任一写权或「可请求提权」就为真,只有「园区抄表 · 表档案」或只能请提权的人
+// 照它会看到一颗点了 403 的「交审」。show 放审核员进来是为了通过 / 退回,不是为了交审。
+const toSubmit = computed(() => inState('entered', 'returned').filter((k) => canSubmitKey(k, auth.hasOwn)))
 const toReview = computed(() => (isReviewer.value ? inState('submitted') : []))
 // 自己交的那几把不发(录审分离,见 types/review ownSubmission);系统管理员照发
 const toApprove = computed(() => toReview.value.filter((k) => !ownSubmission(rowOf(k), auth.me, auth.superAdmin)))
@@ -126,8 +128,9 @@ const toWithdraw = computed(() => (isReviewer.value ? inState('approved') : []))
  * ⚠ 后端 submitted_by 存的是 Authentication.getName() = **登录名**,对应 auth.me;
  *   auth.displayName 是展示名,拿它比会恒不相等,这颗按钮就永远不出。
  */
+// 撤回与交审后端同一道权限(recall 与 submit 同源):交完之后编辑权被收走的人也不画
 const toRecall = computed(() =>
-  inState('submitted').filter((k) => rowOf(k)?.submittedBy === auth.me))
+  inState('submitted').filter((k) => rowOf(k)?.submittedBy === auth.me && canSubmitKey(k, auth.hasOwn)))
 
 /** 被退回的那一把(多键时取第一把)。红 chip 与理由浮层都读它。 */
 const returned = computed(() => keys.value.map(rowOf).find((r) => r?.status === 'returned') ?? null)

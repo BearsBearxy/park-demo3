@@ -154,7 +154,7 @@ class NoticeApiIT extends AbstractMysqlIT {
     void 心跳带授权是否还在() throws Exception {
         String tok = login(U, "viewer123");
         assertThat((Boolean) JsonPath.read(ping(tok), "$.data.elevated")).isFalse();
-        elevations.grant(U, List.of("entry:edit"), "admin", ElevationStore.ONSITE);
+        elevations.grant(U, List.of("ledger:edit"), "admin", ElevationStore.ONSITE);
         assertThat((Boolean) JsonPath.read(ping(tok), "$.data.elevated")).isTrue();
         // 被系统提前收回(停用某人 / 改角色时 reload 清掉所有人的)
         elevations.revokeAllUsers();

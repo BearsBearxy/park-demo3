@@ -4,6 +4,7 @@ import { defineComponent, h, KeepAlive, ref } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
 import { useAuthStore } from '@/stores/auth'
+import { viewsOf } from '@/test-utils/perms'
 import { useTabsStore } from '@/stores/tabs'
 
 import IncomeStatementView from '@/views/reports/income-statement/IncomeStatementView.vue'
@@ -107,8 +108,8 @@ async function keptAlive() {
 describe('三大报表工作台 · 利润表', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    // 公司增删改归 master 不归 report(RBAC §5.6);公司下拉底部那三个按钮吃这个点
-    useAuthStore().permissions = ['master:edit', 'report:edit']
+    // 公司新增 / 删除 =「月度台账 · 新增删除公司」,改名 =「催缴单 · 收款公司」(RBAC v4);默认两项都给
+    useAuthStore().permissions = ['ledger:company', 'bill-notices:payee', 'income-statement:edit', ...viewsOf('reports')]
     vi.clearAllMocks()
     localStorage.clear()
     for (const k of Object.keys(query)) delete query[k]
@@ -195,8 +196,16 @@ describe('三大报表工作台 · 利润表', () => {
   })
 
   // 破坏验证:FinCompanyMenu 的 v-if="canManage" 去掉 → 第二条红
-  it('❗没有 master:edit:下拉只能选,底部三颗一颗不出', async () => {
-    useAuthStore().permissions = ['report:edit']
+  // 破坏验证:FinCompanyMenu 的「重命名」改看 canAddDel → 第二条红
+  it('❗只有收款公司权:底部只有「重命名」', async () => {
+    useAuthStore().permissions = ['bill-notices:payee', 'income-statement:edit']
+    const w = await open()
+    await w.find('.fcm-btn').trigger('click')
+    expect(w.findAll('.fcm-foot button').map(b => b.text())).toEqual(['重命名'])
+  })
+
+  it('❗新增删除公司、收款公司两项都没有:下拉只能选,底部三颗一颗不出', async () => {
+    useAuthStore().permissions = ['income-statement:edit']
     const w = await open()
     await w.find('.fcm-btn').trigger('click')
     expect(w.findAll('.fcm-it')).toHaveLength(3)

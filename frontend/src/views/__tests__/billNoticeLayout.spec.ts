@@ -132,7 +132,7 @@ beforeEach(() => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
   localStorage.clear()
-  useAuthStore().permissions = ['billing-run:edit', 'billing-issue:edit']
+  useAuthStore().permissions = ['bill-notices:edit', 'bill-notices:issue']
   vi.mocked(billNoticesApi.list).mockResolvedValue(mkNotices())
   vi.mocked(billNoticesApi.notes).mockResolvedValue([])
   vi.mocked(billNoticesApi.generate).mockResolvedValue({ generated: 9, lines: 36, warned: 3 } as never)

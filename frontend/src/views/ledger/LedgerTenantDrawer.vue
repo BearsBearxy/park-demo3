@@ -28,7 +28,7 @@ const props = defineProps<{
   archived?: ArchivedCol[]
   /** 绑定候选(全部档案,退租户带标注);行级绑定字段有它才渲染选择器 */
   tenants?: FPTenantOption[]
-  /** 编辑模式 + entry:edit 才能绑/解/换(EDIT-MODE §1:浏览态只显示状态) */
+  /** 编辑模式 + ledger:edit 才能绑/解/换(EDIT-MODE §1:浏览态只显示状态) */
   canBind?: boolean
   /** 行级绑定动作(抄表 commitTenant 同款:选中即提交,失败由父层回滚提示) */
   onBind?: (rowId: number, tenantId: number | null, addAlias?: boolean) => Promise<void>

@@ -42,7 +42,7 @@ describe('auth store', () => {
   })
 
   it('login stores token + displayName + role + isAuthed true + persists to localStorage', async () => {
-    vi.mocked(api.post).mockResolvedValueOnce({ token: 'jwt-abc', displayName: 'Admin', role: 'admin', permissions: ['entry:edit'] })
+    vi.mocked(api.post).mockResolvedValueOnce({ token: 'jwt-abc', displayName: 'Admin', role: 'admin', permissions: ['ledger:edit'] })
     const auth = useAuthStore()
 
     await auth.login({ username: 'admin', password: 'admin123' })
@@ -96,19 +96,19 @@ describe('auth store', () => {
     expect(auth.isReadonly).toBe(true)
   })
 
-  it('permissions/navLayers 落 storage 且 can() 按位判定;只有 system:view 仍算只读', async () => {
+  it('permissions/navLayers 落 storage 且 can() 按位判定;只有查看与跨屏项仍算只读', async () => {
     vi.mocked(api.post).mockResolvedValueOnce({
       token: 'jwt-p', displayName: '审计', role: 'auditor',
-      permissions: ['system:view'], navLayers: ['data'],
+      permissions: ['sys-logs:view', 'review:approve'], navLayers: ['data'],
     })
     const auth = useAuthStore()
     await auth.login({ username: 'auditor', password: 'x' })
 
-    expect(auth.can('system:view')).toBe(true)
-    expect(auth.can('entry:edit')).toBe(false)
-    expect(auth.isReadonly).toBe(true)   // 一个 :edit 都没有
+    expect(auth.can('sys-logs:view')).toBe(true)
+    expect(auth.can('ledger:edit')).toBe(false)
+    expect(auth.isReadonly).toBe(true)   // 一个屏级写权都没有(审核不是屏级写)
     expect(auth.navLayers).toEqual(['data'])
-    expect(localStorage.getItem('permissions')).toBe('["system:view"]')
+    expect(localStorage.getItem('permissions')).toBe('["sys-logs:view","review:approve"]')
     expect(localStorage.getItem('navLayers')).toBe('["data"]')
   })
 
@@ -122,16 +122,16 @@ describe('auth store', () => {
 
   it('初始化从 storage 还原 permissions;JSON 坏了按缺省不炸', () => {
     localStorage.setItem('token', 't')
-    localStorage.setItem('permissions', '["report:edit"]')
+    localStorage.setItem('permissions', '["income-statement:edit"]')
     localStorage.setItem('navLayers', 'not-json')
     const auth = useAuthStore()
-    expect(auth.can('report:edit')).toBe(true)
+    expect(auth.can('income-statement:edit')).toBe(true)
     expect(auth.isReadonly).toBe(false)
     expect(auth.navLayers).toEqual(['data', 'reports', 'analysis'])
   })
 
   it('logout 清掉 permissions/navLayers(共享机器上不给下一个人继承权限)', async () => {
-    vi.mocked(api.post).mockResolvedValueOnce({ token: 'jwt-a', displayName: 'A', role: 'admin', permissions: ['entry:edit'] })
+    vi.mocked(api.post).mockResolvedValueOnce({ token: 'jwt-a', displayName: 'A', role: 'admin', permissions: ['ledger:edit'] })
     const auth = useAuthStore()
     await auth.login({ username: 'a', password: 'x' })
 
@@ -139,7 +139,7 @@ describe('auth store', () => {
 
     expect(localStorage.getItem('permissions')).toBeNull()
     expect(localStorage.getItem('navLayers')).toBeNull()
-    expect(auth.can('entry:edit')).toBe(false)
+    expect(auth.can('ledger:edit')).toBe(false)
   })
 
   it('logout 两个 storage 一起清(不论当初记没记住)', async () => {
@@ -353,7 +353,7 @@ describe('角色行 roleLabel(P5)', () => {
   it('❗后端给了真名就显真名,不再自己猜', () => {
     const auth = useAuthStore()
     auth.roleNames = ['财务主管']
-    auth.permissions = ['system:view']          // 派生表会算成「系统管理员」,真名必须压过它
+    auth.permissions = ['sys-users:view']       // 派生表会算成「系统管理员」,真名必须压过它
     expect(auth.roleLabel).toBe('财务主管')
   })
 
@@ -372,10 +372,11 @@ describe('角色行 roleLabel(P5)', () => {
       auth.roleNames = []; auth.permissions = perms; auth.navLayers = layers
       return auth.roleLabel
     }
-    expect(label(['system:view', 'review:approve', 'lock:takeover', 'ledger:edit'])).toBe('系统管理员（派生）')
+    expect(label(['sys-users:view', 'review:approve', 'lock:takeover', 'ledger:edit'])).toBe('系统管理员（派生）')
     expect(label(['review:approve', 'lock:takeover', 'ledger:edit'])).toBe('审核员（派生）')
     expect(label(['lock:takeover', 'ledger:edit'])).toBe('财务主管（派生）')
     expect(label(['ledger:edit'])).toBe('财务专员（派生）')
+    expect(label(['bill-notices:issue']), '只有专有动作(签发)也是能改的人,不是只读').toBe('财务专员（派生）')
     expect(label([], ['analysis'])).toBe('园区股东（派生）')
     expect(label([])).toBe('只读账号（派生）')
   })
@@ -395,13 +396,26 @@ describe('角色行 roleLabel(P5)', () => {
   // 2026-09-18(TAB-BAR-SPEC §2 §5.3):登录一律落首页;按角色那一屏改给收藏预置用
   it('❗auth.roleHome 把四个判据一处读齐;auth.landing 一律首页', () => {
     const auth = useAuthStore()
-    auth.permissions = []                       // 零 :edit
+    auth.permissions = []                       // 零写权
     expect(auth.roleHome).toBe('/cockpit')
-    auth.permissions = ['review:approve']       // 审核员:仍零 :edit,但要落审核队列那一屏
+    auth.permissions = ['review:approve']       // 审核员:仍零写权,但要落审核队列那一屏
     expect(auth.roleHome).toBe('/data-home')
     auth.permissions = ['ledger:edit']
     expect(auth.roleHome).toBe('/data-home')
     expect(auth.landing).toBe('/home')
+  })
+
+  // 客户自建的「纯管理员」(零业务层):落系统层里第一块看得了的屏,不是写死用户管理
+  // 破坏验证:roleHome 的第二参写死 '/sys-users' → 第二条红;写死 null → 第一条红
+  it('❗零业务层的人落系统层第一块看得了的屏;一屏都看不了才兜底驾驶舱', () => {
+    const auth = useAuthStore()
+    auth.navLayers = []
+    auth.permissions = ['sys-users:view', 'sys-logs:view']
+    expect(auth.roleHome).toBe('/sys-users')
+    auth.permissions = ['sys-logs:view']
+    expect(auth.roleHome, '只看得了操作日志,不能落一屏打不开的用户管理').toBe('/sys-logs')
+    auth.permissions = []
+    expect(auth.roleHome).toBe('/cockpit')
   })
 })
 
@@ -417,17 +431,17 @@ describe('refreshMe', () => {
   // 破坏验证:refreshMe 里不写 permissions(删那一行)→ 红
   it('❗/auth/me 给了新权限 ⇒ can() 立刻变,并写回登录时那份存储', async () => {
     localStorage.setItem('token', 'existing-token')
-    localStorage.setItem('permissions', JSON.stringify(['meter:view']))
+    localStorage.setItem('permissions', JSON.stringify(['meters:view']))
     const auth = useAuthStore()
-    expect(auth.can('meter:edit'), '前置:改前没有').toBe(false)
+    expect(auth.can('meters:edit'), '前置:改前没有').toBe(false)
 
-    vi.mocked(api.get).mockResolvedValueOnce({ permissions: ['meter:view', 'meter:edit'], navLayers: ['data'], roleNames: ['财务专员'] })
+    vi.mocked(api.get).mockResolvedValueOnce({ permissions: ['meters:view', 'meters:edit'], navLayers: ['data'], roleNames: ['财务专员'] })
     await auth.refreshMe()
 
     expect(api.get).toHaveBeenCalledWith('/auth/me')
-    expect(auth.can('meter:edit')).toBe(true)
+    expect(auth.can('meters:edit')).toBe(true)
     expect(auth.roleNames).toEqual(['财务专员'])
-    expect(JSON.parse(localStorage.getItem('permissions')!), '刷新一次就丢的话下次打开又是旧权限').toEqual(['meter:view', 'meter:edit'])
+    expect(JSON.parse(localStorage.getItem('permissions')!), '刷新一次就丢的话下次打开又是旧权限').toEqual(['meters:view', 'meters:edit'])
     expect(sessionStorage.getItem('permissions'), '不记住登录的人才写 sessionStorage').toBeNull()
   })
 
@@ -437,7 +451,7 @@ describe('refreshMe', () => {
     localStorage.setItem('superAdmin', '1')
     const auth = useAuthStore()
     expect(auth.superAdmin, '前置').toBe(true)
-    vi.mocked(api.get).mockResolvedValueOnce({ permissions: ['system:view'], superAdmin: false })
+    vi.mocked(api.get).mockResolvedValueOnce({ permissions: ['sys-users:view'], superAdmin: false })
     await auth.refreshMe()
     expect(auth.superAdmin).toBe(false)
     expect(localStorage.getItem('superAdmin')).toBeNull()
@@ -453,7 +467,7 @@ describe('refreshMe', () => {
 
     vi.mocked(api.post).mockResolvedValueOnce({ token: 'token-b', displayName: 'B', permissions: ['ledger:view'] })
     await auth.login({ username: 'b', password: 'x' })
-    reply({ permissions: ['system:edit'] })
+    reply({ permissions: ['sys-roles:edit'] })
     await p
 
     expect(auth.permissions).toEqual(['ledger:view'])

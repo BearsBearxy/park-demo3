@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import api, { bindSession, sessionDrifted } from '@/api'
-import { landingPath } from '@/nav/navAccess'
+import { landingPath, isScreenWrite, isLayerVisible, layerEntry } from '@/nav/navAccess'
+import { FP_NAV } from '@/nav/fpNav'
 
 /** 一次授权:哪个权限点、谁授权的、什么时候授权 / 到期(毫秒时间戳)、当场还是远程。与后端 ElevationDtos.GrantDTO 对齐。 */
 export interface Grant {
@@ -113,8 +114,8 @@ export const useAuthStore = defineStore('auth', () => {
    * 有没有这项权限 —— **角色给的或主管当场授权的**,一视同仁。
    *
    * 把提权并进 can() 而不是让 59 个调用点各自判,是因为写入口的判定天然就是这个语义:
-   * 「现在能不能改」。也因此导航那几处(system:view)完全不受影响 ——
-   * system:* 在后端属于不可提权名单,永远不会出现在 elevatedSet 里。
+   * 「现在能不能改」。也因此导航那几处(各屏 `:view`)完全不受影响 ——
+   * 全部 `:view` 与系统管理三屏的动作在后端属于不可提权名单,永远不会出现在 elevatedSet 里。
    */
   function can(key: string): boolean {
     return permSet.value.has(key) || elevatedSet.value.has(key)
@@ -127,8 +128,8 @@ export const useAuthStore = defineStore('auth', () => {
   function authorizerOf(key: string): string | null {
     return liveGrants.value.find((g) => g.perm === key)?.authorizerName ?? null
   }
-  // 只读账号(审计建议#8):一个 edit 权限都没有即为只读;此标志供 UI 按需降噪(非安全边界,后端才是)
-  const isReadonly = computed(() => !permissions.value.some((p) => p.endsWith(':edit')))
+  // 只读账号(审计建议#8):一个屏级写权(编辑或专有动作,如「催缴单 · 签发」)都没有即为只读;此标志供 UI 按需降噪(非安全边界,后端才是)
+  const isReadonly = computed(() => !permissions.value.some(isScreenWrite))
 
   /**
    * 侧栏头像下那一行字(§6 角色行)。后端给了真名就显真名,多角色顿号拼。
@@ -141,7 +142,7 @@ export const useAuthStore = defineStore('auth', () => {
    */
   const roleLabel = computed(() => {
     if (roleNames.value.length) return roleNames.value.join('、')
-    const d = can('system:view') ? '系统管理员'
+    const d = can('sys-users:view') ? '系统管理员'
       : can('review:approve') ? '审核员'
       : can('lock:takeover') ? '财务主管'
       : !isReadonly.value ? '财务专员'
@@ -155,7 +156,9 @@ export const useAuthStore = defineStore('auth', () => {
    * 各传一遍的话,漏传一个不报错、只是悄悄回到旧的三档。
    * 2026-09-18 起登录不再落到这里(见 landing),它只用来给第一次登录的收藏预置一格(TAB-BAR-SPEC §5.3)。
    */
-  const roleHome = computed(() => landingPath(navLayers.value, can('system:view'),
+  const SYS = FP_NAV.find((L) => L.id === 'system')!
+  const roleHome = computed(() => landingPath(navLayers.value,
+    isLayerVisible('system', [], can) ? '/' + layerEntry(SYS, can) : null,
     { readonly: isReadonly.value, reviewer: can('review:approve') }))
   /** 登录后落哪:一律首页(TAB-BAR-SPEC §2)。router 守卫、登录页、改密页都读这一处。 */
   const landing = computed(() => '/home')

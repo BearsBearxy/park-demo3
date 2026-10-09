@@ -53,11 +53,23 @@ class ReviewKeyTest {
 
     @Test
     void params_takesEitherParamPerm_othersTakeOne() {
+        // v4(RBAC-SPEC §15.6):交审权 = 那一屏的编辑;楼栋损耗另认公共电核算的编辑(公共电核算一次交两把键);
+        // 三张报表各认各的编辑(v3 只认账簿报表,URL 层还漏了它)
         assertThat(ReviewKind.PARAMS.perms())
-            .containsExactlyInAnyOrder(Perm.PARAM_POLICY_EDIT, Perm.PARAM_MONTHLY_EDIT);
-        assertThat(ReviewKind.METERS.perms()).containsExactly(Perm.METER_READING_EDIT);
-        assertThat(ReviewKind.ALLOC.perms()).containsExactly(Perm.BILLING_RUN_EDIT);
-        assertThat(ReviewKind.LEDGER.perms()).containsExactly(Perm.ENTRY_EDIT);
+            .containsExactlyInAnyOrder(Perm.PARAMS_EDIT, Perm.PARAMS_MONTHLY);
+        assertThat(ReviewKind.METERS.perms()).containsExactly("meters:edit");
+        assertThat(ReviewKind.ALLOC.perms()).containsExactly("alloc:edit");
+        assertThat(ReviewKind.ALLOC_LOSS.perms()).containsExactlyInAnyOrder("alloc-loss:edit", "alloc:edit");
+        assertThat(ReviewKind.BILL_NOTICES.perms()).containsExactly(Perm.BILL_NOTICES_EDIT);
+        assertThat(ReviewKind.LEDGER.perms()).containsExactly("ledger:edit");
+        assertThat(ReviewKind.S10.perms()).containsExactly("sales-income:edit");
+        assertThat(ReviewKind.CHARGING_CAR.perms()).containsExactly("car-charging:edit");
+        assertThat(ReviewKind.CHARGING_EBIKE.perms()).containsExactly("ebike-charging:edit");
+        assertThat(ReviewKind.ELEC_COST.perms()).containsExactly("elec-cost:edit");
+        assertThat(ReviewKind.ELEC_MODEL.perms()).containsExactly("elec-cost:edit");
+        assertThat(ReviewKind.REPORT_IS.perms()).containsExactly("income-statement:edit");
+        assertThat(ReviewKind.REPORT_BS.perms()).containsExactly("balance-sheet:edit");
+        assertThat(ReviewKind.REPORT_TB.perms()).containsExactly("trial-balance:edit");
     }
 
     @Test

@@ -98,7 +98,7 @@ class InputLimitsApiIT extends AbstractMysqlIT {
         try {
             mvc.perform(post("/api/auth/elevate").header("Authorization", hdr(login(clerk, PASS)))
                     .contentType("application/json")
-                    .content("{\"perms\":[\"param-policy:edit\"],\"authorizer\":\"" + "b".repeat(65) + "\",\"password\":\"x\"}"))
+                    .content("{\"perms\":[\"params:edit\"],\"authorizer\":\"" + "b".repeat(65) + "\",\"password\":\"x\"}"))
                .andExpect(status().isBadRequest());
         } finally { cleanup(clerk); }
     }

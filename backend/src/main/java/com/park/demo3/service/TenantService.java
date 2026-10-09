@@ -221,11 +221,12 @@ public class TenantService {
         BigDecimal monthly = current.stream().map(Contract::getMonthlyRent).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal area = current.stream().map(Contract::getRentArea).reduce(BigDecimal.ZERO, BigDecimal::add);
         String primary = current.isEmpty() ? "—" : bName.getOrDefault(current.get(0).getBuildingId(), "—");
-        // 四个出口(列表/详情/新建/编辑)共用这里:联系人是个人信息,没有 master:view 给掩码(RBAC-SPEC §11 规则 5)
-        boolean plain = SensitiveMask.holds(Perm.MASTER_VIEW);
+        // 四个出口(列表/详情/新建/编辑)共用这里:联系人是个人信息,没有「租户管理 · 查看」给掩码(RBAC-SPEC §15.6)
+        boolean plain = SensitiveMask.holds(Perm.TENANTS_VIEW);
         // 别名里是老板个人姓名(V86 种的就是人名),但它也是抄表导入与台账对户的匹配键:
-        // 数据层任一查看给明文(导入要对得上),只有报表 / 分析查看的人逐项打码
-        boolean aliasPlain = plain || SensitiveMask.holdsAny(Perm.DATA_LAYER_VIEWS);
+        // 数据层 17 屏任一查看给明文(导入要对得上),只有报表 / 分析查看的人逐项打码。
+        // 不含导入中心:园区股东迁移后有它,含了他就多拿到别名明文
+        boolean aliasPlain = plain || SensitiveMask.holdsAny(Perm.DATA_SCREEN_VIEWS);
         return new TenantDTO(t.getId(), t.getCompanyName(),
             plain ? t.getContactName() : SensitiveMask.name(t.getContactName()),
             plain ? t.getContactPhone() : SensitiveMask.phone(t.getContactPhone()),

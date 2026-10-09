@@ -1,5 +1,8 @@
 package com.park.demo3.controller;
 import com.park.demo3.dto.*;
+import com.park.demo3.security.Perm;
+import com.park.demo3.security.SensitiveMask;
+import com.park.demo3.service.ParamRegistry;
 import com.park.demo3.service.ParamService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -10,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Set;
 
-// 计费参数中心(S21-PARAM-CENTER-SPEC §6)。GET=已登录可读,写/重算=admin(SecurityConfig 全局门)。
+// 计费参数中心(S21-PARAM-CENTER-SPEC §6)。读写的门在 PermissionRegistry(RBAC-SPEC §15.5);list 的回包另按屏收窄。
 // 业务错(注册表外键/上级作用域改错/删被使用版本)HTTP 200+body.code=400;校验错(@Valid/@Pattern)HTTP 400。
 @Tag(name = "计费参数")
 @RestController
@@ -29,10 +32,25 @@ public class ParamController {
                                   @RequestParam(required = false) String scope,
                                   @RequestParam(required = false) String key) {
         List<ParamRowDTO> rows = svc.list(ym, zone);
+        // 读规则只能按路径放行,挡不住「不带 key 拉全表」:没有计费参数查看的人只拿到自己那几屏要的键(RBAC-SPEC §15.6)
+        if (!SensitiveMask.holds(Perm.PARAMS_VIEW)) rows = rows.stream().filter(r -> visibleWithoutParamsView(r.key())).toList();
         if (scope == null && key == null) return rows;
         Set<String> keys = key == null ? null : Set.of(key.split(","));
         return rows.stream().filter(r -> (scope == null || r.scope().startsWith(scope)) && (keys == null || keys.contains(r.key()))).toList();
     }
+
+    /** 键表 = 这几屏现在实际带的 key 参数(勘察清单);只读到看得了的那几屏要的键。 */
+    static boolean visibleWithoutParamsView(String key) {
+        if (SensitiveMask.holds("alloc:view") && ALLOC_KEYS.contains(key)) return true;
+        if (SensitiveMask.holds("alloc-loss:view") && LOSS_KEYS.contains(key)) return true;
+        if (SensitiveMask.holds(Perm.BILL_NOTICES_VIEW)) {
+            ParamRegistry.Def d = ParamRegistry.get(key);
+            if (d != null && d.coefBook()) return true;
+        }
+        return key.startsWith("pv_") && SensitiveMask.holdsAny(List.of("anomaly:view", "pv-meter-analysis:view"));
+    }
+    private static final Set<String> ALLOC_KEYS = Set.of("coefficient", "extra_qty", "frozen_2023", "round_scale");
+    private static final Set<String> LOSS_KEYS = Set.of("loss_adj_qty", "loss_adj_rate", "loss_rate_manual");
 
     @Operation(summary = "有状态可看的账期('YYYY-MM' 升序;空表=[]);= status 的 poolSnapshotAt‖billBatchAt 非空月,"
         + "池快照月 ∪ 出单月") @GetMapping("/months")

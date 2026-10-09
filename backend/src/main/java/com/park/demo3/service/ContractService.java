@@ -148,8 +148,8 @@ public class ContractService {
         Map<Integer,String> tName = Map.of(t.getId(), t.getCompanyName());
 
         ContractDTO dto = toDTO(c, tName, bName, uFloor, extraUnitCounts(c.getId()), termStats(c.getId()));
-        // 联系人取的是 tenant 表现值,归 master 而不归 contract:只有 contract:view 的人拿到掩码(RBAC-SPEC §11 规则 5)
-        boolean plain = SensitiveMask.holds(Perm.MASTER_VIEW);
+        // 联系人取的是 tenant 表现值,归租户屏而不归合同屏:只有合同查看的人拿到掩码(RBAC-SPEC §15.6)
+        boolean plain = SensitiveMask.holds(Perm.TENANTS_VIEW);
         ContractDetailDTO.TenantSnap snap = new ContractDetailDTO.TenantSnap(
             t.getCompanyName(),
             plain ? t.getContactName() : SensitiveMask.name(t.getContactName()),

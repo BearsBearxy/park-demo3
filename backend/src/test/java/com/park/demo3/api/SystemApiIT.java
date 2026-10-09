@@ -50,13 +50,13 @@ class SystemApiIT extends AbstractMysqlIT {
         // 被拦的人恰恰是不该看到账号与角色配置的
         mvc.perform(get("/api/system/users").header("Authorization", hdr(v)))
            .andExpect(status().isForbidden())
-           .andExpect(jsonPath("$.message").value("无查看权限：需要「系统管理 · 查看」，请联系系统管理员在角色里勾上"));
+           .andExpect(jsonPath("$.message").value("无查看权限：需要「用户管理 · 查看」或「角色权限 · 查看」其中一项，请联系系统管理员在角色里勾上"));
         mvc.perform(get("/api/system/roles").header("Authorization", hdr(v)))
            .andExpect(status().isForbidden());
         // 写被拒写明缺的是「管理」那一项;不说「仅对系统管理员开放」—— 这一段按权限点放行,不按角色
         mvc.perform(post("/api/system/users").header("Authorization", hdr(v)).contentType("application/json").content("{}"))
            .andExpect(status().isForbidden())
-           .andExpect(jsonPath("$.message").value("无修改权限：需要「系统管理 · 管理」，请联系系统管理员在角色里勾上"));
+           .andExpect(jsonPath("$.message").value("无修改权限：需要「用户管理 · 编辑」，请联系系统管理员在角色里勾上"));
         // 对照：业务数据他读得到，证明挡住的是 system 段而不是他整个账号
         mvc.perform(get("/api/tenants").header("Authorization", hdr(v)))
            .andExpect(status().isOk());
@@ -68,7 +68,12 @@ class SystemApiIT extends AbstractMysqlIT {
         String body = utf8(mvc.perform(get("/api/system/perms").header("Authorization", hdr(admin())))
                 .andExpect(status().isOk()).andReturn());
         List<String> keys = JsonPath.read(body, "$.data.perms[*].key");
-        assertThat(keys).as("字典必须覆盖 Perm.ALL 全部 14 项").containsExactlyElementsOf(Perm.ALL);
+        assertThat(keys).as("字典必须覆盖 Perm.ALL 全部 107 项").containsExactlyElementsOf(Perm.ALL);
+        // v4:每项带所属屏(跨屏三项为 null),前端按 fpNav 挂树
+        List<String> screens = JsonPath.read(body, "$.data.perms[*].screen");
+        assertThat(screens).containsExactlyElementsOf(Perm.META.stream().map(Perm.Meta::screen).toList());
+        List<String> kinds = JsonPath.read(body, "$.data.perms[*].kind");
+        assertThat(kinds).containsOnly("view", "edit", "action", "other");
         List<String> labels = JsonPath.read(body, "$.data.perms[*].label");
         assertThat(labels).allSatisfy(l -> assertThat(l).isNotBlank());
         List<String> layers = JsonPath.read(body, "$.data.navLayers[*].id");
@@ -131,13 +136,20 @@ class SystemApiIT extends AbstractMysqlIT {
     void cannotStripOwnSystemEdit() throws Exception {
         String t = admin();
         int adminRoleId = roleIdOf(t, "admin");
-        // 把 admin 角色的权限改成"只剩一项主数据" → 等于摘掉自己的 system:edit，保存后改不了账号和角色
+        // 把 admin 角色的权限改成"楼栋编辑 + 用户管理编辑" → 等于摘掉自己的「角色权限 · 编辑」，保存后改不了角色
         String body = utf8(mvc.perform(put("/api/system/roles/" + adminRoleId)
                 .header("Authorization", hdr(t)).contentType("application/json")
-                .content("{\"name\":\"系统管理员\",\"navLayers\":[\"data\"],\"perms\":[\"master:edit\"]}")
+                .content("{\"name\":\"系统管理员\",\"navLayers\":[\"data\"],\"perms\":[\"buildings:edit\",\"sys-users:edit\"]}")
         ).andExpect(status().isOk()).andReturn());
         assertThat((int) JsonPath.read(body, "$.code")).isEqualTo(409);
-        assertThat((String) JsonPath.read(body, "$.message")).contains("不能再改账号和角色");
+        assertThat((String) JsonPath.read(body, "$.message")).contains("「角色权限 · 编辑」").contains("不能再改角色");
+        // 守的是角色权限编辑这一项(有它就能把别的都改回来):留着它、摘掉别的照样放行(本用例事务回滚)
+        // 破坏验证:guardSelfKeepsRolesEdit 改守用户管理编辑 → 这条 409
+        String keep = utf8(mvc.perform(put("/api/system/roles/" + adminRoleId)
+                .header("Authorization", hdr(t)).contentType("application/json")
+                .content("{\"name\":\"系统管理员\",\"navLayers\":[\"data\"],\"perms\":[\"sys-roles:edit\"]}")
+        ).andExpect(status().isOk()).andReturn());
+        assertThat((int) JsonPath.read(keep, "$.code")).as(keep).isZero();
     }
 
     @Test
@@ -155,11 +167,11 @@ class SystemApiIT extends AbstractMysqlIT {
         String upd = utf8(mvc.perform(put("/api/system/roles/" + clerkRole)
                 .header("Authorization", hdr(t)).contentType("application/json")
                 .content("{\"name\":\"财务专员\",\"navLayers\":[\"data\",\"analysis\"],"
-                       + "\"perms\":[\"entry:edit\",\"report:edit\"]}")
+                       + "\"perms\":[\"income-statement:edit\",\"ledger:edit\"]}")
         ).andExpect(status().isOk()).andReturn());
         assertThat((int) JsonPath.read(upd, "$.code")).isEqualTo(0);
         List<String> perms = JsonPath.read(upd, "$.data.perms");
-        assertThat(perms).containsExactlyInAnyOrder("entry:edit", "report:edit");
+        assertThat(perms).as("按 Perm.ALL 的顺序回").containsExactly("ledger:edit", "income-statement:edit");
         List<String> layers = JsonPath.read(upd, "$.data.navLayers");
         assertThat(layers).containsExactly("data", "analysis");
     }
@@ -173,10 +185,12 @@ class SystemApiIT extends AbstractMysqlIT {
         String body = utf8(mvc.perform(put("/api/system/roles/" + clerkRole)
                 .header("Authorization", hdr(t)).contentType("application/json")
                 .content("{\"name\":\"财务专员\",\"navLayers\":[\"data\"],"
-                       + "\"perms\":[\"entry:edit\",\"god-mode:edit\"]}")
+                       + "\"perms\":[\"ledger:edit\",\"god-mode:edit\",\"entry:edit\"]}")
         ).andExpect(status().isOk()).andReturn());
         List<String> perms = JsonPath.read(body, "$.data.perms");
-        assertThat(perms).containsExactly("entry:edit");
+        assertThat(perms).as("不认识的键与 v3 旧键都静默丢掉").containsExactly("ledger:edit");
+        assertThat(jdbc.queryForList("SELECT perm FROM auth_role_perm WHERE role_id=?", String.class, clerkRole))
+            .as("整组替换:这个角色的旧键行随之删掉").containsExactly("ledger:edit");
     }
 
     // ══════════ 新建账号 → 缓存刷新 → 立刻可用 ══════════
@@ -213,12 +227,12 @@ class SystemApiIT extends AbstractMysqlIT {
             // 带着初始密码时业务接口一律 428(RBAC-SPEC §13.4);当他已改过 —— 放在上面那条之后,它 reload 不掩盖建号漏 reload
             passwordAlreadyChanged(uname);
 
-            // 而且真能用：他有 entry:edit，写台账不该 403
+            // 而且真能用:按财务专员的权限判
             mvc.perform(post("/api/tenants").header("Authorization", hdr(nt))
                     .contentType("application/json").content("{}"))
-               .andExpect(status().isForbidden());          // 没有 master:edit → 403
+               .andExpect(status().isForbidden());          // 没有租户管理编辑 → 403
             mvc.perform(get("/api/tenants").header("Authorization", hdr(nt)))
-               .andExpect(status().isOk());                 // V134 给专员的 master:view
+               .andExpect(status().isOk());                 // V140 给专员的租户管理查看
         } finally {
             cleanup(uname);
         }
@@ -276,7 +290,7 @@ class SystemApiIT extends AbstractMysqlIT {
         int adminBefore = noticeCount("admin");
 
         // admin 给角色加一项权限 → 持该角色的 U 收到 1 条,admin 自己没有
-        String roleBody = "{\"name\":\"铃铛测试\",\"navLayers\":[\"data\"],\"perms\":[\"entry:edit\"]}";
+        String roleBody = "{\"name\":\"铃铛测试\",\"navLayers\":[\"data\"],\"perms\":[\"ledger:edit\"]}";
         mvc.perform(put("/api/system/roles/" + rid).header("Authorization", hdr(t))
                 .contentType("application/json").content(roleBody)).andExpect(status().isOk());
         List<String> kinds = JsonPath.read(utf8(mvc.perform(get("/api/notices").header("Authorization", hdr(u))).andReturn()),
@@ -287,7 +301,7 @@ class SystemApiIT extends AbstractMysqlIT {
         // U 手上是改之前登录的令牌,/auth/me 要给出改后的权限 —— 「刷新后生效」靠它说实话
         List<String> perms = JsonPath.read(utf8(mvc.perform(get("/api/auth/me").header("Authorization", hdr(u)))
                 .andExpect(status().isOk()).andReturn()), "$.data.permissions");
-        assertThat(perms).contains("entry:edit");
+        assertThat(perms).contains("ledger:edit", "ledger:view");
 
         // 原样再存一次:什么都没改,不许写「你的权限被改了」
         mvc.perform(put("/api/system/roles/" + rid).header("Authorization", hdr(t))
@@ -296,11 +310,11 @@ class SystemApiIT extends AbstractMysqlIT {
 
         // 只改导航层:持有人看到的侧栏会变 → 也算改了;只改角色名 → 也算(标题里写的就是它)
         mvc.perform(put("/api/system/roles/" + rid).header("Authorization", hdr(t)).contentType("application/json")
-                .content("{\"name\":\"铃铛测试\",\"navLayers\":[\"data\",\"analysis\"],\"perms\":[\"entry:edit\"]}"))
+                .content("{\"name\":\"铃铛测试\",\"navLayers\":[\"data\",\"analysis\"],\"perms\":[\"ledger:edit\"]}"))
             .andExpect(status().isOk());
         assertThat(noticeCount(uname)).as("只改导航层也发").isEqualTo(2);
         mvc.perform(put("/api/system/roles/" + rid).header("Authorization", hdr(t)).contentType("application/json")
-                .content("{\"name\":\"铃铛测试改名\",\"navLayers\":[\"data\",\"analysis\"],\"perms\":[\"entry:edit\"]}"))
+                .content("{\"name\":\"铃铛测试改名\",\"navLayers\":[\"data\",\"analysis\"],\"perms\":[\"ledger:edit\"]}"))
             .andExpect(status().isOk());
         assertThat(noticeCount(uname)).as("只改角色名也发").isEqualTo(3);
 

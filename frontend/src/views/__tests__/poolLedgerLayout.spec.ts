@@ -139,7 +139,7 @@ const tipOf = (el: Element) => (el as TipEl)._tip
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['billing-run:edit', 'param-policy:edit']
+  useAuthStore().permissions = ['alloc:edit', 'alloc:pools', 'params:view']
   localStorage.clear()
   push.mockClear()
   vi.mocked(allocApi.generate).mockClear()
@@ -573,7 +573,7 @@ describe('对抗复查 · 问题面板「待重算」三支(asserts-7,06-C)', ()
 
   // 破坏验证:去掉 staleMsg 兜底那一支 → 这一组整个不进面板 → 红;gotoParams 不带 edit → 第二条红
   it('进不了编辑模式的人 + 参数晚于结果:组头「去计费参数页重算」,点了带 edit=1 去计费参数页', async () => {
-    useAuthStore().permissions = []
+    useAuthStore().permissions = ['params:view']   // 本屏一项写权都没有;跳计费参数页要它的查看(blocked 先问)
     vi.mocked(paramsApi.status).mockResolvedValueOnce(STALE)
     const w = await open()
     await openPanel(w)

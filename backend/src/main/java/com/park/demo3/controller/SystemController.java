@@ -10,8 +10,8 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
- * 系统管理（RBAC-SPEC P1）。**全站唯一"读也管"的一段**：
- * GET 要 system:view、非 GET 要 system:edit，由 SecurityConfig 直接判，不走写端点映射表。
+ * 系统管理（RBAC-SPEC P1）。v4（§15）起三屏各自一项，读写都走 PermissionRegistry 的两张表：
+ * 用户管理、角色权限、操作日志各自的查看 / 编辑。
  * 不能让财务只读看到所有账号和权限配置。
  *
  * 账号只有停用（{@code /status}），**没有 DELETE** —— 删掉的账号名下有导入记录、

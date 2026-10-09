@@ -34,7 +34,7 @@ describe('MobileNavDrawer 手机导航抽屉', () => {
   it('渲染层胶囊(不含无权的系统层)、当前层目录与账号段退出入口', () => {
     const w = mountDrawer()
     const pills = w.findAll('.mnav-pill')
-    expect(pills.map(p => p.text())).toEqual(['数据', '报表', '分析'])   // 默认 navLayers,无 system:view
+    expect(pills.map(p => p.text())).toEqual(['数据', '报表', '分析'])   // 默认 navLayers,无系统管理三屏的查看
     expect(pills[0].classes()).toContain('on')                          // data-home 属数据层
     expect(w.findAll('.mnav-row').some(r => r.text().includes('租户管理'))).toBe(true)
     expect(w.find('.mnav-logout').exists()).toBe(true)                  // S 档全站唯一退出入口

@@ -94,7 +94,8 @@ class CompanyServiceTest {
         Mockito.when(cm.selectById(1)).thenReturn(co(1, "园区租赁管理公司"));
         svc.delete(1);
         Mockito.verify(lm).delete(ArgumentMatchers.any());
-        Mockito.verify(ram).delete(ArgumentMatchers.any());
+        // 报表金额按三张表各删一次(各记一条摘要,行定位以报表名开头 —— 操作日志按它给对应报表的查看者看,RBAC-SPEC §15.6)
+        Mockito.verify(ram, Mockito.times(3)).delete(ArgumentMatchers.any());
         Mockito.verify(rcm).delete(ArgumentMatchers.any());
         Mockito.verify(racm).delete(ArgumentMatchers.any());
         Mockito.verify(cm).deleteById(1);
@@ -108,8 +109,8 @@ class CompanyServiceTest {
         Mockito.verify(cm, Mockito.never()).deleteById(ArgumentMatchers.anyInt());
     }
 
-    // RBAC v3:个人卡户名对没有主数据查看权的人打码。提权拿到 master:edit 的人(查看不可提权)把个人卡改成对公,
-    // 写回守卫把掩码「张*」还原成真名,回包按新类型不打码 —— 收款人全名就换出来了。所以这一步要主数据查看。
+    // RBAC v4:个人卡户名对没有「催缴单 · 查看」的人打码。提权拿到「收款公司」这一项的人(查看不可提权)把个人卡改成对公,
+    // 写回守卫把掩码「张*」还原成真名,回包按新类型不打码 —— 收款人全名就换出来了。所以这一步要催缴单查看。
     // 破坏验证:updateAccount 里那条 personal 判断删掉 → 第一条红
     @Test void updateAccount_personalToBank_withoutMasterView_403() {
         Mockito.when(am.selectById(5)).thenReturn(personalCard());
@@ -124,7 +125,7 @@ class CompanyServiceTest {
     @Test void updateAccount_personalToBank_withMasterView_ok() {
         Mockito.when(am.selectById(5)).thenReturn(personalCard());
         org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
-            new org.springframework.security.authentication.TestingAuthenticationToken("u", null, "master:view"));
+            new org.springframework.security.authentication.TestingAuthenticationToken("u", null, "bill-notices:view"));
         try {
             svc.updateAccount(5, new com.park.demo3.dto.CompanyAccountReq("bank", "张*", null, null, null, null, null));
             Mockito.verify(am).updateById(ArgumentMatchers.any(com.park.demo3.entity.CompanyAccount.class));

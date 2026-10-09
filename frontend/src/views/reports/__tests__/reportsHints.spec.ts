@@ -79,10 +79,13 @@ const route = {
 vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => ({ push: vi.fn() }) }))
 
 const STUBS = { Teleport: true, RouterLink: true, 'router-link': true }
+const REPORT_EDITS = ['income-statement:edit', 'balance-sheet:edit', 'trial-balance:edit',
+  'rent-pnl:edit', 'elec-pnl:edit', 'water-pnl:edit', 'ops-pnl:edit', 'expense-pnl:edit', 'reconciliation:edit']
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['master:edit', 'report:edit']
+  // v3 的 master:edit + report:edit 落到 v4:三张报表 + 五张损益附表 + 收入核对各自的编辑,公司新增删除(月度台账)与改名(催缴单收款公司)
+  useAuthStore().permissions = [...REPORT_EDITS, 'ledger:company', 'bill-notices:payee']
   vi.clearAllMocks()
   localStorage.clear()
   askQueue.splice(0)
@@ -144,8 +147,9 @@ const FIN = [
 ] as const
 
 describe.each(FIN)('$name · 空状态与悬停说明', ({ name, view }) => {
-  // 2026-10-03 画布 09 ReportPickEmpty:左栏撤了,「新增公司」进空态(有 master:edit 才出)
-  it('❗一家公司都没有 → FPEmpty 占住内容区:一句 + 副句 + 「新增公司」;没有 master:edit 不出钮', async () => {
+  // 2026-10-03 画布 09 ReportPickEmpty:左栏撤了,「新增公司」进空态(RBAC v4:有「月度台账 · 新增删除公司」才出)
+  // 夹具不退化:收走新增删除后仍有公司改名(收款公司)—— 改名权不该让「新增公司」出来
+  it('❗一家公司都没有 → FPEmpty 占住内容区:一句 + 副句 + 「新增公司」;没有新增删除公司不出钮', async () => {
     wireFin([])
     const w = mount(view as never, { global: { stubs: STUBS } })
     await flushPromises()
@@ -157,9 +161,9 @@ describe.each(FIN)('$name · 空状态与悬停说明', ({ name, view }) => {
     await e.find('.act button').trigger('click')
     expect((w.vm as unknown as { dlg: unknown }).dlg).toEqual({ type: 'company', mode: 'new' })
 
-    useAuthStore().permissions = ['report:edit']
+    useAuthStore().permissions = [...REPORT_EDITS, 'bill-notices:payee']
     await flushPromises()
-    expect(w.find('.finw-empty .fp-empty .act').exists(), '没有 master:edit 不出「新增公司」').toBe(false)
+    expect(w.find('.finw-empty .fp-empty .act').exists(), '没有新增删除公司不出「新增公司」').toBe(false)
   })
 
   it('❗「换期」是带字的钮(期间条最左):不靠悬停说明,也没有原生 title', async () => {
@@ -205,7 +209,7 @@ describe.each([
 
   it('❗问的这会儿编辑权被收走(权限掉了 → 退编辑态,选集还在):答「删除」也不再删', async () => {
     await pickCustomAndAsk()
-    useAuthStore().permissions = ['master:edit']
+    useAuthStore().permissions = ['ledger:company', 'bill-notices:payee']   // 报表编辑收走,公司的两项还在
     await flushPromises()
     answer(true)
     await flushPromises()
@@ -337,7 +341,7 @@ describe('科目余额表 · 批量删除', () => {
 
   it('❗问的这会儿编辑权被收走:答「删除」也不动科目树', async () => {
     const w = await pick1002AndAsk()
-    useAuthStore().permissions = ['master:edit']
+    useAuthStore().permissions = ['ledger:company', 'bill-notices:payee']   // 报表编辑收走,公司的两项还在
     await flushPromises()
     answer(true)
     await flushPromises()

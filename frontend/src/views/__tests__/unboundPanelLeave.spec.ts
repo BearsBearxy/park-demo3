@@ -117,7 +117,7 @@ const mountS10 = () => mnt(mount(S10View, { attachTo: document.body }))
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['entry:edit']
+  useAuthStore().permissions = ['ledger:edit', 'sales-income:edit']
   route.query = { y: '2026', m: '9', company: '甲公司', phase: '1', tenant: '' }
   vi.mocked(booksApi.list).mockImplementation((screen: string) =>
     Promise.resolve(screen === 's10' ? s10Books : ledgerBooks))

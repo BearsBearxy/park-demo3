@@ -119,7 +119,7 @@ beforeEach(() => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
   localStorage.clear()
-  useAuthStore().permissions = ['billing-run:edit', 'billing-issue:edit']
+  useAuthStore().permissions = ['bill-notices:edit', 'bill-notices:issue']
   vi.mocked(billNoticesApi.list).mockResolvedValue(NOTICES as never)
   vi.mocked(billNoticesApi.detail).mockImplementation(
     (id: number) => Promise.resolve(detailOf(NOTICES.find(n => n.id === id)!)) as never)
@@ -290,7 +290,7 @@ describe('催缴单抽屉 · ③ 确认与逐户导航都在底部动作条上',
   })
 
   it('已确认但只有运行权:没有「取消确认」(它和确认同一个权限点)', async () => {
-    useAuthStore().permissions = ['billing-run:edit']
+    useAuthStore().permissions = ['bill-notices:edit']
     vi.mocked(billNoticesApi.list).mockResolvedValue(
       NOTICES.map((n, i) => (i === 0 ? { ...n, status: 'confirmed' as const } : n)) as never)
     const w = await open()

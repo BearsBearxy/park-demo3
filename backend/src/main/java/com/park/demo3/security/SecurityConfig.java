@@ -14,11 +14,10 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 /**
  * RBAC-SPEC v3「读写分开」(2026-10-04 用户拍板,推翻 v2 的「读全开」)。
  *
- * 读:GET /api/** 交 {@link ReadAccessManager} 查读规则表,**默认拒绝**。每个模块一个查看点,编辑隐含查看;
- *    分析层独立放行(analysis:view 放行分析接口与分析屏实际调到的模块读接口),
- *    敏感字段由服务端打码(SensitiveMask)—— v1 按模块拦读让股东账号成了空壳,v3 不让分析依赖各模块的查看权。
- * 写:非 GET /api/** 交 {@link WriteAccessManager} 查映射表,**默认拒绝**。
- * /api/system/** 与 /actuator/** 的规则不变,排在前面先命中。
+ * 读:GET /api/** 交 {@link ReadAccessManager} 查读规则表,**默认拒绝**。v4(RBAC-SPEC §15)每屏一个查看,
+ *    每条读接口对「实际调用它的那几屏」的查看放行(分析屏调到的模块接口照样放行,不依赖数据屏的查看权);
+ *    敏感字段由服务端打码(SensitiveMask)。
+ * 写:非 GET /api/** 交 {@link WriteAccessManager} 查映射表,**默认拒绝**。系统管理三屏也走这两张表。
  */
 @Configuration
 public class SecurityConfig {
@@ -37,10 +36,8 @@ public class SecurityConfig {
                 // ── 放行段:必须在最前。/actuator/health 是 Dockerfile 的 HEALTHCHECK 探针
                 //    (wget -qO- http://localhost:8080/actuator/health),拿 401 的话容器永远 unhealthy。
                 .requestMatchers(SecurityPaths.PERMIT_ALL).permitAll()
-                // ── 系统管理:读写都单独管,排在通用读规则前先命中(RBAC-SPEC §5.1、§11.2)
-                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/system/**").hasAuthority(Perm.SYSTEM_VIEW)
-                .requestMatchers("/api/system/**").hasAuthority(Perm.SYSTEM_EDIT)
-                .requestMatchers("/actuator/**").hasAuthority(Perm.SYSTEM_VIEW)
+                // ── 系统管理三屏(v4)各自一项,走下面的读写规则表(RBAC-SPEC §15.5);actuator 给系统管理任一查看
+                .requestMatchers("/actuator/**").hasAnyAuthority(Perm.SYS_USERS_VIEW, Perm.SYS_ROLES_VIEW, Perm.SYS_LOGS_VIEW)
                 // ── 读分权(v3):默认拒绝,规则表在 PermissionRegistry.registerReads
                 .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/**").access(readAccess)
                 // ── 写分权
@@ -55,22 +52,11 @@ public class SecurityConfig {
             }).accessDeniedHandler((req, res, ex) -> {
                 res.setStatus(403);
                 res.setContentType("application/json;charset=UTF-8");
-                // 通用 403 文案是「不能改，但可查看」—— 那对 /api/system/** 是**反的**:
-                // 被拦的人恰恰不该看到账号与角色,文案单独写。
-                // 套通用文案会告诉他"你可以查看",而他点开只会得到又一个 403。
-                // 按解码后的路径判:原始 URI 里 /api/%73ystem/ 照样被上面的规则拦下,文案却选成了通用那句(渗透测试低置信观察 5)
-                String path = org.springframework.web.util.UrlPathHelper.defaultInstance.getPathWithinApplication(req);
-                boolean system = path.equals("/api/system") || path.startsWith("/api/system/");
-                // 读被拒同理(v3):通用那句告诉他「可查看」,而他刚刚就是看不了。写明缺哪一项、去找谁
-                // system 段按权限点放行(上面两条 requestMatchers),不按角色:不写「仅对系统管理员开放」——
-                // 分级(RBAC-SPEC §12)之后「系统管理员」专指 admin 角色,有系统管理权的别的角色也进得来
-                String msg = system
-                    ? "GET".equals(req.getMethod())
-                        ? ReadAccessManager.deniedMessage(java.util.List.of(Perm.SYSTEM_VIEW))
-                        : "无修改权限：需要「" + Perm.label(Perm.SYSTEM_EDIT) + "」，请联系系统管理员在角色里勾上"
-                    : "GET".equals(req.getMethod())
-                        ? ReadAccessManager.deniedMessage(req.getAttribute(ReadAccessManager.REQ_ATTR_NEED))
-                        : ResultCode.FORBIDDEN.message;
+                // 读写都写明缺哪一屏的哪一项(两个 AccessManager 被拒时把 anyOf 记进 REQ_ATTR_NEED);
+                // 「可查看,如需修改…」那句在屏级拆分后不一定成立,不再用
+                Object need = req.getAttribute(ReadAccessManager.REQ_ATTR_NEED);
+                String msg = "GET".equals(req.getMethod()) ? ReadAccessManager.deniedMessage(need)
+                                                           : ReadAccessManager.writeDeniedMessage(need);
                 objectMapper.writeValue(res.getWriter(), Result.error(ResultCode.FORBIDDEN.code, msg));
             }));
         return http.build();

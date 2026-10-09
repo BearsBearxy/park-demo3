@@ -3,7 +3,7 @@
 //  · 只读查看(默认):分组/列名/别名 chips/隐藏徽标/列宽纯展示;右栏版本链每项可点,
 //    点历史版 → booksApi.versionDefinition 取该版定义做只读预览(标题旁「正在查看」标签 + 一键回现行版)。
 //    唯一的读请求,其余仍纯受控:保存/切版全部 emit 给宿主。
-//  · 编辑模式:仅 canEdit(book-template:edit)且仅对现行版;头部「编辑模式」进入,
+//  · 编辑模式:仅 canEdit(宿主那一屏的「账册模板」权)且仅对现行版;头部「编辑模式」进入,
 //    「完成/取消」退回只读。正在看历史版时点「编辑模式」先切回现行版再进入。
 //
 // 版式:居中弹窗(PAGE-BEHAVIOR-SPEC §2,样式对齐 FinDialogs 的 .fin-mask/.fin-dlg 系)。
@@ -40,8 +40,9 @@ const props = defineProps<{
   book: Book | null
   versions: TemplateVersion[]
   saving: boolean
-  canEdit: boolean       // 宿主传 auth.can('book-template:edit')
-  canSwitch: boolean     // 宿主传 auth.can('book-template:switch')(第17权限点)
+  canEdit: boolean       // 宿主传 auth.can(editPerm)
+  canSwitch: boolean     // 宿主传 auth.can('<屏>:version')(更换版本)
+  editPerm: string       // 宿主那一屏的「账册模板」权限点:ledger:template / sales-income:template(编辑锁登记用)
   monthHasData: boolean  // 本月已录入 → 模板定稿(P6 冻结:不许切版、不许编辑)
   // 锁键 = pin 键 = (册, 年, 月)。面板此前不知道自己在哪个月,锁只好按册加 ——
   // 而 saveTemplate / pin 两个写口带的都是这三个。台账屏矩阵态下 month 为 null。
@@ -137,7 +138,7 @@ const lockScope = computed(() =>
     : null)
 // 第三参 = 改动数(规范 §1.7):关页签 / 退出登录按它问,0 处改动不弹。templateDirty 在下面声明,闭包调用时已就绪
 const lock = useEditLock(() => { mode.value = 'view'; aliasEditId.value = null },
-                          () => props.canEdit, () => templateDirty.value, ['book-template:edit'])
+                          () => props.canEdit, () => templateDirty.value, [props.editPerm])
 const { lockedBy, evictedBy } = lock
 const heldByOther = lock.watchScope(() => lockScope.value)
 // 退出的路不止一条(点完成/取消/关面板/换账册),用 watch 兜住 —— 漏一条就是一把没人认领的锁

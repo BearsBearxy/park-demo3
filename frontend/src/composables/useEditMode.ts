@@ -6,6 +6,8 @@ import { useReviewStore } from '@/stores/review'
 import { useUiStore } from '@/stores/ui'
 import { tabMeta } from '@/stores/tabs'
 import { LOCKING, periodOfKey } from '@/types/review'
+import { loadPermDict, permLabel } from '@/api/perms'
+import { receipt } from '@/utils/receipt'
 
 
 export interface EditModeOpts {
@@ -100,6 +102,16 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
   })
   /** 提权弹窗要补的权限点。非空即打开弹窗。 */
   const asking = ref<string[] | null>(null)
+  /**
+   * 缺这几项:能请提权就弹授权窗;不能请(角色没勾「可请求提权」)就说一句缺什么、找谁 —— 授权窗里当场授权和
+   * 远程请求两条路后端都要 elevate:request,弹了也是主管输完密码吃 403(RBAC-SPEC §15.13 第 7 条)。
+   * 写「还要 A、B」不写「A 或 B」:编辑模式要这几项齐。字典先取到再拼(专有动作的名字只在字典里)。
+   */
+  function ask(list: string[]) {
+    if (auth.can('elevate:request')) { asking.value = list; return }
+    void loadPermDict().then(() =>
+      receipt.warn(`进这一屏的编辑模式还要「${list.map(permLabel).join('」「')}」，你的账号不能请主管当场授权，请找系统管理员在角色里勾上`))
+  }
 
   /** 这一页里当前改不了的权限点（已提权的不算缺）。 */
   const missing = computed(() => perms.filter((p) => !auth.can(p)))
@@ -160,7 +172,7 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
     // (按钮位在审核态下本来就是禁用药丸,点不到;这里守的是药丸还没画出来的那一瞬。)
     if (reviewBlock.value) return
     // 缺任何一项就当场弹授权窗 —— 不进去之后再用提示条告诉他
-    if (missing.value.length) { asking.value = [...missing.value]; return }
+    if (missing.value.length) { ask([...missing.value]); return }
     await enter()
   }
 
@@ -247,7 +259,7 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
    */
   function askFor(...want: string[]) {
     const list = want.length ? want.filter((p) => !auth.can(p)) : [...missing.value]
-    if (list.length) asking.value = list
+    if (list.length) ask(list)
   }
 
   /**

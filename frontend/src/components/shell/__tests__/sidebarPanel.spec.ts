@@ -164,10 +164,10 @@ describe('SidebarPanel · 点击语义(§4.1)', () => {
   })
 })
 
-describe('SidebarPanel · 按查看权隐藏(RBAC v3)', () => {
+describe('SidebarPanel · 按查看权隐藏(RBAC v3;v4 一屏一项)', () => {
   // 破坏验证:sections 改回 activeLayer.value.sections.map(...)(不过 visibleSections)→ 红
-  it('❗只有台账与附表的查看权:档案、出账两组整组不出,工资不列;本月出账、台账、导入中心照常', async () => {
-    useAuthStore().permissions = ['entry:view']
+  it('❗只授了本月出账、台账、附表10、导入中心:档案、出账两组整组不出,同组的工资不列', async () => {
+    useAuthStore().permissions = ['data-home:view', 'ledger:view', 'sales-income:view', 'import:view']
     const w = mountPanel()
     const titles = () => w.findAll('button.fp-sbnav-title').map(b => b.text())
     expect(titles().some(t => t.startsWith('档案'))).toBe(false)

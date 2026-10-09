@@ -16,6 +16,10 @@ import com.park.demo3.entity.CpPowerUsage;
 import com.park.demo3.entity.CpReading;
 import com.park.demo3.entity.CpStation;
 import com.park.demo3.security.NoReviewGuard;
+import com.park.demo3.security.Perm;
+import com.park.demo3.security.PermissionGuard;
+import com.park.demo3.security.ReadAccessManager;
+import com.park.demo3.security.SensitiveMask;
 import com.park.demo3.mapper.ChargingRecordMapper;
 import com.park.demo3.mapper.CpPowerUsageMapper;
 import com.park.demo3.mapper.CpReadingMapper;
@@ -29,9 +33,13 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -44,11 +52,40 @@ public class CpMeterService {
     private final CpReadingMapper readings;
     private final CpPowerUsageMapper usages;
     private final ChargingRecordMapper chargingRecords;   // 附表7/8 真实月度汇总,模拟填充只读
+    private final PermissionGuard guard;
 
     public CpMeterService(CpStationMapper stations, CpReadingMapper readings, CpPowerUsageMapper usages,
-                          ChargingRecordMapper chargingRecords) {
+                          ChargingRecordMapper chargingRecords, PermissionGuard guard) {
         this.stations = stations; this.readings = readings; this.usages = usages;
-        this.chargingRecords = chargingRecords;
+        this.chargingRecords = chargingRecords; this.guard = guard;
+    }
+
+    // ── 按车型判权(RBAC-SPEC §15.6):汽车、电动车两屏共用这一组接口和一张表,URL 层放行两屏任一,这里按桩的车型再判 ──
+    private static String screenOf(String vehicleType) { return "ebike".equals(vehicleType) ? "ebike-charging" : "car-charging"; }
+
+    /** 写:车型所属屏的这一项(认提权)。 */
+    private void requireFor(String vehicleType, String action) { guard.require(screenOf(vehicleType) + ":" + action); }
+
+    private void requireStation(Integer stationId, String action) {
+        CpStation s = stationId == null ? null : stations.selectById(stationId);
+        if (s != null) requireFor(s.getVehicleType(), action);
+    }
+
+    /** 读:看得了的车型;null = 都看得了(有充电桩分析查看,或两屏都看得了)。查看不可提权,只看本人角色。 */
+    private static Set<String> visibleTypes() {
+        if (SensitiveMask.holds(Perm.CHARGING_ANALYSIS_VIEW)) return null;
+        Set<String> out = new HashSet<>();
+        if (SensitiveMask.holds("car-charging:view")) out.add("car");
+        if (SensitiveMask.holds("ebike-charging:view")) out.add("ebike");
+        return out.size() == 2 ? null : out;
+    }
+
+    /** 看得了的桩 id;null = 全部。 */
+    private List<Integer> visibleStationIds(Set<String> types) {
+        if (types == null) return null;
+        List<Integer> out = new ArrayList<>();
+        for (String t : types) out.addAll(stations.selectIdsByType(t));
+        return out;
     }
 
     private static BigDecimal nz(BigDecimal v) { return v == null ? BigDecimal.ZERO : v; }
@@ -65,11 +102,14 @@ public class CpMeterService {
 
     // ── 桩 CRUD ──
     public List<CpStationDTO> stationList() {
-        return stations.selectAllSorted().stream().map(CpMeterService::toStationDTO).toList();
+        Set<String> types = visibleTypes();
+        return stations.selectAllSorted().stream().filter(s -> types == null || types.contains(s.getVehicleType()))
+            .map(CpMeterService::toStationDTO).toList();
     }
 
     @NoReviewGuard(reason = "充电桩分桩抄表是附表7/8 的下游派生第二本账,不回写 charging_record;spec §7.1 无键,本轮不进审核")
     public CpStationDTO createStation(CpStationReq req) {
+        requireFor(req.vehicleType(), "archive");
         String name = req.name().trim();
         if (stations.selectCount(new QueryWrapper<CpStation>().eq("name", name)) > 0)
             throw new BizException(ResultCode.CONFLICT, "充电桩名称已存在");
@@ -87,6 +127,8 @@ public class CpMeterService {
     public CpStationDTO updateStation(Integer id, CpStationReq req) {
         CpStation s = stations.selectById(id);
         if (s == null) throw new BizException(ResultCode.NOT_FOUND, "充电桩不存在");
+        requireFor(s.getVehicleType(), "archive");      // 改车型两边都要
+        requireFor(req.vehicleType(), "archive");
         String name = req.name().trim();
         if (stations.selectCount(new QueryWrapper<CpStation>().eq("name", name).ne("id", id)) > 0)
             throw new BizException(ResultCode.CONFLICT, "充电桩名称已存在");
@@ -120,7 +162,9 @@ public class CpMeterService {
 
     @NoReviewGuard(reason = "充电桩分桩抄表是附表7/8 的下游派生第二本账,不回写 charging_record;spec §7.1 无键,本轮不进审核")
     public void deleteStation(Integer id) {
-        if (stations.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "充电桩不存在");
+        CpStation gone = stations.selectById(id);
+        if (gone == null) throw new BizException(ResultCode.NOT_FOUND, "充电桩不存在");
+        requireFor(gone.getVehicleType(), "archive");
         if (readings.countByStation(id) > 0)
             throw new BizException(ResultCode.CONFLICT, "该充电桩已有充电记录,不可删除");
         stations.deleteById(id);
@@ -128,19 +172,33 @@ public class CpMeterService {
 
     // ── 充电记录 ──
     // 年份数据驱动:有记录的年份升序,空表=[](前端年选择器数据源)
-    public List<Integer> years() { return readings.selectDistinctYears(); }
+    public List<Integer> years() {
+        List<Integer> ids = visibleStationIds(visibleTypes());
+        if (ids == null) return readings.selectDistinctYears();
+        if (ids.isEmpty()) return List.of();
+        return readings.selectDistinctYms(ids).stream().map(ym -> Integer.valueOf(ym.substring(0, 4))).distinct().sorted().toList();
+    }
     // 有记录的账期升序,空表=[]。
     // vehicleType 非空=只数该车型的桩 —— 附表7(汽车)与附表8(电动车)是两个独立的屏,
     // 拿全集会让汽车屏的选期矩阵把电动车录过的月画成「有数据」(改前默认月也因此被拖走)。
     public List<String> months(String vehicleType) {
-        return readings.selectDistinctYms(
-            vehicleType == null ? null : stations.selectIdsByType(vehicleType));
+        if (vehicleType != null) {
+            String need = screenOf(vehicleType) + ":view";
+            if (!SensitiveMask.holds(need))
+                throw new BizException(ResultCode.FORBIDDEN, ReadAccessManager.deniedMessage(List.of(need)));
+            return readings.selectDistinctYms(stations.selectIdsByType(vehicleType));
+        }
+        List<Integer> ids = visibleStationIds(visibleTypes());
+        if (ids != null && ids.isEmpty()) return List.of();
+        return readings.selectDistinctYms(ids);
     }
 
     public List<CpReadingDTO> readingList(int year, Integer month, Integer stationId) {   // month null=全年
         Map<Integer, String> names = stations.selectList(null).stream()
             .collect(Collectors.toMap(CpStation::getId, CpStation::getName));
+        List<Integer> ids = visibleStationIds(visibleTypes());
         return readings.selectByMonth(year, month, stationId).stream()
+            .filter(r -> ids == null || ids.contains(r.getStationId()))
             .map(r -> toReadingDTO(r, names.get(r.getStationId()))).toList();
     }
 
@@ -148,6 +206,7 @@ public class CpMeterService {
     public CpReadingDTO createReading(CpReadingReq req) {
         CpStation station = stations.selectById(req.stationId());
         if (station == null) throw new BizException(ResultCode.CONFLICT, "充电桩不存在");
+        requireFor(station.getVehicleType(), "reading");
         LocalDate date = requireDate(req.readDate());
         if (readings.selectByStationAndDate(station.getId(), date) != null)
             throw new BizException(ResultCode.CONFLICT, "该充电桩该日期已有记录");
@@ -165,6 +224,7 @@ public class CpMeterService {
     public CpReadingDTO updateReading(Integer id, CpReadingReq req) {
         CpReading r = readings.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        requireStation(r.getStationId(), "reading");
         LocalDate date = requireDate(req.readDate());
         CpReading clash = readings.selectByStationAndDate(r.getStationId(), date);
         if (clash != null && !clash.getId().equals(id))
@@ -179,7 +239,9 @@ public class CpMeterService {
 
     @NoReviewGuard(reason = "充电桩分桩抄表是附表7/8 的下游派生第二本账,不回写 charging_record;spec §7.1 无键,本轮不进审核")
     public void deleteReading(Integer id) {
-        if (readings.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        CpReading gone = readings.selectById(id);
+        if (gone == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        requireStation(gone.getStationId(), "reading");
         readings.deleteById(id);
     }
 
@@ -193,11 +255,21 @@ public class CpMeterService {
         List<CpPowerUsage> uses = month == null ? usages.selectByYear(year)
             : usages.selectByPeriod(LocalDate.of(year, month, 1));
         List<CpPowerUsageDTO> out = new ArrayList<>();
+        Set<String> types = visibleTypes();
+        if (types != null) {   // 看不了的车型:桩、读数、电表行一起去掉
+            all = all.stream().filter(s -> types.contains(s.getVehicleType())).toList();
+            reads = reads.stream().filter(r -> byId.containsKey(r.getStationId())
+                && types.contains(byId.get(r.getStationId()).getVehicleType())).toList();
+            uses = uses.stream().filter(u -> types.contains(u.getVehicleType())).toList();
+        }
+        final List<CpStation> allF = all;
+        final List<CpReading> readsF = reads;
+        final List<CpPowerUsage> usesF = uses;
         for (int m = month == null ? 1 : month, end = month == null ? 12 : month; m <= end; m++) {
             final int cur = m;
-            monthRows(cur, all, byId,
-                reads.stream().filter(r -> r.getReadDate().getMonthValue() == cur).toList(),
-                uses.stream().filter(u -> u.getPeriod().getMonthValue() == cur).toList(), out);
+            monthRows(cur, allF, byId,
+                readsF.stream().filter(r -> r.getReadDate().getMonthValue() == cur).toList(),
+                usesF.stream().filter(u -> u.getPeriod().getMonthValue() == cur).toList(), out);
         }
         return out;
     }
@@ -228,6 +300,7 @@ public class CpMeterService {
     // upsert:uk(运营商,类型,月)有则改无则插;返回带派生损耗的行
     @NoReviewGuard(reason = "充电桩分桩抄表是附表7/8 的下游派生第二本账,不回写 charging_record;spec §7.1 无键,本轮不进审核")
     public CpPowerUsageDTO upsertPowerUsage(CpPowerUsageReq req) {
+        requireFor(req.vehicleType(), "reading");
         LocalDate period = LocalDate.of(req.year(), req.month(), 1);
         String operator = req.operator().trim();
         CpPowerUsage u = usages.selectByKey(operator, req.vehicleType(), period);
@@ -264,6 +337,9 @@ public class CpMeterService {
     @Transactional
     @NoReviewGuard(reason = "充电桩分桩抄表是附表7/8 的下游派生第二本账,不回写 charging_record;spec §7.1 无键,本轮不进审核")
     public CpSimulateResultDTO simulate(int year) {
+        // 一次写两种桩一整年的充电记录:两屏的分桩读数都要
+        requireFor("car", "reading");
+        requireFor("ebike", "reading");
         Map<String, CpStation> byName = stations.selectList(null).stream()
             .collect(Collectors.toMap(s -> s.getName().trim(), Function.identity(), (a, b) -> a));
         int[] c = new int[2];   // [0]=filled, [1]=skipped
@@ -339,6 +415,10 @@ public class CpMeterService {
         List<ImportError> errors = new ArrayList<>();
         int imported = 0;
         List<CpMeterImportRequest.Row> rows = req.rows();
+        // 文件里有哪种桩就要哪种的分桩读数;缺一种整次 403,一行都不写
+        new TreeSet<>(rows.stream().map(row -> byName.get(row.station() == null ? "" : row.station().trim()))
+            .filter(Objects::nonNull).map(CpStation::getVehicleType).toList())
+            .forEach(t -> requireFor(t, "reading"));
         for (int i = 0; i < rows.size(); i++) {
             CpMeterImportRequest.Row row = rows.get(i);
             String name = row.station() == null ? "" : row.station().trim();

@@ -560,7 +560,7 @@ describe('页签模型 · 看不了的屏不留(RBAC v3 读写分开)', () => {
     s.recent = ['salary', 'ledger', 'tenants']
     expect(vals(s)).toEqual([HOME, 'ledger', 'salary'])
     expect(s.closed).toEqual(['tenants'])
-    auth.permissions = ['entry:view']            // 工资、租户都看不了了
+    auth.permissions = ['ledger:view']           // 工资、租户都看不了了
     await nextTick()
     expect(vals(s)).toEqual([HOME, 'ledger'])
     expect(s.recent).toEqual(['ledger'])
@@ -570,13 +570,13 @@ describe('页签模型 · 看不了的屏不留(RBAC v3 读写分开)', () => {
   // 破坏验证:那条 watch 加 { immediate: true } → 红(建 store 那一刻按本地旧权限把页签全清了)
   it('❗建 store 时不按本地存的那份权限清:那份可能是上一版留下的,等新权限到了再说', async () => {
     localStorage.setItem('username', 'zhou')
-    localStorage.setItem('permissions', JSON.stringify(['entry:edit']))   // 上一版:还没有查看权这一说
+    localStorage.setItem('permissions', JSON.stringify(['entry:edit']))   // 上一版(0.32)的模块键:v4 一个都不认
     localStorage.setItem('fp-app-tabs:zhou', JSON.stringify(['ledger', 'meters']))
     setActivePinia(createPinia())
     const s = useTabsStore()
     await nextTick()
     expect(vals(s)).toEqual([HOME, 'ledger', 'meters'])
-    useAuthStore().permissions = ['entry:edit', 'entry:view']   // refreshMe 拿回展开后的新权限
+    useAuthStore().permissions = ['ledger:edit', 'ledger:view']   // refreshMe 拿回展开后的新权限
     await nextTick()
     expect(vals(s)).toEqual([HOME, 'ledger'])
   })

@@ -96,7 +96,7 @@ const TENANTS = [tenant(7, '力灏电子'), tenant(8, '新租户科技')]
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['meter-reading:edit', 'meter-master:edit']
+  useAuthStore().permissions = ['meters:edit', 'meters:archive']
   vi.clearAllMocks()
   vi.mocked(metersApi.meterReadings).mockResolvedValue([])
   vi.mocked(metersApi.assign).mockResolvedValue([])
@@ -710,7 +710,7 @@ describe('删除表确认框', () => {
   })
 
   it('只挂在草稿单里:列出月份 · 户名 · 行数;默认不勾、不勾删不了;勾上删,带连删单参数', async () => {
-    useAuthStore().permissions = ['meter-master:edit', 'billing-run:edit']
+    useAuthStore().permissions = ['meters:archive', 'bill-notices:edit']
     const { dlg } = await openDelete(IMPACT({ notices: NS, draftCount: 2 }))
     expect(dlg.findAll('.dd-list li').map(l => l.text())).toEqual(['2023-08 · 南盛物流 · 草稿 5 行', '2024-02 · 南盛物流 · 草稿 2 行'])
     const ck = dlg.find('input[type="checkbox"]')
@@ -725,7 +725,7 @@ describe('删除表确认框', () => {
   })
 
   it('里面有已作废的单:勾选项写「草稿/已作废」,与列表一致', async () => {
-    useAuthStore().permissions = ['meter-master:edit', 'billing-run:edit']
+    useAuthStore().permissions = ['meters:archive', 'bill-notices:edit']
     const { dlg } = await openDelete(IMPACT({
       notices: [NS[0], { noticeId: 14, ym: '2024-02', tenantName: '南盛物流', status: 'void', lines: 2 }], draftCount: 2,
     }))
@@ -734,15 +734,15 @@ describe('删除表确认框', () => {
   })
 
   it('只挂在草稿单里、没有出账运行权限:不给勾,写明要谁来删,确认灰掉', async () => {
-    useAuthStore().permissions = ['meter-reading:edit', 'meter-master:edit']
+    useAuthStore().permissions = ['meters:edit', 'meters:archive']
     const { dlg } = await openDelete(IMPACT({ notices: NS, draftCount: 2 }))
     expect(dlg.find('input[type="checkbox"]').exists()).toBe(false)
-    expect(dlg.text()).toContain('删这些草稿单要有「出账运行」权限')
+    expect(dlg.text()).toContain('删这些草稿单要有「催缴单 · 编辑」权限')
     expect(btn(dlg, '删除')!.attributes('disabled')).toBeDefined()
   })
 
   it('有已确认 / 已导出的单:一起列出,不给勾,确认灰掉,指到催缴单屏作废', async () => {
-    useAuthStore().permissions = ['meter-master:edit', 'billing-run:edit']
+    useAuthStore().permissions = ['meters:archive', 'bill-notices:edit']
     const { dlg } = await openDelete(IMPACT({
       notices: [NS[0], { noticeId: 13, ym: '2024-05', tenantName: '南盛物流', status: 'exported', lines: 1 }],
       draftCount: 1, lockedCount: 1,

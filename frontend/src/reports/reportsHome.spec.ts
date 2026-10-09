@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  HOME_CARDS, tieBs, tieTb, tieIncome, tieRecon, defaultPeriod, loadHomeData,
+  HOME_CARDS, NO_VIEW, tieBs, tieTb, tieIncome, tieRecon, defaultPeriod, loadHomeData,
 } from './reportsHome'
 import { reportApi } from '@/api/report'
 import { pnlApi } from '@/api/pnl'
@@ -12,7 +12,11 @@ import type { ReconMonthMeta } from '@/types/recon'
 vi.mock('@/api/report', () => ({ reportApi: { allPeriod: vi.fn() } }))
 vi.mock('@/api/pnl', () => ({ pnlApi: { overview: vi.fn() } }))
 vi.mock('@/api/recon', () => ({ reconApi: { overview: vi.fn(), month: vi.fn() } }))
-vi.mock('@/api/s10', () => ({ s10Api: { getMonth: vi.fn() } }))
+vi.mock('@/api/s10', () => ({ s10Api: { getMonth: vi.fn(), monthTotals: vi.fn() } }))
+
+// 判权函数:ALL = 什么都看得了;only(...) = 只有这几项(RBAC v4 一屏一项 `<屏>:view`)
+const ALL = () => true
+const only = (...ps: string[]) => (p: string) => ps.includes(p)
 
 // ── 合成数据 ──
 const acc = (rowKey: string, level = 0): ReportAccount =>
@@ -34,8 +38,7 @@ const TB_D: ReportPeriodDTO = {
 const PNL_OV = { years: [{ year: 2024, hasData: true, rowCount: 10 }, { year: 2025, hasData: true, rowCount: 42 }] }
 const RECON_OV = { year: 2025, months: [meta(8, 5)] }
 const RECON_MO = { year: 2025, month: 9, entities: [] }
-const s10Month = (grandTotal: number) =>
-  ({ phase: 1, year: 2025, month: 9, recorded: true, rows: [], columnTotals: {}, grandTotal })
+const TOTALS = { 1: 250, 2: 250, 3: 250, 4: 250 }
 
 function mockHappy() {
   vi.mocked(reportApi.allPeriod).mockImplementation(stmt =>
@@ -43,7 +46,7 @@ function mockHappy() {
   vi.mocked(pnlApi.overview).mockResolvedValue(PNL_OV)
   vi.mocked(reconApi.overview).mockResolvedValue(RECON_OV)
   vi.mocked(reconApi.month).mockResolvedValue(RECON_MO)
-  vi.mocked(s10Api.getMonth).mockResolvedValue(s10Month(250))
+  vi.mocked(s10Api.monthTotals).mockResolvedValue(TOTALS)
 }
 
 beforeEach(() => {
@@ -133,24 +136,24 @@ describe('defaultPeriod', () => {
         { ...meta(0, 0), month: 6, hasData: false },
       ],
     })
-    expect(await defaultPeriod()).toEqual({ year: 2026, month: 5 })
+    expect(await defaultPeriod(ALL)).toEqual({ year: 2026, month: 5 })
   })
 
   it('overview 失败 → 今年今月(不再落写死的 2025-09)', async () => {
     vi.mocked(reconApi.overview).mockRejectedValue(new Error('net'))
-    expect(await defaultPeriod()).toEqual({ year: 2031, month: 7 })
+    expect(await defaultPeriod(ALL)).toEqual({ year: 2031, month: 7 })
   })
 
   it('无 hasData 月 → 今年今月(新园区空库)', async () => {
     vi.mocked(reconApi.overview).mockResolvedValue({ year: 2026, months: [{ ...meta(0, 0), hasData: false }] })
-    expect(await defaultPeriod()).toEqual({ year: 2031, month: 7 })
+    expect(await defaultPeriod(ALL)).toEqual({ year: 2031, month: 7 })
   })
 })
 
 // ── loadHomeData 聚合 ──
 describe('loadHomeData', () => {
   it('happy:9 卡按 HOME_CARDS 序 + 勾稽 4 项', async () => {
-    const d = await loadHomeData(2025, 9)
+    const d = await loadHomeData(2025, 9, ALL)
     expect(d.year).toBe(2025)
     expect(d.month).toBe(9)
     expect(d.cards.map(c => c.key)).toEqual(HOME_CARDS.map(c => c.key))
@@ -177,7 +180,7 @@ describe('loadHomeData', () => {
   it('bs 源 reject → bs 卡待生成 + 勾稽① value=— ok=false,其余不受影响,不抛', async () => {
     vi.mocked(reportApi.allPeriod).mockImplementation(stmt =>
       stmt === 'bs' ? Promise.reject(new Error('boom')) : Promise.resolve({ is: IS_D, tb: TB_D }[stmt as 'is' | 'tb']))
-    const d = await loadHomeData(2025, 9)
+    const d = await loadHomeData(2025, 9, ALL)
     const bs = d.cards.find(c => c.key === 'bs')!
     expect(bs.value).toBe('待生成')
     expect(bs.tie).toBe('pending')
@@ -188,10 +191,9 @@ describe('loadHomeData', () => {
     expect(d.tieout[1].ok).toBe(true)
   })
 
-  it('s10 某期 reject → 勾稽③ value=— ok=false,is 卡值仍在但 tie=pending', async () => {
-    vi.mocked(s10Api.getMonth).mockImplementation(phase =>
-      phase === 3 ? Promise.reject(new Error('boom')) : Promise.resolve(s10Month(250)))
-    const d = await loadHomeData(2025, 9)
+  it('s10 月合计 reject → 勾稽③ value=— ok=false,is 卡值仍在但 tie=pending', async () => {
+    vi.mocked(s10Api.monthTotals).mockRejectedValue(new Error('boom'))
+    const d = await loadHomeData(2025, 9, ALL)
     expect(d.tieout[2].value).toBe('—')
     expect(d.tieout[2].ok).toBe(false)
     const is = d.cards.find(c => c.key === 'is')!
@@ -202,7 +204,7 @@ describe('loadHomeData', () => {
   it('is 源有数据但 amounts 空 → is 卡待生成(F6)', async () => {
     vi.mocked(reportApi.allPeriod).mockImplementation(stmt =>
       Promise.resolve({ is: { amounts: {}, customRows: [] }, bs: BS_D, tb: TB_D }[stmt as 'is' | 'bs' | 'tb']))
-    const d = await loadHomeData(2025, 9)
+    const d = await loadHomeData(2025, 9, ALL)
     expect(d.cards.find(c => c.key === 'is')!.value).toBe('待生成')
   })
 
@@ -212,10 +214,59 @@ describe('loadHomeData', () => {
     vi.mocked(pnlApi.overview).mockImplementation(boom)
     vi.mocked(reconApi.overview).mockImplementation(boom)
     vi.mocked(reconApi.month).mockImplementation(boom)
-    vi.mocked(s10Api.getMonth).mockImplementation(boom)
-    const d = await loadHomeData(2025, 9)
+    vi.mocked(s10Api.monthTotals).mockImplementation(boom)
+    const d = await loadHomeData(2025, 9, ALL)
     expect(d.cards).toHaveLength(9)
     expect(d.cards.every(c => c.value === '待生成' && c.tie === 'pending')).toBe(true)
     expect(d.tieout.every(t => t.value === '—' && !t.ok)).toBe(true)
+  })
+})
+
+// ── RBAC v4(2026-10-09,RBAC-SPEC §15.7 / §15.10):报表中心只取看得了的那几张 ──
+// 后端读规则对报表中心只放行 /s10/month-totals;其余每张报表要它自己那一屏的查看。取了看不了的会 403,
+// allSettled 吞掉之后卡上写「待生成」—— 说的是没录,其实是不让看。
+// 破坏验证:loadHomeData 里 is / tb 的 when(sees(…)) 去掉 → 第一条红;locked 卡的值改回 dyn 的「待生成」→ 第一条红;
+//          勾稽③改回四次 getMonth → 第二条红;defaultPeriod 去掉 can('reconciliation:view') 门 → 第三条红
+describe('loadHomeData / defaultPeriod 按屏查看权取数', () => {
+  it('❗只有报表中心 + 资产负债表查看:别的报表、收入核对、损益附表、附表10 一个都不取;看不了的卡写「没有查看权」', async () => {
+    const d = await loadHomeData(2025, 9, only('reports-home:view', 'balance-sheet:view'))
+    expect(vi.mocked(reportApi.allPeriod).mock.calls.map(c => c[0])).toEqual(['bs'])
+    expect(reconApi.overview).not.toHaveBeenCalled()
+    expect(reconApi.month).not.toHaveBeenCalled()
+    expect(pnlApi.overview).not.toHaveBeenCalled()
+    expect(s10Api.monthTotals).not.toHaveBeenCalled()
+    expect(s10Api.getMonth).not.toHaveBeenCalled()
+
+    const by = Object.fromEntries(d.cards.map(c => [c.key, c]))
+    expect(d.cards.map(c => c.key), '看不了的卡照样列出').toEqual(HOME_CARDS.map(c => c.key))
+    expect(by.is.value).toBe(NO_VIEW)
+    expect(NO_VIEW).toBe('没有查看权')
+    expect(by.is.locked).toBe(true)
+    expect(by.is.tie, '看不了的卡不挂「待生成」徽标').toBe('none')
+    expect(by.s3.value).toBe(NO_VIEW)
+    expect(by.recon.value).toBe(NO_VIEW)
+    expect(by.bs.locked).toBe(false)
+    expect(by.bs.value).toBe('100.00')
+    // 勾稽:只有①(资产负债表平衡)算了,其余三项是「看不了」不是「待查」
+    expect(d.tieout.map(t => t.locked)).toEqual([false, true, true, true])
+    expect(d.tieout[0].ok).toBe(true)
+  })
+
+  it('❗再加利润表查看:勾稽③只调一次 /s10/month-totals,不读附表10 逐户宽表', async () => {
+    const d = await loadHomeData(2025, 9, only('reports-home:view', 'balance-sheet:view', 'income-statement:view'))
+    expect(s10Api.monthTotals).toHaveBeenCalledTimes(1)
+    expect(s10Api.monthTotals).toHaveBeenCalledWith(2025, 9)
+    expect(s10Api.getMonth).not.toHaveBeenCalled()
+    expect(vi.mocked(reportApi.allPeriod).mock.calls.map(c => c[0]).sort()).toEqual(['bs', 'is'])
+    expect(d.tieout[2]).toMatchObject({ locked: false, ok: true, value: '1,000.00' })   // 1000 = 4 × 250
+    expect(d.cards.find(c => c.key === 'is')!.tie).toBe('ok')
+  })
+
+  it('❗看不了收入核对:默认期不问收入核对接口,直接落今年今月', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2031, 6, 15))
+    try {
+      expect(await defaultPeriod(only('reports-home:view', 'income-statement:view'))).toEqual({ year: 2031, month: 7 })
+      expect(reconApi.overview).not.toHaveBeenCalled()
+    } finally { vi.useRealTimers() }
   })
 })

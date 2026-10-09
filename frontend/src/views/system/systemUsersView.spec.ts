@@ -1,5 +1,5 @@
 // 用户管理屏。钉三条会真出事的契约:
-// ① 读全开(RBAC-SPEC §0):无 system:edit 时账号照常全部显示,只是没有新建/编辑/停用入口;
+// ① 读全开(RBAC-SPEC §0):无 sys-users:edit 时账号照常全部显示,只是没有新建/编辑/停用入口;
 // ② 账号只停用不删除(§8):全屏不得出现「删除」二字,停用行数据照常显示、只加停用徽标;
 // ③ 后端两条守卫(不能停用自己 / 用户名重复)要翻成人话,不能把原始报错糊到用户脸上。
 // ④ 系统管理分级(RBAC-SPEC §12):后端说管不了的账号(manageable=false),三颗操作按不动并说为什么,
@@ -12,8 +12,8 @@ import { askQueue, answer } from '@/utils/ask'
 import { receipts } from '@/utils/receipt'
 
 const ROLES = [
-  { id: 1, code: 'admin', name: '系统管理员', builtin: true, navLayers: ['data', 'reports', 'analysis'], perms: ['system:edit'], userCount: 1, remark: null },
-  { id: 3, code: 'clerk', name: '财务专员', builtin: true, navLayers: ['data', 'reports', 'analysis'], perms: ['entry:edit'], userCount: 1, remark: null },
+  { id: 1, code: 'admin', name: '系统管理员', builtin: true, navLayers: ['data', 'reports', 'analysis'], perms: ['sys-users:edit'], userCount: 1, remark: null },
+  { id: 3, code: 'clerk', name: '财务专员', builtin: true, navLayers: ['data', 'reports', 'analysis'], perms: ['ledger:edit'], userCount: 1, remark: null },
 ]
 const USERS = [
   { id: 1, username: 'admin', displayName: '系统管理员', status: 1, mustChangePassword: false, roles: [ROLES[0]], createdAt: '2026-01-05T09:30:00' },
@@ -60,8 +60,8 @@ beforeEach(() => {
 })
 
 describe('SystemUsersView', () => {
-  it('读全开:无 system:edit 时账号全显示,但没有任何写入口', async () => {
-    const w = mountWith(['system:view'])
+  it('读全开:无 sys-users:edit 时账号全显示,但没有任何写入口', async () => {
+    const w = mountWith(['sys-users:view'])
     await flushPromises()
     // 两个账号都在(含已停用的那个)——「读全开」的直接体现
     expect(w.text()).toContain('admin')
@@ -75,7 +75,7 @@ describe('SystemUsersView', () => {
   })
 
   it('账号只停用不删除:停用行数据照常显示,全屏无「删除」', async () => {
-    const w = mountWith(['system:view', 'system:edit'])
+    const w = mountWith(['sys-users:view', 'sys-users:edit'])
     await flushPromises()
     const html = w.text()
     expect(html).toContain('停用')
@@ -102,7 +102,7 @@ describe('SystemUsersView', () => {
       { ...USERS[1], status: 1, roles: [roles2[1]], manageable: true },
     ]))
     rolesMock.mockImplementation(() => Promise.resolve(roles2))
-    const w = mountWith(['system:view', 'system:edit'])
+    const w = mountWith(['sys-users:view', 'sys-users:edit'])
     await flushPromises()
     const rowOf = (name: string) => w.findAll('tbody tr').find(r => r.text().includes(name))!
     const b = (name: string, text: string) => rowOf(name).findAll('button').find(x => x.text() === text)!
@@ -132,7 +132,7 @@ describe('SystemUsersView', () => {
   })
 
   it('后端拒绝翻人话:停用自己 / 用户名重复都不露原始报错', async () => {
-    const w = mountWith(['system:view', 'system:edit'])
+    const w = mountWith(['sys-users:view', 'sys-users:edit'])
     await flushPromises()
 
     setUserStatus.mockRejectedValueOnce({ message: 'cannot disable self' })
@@ -165,7 +165,7 @@ describe('SystemUsersView', () => {
   })
 
   it('❗停用走 ask(danger,主按钮写「停用账号」);答取消不发请求,答停用才发,目标状态是 0', async () => {
-    const w = mountWith(['system:view', 'system:edit'])
+    const w = mountWith(['sys-users:view', 'sys-users:edit'])
     await flushPromises()
     await btnByText(w, '停用')[0].trigger('click')
     await flushPromises()
@@ -182,7 +182,7 @@ describe('SystemUsersView', () => {
   })
 
   it('❗启用不是删除类:ask 不带 danger,主按钮写「启用账号」', async () => {
-    const w = mountWith(['system:view', 'system:edit'])
+    const w = mountWith(['sys-users:view', 'sys-users:edit'])
     await flushPromises()
     await btnByText(w, '启用')[0].trigger('click')
     await flushPromises()
@@ -192,7 +192,7 @@ describe('SystemUsersView', () => {
 
   it('❗加载失败换掉表格本身(FPLoadError,和表格互斥);点重试重拉,成功后表格回来', async () => {
     users.mockRejectedValueOnce({ message: '网关超时' })
-    const w = mountWith(['system:view', 'system:edit'])
+    const w = mountWith(['sys-users:view', 'sys-users:edit'])
     await flushPromises()
     expect(btnByText(w, '新建账号')[0].attributes('disabled'), '没读到账号与角色时不开写入口').toBeDefined()
     const err = w.find('.mx-listcard .fp-empty.error')
@@ -208,7 +208,7 @@ describe('SystemUsersView', () => {
   })
 
   it('❗筛空了是 FPEmpty', async () => {
-    const w = mountWith(['system:view'])
+    const w = mountWith(['sys-users:view'])
     await flushPromises()
     await w.find('.mx-search input').setValue('查无此人')
     expect(w.find('.mx-tablewrap .fp-empty').text()).toBe('没有匹配的账号')
@@ -221,7 +221,7 @@ describe('SystemUsersView', () => {
     users
       .mockImplementationOnce(() => new Promise((_, rej) => { lateFail = rej }))
       .mockImplementationOnce(() => new Promise((res) => { lateOk = res }))
-    const w = mountWith(['system:view'])
+    const w = mountWith(['sys-users:view'])
     await flushPromises()
     const vm = w.vm as unknown as { reload: () => Promise<void> }
     void vm.reload()
@@ -247,7 +247,7 @@ describe('SystemUsersView · 角色列按全部账号定宽', () => {
     const many = Array.from({ length: 10 }, (_, i) => ({ ...USERS[0], id: 100 + i, username: `u${i}` }))
     const both = { ...USERS[1], id: 200, username: 'both.roles', roles: [ROLES[0], ROLES[1]] }
     users.mockImplementation(() => Promise.resolve([...many, both]))
-    const w = mountWith(['system:view'])
+    const w = mountWith(['sys-users:view'])
     await flushPromises()
     expect(w.find('.mx-tablewrap tbody').text(), '前置:两签账号在第 2 页').not.toContain('both.roles')
     const th = w.findAll('.mx-tablewrap thead th').find(t => t.text().includes('角色'))!.element as HTMLElement

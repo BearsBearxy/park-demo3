@@ -122,7 +122,10 @@ function overview(patch: Partial<DataHomeOverviewDTO> = {}): DataHomeOverviewDTO
 // 必须在 setActivePinia 之前写 storage:auth store 是初始化时读它的。
 // RBAC v3:编辑隐含查看由后端展开(UserPermissionCache),前端拿到的就是展开后的 —— 夹具照样带上查看
 // 清单行跳去的屏各要各的查看权(go() 里拦),默认给全部业务查看,缺哪项的用例自己减
-const EDITOR_PERMS = ['entry:edit', 'billing-run:edit', 'meter-reading:edit', 'report:edit', ...ALL_VIEWS]
+// RBAC v4 交审逐键判(SUBMIT_PERMS):默认给每张表的编辑权,只缺附表12 工资(那条用例专测它)
+const EDITOR_PERMS = ['params:edit', 'meters:edit', 'alloc:edit', 'alloc-loss:edit', 'bill-notices:edit',
+  'ledger:edit', 'sales-income:edit', 'pv-income:edit', 'car-charging:edit', 'ebike-charging:edit', 'elec-cost:edit',
+  'utilities:edit', 'income-statement:edit', 'balance-sheet:edit', 'trial-balance:edit', ...ALL_VIEWS]
 
 async function mountWith(patch: Partial<DataHomeOverviewDTO> = {}, opts: { perms?: string[] } = {}) {
   localStorage.setItem('permissions', JSON.stringify(opts.perms ?? EDITOR_PERMS))
@@ -681,9 +684,10 @@ describe('数据中心首页 · 两栏清单(P2 T3)', () => {
     expect(row!.find('.dh-rdot').text()).toBe('—')
   })
 
-  // RBAC v3:收入核对归报表,没有 report:view 的人请求必 403。破坏验证:loadRecon 里 can('report:view') 那一判去掉 → 红
-  it('❗没有报表查看权:收入核对不发请求,那一行照常显「—」', async () => {
-    const w = await mountWith({}, { perms: ['entry:edit', 'entry:view', 'billing:view', 'meter:view'] })
+  // RBAC v4:收入核对归它自己那一屏,没有「收入核对 · 查看」的人请求必 403 —— 别的报表都看得了也一样。
+  // 破坏验证:loadRecon 里 can('reconciliation:view') 那一判去掉 / 换回报表层任一查看 → 红
+  it('❗没有收入核对查看权:收入核对不发请求,那一行照常显「—」', async () => {
+    const w = await mountWith({}, { perms: ['ledger:edit', ...ALL_VIEWS.filter(p => p !== 'reconciliation:view')] })
     await flushPromises()
     expect(reconOverview).not.toHaveBeenCalled()
     const row = w.findAll('.dh-row-billing').find(r => r.text().includes('收入核对'))
@@ -880,8 +884,8 @@ describe('数据中心首页 · 主管条(P2 T6)', () => {
     return w.findAll('.dh-edrow')
   }
 
-  it('主管:无 lock:takeover 也无 system:view → 标题行没有「在编辑」胶囊', async () => {
-    const w = await mountWith({}, { perms: ['entry:edit'] })
+  it('主管:无 lock:takeover 也无 sys-users:view → 标题行没有「在编辑」胶囊', async () => {
+    const w = await mountWith({}, { perms: ['ledger:edit'] })
     expect(w.find('.dh-edpill').exists()).toBe(false)
   })
 
@@ -898,7 +902,7 @@ describe('数据中心首页 · 主管条(P2 T6)', () => {
 
   // 破坏验证:胶囊改成 v-if="editors.length" → 红(零在编辑也要在位)
   it('主管:零在编辑时胶囊仍在位,点开写「现在没有别人在编辑」', async () => {
-    const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'system:view'] })
+    const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'sys-users:view'] })
     expect(w.find('.dh-edpill').isVisible()).toBe(true)
     expect(await openEditors(w)).toHaveLength(0)
     expect(w.find('.dh-edempty').text()).toBe('现在没有别人在编辑')
@@ -1185,12 +1189,12 @@ describe('数据中心首页 · 审核态与行动作(R2 T6)', () => {
   })
 
   // 附表12 的交审只认「工资录入」(RBAC-SPEC §11.8):只有事后录入的财务专员那一行不画 —— 画了点下去恒 403。
-  // 破坏验证:actionsOf 去掉 submittable 那道筛 → 红
+  // 破坏验证:SUBMIT_PERMS 的 salary 改成别的键 / canSubmitKey 恒真 → 红
   it('❗附表12 录完了:没有「工资录入」的人那一行不画「交审」,有的照常', async () => {
     const salaryItem = { name: '附表12', tag: '附12', done: true, go: 'salary' } as DataHomeItemDTO
     vi.mocked(reviewApi.list).mockResolvedValue(reviewFixture())
     const items = [LEDGER_ITEM, salaryItem, ...overview().schedules.items.filter(i => i.go !== 'ledger')]
-    const w = await mountWith({ schedules: { done: 3, total: 9, items } }, { perms: EDITOR_PERMS })   // 有 entry:edit,没有 salary:edit
+    const w = await mountWith({ schedules: { done: 3, total: 9, items } }, { perms: EDITOR_PERMS })   // 别的表都有编辑权,没有 salary:edit
     expect(rowByText(w, '附表12').findAll('.dh-abtn').map(b => b.text())).not.toContain('交审')
     expect(btn(rowByText(w, '附表6'), '交审'), '别的附表照常').toBeTruthy()
 
@@ -1252,6 +1256,73 @@ describe('数据中心首页 · 审核态与行动作(R2 T6)', () => {
     const chips = rowByText(w, '月度台账').findAll('.dh-chip')
     expect(chips.map(c => [c.text(), c.attributes('data-review')]))
       .toEqual([['A公司', 'entered'], ['B公司', 'approved']])
+  })
+})
+
+// ══════════ 逐键交审(RBAC v4,§15.7) ══════════
+//
+// 交审权 = 那一屏的编辑(后端 ReviewKind.perms)。附表7/8 一行装着汽车、电动车两把键,
+// 只有其中一屏编辑权的人只交得了自己那把 —— 按行判的话另一把点下去恒 403。
+import { SUBMIT_PERMS } from './monthClose.logic'
+import { isKnownPerm } from '@/nav/navAccess'
+
+describe('数据中心首页 · 逐键交审(RBAC v4)', () => {
+  beforeEach(() => {
+    vi.mocked(reviewApi.list).mockReset().mockResolvedValue(reviewFixture())
+    vi.mocked(reviewApi.submit).mockReset().mockResolvedValue(undefined)
+  })
+  const CHARGING = [
+    { name: '汽车充电桩', tag: '附7', done: true, go: 'car-charging' },
+    { name: '电动车充电桩', tag: '附8', done: true, go: 'ebike-charging' },
+  ] as DataHomeItemDTO[]
+  const mountCharging = (perm: string) =>
+    mountWith({ schedules: { done: 4, total: 9, items: [...overview().schedules.items, ...CHARGING] } },
+              { perms: [...ALL_VIEWS, perm] })
+
+  // 破坏验证:canSubmitKey 改成按行的 go 判(car-charging)/ SUBMIT_PERMS 两个充电 kind 写反 → 红
+  it('❗只有电动车桩编辑:附表7/8 那一行只交电动车那把键', async () => {
+    const w = await mountCharging('ebike-charging:edit')
+    await btn(rowByText(w, '附表7/8'), '交审')!.trigger('click')
+    await flushPromises()
+    expect(reviewApi.submit).toHaveBeenCalledTimes(1)
+    expect(reviewApi.submit).toHaveBeenCalledWith(`charging-ebike:${YM}`)
+  })
+
+  it('❗只有汽车桩编辑:不交电动车那把', async () => {
+    const w = await mountCharging('car-charging:edit')
+    await btn(rowByText(w, '附表7/8'), '交审')!.trigger('click')
+    await flushPromises()
+    expect(reviewApi.submit).toHaveBeenCalledTimes(1)
+    expect(reviewApi.submit).toHaveBeenCalledWith(`charging-car:${YM}`)
+  })
+
+  // 破坏验证:SUBMIT_PERMS['alloc-loss'] 去掉 alloc:edit → 红
+  it('❗只有公共电核算编辑:楼栋损耗那一行也能交(同后端 ReviewKind.ALLOC_LOSS),催缴单不出交审', async () => {
+    const w = await mountWith({}, { perms: [...ALL_VIEWS, 'alloc:edit'] })
+    expect(btn(rowByText(w, '催缴单'), '交审'), '兄弟屏的键不画').toBeUndefined()
+    await btn(rowByText(w, '楼栋损耗'), '交审')!.trigger('click')
+    await flushPromises()
+    expect(reviewApi.submit).toHaveBeenCalledWith(`alloc-loss:${YM}`)
+  })
+
+  // 后端交审只认角色给的(ReviewService.requireAnyPerm 查角色快照),借来的编辑权点「交审」恒 403。
+  // 夹具:can 认(模拟主管当场授权)、hasOwn 不认;改 permissions 只为让屏重算。
+  // 破坏验证:DataHomeView 的 canSubmitKey 换成 auth.can → 红
+  it('❗借来的催缴单编辑(主管当场授权)不算:催缴单那一行不出「交审」', async () => {
+    const w = await mountWith({}, { perms: [...ALL_VIEWS] })
+    const auth = useAuthStore()
+    const own = auth.can
+    auth.can = (k: string) => k === 'bill-notices:edit' || own(k)
+    auth.permissions = [...auth.permissions]
+    await flushPromises()
+    expect(auth.can('bill-notices:edit'), '前提:借到了').toBe(true)
+    expect(btn(rowByText(w, '催缴单'), '交审')).toBeUndefined()
+  })
+
+  it('SUBMIT_PERMS 的每个键都是认得的屏级键(键名打错字当场红)', () => {
+    const all = Object.values(SUBMIT_PERMS).flat()
+    expect(all.length).toBeGreaterThan(0)
+    for (const p of all) expect(isKnownPerm(p), p).toBe(true)
   })
 })
 

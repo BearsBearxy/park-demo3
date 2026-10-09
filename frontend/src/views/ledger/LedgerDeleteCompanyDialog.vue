@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 删除公司弹窗(company:manage):两步——①选要删的账册(入口在左轨底部与「新增」并排,
+// 删除公司弹窗(ledger:company):两步——①选要删的账册(入口在左轨底部与「新增」并排,
 // 不预选;用户拍板 2026-08-24:删除不放行内) ②输入公司名**原文**才激活删除(GitHub 范式)。
 // 步间整体切换不做增量展开(LAYOUT-STABILITY:已渲染内容不被顶动)。
 // 居中弹窗,版式 1:1 复用 LedgerNewCompanyDialog 的 lg-dlg 族(危险色变体)。

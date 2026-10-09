@@ -25,7 +25,11 @@ const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
 
 const auth = useAuthStore()
-const canEdit = computed(() => auth.can('master:edit'))   // 收款公司/账户属主数据(RBAC-SPEC §2)
+const canEdit = computed(() => auth.can('bill-notices:payee'))   // 改名、加改删收款账户 = 「催缴单 · 收款公司」
+// 新增公司 = 建一家记账公司(同时建台账册),归「月度台账 · 新增删除公司」,和改名 / 账户是两项
+const canCreate = computed(() => auth.can('ledger:company'))
+/** 右侧表单此刻能不能改:新增时看新增权,改已有公司看收款公司权 */
+const canForm = computed(() => (creating.value ? canCreate.value : canEdit.value))
 const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
 
 // ── S 档两级推进(RESPONSIVE-LAYOUT-SPEC §5.6 第 3 类)──
@@ -152,7 +156,7 @@ const meId = Symbol('company-book')
 const screen = useScreen()
 function unregister() { auth.closeEditor(meId); void auth.endElevation() }
 const dirtyN = () => (dirty.value ? 1 : 0) + (acctEdit.value != null ? 1 : 0)
-watch(() => dirty.value || acctEdit.value != null, (on) => { if (on) auth.openEditor(meId, screen, dirtyN, ['master:edit']); else unregister() })
+watch(() => dirty.value || acctEdit.value != null, (on) => { if (on) auth.openEditor(meId, screen, dirtyN, [creating.value ? 'ledger:company' : 'bill-notices:payee']); else unregister() })
 onUnmounted(unregister)
 const acctForm = ref<{ kind: AccountKind; accountName: string; accountNo: string; bankName: string; isDefault: boolean; remark: string }>(
   { kind: 'bank', accountName: '', accountNo: '', bankName: '', isDefault: false, remark: '' })
@@ -247,7 +251,7 @@ async function onClose() {
               <em v-if="c.status === 0">已停用</em>
             </span>
           </button>
-          <button v-if="canEdit" type="button" class="cw-item add" :class="{ sel: creating }" @click="startCreate">
+          <button v-if="canCreate" type="button" class="cw-item add" :class="{ sel: creating }" @click="startCreate">
             <component :is="iconFor('plus')" :size="14" /> 新增公司
           </button>
         </div>
@@ -257,24 +261,24 @@ async function onClose() {
           <div class="cw-form">
             <label class="cw-f">
               <span>显示名 <em>*</em></span>
-              <input v-model="form.name" :class="{ bad: nameErr }" :disabled="!canEdit" placeholder="如:XX物业" />
+              <input v-model="form.name" :class="{ bad: nameErr }" :disabled="!canForm" placeholder="如:XX物业" />
               <span class="fp-field-err"><template v-if="nameErr">{{ nameErr }}</template></span>
             </label>
             <label class="cw-f">
               <span>短名</span>
-              <input v-model="form.short" :disabled="!canEdit" placeholder="徽标/下拉里显示;留空取显示名" />
+              <input v-model="form.short" :disabled="!canForm" placeholder="徽标/下拉里显示;留空取显示名" />
             </label>
             <label class="cw-f wide">
               <span>法定全称</span>
-              <input v-model="form.fullName" :disabled="!canEdit" placeholder="如:XX物业管理有限公司;印在通知单落款与账户块" />
+              <input v-model="form.fullName" :disabled="!canForm" placeholder="如:XX物业管理有限公司;印在通知单落款与账户块" />
             </label>
             <label class="cw-f chk">
-              <input type="checkbox" :checked="form.status === 0" :disabled="!canEdit"
+              <input type="checkbox" :checked="form.status === 0" :disabled="!canForm"
                      @change="form.status = form.status === 0 ? 1 : 0" />
               <span>停用(不再出现在收款公司选择器)</span>
             </label>
             <div class="cw-f-act">
-              <Button v-if="canEdit" variant="filled" size="sm" :disabled="!dirty || saving" @click="saveCompany">
+              <Button v-if="canForm" variant="filled" size="sm" :disabled="!dirty || saving" @click="saveCompany">
                 {{ creating ? '新增' : '保存' }}
               </Button>
             </div>

@@ -56,7 +56,7 @@ import { receipts } from '@/utils/receipt'
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['entry:edit']
+  useAuthStore().permissions = ['ledger:edit']
   vi.clearAllMocks()
   vi.mocked(runImport).mockReset()
   askQueue.splice(0)

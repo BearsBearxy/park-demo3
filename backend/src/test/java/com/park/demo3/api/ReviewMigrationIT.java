@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ReviewMigrationIT extends AbstractMysqlIT {
 
     @Autowired JdbcTemplate jdbc;
+    @Autowired com.park.demo3.security.UserPermissionCache cache;
 
     /** 从 classpath 加载 V124 并原样执行——不解析、不复制,执行的就是那个文件。 */
     private void applyMigration() {
@@ -58,10 +59,13 @@ class ReviewMigrationIT extends AbstractMysqlIT {
      */
     @org.springframework.test.context.transaction.AfterTransaction
     void reseedViewPerms() {
+        // V140 接着 V134 再放一遍:新代码只认屏级键,重建的审核员只有 V134 的旧键的话,在新代码眼里一项权限都没有(RBAC-SPEC §15.8)
         ResourceDatabasePopulator v134 = new ResourceDatabasePopulator(
-                new ClassPathResource("db/migration/V134__rbac_view_perms.sql"));
+                new ClassPathResource("db/migration/V134__rbac_view_perms.sql"),
+                new ClassPathResource("db/common/V140__rbac_screen_perms.sql"));
         v134.setSqlScriptEncoding("UTF-8");
         v134.execute(jdbc.getDataSource());
+        cache.reload();
     }
 
     private List<String> columnsOf(String table) {

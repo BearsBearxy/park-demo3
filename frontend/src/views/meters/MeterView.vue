@@ -85,11 +85,11 @@ const isM = computed(() => tier.value === 'm')
 const isSM = computed(() => isS.value || isM.value)
 /** S 档底部面板:'filter' = 收进去的筛选件;'more' = 摘要行里值为 0 的那几样。 */
 const panel = ref<'' | 'filter' | 'more'>('')
-// RBAC 写分权(v3 读另由 meter:view 管):抄读数与改表档案是两把权限,别一刀切 ——
-// 读数(录入/导入/批量删本期)= meter-reading:edit;表档案(新增表/一键挂/抽屉里的倍率绑定删表)= meter-master:edit。
+// RBAC 写分权(读另由 meters:view 管):抄读数与改表档案是两把权限,别一刀切 ——
+// 读数(录入/导入/批量删本期)= meters:edit;表档案(新增表/一键挂/抽屉里的倍率绑定删表)= meters:archive。
 // 无权只是不出写按钮,数据照常全显。
-const canReading = computed(() => auth.can('meter-reading:edit'))
-const canMaster = computed(() => auth.can('meter-master:edit'))
+const canReading = computed(() => auth.can('meters:edit'))
+const canMaster = computed(() => auth.can('meters:archive'))
 
 // ── 编辑模式(EDIT-MODE-SPEC v3):切页签**保留**编辑态与草稿,只关浮层 ──
 // v2 在这里 draft.clear() —— 切去别的页面核对一眼回来,没保存的读数全没了。
@@ -98,7 +98,7 @@ const canMaster = computed(() => auth.can('meter-master:edit'))
 const reviewLabel = computed(() => `园区抄表 · ${ym.value}`)
 const { editMode, canEnter, missing: lockedPerms, asking, askFor, cancelAsk, onElevated, exit: exitEdit, heldByOther, toggle,
         lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip, reviewKeys } =
-  useEditMode(['meter-reading:edit', 'meter-master:edit'], {
+  useEditMode(['meters:edit', 'meters:archive'], {
     scope: () => S.meters(year.value),
     // 审核键(§7.1):抄表屏**按年锁、按月审**。屏上编辑的确实是单月读数
     // (loadReadings(ym) / draft 按 ym 清),所以键取 ym 不取 year。
@@ -189,7 +189,7 @@ async function loadReadings() {
 }
 // 失败态锁录入:此刻「本月」列空着不是「没抄」而是「没读到」,在上面录=覆盖旧月或凭空补条;
 // 档案没拉到时,行上的在不在册 / 底数都不是本月的样子,同样不许录
-// 无 meter-reading:edit 的人即使进了编辑模式(靠 meter-master)也不许录格子:格子写的是读数
+// 无 meters:edit 的人即使进了编辑模式(靠 meters:archive)也不许录格子:格子写的是读数
 const loadErr = computed(() => !!(readErr.value || metersErr.value))
 const editable = computed(() => editMode.value && !loadErr.value && canReading.value)
 function retryLoad() {
@@ -591,8 +591,8 @@ const delOpt = computed(() => ({
 // 该月的催缴单:草稿 / 已作废的能连带删;已确认 / 已导出的挡住整批(确认键禁用),户名最多列 5 户,余者「等 N 户」
 const delOpenN = computed(() => (delPreview.value?.draftNotices ?? 0) + (delPreview.value?.voidNotices ?? 0))
 const delLockedN = computed(() => delPreview.value?.lockedNotices ?? 0)
-// 连带删草稿单后端另要出账权限(同生成);本屏的授权按钮只申请抄表两项权限,没有它就不给勾、确认键也不放
-const canBillRun = computed(() => auth.can('billing-run:edit'))
+// 连带删草稿单后端另要「催缴单 · 编辑」(同生成);本屏的授权按钮只申请抄表两项权限,没有它就不给勾、确认键也不放
+const canBillRun = computed(() => auth.can('bill-notices:edit'))
 const delLockedNames = computed(() => {
   const t = delPreview.value?.lockedTenants ?? []
   return t.slice(0, 5).join('、') + (t.length > 5 ? ` 等 ${t.length} 户` : '')
@@ -1222,7 +1222,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDelEsc, true))
             <span>同时删除「删完零读数」的表档案(池成员表、别的月催缴单里还有的表自动跳过)</span>
           </label>
           <p v-if="delOpenN > 0 && !canBillRun" class="mt5-del-nobill">
-            {{ delNoticeYm }} 有 {{ delOpenN }} 张草稿催缴单(这个月的读数出在那批单上),连带删除要出账权限;请有出账权限的人来删,或先到催缴单屏处理
+            {{ delNoticeYm }} 有 {{ delOpenN }} 张草稿催缴单(这个月的读数出在那批单上),连带删除要「催缴单 · 编辑」权限;请有这项权限的人来删,或先到催缴单屏处理
           </p>
           <label v-if="delOpenN > 0 && canBillRun" class="mt5-del-ck">
             <input v-model="delDropNotices" type="checkbox" >

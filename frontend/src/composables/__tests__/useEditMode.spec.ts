@@ -9,6 +9,9 @@ import { useUiStore } from '@/stores/ui'
 import { usePresenceStore, type Seat } from '@/stores/presence'
 import { shellOf } from '@/composables/useTabShells'
 import api from '@/api'
+import { receipts } from '@/utils/receipt'
+import { loadPermDict } from '@/api/perms'
+import { flushPromises } from '@vue/test-utils'
 
 /** 种一份授权 —— 走真实路径 requestElevation(),而不是往 store 里塞。
  *  grants 对外是只读 computed(提权状态的真身在服务端),塞不进去也不该塞得进去。 */
@@ -31,7 +34,7 @@ vi.mock('@/api', () => ({
 }))
 
 /** 公共电核算页:同时碰「出账运行」与「计费口径」两档 —— 本文件大部分断言的原型 */
-const POOL = ['billing-run:edit', 'param-policy:edit']
+const POOL = ['alloc:edit', 'alloc:pools']
 
 function asRole(perms: string[]) {
   const auth = useAuthStore()
@@ -71,10 +74,10 @@ describe('编辑模式 × 提权', () => {
 
   it('缺任何一项 → 点编辑模式当场弹授权窗(不是进去之后再提示)', () => {
     // 用户拍板 2026-08-22:提示条不够,要把授权窗直接推到脸上,取消/授权二选一。
-    asRole(['billing-run:edit', 'elevate:request'])
+    asRole(['alloc:edit', 'elevate:request'])
     const { editMode, asking, toggle } = useEditMode(POOL)
     toggle()
-    expect(asking.value).toEqual(['param-policy:edit'])
+    expect(asking.value).toEqual(['alloc:pools'])
     expect(editMode.value).toBe(false)          // 还没进,等用户选
   })
 
@@ -82,7 +85,7 @@ describe('编辑模式 × 提权', () => {
     // 用户拍板 2026-08-22:「没通过授权的话依旧是非编辑模式」。
     // 上一版是「有 billing-run 就照常进,param-policy 那半锁着」——
     // 那正是「编辑态里一半控件点不动」的来源,整条作废。
-    asRole(['billing-run:edit', 'elevate:request'])
+    asRole(['alloc:edit', 'elevate:request'])
     const { editMode, asking, toggle, cancelAsk } = useEditMode(POOL)
     toggle()
     cancelAsk()
@@ -100,6 +103,26 @@ describe('编辑模式 × 提权', () => {
     expect(editMode.value).toBe(false)
   })
 
+  // RBAC v4 自建角色常见:只勾了「编辑」没勾同屏的另一项,也没勾「可请求提权」。授权窗两条路后端都要 elevate:request,
+  // 弹了也是主管输完密码吃 403 —— 改成说一句还缺什么、找谁。专有动作的名字只在字典里,这里先取到。
+  // 破坏验证:ask() 去掉 elevate:request 判断(照旧弹窗)→ 红
+  it('❗缺一项且不能请提权:不弹授权窗,回执写还要哪几项', async () => {
+    receipts.splice(0)
+    // 字典先取到(当场消费掉这次桩,不留给后面的用例)
+    vi.mocked(api.get).mockResolvedValueOnce([{ key: 'alloc:pools', label: '公共电核算 · 公摊池配置', hint: '' }] as never)
+    await loadPermDict()
+    asRole(['alloc:edit'])
+    const { editMode, asking, toggle, askFor } = useEditMode(POOL)
+    toggle()
+    await flushPromises()
+    expect(asking.value).toBeNull()
+    expect(editMode.value).toBe(false)
+    expect(receipts.map((r) => r.text)).toEqual(
+      ['进这一屏的编辑模式还要「公共电核算 · 公摊池配置」，你的账号不能请主管当场授权，请找系统管理员在角色里勾上'])
+    askFor('alloc:pools')
+    expect(asking.value, 'askFor 同一条').toBeNull()
+  })
+
   it('权限齐全 → 直接进,不打扰', () => {
     asRole(POOL)
     const { editMode, asking, toggle } = useEditMode(POOL)
@@ -111,35 +134,35 @@ describe('编辑模式 × 提权', () => {
   // ── 缺哪些 / 点了缺的那个 ──
 
   it('missing 只列真正改不动的那些', () => {
-    asRole(['billing-run:edit'])
+    asRole(['alloc:edit'])
     const { missing } = useEditMode(POOL)
-    expect(missing.value).toEqual(['param-policy:edit'])
+    expect(missing.value).toEqual(['alloc:pools'])
   })
 
   it('askFor 指定权限点 —— 点哪个控件就只要哪一项', () => {
-    asRole(['billing-run:edit', 'elevate:request'])
+    asRole(['alloc:edit', 'elevate:request'])
     const { asking, askFor } = useEditMode(POOL)
-    askFor('param-policy:edit')
-    expect(asking.value).toEqual(['param-policy:edit'])
+    askFor('alloc:pools')
+    expect(asking.value).toEqual(['alloc:pools'])
   })
 
   it('askFor 已经有的权限 → 不弹窗(别拿一个已经能做的事去烦主管)', () => {
     asRole(POOL)
     const { asking, askFor } = useEditMode(POOL)
-    askFor('billing-run:edit')
+    askFor('alloc:edit')
     expect(asking.value).toBeNull()
   })
 
   // ── 提权之后 ──
 
   it('拿到授权后 missing 变空、编辑模式打开', async () => {
-    const auth = asRole(['billing-run:edit', 'elevate:request'])
+    const auth = asRole(['alloc:edit', 'elevate:request'])
     const { editMode, missing, onElevated } = useEditMode(POOL)
 
-    await grant('param-policy:edit')
+    await grant('alloc:pools')
     expect(missing.value).toEqual([])
-    expect(auth.can('param-policy:edit')).toBe(true)
-    expect(auth.authorizerOf('param-policy:edit')).toBe('王主管')
+    expect(auth.can('alloc:pools')).toBe(true)
+    expect(auth.authorizerOf('alloc:pools')).toBe('王主管')
 
     onElevated()
     expect(editMode.value).toBe(true)
@@ -147,8 +170,8 @@ describe('编辑模式 × 提权', () => {
 
   it('授权到期 → can() 立刻转回 false(不必等后端 403)', async () => {
     const auth = asRole(['elevate:request'])
-    await grant('param-policy:edit', '计费口径', '王主管', -1)   // 发下来就已过期
-    expect(auth.can('param-policy:edit')).toBe(false)
+    await grant('alloc:pools', '计费口径', '王主管', -1)   // 发下来就已过期
+    expect(auth.can('alloc:pools')).toBe(false)
     expect(auth.elevationLeftMs).toBe(0)
   })
 
@@ -156,8 +179,8 @@ describe('编辑模式 × 提权', () => {
     // 铁律①「进得了编辑模式 ⇒ 权限齐」的另一半:30 分钟 TTL 常常在人还编着时到点。
     vi.useFakeTimers()
     try {
-      asRole(['billing-run:edit', 'elevate:request'])
-      await grant('param-policy:edit', '计费口径', '王主管', 2_000)   // 2 秒后到期
+      asRole(['alloc:edit', 'elevate:request'])
+      await grant('alloc:pools', '计费口径', '王主管', 2_000)   // 2 秒后到期
       const { editMode, toggle } = useEditMode(POOL)
       toggle()
       await nextTick()
@@ -172,7 +195,7 @@ describe('编辑模式 × 提权', () => {
   it('深链直接置 editMode 也逃不掉:权限不齐当场弹回浏览态', async () => {
     // PoolLedger 的 ?generate=1、ParamCenter 的 ?edit=1 是绕过 toggle() 直接赋值的。
     // 守卫放在 composable 里就不必指望每个页面各自记得。
-    asRole(['billing-run:edit', 'elevate:request'])
+    asRole(['alloc:edit', 'elevate:request'])
     const { editMode } = useEditMode(POOL)
     editMode.value = true
     await nextTick()
@@ -180,11 +203,11 @@ describe('编辑模式 × 提权', () => {
   })
 
   it('角色本身有的权限,hasOwn 与 can 一致;提权来的只有 can 认', async () => {
-    const auth = asRole(['billing-run:edit'])
-    await grant('param-policy:edit')
-    expect(auth.hasOwn('billing-run:edit')).toBe(true)
-    expect(auth.hasOwn('param-policy:edit')).toBe(false)
-    expect(auth.can('param-policy:edit')).toBe(true)
+    const auth = asRole(['alloc:edit'])
+    await grant('alloc:pools')
+    expect(auth.hasOwn('alloc:edit')).toBe(true)
+    expect(auth.hasOwn('alloc:pools')).toBe(false)
+    expect(auth.can('alloc:pools')).toBe(true)
   })
 
   // ── 退出 ──
@@ -192,11 +215,11 @@ describe('编辑模式 × 提权', () => {
   it('⚠ 还有别的页面在编辑态时,退出这一个**不**结束授权', async () => {
     // v3 之后编辑态跨页签存活 —— 两个页面同时在编辑态是常态。
     // 退出其中一个就清授权的话,另一个页面的写入口会在用户改到一半时无声锁回去。
-    asRole(['billing-run:edit', 'elevate:request'])
-    await grant('param-policy:edit')
+    asRole(['alloc:edit', 'elevate:request'])
+    await grant('alloc:pools')
 
     const a = useEditMode(POOL)                  // 授权已补齐 → toggle() 直接进
-    const b = useEditMode(['param-policy:edit'])
+    const b = useEditMode(['alloc:pools'])
     a.toggle(); b.editMode.value = true          // b 走深链那条路径(直接赋值)
     await nextTick()
 
@@ -210,19 +233,19 @@ describe('编辑模式 × 提权', () => {
   })
 
   it('横幅上主动点「结束授权」不受「还有编辑页开着」阻拦', async () => {
-    const auth = asRole(['billing-run:edit', 'elevate:request'])
-    await grant('param-policy:edit')
+    const auth = asRole(['alloc:edit', 'elevate:request'])
+    await grant('alloc:pools')
     const a = useEditMode(POOL)
     a.toggle()
     await nextTick()
     await auth.endElevation(true)               // 用户在横幅上点的那一下
     expect(api.delete).toHaveBeenCalledWith('/auth/elevate')
-    expect(auth.can('param-policy:edit')).toBe(false)
+    expect(auth.can('alloc:pools')).toBe(false)
   })
 
   it('退出最后一个编辑模式 = 结束全部授权', async () => {
-    asRole(['billing-run:edit', 'elevate:request'])
-    await grant('param-policy:edit')      // 补齐后 toggle() 直接进,不弹窗
+    asRole(['alloc:edit', 'elevate:request'])
+    await grant('alloc:pools')      // 补齐后 toggle() 直接进,不弹窗
 
     const { editMode, toggle } = useEditMode(POOL)
     toggle()
@@ -237,10 +260,10 @@ describe('编辑模式 × 提权', () => {
   // ELEVATION-SPEC §4.5「结束前先问」只问靠这份授权编辑的屏
   // 破坏验证:useEditMode 登记时不带 perms → 全是自己权限的那屏也算进去 → [7] 红
   it('❗登记带上本屏权限点:「结束授权」前那一问只数靠授权编辑的那一屏', async () => {
-    const auth = asRole(['billing-run:edit', 'elevate:request'])
-    await grant('param-policy:edit')
+    const auth = asRole(['alloc:edit', 'elevate:request'])
+    await grant('alloc:pools')
     const a = useEditMode(POOL, { dirty: () => 2 })                  // 计费口径那一档是授权来的
-    const b = useEditMode(['billing-run:edit'], { dirty: () => 5 })  // 全是自己角色给的
+    const b = useEditMode(['alloc:edit'], { dirty: () => 5 })  // 全是自己角色给的
     await a.toggle(); await b.toggle()
     await nextTick()
     expect([a.editMode.value, b.editMode.value]).toEqual([true, true])
@@ -248,18 +271,18 @@ describe('编辑模式 × 提权', () => {
   })
 })
 
-describe('system 权限永远不进 can() 的提权那一侧', () => {
+describe('系统管理三屏的权限永远不进 can() 的提权那一侧', () => {
   beforeEach(() => { setActivePinia(createPinia()); localStorage.clear(); sessionStorage.clear(); vi.clearAllMocks() })
 
-  it('提权不改变导航判定 —— 因为 system:* 根本发不下来', () => {
-    // can('system:view') 是侧栏与路由守卫的判据。把提权并进 can() 之所以安全,
-    // 全靠**后端**的不可提权名单:system:* 永远不会出现在 grants 里(ElevationApiIT 钉死)。
+  it('提权不改变导航判定 —— 因为全部查看与系统管理三屏的动作根本发不下来', () => {
+    // can('sys-users:view') 是侧栏与路由守卫的判据。把提权并进 can() 之所以安全,
+    // 全靠**后端**的不可提权名单:查看与 sys-* 永远不会出现在 grants 里(ElevationApiIT 钉死)。
     // 前端这一侧是照单全收的 —— 所以这条只断言「没有授权时导航不受影响」,
     // 真正的闸不在这里。写死一个前端黑名单会给人一种双保险的错觉,而它拦不住任何东西。
     const auth = useAuthStore()
-    auth.permissions = ['elevate:request', 'billing-run:edit']
-    expect(auth.can('system:view')).toBe(false)
-    expect(auth.can('system:edit')).toBe(false)
+    auth.permissions = ['elevate:request', 'alloc:edit']
+    expect(auth.can('sys-users:view')).toBe(false)
+    expect(auth.can('sys-roles:edit')).toBe(false)
   })
 })
 
@@ -277,9 +300,9 @@ describe('编辑模式 × 换期', () => {
   // 于是能拿着 3 月的锁去改 5 月,正是 CONCURRENCY-SPEC 要防的那件事。
   // 修在共享的这一处,不在七个调用方各写一遍(漏一个就是一把没人认领的锁)。
   async function enterAt(scope: () => string | null) {
-    asRole(['entry:edit'])
+    asRole(['ledger:edit'])
     vi.mocked(api.post).mockResolvedValue({ granted: true, holder: null } as never)
-    const m = useEditMode(['entry:edit'], { scope })
+    const m = useEditMode(['ledger:edit'], { scope })
     await m.toggle()
     return m
   }
@@ -312,13 +335,13 @@ describe('编辑模式 × 换期', () => {
     // 后果在带选期门的屏上最狠(光伏分栋抄表/分桩明细/电费成本总览):
     // 退回矩阵后 editMode 仍为真,而唯一的「完成」按钮长在 v-else 的表格页里、已经不渲染
     // —— 锁握着、没有写入口、也没有出口,别人还被挡在外面。
-    asRole(['entry:edit'])
+    asRole(['ledger:edit'])
     const ym = ref('2025-03')
     let settle!: (v: unknown) => void
     vi.mocked(api.post).mockReturnValueOnce(
       new Promise(r => { settle = r }) as never,
     )
-    const m = useEditMode(['entry:edit'], { scope: () => `billing-chain:${ym.value}` })
+    const m = useEditMode(['ledger:edit'], { scope: () => `billing-chain:${ym.value}` })
 
     const pending = m.toggle()
     ym.value = '2025-05'                      // ← 往返期间换了期
@@ -338,13 +361,13 @@ describe('编辑模式 × 换期', () => {
     // 终态:人留在新期的编辑态,而新期那把锁服务端还挂着却再没有心跳,
     // 3 分钟 TTL 一到别人 acquire 直接 granted,两人同改同保存互相整片覆盖,
     // 且接管回调已是 null,这一侧连「你被接管了」都不会弹。
-    asRole(['entry:edit'])
+    asRole(['ledger:edit'])
     const ym = ref('2025-03')
     const settlers: ((v: unknown) => void)[] = []
     vi.mocked(api.post).mockImplementation(
       () => new Promise(r => { settlers.push(r as (v: unknown) => void) }) as never,
     )
-    const m = useEditMode(['entry:edit'], { scope: () => `billing-chain:${ym.value}` })
+    const m = useEditMode(['ledger:edit'], { scope: () => `billing-chain:${ym.value}` })
 
     const first = m.toggle()          // 第一趟:占 2025-03,卡住
     ym.value = '2025-05'
@@ -359,12 +382,12 @@ describe('编辑模式 × 换期', () => {
   })
 
   it('在途那趟结束之后还能再进 —— 别把闸门永久关上', async () => {
-    asRole(['entry:edit'])
+    asRole(['ledger:edit'])
     let settle!: (v: unknown) => void
     vi.mocked(api.post).mockImplementationOnce(
       () => new Promise(r => { settle = r as (v: unknown) => void }) as never,
     )
-    const m = useEditMode(['entry:edit'], { scope: () => 'billing-chain:2025-03' })
+    const m = useEditMode(['ledger:edit'], { scope: () => 'billing-chain:2025-03' })
     const p1 = m.toggle()
     settle({ granted: true, holder: null })
     await p1
@@ -376,12 +399,12 @@ describe('编辑模式 × 换期', () => {
   })
 
   it('占锁在途但期没变 → 照常进编辑态(别把正常路径也拦了)', async () => {
-    asRole(['entry:edit'])
+    asRole(['ledger:edit'])
     let settle!: (v: unknown) => void
     vi.mocked(api.post).mockReturnValueOnce(
       new Promise(r => { settle = r }) as never,
     )
-    const m = useEditMode(['entry:edit'], { scope: () => 'billing-chain:2025-03' })
+    const m = useEditMode(['ledger:edit'], { scope: () => 'billing-chain:2025-03' })
     const pending = m.toggle()
     settle({ granted: true, holder: null })
     await pending
@@ -390,8 +413,8 @@ describe('编辑模式 × 换期', () => {
   })
 
   it('不上锁的屏(没传 scope)不受影响 —— 它本来就没有期这回事', async () => {
-    asRole(['entry:edit'])
-    const m = useEditMode(['entry:edit'])
+    asRole(['ledger:edit'])
+    const m = useEditMode(['ledger:edit'])
     await m.toggle()
     await nextTick()
     expect(m.editMode.value).toBe(true)
@@ -407,7 +430,7 @@ describe('lockScope / onTaken(接管闭环)', () => {
 
   it('❗lockScope() 与传入的 opts.scope() 逐字相同 —— 屏不必再写一遍表达式', () => {
     const year = ref(2025)
-    const em = useEditMode(['meter-reading:edit'], { scope: () => `pv-meter:${year.value}` })
+    const em = useEditMode(['meters:edit'], { scope: () => `pv-meter:${year.value}` })
     expect(em.lockScope()).toBe('pv-meter:2025')
     year.value = 2026
     expect(em.lockScope(), '期变了要跟着变 —— 固化就会去接一把不是本屏握着的锁').toBe('pv-meter:2026')
@@ -415,9 +438,9 @@ describe('lockScope / onTaken(接管闭环)', () => {
 
   it('❗onTaken() 走 enter():占锁往返中期变了 → 还锁且不进编辑态', async () => {
     // 这条守的是「复用 enter() 而不是另写一段 acquire」。另写一段就把换期复核摘掉了。
-    asRole(['meter-reading:edit'])
+    asRole(['meters:edit'])
     const year = ref(2025)
-    const em = useEditMode(['meter-reading:edit'], { scope: () => `pv-meter:${year.value}` })
+    const em = useEditMode(['meters:edit'], { scope: () => `pv-meter:${year.value}` })
     vi.mocked(api.post).mockImplementation(async () => {
       year.value = 2026                      // 往返途中用户换了期
       return { granted: true, holder: null, acquiredAt: 1 } as never
@@ -466,9 +489,9 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
 
   // 破坏验证:删掉 enter()/toggle() 里那两处 `if (reviewBlock.value) return` → 红
   it('❗已审核的表进不了编辑模式', async () => {
-    asRole(['entry:edit'])
+    asRole(['ledger:edit'])
     seedReview('approved')
-    const m = useEditMode(['entry:edit'], SALARY)
+    const m = useEditMode(['ledger:edit'], SALARY)
     await settled()   // 等药丸画好(见 settled 的注释)
     await m.toggle()
     await nextTick()
@@ -478,9 +501,9 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
 
   // 破坏验证:把 types/review.ts 的 LOCKING 改成只含 'approved' → 红
   it('❗待审核也锁(D17)', async () => {
-    asRole(['entry:edit'])
+    asRole(['ledger:edit'])
     seedReview('submitted')
-    const m = useEditMode(['entry:edit'], SALARY)
+    const m = useEditMode(['ledger:edit'], SALARY)
     await settled()   // 等药丸画好(见 settled 的注释)
     await m.toggle()
     await nextTick()
@@ -490,9 +513,9 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
 
   // 破坏验证:把 'returned' 加进 LOCKING → 红
   it('❗已退回可以改 —— returned 只是留痕,可编辑性等同录入中(§7.2)', async () => {
-    asRole(['entry:edit'])
+    asRole(['ledger:edit'])
     seedReview('returned')
-    const m = useEditMode(['entry:edit'], SALARY)
+    const m = useEditMode(['ledger:edit'], SALARY)
     await settled()   // 等药丸画好(见 settled 的注释)
     await m.toggle()
     await nextTick()
@@ -512,9 +535,9 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
   it('❗叫主管授权进来的人照样进不去,且不去占锁 —— 闸在 enter() 不在 toggle()', async () => {
     asRole([])                       // 一档权限都没有,只能请求提权
     seedReview('approved')
-    const m = useEditMode(['entry:edit'], { ...SALARY, scope: () => 'sched:salary:2025' })
+    const m = useEditMode(['ledger:edit'], { ...SALARY, scope: () => 'sched:salary:2025' })
     await settled()   // 等药丸画好(见 settled 的注释)
-    await grant('entry:edit')        // 主管当场批了
+    await grant('ledger:edit')        // 主管当场批了
     await m.onElevated()             // 授权成功的回调
     await nextTick()
     expect(m.editMode.value, '权限齐 ≠ 进得去:审核态是另一道闸').toBe(false)
@@ -523,9 +546,9 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
 
   // 同上一条同源:接管拿到的是锁,不是改已审核表的资格。
   it('❗接管成功也进不去,且不去重占锁', async () => {
-    asRole(['entry:edit'])
+    asRole(['ledger:edit'])
     seedReview('approved')
-    const m = useEditMode(['entry:edit'], { ...SALARY, scope: () => 'sched:salary:2025' })
+    const m = useEditMode(['ledger:edit'], { ...SALARY, scope: () => 'sched:salary:2025' })
     await settled()   // 等药丸画好(见 settled 的注释)
     await m.onTaken()
     await nextTick()
@@ -535,8 +558,8 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
 
   // 破坏验证:从 watch 的依赖数组里删掉 reviewBlockWhileEditing → 红
   it('❗深链绕过 toggle 直接进了编辑态,审核态一到就把人拉出来', async () => {
-    asRole(['entry:edit'])
-    const m = useEditMode(['entry:edit'], SALARY)
+    asRole(['ledger:edit'])
+    const m = useEditMode(['ledger:edit'], SALARY)
     await settled()   // 等药丸画好(见 settled 的注释)
     m.editMode.value = true                    // ?edit=1 / ?generate=1 那条路
     await nextTick()
@@ -556,7 +579,7 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
   it('❗已审核时不弹提权窗 —— 别让人白叫一次主管', async () => {
     asRole([])                       // 缺权限,平时点了会弹授权窗
     seedReview('approved')
-    const m = useEditMode(['entry:edit'], SALARY)
+    const m = useEditMode(['ledger:edit'], SALARY)
     await settled()   // 等药丸画好(见 settled 的注释)
     await m.toggle()
     expect(m.asking.value, '§7.5:elevate:request 弹窗不出现').toBeNull()
@@ -568,10 +591,10 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
   //   它一抖就让 12 个屏同时进不了编辑模式 —— 不划算。
   //   破坏验证:把 blockOf 改回「isFailed → 挡住」 → 红。
   it('❗审核态拉失败不挡编辑 —— 真正的闸在后端,前端这道只是别让人白跑', async () => {
-    asRole(['entry:edit'])
+    asRole(['ledger:edit'])
     vi.mocked(api.get).mockImplementation((url: string) =>
       url === '/review/states' ? (Promise.reject(new Error('boom')) as never) : (Promise.resolve([]) as never))
-    const m = useEditMode(['entry:edit'], SALARY)
+    const m = useEditMode(['ledger:edit'], SALARY)
     await settled()   // 等药丸画好(见 settled 的注释)
     await m.toggle()
     await nextTick()
@@ -581,8 +604,8 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
 
   // 破坏验证:把 enter()/toggle() 里的 `if (rk)` 改成无条件 ensure → 红
   it('❗不传 reviewKey 的屏一个字不改 —— 不打网络也不挡', async () => {
-    asRole(['entry:edit'])
-    const m = useEditMode(['entry:edit'])
+    asRole(['ledger:edit'])
+    const m = useEditMode(['ledger:edit'])
     // 这一条**不能**调 settled():它自己会打一趟 /review,正好把要断言的那件事做掉
     await m.toggle()
     await nextTick()
@@ -612,27 +635,27 @@ describe('reviewKeys:喂给审核动作簇的那几把键', () => {
   })
 
   it('❗单键屏:裹成数组出来', () => {
-    asRole(['entry:edit'])
-    const m = useEditMode(['entry:edit'], SALARY)
+    asRole(['ledger:edit'])
+    const m = useEditMode(['ledger:edit'], SALARY)
     expect(m.reviewKeys.value).toEqual(['salary:2025-03'])
   })
 
   it('❗多键屏(公共电核算 alloc + alloc-loss):原样两把,顺序不变', () => {
-    asRole(['entry:edit'])
-    const m = useEditMode(['entry:edit'], { reviewKey: () => ['alloc:2025-03', 'alloc-loss:2025-03'] })
+    asRole(['ledger:edit'])
+    const m = useEditMode(['ledger:edit'], { reviewKey: () => ['alloc:2025-03', 'alloc-loss:2025-03'] })
     expect(m.reviewKeys.value).toEqual(['alloc:2025-03', 'alloc-loss:2025-03'])
   })
 
   it('❗还在选期门(reviewKey 回 null)/ 根本不进审核的屏:回 null,不是空数组', () => {
-    asRole(['entry:edit'])
-    expect(useEditMode(['entry:edit'], { reviewKey: () => null }).reviewKeys.value).toBeNull()
-    expect(useEditMode(['entry:edit']).reviewKeys.value).toBeNull()
+    asRole(['ledger:edit'])
+    expect(useEditMode(['ledger:edit'], { reviewKey: () => null }).reviewKeys.value).toBeNull()
+    expect(useEditMode(['ledger:edit']).reviewKeys.value).toBeNull()
   })
 
   it('❗跟着期走:换月之后拿到的是新那把(屏里那份 computed 删掉之后靠的就是这条)', async () => {
-    asRole(['entry:edit'])
+    asRole(['ledger:edit'])
     const ym = ref('2025-03')
-    const m = useEditMode(['entry:edit'], { reviewKey: () => `salary:${ym.value}` })
+    const m = useEditMode(['ledger:edit'], { reviewKey: () => `salary:${ym.value}` })
     expect(m.reviewKeys.value).toEqual(['salary:2025-03'])
     ym.value = '2025-04'
     await nextTick()
@@ -657,10 +680,10 @@ describe('编辑态里被别人交审 / 审核通过 → ui.editStop', () => {
    * screen 给了就挂在那一屏的页签壳里(provide 屏名,同线上),弹窗正文的屏名才取得到。
    */
   async function editThen(status: string, opts: EditModeOpts = SALARY, extra: Record<string, unknown> = {}, screen?: string) {
-    asRole(['entry:edit'])
+    asRole(['ledger:edit'])
     let m!: ReturnType<typeof useEditMode>
-    if (screen) mount(shellOf(`${screen}:0`, defineComponent({ setup() { m = useEditMode(['entry:edit'], opts); return () => h('div') } })))
-    else m = useEditMode(['entry:edit'], opts)
+    if (screen) mount(shellOf(`${screen}:0`, defineComponent({ setup() { m = useEditMode(['ledger:edit'], opts); return () => h('div') } })))
+    else m = useEditMode(['ledger:edit'], opts)
     const rs = useReviewStore()
     await rs.ensureYear(2025)
     await m.toggle()
@@ -723,10 +746,10 @@ describe('编辑态里被别人交审 / 审核通过 → ui.editStop', () => {
 
   // 破坏验证:删掉 `k === wasK` → 红
   it('❗换到一个早已审过的月 → 照样退出,但不弹(他自己换的月,药丸写着)', async () => {
-    asRole(['entry:edit'])
+    asRole(['ledger:edit'])
     seedReview('approved')                       // 该年只有 2025-03 已审
     const ym = ref('2025-02')
-    const m = useEditMode(['entry:edit'], { reviewKey: () => `salary:${ym.value}` })
+    const m = useEditMode(['ledger:edit'], { reviewKey: () => `salary:${ym.value}` })
     await useReviewStore().ensureYear(2025)
     await m.toggle()
     await nextTick()

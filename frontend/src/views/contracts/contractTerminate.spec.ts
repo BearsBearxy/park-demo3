@@ -51,7 +51,7 @@ const PREVIEW: ContractTerminatePreviewDTO = {
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['contract:edit']
+  useAuthStore().permissions = ['contracts:edit']
   terminate.mockReset().mockResolvedValue({ ...CONTRACT, status: 'terminated' })
   terminatePreview.mockReset().mockResolvedValue(PREVIEW)
   vi.mocked(contractApi.remove).mockReset()
@@ -236,7 +236,7 @@ describe('标的段与费用 · 租金行未绑单元', () => {
     expect(w.emitted('edit')).toEqual([[c]])
   })
 
-  // 破坏验证:去掉 #action 上的 v-if="auth.can('contract:edit')" → 只读用户也有「去绑定」→ 红
+  // 破坏验证:去掉 #action 上的 v-if="auth.can('contracts:edit')" → 只读用户也有「去绑定」→ 红
   it('全绑了不出;没有编辑权限只说不给「去绑定」', async () => {
     const ok = mount(ContractDrawer, { props: { contract: { ...CONTRACT, unboundTermCount: 0 } } })
     mounted.push(ok)

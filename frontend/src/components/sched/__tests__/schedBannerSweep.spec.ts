@@ -36,14 +36,14 @@ const css = (f: string) => [...read(f).matchAll(/<style[^>]*>([\s\S]*?)<\/style>
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['report:edit', 'entry:edit']
+  useAuthStore().permissions = ['rent-pnl:edit', 'pv-income:edit']
 })
 
 describe('手机档荐桌面:并进编辑签,不另占一行', () => {
   // 破坏验证:.lc-edit-s 那个 span 删掉 → 红
   it('❗SchedHeader 编辑态的签写「编辑模式 · 建议桌面」,后半只在 ≤600 出', () => {
     const w = mount(SchedHeader, {
-      props: { icon: 'wallet', title: '损益附表1', year: 2025, edit: true, perm: 'report:edit', scope: null, deskHint: true },
+      props: { icon: 'wallet', title: '损益附表1', year: 2025, edit: true, perm: 'rent-pnl:edit', scope: null, deskHint: true },
     })
     expect(w.find('.lc-editbadge').text()).toBe('编辑模式 · 建议桌面')
     expect(w.find('.lc-editbadge .lc-edit-s').text()).toBe('· 建议桌面')
@@ -56,7 +56,7 @@ describe('手机档荐桌面:并进编辑签,不另占一行', () => {
   // 破坏验证:v-if="deskHint" 去掉 → 红(其余年表屏 —— 充电桩 / 电费 / 光伏 / 水电 / 附表10 —— 不传,签照旧)
   it('❗不传 deskHint 的屏:编辑签只写「编辑模式」;损益附表与工资两屏传了', () => {
     const w = mount(SchedHeader, {
-      props: { icon: 'wallet', title: '附表6', year: 2025, edit: true, perm: 'entry:edit', scope: null },
+      props: { icon: 'wallet', title: '附表6', year: 2025, edit: true, perm: 'pv-income:edit', scope: null },
     })
     expect(w.find('.lc-editbadge').text()).toBe('编辑模式')
     expect(w.find('.lc-edit-s').exists()).toBe(false)
@@ -67,7 +67,7 @@ describe('手机档荐桌面:并进编辑签,不另占一行', () => {
 
   it('浏览态没有这枚签', () => {
     const w = mount(SchedHeader, {
-      props: { icon: 'wallet', title: '损益附表1', year: 2025, edit: false, perm: 'report:edit', scope: null },
+      props: { icon: 'wallet', title: '损益附表1', year: 2025, edit: false, perm: 'rent-pnl:edit', scope: null },
     })
     expect(w.find('.lc-editbadge').exists()).toBe(false)
   })

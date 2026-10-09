@@ -106,7 +106,7 @@ beforeEach(() => {
   for (const k of Object.keys(query)) delete query[k]
   for (const k of Object.keys(meta)) delete meta[k]
   Element.prototype.scrollIntoView = vi.fn()
-  useAuthStore().permissions = ['entry:edit']
+  useAuthStore().permissions = ['sales-income:edit', 'utilities:edit']
   vi.setSystemTime(new Date('2025-07-15T00:00:00'))
   seed()
 })

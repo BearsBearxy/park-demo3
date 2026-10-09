@@ -118,8 +118,10 @@ public class UserPermissionCache {
         Map<Integer, AuthRole> roleById = roles.selectList(null).stream()
             .collect(Collectors.toMap(AuthRole::getId, r -> r, (a, b) -> a));
         Map<Integer, Set<String>> permsByRole = new HashMap<>();
+        // 只认新键(RBAC-SPEC §15.8):V140 只增不删,库里还留着 v3 的旧键行(回滚到 0.32 时旧代码照常用),
+        // 新代码当它们不存在 —— 不滤的话旧键进快照,authorities 里多一串谁都不认的字符串、/auth/me 回给前端
         for (AuthRolePerm rp : rolePerms.selectList(null)) {
-            permsByRole.computeIfAbsent(rp.getRoleId(), k -> new HashSet<>()).add(rp.getPerm());
+            if (Perm.exists(rp.getPerm())) permsByRole.computeIfAbsent(rp.getRoleId(), k -> new HashSet<>()).add(rp.getPerm());
         }
         Map<Integer, List<Integer>> rolesByUser = new HashMap<>();
         for (AuthUserRole ur : userRoles.selectList(null)) {
@@ -162,7 +164,7 @@ public class UserPermissionCache {
             UserAuth prev = snapshot.get(u.getUsername());
             int tv = Math.max(u.getTokenVersion() == null ? 0 : u.getTokenVersion(), prev == null ? 0 : prev.tokenVersion());
             String sid = liveSid.get(u.getUsername());
-            // 编辑隐含同组查看(RBAC-SPEC §11 规则 1):在这里展开、不落库 —— 后端判定(authorities)、
+            // 编辑 / 专有动作隐含本屏查看(RBAC-SPEC §15.1):在这里展开、不落库 —— 后端判定(authorities)、
             // /auth/me 与登录回包拿到的都是展开后的集合,角色屏存的仍是勾选的原样
             next.put(u.getUsername(), new UserAuth(u.getUsername(), Set.copyOf(Perm.withImplied(perms)), List.copyOf(layers),
                                                    List.copyOf(roleNames), tv, sid, reason.get(u.getUsername())));

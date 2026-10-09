@@ -216,15 +216,17 @@ public class ChargingService {
         return new DeleteResultDTO(records.deleteImported(scheduleNo, year), 0);
     }
 
-    // ── batchDelete(ids):按 id 删(seed/manual/import 同等可删);不存在的 id 静默忽略,skipped 恒 0 ──
+    // ── batchDelete(no,ids):按 id 删(seed/manual/import 同等可删);不存在或不属本附表的 id 静默忽略,skipped 恒 0 ──
+    //    不属本附表的按不存在算(同 delete / updateNote):附表7、8 是两屏,写权限按 URL 里的附表号判(RBAC-SPEC §15.5),
+    //    不判这一道的话只有汽车桩编辑的人从 /7/batch 送电动车那屏的 id 就能删掉它。
     @org.springframework.transaction.annotation.Transactional
-    public DeleteResultDTO batchDelete(List<Long> ids) {
+    public DeleteResultDTO batchDelete(int no, List<Long> ids) {
         int deleted = 0;
         for (Long id : ids) {
             ChargingRecord r = records.selectById(id);
-            if (r == null) continue;
-            // 一批 id 可跨附表跨月:逐行按被删行自己的附表与月判(同一 @Transactional,命中即整批回滚)
-            assertChargingEditable(r.getScheduleNo(), r.getAcctMonth());
+            if (r == null || r.getScheduleNo() != no) continue;
+            // 一批 id 可跨月:逐行按被删行自己的月判(同一 @Transactional,命中即整批回滚)
+            assertChargingEditable(no, r.getAcctMonth());
             records.deleteById(id);
             deleted++;
         }

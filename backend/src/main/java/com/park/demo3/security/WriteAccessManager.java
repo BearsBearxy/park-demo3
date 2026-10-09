@@ -65,7 +65,11 @@ public class WriteAccessManager implements AuthorizationManager<RequestAuthoriza
         }
 
         List<String> anyOf = registry.resolve(HttpMethod.valueOf(req.getMethod()), path);
-        if (anyOf == null) return new AuthorizationDecision(false);                       // 默认拒绝
+        // 默认拒绝;空 anyOf 是铁律 4 的显式拒绝(/api/charging/07/… 之类),不能被提权打开
+        if (anyOf == null || anyOf.isEmpty()) {
+            req.setAttribute(ReadAccessManager.REQ_ATTR_NEED, List.of());
+            return new AuthorizationDecision(false);
+        }
         if (anyOf.contains(PermissionRegistry.ANY_AUTHENTICATED)) return new AuthorizationDecision(true);
 
         for (GrantedAuthority a : auth.getAuthorities()) {
@@ -78,6 +82,7 @@ public class WriteAccessManager implements AuthorizationManager<RequestAuthoriza
             req.setAttribute(ElevationStore.REQ_ATTR_AUTHORIZER, g.authorizer());
             return new AuthorizationDecision(true);
         }
+        req.setAttribute(ReadAccessManager.REQ_ATTR_NEED, anyOf);   // 403 文案写明缺哪一屏的哪一项
         return new AuthorizationDecision(false);
     }
 }

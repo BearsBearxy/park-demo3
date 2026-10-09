@@ -211,7 +211,9 @@ public class ReportService {
     public void deleteCustomRow(String statement, long id) {
         checkStatement(statement);
         ReportCustomRow row = customRows.selectById(id);
-        if (row == null) throw new BizException(ResultCode.NOT_FOUND, "自定义行不存在");
+        // 不属本报表的按不存在算:三张报表是三屏、写权限按 URL 里的报表判(RBAC-SPEC §15.5);
+        // 不判的话下面按 URL 里的报表去删同名 row_key,删掉的是本报表里的另一行
+        if (row == null || !statement.equals(row.getStatement())) throw new BizException(ResultCode.NOT_FOUND, "自定义行不存在");
         // ⚠ 这一刀删的是该公司该报表**所有期**的金额(级联子树 × 全部期),算不出「被写的是哪几个月」——
         //   ReviewGuard 的批量重载解决的是「知道被写哪些月」的情形,这里不适用。
         //   所以按「有任一已审月就整体拒」判,与参数长期默认行同一条路子。宁可粗,不可漏:

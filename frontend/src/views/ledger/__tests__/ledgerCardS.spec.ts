@@ -70,7 +70,7 @@ function mk(props: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['entry:edit']
+  useAuthStore().permissions = ['ledger:edit']
 })
 afterEach(() => { vi.unstubAllGlobals(); _resetViewportForTest() })
 

@@ -92,7 +92,7 @@ class PasswordSelfServiceIT extends AbstractMysqlIT {
     void forcedAccountIsBlockedServerSide_exceptWhatTheChangePasswordPageNeeds() throws Exception {
         String t = login(mkUser(admin(), "finance_clerk"), PASS);
 
-        // 专员有 master:view —— 不拦的话这里是 200
+        // 专员有租户管理查看 —— 不拦的话这里是 200
         MvcResult read = mvc.perform(get("/api/tenants").header("Authorization", hdr(t))).andReturn();
         assertThat(read.getResponse().getStatus()).isEqualTo(403);
         assertThat(codeOf(body(read))).as("与普通 403 分开,前端见它整页跳改密页").isEqualTo(428);

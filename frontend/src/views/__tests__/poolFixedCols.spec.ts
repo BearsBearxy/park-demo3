@@ -82,7 +82,7 @@ const LONG = '园区一期东北角配电房旁公共照明与水泵合用'
 let ro: ReturnType<typeof stubWideTable>
 beforeEach(() => {
   setActivePinia(createPinia())
-  useAuthStore().permissions = ['billing-run:edit', 'param-policy:edit']
+  useAuthStore().permissions = ['alloc:edit', 'alloc:pools']
   ro = stubWideTable('pl-wrap')
 })
 const mounted: VueWrapper[] = []

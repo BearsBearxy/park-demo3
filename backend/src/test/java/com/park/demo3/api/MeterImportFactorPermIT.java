@@ -90,7 +90,7 @@ class MeterImportFactorPermIT extends AbstractMysqlIT {
             String ct = login(clerk, PASS);
             mvc.perform(post("/api/auth/elevate").header("Authorization", hdr(ct))
                     .contentType("application/json")
-                    .content("{\"perms\":[\"meter-master:edit\"],\"authorizer\":\"" + boss + "\",\"password\":\"" + PASS + "\"}"))
+                    .content("{\"perms\":[\"meters:archive\"],\"authorizer\":\"" + boss + "\",\"password\":\"" + PASS + "\"}"))
                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0));
 
             String r = importRow(ct, name, "2076-06", "80", "2");
