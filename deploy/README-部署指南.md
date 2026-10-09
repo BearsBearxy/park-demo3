@@ -234,25 +234,31 @@ docker compose logs backend | grep -E "Migrating schema|Successfully applied|adm
 - 以后的迁移只写进 `backend/src/main/resources/db/common`（V138 起），两条链都会跑，**不许写任何园区的数据**；
   `db/migration` 和 `db/baseline` 都冻结了（见各目录 README，`MigrationLayoutTest` 会查）。
 
-## 10. 演示站（2026-10-09 起）
+## 10. 同一台机再开一个园区 / 演示站（2026-10-09 起，不改仓库）
 
-用户 2026-10-09：一套空库看新园区装好的样子，一套放脱敏数据，由用户自己登录、演示给客户看（不对外发账号）。
-两套都和正式站在同一台机、用同一个镜像，发版时一起更新；各用各的库和 MySQL 账号，账号只授权自己那个库。
+用户 2026-10-09：「没有一个模板化的部署方式吗，每次都要改 docker compose？」—— 不用改。在 `/opt/demo3` 下一条命令：
 
-| 域名 | 库 / 账号 | 里面是什么 |
-|---|---|---|
-| `demo.atrilink.com` | `park_demo` / `demo_site` | 我园数据脱敏版（`运维文档/脱敏演示库.py` 换名缩放，再清掉账号与登录日志），老迁移链 |
-| `new.atrilink.com` | `park_new` / `new_site` | 空库，新园区装好的样子（起点链、关模拟填充，同 §9） |
+```bash
+bash deploy/park.sh add  <名> <域名>                        # 空库园区（新园区装好的样子：起点链、关模拟填充，同 §9）
+bash deploy/park.sh add  <名> <域名> --data <数据.sql.gz>    # 带数据（脱敏演示库，老迁移链）：先灌数据再启动
+read -rs PARK_DB_PASSWORD && export PARK_DB_PASSWORD        # 连客户 RDS：先输口令（不进命令行和 history）
+bash deploy/park.sh add  <名> <域名> --db-host <主机> --db-name <库> --db-user <账号>   # 连客户自己的 RDS（库要是空的，强制 TLS）
+bash deploy/park.sh load   <名> <数据.sql.gz>                # 只对 --data 建的演示园区：先备份到 /opt/parks/backup，再清空重灌
+bash deploy/park.sh list
+bash deploy/park.sh remove <名>                             # 停掉、摘域名；库留着
+```
 
-一次性步骤（在 `/opt/demo3` 下）：
-
-1. 域名解析加 `demo`、`new` 两条 A 记录指向本机（先加，Caddy 才签得下证书）。
-2. `bash deploy/demo-sites.sh init`：`.env` 补六个演示站变量（`DEMO_*` / `NEW_*`，已有的不动），建两个库和两个账号。
-3. 把脱敏数据传上来，`bash deploy/demo-sites.sh load park_demo_export.sql.gz`。**必须在 `backend-demo` 第一次启动之前**：空库遇上老链后端会拒绝启动（`FlywayChainGuard`）。
-4. `.env` 的 `COMPOSE_PROFILES` 加上 `demo`（如 `COMPOSE_PROFILES=https,demo`），`docker compose up -d`。
-5. 登录：两站都是 `admin`，口令分别是 `.env` 里的 `DEMO_ADMIN_PASSWORD`、`NEW_ADMIN_PASSWORD`；进去后在「系统管理」建自己演示用的账号。
-
-- **还原演示数据**：再跑一次 `bash deploy/demo-sites.sh load <同一个文件>`（清空 `park_demo` 重灌）。空库那套要还原：`DROP DATABASE park_new` 后重新 `init`、`up -d`。
-- **关掉演示站**：`COMPOSE_PROFILES` 去掉 `demo`，再 `docker compose --profile demo rm -sf backend-demo frontend-demo backend-new frontend-new`。不删库也不影响正式站。
-- **内存**：2C4G 一台机跑三个后端。演示站每个后端堆压在 384M、容器 700M 封顶，超了只重启演示站自己。
-- **compose 里演示站的口令变量不能改成 `:?` 必填**：compose 不管 profile 开没开都会先插值全部服务，写成必填的话，`.env` 没有它们时正式站发版也会被拒。
+- **先做一件事**：域名解析加一条 A 记录指到本机，Caddy 才签得下证书。
+- **它做了什么**：生成 `/opt/parks/<名>.yml`（这个园区的后端 + 前端，口令写在里面，权限 600）和 `/opt/parks/caddy/<名>.caddy`（域名），
+  把 yml 追加进 `.env` 的 `COMPOSE_FILE`；本机库则建 `park_<名>` 和只授权这个库的账号 `<名>_site`（不用 root，园区之间、园区和正式库之间互相读不到）。
+  `/opt/parks` 在 `/opt/demo3` 外面，发版整树替换碰不到它；发版的 `docker compose up -d` 读 `.env` 的 `COMPOSE_FILE`，所有园区跟着一起更新、各自补数据库迁移。
+- **登录**：`admin`，口令 `grep ADMIN_PASSWORD /opt/parks/<名>.yml`；进去后在「系统管理」建这个园区的账号。
+- **服务名带园区名**（`<名>-backend` / `<名>-frontend`）：compose 会把服务名注册成网络别名，同叫 `backend` 的话正式站前端会被随机连到别的园区（本机实测撞过）。
+  前端镜像的 nginx 写死 `proxy_pass http://backend:8080`，所以园区前端只挂在本园区自己的网里，后端在那张网里别名 `backend`。
+- **内存**：每个园区后端堆 384M、容器 700M 封顶，空闲约 0.25G；2C4G 机器大约还能放两三个。空库第一次启动要建全部表，几个后端同时在跑时要两三分钟（健康检查等 5 分钟）。
+- **`remove` 不删库**；同名再 `add` 会被拒（库可能停在迁移半截），确定不要了先 `DROP DATABASE park_<名>`（园区名不许叫 `demo3`，免得和正式库 `park_demo3` 同名）。
+- **镜像版本**：脚本钉住正式站当前在跑的那一版（发版只在会话里 export `IMAGE_TAG`，`.env` 里没有），所有启动都带 `--no-deps`，不会连带重建正式站。
+  自己手动起某个园区时也要带上：`IMAGE_TAG=<提交号> docker compose up -d --no-deps <名>-backend <名>-frontend`。
+- **域名**：格式不对、和正式站或别的园区重复都会被拒；Caddy 在跑时先 `caddy validate`，不通过就撤回 —— 坏片段留在 import 目录里，下次 Caddy 重启时正式站也会断 HTTPS。
+- **灌数据**：导出不许带 `USE` / `CREATE DATABASE`（会写到别的库，原库名若是正式库就覆盖了它）；灌完 admin 口令一律改成占位符、其余账号停用。
+- **发版时某个园区起不来**：园区前端只等园区后端「启动」不等「健康」，所以发版不会被它挂住；正式站照常换成新版。`docker compose ps`、`docker compose logs <名>-backend` 看是哪一个。
