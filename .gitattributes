@@ -1,0 +1,2 @@
+# Windows 上 autocrlf 会把 .sh 检出成 CRLF,从工作区打包传到服务器(README §3)后 bash 一跑就报 $'\r': command not found
+*.sh text eol=lf

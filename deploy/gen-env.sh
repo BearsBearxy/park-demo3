@@ -6,6 +6,9 @@
 # 2026-10-05 用户拍板「按你建议修改」(见 backend config/DeployConfig):
 #   · PARK_TOOLS_ENABLED=false:关掉三处模拟填充和损益附表自动补行(按我园附表口径推导、写我园科目名)
 #   · RELEASE_BASELINE=此刻 frontend/package.json 的版本:客户只看装机之后的更新记录
+# 2026-10-11 服务器加固:
+#   · WEB_BIND=0.0.0.0:明文部署前端要对外。compose 默认只绑本机(上了 HTTPS 8081 就不该对外),切 HTTPS 时删掉这行
+#   · DB_APP_USER / DB_APP_PASSWORD:正式站后端用只有本园区库权限的专用账号连库,不用 root(mysql 首次初始化时建号)
 # 用法(在项目根目录): bash deploy/gen-env.sh <服务器公网IP或域名>
 set -euo pipefail
 HOST="${1:?用法: bash deploy/gen-env.sh <公网IP或域名>}"
@@ -17,7 +20,10 @@ VER=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' frontend/package.json | head 
 
 cat > .env <<EOF
 WEB_PORT=80
+WEB_BIND=0.0.0.0
 DB_PASSWORD=$(rand 24)
+DB_APP_USER=demo3_site
+DB_APP_PASSWORD=$(rand 24)
 SPRING_PROFILES_ACTIVE=prod
 JWT_SECRET=$(rand 48)
 ADMIN_PASSWORD=$(rand 16)

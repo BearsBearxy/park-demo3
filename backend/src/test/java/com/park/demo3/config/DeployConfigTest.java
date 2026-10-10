@@ -35,6 +35,21 @@ class DeployConfigTest {
                 .contains("frontend/package.json");
     }
 
+    // 服务器加固(2026-10-11):8081 默认只绑本机,新服务器的正式站连库用专用账号。两环:gen-env.sh 写进 .env → compose 读。
+    // 默认值改回 0.0.0.0 / root 不报错,只是又多一个明文口、又用 root 连库。
+    // 破坏验证:compose 的 127.0.0.1 改成 0.0.0.0 → 红;gen-env.sh 删掉 DB_APP_USER 那行 → 红
+    @Test
+    void frontendBindsLocalByDefault_andNewServersUseAppDbUser() throws IOException {
+        assertThat(read("../docker-compose.yml"))
+                .contains("\"${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8081}:80\"")
+                .contains("DB_USER: ${DB_APP_USER:-root}")
+                .contains("MYSQL_USER: ${DB_APP_USER:-}");
+        assertThat(read("../deploy/gen-env.sh"))
+                .containsPattern("(?m)^WEB_BIND=0\\.0\\.0\\.0\\r?$")
+                .containsPattern("(?m)^DB_APP_USER=\\w+\\r?$")
+                .containsPattern("(?m)^DB_APP_PASSWORD=\\$\\(rand 24\\)\\r?$");
+    }
+
     private static final String LEGACY = "classpath:db/migration,classpath:db/common";
     private static final String BASELINE = "classpath:db/baseline,classpath:db/common";
 
