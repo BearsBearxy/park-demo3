@@ -15,10 +15,12 @@
 
 ## 2. 买完后做两件事
 
-1. **防火墙/安全组放行端口**：控制台 → 防火墙 → 添加规则，放行 **22（SSH）**、**80**、**443**（80 不能省：Caddy 申请证书走 HTTP-01 验证，关了签不出来）。其余一律不开 —— MySQL 3306 不对外（compose 内网互通），**frontend 的 8081 也绝不能放行**（见 §8）。
-2. 记下 **公网 IP** 和 **root 密码**（轻量服务器控制台可重置密码）。
+1. **防火墙/安全组放行端口**：控制台 → 防火墙 → 添加规则，放行 **22（SSH）**、**80**、**443**（80 不能省：Caddy 申请证书走 HTTP-01 验证，关了签不出来）。其余一律不开 —— MySQL 3306 不对外（compose 内网互通），**frontend 的 8081 也不用放行**（只绑本机，见 §8）。
+   22 **别把来源限成你自己的 IP**：GitHub 自动发版的机器 IP 不固定，限了发版就连不上；挡暴力破解靠只认密钥 + fail2ban（§4 自动装）。
+2. 开机器时登录方式选 **密钥对**（不要选「自定义密码」），私钥自己存好；记下 **公网 IP**。
+   2026-10-11 起 server-setup.sh 最后会关掉 SSH 密码登录，用密码登进来的话它会停下、什么都不改。
 
-到这里你的部分就完成了。把 IP 和密码交给 Claude 即可；以下为执行记录/手工步骤。
+到这里你的部分就完成了。把 IP 交给 Claude、私钥放在本机 `~/.ssh/` 下即可；以下为执行记录/手工步骤。
 
 ## 3. 上传代码（本地 Windows PowerShell 执行）
 
@@ -35,12 +37,16 @@ ssh root@<IP> "cd /opt && tar xzf demo3.tgz && rm demo3.tgz"
 
 ```bash
 cd /opt/demo3
-bash deploy/server-setup.sh          # 装 Docker+Compose+镜像加速+swap(一次性)
+bash deploy/server-setup.sh          # 装 Docker+Compose+镜像加速+swap,再跑 harden.sh 加固(一次性;没有登录密钥会停下)
 bash deploy/gen-env.sh <公网IP>      # 生成 .env:随机 DB/JWT/admin 口令,prod profile,迁移走起点链(新园区空库起步,见 §9)
 docker compose up -d --build         # 构建+启动三容器
+bash deploy/harden.sh check          # 起来以后自查一遍:SSH、防火墙、对外端口、连库账号;没有 ❌、最后一行是「全部通过」才算装完
 ```
 
-注意三点：
+注意四点：
+- **开机器时选「密钥对」，别选「自定义密码」**（2026-10-11 起）：server-setup.sh 最后跑 `deploy/harden.sh` 关掉 SSH 密码登录。
+  不是用密钥登进来的，它会停下、SSH 什么都不改（Docker 已经装好），补好密钥后单跑 `bash deploy/harden.sh`。
+  自查表里的 ⚠ 不算没通过，是要你自己确认的事（安全组只放 22/80/443、系统要不要重启）
 - **gen-env 这步不能跳过**：compose 里 `DB_PASSWORD`/`JWT_SECRET`/`ADMIN_PASSWORD`/`CORS_ALLOWED_ORIGINS`
   四项已改成无兜底（fail-closed），缺任何一项 `up` 会直接报中文错误退出。以前「不建 .env 也能起」
   的做法已作废——那样起出来的是仓库公开 JWT 密钥 + 种子口令 admin/admin123 的可写实例，端口一开即等同无认证。
@@ -110,7 +116,15 @@ docker compose restart backend                # 重启后端
 docker compose pull && docker compose up -d   # 拉 CI 构建好的新镜像重新部署(CD 就是跑这一条)
 docker compose up -d --build                  # 应急:在本机构建(2C4G 慎用,见 §5.5)
 docker compose exec mysql sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" park_demo3' > backup-$(date +%F).sql   # 备份
+bash deploy/harden.sh check                   # 安全自查:SSH、防火墙、对外端口、连库账号;有 ❌ 退出码不是 0
 ```
+
+正式站连库账号（2026-10-11 起）：gen-env.sh 生成的 `.env` 带 `DB_APP_USER` / `DB_APP_PASSWORD`，
+mysql 第一次初始化时建好这个只有 `park_demo3` 权限的账号，后端用它连库，不用 root。
+- 之前装的、还在用 root 的服务器：`bash deploy/harden.sh db-user`，后端重建约 1–2 分钟打不开；起不来会自动改回 root
+- 迁移换机器：旧 `.env` 原样带过去（里面的 `COMPOSE_FILE` 还引用着 `../parks/*.yml`，`/opt/parks` 和 `park_demo`、`park_new`
+  两个演示库也要一起搬，或者先把它们从 `COMPOSE_FILE` 里去掉）；导完数据后跑一次 `bash deploy/harden.sh db-user` 和 `check`
+  —— 数据卷要是在 `.env` 有这两行之前就建好了，账号是靠 db-user 补上的
 
 故障排查一则：如果改过/重生成过 `.env` 里的 `DB_PASSWORD`，MySQL 数据卷里还是旧口令，backend 会连不上库。
 测试期数据可弃时用 `docker compose down -v && docker compose up -d` 重置（**-v 会清空全部数据**；之后按 `.env` 里的迁移链重新起库：起点链 = 空库，老链在空库上默认拒绝启动）。
@@ -128,7 +142,8 @@ docker compose exec mysql sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" park_
    HSTS 就该在哪下发）。`nginx.conf` 里那条"将来补 HSTS"的注释因此作废。
    ~~CSP 收紧远程 webfont~~ —— 2026-08-11 已完成（远程 Google Fonts 已从 `tokens.css` 移除，CSP 三处同步收紧为 `'self'`）
 4. 定期备份：第 6 节备份命令进 crontab（每日一份 + 异地留存）
-5. 服务器加固：SSH 改密钥登录禁密码、fail2ban
+5. ~~服务器加固：SSH 改密钥登录禁密码、fail2ban~~ —— **2026-10-11 起 `server-setup.sh` 最后自动跑 `deploy/harden.sh`**
+   （SSH 只认密钥、fail2ban、防火墙，跑完打自查表）。生产机 10-10 手动关了密码登录，防火墙和连库账号看 `bash deploy/harden.sh check`
 6. 多用户/角色扩展视使用反馈再说（当前 admin+viewer 两级已够测试与汇报）
 
 ## 8. HTTPS（2026-08-30 上线）
@@ -145,7 +160,7 @@ docker compose exec mysql sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" park_
 `caddy` 服务挂了 `profiles: ["https"]`，**只有 `.env` 里写了 `COMPOSE_PROFILES=https` 才启动**。
 本地开发与纯 IP 明文部署因此完全不受影响，`docker compose up -d` 一行不用改（CD 也就不用动）。
 
-服务器 `.env` 相对 `gen-env.sh` 的产物多改了三项：
+服务器 `.env` 相对 `gen-env.sh` 的产物多改了三项，再删掉 `WEB_BIND=0.0.0.0` 一行（2026-10-11 起，8081 只绑本机）：
 
 ```
 WEB_PORT=8081                                                        # 80 让给 caddy
@@ -153,11 +168,12 @@ CORS_ALLOWED_ORIGINS=https://atrilink.com,https://www.atrilink.com   # 原为 ht
 COMPOSE_PROFILES=https                                               # 新增,开关
 ```
 
-⚠️ `gen-env.sh` 仍按明文 HTTP 生成（`WEB_PORT=80`、`CORS` 走 `http://`）。**换机器重建时这三项要手工补**，
+⚠️ `gen-env.sh` 仍按明文 HTTP 生成（`WEB_PORT=80`、`WEB_BIND=0.0.0.0`、`CORS` 走 `http://`）。**换机器重建时这几处要手工改**，
 否则 caddy 起不来（80 被 frontend 占）。
 
-⚠️ **8081 绝不能在安全组放行**。compose 的 `ports` 没法被 profile 摘掉，frontend 仍发布在宿主机
-8081 上，靠安全组挡住。放行了就等于绕过 TLS 还能明文访问全站。
+⚠️ **8081 只绑本机**。compose 的 `ports` 没法被 profile 摘掉，frontend 仍发布在宿主机 8081 上；
+2026-10-10 前绑在 0.0.0.0、只靠安全组挡着（Docker 发布的端口不经过 ufw），放行了就等于绕过 TLS 还能明文访问全站。
+现在 compose 默认绑 `127.0.0.1`，`.env` 里别留 `WEB_BIND=0.0.0.0`；`bash deploy/harden.sh check` 会查对外开着的端口。
 
 ⚠️ **`caddy-data` 卷不能删**：证书存在里面。删了每次部署重新签发，Let's Encrypt 限额是同一组域名
 每周 5 张重复证书，撞上就是一周签不出来。
@@ -183,7 +199,7 @@ curl -sI https://atrilink.com/ | grep -i strict  # 确认 HSTS 在
 回滚到明文（应急，几十秒）：
 
 ```bash
-cd /opt/demo3 && cp .env.bak .env && docker compose --profile https rm -sf caddy && docker compose up -d
+cd /opt/demo3 && cp .env.bak .env && echo WEB_BIND=0.0.0.0 >> .env && docker compose --profile https rm -sf caddy && docker compose up -d
 ```
 
 ### 已知行为
@@ -220,7 +236,7 @@ docker compose logs backend | grep -E "Migrating schema|Successfully applied|adm
 ```
 
 - **库必须是空的**（新建的 database，一张表都没有）。客户自己开的云数据库（RDS）同理：建一个空库给我们，后端连过去。
-  ⚠ 现在的 compose 把 `DB_HOST/DB_PORT/DB_USER` 写死为同机的 mysql 容器、库名用默认 `park_demo3`，连外部 RDS 要先改 compose 转这几项。
+  ⚠ 现在的 compose 把 `DB_HOST/DB_PORT` 写死为同机的 mysql 容器、库名用默认 `park_demo3`（账号走 `.env` 的 `DB_APP_USER`），连外部 RDS 要先改 compose 转这几项。
 - **`.env` 里没有起点链就 `up` 了**（手写的 `.env`、或删掉了那一行）：空库遇到老链，后端拒绝启动，日志里是「空库不能跑老迁移链」，库里什么都没写 —— 补上 `FLYWAY_LOCATIONS` 再 `up` 即可（`FlywayChainGuard`）。
   拦截只认空库。万一绕过了拦截（设过 `FLYWAY_ALLOW_LEGACY_ON_EMPTY=true`）把老链灌了进去：同机 mysql 卷用 `docker compose down -v` 清掉重来；**外部 RDS 一旦灌入就视为已泄露** —— 快照、binlog、自动备份都在客户手里，删库收不回来，按数据泄露处理。
 - **首次登录**：`admin` / `.env` 里的 `ADMIN_PASSWORD`（起点脚本里 admin 没有能用的口令，首次启动时才写成 `ADMIN_PASSWORD`，在那之前谁都登不进），显示名「管理员」。

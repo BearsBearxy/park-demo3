@@ -19,6 +19,11 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?未设置 DB_PASSWORD。请先运行 bash deploy/gen-env.sh <公网IP或域名> 生成 .env}
       MYSQL_DATABASE: park_demo3
+      # 正式站后端连库的专用账号(2026-10-11):只有 park_demo3 这一个库的权限,不用 root。
+      # mysql 镜像只在数据卷第一次初始化时建这个号;.env 没写 DB_APP_USER(老服务器)= 不建,后端照旧用 root。
+      # 已经在跑的服务器换账号:bash deploy/harden.sh db-user
+      MYSQL_USER: ${DB_APP_USER:-}
+      MYSQL_PASSWORD: ${DB_APP_PASSWORD:-}
     # 慢查询日志(见 docs/OPS-SLOW-QUERY.md):正常查询在 2ms 级,阈值取 0.2s 是「已经离谱一个数量级」的线,
     # 不是 MySQL 默认的 10s ——按默认这库永远打不出一条,等于没开。日志落在 datadir(mysql-data 卷)里,重启不丢。
     # log_queries_not_using_indexes 会把小表全扫也算进去(本库小表全扫 <1ms,属正常),嫌吵就单独去掉这一个开关
@@ -44,13 +49,14 @@ services:
     environment:
       DB_HOST: mysql
       DB_PORT: "3306"
-      DB_USER: root
-      DB_PASSWORD: ${DB_PASSWORD:?未设置 DB_PASSWORD。请先运行 bash deploy/gen-env.sh <公网IP或域名> 生成 .env}
+      # 写了 DB_APP_USER 就用专用账号(gen-env.sh 生成的 .env 都写了);没写 = 老服务器,照旧 root
+      DB_USER: ${DB_APP_USER:-root}
+      DB_PASSWORD: ${DB_APP_PASSWORD:-${DB_PASSWORD:?未设置 DB_PASSWORD。请先运行 bash deploy/gen-env.sh <公网IP或域名> 生成 .env}}
       # 默认档位 prod 而非 dev:忘配 profile 时走严格档(关 swagger/api-docs),弱档必须显式声明
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
       JWT_SECRET: ${JWT_SECRET:?未设置 JWT_SECRET。请先运行 bash deploy/gen-env.sh <公网IP或域名> 生成 .env}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?未设置 ADMIN_PASSWORD。仓库种子口令 admin/admin123 众所周知,必须覆盖}
-      VIEWER_PASSWORD: ${VIEWER_PASSWORD:-}   # 非空=创建只读账号 viewer(GET-only);留空则功能关闭(唯一可选项)
+      VIEWER_PASSWORD: ${VIEWER_PASSWORD:-}   # 非空=创建只读账号 viewer(GET-only);留空则功能关闭
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?未设置 CORS_ALLOWED_ORIGINS(前端域名白名单,如 http://1.2.3.4)}
       # 迁移链(2026-10-04):.env 不写 = 老链,我园生产照旧;新园区在 .env 写
       # FLYWAY_LOCATIONS=classpath:db/baseline,classpath:db/common(空库起步,见 deploy/README-部署指南.md「新园区上线」)。
@@ -72,17 +78,20 @@ services:
     build: ./frontend
     restart: unless-stopped
     ports:
-      - "${WEB_PORT:-8081}:80"
+      # 默认只绑本机(2026-10-11)。上了 HTTPS 外面走 caddy,这个口只剩本机排障用;绑在 0.0.0.0 上就是一个
+      # 绕过 TLS 的明文入口,而且 Docker 发布的端口不经过 ufw,原来只剩云安全组一道挡着。
+      # 没上 HTTPS 的明文部署要对外:gen-env.sh 会在 .env 里写 WEB_BIND=0.0.0.0
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8081}:80"
     depends_on:
       backend:
         condition: service_healthy
 
   # HTTPS 终止层(2026-08-30)。profile 收起来:只有 .env 里写了 COMPOSE_PROFILES=https 才启动,
   # 所以本地开发 / 纯 IP 明文部署完全不受影响,`docker compose up -d` 一行不用改(CD 也就不用动)。
-  # 服务器切 HTTPS 三步:.env 加 COMPOSE_PROFILES=https、WEB_PORT 从 80 改 8081(把 80 让给 caddy)、
-  # CORS_ALLOWED_ORIGINS 改 https://域名,然后 up -d。
-  # ⚠ frontend 仍然发布在宿主机 ${WEB_PORT} 上(compose 的 ports 没法被 profile 摘掉)。
-  #   8081 绝不能在云安全组放行 —— 放了就等于绕过 TLS 还能明文访问全站。
+  # 服务器切 HTTPS:.env 加 COMPOSE_PROFILES=https、WEB_PORT 从 80 改 8081(把 80 让给 caddy)、
+  # 删掉 WEB_BIND=0.0.0.0 那行、CORS_ALLOWED_ORIGINS 改 https://域名,然后 up -d。
+  # ⚠ frontend 仍然发布在宿主机 ${WEB_PORT} 上(compose 的 ports 没法被 profile 摘掉),所以默认只绑 127.0.0.1;
+  #   .env 里留着 WEB_BIND=0.0.0.0 的话 8081 就对外了,等于绕过 TLS 还能明文访问全站。
   caddy:
     image: caddy:2-alpine
     profiles: ["https"]
