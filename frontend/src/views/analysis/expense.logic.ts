@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // src/views/analysis/expense.logic.ts — 费用与报销屏纯数据变换(单测 expense.logic.spec.ts)。
 // 输入 = fetchPnlYear('s5', year).rows;组带取自带总计行不重算(标签以库内实际为准,2025 已 SQL 核对:
 // 「销售费用合计」group=销售费用 无冒号;「管理费用总计：」「财务费用合计：」带全角冒号 group='';

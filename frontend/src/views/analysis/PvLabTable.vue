@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 /**
  * PvLabTable —— 核对明细档「逐栋核对表」(PV-ANALYSIS-SCREEN-V4 §3.16;2026-10-06 改稿 pv-v2 m-lab / y-lab)。

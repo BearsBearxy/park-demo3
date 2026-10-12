@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // fin-balance v2 纯函数(spec §二.8):资产/负债双环 + 比率仪表(gauge ≤2,勿仪表盘泛滥)。
 // option 为纯 JSON(canvas 无法用 CSS 变量 → fpAnaTheme 字面色板)。单测 finBalance.logic.spec.ts。
 import { FP_ANA_THEME, anaPalette } from '@/components/ana/anaTheme'

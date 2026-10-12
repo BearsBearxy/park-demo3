@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // KPI 卡三件(KPI-CARD-SPEC §3,稿 KpiA 方向 A):列表大卡 KpiCard / 分析屏小卡 AnaKpiTile / 抽屉小卡 FPStat。
 //
 // jsdom 不量版式、vitest 也不注入 SFC 的 <style>:这里把组件自己的 <style> 块原样塞进 document,

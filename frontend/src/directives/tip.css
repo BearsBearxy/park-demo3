@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 /* v-tip 的气泡(directives/tip.ts)。外观照抄 components/shell/ShellTip.vue 的 .fp-tip:深底白字 12px,
    只说一句话、不接管点击。挂 body、fixed,位置由指令算好写进 left / top;--ax = 箭头对准触发物中线的横坐标。
    层级 --z-toast:弹窗、抽屉里的格子也要盖得住(贴附浮层那档 60 会被 300 的弹窗压住)。

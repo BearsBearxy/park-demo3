@@ -1,0 +1,25 @@
+灵睿 LinkSight
+Copyright (c) 2026 Junyang. All rights reserved.
+
+版权所有
+
+本软件（灵睿 LinkSight，含本仓库中的全部源代码、界面设计、文档与数据库脚本）的著作权归 Junyang 一人所有。
+
+本软件不以任何开源许可证发布。未经 Junyang 书面授权，任何人不得以任何方式复制、修改、分发、出售、出租、再许可、抄袭本软件或其任何部分，也不得以本软件为基础制作衍生作品。
+
+本软件中使用的第三方开源组件（如 Vue、Spring Boot、ECharts 等，见 frontend/package.json 与 backend/pom.xml）的著作权归其各自权利人所有，按其各自的许可证使用，不属于上述声明的范围。
+
+授权事宜请联系 Junyang。
+
+----------------------------------------------------------------------
+
+LinkSight
+Copyright (c) 2026 Junyang. All rights reserved.
+
+This software (LinkSight, including all source code, interface designs, documentation and database scripts in this repository) is the sole property of Junyang.
+
+This software is not released under any open-source license. No part of it may be copied, modified, distributed, sold, rented, sublicensed or plagiarized, and no derivative work may be made from it, without prior written permission from Junyang.
+
+Third-party open-source components used by this software (such as Vue, Spring Boot and ECharts; see frontend/package.json and backend/pom.xml) remain the property of their respective owners and are used under their own licenses; they are not covered by the statement above.
+
+For licensing, contact Junyang.

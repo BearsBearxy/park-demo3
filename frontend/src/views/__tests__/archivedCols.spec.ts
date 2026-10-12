@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 归档列端到端(spec §2 / 计划 Task 5):后端月度 DTO 的 archivedCols → 各屏版面 → 只读渲染。
 //
 // 头一版只改了 bookTemplate.ts 与 FPLedgerTable.vue,没有任何调用方传第三参数,

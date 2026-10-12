@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 句型库：闭嘴条件和几个写法的门（规范 S-44 表）。整库逐字对过画布五屏 879 句（画布出稿脚本直接跑本文件），这里只钉住容易被改坏的边。
 import { describe, expect, it } from 'vitest'
 import * as S from '../anaSentence'

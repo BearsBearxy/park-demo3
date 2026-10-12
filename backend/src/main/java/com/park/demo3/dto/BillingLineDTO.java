@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 package com.park.demo3.dto;
 import java.math.BigDecimal;
 // 计费行读 DTO(BILL-FORWARD 刀1 §1.7);按 location, seq 排序带出。

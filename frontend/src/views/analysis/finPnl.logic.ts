@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // fin-pnl v2 纯函数(spec §二.7):瀑布=透明垫底柱技法、点级切换的科目 12 月序列、
 // 环比=上期虚线叠加、预算=budget_row 当年值/12 虚线。单测 finPnl.logic.spec.ts。
 // ECharts option 为纯 JSON 构建(canvas 内无法用 CSS 变量 → 取 fpAnaTheme 字面色)。

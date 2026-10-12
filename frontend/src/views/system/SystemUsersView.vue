@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 用户管理(RBAC-SPEC §10 P1)。骨架抄租户管理屏(列表 + 抽屉 + 逐条 CRUD),布局遵 LIST-PAGE-SPEC。
 //

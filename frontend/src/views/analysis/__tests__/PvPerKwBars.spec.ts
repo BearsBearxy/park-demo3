@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // PvPerKwBars(新卡「各栋每千瓦日均发电」)的几何与交互:刻度步长按像素挑、悬停气泡、点一行换选中。
 // 数据整形(排序、列里的字)在 pvAnaV4.logic.spec 的 perKwCard 那组,这里只钉组件自己的事。
 import { afterEach, describe, expect, it, vi } from 'vitest'

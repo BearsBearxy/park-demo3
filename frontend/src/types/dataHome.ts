@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 数据中心首页 DTOs — 逐字对齐后端 dto/DataHomeOverviewDTO.java(DATA-HOME-REDESIGN spec §3)。
 //
 // 2026-08-18 重设计:旧契约有 kpis/tasks/recent/progress* 四组字段,但整页把同一批信息说了三遍 ——

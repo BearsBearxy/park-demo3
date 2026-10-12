@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 资产负债表屏 — 两层状态机(useFinStatementScreen 三屏共用) + PAGE-BEHAVIOR-SPEC §1 加载门。差异(spec B1/B2):
 //   · 单列 期末余额(field='end')。正文是**一张** 6 列表(画布 09 ReportBS,2026-10-03 D7):

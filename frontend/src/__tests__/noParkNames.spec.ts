@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 前端源码里不许出现我园真名(2026-10-04 用户拍板:产品卖给别的园区,客户浏览器下载的 JS 里不能有我园的东西)。
 //
 // 清单和后端共用一份:backend/src/test/resources/baseline/real-names.txt(BaselineChainIT / BaselineBootIT 拿它扫客户库)。

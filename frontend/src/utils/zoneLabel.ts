@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 期区显示名。与后端 ZoneService.label 同口径,两边都必须「认不出就原样返回」——
 // 返回 undefined 会静默印进导出文件名(tsconfig 没开 noUncheckedIndexedAccess,编译器不报)。
 const DIGITS = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九']

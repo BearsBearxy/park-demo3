@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 通用导入解析 helper — 1:1 移植 import-excel.jsx 的 fpParsePaste / fpParseCSV。
 // 把粘贴文本(TSV/CSV)或 CSV 文件文本规整为「单元格二维数组」,再交给各屏 parseRow 映射。
 

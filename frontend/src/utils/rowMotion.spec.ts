@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 表格展开 / 收起行的位移动画(rowMotion.ts)。2026-10-03 用户:「全部表格的这个下拉打开的，增加动画平滑移开，现在是硬切」。
 // jsdom 不排版、没有 Element.animate:每行的位置按 data-y 假造,animate 换成记录器。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'

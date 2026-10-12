@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 审核闸的**入口**覆盖率门禁(SIDEBAR-UX-REDESIGN §7.5,R2 T4c)。
 //
 // R1 有一份 ReviewGuardCoverageTest 守后端写路径。这一份守的是另一半:**屏上的入口**。

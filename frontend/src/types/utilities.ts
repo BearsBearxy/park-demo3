@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 附表13/14 办公·三期水电 DTOs — 逐字对齐后端 dto/Office*.java(同一模型两实例,schedule_no 13/14)。
 // JSON camelCase ⇄ Java record。派生 elecAmt=elecQty×elecPrice / waterAmt=waterQty×waterPrice /
 // total=elecAmt+waterAmt 后端读时算好下发,前端不重算、不落库。

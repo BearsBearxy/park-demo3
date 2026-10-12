@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import Pagination from '@/components/ds/Pagination.vue'

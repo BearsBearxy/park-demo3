@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // src/views/reports/trial-balance/__tests__/tbCardS.spec.ts
 // 科目余额表 S 档 行→卡片(稿 ReportPhone §2 表第 3 行:形态 = 行→卡片,标准 88 档)。
 //

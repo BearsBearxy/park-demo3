@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 附表7/8 充电桩 DTOs — 逐字对齐后端 dto/Charging*.java(同一模型两实例,schedule_no 7/8)。
 // JSON camelCase ⇄ Java record;cat 的简称线格式为 "short"(@JsonProperty),非 shortName。
 // 派生 profit = fee - cost 后端读时算好下发,前端不重算、不落库。

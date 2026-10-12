@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // src/components/ana/anaMotion.ts —— 分析层 ECharts 动效注入(动效设计稿 §8.2/§8.3,C6-02~C6-06)。
 //
 // ECharts 主题与 option 是纯 JSON,引不了 CSS 变量 → 这里是 tokens.css 的**镜像**:

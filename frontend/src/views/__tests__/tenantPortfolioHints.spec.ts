@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 结构与续约(TenantPortfolioView)的加载失败与空清单(S4 T25,画布 06-B ⑦ / 06-D 右格):
 // 加载失败 → FPLoadError(按钮恒为「重试」,接上 reload);清单没有可列的户 → FPEmpty 换掉清单本身。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'

@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 新增/编辑租户弹窗 — 样式 1:1 FinDialogs 的 .fin-mask/.fin-dlg(Teleport 居中弹窗,回车提交,错误行内提示)。
 // 传 initial=编辑态(回填初值+状态下拉,提交走 update);不传=新增态,原流程不变。

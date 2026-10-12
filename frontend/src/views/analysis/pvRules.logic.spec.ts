@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // pvRules.logic —— 异常提醒中心光伏两条规则(pv-v2-anomaly)。夹具见 __fixtures__/pvRules.fixture.ts(每种情形自己造,不用开发库)。
 import { describe, expect, it } from 'vitest'
 import { pvLatest, pvMonthHits, pvSort, type PvHit, type PvRuleInput } from './pvRules.logic'

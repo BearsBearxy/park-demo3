@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 公共电核算(PoolLedgerView)写口守卫 —— 钉住 2026-08-29 落地的 5 处 + F2(载入竞态)一处:
 //   ① watch(editMode) 转假 → 池配置抽屉(FPDrawer)跟着关(:86)
 //   ② KeepAlive 停用 → 问题面板收起:FPAlertPanel 自己 onDeactivated 收 + 本屏 onDeactivated 里的

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 package com.park.demo3.dto;
 import java.util.Map;
 // 模拟填充摘要:filled=新写/修正的 simulated 行(含电价参数行),skipped=manual/import 占位或值未变的 simulated,

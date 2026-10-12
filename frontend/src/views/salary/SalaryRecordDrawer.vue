@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 右抽屉「新增工资」— 1:1 from screen-schedule12.jsx WDrawer(188-272),用共享 FPDrawer 壳。
 // 月份 select + 姓名 + 职务 datalist + 分节录入(月工资大类7 / 补贴提成3 / 考勤2 / 代缴代扣3)

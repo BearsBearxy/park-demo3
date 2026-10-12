@@ -1,8 +1,12 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
-import { BRAND_TITLE } from './src/brand'
+import { BRAND_TITLE, COPYRIGHT, COPYRIGHT_FULL } from './src/brand'
 import pkg from './package.json'
+
+const zw =(s: string) => '⁠' + [...new TextEncoder().encode(s)].map((b) => b.toString(2).padStart(8, '0')).join('')
+  .replace(/0/g, '​').replace(/1/g, '‌') + '⁠'
 
 export default defineConfig({
   plugins: [
@@ -27,6 +31,22 @@ export default defineConfig({
       apply: 'build' as const,
       generateBundle(this: { emitFile: (f: { type: 'asset'; fileName: string; source: string }) => void }) {
         this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ version: pkg.version }) })
+      },
+    },
+    // copyright:版权声明(2026-10-13 用户要求)。首页 author / copyright 两个 meta;打包后的业务 JS 每块头上一句版权注释
+    // (压缩之后加)。vue / echarts / exceljs 三块是第三方库,不往上写
+    {
+      name: 'copyright',
+      apply: 'build' as const,
+      transformIndexHtml: () => [
+        { tag: 'meta', attrs: { name: 'author', content: 'Junyang' }, injectTo: 'head' as const },
+        { tag: 'meta', attrs: { name: 'copyright', content: COPYRIGHT + zw(COPYRIGHT_FULL) }, injectTo: 'head' as const },
+      ],
+      generateBundle(_: unknown, bundle: Record<string, { type: string; name?: string; isEntry?: boolean; code?: string }>) {
+        for (const c of Object.values(bundle)) {
+          if (c.type !== 'chunk' || ['vue', 'echarts', 'exceljs'].includes(c.name ?? '')) continue
+          c.code = `/*! ${COPYRIGHT}${zw(c.isEntry ? COPYRIGHT_FULL : 'Junyang')} */\n${c.code}`
+        }
       },
     },
   ],

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 导入类型单一事实源(registry)+ runImport 记录链。
 // 各屏与导入中心 hub 都从这里取「解析配置(modalProps/parserProps) + 执行(runImport)」,导入后统一上报 import_log;
 // 全部屏均经 parserProps()/runImport() 消费本 registry,屏内不得再写列映射。

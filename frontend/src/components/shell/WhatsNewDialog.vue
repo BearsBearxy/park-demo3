@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 「本次更新」——功能更新第一次打开时自动弹一次;小调整不弹(VERSION-UPDATE-SPEC §2/§3,RELEASE-NOTES-SPEC §7)。
 // 开关在 update store 的 popupOpen:本组件不自己决定什么时候弹,只负责弹出来长什么样。

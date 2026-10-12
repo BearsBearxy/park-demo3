@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 手机导航抽屉(S 档,RESPONSIVE-LAYOUT-SPEC §4.2):IconRail(层切换+账号菜单)、
 // SidebarPanel(目录)与页签模型(最近打开)在手机上的合体。

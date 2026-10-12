@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 export interface BuildingDTO {
   id: number; name: string; phase: number; phaseName: string; zone: string | null; kind: string
   floorCount: number; totalArea: number; rentableArea: number; status: number

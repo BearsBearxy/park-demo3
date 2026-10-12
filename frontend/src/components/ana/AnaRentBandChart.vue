@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 「合约租金 · 未来 12 个月」自绘 SVG —— 照设计稿(board-expiry)实现,含悬停。
 // 坐标全部由 rentBandChart.logic.ts 的纯函数算好,这里只负责画与交互。

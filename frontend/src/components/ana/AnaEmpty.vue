@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 「数据待录入」统一空态卡(spec 通用降级规则②):说明缺什么、去哪录,深链到录入屏,不画假图。
 // to 为路由路径(如 '/contracts');不传则纯提示(移植 ana-charts.jsx Empty 的语义)。

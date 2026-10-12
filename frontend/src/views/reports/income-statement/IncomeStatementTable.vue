@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // IncomeStatementTable — 薄封装 FinReportTable + 利润表两列(本月/本年累计)。
 // 行展平、取值、计算(computeRow)归父级 View;本组件只固定列口径并透传 props/emits。

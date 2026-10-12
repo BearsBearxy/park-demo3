@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // pnlAnalysis.logic 单测:全年汇总/迷你序列/12月组合/环比右移/结构堆叠(口径=v1)。
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'

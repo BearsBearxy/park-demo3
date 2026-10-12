@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 计费参数页纯逻辑(S21-PARAM-CENTER-SPEC §5):四区分组 / 生效区间徽标 / 页面禁词 / 状态条文案 /
 // 复制上月电价键集。行数据 = 后端 GET /api/params 的 ParamRowDTO(人话解析在后端),本文件不碰网络。
 // paramCenterLogic.spec.ts 锁定。

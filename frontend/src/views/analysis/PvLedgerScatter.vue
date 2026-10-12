@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // B6 · 台账装机 vs 板数 × 标称(PV-ANALYSIS-SCREEN-V4 §3.7;画布 ../运维文档/设计稿/已实现/光伏分栋分析v4定稿-2026-09-13/Abs.dc.html)。
 // 左 SQ×SQ 正方区(+34 轴字):绘图区 (SQ−52)²(padL 40 / padR 12 / padT 12),两轴同一把刻度,

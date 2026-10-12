@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // src/composables/__tests__/useDeepPeriod.spec.ts — 目标屏消费期间深链(SIDEBAR-UX-REDESIGN §4.2)。
 // 首次在 setup 期跑(不查 dirty:全新实例没有草稿);KeepAlive 切回再跑;按 fullPath 去重;三不动。
 import { describe, it, expect, beforeEach, vi } from 'vitest'

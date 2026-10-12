@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 package com.park.demo3.dto;
 import jakarta.validation.constraints.*;
 // 电表新增/编辑共用。kind 改动在服务层守卫(有费项数据不可改类,防费项值域失配)。

@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 右抽屉「新增记账」— 1:1 from screen-charging.jsx ChDrawer(155-231),用共享 FPDrawer 壳。
 // 类别 chips(带色点) + 记账月(年/月) + 电量 + 手续费及服务费 / 充电成本 + 备注

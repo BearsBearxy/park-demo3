@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // src/nav/deepLink.ts — 期间深链协议的唯一出口(SIDEBAR-UX-REDESIGN §4.2)。
 // 发链 periodLink(value, { p, co?, extra? }) → { path, query };收链 parsePeriod(query)。
 // 收链认三代格式,优先级 p(新)> ym(出账链旧链)> y&m(报表层 / 台账 / 附10 旧链);

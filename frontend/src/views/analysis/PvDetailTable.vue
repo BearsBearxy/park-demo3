@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 抽屉 B12 · 每天的读数(PV-ANALYSIS-SCREEN-V4 §3.20;2026-10-06 改稿 pv-v2-drawer;按年一行一个月)。
 // 五列 108 / 104 / 84 / 96 / 备注按最长一条定宽,余宽落进行末空列 .fp-fill(LIST-PAGE-SPEC §4,2026-10-02);

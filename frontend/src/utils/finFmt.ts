@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 报表数值格式化。1:1 移植 fin-common.jsx 的 finFmt/finSigned/finWan/finMoney(window 全局 → 模块导出)。
 // 报表专用 2 位小数 + Unicode 负号 '−';与 money.ts(台账用)口径不同,故独立。
 

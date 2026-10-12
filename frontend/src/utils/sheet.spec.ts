@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 import { describe, it, expect, vi } from 'vitest'
 
 // 出流验证只关心「写出的 xlsx 回读一致」,不关心浏览器下载动作 —— 把 downloadBlob 换成收字节的桩。

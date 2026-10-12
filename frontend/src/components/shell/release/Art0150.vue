@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 0.15.0 重点「深色外观」的配图:账号菜单缩样 —— 名字、「外观」三段段控(深色选中)、版本更新一行。
 // 字与颜色照 IconRail 账号菜单(.fp-user-name / .fp-user-appr / .fp-appr-seg / .fp-user-row)抄,字号压到 12 / 11。

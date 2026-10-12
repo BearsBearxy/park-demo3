@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 部署配置(stores/appConfig)在 spec 里不会自己到:外壳不一定挂,接口是 mock 的。配置没到时按客户园区算 ——
 // 更新记录一条都不算、模拟填充按钮不显。测我园原有行为的 spec 建完 pinia 先调 ourPark(),当作「我园生产,配置已到」。
 import { useAppConfigStore } from '@/stores/appConfig'

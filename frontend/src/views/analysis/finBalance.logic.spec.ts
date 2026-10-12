@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // fin-balance v2 纯函数单测:双环 option 数据/配色同源、gauge ≤2 与语义色阈值。
 import { describe, expect, it } from 'vitest'
 import { DONUT_PAL, currentTone, debtTone, donutOption, gaugesOption, sliceColor } from './finBalance.logic'

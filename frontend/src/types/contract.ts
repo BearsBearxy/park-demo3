@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 免租期区间(F2):后端 contract.rent_free 存 JSON 字符串,api 层进出统一转数组(见 api/contract.ts)
 export interface RentFreePeriod { start: string; end: string; note?: string }
 

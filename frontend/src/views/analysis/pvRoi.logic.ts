@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // src/views/analysis/pvRoi.logic.ts — 光伏投资回收 v2 纯数据变换(单测 pvRoi.logic.spec.ts)。
 // 口径与 v1 一致:收益=fee(自消纳+上网,后端派生);年化=各期 累计/活跃月×12;金额一律元。
 import type { PvPhaseDTO, PvRecordDTO } from '@/types/pv'

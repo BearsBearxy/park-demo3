@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 附表12 工资 · 导入点下去之后(画布 11 ImportOne / ImportDone / ImportFail;UI-OVERLAY-SPEC §8):
 // 弹窗不关,内容区换进度卡,写完跳到首段年月、重读,原地出结果卡;失败交给弹窗的失败卡(不走回执)。
 import { describe, it, expect, beforeEach, vi } from 'vitest'

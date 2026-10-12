@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 损益附表年度矩阵表 — 版式 1:1 参照原型 screen-schedule2.jsx 表体 + SalaryTable sticky 双左列范式。
 // 列:编辑态行首复选(批量删除 P2-G3 J7,映射行不渲) | 分组(同值向下省略显示) | 科目细分 | 1月..12月 | 本年合计(rowYearTotal 客端派生) | 编辑态:备注 | 填入。

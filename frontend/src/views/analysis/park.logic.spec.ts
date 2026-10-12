@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // park.logic.spec.ts — ParkView v2 纯函数单测(有效合同过滤/楼栋聚合/去重/排序/分期聚合)。
 import { describe, expect, it } from 'vitest'
 import { buildBuildingRows, buildPhaseRows, crossBuildings, liveContracts, unitOcc, vacantByFloor, type BuildingLike, type ContractLike } from './park.logic'

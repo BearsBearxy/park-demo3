@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // TenantEnergy.logic 纯函数单测(铁律⑦;jsdom 无 canvas → 屏测试只测纯函数)。
 import { describe, expect, it } from 'vitest'
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'

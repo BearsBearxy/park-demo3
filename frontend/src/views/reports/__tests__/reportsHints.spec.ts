@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // src/views/reports/__tests__/reportsHints.spec.ts
 // 报表区(T29 · S4 机械替换 M10)换成十件标准件之后的行为:
 //   ⑨ 自写的批量删除遮罩(.fin-mask / .pnl-mask)→ ask(danger):标题问句、正文给数、主按钮写动作,答「取消」不删;

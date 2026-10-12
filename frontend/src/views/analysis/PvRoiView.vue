@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 光伏投资回收(pv-roi)v2 — spec §二.14:累计收益爬坡线 + 投资额 markLine(交点=预估回收点
 // markPoint 标注)+ 回收进度条 + 分期收益柱(点柱→该期月度明细卡)。

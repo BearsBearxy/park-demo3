@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 真实数据迁移:清种子后从《2025全年发生额、预算对比》13 个真实 Excel 重建 dev 库。
 // 复用前端导入管线的解析配置(parserProps 闭包)与各 API 契约(照抄 importRegistry.run 的调用)。
 // 运行: npx vite-node src/tools/realDataMigrate.ts -- <dry|masters|import|verify>

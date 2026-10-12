@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // src/components/ana/anaChartHeight.ts —— AnaEChart 的 S 档图高降档,抽出来给「顶替 AnaEChart 的骨架块」共用。
 // 骨架与图同高 = 数据到的那一帧零位移(≤600 首进整页跳,就是骨架按桌面高、图按降档高)。
 //

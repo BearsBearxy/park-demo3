@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 公摊分摊纯逻辑 — S3-B1 后仅保留:费项/方法字典。
 // 月度网格/导出(buildMonthlyGrid/buildAllocExportAoa)随 AllocView 退役(池核算屏见 poolLedgerLogic);
 // 参数解析/月行 patch(resolveCfg/upsertMonthCfg)随 S21 退役 —— 池参数与楼栋口径的读写口统一到 api/params(计费参数页)。

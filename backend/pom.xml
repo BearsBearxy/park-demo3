@@ -14,6 +14,9 @@
   <!-- 与 frontend/package.json 和 git tag 同步。Dockerfile 用 target/*.jar 通配拷贝,
        不钉文件名,故改版本号不影响镜像构建(2026-08-15 核实)。 -->
   <version>0.12.0</version>
+  <!-- 版权(2026-10-13 用户要求):不开源、不授权,见仓库根目录 LICENSE -->
+  <licenses><license><name>Proprietary. Copyright (c) 2026 Junyang. All rights reserved.</name><url>LICENSE</url></license></licenses>
+  <developers><developer><name>Junyang</name></developer></developers>
   <properties>
     <java.version>17</java.version>
     <mybatis-plus.version>3.5.7</mybatis-plus.version>

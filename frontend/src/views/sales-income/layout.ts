@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 附表10 列版面 — 移植 _handoff/schedule10-data.js 的 OFFICE/FACTORY 分组结构。
 // 原型 leaf-id → 契约 camelCase colId 已按契约映射表落定（见下注释）。
 // 两版面：office（phase 1 一期 / phase 4 宿舍，25 叶子=全部 25 列并集）、factory（phase 2 二期 / phase 3 三期，20 叶子）。

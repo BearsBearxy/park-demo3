@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 0.20.0 重点「园区抄表的档案变更」的配图:抽屉「档案变更」页签里「在册状态」一节的缩样。
 // 字、色、几何照 MeterTimelinePane 抄(区间 mono / 停用 caution-text、已拆 text-muted / 查看月那一段 row-selected),

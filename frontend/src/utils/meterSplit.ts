@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 园区抄表 v2 结构化档案纯函数(METER-SPEC §6.2/§6.3,spec 锁定):
 // splitTenantSpot 租户名/方位拆分、classifyOwnership 归属自动分类、buildingIdFor 区域→楼栋映射。
 // 租户库 = tenants api companyName 全量;多命中不自动挂(multi=true → tenant_id 置空、预览标「待核」)。

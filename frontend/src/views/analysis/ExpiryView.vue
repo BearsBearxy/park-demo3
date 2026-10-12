@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 到期墙与续约(expiry) — v2 重构(spec 2026-07-08 §二.11):AnaShell #kpis + av2 栅格;
 // 合同金额 Pareto(ECharts 柱线,点柱→清单展开该租户)+ Top10 集中度环 + 清单(点行→行内展开该租户全部合同);

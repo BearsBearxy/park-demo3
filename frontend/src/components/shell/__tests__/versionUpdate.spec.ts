@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 版本更新的三处入口与两个弹窗(VERSION-UPDATE-SPEC §1/§2/§4)。
 // 断言钉的是会上屏的东西:蓝点在不在、点了开哪个、尺寸与分组对不对。
 import { describe, it, expect, beforeEach, vi } from 'vitest'

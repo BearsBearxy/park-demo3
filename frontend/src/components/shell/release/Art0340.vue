@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 0.34.0 重点「导入中心」的配图:导入中心页头 + 两行清单的缩样。
 // 页头照 views/import-center/ImportCenterView.vue:月份框(DatePicker month 的「2026 / 09」)+ 入口胶囊(components/fp/FPAlertChip.vue 的 .fac:

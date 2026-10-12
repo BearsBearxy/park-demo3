@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 角色屏权限树的纯函数(RBAC-SPEC §15.9)。「❗」开头的做过破坏验证。
 import { describe, expect, it } from 'vitest'
 import type { PermDTO, UserDTO } from '@/types/system'

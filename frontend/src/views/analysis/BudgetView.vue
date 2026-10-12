@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 预算对比(budget)v2 — spec §二.15 + 图表清晰化 §T3:五年子弹图小倍数(一 option 三 grid 横排,
 // 实际=柱/预算=紫杠刻度,前瞻年只有紫杠,ECharts)

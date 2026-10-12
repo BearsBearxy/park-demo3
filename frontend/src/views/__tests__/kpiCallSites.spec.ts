@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // KPI 卡的调用处 + 算式类三种(KPI-CARD-SPEC §1 K3/K5、§3、§4;稿 KpiA、KpiFormula A 半边)。
 //
 // 组件本身的样子由 components/ds/__tests__/kpiCards.spec.ts 管;这里管「谁该传什么」:

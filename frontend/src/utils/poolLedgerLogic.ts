@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 池核算纯逻辑(POOL-ENGINE-SPEC §6,S3-B1 刀2):分带分组/tfoot 合计(没出应分摊的 ref 行剔除)/
 // 分摊语义标签/分摊标准折入披露/导出 AOA/损耗对账区行格式化。poolLedgerLogic.spec.ts 锁定。
 // BOOK-REBUILD-SPEC §H4 前端:分带改原册块(不再按楼栋)、池名称优先原册自然键 book_key、

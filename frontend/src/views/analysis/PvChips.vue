@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // B1 楼栋芯片条(PV-ANALYSIS-SCREEN-V4 §3.2;计划 §1 #5 #7)。样式照画布 v2/Main.dc.html 的 .chip 与 renderVals 抄。
 // 常显 = 有连续出范围段 ∪ 读不出 ∪ 选中,其余收进末尾「其余 N 栋 ▾」浮层 —— 行高恒 34,卡高不随栋数变。

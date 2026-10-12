@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 租户名建议(纯函数):V105 起服务「未绑定租户问题面板」(FPTenantIssuePanel)与单测。
 import { tenantMatchNames } from './tenantAlias'
 // 规则:候选 = 库中租户 t 满足 t.companyName.length>=2 且 name 以 t.companyName 开头且严格更长

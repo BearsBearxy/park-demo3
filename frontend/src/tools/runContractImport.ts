@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 一次性验收脚本(vite-node):真解析器跑真文件 → 落 JSON 供 POST /api/contracts/import-full。
 // 用法: npx vite-node src/tools/runContractImport.ts -- <xlsx> <out.json>
 import * as fs from 'node:fs'

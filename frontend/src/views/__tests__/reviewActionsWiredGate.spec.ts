@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 审核动作簇的**接线**门禁(per-screen-review §01/§02;SIDEBAR-UX-REDESIGN §9.2)。
 //
 // 为什么要有这一份:§7.5 的审核药丸刚栽过一次一模一样的坑 —— FPEditModeButton 上

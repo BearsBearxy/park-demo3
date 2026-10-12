@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // src/views/analysis/chargingAnalysis.logic.ts — 充电桩分析纯数据变换(ENERGY-ANALYSIS-SPEC §3,
 // 单测 chargingAnalysis.logic.spec.ts)。口径与分桩明细屏(CpMeterView)全等:三金额=cp_reading 直加;
 // 手续费率=手续费÷(收益+手续费);损耗率=(电表量−Σ充电量)÷电表量(可为负=计量异常,未录电表→null 断点)。

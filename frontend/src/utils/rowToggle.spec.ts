@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 展开 / 收起点击范围放宽的共用判断(rowToggle.ts)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { rowToggle, installRowToggle } from './rowToggle'

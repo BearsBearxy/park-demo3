@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 侧栏分组折叠(SIDEBAR-UX-REDESIGN §3.2):展开集合是内存态,换层清空;路由变化只追加含当前屏的组,不收回用户手动展开的组。
 import { landNav } from '@/test-utils/landNav'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'

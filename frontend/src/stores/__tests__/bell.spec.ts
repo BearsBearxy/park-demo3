@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 铃铛状态(PAGE-BEHAVIOR-SPEC §5.3,画布 06-G「一天里记号怎么变」+ 规则表前 5 行;06-F「三类怎么消失」)。
 // 夹具走真心跳:服务端状态放在 server 里,api.put('/presence/ping') 按它回 —— 数从哪来和线上同一条路。
 import { describe, it, expect, beforeEach, vi } from 'vitest'

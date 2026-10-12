@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // src/components/ds/icon.ts — iconFor(kebab-case) → lucide-vue-next component.
 // Shared by IconRail / SidebarPanel / TabStrip / Toolbar / CommandPalette.
 import {

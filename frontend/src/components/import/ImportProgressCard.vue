@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 导入进度卡 + 失败卡(md-v2-run / md-v2-fail;动效板 ③④;UI-OVERLAY-SPEC §8)。
 // 只画 FpImportModal 给的 RunState,不发请求、不管按钮(按钮在弹窗底栏)。

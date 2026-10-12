@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // src/views/__tests__/reportPeriodGate.spec.ts — 报表层九屏的源码形状门禁(照 chainPeriodGate.spec 的写法)。
 // 每屏都得有期间条(<FPStepStrip)并标出自己是哪一环;损益附表一 View 五值,current 是动态绑定。
 // 立此门禁的直接原因:PnlScheduleView 的期间条在 977af27 合并时被 sed 反向引用写成字面「\1」,

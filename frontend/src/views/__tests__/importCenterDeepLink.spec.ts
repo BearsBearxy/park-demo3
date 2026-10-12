@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // src/views/__tests__/importCenterDeepLink.spec.ts — 导入中心消费期间深链(SIDEBAR-UX-REDESIGN §4.2)+ 导后「去 X 看」(§9 P0b)。
 // 2026-10-10 改稿(ix-v2):?p 定页头的月、co 是台账小窗的缺省公司;「去 X 看」从 registry 的 target / viewLink 拼(T4),
 // 不再只认台账 / 附10 / 附12 三类。弹窗另有人在重写:这里把它换成桩,只经 runner / go 两个 prop 和 go 事件。

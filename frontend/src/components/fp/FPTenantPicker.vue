@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 共享可搜索租户选择器(spec §T3):候选由调用方传入,组件不拉数据、不依赖 tenantApi
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'

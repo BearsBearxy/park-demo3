@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 系数簿纯逻辑(S14-COEF-BOOK-SPEC §2/§3;S21 起键源=计费参数注册表):COEF_KEYS=注册表 tenantEditable 价目键
 // (label/单位/值类型/枚举字典/配套写计划皆取自 paramRegistry —— 写计划与参数页 ④ 共用一份 writePlan)+ 二期层份两键、
 // 行构建(期归属复用 billNoticeLogic.resolvePhase,按楼栋分组走 groupByBuilding)、

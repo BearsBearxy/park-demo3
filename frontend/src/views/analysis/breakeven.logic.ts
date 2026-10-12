@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // src/views/analysis/breakeven.logic.ts — breakeven 屏纯数据变换(v2 抽出,口径与 v1 一致,数值不变):
 // CVP 模型(固定/变动拆分系数假设)+ ECharts option(CVP 线 markPoint 保本/markArea 盈利区、
 // 敏感性龙卷风横条、固定/变动逐月堆叠)。锚点(2026-07-08 dev 库,2025-10):rev 9,301,530.81 / cost 6,142,810.17。

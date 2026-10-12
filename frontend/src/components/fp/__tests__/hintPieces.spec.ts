@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 十件标准件里的 ⑦ 空状态 · 加载失败、⑥ 页面状态、④ 块内提示、① 就地标记、⑤ 字段报错（画布 06-B / 06-D / 01-A）。
 // 实现规范 docs/superpowers/specs/2026-10-01-hint-widetable-bell-impl-design.md §1.4 / §1.5。
 import { beforeEach, describe, expect, it } from 'vitest'

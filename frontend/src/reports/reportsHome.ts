@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 报表中心聚合器 + 勾稽 4 项纯函数 — P2-F spec F1-F8。零后端:全走既有端点客端聚合。
 // 勾稽算法复用 computeRow/computeBsRow/tbTotals(公式归前端);容差 0.005;
 // loadHomeData 用 Promise.allSettled 容错:任一源失败该卡「待生成」、相关勾稽 value='—',整体不抛。

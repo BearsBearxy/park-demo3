@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 单位租金对标直方图 + 续签率数轴的几何。量的是矩形/竖线的坐标本身。
 import { describe, it, expect } from 'vitest'
 import { unitRentHistGeo, type HistBinIn } from './unitRentHistChart.logic'

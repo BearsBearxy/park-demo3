@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 损益附表 1–5 DTO — 逐字镜像后端 dto/Pnl*.java(P2-D spec §3)。schedule='s1'..'s5',园区全局无公司维度。
 // 月值 null=未录(区分 0);本年合计客端派生(rowYearTotal)不落库;kind 按标签识别仅作分带渲染。
 

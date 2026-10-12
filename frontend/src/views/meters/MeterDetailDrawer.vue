@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 详情抽屉(METER-V5-SPEC §4,FPDrawer/PAGE-BEHAVIOR-SPEC §2,点行打开,四页签):
 // 【表档案】档案行内编辑集中:楼栋/租户 FPTenantPicker/归属/表名称/倍率/表类型 + 删除表(409 守卫);

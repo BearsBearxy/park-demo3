@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 导入中心(2026-10-10 改稿 ix-v2-main / wide / filter / allok / ro / dialog;实现规范
 // docs/superpowers/specs/2026-10-10-import-center-modal-impl-design.md T6 + T9 导入中心那半)。

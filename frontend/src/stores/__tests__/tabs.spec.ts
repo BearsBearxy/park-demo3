@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 页签模型(TAB-BAR-SPEC §1 §2):用法和 Chrome 一样。
 // 每条用例对应规范 §2 表里的一行;「❗」开头的做过破坏验证。
 // 时序:调用方 open / openDeep / newTab 只**登记**这一跳开在哪,导航落定(router.afterEach → commit)才动页签条。

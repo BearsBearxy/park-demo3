@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 更新记录的形状(内容在 src/changelog.ts,规范见 docs/design/VERSION-UPDATE-SPEC.md)。
 
 /** 一条更新。`to` 是侧栏里那一屏的 value(nav/fpNav.ts)或首页 'home',给了才在屏上出现「去看看」。 */

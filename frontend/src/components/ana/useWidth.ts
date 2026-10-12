@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // src/components/ana/useWidth.ts — 图表自适应宽度 composable(移植 ana-charts.jsx useWidth)。
 // ResizeObserver 监听容器宽度;jsdom 无 ResizeObserver 时退回初始宽(单测冒烟可 mount)。
 import { onBeforeUnmount, onMounted, ref, type Ref } from 'vue'

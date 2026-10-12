@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
 <script setup lang="ts">
 // 0.23.0 重点「续签能选递增」的配图:续签框「这一期记成」二选一(选中递增)+ 续签链上前一段的「已递增」。
 // 字照 ContractNewDialog 的 LINK_OPTS 一字不差;选项框色照 .ct-link / .ct-link.on 抄,链 chip 照 FPContractChain 的

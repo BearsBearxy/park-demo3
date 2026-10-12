@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // PvYieldBand(B3)挂载测:几何钉坐标(点、淡区、线尾标签、悬停竖线与气泡翻边),不钉配置对象。
 // 夹具非退化:三条序列逐日起伏、选中栋漏抄一天、在网不足 3 栋留空一天、29–31 日未到。
 import { afterEach, describe, expect, it, vi } from 'vitest'

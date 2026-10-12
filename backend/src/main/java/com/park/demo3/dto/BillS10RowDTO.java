@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 package com.park.demo3.dto;
 import java.math.BigDecimal;
 /** 账单工资条明细行 = 附表10 应收口径逐行平铺。25 费用列名与 S10Record 完全一致(前端按 layout leaves 取列)。 */

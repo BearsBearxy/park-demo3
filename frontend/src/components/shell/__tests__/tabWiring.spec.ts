@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 页签模型的接线(TAB-BAR-SPEC §2):外壳内容区登记「页面里的点击」;路由按「落定才动页签条」接 store。
 // 行为本身在 stores/__tests__/tabs.spec.ts 里测;这里只钉住线没被拆掉。「❗」开头的做过破坏验证。
 import { describe, it, expect } from 'vitest'

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // src/analysis/useCompare.ts — 对比开关(spec §一:无/环比/同比/预算)。
 // 模块级单例 + localStorage 'fp-ana-compare':切屏不丢。屏声明支持集 useCompare(supported):
 // 持久化值不在支持集 → 该屏 mode 读到 'none'(原始选择保留,回到支持屏自动恢复);

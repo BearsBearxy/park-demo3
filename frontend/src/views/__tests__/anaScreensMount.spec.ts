@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // src/views/__tests__/anaScreensMount.spec.ts — 20 个分析屏挂载冒烟:挡「整屏空白」这一类 bug。
 //
 // 2026-09-16:FinBalanceView 的 flashLabel 声明在 immediate watch 之后 —— 暂时性死区,watch 回调

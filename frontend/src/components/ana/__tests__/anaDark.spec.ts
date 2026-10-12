@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 图表暗色(DARK-MODE-SPEC §6,稿 Analysis 第 1 节):anaTheme 出浅色 / 暗色两套同结构主题,
 // AnaEChart 按当前外观 init,切外观时重建实例;calloutMark / bandSeries 的颜色跟着外观走。
 import { beforeEach, describe, expect, it, vi } from 'vitest'

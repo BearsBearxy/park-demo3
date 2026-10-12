@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // 宽表固定列与表格高度(LIST-PAGE-SPEC §9、画布 07-A/07-B/07-C;实现规范 §1.8、§2 第 3 条)。
 // 纯函数 planFixed / heightStage / numW / textW + composable useWideTable。7 张有左右固定列的表共用,
 // 屏上不许再自写按屏幕档退列的逻辑。

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 // S4 · T21 机械替换(fp 组件一):原生 title → v-tip、手写占位 → FPEmpty、选期门加载失败 = 一句 + 副句 + 重试。
 // 出账链那道门(ChainMonthGate)要 mock 五个接口,它的失败态在 chainMonthGate.spec.ts。
 import { describe, it, expect, beforeEach } from 'vitest'

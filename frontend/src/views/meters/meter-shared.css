@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
 /* 园区抄表共用样式(METER-V5-SPEC):壳层 MeterView 引入一次,MeterLedgerGrid/详情抽屉直接用。
    mt- 前缀全站唯一(仅抄表页家族使用)。v5.1:.mt-table 平表家族随 MeterGrid 退役删除,
    电子表格样式在 MeterLedgerGrid.vue scoped(mlg- 前缀);此处仅留抽屉/徽标共用件。 */
