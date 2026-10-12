@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 统一附表页头 — 共享脚手架。返回 + 标题 + 年份徽标 + 编辑模式徽标 + 编辑/完成。
 // 1:1 移植 ledger-common.jsx LedgerHeader(.lc-head/.lc-yearbadge/.lc-editbadge)。

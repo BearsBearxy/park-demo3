@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 告警文案门禁(BILL-NOTICE-WARN-SPEC §5.2)。骨架抄 paramRegistry.spec.ts,
 // 三个手法抄 anaCopyLint.spec.ts:[...s].length 数码点、基线写死并注明只许改小、钉住尺子的元断言。
 //

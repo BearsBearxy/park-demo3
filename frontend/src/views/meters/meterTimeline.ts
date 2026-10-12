@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 表档案按月记录(METER-TIMELINE-SPEC)抽屉里几处共用的纯函数:月份区间怎么说、状态/来源怎么叫、
 // 变更记录的前后像怎么译成一句话。组件只管排版,措辞集中在这里,测试也打在这里。
 import type {

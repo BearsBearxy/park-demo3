@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 科目余额表 8 列模板 + 合计/平衡差/折叠搜索纯函数 — spec §1 C2/C6/C7。同 reports/balanceSheet.ts 约定。
 // 科目树是数据(按期存库,spec §0),此处只定义列模板与展示逻辑;合计客端算不落库。
 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/analysis/cockpit.logic.ts — 驾驶舱数据变换纯函数(铁律⑦:屏内变换抽出单测)。
 // 输入均为 anaData 既有聚合器返回值:只做取期/折万/整形,**不改数字口径**。
 // 2026-10 改稿(画板 cockpit-month-v2 ×3 / cockpit-year-v2)的整块在文件末尾 monthBoard / yearBoard。

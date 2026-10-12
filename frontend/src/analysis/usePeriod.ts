@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/analysis/usePeriod.ts — 期间上下文(移植 ana-period.js 的按月/按年/步进/边界语义)。
 // 可用月份由调用方注入(providePeriodMonths,真实数据派生 — 见 anaData.fetchAvailableMonths),
 // **不硬编码年份**。模块级单例:14 屏共享同一期间选择(切屏不丢);localStorage 持久化。

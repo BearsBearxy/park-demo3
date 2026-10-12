@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 临时授权胶囊 + 授权卡片(ELEVATION-SPEC §4.5,画布 08 ElevChip / ElevStates)。
 // 原来是 App.vue 顶上一条 fixed 满宽横条(盖在页签条上),2026-10-03 换成这一枚:

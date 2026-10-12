@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // TenantPortfolioView(结构与续约)数据变换纯函数(v2 铁律⑦:抽出单测)。
 // 箱线五数走 anaFmt.fiveNum(线性插值分位,与 v1 AnaBoxPlot 同算法 → 数值不变);
 // 帕累托累计与 v1 同语义:仅对 Top N 逐项累加(cums[4] = Top5 集中度)。

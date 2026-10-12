@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 单户两张图：异常提醒中心「{户} · 电费和水费」「{户} · 应收和实收」，用能与缴费按年选中户的大图和右栏共用这一份
 // （规范 S-08：本职要看的图原样复用 —— 同一份数据、同一套参照、同一套句子，不许两屏各画一个版本）。
 // 画布改稿 cockpit-v2/tenantEnergyChart.mjs 的移植：option 交给 AnaEChart 画，气泡走 calloutMark（AnaEChart 叠层摆放）。

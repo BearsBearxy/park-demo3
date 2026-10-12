@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 抽屉 B9 B10 B11 共用的画布几何(PV-ANALYSIS-SCREEN-V4 §3.17–3.19;画布 v2/Drawer.dc.html)。
 // 宽 = 实测,padL 46 / padR 14;B9 B10 横轴按一年逐日(第 d 天 → padL + (d−1)/(年天数−1) × 内宽),
 // B11 按 12 个等宽月槽取槽中心。坐标保留一位小数(画布同口径)。单测跟着三张图的 spec 走。

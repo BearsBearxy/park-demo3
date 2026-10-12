@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script lang="ts">
 // 未匹配列处置面板(BOOK-WORKBENCH-SPEC §4)—— 29 万「宿舍区租金」丢列事故的根治:
 // 导入遇到模板认不出的表头,必须逐列拍板去向,禁止静默丢。纯受控组件,不发请求;

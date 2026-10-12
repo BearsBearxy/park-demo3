@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script lang="ts">
 // sheetMatch 选表:正则命中的第一个 sheet 名,未命中/未给回退第一个。抽出小函数便测。
 export function pickSheet(names: string[], re?: RegExp): string {

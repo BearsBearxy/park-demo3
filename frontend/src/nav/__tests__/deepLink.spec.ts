@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/nav/__tests__/deepLink.spec.ts — 期间深链协议(SIDEBAR-UX-REDESIGN §4.2):一个出口 periodLink、一个收口 parsePeriod。
 // 收口认三代格式(p 新 | ym 出账链旧链 | y&m 报表层 / 台账 / 附10 旧链),旧解析器委托过来后旧用例照旧绿。
 import { describe, it, expect } from 'vitest'

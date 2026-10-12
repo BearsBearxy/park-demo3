@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 收款公司管理窗口(S20-BILL-DELIVERY-SPEC §4):左栏公司列表(新增/改名/停用),
 // 右栏该公司三字段(显示名/短名/法定全称)+ 收款账户列表(增删改/设默认/kind 徽标)。

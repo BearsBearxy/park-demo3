@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 抄表电子表格(METER-V5-SPEC §7 v5.1;2026-10-01 按画布 04-A / 04-B / 04-C 重排):
 // 列 = 位置 / 用途 / 房号 / 租户 / 表号 / 编码 / 倍率 / 上月行至 / 本月行至 / [尖 峰 平 谷] / 用量 / 状态。

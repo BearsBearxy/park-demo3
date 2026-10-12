@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 横条盘点 2026-10-03(第一类):导入中心顶部的假拖放区、附表10 手机档编辑横条 —— 并进已有位置,不再单独占一行。
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'

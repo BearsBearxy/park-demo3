@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 智能整表拆段 — 一张 sheet 多段(多月×多期),按标题行切段、识别 年/月/期、识别版面(office/factory),
 // 逐段用对应版面 columnMap 走 matchByHeader 解析。复用 importHeaderMatch(勿改它)。
 import { matchByHeader, normalizeHeader, isGarbageTenantName, blockReason, type ColumnMapEntry, type ImportRec } from './importHeaderMatch'

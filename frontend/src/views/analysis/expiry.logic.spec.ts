@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // expiry.logic 纯函数单测(v2 抽出;统计口径=v1,Pareto 累计占比对全量合计)
 import { describe, expect, it } from 'vitest'
 import type { ContractDTO } from '@/types/contract'

@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/analysis/churn.logic.ts — churn 屏纯数据变换(v2 抽出,口径与 v1 逐字一致,数值不变):
 // ① 活跃度模型:缴费恶化(40%)+ s10收入下行(30%)+ 用能下行(30%),缺项按权重归一;
 //    已流失 = 台账首期在租 ∩ 末期缺席;s10 逐月出现/消失 = 相邻有数月名单对比。

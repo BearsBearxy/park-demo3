@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // AnaEChart 薄封装单测(jsdom 无 canvas → 整体 mock ./echartsBundle;屏组组件测试沿用此规约):
 // init('fpAnaTheme') / 主题注册 / setOption(notMerge) / option 更新 / click 透传 / resize / dispose / S 档图高降档。
 // ⚠ 桩掉的是整个装配模块,所以「注册清单是否漏项」本测试**零覆盖** —— 只能在浏览器里看控制台。

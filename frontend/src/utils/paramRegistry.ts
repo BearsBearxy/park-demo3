@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 计费参数注册表——后端 service/ParamRegistry.java 的 TS 镜像(S21-PARAM-CENTER-SPEC §2.3/§3):
 // 键 → 人话 label/单位/分区(①monthly 本月参数 ②constant 长期常数 ③rule 核算口径 ④tenant 户级例外)/默认生效方式/
 // 值类型(枚举给字典)/算式人话/提示/是否可作户级例外/成对配套键。

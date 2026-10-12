@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // ds/Select 的 S 档底部面板(RESPONSIVE-LAYOUT-SPEC §4.4;壳同 ds/DatePicker 的 .dp-sheet)。
 //
 // 起因:贴附 popover 在 390 上会出屏 —— 字段落在右半屏时(工具条里的「全部状态」就是),

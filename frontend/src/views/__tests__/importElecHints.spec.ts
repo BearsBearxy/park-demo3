@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 附表11 电费的软件内确认与回执(S4 T25,画布 02-B 右 / 02-C):原生 window.confirm / alert → ask / receipt.fail。
 // 导入中心那半(台账覆盖 / 月份不一致两问、失败卡、没权限的空格子)2026-10-10 改稿后不在这里了:
 // 两问并进导入弹窗的核对页(T7 删掉 confirm 这条路),失败与只读态见 views/import-center/__tests__/importCenter.spec.ts。

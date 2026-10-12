@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // pvRoi.logic 单测:累计序列/跨年進位/外推回收点/分期汇总(口径=v1)。
 // 分栋抄表那四个函数已随抄表区一并卸掉(PV-ANALYSIS-SPEC §00/§09):
 // 新屏 pv-meter-analysis 的口径完全不同(不是搬过去,是重做),它有自己的 pvMeterAna.logic.spec.ts;

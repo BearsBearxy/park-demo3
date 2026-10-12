@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 /* 列表页布局单一事实源(docs/design/LIST-PAGE-SPEC.md)——楼栋/租户/合同三屏共用。
    原先三个 View 各自 scoped 一份 .mx-* 重复块,此处收编为全局;View 内禁止再自带变体。 */
 

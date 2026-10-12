@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 公司下拉(画布 09 ReportIS / ReportPickEmpty / ReportStates)—— 三大报表的公司选择,取代左栏
 // (BOOK-WORKBENCH-SPEC §7-2 三大报表例外)。同一颗挂两处:期间条「‹ 换期 年-月 [公司 ▾]」与选期矩阵标题

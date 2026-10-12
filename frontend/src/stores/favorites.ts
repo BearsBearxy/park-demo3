@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/stores/favorites.ts — 收藏(TAB-BAR-SPEC §5.2 §5.3)。顶栏 ☆、页签右键、左边导航右键加进来,首页上一格一格列出来。
 // 按账号记在浏览器里:`fp-favs:<账号>` = { v: 屏 value 数组, seeded?: true }。
 // 键不存在 = 这个账号第一次登录 → 预置一格「他进系统是来干什么的」那一屏(auth.roleHome),并标 seeded;

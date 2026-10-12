@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 /* src/components/ana/ana.css — P3 分析层共享样式(全局,cz-/ak- 前缀防撞)。
    1:1 移植 untitled/project/analysis/ana-charts.jsx ChartStyles + ana-kit.jsx AnaKitStyles。
    图表组件自身的独有样式留在各 .vue scoped;此处只放跨组件/跨屏共享类。 */

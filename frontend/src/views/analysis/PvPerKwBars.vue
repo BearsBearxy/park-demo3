@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 「各栋每千瓦日均发电」新卡的图(2026-10-06 改稿,画板 pv-v2 第一排右边那张 s4)。
 // 笔法照 PvRevenueBars:一栋一行,期别点 + 楼名 + 条(期别色)+ 条尾值,右边几列是比较(按月比上月、比去年同月;按年在网、比去年)。

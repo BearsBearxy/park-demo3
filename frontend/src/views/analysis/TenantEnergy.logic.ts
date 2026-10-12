@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // TenantEnergyView(用能与缴费)数据变换纯函数(v2 铁律⑦:抽出单测,不碰 DOM/ECharts)。
 // 口径:s10 = 销售收入表费用金额(元),电=基本+标准+维护电费、水=标准+维护水费;台账应收/实收/期末结余沿 AnalysisLedgerRow。
 // 2026-10 改稿(画布 tenant-energy-v2 七块板):期间只往前回退(pastYm,不拿未来的月顶替);按年 = 这一年有数的月合计(yearRows)。

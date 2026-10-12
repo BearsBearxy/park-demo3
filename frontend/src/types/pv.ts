@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 附表6 光伏发电 DTOs — 逐字对齐后端 dto/Pv*.java(spec §4)。
 // JSON camelCase ⇄ Java record;short 线格式为 "short"(@JsonProperty),非 shortName。
 // 派生 gen/fee 后端读时算好下发,前端不重算、不落库。

@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // usePeriod 单测:注入月份派生范围/夹取/步进跳稀疏月/边界禁用/粒度切换。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { __resetPeriodForTest, providePeriodMonths, usePeriod, ymOf } from './usePeriod'

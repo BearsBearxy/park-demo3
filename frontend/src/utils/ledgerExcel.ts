@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // Excel export. Column order matches the on-screen wide table (spec §6):
 // 租户 · 上月结余 · 21 费用 · 本月应收合计 · 本月收款 · 本月结余 · 备注 + 末行合计。
 // 出流走 utils/sheet.ts 适配层(exceljs,内部懒加载,不打进 /ledger 初始路由块)。

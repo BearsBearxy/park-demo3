@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // buildEnergyMonths 纯聚合单测(park-energy 屏地基):多源合并、缺月保 null、跨年行丢弃、升序。
 import { describe, expect, it } from 'vitest'
 import { buildEnergyMonths } from './anaData'

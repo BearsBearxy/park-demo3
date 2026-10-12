@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { ref, computed, watch, onUnmounted, getCurrentInstance } from 'vue'
 import { locksApi, type LockHolder, type Eviction } from '@/api/locks'
 import { usePresenceStore } from '@/stores/presence'

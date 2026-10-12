@@ -235,6 +235,8 @@ docker compose logs backend | grep -E "Migrating schema|Successfully applied|adm
 #         admin password reset from app.admin.password
 ```
 
+- ⚠ **给这个客户做专属水印**（2026-10-13 用户要求，每个客户上线都要做）：在这个客户的部署里放一个只属于他的编号，并把「客户 ↔ 编号 ↔ 版本 ↔ 上线日期」记进对照表，
+  日后页面或代码流出去能查出是从哪家出去的。做法和对照表在 `运维文档/版权水印/`（不进仓库）。演示站不用做。
 - **库必须是空的**（新建的 database，一张表都没有）。客户自己开的云数据库（RDS）同理：建一个空库给我们，后端连过去。
   ⚠ 现在的 compose 把 `DB_HOST/DB_PORT` 写死为同机的 mysql 容器、库名用默认 `park_demo3`（账号走 `.env` 的 `DB_APP_USER`），连外部 RDS 要先改 compose 转这几项。
 - **`.env` 里没有起点链就 `up` 了**（手写的 `.env`、或删掉了那一行）：空库遇到老链，后端拒绝启动，日志里是「空库不能跑老迁移链」，库里什么都没写 —— 补上 `FLYWAY_LOCATIONS` 再 `up` 即可（`FlywayChainGuard`）。
@@ -265,6 +267,7 @@ bash deploy/park.sh remove <名>                             # 停掉、摘域�
 ```
 
 - **先做一件事**：域名解析加一条 A 记录指到本机，Caddy 才签得下证书。
+- **开给客户的园区**：同 §9，上线时做这个客户的专属水印（演示站不用）。
 - **它做了什么**：生成 `/opt/parks/<名>.yml`（这个园区的后端 + 前端，口令写在里面，权限 600）和 `/opt/parks/caddy/<名>.caddy`（域名），
   把 yml 追加进 `.env` 的 `COMPOSE_FILE`；本机库则建 `park_<名>` 和只授权这个库的账号 `<名>_site`（不用 root，园区之间、园区和正式库之间互相读不到）。
   `/opt/parks` 在 `/opt/demo3` 外面，发版整树替换碰不到它；发版的 `docker compose up -d` 读 `.env` 的 `COMPOSE_FILE`，所有园区跟着一起更新、各自补数据库迁移。

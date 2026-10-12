@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 附表12 逐月工资宽表 — 1:1 from screen-schedule12.jsx 表体段(385-505)。
 // 两级分组表头(月工资大类8 / 补贴2 / 招商提成 / 考勤4 / 应发 / 代缴代扣3 / 实发 / 签收 / 备注),

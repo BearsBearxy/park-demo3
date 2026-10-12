@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // parkEnergy.logic.ts — 园区能耗（2026-10 改稿 energy-v2）的取数变换与屏上每一句字，纯函数（单测 parkEnergy.logic.spec.ts）。
 // 算法照画布出稿脚本 energy-v2/build.mjs 移植：按月四张瓦都和上个月比；能量流按金额，节点旁直接标本期和上期；
 // 「电这块赚多少」只留售电收益 = 售电收入 − 购电成本（售电收入 = 销售收入表逐户电费合计，用户 2026-10-05 定）。

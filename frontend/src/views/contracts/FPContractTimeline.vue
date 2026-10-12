@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 合同期时间轴(F2):纯 CSS 横条,不用 ECharts——蓝淡色=计租期,红淡色=免租期,深色竖线=今天;
 // 悬停说明(v-tip)显示区间日期+备注。无起止日期显示「待签约」空态。

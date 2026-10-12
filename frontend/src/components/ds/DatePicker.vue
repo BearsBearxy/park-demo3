@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts" generic="T extends string | string[]">
 // ds/DatePicker —— 全站日期 / 区间 / 月份 / 年份选择器(DATE-PICKER-SPEC)。
 // 值与原生框同格式:date 'YYYY-MM-DD' / range [from, to] / month 'YYYY-MM' / year 'YYYY';空 = ''。

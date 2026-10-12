@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 「旧版本的条目不给去看看」这条规矩(VERSION-UPDATE-SPEC §4)。
 // 单独一个文件:真实 changelog 里旧版本**碰巧**一条 `to` 都没有,拿它断言等于空转
 // (夹具不许用退化数据)。这里换成一份两版都带 `to` 的夹具。

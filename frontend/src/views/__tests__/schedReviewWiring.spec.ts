@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 附表族屏的审核接线(per-screen-review 设计稿 §03-B2/B4 · §07-④;SIDEBAR-UX-REDESIGN §9.2)。
 //
 // 两件事,都是同一个问题的两半:「屏上这一格/这颗按钮到底作用于哪一把键」。

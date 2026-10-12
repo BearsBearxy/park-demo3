@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 月度台账 · 选期矩阵的月卡审核角标(per-screen-review §07-④;SIDEBAR-UX-REDESIGN §9.2-4)。
 //
 // 改前这一屏只讲「录了没有」。人要知道 3 月锁没锁,得点进去看编辑按钮变没变成药丸 ——

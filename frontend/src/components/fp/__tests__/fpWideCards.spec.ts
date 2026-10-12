@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/components/fp/__tests__/fpWideCards.spec.ts — S 档宽表卡片模板的几何门禁
 // (响应式稿 WideCardVariants 板 §2「三种都满足的硬条件」逐条钉住)。
 //

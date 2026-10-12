@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 附表10 · 销售收入 — 账册工作台三态动线(BOOK-WORKBENCH-SPEC §5/§7/§8)。
 // 左轨四册(一期/二期/三期/宿舍区,期区 tabs 退场) + 选期矩阵 v3(§8:年份 tab 退场,

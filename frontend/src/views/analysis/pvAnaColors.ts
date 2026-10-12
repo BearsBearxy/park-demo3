@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/analysis/pvAnaColors.ts —— 光伏分栋分析屏 v4 的颜色字面值镜像(PV-ANALYSIS-SCREEN-V4 §1.2 / §1.5)。
 //
 // 为什么要镜像:

@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/components/fin/__tests__/finStickyS.spec.ts —— 报表表 S 档首列 sticky 的门禁
 // (稿 ReportPhone §1 右栏 box2 / 规范 RESPONSIVE-LAYOUT-SPEC §5.3)。
 //

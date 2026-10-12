@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 损益附表进年自动补缺失映射行(tryGenerate → 整年 PUT):只在我园补(2026-10-05 用户拍板「按你建议修改」)。
 // 补出来的行名是我园母册的科目名(pnlDerive DERIVE_MAP),客户园区(parkTools=false)不许写进客户的库。
 // 破坏验证:tryGenerate 删掉 `if (!appCfg.parkTools) return` → 客户、拉失败两条红;

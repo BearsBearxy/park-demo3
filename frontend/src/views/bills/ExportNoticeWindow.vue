@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 导出「发租户 · 通知单」窗口(S20-BILL-DELIVERY-SPEC §5.1):期页签 + 楼栋分组 + 租户多选,
 // 默认勾选已确认的户(未确认的可勾,点导出时提示不阻断);每家公司选用哪个收款账户(默认取 is_default)。

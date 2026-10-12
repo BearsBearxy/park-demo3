@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/data-home/__tests__/monthClose.logic.spec.ts — monthClose.logic 折行纯函数单测(P2 T2)。
 // 覆盖 task-2-brief.md 的 8 条最低要求 + chips 通用装置(附13/14、附7/8 各自的 tab/go)+
 // companies/phases 为 null(非 undefined)时的防御性处理。

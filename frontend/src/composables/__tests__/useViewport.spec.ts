@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/composables/__tests__/useViewport.spec.ts
 // 视口档位单例(RESPONSIVE-LAYOUT-SPEC §1):四档判定 + hover:none 触屏 + 无 matchMedia guard。
 // jsdom 无 matchMedia,按 ui.spec.ts 的可控 mock 模式手写;useViewport 挂多条查询,

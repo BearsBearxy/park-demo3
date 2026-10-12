@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 现金流量分析(fin-cashflow)v2 — spec §二.9:欠费结余瀑布(ECharts);应收实收分组柱
 // (点柱→该期欠费租户清单弹层,清单行可查台账深链);收缴率 vs 目标条(SVG 子弹条原语保留);

@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 右抽屉「新增租户」— 1:1 from screen-schedule10.jsx S10Drawer(173-213)，用共享 FPDrawer 壳。
 // 租户名称 input + profile chips（office/factory 版面给不同选项）→ 保存 emit save。

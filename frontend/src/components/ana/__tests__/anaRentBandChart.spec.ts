@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // AnaRentBandChart 挂载测:钉的是「缺口批注什么时候出现」这件交互本身。
 // 几何由 rentBandChart.logic.spec.ts 钉;这里钉的是几何钉不到的那半件 ——
 // 用户 2026-09-12:「设定一个阈值,高于阈值金额的退租才显示,并且改为 hover 才出现显示」。

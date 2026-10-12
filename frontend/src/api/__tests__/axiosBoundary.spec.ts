@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // axios 边界门禁:全站只有 api/index.ts 能 import axios(docs/design/SCAFFOLD.md §3.1)。
 //
 // 为什么锁这一条:令牌注入、信封解包、会话漂移检测(SessionDriftError)全挂在 api/index.ts 那一个

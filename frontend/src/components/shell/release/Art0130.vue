@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 0.13.0 重点「月结审核」的配图:本月出账清单缩样 —— 铃铛待审角标、待审核 / 已审核 / 交审三种行。
 // 从 0.13.0 的 WhatsNewDialog 原样取回(那时配图写死在弹窗里,0.14.0 换图时被覆盖),只把角标字号收进字阶。

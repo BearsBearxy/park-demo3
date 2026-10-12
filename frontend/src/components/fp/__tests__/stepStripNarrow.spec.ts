@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 链路条 / 期间条的窄档收法(RESPONSIVE-LAYOUT-SPEC §5.9)。
 //
 // 为什么这条必须自己有收法:报表族九颗胶囊每颗 `padding:5px 11px`,合计 653px。

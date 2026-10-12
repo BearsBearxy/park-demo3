@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 损益附表派生链接(P2-G)— 数据层聚合值 → 序列键 → DERIVE_MAP(spec §2 实证 35 行位) → 对照/填入。
 // loadDeriveData(year):Promise.allSettled 并行拉 6 源(s10 年聚合/光伏/充电桩7·8/电费energy·basic/
 // 办公水电13/餐补月合计),统一成 Record<seriesKey,(number|null)[12]>;任一源失败相关键缺失不阻塞(G6)。

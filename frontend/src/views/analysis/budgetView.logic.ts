@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/analysis/budgetView.logic.ts — 预算对比 v2 纯数据变换(单测 budgetView.logic.spec.ts)。
 // 五年组合图数据(实际柱/前瞻虚柱/预算标记线,元→万)+ 关键行 → 损益附表深链路由。
 import type { BudgetKey } from '@/analysis/budget'

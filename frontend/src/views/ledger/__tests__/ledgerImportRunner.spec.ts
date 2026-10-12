@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 月度台账 · 导入点下去之后(画布 11 ImportOne / ImportDone / ImportFail;UI-OVERLAY-SPEC §8):
 // 弹窗不关,内容区换进度卡,写完原地出结果卡;失败交给弹窗的失败卡(不走回执)。
 // 年月与覆盖两道预检在弹窗核对页(md-v2-ledger,registry 的 precheck):月份对不上二选一才能导,本月已有的写会盖掉几家。

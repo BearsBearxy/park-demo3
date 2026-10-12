@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/__tests__/anaDeepLink.spec.ts — 分析层 / 收入核对工作台发链的源码形状门禁(SIDEBAR-UX-REDESIGN §4.2 · P0c)。
 // 这些屏零挂载测(echarts + anaData 太重),发链形状靠这里钉:统一 periodLink,不再手写 y/m/view 键;
 // 特例反向钉住:PvMeterAnaView 的 adopt= 不是选月(P0A-2);utils/deepLink 已删。

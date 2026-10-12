@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/analysis/pnlAnalysis.logic.ts — 损益附表分析 v2 纯数据变换(单测 pnlAnalysis.logic.spec.ts)。
 // 口径与 v1 完全一致:底带月值求和;s5 仅费用;缺 pnl 行退化为 收入−成本。金额入参元,图表序列折万。
 import type { PnlBand } from '@/analysis/anaData'

@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 附表10 行级绑定弹窗 —— 抄表屏「表档案·租户」同款交互(用户 2026-08-23 指定):
 // 点开一条 → FPTenantPicker 选定即绑,解绑按钮显式;账面名保持原文,绑定只挂档案身份。

@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 0.28.0 重点「管理员能按模块授权查看」的配图:角色权限屏模块矩阵的缩样 —— 表头「模块 / 查看 / 编辑」+ 三行。
 // 行照 views/system/SystemRolesView.vue 的 .sr-mx-r(三列网格、行间 divider)与 .sr-mx-h(表头 11px 灰字)抄;

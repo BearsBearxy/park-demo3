@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 可空三项(contactName/contactPhone/phase):V1__schema.sql 建表就是 NULL,后端 TenantDTO 是装箱
 // String/Integer,Jackson 原样序列化 null —— 前端以前声明非空,消费方一律漏兜底
 export interface TenantDTO {

@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 外观 store(DARK-MODE-SPEC §3):浅色 / 深色 / 跟随系统,按账号记,另存一份给首帧。
 // 断言钉的是上屏的那件事 —— <html data-theme> 是什么 —— 和两把 localStorage 键。
 import { readFileSync } from 'node:fs'

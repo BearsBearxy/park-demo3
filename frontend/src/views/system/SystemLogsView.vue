@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 操作日志(RBAC-SPEC §7 P2)。三张来源表 —— param_change_log / import_log / auth_audit_log ——
 // 在**后端** union 后按时间倒序返回,这一屏只负责把它们摆成一条能读的时间线。

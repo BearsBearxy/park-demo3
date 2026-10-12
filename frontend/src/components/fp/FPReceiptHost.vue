@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 结果回执的宿主(十件 ⑧,画布 02-C / 06-B ⑧):挂在 AppShell,照 utils/receipt 的队列画。
 // 每条就是一个 FPToast(同一个深色胶囊、同一套图标语气、同一个计时:成功走它的默认 4 秒,

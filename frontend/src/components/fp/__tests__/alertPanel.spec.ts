@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 入口胶囊 + 问题面板(十件 ②③,LAYOUT-STABILITY-SPEC §6,画布 06-B ②③ / 06-C 方案 A / 01-B)。
 // 面板从右侧抽屉改成以胶囊为触发的 ds/Popover:贴着胶囊弹出、420 宽、页面不变暗;点外 / Esc 关;
 // 组头可收起、件数、处理按钮;明细可点;问题多了面板里滚动;屏被 KeepAlive 停用时收起。

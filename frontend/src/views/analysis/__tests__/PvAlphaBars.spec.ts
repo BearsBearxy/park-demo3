@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // PvAlphaBars 挂载测:核对明细档「各栋常年水平」。钉的是渲染出来的像素位置、色与文字,不钉中间对象。
 // 夹具:5 栋三期别、有正有负、一栋区间跨 0、一栋没进排序、一栋因台账被踢;宽 = useWidth 在 jsdom 的初值 496。
 import { afterEach, describe, it, expect, vi } from 'vitest'

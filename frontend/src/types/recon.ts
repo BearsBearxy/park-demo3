@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 收入核对 DTO — 逐字镜像后端 dto/Recon*.java(P2-E spec §3)。纯派生读模型,前端只渲染。
 // 实体键=tenantName(E1 软引用归并);状态三档容差 0.005(E3);onlySide=单侧独有科目(E2)。
 

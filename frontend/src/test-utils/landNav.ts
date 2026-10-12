@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 测试用:模拟 router 的 beforeEach(beforeNav 补默认)+ afterEach(导航落定,commit 兑现登记)。
 // 页签条只在导航落定后才动;组件测试里 router 是桩,push 不会走到 afterEach,用它顶上。
 import { useTabsStore } from '@/stores/tabs'

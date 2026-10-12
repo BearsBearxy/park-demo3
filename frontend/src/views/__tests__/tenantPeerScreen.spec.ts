@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/__tests__/tenantPeerScreen.spec.ts — TenantPeerView(design-boards T8/T9)挂载测。
 // TenantPeer.logic.spec.ts 管算得对不对(纯函数),这里管**屏上真的印出来了没有**——
 // 照 expiryScreen.spec.ts 的写法(vi.mock anaData + AnaEChart 桩组件),不登录、不起真浏览器。

@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 计费参数页「左目录 + 右当前区」的纯逻辑(S21-PARAM-CENTER-SPEC §5.1,2026-10-03 版,画布 10-A~10-G):
 // 行 → 区 / 深链落点 / 本月改动计数 / 公摊池·楼栋一对象一行 / 户级例外按户分组 / 格子显示文字。不碰网络。
 import type { ParamChangeDTO, ParamRowDTO } from '@/api/params'

@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 逐行备注单元格 — 共享脚手架。编辑态 input(blur/change emit save),只读态文本 /「—」。
 // 1:1 移植 ledger-common.jsx LedgerNoteCell(.lc-note-in/.lc-note-ro)。

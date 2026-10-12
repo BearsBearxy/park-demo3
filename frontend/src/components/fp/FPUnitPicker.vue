@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 共享单元多选器(S15 §2,仿 FPTenantPicker):候选=全部楼栋分组(栋名小节头),复选框多选;
 // 选中为有序数组:首个=主单元(★可点换主),其余=附加单元;chips 带栋名可删,缺档 id 也出 chip(隐形id炸弹修复)。

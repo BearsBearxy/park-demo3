@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 被踢回登录页时说清楚为什么(画布 06-E「登录页，不进铃铛」组:账号被停用、登录过期)。
 // 这里不 mock '@/api' / auth store:原因从 api 拦截器或路由守卫写进 sessionStorage,登录页读出来,
 // 三段是一条链,只 mock 中间任何一段都测不到「真的说出来了」。

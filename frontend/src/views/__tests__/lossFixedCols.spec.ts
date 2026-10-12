@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 楼栋损耗的固定列与表格高度(LIST-PAGE-SPEC §9;计划 W6,画布 07-C 楼栋损耗行)。
 // 钉什么:「位置」列不再锁 360 —— 宽 = min(最长名估宽, 可见宽 1/5),超了省略、悬停(v-tip)看全称;
 // 表格区在 v-else 里(首载完才出现),靠 useWideTable 的 watch(wrap) 接上;高度按 0/38/34/40 分级。

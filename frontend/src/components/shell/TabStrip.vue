@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // TabStrip — 页签条(TAB-BAR-SPEC §3 §4)。形状照 Chrome:当前页签白底、和下面的顶栏连成一块;
 // 颜色、字、图标全沿用产品的。页签规则(在哪一格开、关了跳哪)全在 stores/tabs.ts,这里只管画和手势。

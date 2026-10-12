@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // A2 · 每千瓦日均和合格线的差(PV-ANALYSIS-SCREEN-V4 §3.6;2026-10-06 改稿画板 pv-v2-m-abs,只在按月出)。
 // 画布 卡内宽 × (上 8 + 行数 × 26 + 下 34);栋名列 96(名字右对齐于 86);右侧预留 176;(这些是桌面档,窄档见下 narrow)

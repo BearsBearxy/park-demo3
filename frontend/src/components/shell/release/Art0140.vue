@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 0.14.0 重点「首页」的配图:首页缩样 —— 页签条上首页那格是当前页签,下面是搜索框、收藏、最近打开。
 // 字取 HomeView(占位字、分区名一字不差),颜色取 TabStrip(条 = surface-sunken,当前页签 = surface-white)。

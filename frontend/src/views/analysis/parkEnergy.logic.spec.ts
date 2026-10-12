@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // parkEnergy.logic.spec.ts — 园区能耗改稿(energy-v2)四块画板逐字对:夹具 = 开发库 2024、2025 两年真数
 // (产品 buildEnergyMonths / buildAmtMonths 导出,到分),期望 = 画板句子清单 manifest.json 与画板图上的数。
 import { describe, expect, it } from 'vitest'

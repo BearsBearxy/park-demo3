@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 版本更新 store(VERSION-UPDATE-SPEC §3 / §6)。
 // 断言钉的是「什么时候弹 / 什么时候出提示条」这两件会上屏的事。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'

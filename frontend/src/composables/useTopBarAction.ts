@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/composables/useTopBarAction.ts — 屏把自己的主动作挂进手机顶栏(RESPONSIVE-LAYOUT-SPEC §5.10)。
 //
 // 用法(在屏组件的 setup 里,一行):

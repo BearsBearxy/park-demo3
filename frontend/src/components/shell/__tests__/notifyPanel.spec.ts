@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 铃铛面板(画布 06-F;PAGE-BEHAVIOR-SPEC §5.1;UI-OVERLAY-SPEC §7.1)。
 // 原 FPApprovalDrawer 的断言(reviewBell.spec)搬到这里:授权当场批、待审逐张列出并直达那张表那个月、
 // 明细取不到时退回「几件 + 一个去处」、零条时不留空段。

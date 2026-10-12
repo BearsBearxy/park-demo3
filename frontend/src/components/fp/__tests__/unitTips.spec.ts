@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 单元图 / 单元多选器的悬停说明(十件 ⑩):原生 title 换成 v-tip,条件分支照旧。
 // 判据读指令挂在元素上的 _tip(与 salaryFixedCols / S10Table 同法),并断言原生 title 已不在。
 import { describe, it, expect } from 'vitest'

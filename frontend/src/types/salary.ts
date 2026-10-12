@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 附表12 工资明细 DTOs — 逐字对齐后端 dto/Salary*.java。
 // 一行 = 某员工某月。派生列(wageTotal/gross/deduct/net/actualDays/fullAttend)后端读时算好下发,
 // 前端不重算、不落库。金额 BigDecimal → number(JSON 数字)。

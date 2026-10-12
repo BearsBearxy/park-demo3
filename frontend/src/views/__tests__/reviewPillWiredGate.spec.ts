@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 审核状态提示的**接线**门禁(SIDEBAR-UX-REDESIGN §7.5,2026-09-08 补漏)。
 //
 // 规范明写:已交审 / 已审核的月,编辑按钮位要换成同尺寸的禁用提示

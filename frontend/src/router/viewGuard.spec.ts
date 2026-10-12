@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 路由守卫 · 查看权(RBAC v3 读写分开 2026-10-04;v4 一屏一项 2026-10-09):没有这一屏的查看权 → 「无权查看」页,
 // 写明缺哪一项、去找系统管理员开;权限一到,「无权查看」页自己回原地址。「❗」开头的做过破坏验证。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'

@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // useWideTable(LIST-PAGE-SPEC §9、画布 07-A/07-B/07-C):固定列退列、名称列封顶、数字列宽、表格高度分级,
 // 以及什么时候重算(实现规范 §2 第 3 条)。断言钉 left/right 像素,不钉配置对象。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

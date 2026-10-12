@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/__tests__/contractsGapEntry.spec.ts — 合同管理「待补档案」(画布 01-B / 01-A 卡1,T12)。
 // 整条黄条撤掉,入口收成工具条上的「待补档案 ▾」胶囊:不写总数,点开列三项及件数,点一项就筛;
 // 筛选生效胶囊变实底「缺起止日期 N ×」,点 × 回全部;缺起止日期的行就地挂「● 缺起止日期」。

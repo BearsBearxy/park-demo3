@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // B8 · 各栋自用和上网收益堆叠横条(PV-ANALYSIS-SCREEN-V4 §3.9;2026-10-06 改稿画板 pv-v2-m-ledger / y-ledger)。
 // 画布 卡内宽 × (上 6 + 行数 × 27 + 下 26);栋名列 96(栋名 x=22),条从 104 起、条尾合计右留 84;

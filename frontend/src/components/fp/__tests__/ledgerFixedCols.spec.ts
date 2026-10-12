@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 月度台账固定列与表格高度(LIST-PAGE-SPEC §9.1/§9.2,画布 07-A 三行改后、07-B 改后两块;计划 S2 W2「验」)。
 // RO 桩把 .lg-wrap 的 clientWidth/clientHeight 设成画布上的宽高,断言钉渲染出来的 left/right/width 像素。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

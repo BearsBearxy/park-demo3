@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 附表6 光伏发电 — 多段堆叠真实模板拆段(自定义解析,供 FpImportModal customParse)。
 // 一张 sheet 多段:每段标题含「期」+「光伏发电明细」(如 一期B-G座光伏发电明细/二期光伏发电明细/三期（3、4车间）光伏发电明细)。
 // 段→phaseId(一→p1/二→p2/三→p3);每段两行表头 + 逐月行(小计/合计行由 matchByHeader 跳过)。

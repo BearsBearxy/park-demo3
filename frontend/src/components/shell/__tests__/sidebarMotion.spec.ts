@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 收起 / 打开导航的动效(2026-09-20 用户要求):宽屏内联侧栏宽度 0 ↔ 235 过渡;窄屏浮层侧栏横向滑出 + 淡入,关闭反着走。
 // jsdom 不跑 CSS 过渡、test-utils 默认把 <Transition> 换成直出,所以钉的是源码:包了哪个 Transition、那几条类写了什么。
 import { readFileSync } from 'node:fs'

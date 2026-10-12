@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 异常规则引擎纯函数单测(G1 屏组):四规则触发/不触发边界 + 汇总行剔除 + 排序。
 import { describe, expect, it } from 'vitest'
 import { buildAnomalies, isS10AggregateRow, type AnomalyInputs } from './anaData'

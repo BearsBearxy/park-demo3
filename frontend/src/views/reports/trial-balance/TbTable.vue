@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // TbTable — 科目余额表专用宽表(画布 09 ReportTB / ReportTB-1366 / ReportTB-dark / ReportStates)。
 // 结构:两层表头(科目代码、科目名称 / 期初余额·本期发生额·本年累计发生额·期末余额 各分借贷)

@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 公共电核算(POOL-ENGINE-SPEC §6,S3-B1 刀2)— 承接 /alloc 路由。FPLedgerTable 手法
 // (MeterLedgerGrid 同款:双级表头/sticky 首列/34px 行/mono 空值'–'/tfoot 钉底/分组分隔带§7.6);

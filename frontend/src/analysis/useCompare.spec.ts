@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // useCompare 单测:localStorage 'fp-ana-compare' 持久化 / 模块级单例跨屏共享 /
 // 支持集外回退 none(原始选择保留)/ set 越权忽略 / 启动恢复(损坏值回 none)。
 import { beforeEach, describe, expect, it, vi } from 'vitest'

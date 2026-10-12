@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/__tests__/schedDeepLink.spec.ts — 年表屏消费期间深链(SIDEBAR-UX-REDESIGN §4.2「年表屏 p 只取年」/ §5.1 extra.tab · extra.mode)。
 // 附6 的挂载测在 twoBooksRail.spec;这里钉另三屏各自的那一处差异:附13/14 的 tab、附表8 的 route.meta、附表11 的第二本叫 cost。
 // 年表 DTO 的形状不是这里要钉的:records 一律在途(屏落在转圈分支),断言只看门与请求。

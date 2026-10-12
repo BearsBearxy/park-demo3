@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 附表7/8 充电桩 — 单表真实模板逐行解析(自定义解析,供 FpImportModal customParse)。
 // 一张 sheet 一个附表:行身份 = 月份/期间(nameLabels);运营商在「充电桩类别」合并列,向下填充(groupLabels)。
 // 列:充电电量→kwh、充电成本(金额)→cost、充电金额收入/充电收入金额→incomeRaw、手续费及服务费金额→serviceFee。

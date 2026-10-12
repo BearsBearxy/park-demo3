@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // ponytail: ported from fp-master-ui.jsx window.fpMoney / window.fpWan
 // 空值(null/undefined)→「—」；合法的 0 显示 ¥0（不再与无数据混淆）
 export const fpMoney = (n: number | null | undefined): string =>

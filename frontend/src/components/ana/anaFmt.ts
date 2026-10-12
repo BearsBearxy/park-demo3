@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/components/ana/anaFmt.ts — 分析层格式化/动态标签/统计工具(移植 ana-charts.jsx 头部工具)。
 // 全部纯函数,一切标签由数据算出(峰值/趋势),无写死结论。
 import { anaPalette } from './anaTheme'

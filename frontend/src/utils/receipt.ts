@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 结果回执(十件 ⑧;LAYOUT-STABILITY §4.1、UI-OVERLAY §7):刚做完的动作成没成。替代 alert()。
 // 模块级队列,FPReceiptHost(挂在 AppShell)照它画:底部居中,旧的在上、新的在下,最多 3 条,第 4 条挤掉最旧。
 // 成功 4 秒自收;警告、失败不自收,带 ×。动作钮(「重试」「刷新」「撤销」)点了就收。计时在 FPToast 里。

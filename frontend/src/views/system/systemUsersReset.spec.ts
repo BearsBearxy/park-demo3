@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 用户管理 · 重置密码分自己和别人(用户 2026-10-04:「在系统用户管理里面重置密码后，到登录的时候又要强制改一遍」)。
 // 给自己重置:不用再改,服务端回这台设备接着用的新令牌,本机换上;给别人重置:该账号下次登录须改。
 import { beforeEach, describe, expect, it, vi } from 'vitest'

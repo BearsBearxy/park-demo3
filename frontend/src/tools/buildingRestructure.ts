@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 楼栋重建 P1(BUILDING-RESTRUCTURE-SPEC):8 粗栋 → 按真实结构逐栋细分(A-G座/宿舍一~四栋/一~六车间/创业·工业大厦)。
 // 运行: npx vite-node src/tools/buildingRestructure.ts -- <dry|plan|apply|verify>
 //   dry    只统计信号覆盖,不写库不落盘

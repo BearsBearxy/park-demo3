@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // park.logic.ts — ParkView v2 数据变换纯函数(铁律⑦:屏内变换抽出单测)。
 // 口径与 v1 完全一致(数值锚点不变):有效合同 = active/expiring;楼栋行按月租降序;
 // 分期聚合剔除无合同分期。金额单位:rentWan = 万元,avgRent = 元。

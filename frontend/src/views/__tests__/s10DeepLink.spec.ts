@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/__tests__/s10DeepLink.spec.ts — 附表10 消费期间深链(SIDEBAR-UX-REDESIGN §4.2「附10 co = 期区 1..4」/ §9 P0b 破坏验证「chip 深链不撞 goGate」)。
 // 期区直写 activeBookId,不经 selectBook —— 它在表格态末行 goGate 把人推回矩阵;templateAt 只按目标册取一次(ensureLoaded 那拍 year 仍 null,watch 早退)。
 import { describe, it, expect, beforeEach, vi } from 'vitest'

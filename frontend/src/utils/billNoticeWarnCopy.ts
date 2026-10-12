@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 催缴单告警文案(BILL-NOTICE-WARN-SPEC §5.1)。**全站唯一事实源,后端一个字都不拼。**
 //
 // 为什么集中到一张表:病根 B 是「告警文案这条链上没有验收」—— 数字算错了有人对账发现,

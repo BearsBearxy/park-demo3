@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 收入核对清单纯函数 — P2-E plan Task2。过滤/排序/计数/状态色,可单测。同 reports/trialBalance.ts 约定。
 import type { ReconEntity, ReconStatus } from '@/types/recon'
 

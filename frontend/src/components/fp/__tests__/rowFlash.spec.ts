@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 共享件(导入中心改稿 T9 / T6):行高亮 fp-row-flash、FPSortableTable 的 flashKey / sortable:false / end 列、
 // useFitRows 的 min、FPAlertChip 的量词。
 import { describe, it, expect, afterEach } from 'vitest'

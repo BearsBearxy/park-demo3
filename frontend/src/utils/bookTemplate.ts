@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 模板(BookDef) → 现有列结构的映射 + extra_fees 口袋列平铺/收回(BOOK-WORKBENCH-SPEC §1/§3)。
 // 目标形状:台账 = ledgerColumns.ts 的 ColumnModel;附表10 = sales-income/layout.ts 的 Group/Leaf。
 import type { ArchivedCol, BookDef } from '../types/book'

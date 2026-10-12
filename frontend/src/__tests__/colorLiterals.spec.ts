@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 写死的颜色字面量门(DARK-MODE-SPEC §4 / §7):src 下 .vue / .css / .ts 里,白名单以外的颜色字面量
 // (#hex、rgb()/rgba()、hsl()、oklch() 这类,以及样式里的具名色 white / black …)**只减不增**;
 // 另外,引用的令牌(var(--x),带兜底值的也算)必须有定义。

@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // ponytail: ported 1:1 from fp-table-sort.jsx — compare 逻辑原样保留。
 // 唯一刻意的偏离(2026-08-18):空值排序方向。原型的 compare()*dir 会把「空值沉底」也乘反,
 // desc 下空值全浮到最前;occRate 改可空后这条立刻显形(楼栋屏默认就是 occRate desc)。

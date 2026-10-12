@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 0.33.0 重点「角色权限」的配图:角色屏权限树的缩样 —— 表头「菜单 / 查看 / 编辑 / 其他动作」+ 层一行 + 两屏。
 // 行照 views/system/SystemRolesView.vue 的 .sr-tr(网格、行间 divider)、.sr-th(表头 11px 灰字)、.sr-tr-l(层那一行米白底、加粗)抄;

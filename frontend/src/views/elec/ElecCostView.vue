@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 电费成本总览(ELEC-COST-SPEC §4 列表形态)— 与附表11 月度电费并列的新屏,由 ElecView 功能门进入。
 // 两张列表卡(数据层「一切皆列表」惯例,LIST-PAGE-SPEC 定宽列律/行高等高;本屏行数=电表×费项 固定量级,不分页):

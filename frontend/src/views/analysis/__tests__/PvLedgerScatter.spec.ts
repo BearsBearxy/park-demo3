@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // PvLedgerScatter(B6)挂载测:正方绘图区、45° 虚线、沿对角线的 ±容差斜带、点的 cx/cy;
 // 一栋点都没有时照样画框线与带(计划 §1 #4);录入入口 emit record。
 // 2026-10-06 改稿:一栋都没录板数(logic 给 empty 一句)→ 整张卡收成一行字 +「去录入 →」,不画图。

@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // fitRows 纯计算单测:可用高÷行高向下取整+钳位。行高是常量输入(--mx-row-h=56),
 // 严禁由渲染内容反推(LIST-PAGE-SPEC §6 防抖动铁律)。
 import { describe, expect, it } from 'vitest'

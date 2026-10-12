@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/analysis/anaFamily.ts — 租户家族(parent_id 关联)分析层汇总地基(spec 2026-07-11 方案A)。
 // 底层数据不动:台账/s10 仍按子租户独立记账;此处仅提供「名称 → 家族根名」映射供各屏按需聚合。
 // V31 已把链拍平(parent 一律指根),故 parentName 即根名,无需递归。

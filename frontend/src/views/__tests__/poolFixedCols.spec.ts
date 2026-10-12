@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 公共电核算的固定列与表格高度(LIST-PAGE-SPEC §9;计划 W8,画布 07-C 公共电核算行)。
 // 钉什么:用途(rank 0,名称列)→ 位置 走 planFixed —— 左两根合计超过表格可见宽 40% 先退位置;用途封顶 1/5,超了省略、
 // 悬停看全称;分组标签格贴住的宽不超过仍固定的列;表格区在 v-else 里(首载完才出现),靠 useWideTable 的 watch(wrap) 接上;

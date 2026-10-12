@@ -1,12 +1,13 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 import { BRAND_TITLE, COPYRIGHT, COPYRIGHT_FULL } from './src/brand'
 import pkg from './package.json'
 
-const zw =(s: string) => '⁠' + [...new TextEncoder().encode(s)].map((b) => b.toString(2).padStart(8, '0')).join('')
-  .replace(/0/g, '​').replace(/1/g, '‌') + '⁠'
+const [Z0, Z1, ZB] = [0x200b, 0x200c, 0x2060].map((c) => String.fromCharCode(c))
+const zw = (s: string) => ZB + [...new TextEncoder().encode(s)].map((b) => b.toString(2).padStart(8, '0')).join('')
+  .replace(/0/g, Z0).replace(/1/g, Z1) + ZB
 
 export default defineConfig({
   plugins: [

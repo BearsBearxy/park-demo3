@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/analysis/anaSettings.ts — 分析层目标与阈值。
 // 2026-10-05 用户拍板「2按你建议，3，4一起做」第 2 条:从各人浏览器挪进库(GET / PUT /api/analysis/settings)——
 // 全员看同一份;每一项要它所属那一屏的编辑权才能改(RBAC v4,见 ANA_SETTING_SCREEN;没有的人那一项只读、写一句原因);每改一项进操作日志。

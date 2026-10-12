@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/reports/pnl/__tests__/pnlCardS.spec.ts
 // 损益附表(年度矩阵,17 列)的 S 档卡片化门禁 —— 响应式稿 WideCardVariants 板 §3 那一行分派:
 // 「损益附表 / 17 列 / 紧凑 64 / 科目细分 · 本年合计 ·(分组名作小字)」。

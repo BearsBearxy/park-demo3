@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/nav/navAccess.ts — 导航可见性(RBAC-SPEC v3「读写分开」2026-10-04;v4「细到菜单单项」§15,2026-10-09):
 // 两道门叠在一起 —— 层看 navLayers(角色屏「导航可见层」),屏看这一屏的**查看权限**(`<屏>:view`)。
 // 没有查看权的屏:导航、搜索、首页、页签条都不列;直接打开落「无权查看」页(router 守卫)。

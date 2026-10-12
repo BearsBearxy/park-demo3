@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 改归属 / 改合同绑定的「从哪个月起改」(METER-TIMELINE-SPEC §3.3):
 // 站在查看月 V,当前生效的是自 F 起那一段 —— F < V 时二选一(从 V 起变更 / 更正自 F 起那一行),

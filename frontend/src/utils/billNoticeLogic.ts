@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 催缴单纯逻辑(S4-BILL-NOTICE-SPEC §7 S4-4 v2 拍板):费项/段字典、Excel 版式分块(非宿舍/宿舍子表)、
 // 取价审计链 title、租户聚合(一个租户一条)/期归属/月租金参考/KPI。billNoticeLogic.spec.ts 锁定。
 // fee_key 词汇沿用 alloc_result 现值(spec §4:不造第三套)——公摊类标签 2026-08-08 起转「租户单口径」。

@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 导入结果的读法(结果弹层 ImportResultToast 与导入弹窗原地结果卡 ImportResultCard 共用一份):
 // 抄表身份匹配分档、档案变化逐条的「旧 → 新 · 影响哪几个月」、提示与未导入分开。
 import { ref, computed } from 'vue'

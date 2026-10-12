@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 宽表 spec 共用桩(useWideTable 与台账 / 附表10 / 工资 / 损益 / 楼栋损耗五个消费方)。
 // ① ResizeObserver 按元素登记:fire 只叫「observe 着表格区」的回调 —— 漏了 ro.observe(el) 就量不到,会红
 //    (旧桩不管 observe 调没调,一律全叫)。

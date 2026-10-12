@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 0.22.0 重点「公共电核算的池能按月改」的配图:池抽屉三段的抬头 + 抽屉级「只改本月起」勾选框的缩样。
 // 字、色照 PoolLedgerView 抄(.pl-sectitle / .pl-chip.ok / .pl-chkline),三段压成一张分隔线列表(照 Art0200 的 .ls),

@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 经营驾驶舱(2026-10 改稿;画板 cockpit-month-v2 / -m06 / -m11 / cockpit-year-v2,图 = 规格)。
 // 按月 = 选中那个月里面的事(板块、期区、公司、规则,和上个月比);按年 = 这一年逐月 + 和往年比。

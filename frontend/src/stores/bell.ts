@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/stores/bell.ts — 顶栏铃铛的状态(PAGE-BEHAVIOR-SPEC §5.1 / §5.3,画布 06-F / 06-G)。
 //
 // 记号两种,只挂在铃铛上:

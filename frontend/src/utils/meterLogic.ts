@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 园区抄表异常标记(METER-SPEC §1):真实抄表就有漏抄/换表。漏抄、时段不符只标不拦;倒走没写备注的后端拒(2026-10-09)。
 // 纯函数,meterLogic.spec.ts 锁定。
 export interface MeterReadingFlags {

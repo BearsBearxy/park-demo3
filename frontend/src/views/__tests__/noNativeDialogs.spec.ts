@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 门禁:非测试源码里不许再弹浏览器原生确认 / 提示框(实现规范 §5;§1.1 结果回执、§1.2 确认弹窗)。
 // 报成败 → utils/receipt.ts;问一句再动手 → utils/ask.ts 的 ask(),会丢未保存改动的 → askLeave();
 // 字段填错 → 字段下面的 .fp-field-err。window.prompt 这次不管(规范 §4:⑨ 没有输入框)。

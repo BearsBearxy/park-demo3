@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 0.25.0 重点「铃铛通知」的配图:顶栏铃铛带红数字 + 面板里「等你处理」一行授权请求 + 「有结果了」一行带小蓝点。
 // 记号照 NotifyBell 的 .nb-num(16 高、红底、2px 底色描边)抄,行照 NotifyPanel 的 .np-gh / .np-row / .np-ic / .np-dot 抄;

@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 0.16.0 重点「宽表的手机形态」的配图:月度台账在手机上的两张行卡缩样。
 // 字、色、几何照 FPWideCards 的 88 档抄(第一行名字 + 状态胶囊 / 第二行金额 mono / 第三行次级句),

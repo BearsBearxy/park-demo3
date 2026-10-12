@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.dto;
 // 充电桩模拟填充摘要:filled=新写/修正的 simulated 充电记录+新插电表行,
 // skipped=manual/import 占位、值未变的 simulated、已有电表行与缺桩(被改名/删除)。

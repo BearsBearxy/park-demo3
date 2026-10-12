@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 附表11 电费成本 DTOs — 逐字对齐后端 dto/Elec*.java(spec §4)。
 // JSON camelCase ⇄ Java record;ElecPhaseDTO 的 short 线格式为 "short"(@JsonProperty),非 shortName。
 // 两类型共一表用 type 区分:energy(电量电费/进项)/ basic(基本电费)。

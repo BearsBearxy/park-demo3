@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 科目余额表多 sheet 解析 — 每张名字含「余额表」的 sheet = 一公司段(供 FpImportModal parseWorkbook;粘贴路径 name='' 也收)。
 // 两版式(spec C3):
 //   缩进型(①/②):两行表头(组行「期初余额…」合并单元格 + 次行「借方/贷方」)→ 合并映射 8 列;

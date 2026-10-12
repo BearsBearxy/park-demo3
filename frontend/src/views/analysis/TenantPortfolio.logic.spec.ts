@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // TenantPortfolio.logic 纯函数单测(铁律⑦):箱线五数(同 fiveNum 线性插值)、散点带抖动与帕累托累计。
 import { describe, expect, it } from 'vitest'
 import { buildBoxRows, buildPareto, buildStripPoints } from './TenantPortfolio.logic'

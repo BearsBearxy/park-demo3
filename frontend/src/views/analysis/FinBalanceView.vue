@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 资产负债分析(fin-balance)v2 — spec §二.8:资产/负债双环(ECharts)+ 比率仪表(gauge ≤2,
 // 勿仪表盘泛滥:仅 资产负债率+流动比率,其余比率留 KPI 条/副行)+ 快照表;趋势空态保留。

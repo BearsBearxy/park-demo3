@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 0.19.0 重点「楼栋损耗能填备注」的配图:表里两行的缩样,右边那格是备注输入框。
 // 字、色、几何照 LossLedgerView 抄(位置列 sans / 数字列 mono tabular-nums / 备注格 .ll-in),

@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // PvLabTable 挂载测:核对明细档「逐栋核对表」(2026-10-06 改稿)。钉 9 列表头与列宽、每格的字、左侧色条的色、
 // 「哪天起变了」两种写法(找到写日子正文色 / 没找到写「没找到」)、隔天像不像与碰巧更偏两列、合并格、卡头与表脚六条参照。
 import { describe, it, expect } from 'vitest'

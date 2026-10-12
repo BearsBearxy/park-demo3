@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 光伏分栋分析屏 v4 · 数据整形层(PV-ANALYSIS-SCREEN-V4 §3;实施计划 2026-09-13 §3 T0)。
 //
 // 输入全是 pvMeterAna.logic.ts 已经算好的快照 / 工作台 / 抽屉结构,这里**不另起一次计算**

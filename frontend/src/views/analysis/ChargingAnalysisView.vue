@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 充电桩分析(charging-analysis)— ENERGY-ANALYSIS-SPEC §3:汽车/电动车双 tab(默认汽车,各自独立口径)。
 // 结论条(年充电量/收益/手续费/平均损耗率)+ 图1 桩月度量收双轴(充电量堆叠柱+收益线)

@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // KeepAlive 的「按页签卸载」(TAB-BAR-SPEC §1;App.vue 用)。
 // KeepAlive 按 key 缓存,却只按「组件名」清(include / exclude)。epoch++ 之后旧 key 的实例还躺在缓存里 ——
 // 关掉 / 重新加载一个页签,它的编辑锁与编辑态就成了僵尸(onUnmounted 不跑,只有挤满 max 才被清;

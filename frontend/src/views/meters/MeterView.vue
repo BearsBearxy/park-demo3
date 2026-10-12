@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 园区抄表 v5.1 壳(METER-V5-SPEC §1+§7):账期驱动的台账同款电子表格工作台,无段切换。
 // 宽档(画布 04-A / 04-B):标题行(标题 + 页面状态 +「租户表已抄 N / M」+ 期区段控;右侧浏览 3 颗 / 编辑 4 颗)+

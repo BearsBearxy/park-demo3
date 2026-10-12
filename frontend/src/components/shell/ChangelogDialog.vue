@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 「更新记录」——顶栏 ✦ / 账号菜单 / 手机抽屉 / 「本次更新」底部都开这里(VERSION-UPDATE-SPEC §4)。
 // 左边版本列表,右边那一版的全部条目;尺寸固定,切版本只换右边。

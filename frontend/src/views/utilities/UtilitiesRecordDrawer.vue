@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 右抽屉「新增记账」— 1:1 from screen-utilities.jsx UtDrawer(163-235),用共享 FPDrawer 壳。
 // 记账月 + 所属月(年/月 select)+ 电费(用电量/单价)+ 水费(用水量/单价)+ 自动金额;

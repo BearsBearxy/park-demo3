@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 三大报表共用屏状态机的提示件(2026-10-01 S4 T20,画布 02-B 左 / 06-B ⑤⑧⑨):
 // 原生 confirm → ask / askLeave,alert → 回执 / 字段下红字,删除公司的自写遮罩 → ask(删除类),改动数接进编辑锁。
 // 只验 useFinStatementScreen 自己(三屏接法逐字相同,屏级动线在 reportWorkbenchFlow.spec)。

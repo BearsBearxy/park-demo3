@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/__tests__/ledgerDeepLink.spec.ts — 台账消费期间深链(SIDEBAR-UX-REDESIGN §4.2「台账 co 落 activeBookId + year/month 直落宽表」)。
 // apply 是异步的(setup 期 books / companies 还没到,先等 ensureLoaded);co 数字按公司 id、字符串按旧公司名,没给 co 落当前册 / 首册。
 import { describe, it, expect, beforeEach, vi } from 'vitest'

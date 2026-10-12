@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 手机顶栏的屏级动作位(RESPONSIVE-LAYOUT-SPEC §5.10「动作 → 顶栏右:1 个主动作」)。
 //
 // 本轮只把位开出来,一个屏都没接。所以最重的一条断言是**反向**的:

@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 月度台账 · 账册工作台(BOOK-WORKBENCH-SPEC §5 选期矩阵 v3)。三态状态机:
 //   未选册(activeBookId=null) → 矩阵态(month=null:全部年份纵排,每年一行12月卡) → 表格态(month!=null)。

@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 催缴单页五个簿 / 导出窗口的提示件(S4 T25,画布 02-A / 02-B / 06-B ①④⑤⑦⑨):
 // 原生 confirm / alert → ask / askLeave / 回执 / 字段报错;加载失败 → FPLoadError 换掉表格并接上重试;
 // 只有圆点的缺口 → FPMark「缺收款公司」;块内虚线条 → FPNote;手写空状态 → FPEmpty;改动数接进 openEditor。

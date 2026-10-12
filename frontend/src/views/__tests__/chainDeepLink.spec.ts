@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/__tests__/chainDeepLink.spec.ts — 出账链屏消费期间深链(SIDEBAR-UX-REDESIGN §4.2 / §9 P0a 破坏验证「带 p 进屏直落」)。
 // 挑楼栋损耗做样本(与 chainPeriodFlow.spec 同理:链上最薄的一屏,五屏接法逐字相同);mock 与布线与它逐字相同。
 import { describe, it, expect, beforeEach, vi } from 'vitest'

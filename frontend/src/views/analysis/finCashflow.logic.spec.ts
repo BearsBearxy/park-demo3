@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // fin-cashflow v2 纯函数单测:应收实收分组柱折万、点柱下钻欠费清单过滤/排序、欠费账龄 FIFO 分桶、
 // 家族映射器(spec §B/W2)。
 import { describe, expect, it } from 'vitest'

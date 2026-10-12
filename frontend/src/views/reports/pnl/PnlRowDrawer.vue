@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // S 档卡片点开后的第二形态(响应式稿 WideCardVariants 板 §3):一行科目的 12 个月值 + 本年合计。
 // 卡面上只留 科目细分 / 本年合计 / 分组名,12 根月列没地方放 —— 点开在这里逐月列。

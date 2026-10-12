@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 自绘图悬停气泡的两件纯几何:按字符估宽、右缘放不下翻到左边。
 // 单测 __tests__/chartTip.spec.ts。
 // 注:三张自绘 SVG 图的气泡框宽就是估宽,字已统一成 12px,那边半角按 7.2 估;这里只给光伏 HTML 气泡(.cz-tip 自己撑宽)

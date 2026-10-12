@@ -1,4 +1,4 @@
-<!-- Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ -->
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 电费成本分析(elec-analysis)— ENERGY-ANALYSIS-SPEC §1:
 // 结论条 4 年累计(园区电费收益/光伏投资收益/基本用电费收益/售电协议损益,人话一句,点击深链成本总览)

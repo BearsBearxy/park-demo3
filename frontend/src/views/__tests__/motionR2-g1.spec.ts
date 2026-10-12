@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/__tests__/motionR2-g1.spec.ts — 动效第二轮(2026-09-16 行为矩阵)· 五屏挂载测:
 // ChurnView / TenantEnergyView / TenantPortfolioView / TenantPeerView / FinBalanceView。
 //

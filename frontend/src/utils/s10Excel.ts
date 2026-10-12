@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 附表10 销售收入 Excel 导出。导出当前 phase×year×month 宽表。
 // 列序对齐屏表:租户 + 本期版面各叶子列 + 合计 + 备注，末行列合计 + 总计。
 // 出流走 utils/sheet.ts 适配层（exceljs，内部懒加载，不进初始路由块）。

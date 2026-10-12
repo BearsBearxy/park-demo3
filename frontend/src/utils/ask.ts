@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 确认弹窗(十件 ⑨;UI-OVERLAY §7、LAYOUT-STABILITY §4.1):不回答就不能往下走。替代 confirm()。
 // FPConfirmHost(挂在 AppShell)只画队头一条,答完 resolve 再出下一条。
 // 不并进来的:SaveConfirmDialog(保存 / 放弃 / × 三钮);必须处理的弹窗(编辑权被接管等,点外面、Esc 都不关)。

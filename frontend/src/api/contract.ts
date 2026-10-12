@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 Junyang. All rights reserved. 版权所有，未经授权禁止复制、出售、抄袭。⁠​‌​​‌​‌​​‌‌‌​‌​‌​‌‌​‌‌‌​​‌‌‌‌​​‌​‌‌​​​​‌​‌‌​‌‌‌​​‌‌​​‌‌‌⁠ */
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import http from './index'
 import type { ContractDTO, ContractSummaryDTO, ContractDetailDTO, ContractCreateReq, ContractRenewReq, RentFreePeriod, BillingLinesImportRow, ContractTerminatePreviewDTO } from '../types/contract'
 import type { ImportResultDTO } from '../types/import'
