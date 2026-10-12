@@ -66,8 +66,9 @@ public class DataHomeService {
     }
 
 
-    /** 一个数据源在本期的取数结果：本期行的 updated_at 列表(用于 status/updated/count/recent)。 */
-    private record SourceData(String name, String tag, String go, boolean yearly,
+    /** 一个数据源在本期的取数结果：本期行的 updated_at 列表(用于 status/updated/count/recent)。
+     *  包内可见:导入中心「这个月有没有」(ImportCoverageService)复用同一判据。 */
+    record SourceData(String name, String tag, String go, boolean yearly,
                               List<LocalDateTime> updatedAts,
                               List<DataHomeOverviewDTO.Company> companies,   // 只有台账非 null
                               List<DataHomeOverviewDTO.Phase> phases) {      // 只有附10非 null
@@ -169,7 +170,7 @@ public class DataHomeService {
 
     /** 9 个附表源的本期取数。全部按 acctMonth 判本月有没有行(2026-09-06 前年度类曾按整年判,
      *  一月录完十二月看还显对勾——那是假绿,已改);yearly 这个位现在只剩「标签写不写年」的用途。 */
-    private List<SourceData> scheduleSources(int year, int month, String acctMonth) {
+    List<SourceData> scheduleSources(int year, int month, String acctMonth) {
         List<SourceData> sources = new ArrayList<>(13);
         List<MonthlyLedger> ledgerRows = ledger.selectList(new QueryWrapper<MonthlyLedger>()
             .eq("period_year", year).eq("period_month", month));

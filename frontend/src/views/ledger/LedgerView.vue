@@ -22,7 +22,7 @@ import { loadExtraYears, saveExtraYears, buildYearRows } from '@/utils/matrixYea
 import { tenantApi } from '@/api/tenant'
 import type { TenantDTO } from '@/types/tenant'
 import type { CompanyDTO, YearMonthsDTO, LedgerOverviewDTO, LedgerMonthDTO, LedgerRowDTO, LedgerSaveRow } from '@/types/ledger'
-import { saveRowIdentity, overwriteTargets } from '@/types/ledger'
+import { saveRowIdentity } from '@/types/ledger'
 import { ledgerRowKey } from '@/types/ledger'
 import type { Book, BookDef, TemplateVersion } from '@/types/book'
 import { flattenCols } from '@/types/book'
@@ -41,11 +41,11 @@ import TemplateEditorPanel from '@/components/fp/TemplateEditorPanel.vue'
 import ColumnMapPanel, { type UnmatchedHeader, type ColDecision } from '@/components/fp/ColumnMapPanel.vue'
 import FPTenantIssuePanel, { type IssueGroup } from '@/components/fp/FPTenantIssuePanel.vue'
 import FPEmpty from '@/components/fp/FPEmpty.vue'
-import { ask, askLeave } from '@/utils/ask'
+import { askLeave } from '@/utils/ask'
 import { receipt } from '@/utils/receipt'
 import LedgerWideTable from './LedgerWideTable.vue'
 import LedgerTenantDrawer from './LedgerTenantDrawer.vue'
-import FpImportModal, { type ImportRec, type ImportPayload, type SectionPick } from '@/components/import/FpImportModal.vue'
+import FpImportModal, { type ImportPayload } from '@/components/import/FpImportModal.vue'
 import { settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
 
 // ── 状态机 ───────────────────────────────────────────────
@@ -122,6 +122,7 @@ onDeactivated(() => {
   resume.issues = issuesOpen.value
   drawerRowKey.value = null
   issuesOpen.value = false
+  flashKeys.value = null   // 行高亮:停用时动画只发 cancel 不发 end,类留着回来会再亮一次(同 PoolLedgerView)
   // 模板面板**故意不恢复**:它的编辑锁在面板内部随 open 释放(watch props.open → lock.release),
   // 恢复只会把面板开在无锁状态 —— 这期间锁可能已被别人拿走。要改模板重新点一次即可。
   tplOpen.value = false
@@ -602,39 +603,40 @@ const drawerRow = computed<LedgerRowDTO | null>(() => {
 })
 
 // ── 导入 Excel(scope = 当前账册公司 + 年 + 月,在表格态入口) ──────────
-// 点导入后弹窗不关(UI-OVERLAY-SPEC §8):年月与覆盖两道预检走弹窗的 confirm(开跑前问),写 + 记 import_log + 刷新走 runner;
-// 失败交给弹窗的失败卡(不走回执)。
+// 点导入后弹窗不关(UI-OVERLAY-SPEC §8):年月与覆盖两道预检在弹窗核对页(registry 的 precheck,parserProps 带上):
+// 文件月 ≠ 本月要二选一才能导,本月已有的户写明会盖掉几家;写 + 记 import_log + 刷新走 runner;失败交给弹窗的失败卡(不走回执)。
 const importing = ref(false)
 
 // 关导入弹窗时若列映射面板还挂着 pending Promise,一并按取消收场(弹窗解析在 await 它)
 function closeImport() {
   importing.value = false
   if (mapOpen.value) finishMap(null)
+  // 动效板 ⑤:关窗那一刻才亮(弹窗开着时亮在它后面,人看不见);先置 null 再 nextTick,同一行连导两次也重播
+  const keys = flashPending
+  flashPending = null
+  if (keys?.length) { flashKeys.value = null; void nextTick(() => { flashKeys.value = keys }) }
 }
 
-/** 开跑前:整表导入先认年月(标题识别 ≠ 当前月),再认覆盖(本月已有这些租户的台账);分段导入不预检(同改前) */
-async function confirmImport(payload: ImportPayload): Promise<boolean> {
-  if (Array.isArray((payload as SectionPick[])[0]?.records)) return true
-  const recs = payload as ImportRec[]
-  const ym = recs[0]?.__ymDetected as { year: number; month: number } | undefined
-  if (ym && (ym.year !== year.value || ym.month !== month.value) && !(await ask({
-    title: `导入到 ${year.value} 年 ${month.value} 月？`,
-    body: `文件标题识别为 ${ym.year} 年 ${ym.month} 月，当前导入目标是 ${year.value} 年 ${month.value} 月。`,
-    action: '仍导入到本月',
-  }))) return false
-  const n = overwriteTargets(monthDto.value?.rows ?? [], recs.map(r => r.tenantName as string | null | undefined))
-  return n === 0 || ask({
-    title: '导入会覆盖已有的台账数据',
-    body: `本月已有 ${n} 家租户的台账数据，文件里提供的列会被覆盖。`,
-    action: '仍要导入',
-  })
-}
+// 导进去的那几行浅蓝底 2s 褪(动效板 ⑤「在台账页里导入也一样」)。哪几行 = 刷新后新出现或内容变了的行:
+// 板上说它要回答的是「变的是哪一行」;同样的数再导一遍没有行变,就不亮
+const flashKeys = ref<number[] | null>(null)
+let flashPending: number[] | null = null
+function onFlashEnd(e: AnimationEvent) { if (e.animationName === 'fp-row-flash') flashKeys.value = null }
 
+// 核对页选了「改成导到文件里的月」:p.ym 换掉屏上的月(只这一次导入;屏上的月不跟着跳,结果卡写明导进了哪个月)
 async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
   if (companyId.value == null || month.value == null) return null
-  return settle(await runImport('ledger', payload,
-    { companyId: companyId.value, companyName: companyName.value, year: year.value, month: month.value, _run: p }, fileName), p,
-  async () => { await loadMonth(); refreshDraftAfterImport(); await afterImportIssues() })
+  const [y, m] = p?.ym ? [Number(p.ym.slice(0, 4)), Number(p.ym.slice(5, 7))] : [year.value, month.value]
+  // 导到别的月(核对页选了文件里的月)屏上这个月没变,不亮
+  const before = y === year.value && m === month.value
+    ? new Map((monthDto.value?.rows ?? []).map(r => [ledgerRowKey(r), JSON.stringify(r)])) : null
+  return settle((await runImport('ledger', payload,
+    { companyId: companyId.value, companyName: companyName.value, year: y, month: m, _run: p }, fileName)).res, p,
+  async () => {
+    await loadMonth(); refreshDraftAfterImport(); await afterImportIssues()
+    if (before) flashPending = (monthDto.value?.rows ?? [])
+      .filter(r => !r.carried && before.get(ledgerRowKey(r)) !== JSON.stringify(r)).map(r => ledgerRowKey(r))
+  })
 }
 
 // 导入落库后编辑态渲染的是 draft:不重建就一直空表到点保存(2026-08-24 用户点名 bug)。
@@ -813,10 +815,12 @@ function gotoTenants() {
           :issues-open="issuesOpen"
           :dirty="dirtyN"
           :focus-tenant="focusTenant"
+          :flash-keys="flashKeys"
           :lock-scope="lockScope"
           :review-key="companyId != null && month != null
             ? `ledger:${companyId}:${year}-${String(month).padStart(2, '0')}` : null"
           @focus-done="focusTenant = ''"
+          @animationend="onFlashEnd"
           @back="backToMonths"
           @enter-edit="enterEdit"
           @cancel="cancelEdit"
@@ -857,15 +861,12 @@ function gotoTenants() {
         />
         <FpImportModal
           v-if="importing"
-          :title="'导入 月度台账 · ' + companyName"
-          :sub="'按表头名字自动识别列,需包含表头;可整表粘贴(前置公司列/合计行/应收结余列自动忽略),导入到 ' + year + ' 年 ' + month + ' 月'"
           v-bind="parserProps('ledger', {
             year, month: month!, companyId: companyId ?? undefined, companyName,
             companyNames: companies.map(c => c.name),
             bookDef: book?.definition, resolveUnmatched: resolveUnmatchedCb,
           })"
           :runner="onImport"
-          :confirm="confirmImport"
           @close="closeImport"
         />
       </template>

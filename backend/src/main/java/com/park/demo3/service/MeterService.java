@@ -1043,7 +1043,7 @@ public class MeterService {
         if (!dropIds.isEmpty()) meters.delete(new QueryWrapper<Meter>().in("id", dropIds));   // 读数已删,FK 无残留
         // 审计:不可逆操作必须留痕(operator 由 ImportLogService 从鉴权上下文解析)
         importLogs.record(new ImportLogReq("meter_delete", "抄表批量删除", "批量删除 " + ym, ym,
-            hits.size(), hits.size(), blocked.size(), "complete"));
+            hits.size(), hits.size(), blocked.size(), "complete", ym, ym, null, null, null));
         return dto;
     }
 

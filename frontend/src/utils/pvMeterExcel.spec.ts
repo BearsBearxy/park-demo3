@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  parsePvReadDate, parsePvMeterRows, buildPvMeterTemplateAoa, buildPvMeterMonthAoa,
+  parsePvReadDate, parsePvMeterRows, readDateReason, buildPvMeterTemplateAoa, buildPvMeterMonthAoa,
   buildPvMeterDetailAoa, PV_METER_TEMPLATE_COLS,
 } from './pvMeterExcel'
 
@@ -27,15 +27,15 @@ describe('parsePvReadDate — YYYY-MM-DD 与 Excel 序列双格式', () => {
   })
 })
 
-describe('parsePvMeterRows — 表头别名/行级错误不整批拦', () => {
+describe('parsePvMeterRows — 表头别名/导不了的行解析时交 bad,不整批拦', () => {
   const header = ['期数', '楼栋', '日期', '发电总量(kWh)', '自消纳电量(kWh)', '上网电量(kWh)', '备注']
 
   it('标准表头:解析出后端契约字段,期数列不上传', () => {
-    const { records, errors } = parsePvMeterRows([
+    const { records, bad } = parsePvMeterRows([
       header,
       ['一期', 'B座', '2026-07-01', '1,250.50', '800', '450.5', '晴'],
     ])
-    expect(errors).toEqual([])
+    expect(bad).toEqual([])
     expect(records.length).toBe(1)
     expect(records[0]).toMatchObject({ station: 'B座', readDate: '2026-07-01', genTotal: 1250.5, selfUse: 800, gridFeed: 450.5, note: '晴' })
     expect(records[0]).not.toHaveProperty('phaseRaw')
@@ -44,11 +44,11 @@ describe('parsePvMeterRows — 表头别名/行级错误不整批拦', () => {
   })
 
   it('别名表头命中:自销纳电量/上网量,日期吃 Excel 序列', () => {
-    const { records, errors } = parsePvMeterRows([
+    const { records, bad } = parsePvMeterRows([
       ['楼栋', '日期', '发电总量', '自销纳电量', '上网量'],
       ['8栋', '45658', '900', '700', '200'],
     ])
-    expect(errors).toEqual([])
+    expect(bad).toEqual([])
     expect(records[0]).toMatchObject({ station: '8栋', readDate: '2025-01-01', genTotal: 900, selfUse: 700, gridFeed: 200 })
   })
 
@@ -60,28 +60,41 @@ describe('parsePvMeterRows — 表头别名/行级错误不整批拦', () => {
     expect(records[0]).toMatchObject({ station: '创业大厦', readDate: '2026-07-15', selfUse: 400 })
   })
 
-  it('行级错误(非法日期/负电量)逐行报告,好行照常入列;合计行静默剔除', () => {
-    const { records, errors } = parsePvMeterRows([
+  // 核对页逐行列出:row = 读进来的第几行(表头是第 1 行),cells 对齐预览列,原因用大白话(md-v2-flat 那两行)
+  it('❗导不了的行交 bad:行号 + 原样内容 + 原因;好行照常入列,合计行静默剔除不算导不了', () => {
+    const { records, bad, error } = parsePvMeterRows([
       header,
-      ['一期', 'B座', '2026-07-01', '100', '80', '20', ''],
-      ['一期', 'C、D座', '不是日期', '1', '1', '0', ''],
-      ['二期', '8栋', '2026-07-01', '-5', '0', '0', ''],
-      ['', '合计', '', '101', '81', '20', ''],
-      ['三期', '工业大厦', '2026-07-02', '60', '', '', ''],   // 空量 → 0,合法
+      ['一期', '1栋', '2026-09-10', '780.0', '600.0', '180.0', ''],
+      ['二期', '7栋', '9月19', '640.2', '512.0', '128.2', ''],
+      ['二期', '8栋', '2026/9/31', '588.0', '470.1', '117.9', '表计更换'],
+      ['二期', '9栋', '2026-09-11', '-5', '0', '0', ''],
+      ['', '合计', '', '2008.2', '1582.1', '426.1', ''],
+      ['三期', '工业大厦', '2026-09-12', '60', '', '', ''],   // 空量 → 0,合法
     ])
-    expect(records.map(r => r.station)).toEqual(['B座', '工业大厦'])
+    expect(error).toBeUndefined()
+    expect(records.map(r => r.station)).toEqual(['1栋', '工业大厦'])
     expect(records[1]).toMatchObject({ genTotal: 60, selfUse: 0, gridFeed: 0 })
-    expect(errors.length).toBe(2)
-    expect(errors[0].reason).toContain('日期无法识别')
-    expect(errors[1].reason).toBe('电量不能为负')
-    expect(errors.every(e => e.rowIndex >= 0)).toBe(true)   // 均为行级,不整批拦
+    expect(bad.map(b => [b.row, b.reason])).toEqual([[3, '日期认不出'], [4, '没有 9月31日'], [5, '电量不能是负数']])
+    expect(bad[1].cells).toEqual(['二期', '8栋', '2026/9/31', '588', '470.1', '117.9', '表计更换'])
   })
 
-  it('表头识别失败 → rowIndex=-1 整批错误', () => {
-    const { records, errors } = parsePvMeterRows([['B座', '2026-07-01', '1', '1', '0']])
+  it('表头识别失败 → 整批 error,没有 bad', () => {
+    const { records, bad, error } = parsePvMeterRows([['B座', '2026-07-01', '1', '1', '0']])
     expect(records).toEqual([])
-    expect(errors.length).toBe(1)
-    expect(errors[0].rowIndex).toBe(-1)
+    expect(bad).toEqual([])
+    // md-v2-err:点名缺哪两列(弹窗再在前面带上文件名);不写「本期版面」「关键列(租户/姓名/月份)」
+    expect(error).toBe('没找到「楼栋」和「日期」这两列。对照下面的样子改好表头，再选一次。')
+  })
+})
+
+describe('readDateReason — 日期为什么认不出', () => {
+  it('格式对、这一天不存在 → 没有 X月X日;其余 → 日期认不出 / 日期没填', () => {
+    expect(readDateReason('2026/9/31')).toBe('没有 9月31日')
+    expect(readDateReason('2026-02-30')).toBe('没有 2月30日')
+    expect(readDateReason('9月19')).toBe('日期认不出')
+    expect(readDateReason('2026-13-01')).toBe('日期认不出')
+    expect(readDateReason('1999-01-01')).toBe('日期认不出')
+    expect(readDateReason('')).toBe('日期没填')
   })
 })
 
@@ -95,8 +108,8 @@ describe('buildPvMeterTemplateAoa — 模板结构', () => {
     for (const row of aoa.slice(1)) expect(parsePvReadDate(row[2])).toBeTruthy()
   })
   it('模板回导自洽:AOA 直接喂解析器 → 2 条零错误', () => {
-    const { records, errors } = parsePvMeterRows(buildPvMeterTemplateAoa().map(r => r.map(String)))
-    expect(errors).toEqual([])
+    const { records, bad } = parsePvMeterRows(buildPvMeterTemplateAoa().map(r => r.map(String)))
+    expect(bad).toEqual([])
     expect(records.map(r => r.station)).toEqual(['1号楼', '2号楼'])
   })
 })
@@ -144,8 +157,8 @@ describe('buildPvMeterDetailAoa — 明细 sheet(导入模板七列,可直接重
   })
 
   it('重导自洽(错价修正回路):明细 AOA 直接喂解析器 → 全行零错误,契约字段对齐', () => {
-    const { records, errors } = parsePvMeterRows(buildPvMeterDetailAoa(rows, stations).map(r => r.map(String)))
-    expect(errors).toEqual([])
+    const { records, bad } = parsePvMeterRows(buildPvMeterDetailAoa(rows, stations).map(r => r.map(String)))
+    expect(bad).toEqual([])
     expect(records.map(r => r.station)).toEqual(['B座', 'B座', '8栋'])
     expect(records[0]).toMatchObject({ station: 'B座', readDate: '2026-07-01', genTotal: 100, selfUse: 80, gridFeed: 20, note: '晴' })
   })

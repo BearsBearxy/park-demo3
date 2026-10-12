@@ -451,8 +451,6 @@ async function onExport() {
 
       <FpImportModal
         v-if="importing"
-        :title="'导入 资产负债表'"
-        :sub="'上传/粘贴两栏合并多公司的资产负债表(资产‖负债和所有者权益,每公司一列期末余额),按公司拆段、未匹配公司自动新建,导入到当前所选年月'"
         v-bind="parserProps('report_bs')"
         @close="importing = false"
         :runner="onImport"

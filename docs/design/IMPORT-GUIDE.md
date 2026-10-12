@@ -17,11 +17,11 @@
 
 | 件 | 路径 | 职责 |
 |---|---|---|
-| `FpImportModal` | `components/import/FpImportModal.vue` | 右滑抽屉:上传(.xlsx 懒加载 SheetJS / .csv) + 从 Excel 粘贴(TSV) → 二维数组 → 三种解析模式之一 → 预览/汇总 → 交 `runner` 原地跑(全仓 17 处入口都给了 runner;不给仍 emit 只是兼容,新屏必须给) |
+| `FpImportModal` | `components/import/FpImportModal.vue` | 居中弹窗,720 × 700 固定(2026-10-10 改稿,0.34.0),三步:选数据 → 核对 → 导入(见下「三步与核对页」)。上传(.xlsx / .csv)或粘贴(TSV,粘进来就认)→ 二维数组 → 三种解析模式之一 → 核对页 → 交 `runner` 原地跑(全仓 17 处入口都给了 runner;不给仍 emit 只是兼容,新屏必须给) |
 | `importParse` | `utils/importParse.ts` | TSV/CSV → 二维数组(支持引号/CRLF/空行) |
 | `importHeaderMatch` | `utils/importHeaderMatch.ts` | **按表头名字匹配**(单段):定表头块→列名映射→**按数据内容定位关键列**→数据行 |
 | `importSections` | `utils/importSections.ts` | **智能整表拆段**(多段):按标题行拆段→识别年/月/期+版面→逐段 matchByHeader |
-| `ImportSummary` | `components/import/ImportSummary.vue` | 多段汇总确认屏(年/月/期可改+勾选);段数写在表头那一行,表上方不另起蓝条 |
+| `ImportSummary` | `components/import/ImportSummary.vue` | 核对页的分段表:一句「认出 N 段 M 行」+ 每段一行(勾选 · 文件里的标题 · 月份 · 期区 · 行数;按年的少期区一列)。缺期区的段标橙、不勾,选了就勾上;导不了的段(`reason`)标橙、勾不上。里面没有按钮,主按钮在弹窗底栏「导入 N 段 · M 行」 |
 | `ImportProgressCard` / `ImportResultCard` | `components/import/` | 点「导入」后弹窗不关,原地换进度卡 → 结果卡 / 失败卡(UI-OVERLAY-SPEC §8);接线协议在 `importRun.ts` 头注释 |
 | `ImportResultToast` | `components/import/ImportResultToast.vue` | **已没有屏挂它**(0.26.0 起结果都在导入弹窗里原地出,别再接);只剩它自己的测试和 `noInteractionLayoutShift.spec` 里两条豁免指着它,删组件时一起删 |
 | `SaveConfirmDialog` | `components/import/SaveConfirmDialog.vue` | 退出编辑保存确认 |
@@ -31,15 +31,33 @@
 - `columnMap`（单段按名字匹配，扛多行表头/分类列/合计列）
 - `phaseLayouts`（智能整表，多段+多版面，附表10 在用）
 
+**三步与核对页**（2026-10-10 改稿，0.34.0；图是 `运维文档/设计稿/…/导入中心-2026-10-10/弹窗改稿/md-v2-*`）：
+- **① 选数据**：拖放区 +「选文件」「粘贴表格」+ 格式提示；粘贴在 paste 事件里当场解析，没有「解析」钮（超过 200ms 才出「正在识别 N 行…」）。下面「文件要长这样」小样表 + 规矩，取 registry 每类的 `sample` / `rules`（`parserProps` 带上）。认不出 → 拖放区换成认不出卡（「重新选文件」「粘贴表格」），小样表和规矩留在原位。底栏只有「取消」。
+- **② 核对**，四种：
+  - 平铺：「认出 N 行：a 行能导，b 行导不了」；表里**全部行**、表内滚动，导不了的排最前、淡琥珀底、末列写原因；按钮「导入 a 行」。
+  - 多段（附表10 / 工资 / 光伏发电 / 园区抄表多表 / 合同工作簿 / 三大报表 / 预算）：`ImportSummary`；逐段导的（`segmented`）加蓝底提示条。解析结果同时带 `bad` 的（附表6 记账月份认不出的行），表下面照样列出、写原因，记进「要核对」。
+  - 台账：顶上「导到 X年X月 · 公司」条。文件月份 ≠ 要导的月 → **必须二选一才能导**（选之前主按钮灰、左边写「先选导到哪个月」）；本月已有台账 → 写会盖掉几家（结转虚行不算，`overwriteTargets`）。这两条由 registry 台账的 `precheck` 在进核对页时算；选了文件里的月，由 `ImportRunProgress.ym` 交给 runner，runner 用它代替屏上的月。分段台账两条都不出。**没有 `confirm` prop 了**，开跑前不再弹确认框。
+  - 园区抄表补问：解析结果带 `ask`（标题缺月份 / 区 / 表类**任一项**）就出蓝底问题框，三项预填，改任一项重新解析；不再静默按一期电表导。区的选项和识别用同一份 `ctx.zones`（`resolveZones`）。
+- **③ 导入**：进度卡 → 结果卡（「导进去 N 行」，单位随 registry 的 `unit`：行 / 家 / 户 / 块表）或失败卡，见 UI-OVERLAY-SPEC §8。
+- **标题和那几样字只从 `parserProps` 来**：标题 =「导入」+ registry 的 `name`（「导入附表10 销售收入」），各屏不再写 `:title`；导入中心也走 `parserProps`（同一份 `sub` / `rules` / `sample` / `unit` / 台账 `precheck`），台账另给 `retarget`（「导到 … 改」回选公司 / 月份的小窗）。
+
+**导不了的行：先导能导的**（用户 2026-10-10 拍板）：
+- 解析器在解析时就交 `bad: [{ row, cells, reason }]`（`BadRow`，`utils/importHeaderMatch`），`reason` 写大白话（「日期认不出」「没有 9月31日」）；合计、小计、空行这类本来就该跳过的照旧静默跳过，不算导不了。多段的认不出写在段的 `reason` 上。
+- 核对页只发能导的行；没发的行数由弹窗写进 `ImportRunProgress.bad`，`runImport` 记进导入记录的「要核对」。结果卡把核对页的 `bad` 和后端报的 `errors` 逐条列出，不折叠。
+- `ctx._parseErrors` 那条「导完才报」的路已删，新解析器别再走。
+
 **点「导入」之后**（2026-10-03，UI-OVERLAY-SPEC §8）：屏给 `FpImportModal` 传 `:runner`(必须给),弹窗就不关,原地出进度、结果、失败。
 - runner = `runImport`(写 + 记导入记录)+ 刷新本页,收尾一律 `settle(res, p, refresh)`:刷新失败不算导入失败。错误**抛给弹窗**,别自己 `receipt.fail` —— 弹窗按错误分:网络断 / 5xx 与 4xx 写法不同。
-- 写口自守照旧:失锁了 runner 返回 `null`(弹窗回到选文件那一屏)。
+- 写口自守照旧:失锁了 runner 返回 `null`(弹窗回到核对页)。
 - 屏在编辑态转假的 watch、页签停用的 `onDeactivated` 里收导入窗,一律写 `if (!importBusy.value) importing.value = false`:在跑的不收(`importBusyGuard.spec` 扫全仓)。
 - 导完要跳到别的期(附表10 跳第一段的册 / 年月、附表12 跳首段年月)的,跳期放进 `@close` 的关窗函数,别放进 runner:锁按期的屏一换期就退出编辑,放在 runner 里会把人踢出编辑态。
-- 一次导入发多次请求的 run(工资逐月、水电逐年、台账整册逐公司)每写完一次调 `ctx._run?.wrote(累计写入数)`:后面那次失败时前面的不回滚,失败卡据此写「前面已写入 a 条」而不是「一条都没写进去」。
+- 一次导入发多次请求的 run(工资逐月、水电逐年、台账整册逐公司)每写完一次调 `ctx._run?.wrote(累计写入数)`:后面那次失败时前面的不回滚,失败卡据此写「前面已写入 a 行」而不是「一行都没写进去」。
+- `runImport` 返回 `{ res, logIds }`,屏上把 `.res` 交给 `settle`。一个落点一条导入记录(registry 的 `target(ctx, picks)` 给落点,逐段 / 逐公司的经 `ctx._seg` 报段)。整单被拒(后端 4xx 信封,含审核闸)也记一条 `rejected`,`note` = 后端原句;断网 / 5xx 不记(那是没导成,不是被拒)。
+- 导入写口一律带 `silentNetError`(`api/index.ts`):失败只在失败卡里说一遍,底部全局网络报错不出。新加导入写口要带上(`api/__tests__/silentNetError.spec.ts` 扫)。
+- 导完行高亮(动效板 ⑤):导入中心、月度台账、园区抄表在点「完成」关窗那一刻给导进去的行挂 `fp-row-flash`(`styles/motion.css`,浅蓝底 2s 褪;格子自带底色的表把动画挂到 `td` 上)。挂早了亮在弹窗后面,人看不见。
 - 进度回调 `p` 一律塞进 `ctx._run` 再调 `runImport`:写完它把步骤推到「记下这次导入」;三大报表 / 台账整册开跑前新建了公司、写入又被拒时,它让失败卡多写「新建的 N 家公司已留下」。
 - **逐段**(`segmented`,附表10):registry 的 run 认 `ctx._run`,从 `_run.from` 段起发、每段写完报 `_run.segDone`;断在网络 / 5xx 时用户点「从第 k 段接着导」只重发第 k 段起。新接逐段的类型,后端那一段的写法必须「重发同一段结果相同」(清本槽导入行再插 + 整段一个事务),否则不许开 `segmented`。屏有编辑锁的再传 `ctx._alive = () => edit`:每段发之前问一次,失锁就停(后端写口不校验锁)。
-- 用户看到的:进度卡(逐段画真进度,单次请求只画「还在动」不写百分比,200ms 内跑完不出卡)→ 结果卡(成功写入 / 跳过两格、分项明细、可展开的提示与未导入)→ 或失败卡(「第 k 段没导进去」/ 没回应时「第 k 段没等到服务器的结果」/「导入失败，这次一条都没写进去」/ 多次请求断在后面时「导入没做完，前面已写入 a 条」);导入中弹窗关不掉。
+- 用户看到的:进度卡(逐段画真进度,单次请求只画「还在动」不写百分比,200ms 内跑完不出卡)→ 结果卡(「导进去 N 行」+ 导进去 / 没导两块数,没导的行逐条列出;多段都导进去写「一期、二期、三期都在库里了。」,台账写「9月水电的台账已经在库里了。」)→ 或失败卡(「第 k 段(期区)没导进去」/ 没回应时「第 k 段(期区)没等到服务器的结果」/「导入失败，这次一行都没写进去」/ 多次请求断在后面时「导入没做完，前面已写入 a 行」);导入中弹窗关不掉。
 
 **后端导入端点范式**（每子系统一个 `POST .../import`）：
 - **语义 = 清本槽导入行再插**：导入前 `delete where <slot>+source='import'`，再把 rows 全 `insert(source='import')`。重导干净、手动行不动。`@Transactional`。

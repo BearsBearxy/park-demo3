@@ -15,7 +15,7 @@ import { importElecRows } from '@/utils/importElecRows'
 import { importPnlSchedule } from '@/utils/importPnlSchedule'
 import { matchByHeader, type ColumnMapEntry, type ImportRec } from '@/utils/importHeaderMatch'
 import { parseYearMonth } from '@/utils/parseYearMonth'
-import { parserProps } from '@/utils/importRegistry'
+import { parserProps, UTILITIES_COLUMN_MAP } from '@/utils/importRegistry'
 import { leavesOf } from '@/views/sales-income/layout'
 import { PNL_SCHEDULES } from '@/reports/pnlSchedules'
 
@@ -156,8 +156,7 @@ function buildCandidates(): Map<string, Series> {
   }
 
   // 办公水电(13):表头匹配 → slot=月 去重 → elecAmt/waterAmt/elec+water
-  const OFF = parserProps('office_13') as unknown as { columnMap: ColumnMapEntry[]; nameLabels: string[] }
-  const offRecs = matchByHeader(readSheet(FILES.office), OFF.columnMap, OFF.nameLabels).records
+  const offRecs = matchByHeader(readSheet(FILES.office), UTILITIES_COLUMN_MAP as ColumnMapEntry[], ['月份']).records
   const offSlot = new Map<number, ImportRec>()
   for (const r of offRecs) {
     const ym = parseYearMonth(r.tenantName)

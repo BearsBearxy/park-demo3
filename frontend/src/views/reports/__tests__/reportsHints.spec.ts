@@ -285,7 +285,7 @@ describe.each([
   { name: '利润表', view: IncomeStatementView, rec: { rowKey: '1', cur: 1, ytd: 2 }, detail: '1 项 · 2 格' },
   { name: '科目余额表', view: TrialBalanceView, rec: { account: ACCOUNTS[0], amounts: { endDr: 5, openDr: 0 } }, detail: '1 科目 · 1 格' },
 ] as const)('$name · 导入走弹窗的 runner', ({ view, rec, detail }) => {
-  it('❗点导入后弹窗不关;写完重读本期,弹窗里原地出结果卡(分公司明细 + 本期已刷新)', async () => {
+  it('❗点导入后弹窗不关;写完重读本期,弹窗里原地出结果卡(导进去 N 格 + 分公司明细)', async () => {
     wireFin()
     let done!: (v: unknown) => void
     vi.mocked(runImport).mockReturnValueOnce(new Promise(r => { done = r }) as never)
@@ -298,13 +298,13 @@ describe.each([
     expect(runImport).toHaveBeenCalledTimes(1)
     expect(w.find('.fpimp-scrim').exists(), '导入中弹窗不关').toBe(true)
     const before = vi.mocked(reportApi.period).mock.calls.length
-    done({ imported: 2, skipped: 0, errors: [] })
+    done({ res: { imported: 2, skipped: 0, errors: [] }, logIds: [] })
     await flushPromises()
     expect(vi.mocked(reportApi.period).mock.calls.length, '写完重读本期').toBe(before + 1)
     expect(w.find('.fpimp-scrim').exists(), '结果卡在弹窗里,弹窗还开着').toBe(true)
     const card = w.find('.irc')
-    expect(card.find('h4').text()).toBe('导入完成')
-    expect(card.find('.irc-meta').text()).toContain('本期已刷新')
+    expect(card.find('h4').text()).toBe('导进去 2 格')
+    expect(card.find('.irc-meta').text(), '本期刷新成了,不写「没刷新上」').not.toContain('没刷新上')
     expect([card.find('.irc-kv span').text(), card.find('.irc-kv b').text()]).toEqual(['物业公司', detail])
     expect(receipts).toHaveLength(0)
   })
@@ -470,7 +470,7 @@ describe('损益附表', () => {
     expect(vi.mocked(runImport).mock.calls[0].slice(0, 2)).toEqual(['pnl_s1', [{ a: 1 }]])
     expect(w.find('.imp-go').exists(), '导入中弹窗不关').toBe(true)
     const before = vi.mocked(pnlApi.year).mock.calls.length
-    done({ imported: 2, skipped: 0, errors: [] })
+    done({ res: { imported: 2, skipped: 0, errors: [] }, logIds: [] })
     await expect(stubRun).resolves.toMatchObject({ imported: 2, refreshed: true })
     expect(vi.mocked(pnlApi.year).mock.calls.length, '写完刷新本年').toBe(before + 1)
     expect(w.find('.imp-go').exists(), '结果卡在弹窗里,弹窗还开着').toBe(true)

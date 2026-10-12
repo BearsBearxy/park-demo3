@@ -14,5 +14,5 @@ export const pnlApi = {
     http.put(`/pnl/${schedule}/${year}`, body, auto ? { params: { auto: true } } : undefined),
   // 导入整 (schedule,year):同上只写变了的格、改到整月锁账的月整次拒
   import: (schedule: string, year: number, body: { rows: PnlRowDTO[] }): Promise<ImportResultDTO> =>
-    http.post(`/pnl/${schedule}/import`, body, { params: { year } }),
+    http.post(`/pnl/${schedule}/import`, body, { params: { year }, silentNetError: true }),
 }

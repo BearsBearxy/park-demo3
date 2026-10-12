@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx'
 vi.mock('@/api/importLog', () => ({ importLogApi: { record: vi.fn().mockResolvedValue({}) } }))
 vi.mock('@/api/ledger', () => ({
   companyApi: { list: vi.fn(), create: vi.fn() },
-  ledgerApi: { import: vi.fn() },
+  ledgerApi: { import: vi.fn(), month: vi.fn() },
 }))
 vi.mock('@/api/budget', () => ({ budgetApi: { import: vi.fn(), all: vi.fn() } }))
 vi.mock('@/api/tenant', () => ({ tenantApi: { list: vi.fn() } }))
@@ -22,11 +22,16 @@ import http from '@/api/index'
 import { importLogApi } from '@/api/importLog'
 import { companyApi, ledgerApi } from '@/api/ledger'
 import { budgetApi } from '@/api/budget'
+import { s10Api } from '@/api/s10'
+import { reportApi } from '@/api/report'
+import type { ImportLogDTO } from '@/types/importLog'
 import { tenantApi } from '@/api/tenant'
 import { buildingApi } from '@/api/building'
 
 describe('deriveStatus', () => {
-  it('rejected when nothing imported', () => expect(deriveStatus({ imported: 0, skipped: 0, errors: [] })).toBe('rejected'))
+  it('rejected when nothing imported and rows were refused', () => expect(deriveStatus({ imported: 0, skipped: 2, errors: [] })).toBe('rejected'))
+  // 科目余额表某家期末全为 0:cells 滤空、这一段写进 0 格也没有一条报错 —— 不是被拒
+  it('complete (not rejected) when nothing imported and nothing refused', () => expect(deriveStatus({ imported: 0, skipped: 0, errors: [] })).toBe('complete'))
   it('partial when some skipped', () => expect(deriveStatus({ imported: 5, skipped: 1, errors: [] })).toBe('partial'))
   it('partial when some errors', () => expect(deriveStatus({ imported: 5, skipped: 0, errors: [{ rowIndex: 1, label: 'x', reason: 'y' }] })).toBe('partial'))
   it('complete when clean', () => expect(deriveStatus({ imported: 5, skipped: 0, errors: [] })).toBe('complete'))
@@ -39,8 +44,41 @@ describe('IMPORT_TYPES catalog', () => {
        'pnl_s1', 'pnl_s2', 'pnl_s3', 'pnl_s4', 'pnl_s5',
        'pv', 'pvMeter', 'report_bs', 'report_is', 'report_tb', 's10', 'salary'].sort())
   })
-  it('ledger + report_bs + report_is + report_tb need context (year/month)', () => {
-    expect(IMPORT_TYPES.filter(t => t.context === 'ledger').map(t => t.key).sort()).toEqual(['ledger', 'report_bs', 'report_is', 'report_tb'])
+
+  // 导入中心清单照 ix-v2-main:五组、组内顺序;行名跟侧栏一字不差(U2,损益附表用侧栏名)
+  it('❗分组 + 组内顺序 + 名字照图', () => {
+    expect(IMPORT_TYPES.map(t => `${t.group}|${t.name}`)).toEqual([
+      '出账 · 每月工序|园区抄表', '出账 · 每月工序|光伏抄表', '出账 · 每月工序|充电桩抄表',
+      '记账 · 按月|月度台账', '记账 · 按月|附表10 销售收入', '记账 · 按月|附表12 工资明细',
+      '记账 · 按年|附表6 光伏发电', '记账 · 按年|附表7 汽车充电桩', '记账 · 按年|附表8 电动车充电桩', '记账 · 按年|附表11 电费成本',
+      '记账 · 按年|园区电费模型', '记账 · 按年|附表13 办公水电', '记账 · 按年|附表14 三期水电',
+      '账簿与报表|利润表', '账簿与报表|资产负债表', '账簿与报表|科目余额表',
+      '账簿与报表|附表1 租金损益', '账簿与报表|附表2 用电损益', '账簿与报表|附表3 用水损益',
+      '账簿与报表|附表4 运管损益', '账簿与报表|附表5 费用支出', '账簿与报表|年度预算',
+      '档案|合同 · 汇总册', '档案|合同 · 月度租金工作簿',
+    ])
+  })
+
+  it('每类都有说明、规矩、两行小样(每行和表头一样宽)、去处与单位', () => {
+    for (const t of IMPORT_TYPES) {
+      expect(t.desc && t.sub && t.landing, t.key).toBeTruthy()
+      expect(t.rules.length, t.key).toBeGreaterThan(0)
+      expect(t.sample.rows.length, t.key).toBe(2)
+      for (const r of t.sample.rows) expect(r.length, t.key).toBe(t.sample.head.length)
+    }
+    const pv = IMPORT_TYPES.find(t => t.key === 'pvMeter')!
+    expect(pv.sub).toBe('各栋光伏每天的发电读数，导进光伏分栋抄表')
+    expect(IMPORT_TYPES.find(t => t.key === 'cpMeter')!.sub).toBe('各桩每天的充电明细，导进充电桩分桩明细')
+    expect(pv.sample.head).toEqual(['期数', '楼栋', '日期', '发电总量 kWh', '自消纳 kWh', '上网 kWh', '备注'])
+    expect(IMPORT_TYPES.find(t => t.key === 'meter')!.rules).toEqual(
+      ['整本抄表册：每个区的电、水各一张表，标题写年月', '直接粘一块也行，下一步问是哪个月哪个区', '同表同月再导，新数盖掉旧数', '没抄到的表记成漏抄'])
+    expect(Object.fromEntries(IMPORT_TYPES.filter(t => t.unit !== '行').map(t => [t.key, t.unit])))
+      .toEqual({ meter: '块表', ledger: '家', contractFull: '户', billingTerms: '户' })
+  })
+
+  it('❗弹窗标题下那句只在 registry 一处:parserProps 带出 sub', () => {
+    expect(parserProps('pvMeter').sub).toBe('各栋光伏每天的发电读数，导进光伏分栋抄表')
+    expect(parserProps('ledger', { year: 2026, month: 9 }).sub).toBe('一家公司一个月的收款台账')
   })
 })
 
@@ -368,7 +406,7 @@ describe('ledger run — Pick[] 段分支', () => {
     ]
     const res = await entry.run(picks, { companyId: 5, year: 2026, month: 3 })
     expect(companyApi.list).toHaveBeenCalledTimes(1)
-    expect(companyApi.create).toHaveBeenCalledWith('一泽')
+    expect(companyApi.create).toHaveBeenCalledWith('一泽', true)   // 建公司也不出底部全局提示
     expect(ledgerApi.import).toHaveBeenNthCalledWith(1, 1, 2025, 1, { rows: [{ tenantName: '成吉', shopRent: 5 }] })
     expect(ledgerApi.import).toHaveBeenNthCalledWith(2, 9, 2026, 3, { rows: [{ tenantName: '张丽莉', dormRent: 3 }] })
     expect(ledgerApi.import).toHaveBeenNthCalledWith(3, 5, 2026, 3, { rows: [{ tenantName: '甲' }] })
@@ -409,22 +447,25 @@ describe('导入类型的权限 = 目标屏的写权', () => {
 describe('budget modalProps — 损益附表收入核对按查看权', () => {
   const entry = IMPORT_TYPES.find(t => t.key === 'budget')!
   const PNL_VIEWS = ['rent-pnl:view', 'elec-pnl:view', 'water-pnl:view', 'ops-pnl:view', 'expense-pnl:view']
-  const NOTE = '。有的损益附表你看不了，这次导入不拿它们的收入合计核对预算。'
+  const NOTE = '有的损益附表你看不了，这次导入不拿它们的收入合计核对预算。'
   beforeEach(() => { setActivePinia(createPinia()); vi.mocked(fetchPnlSummary).mockClear() })
 
-  // 破坏验证:canPnl 恒真(不判查看就取)→ 第一条红;sub 不拼那一句 → 第一条红
-  it('❗少一张损益附表查看:不预取,提示行说这次不核对', () => {
+  const warnOf = (p: Record<string, unknown>) =>
+    (p.parseWorkbook as (s: { name: string; matrix: string[][] }[]) => { warning?: string })([{ name: '', matrix: [['乱']] }]).warning ?? ''
+
+  // 破坏验证:canPnl 恒真(不判查看就取)→ 第一条红;解析结果不拼那一句 → 第一条红
+  it('❗少一张损益附表查看:不预取,核对页提示条说这次不核对', () => {
     useAuthStore().permissions = ['import:edit', ...PNL_VIEWS.slice(0, 4)]
     const p = entry.modalProps({})
     expect(fetchPnlSummary).not.toHaveBeenCalled()
-    expect(p.sub).toContain(NOTE)
+    expect(warnOf(p)).toContain(NOTE)
   })
 
-  it('五张都看得了:按年预取,提示行不多那一句', () => {
+  it('五张都看得了:按年预取,提示条不多那一句', () => {
     useAuthStore().permissions = ['import:edit', ...PNL_VIEWS]
     const p = entry.modalProps({})
     expect(fetchPnlSummary).toHaveBeenCalled()
-    expect(p.sub).not.toContain(NOTE)
+    expect(warnOf(p)).not.toContain(NOTE)
   })
 })
 
@@ -475,13 +516,16 @@ describe('meter v2 主数据接线', () => {
     await new Promise(r => setTimeout(r, 0))
     const res = parseWB(props)([sheet])
     expect(res.records![0]).toMatchObject({ tenantId: null, buildingId: 2, ownership: 'tenant', spot: '1-3楼' })
-    expect(res.records![0].__preview).toEqual(['一期', '一期 B座', '1-3楼', '力灏', '租户', 1, 10, 20, ''])
+    expect(res.records![0].__preview).toEqual(['一期 B座', '1-3楼', '力灏', 1, 10, 20, 10])
   })
 
   // 账期降级接线(用户 2026-07-29 报障):补录条默认账期 = 屏上下文年月;裸数据块按补录值落库
   it('fallbackPicker 默认账期取 ctx.year/month;裸数据块按补录值解析', () => {
     const props = parserProps('meter', { year: 2099, month: 7 })
     expect(props.fallbackPicker).toMatchObject({ ym: '2099-07', zone: 'p1', kind: 'elec' })
+    // 改前区选项写死 p1/p2/p3/dorm、识别用 ctx.zones,两边不同源:现在同一份(没给清单回落写死三区)
+    expect((props.fallbackPicker as { zones: unknown[] }).zones).toEqual(
+      [{ value: 'p1', label: '一期' }, { value: 'p2', label: '二期' }, { value: 'dorm', label: '宿舍' }])
     const bare = [
       ['区域', '', '企业名称', '表类', '电表名称', '电表编码', '电表倍率', '上月行至', '本月行至', '备注'],
       ['一车间', '101室', '力灏', '户内用电', '电表①', '230220001238', '1', '100', '160', ''],
@@ -489,7 +533,7 @@ describe('meter v2 主数据接线', () => {
     const wb = props.parseWorkbook as (s: { name: string; matrix: string[][] }[], fb?: { ym: string; zone: string; kind: string }) => ParseOut
     const res = wb([{ name: '', matrix: bare }], { ym: '2099-07', zone: 'p2', kind: 'elec' })
     expect(res.records![0]).toMatchObject({ ym: '2099-07', zone: 'p2', kind: 'elec' })
-    expect(wb([{ name: '', matrix: bare }]).error).toContain('请在上方选择账期')
+    expect(wb([{ name: '', matrix: bare }]).error).toContain('看不出是哪个月')
   })
 
   it('预取成功 → 模块缓存(带 id)优先,拆分挂 tenantId/buildingId', async () => {
@@ -513,8 +557,11 @@ describe('meter v2 主数据接线', () => {
     const ctx: ImportCtx = { zones: [
       { code: 'p1', name: '一期' }, { code: 'p2', name: '二期' }, { code: 'p3', name: '三期' }, { code: 'dorm', name: '宿舍' },
     ] }
-    const res = parseWB(parserProps('meter', ctx))([t3Sheet])
+    const props = parserProps('meter', ctx)
+    const res = parseWB(props)([t3Sheet])
     expect(res.records![0]).toMatchObject({ zone: 'p3', kind: 'elec', ym: '2026-03' })
+    // ❗补问框的区选项与识别同一份清单:三期认得出,也选得到
+    expect((props.fallbackPicker as { zones: { value: string }[] }).zones.map(z => z.value)).toEqual(['p1', 'p2', 'p3', 'dorm'])
   })
 
   it('ctx.zones 不给(未注入)/给空数组(接口拉取失败)都回落写死三区:一期/二期/宿舍零回归', () => {
@@ -523,128 +570,99 @@ describe('meter v2 主数据接线', () => {
   })
 })
 
-// ── pvMeter:customParse 行级错误暂存 + run 契约(解析纯函数单测见 pvMeterExcel.spec.ts) ──
-describe('pvMeter customParse + run', () => {
-  const entry = IMPORT_TYPES.find(t => t.key === 'pvMeter')!
-  const header = ['期数', '楼栋', '日期', '发电总量(kWh)', '自消纳电量(kWh)', '上网电量(kWh)', '备注']
+// ── 解析时就交出导不了的行(T8):customParse 直接回 { records, bad },不再暂存 ctx;run 只发好行 ──
+type Parsed = { records?: Rec[]; bad?: { row: number; cells: string[]; reason: string }[]; error?: string }
+const customOf = (key: string, ctx: ImportCtx = {}) =>
+  IMPORT_TYPES.find(t => t.key === key)!.modalProps(ctx).customParse as (m: string[][]) => Parsed
 
-  it('customParse:好行返回后端契约字段,坏行(非法日期)暂存 ctx._parseErrors 不整批拦', () => {
-    const ctx: ImportCtx = {}
-    const props = entry.modalProps(ctx)
-    const res = (props.customParse as (m: string[][]) => { records?: Rec[]; error?: string })([
-      header,
+describe('平铺类 customParse:导不了的行解析时交 bad', () => {
+  it('pvMeter:好行回后端契约字段,坏行进 bad(第几行 + 原因);无表头 → 整批 error', () => {
+    const res = customOf('pvMeter')([
+      ['期数', '楼栋', '日期', '发电总量(kWh)', '自消纳电量(kWh)', '上网电量(kWh)', '备注'],
       ['一期', 'B座', '2026-07-01', '1200', '800', '400', ''],
-      ['一期', 'C、D座', '乱码', '1', '1', '0', ''],
+      ['一期', 'C、D座', '7月2日', '1', '1', '0', ''],
     ])
-    expect(res.error).toBeUndefined()
-    expect(res.records!.length).toBe(1)
     expect(res.records![0]).toMatchObject({ station: 'B座', readDate: '2026-07-01', genTotal: 1200, selfUse: 800, gridFeed: 400 })
-    expect(ctx._parseErrors!.length).toBe(1)
+    expect(res.bad!.map(b => [b.row, b.reason])).toEqual([[3, '日期认不出']])
+    expect(customOf('pvMeter')([['B座', '2026-07-01', '1', '1', '0']]).error).toBeTruthy()
   })
 
-  it('customParse:无表头 → 整批 error', () => {
-    const props = entry.modalProps({})
-    const res = (props.customParse as (m: string[][]) => { error?: string })([['B座', '2026-07-01', '1', '1', '0']])
-    expect(res.error).toBeTruthy()
-  })
-
-  it('run:POST /pv-meter/import {rows},解析期错误并入 skipped/errors', async () => {
-    const post = vi.spyOn(http, 'post').mockResolvedValue({ imported: 2, skipped: 0, errors: [] } as never)
-    const rows = [{ station: 'B座', readDate: '2026-07-01', genTotal: 1, selfUse: 1, gridFeed: 0 }]
-    const res = await entry.run(rows, { _parseErrors: [{ rowIndex: 1, label: 'x', reason: 'r' }] })
-    expect(post).toHaveBeenCalledWith('/pv-meter/import', { rows })
-    expect(res).toEqual({ imported: 2, skipped: 1, errors: [{ rowIndex: 1, label: 'x', reason: 'r' }] })
-    post.mockRestore()
-  })
-
-  it('run:全行错误(rows 空)→ 不打 API,只返回解析错误', async () => {
-    const post = vi.spyOn(http, 'post')
-    const res = await entry.run([], { _parseErrors: [{ rowIndex: 0, label: 'x', reason: 'r' }] })
-    expect(post).not.toHaveBeenCalled()
-    expect(res).toEqual({ imported: 0, skipped: 1, errors: [{ rowIndex: 0, label: 'x', reason: 'r' }] })
-    post.mockRestore()
-  })
-})
-
-// ── cpMeter:customParse 行级错误暂存 + run 契约(解析纯函数单测见 cpMeterExcel.spec.ts,同构 pvMeter) ──
-describe('cpMeter customParse + run', () => {
-  const entry = IMPORT_TYPES.find(t => t.key === 'cpMeter')!
-
-  it('customParse:好行返回后端契约字段,坏行(非法日期)暂存 ctx._parseErrors 不整批拦;无表头 → 整批 error', () => {
-    const ctx: ImportCtx = {}
-    const props = entry.modalProps(ctx)
-    const cp = props.customParse as (m: string[][]) => { records?: Rec[]; error?: string }
-    const res = cp([
+  it('cpMeter / elecCost 同款', () => {
+    expect(customOf('cpMeter')([
       ['运营商', '桩名', '日期', '充电量(kWh)', '手续费(元)', '收益(元)', '备注'],
       ['小桔', '快充1', '2026-07-01', '850.5', '42.5', '680', ''],
-      ['小桔', '慢充1', '乱码', '1', '1', '0', ''],
-    ])
-    expect(res.error).toBeUndefined()
-    expect(res.records!.length).toBe(1)
-    expect(res.records![0]).toMatchObject({ station: '快充1', readDate: '2026-07-01', chargeKwh: 850.5, fee: 42.5, revenue: 680 })
-    expect(ctx._parseErrors!.length).toBe(1)
-    expect(cp([['快充1', '2026-07-01', '1', '1', '0']]).error).toBeTruthy()
-  })
-
-  it('run:POST /cp-meter/import {rows},解析期错误并入 skipped/errors;rows 空不打 API', async () => {
-    const post = vi.spyOn(http, 'post').mockResolvedValue({ imported: 2, skipped: 0, errors: [] } as never)
-    const rows = [{ station: '快充1', readDate: '2026-07-01', chargeKwh: 1, fee: 1, revenue: 0 }]
-    const res = await entry.run(rows, { _parseErrors: [{ rowIndex: 1, label: 'x', reason: 'r' }] })
-    expect(post).toHaveBeenCalledWith('/cp-meter/import', { rows })
-    expect(res).toEqual({ imported: 2, skipped: 1, errors: [{ rowIndex: 1, label: 'x', reason: 'r' }] })
-    post.mockClear()
-    const empty = await entry.run([], { _parseErrors: [{ rowIndex: 0, label: 'x', reason: 'r' }] })
-    expect(post).not.toHaveBeenCalled()
-    expect(empty).toEqual({ imported: 0, skipped: 1, errors: [{ rowIndex: 0, label: 'x', reason: 'r' }] })
-    post.mockRestore()
-  })
-})
-
-// ── elecCost:customParse 行级错误暂存 + run 契约(解析纯函数单测见 elecCostExcel.spec.ts,同构 pvMeter) ──
-describe('elecCost customParse + run', () => {
-  const entry = IMPORT_TYPES.find(t => t.key === 'elecCost')!
-
-  it('customParse:好行返回后端契约字段,坏行(费项非法)暂存 ctx._parseErrors 不整批拦;无表头 → 整批 error', () => {
-    const ctx: ImportCtx = {}
-    const props = entry.modalProps(ctx)
-    const cp = props.customParse as (m: string[][]) => { records?: Rec[]; error?: string }
-    const res = cp([
+      ['小桔', '慢充1', '2026-07-32', '1', '1', '0', ''],
+    ]).bad!.map(b => [b.row, b.reason])).toEqual([[3, '没有 7月32日']])
+    expect(customOf('elecCost')([
       ['电表', '费项', '拆分', '月份(YYYY-MM)', '金额(元)', '电量(kWh,可空)', '备注'],
       ['一期总表', '工业分时电价', '', '2025-01', '850000', '1200000', ''],
       ['一期总表', '不存在的费项', '', '2025-01', '1', '1', ''],
-    ])
-    expect(res.error).toBeUndefined()
-    expect(res.records!.length).toBe(1)
-    expect(res.records![0]).toMatchObject({ meter: '一期总表', fee: '工业分时电价', split: '', month: '2025-01', amount: 850000, qty: 1200000 })
-    expect(ctx._parseErrors!.length).toBe(1)
-    expect(cp([['一期总表', '工业分时电价', '2025-01', '1']]).error).toBeTruthy()
+    ]).bad!.map(b => [b.row, b.reason])).toEqual([[3, '费项「不存在的费项」认不出']])
   })
 
-  it('run:POST /elec-cost/import {rows},解析期错误并入 skipped/errors;rows 空不打 API', async () => {
+  // 改前认不出月份的行到 run 里才记成错误(importRegistry.ts:883-885)
+  it('❗办公水电:月份认不出的行解析时交 bad;认出的行带上 acctMonth / belongMonth', () => {
+    const res = customOf('office_13')([
+      ['月份', '用电量', '基准用电单价', '用水量', '基准用水单价', '所属月份'],
+      ['2025-08', '3240', '0.92', '186', '4.1', '2025-07'],
+      ['八月下', '3105', '0.92', '172', '4.1', ''],
+      ['2025-09', '3105', '0.92', '172', '4.1', ''],
+    ])
+    expect(res.records!.map(r => [r.acctMonth, r.belongMonth])).toEqual([['2025-08', '2025-07'], ['2025-09', '2025-09']])
+    expect(res.bad!.map(b => [b.row, b.reason, b.cells[0]])).toEqual([[3, '月份认不出', '八月下']])
+  })
+})
+
+describe('run 只发好行(不再并入解析期错误)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('pvMeter / cpMeter / elecCost:POST {rows}(不出底部全局提示);rows 空不打 API', async () => {
     const post = vi.spyOn(http, 'post').mockResolvedValue({ imported: 2, skipped: 0, errors: [] } as never)
-    const rows = [{ meter: '一期总表', fee: '工业分时电价', split: '', month: '2025-01', amount: 1 }]
-    const res = await entry.run(rows, { _parseErrors: [{ rowIndex: 1, label: 'x', reason: 'r' }] })
-    expect(post).toHaveBeenCalledWith('/elec-cost/import', { rows })
-    expect(res).toEqual({ imported: 2, skipped: 1, errors: [{ rowIndex: 1, label: 'x', reason: 'r' }] })
+    for (const [key, url] of [['pvMeter', '/pv-meter/import'], ['cpMeter', '/cp-meter/import'], ['elecCost', '/elec-cost/import']]) {
+      const entry = IMPORT_TYPES.find(t => t.key === key)!
+      const rows = [{ x: 1 }]
+      expect(await entry.run(rows, {})).toEqual({ imported: 2, skipped: 0, errors: [] })
+      expect(post).toHaveBeenLastCalledWith(url, { rows }, { silentNetError: true })
+    }
     post.mockClear()
-    const empty = await entry.run([], { _parseErrors: [{ rowIndex: 0, label: 'x', reason: 'r' }] })
+    expect(await IMPORT_TYPES.find(t => t.key === 'pvMeter')!.run([], {})).toEqual({ imported: 0, skipped: 0, errors: [] })
     expect(post).not.toHaveBeenCalled()
-    expect(empty).toEqual({ imported: 0, skipped: 1, errors: [{ rowIndex: 0, label: 'x', reason: 'r' }] })
     post.mockRestore()
   })
 })
 
+// ── runImport:一个落点一条导入记录;被拒也记;带回 logIds ──
 describe('runImport', () => {
   beforeEach(() => vi.clearAllMocks())
+  const recorded = () => vi.mocked(importLogApi.record).mock.calls.map(c => c[0])
 
-  it('runs entry then records log with resolved status, returns result', async () => {
+  it('runs entry then records log with resolved status, returns { res, logIds }', async () => {
+    vi.mocked(importLogApi.record).mockResolvedValueOnce({ id: 41 } as never)
     const salary = IMPORT_TYPES.find(t => t.key === 'salary')!
     const spy = vi.spyOn(salary, 'run').mockResolvedValue({ imported: 9, skipped: 1, errors: [] })
-    const res = await runImport('salary', [], { year: 2026, month: 5 }, 's.xlsx')
+    const { res, logIds } = await runImport('salary', [], { year: 2026, month: 5 }, 's.xlsx')
     expect(res).toEqual({ imported: 9, skipped: 1, errors: [] })
+    expect(logIds).toEqual([41])
     expect(importLogApi.record).toHaveBeenCalledWith(expect.objectContaining({
-      dataType: 'salary', fileName: 's.xlsx', ok: 9, warn: 1, status: 'partial',
+      dataType: 'salary', typeLabel: '附表12 工资明细', fileName: 's.xlsx', rows: 10, ok: 9, warn: 1, status: 'partial',
     }))
+    spy.mockRestore()
+  })
+
+  it('后端 skipped 就是 errors 条数:要核对的行不重复算', async () => {
+    const pv = IMPORT_TYPES.find(t => t.key === 'pvMeter')!
+    const err = { rowIndex: 0, label: 'x', reason: '站名不认识' }
+    const spy = vi.spyOn(pv, 'run').mockResolvedValue({ imported: 9, skipped: 1, errors: [err] })
+    await runImport('pvMeter', [{ readDate: '2026-09-01' }, { readDate: '2026-09-30' }], {}, '')
+    expect(recorded()[0]).toMatchObject({ rows: 10, ok: 9, warn: 1, status: 'partial', fileName: '（粘贴）',
+      periodFrom: '2026-09-01', periodTo: '2026-09-30', companyId: null, zone: null })
+    spy.mockRestore()
+  })
+
+  it('核对页里导不了、没发的行(_run.bad)记进「要核对」', async () => {
+    const spy = vi.spyOn(IMPORT_TYPES.find(t => t.key === 'pvMeter')!, 'run').mockResolvedValue({ imported: 9, skipped: 0, errors: [] })
+    await runImport('pvMeter', [], { _run: { bad: 2, recording: () => {} } as never }, 'p.xlsx')
+    expect(recorded()[0]).toMatchObject({ rows: 11, ok: 9, warn: 2, status: 'partial' })
     spy.mockRestore()
   })
 
@@ -652,12 +670,169 @@ describe('runImport', () => {
     vi.mocked(importLogApi.record).mockRejectedValueOnce(new Error('net'))
     const pv = IMPORT_TYPES.find(t => t.key === 'pv')!
     const spy = vi.spyOn(pv, 'run').mockResolvedValue({ imported: 3, skipped: 0, errors: [] })
-    await expect(runImport('pv', [], {}, 'p.xlsx')).resolves.toMatchObject({ imported: 3 })
+    await expect(runImport('pv', [], {}, 'p.xlsx')).resolves.toMatchObject({ res: { imported: 3 }, logIds: [] })
     spy.mockRestore()
   })
 
   it('throws on unknown type', async () => {
     await expect(runImport('bogus', [], {}, 'x.xlsx')).rejects.toThrow('unknown import type')
+  })
+
+  // 附表10 逐段:一段(一个期区一个月)一条,行数按段计
+  it('❗附表10 每段一条记录:期区 + 月份 + 这一段的行数', async () => {
+    const imp = vi.spyOn(s10Api, 'importRows')
+      .mockResolvedValueOnce({ imported: 96, skipped: 0, errors: [] })
+      .mockResolvedValueOnce({ imported: 86, skipped: 2, errors: [{ rowIndex: 1, label: 'x', reason: 'y' }, { rowIndex: 2, label: 'z', reason: 'y' }] })
+    const picks = [
+      { year: 2026, month: 9, phase: 1, records: [{ tenantName: '甲' }] },
+      { year: 2026, month: 9, phase: 2, records: [{ tenantName: '乙' }] },
+    ]
+    const { res } = await runImport('s10', picks, {}, '附表10-9月.xlsx')
+    expect(res.imported).toBe(182)
+    expect(recorded().map(r => [r.periodFrom, r.periodTo, r.zone, r.rows, r.ok, r.warn, r.status])).toEqual([
+      ['2026-09', '2026-09', '1', 96, 96, 0, 'complete'],
+      ['2026-09', '2026-09', '2', 88, 86, 2, 'partial'],
+    ])
+    imp.mockRestore()
+  })
+
+  // 一次请求写几个区:按后端回的行号拆回各区,一个区一条(图 B46「园区抄表 · 9月 · 三期」那样)
+  it('❗园区抄表一次请求三个区 → 一个区一条,errors 按行号归到所在的区', async () => {
+    const post = vi.spyOn(http, 'post').mockResolvedValue({
+      imported: 4, skipped: 1, errors: [{ rowIndex: 2, label: 'B-2', reason: '编码认到别的区' }],
+    } as never)
+    const rows = [
+      { zone: 'p1', ym: '2026-09', name: 'A-1' }, { zone: 'p2', ym: '2026-09', name: 'B-1' },
+      { zone: 'p2', ym: '2026-09', name: 'B-2' }, { zone: 'p3', ym: '2026-09', name: 'C-1' }, { zone: 'p1', ym: '2026-09', name: 'A-2' },
+    ]
+    await runImport('meter', rows, {}, '9月抄表.xlsx')
+    expect(recorded().map(r => [r.zone, r.periodFrom, r.rows, r.ok, r.warn, r.status])).toEqual([
+      ['p1', '2026-09', 2, 2, 0, 'complete'],
+      ['p2', '2026-09', 2, 1, 1, 'partial'],
+      ['p3', '2026-09', 1, 1, 0, 'complete'],
+    ])
+    post.mockRestore()
+  })
+
+  it('三大报表一次请求几家公司 → 一家一条,公司 id 由 run 认完(新建的也有)写回', async () => {
+    vi.mocked(companyApi.list).mockResolvedValue([{ id: 1, name: '租赁' }] as never)
+    vi.mocked(companyApi.create).mockResolvedValue({ id: 7, name: '水电' } as never)
+    const imp = vi.spyOn(reportApi, 'import').mockResolvedValue({ imported: 6, skipped: 0, errors: [] })
+    const picks = [
+      { label: '租赁', records: [{ rowKey: 'r1', end: 1 }, { rowKey: 'r2', end: 2 }] },
+      { label: '水电', records: [{ rowKey: 'r1', end: 3 }] },
+    ]
+    await runImport('report_bs', picks, { year: 2026, month: 9 }, 'bs.xlsx')
+    expect(recorded().map(r => [r.companyId, r.periodFrom, r.ok])).toEqual([[1, '2026-09', 2], [7, '2026-09', 1]])
+    imp.mockRestore()
+  })
+
+  // 破坏验证:deriveStatus 改回「imported 0 就 rejected」→ 第一句红;record 不从 errors 取原因 → 第二句的 note 红
+  it('❗按段拆的记录:写进 0 格也没报错(科目余额表某家期末全为 0)不记被拒;一段的行全被后端拒掉 → 被拒 + 第一条原因', async () => {
+    vi.mocked(companyApi.list).mockResolvedValue([{ id: 1, name: '租赁' }, { id: 2, name: '综合' }] as never)
+    const imp = vi.spyOn(reportApi, 'import').mockResolvedValue({ imported: 2, skipped: 0, errors: [] })
+    const acct = (k: string) => ({ rowKey: k, code: k, name: k })
+    const picks = [
+      { label: '租赁', records: [{ account: acct('1001'), amounts: { endDr: 5 } }, { account: acct('1002'), amounts: { endDr: 7 } }] },
+      { label: '综合', records: [{ account: acct('1001'), amounts: { endDr: 0 } }] },   // 期末全为 0:cells 滤空
+    ]
+    await runImport('report_tb', picks, { year: 2026, month: 9 }, 'tb.xlsx')
+    expect(recorded().map(r => [r.companyId, r.ok, r.warn, r.status])).toEqual([[1, 2, 0, 'complete'], [2, 0, 0, 'complete']])
+    imp.mockRestore()
+
+    vi.clearAllMocks()
+    const post = vi.spyOn(http, 'post').mockResolvedValue({
+      imported: 1, skipped: 2, errors: [{ rowIndex: 1, label: 'B-1', reason: '编码认到别的区' }, { rowIndex: 2, label: 'B-2', reason: '表名对不上' }],
+    } as never)
+    await runImport('meter', [
+      { zone: 'p1', ym: '2026-09', name: 'A-1' }, { zone: 'p2', ym: '2026-09', name: 'B-1' }, { zone: 'p2', ym: '2026-09', name: 'B-2' },
+    ], {}, '9月抄表.xlsx')
+    expect(recorded().map(r => [r.zone, r.status, r.note])).toEqual([
+      ['p1', 'complete', undefined], ['p2', 'rejected', '编码认到别的区 等 2 行'],
+    ])
+    post.mockRestore()
+  })
+
+  // 改前抛错就不记(importRegistry.ts:1091):整单被拒(4xx,含审核闸)记一条 rejected + 后端原因
+  it('❗整单被拒(4xx 信封)→ 记一条 rejected,note 写后端 message,照样抛给弹窗', async () => {
+    const gate = { code: 409, message: '9月已审核，不能再导入' }
+    const spy = vi.spyOn(IMPORT_TYPES.find(t => t.key === 'salary')!, 'run').mockRejectedValue(gate)
+    await expect(runImport('salary', [{ year: 2026, month: 9, records: [] }], { year: 2026, month: 9 }, 's.xlsx')).rejects.toBe(gate)
+    expect(recorded()).toEqual([expect.objectContaining({
+      dataType: 'salary', status: 'rejected', note: '9月已审核，不能再导入', ok: 0, periodFrom: '2026-09', periodTo: '2026-09',
+    })])
+    spy.mockRestore()
+  })
+
+  it('❗断网 / 5xx 不记被拒;断之前已经写进去的段照记', async () => {
+    const imp = vi.spyOn(s10Api, 'importRows')
+      .mockResolvedValueOnce({ imported: 96, skipped: 0, errors: [] })
+      .mockRejectedValueOnce({ code: 500, message: '服务器内部错误' })
+    const picks = [
+      { year: 2026, month: 9, phase: 1, records: [{ tenantName: '甲' }] },
+      { year: 2026, month: 9, phase: 2, records: [{ tenantName: '乙' }] },
+    ]
+    await expect(runImport('s10', picks, {}, 'x.xlsx')).rejects.toMatchObject({ code: 500 })
+    expect(recorded().map(r => [r.zone, r.status])).toEqual([['1', 'complete']])
+    imp.mockRestore()
+  })
+
+  it('前端自己抛的(不是后端拒的)不记被拒', async () => {
+    const spy = vi.spyOn(IMPORT_TYPES.find(t => t.key === 'pv')!, 'run').mockRejectedValue(new Error('已退出编辑'))
+    await expect(runImport('pv', [], {}, 'x.xlsx')).rejects.toThrow('已退出编辑')
+    expect(importLogApi.record).not.toHaveBeenCalled()
+    spy.mockRestore()
+  })
+})
+
+// ── 导入记录「去看」:各屏已认的深链参数;被拒 / 旧记录(没有结构列)不出 ──
+describe('viewLink', () => {
+  const log = (dataType: string, o: Partial<ImportLogDTO> = {}): ImportLogDTO => ({
+    id: 1, dataType, typeLabel: '', fileName: '', target: null, rows: 1, ok: 1, warn: 0, status: 'complete',
+    operator: null, createdAt: '', periodFrom: null, periodTo: null, companyId: null, zone: null, note: null, ...o,
+  })
+  const link = (key: string, o: Partial<ImportLogDTO>) => IMPORT_TYPES.find(t => t.key === key)!.viewLink(log(key, o))
+
+  it('❗各类落到自己的屏与期', () => {
+    expect(link('ledger', { periodFrom: '2026-09', periodTo: '2026-09', companyId: 3 })).toEqual({ path: '/ledger', query: { p: '2026-09', co: '3' } })
+    expect(link('s10', { periodFrom: '2026-09', periodTo: '2026-09', zone: '2' })).toEqual({ path: '/sales-income', query: { p: '2026-09', co: '2' } })
+    expect(link('pvMeter', { periodFrom: '2026-10-01', periodTo: '2026-10-09' })).toEqual({ path: '/pv-income', query: { p: '2026-10', mode: 'meter' } })
+    expect(link('cpMeter', { periodFrom: '2026-10-01', periodTo: '2026-10-09' })).toEqual({ path: '/car-charging', query: { p: '2026-10', mode: 'meter' } })
+    expect(link('meter', { periodFrom: '2026-09', periodTo: '2026-09', zone: 'p3' })).toEqual({ path: '/meters', query: { p: '2026-09' } })
+    expect(link('charging_8', { periodFrom: '2026-01', periodTo: '2026-08' })).toEqual({ path: '/ebike-charging', query: { p: '2026', mode: 'summary' } })
+    expect(link('elecCost', { periodFrom: '2026-09', periodTo: '2026-09' })).toEqual({ path: '/elec-cost', query: { p: '2026-09', mode: 'cost' } })
+    expect(link('office_14', { periodFrom: '2026-01', periodTo: '2026-09' })).toEqual({ path: '/utilities', query: { p: '2026', tab: 'phase3' } })
+    expect(link('report_tb', { periodFrom: '2026-09', periodTo: '2026-09', companyId: 2 })).toEqual({ path: '/trial-balance', query: { p: '2026-09', co: '2' } })
+    expect(link('pnl_s3', { periodFrom: '2026', periodTo: '2026' })).toEqual({ path: '/water-pnl', query: { p: '2026' } })
+    expect(link('contractFull', {})).toEqual({ path: '/contracts', query: {} })
+  })
+
+  it('❗被拒的、旧记录(结构列全空)不出去看', () => {
+    expect(link('ledger', { status: 'rejected', periodFrom: '2026-09', companyId: 3 })).toBeNull()
+    expect(link('contractFull', { status: 'rejected' })).toBeNull()
+    expect(link('ledger', {})).toBeNull()
+    expect(link('meter', {})).toBeNull()
+  })
+})
+
+// ── 台账进核对页先问一次:文件标题的月份、要导到的那个月会盖掉几家 ──
+describe('ledger precheck', () => {
+  const entry = IMPORT_TYPES.find(t => t.key === 'ledger')!
+  beforeEach(() => vi.clearAllMocks())
+
+  it('❗fileYm = 标题识别的月;existing = 那个月已有台账、文件里也有的家数(去重)', async () => {
+    vi.mocked(ledgerApi.month).mockResolvedValue({ rows: [{ tenantName: '恒毅' }, { tenantName: '叙丰' }, { tenantName: '澜川' }] } as never)
+    const recs = [
+      { tenantName: '恒毅', __ymDetected: { year: 2026, month: 8 } }, { tenantName: '恒毅' }, { tenantName: '叙丰' }, { tenantName: '新户' },
+    ]
+    expect(await entry.precheck!({ companyId: 3, year: 2026, month: 9 }, { records: recs })).toEqual({ fileYm: '2026-08', existing: 2 })
+    expect(ledgerApi.month).toHaveBeenCalledWith(3, 2026, 9)
+  })
+
+  it('分段台账不预检;拉不到本月数据不拦', async () => {
+    expect(await entry.precheck!({ companyId: 3, year: 2026, month: 9 }, {})).toEqual({})
+    vi.mocked(ledgerApi.month).mockRejectedValue(new Error('net'))
+    expect(await entry.precheck!({ companyId: 3, year: 2026, month: 9 }, { records: [{ tenantName: '甲' }] })).toEqual({ fileYm: undefined })
   })
 })
 
@@ -668,7 +843,7 @@ describe('contractFull run', () => {
     startDate: '2023-07-14', endDate: '2026-07-13', termText: 'x', termType: 'explicit',
     tierPriceNote: null, remark: null, lines: [] }
 
-  it('run:POST /contracts/import-full {rows},report 并入后端 action,解析错误并入 skipped', async () => {
+  it('run:POST /contracts/import-full {rows},report 并入后端 action,结果原样返回', async () => {
     const dl = vi.fn(() => 'blob:x')   // jsdom 无 createObjectURL,直接挂桩
     URL.createObjectURL = dl as unknown as typeof URL.createObjectURL
     URL.revokeObjectURL = vi.fn()
@@ -678,23 +853,21 @@ describe('contractFull run', () => {
       report: [{ rowIndex: 0, contractNo: 'C2024M-001', action: 'matched', message: null }],
     } as never)
     const ctx: ImportCtx = {
-      _parseErrors: [{ rowIndex: 3, label: '李富全', reason: '收费项目为空,跳过' }],
       _cfReport: [{ phase: '一期', tenantName: '金纳', tenantFullName: '佛山市金纳新材料有限公司',
         lineCount: 5, segments: 1, term: '2023-07-14~2026-07-13', termType: 'explicit',
         detailTotal: 55000, summaryTotal: 55000, diff: 0, issues: '' }],
     }
     const res = await entry.run([row], ctx)
-    expect(post).toHaveBeenCalledWith('/contracts/import-full', { rows: [row] })
+    expect(post).toHaveBeenCalledWith('/contracts/import-full', { rows: [row] }, { silentNetError: true })
     expect(ctx._cfReport![0].issues).toBe('匹配合同 C2024M-001')
     expect(dl).toHaveBeenCalled()
-    expect(res).toEqual({ imported: 1, skipped: 1, errors: [{ rowIndex: 3, label: '李富全', reason: '收费项目为空,跳过' }] })
+    expect(res).toEqual({ imported: 1, skipped: 0, errors: [] })
     vi.restoreAllMocks()
   })
 
   it('run:rows 空 → 不打 API', async () => {
     const post = vi.spyOn(http, 'post')
-    expect(await entry.run([], { _parseErrors: [{ rowIndex: 0, label: 'x', reason: 'r' }] }))
-      .toEqual({ imported: 0, skipped: 1, errors: [{ rowIndex: 0, label: 'x', reason: 'r' }] })
+    expect(await entry.run([], {})).toEqual({ imported: 0, skipped: 0, errors: [] })
     expect(post).not.toHaveBeenCalled()
     post.mockRestore()
   })
@@ -706,7 +879,7 @@ describe('meter run', () => {
     const post = vi.spyOn(http, 'post').mockResolvedValue({ imported: 1, skipped: 0, errors: [], matches: { code: 1 }, notices: [notice] } as never)
     const entry = IMPORT_TYPES.find(t => t.key === 'meter')!
     const res = await entry.run([{ kind: 'elec', name: 'A-1', code: 'X1', ym: '2024-02', curr: 10 }], {})
-    expect(post).toHaveBeenCalledWith('/meters/import', expect.anything())
+    expect(post).toHaveBeenCalledWith('/meters/import', expect.anything(), { silentNetError: true })
     expect(res.notices).toEqual([notice])
     post.mockRestore()
   })
@@ -717,9 +890,9 @@ describe('meter run', () => {
     const post = vi.spyOn(http, 'post').mockResolvedValue({
       imported: 1, skipped: 0, errors: [], matches: [], notices: [notice], batchId: 'b-1', changes: [change],
     } as never)
-    const res = await runImport('meter', [{ kind: 'elec', name: 'A-1', ym: '2024-02', curr: 10 }], {}, '2024年2月抄表.xlsx')
+    const { res } = await runImport('meter', [{ kind: 'elec', name: 'A-1', ym: '2024-02', curr: 10 }], {}, '2024年2月抄表.xlsx')
     expect(post).toHaveBeenCalledWith('/meters/import',
-      { rows: [expect.objectContaining({ name: 'A-1' })], fileName: '2024年2月抄表.xlsx' })
+      { rows: [expect.objectContaining({ name: 'A-1' })], fileName: '2024年2月抄表.xlsx' }, { silentNetError: true })
     expect(res.batchId).toBe('b-1')
     expect(res.changes).toEqual([change])
     expect(res.notices).toEqual([notice])

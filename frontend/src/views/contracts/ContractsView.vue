@@ -318,7 +318,7 @@ const importCtx: ImportCtx = {}
 // 导入弹窗的 runner(UI-OVERLAY-SPEC §8):弹窗不关,写 + 记 import_log → 刷新;失败交给弹窗的失败卡(不走回执)。
 // 条款不改列表行,但重拉保证抽屉再开时读到最新
 async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome> {
-  return settle(await runImport('billingTerms', payload as never, { ...importCtx, _run: p }, fileName), p, reload)
+  return settle((await runImport('billingTerms', payload as never, { ...importCtx, _run: p }, fileName)).res, p, reload)
 }
 </script>
 
@@ -444,8 +444,6 @@ async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunP
     <!-- 5.5 计费字段导入(registry key 'billingTerms':整册 parseWorkbook → 每户一段勾选;多合同户人选其一) -->
     <FpImportModal
       v-if="importing"
-      title="导入 合同计费字段 · 月度租金工作簿"
-      sub="上传月度租金工作簿(每租户一 sheet,含通知单块),自动提取五费项(租金/管理费/基础维护/电梯/变压器)按 sheet 名落到生效合同固定字段;多合同户请勾选归属合同;流水账等 sheet 须手录;导入后自动下载到户报告"
       v-bind="parserProps('billingTerms', importCtx)"
       :runner="onImport"
       @close="importing = false"

@@ -5,9 +5,11 @@
 import { flattenCols, type BookDef } from '../types/book'
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
-import { addResult, type ImportRunProgress } from '@/components/import/importRun'
+import { addResult, failKind, failReason, type ImportRunProgress } from '@/components/import/importRun'
+import type { ImportLogDTO } from '@/types/importLog'
+import { periodLink } from '@/nav/deepLink'
 // 各域「导入行」契约:以前 run() 一律 `as never` 上抛,后端契约的键名一次都没被编译器对过(P5-5)
-import type { LedgerImportRow } from '@/types/ledger'
+import { overwriteTargets, type LedgerImportRow } from '@/types/ledger'
 import type { S10ImportRow, S10Fees } from '@/types/s10'
 import type { PvImportRow } from '@/types/pv'
 import type { ChargingImportRow } from '@/types/charging'
@@ -41,10 +43,9 @@ import { importBudget, BUDGET_SHEET_RE } from '@/utils/importBudget'
 import { PNL_SOT_FROM_YEAR } from '@/analysis/budget'
 import { fetchPnlSummary, invalidateAnaCache } from '@/analysis/anaData'
 import { importChargingRows, type ChargingCatLite } from '@/utils/importChargingRows'
-import { parsePvMeterRows, PV_METER_TEMPLATE_COLS } from '@/utils/pvMeterExcel'
-import { parseCpMeterRows, CP_METER_TEMPLATE_COLS } from '@/utils/cpMeterExcel'
-import { parseMeterWorkbook, METER_TEMPLATE_COLS, METER_KIND_LABEL } from '@/utils/meterExcel'
-import { zoneLabel } from '@/utils/zoneLabel'
+import { parsePvMeterRows } from '@/utils/pvMeterExcel'
+import { parseCpMeterRows } from '@/utils/cpMeterExcel'
+import { parseMeterWorkbook, resolveZones, METER_TEMPLATE_COLS, METER_KIND_LABEL } from '@/utils/meterExcel'
 import { tenantApi } from '@/api/tenant'
 import { buildingApi } from '@/api/building'
 import { contractApi } from '@/api/contract'
@@ -55,12 +56,15 @@ import http from '@/api/index'
 import { importElecRows } from '@/utils/importElecRows'
 import { parseElecCostRows, ELEC_COST_TEMPLATE_COLS } from '@/utils/elecCostExcel'
 import { parseYearMonth } from '@/utils/parseYearMonth'
-import { matchByHeader, isGarbageTenantName, type ColumnMapEntry } from '@/utils/importHeaderMatch'
+import { matchByHeader, isGarbageTenantName, type BadRow, type ColumnMapEntry } from '@/utils/importHeaderMatch'
 import { FEE_KEYS, lgColumns } from '@/utils/ledgerColumns'
 import { PHASE_LAYOUT, leavesOf } from '@/views/sales-income/layout'
 
 // ── 解析工具/常量(临时复制自各屏,T5 dedup 时归并) ─────────────
 const pad2 = (m: number) => String(m).padStart(2, '0')
+const ymOf = (y: number, m: number) => `${y}-${pad2(m)}`
+// 导入写口一律不出底部全局提示:失败原因由导入弹窗的失败卡写(UI-OVERLAY-SPEC §8)
+const SILENT = { silentNetError: true }
 
 // key 收紧到 SalaryImportRow 的字段名:改后端契约字段名时这张表直接编译失败,不再静默丢列
 const SALARY_COLUMN_MAP: (ColumnMapEntry & { key: Exclude<keyof SalaryImportRow, 'tenantName'> })[] = [
@@ -82,7 +86,7 @@ const SALARY_COLUMN_MAP: (ColumnMapEntry & { key: Exclude<keyof SalaryImportRow,
   { label: '其他', key: 'otherDeduct' },
 ]
 const SALARY_SECTION_RE = /(\d{4})\s*年\s*(\d{1,2})\s*月.*工资表/
-const UTILITIES_COLUMN_MAP = [
+export const UTILITIES_COLUMN_MAP = [
   { label: '用电量', key: 'elecQty' },
   { label: '基准用电单价', key: 'elecPrice' },
   { label: '用水量', key: 'waterQty' },
@@ -223,6 +227,9 @@ function parseLedgerSheet(matrix: string[][], ctxPrev: number | null, sheetName:
   return { records, error: undefined as string | undefined, ym, company, unmatched: res.unmatched ?? [] }
 }
 
+// 少一张损益附表查看权:预算这次不拿损益收入合计核对,核对页的提示条上说(RBAC §15.7)
+const BUDGET_NO_PNL = '有的损益附表你看不了，这次导入不拿它们的收入合计核对预算。'
+
 // budget 导入:2025 起发生额列以 pnl 实时推算为单一事实源(spec「导入」节)。解析器是同步的,
 // 打开弹窗时预取各 pnl 年收入年Σ进模块级 map;解析时查不到(未返回/该年无数据)即跳过校验。
 const budgetPnlRevenue = new Map<number, number>()
@@ -263,7 +270,60 @@ const phaseLayoutsCol = {
 
 // ── 类型 ────────────────────────────────────────────────
 export type ImportStatus = 'complete' | 'partial' | 'rejected'
-type Pick = { label?: string; year?: number; month?: number; phase?: number; records: ImportRec[] }
+// companyId:台账整册 / 三大报表的 run 认完(或新建完)公司写回这一段,target 据此记「导到哪家」
+type Pick = { label?: string; year?: number; month?: number; phase?: number; records: ImportRec[]; companyId?: number }
+
+/** 导入中心的五组(照 ix-v2-main,组名同侧栏分组) */
+export type ImportGroup = '出账 · 每月工序' | '记账 · 按月' | '记账 · 按年' | '账簿与报表' | '档案'
+/** 一条导入记录「导到哪」(import_log 的结构列):期 = 月 2026-09 / 日 2026-10-01 / 年 2026;不按期的(合同)全空。
+ *  zone:抄表 / 附表6 / 附表11 是 p1/p2/p3/dorm,附表10 是期区号 1..4 */
+export interface ImportTarget { periodFrom: string | null; periodTo: string | null; companyId: number | null; zone: string | null }
+/** 「去看」深链(periodLink 的形状) */
+export type ImportViewLink = { path: string; query: Record<string, string> }
+
+const T = (o: Partial<ImportTarget> = {}): ImportTarget => ({ periodFrom: null, periodTo: null, companyId: null, zone: null, ...o })
+// 一串同格式的期 → 起止(月 / 日 / 年串按字典序比就是按时间比)
+const span = (ps: (string | null | undefined)[]): Partial<ImportTarget> => {
+  const s = ps.filter((p): p is string => !!p).sort()
+  return s.length ? { periodFrom: s[0], periodTo: s[s.length - 1] } : {}
+}
+const one = (p: string | null): Partial<ImportTarget> => ({ periodFrom: p, periodTo: p })
+const ctxYm = (ctx: ImportCtx) => (ctx.year && ctx.month ? ymOf(ctx.year, ctx.month) : null)
+// 平铺 / 勾选段两种 payload 都摊成行
+const recsOf = (payload?: ImportRec[] | Pick[]): ImportRec[] =>
+  (payload ?? []).flatMap(p => (Array.isArray((p as Pick).records) ? (p as Pick).records : [p as ImportRec]))
+// 一次请求写几个期区(抄表 / 附表6 / 附表11):按期区分组(首现序),每组一个落点
+function byZone(recs: ImportRec[], zoneOf: (r: ImportRec) => unknown, periodOf: (r: ImportRec) => unknown): ImportTarget[] {
+  const g = new Map<string, string[]>()
+  for (const r of recs) { const z = String(zoneOf(r) ?? ''); g.set(z, [...(g.get(z) ?? []), String(periodOf(r) ?? '')]) }
+  return [...g].map(([zone, ps]) => T({ zone: zone || null, ...span(ps) }))
+}
+// 同一请求的结果按行号拆回各期区(顺序同 byZone),报给 runImport 一段一条导入记录。
+// 这几个后端写口 skipped = errors 条数、每行要么写进去要么有一条 error,所以一段写入数 = 段行数 − 段 error 数。
+function splitByZone(ctx: ImportCtx, res: ImportResultDTO, zones: unknown[]): void {
+  const keys = zones.map(z => String(z ?? ''))
+  const order = [...new Set(keys)]
+  if (!ctx._seg || order.length < 2) return
+  order.forEach((k, i) => {
+    const errors = res.errors.filter(e => keys[e.rowIndex] === k)
+    ctx._seg!(i, { imported: keys.filter(x => x === k).length - errors.length, skipped: errors.length, errors })
+  })
+}
+// 三大报表一次请求写几家公司:后端 errors 的行号是段号(那家整段没导),其余段写入数 = 该段的格数
+function splitByCompany(ctx: ImportCtx, res: ImportResultDTO, sections: ReportCompanySection[]): void {
+  if (!ctx._seg || sections.length < 2) return
+  sections.forEach((s, i) => {
+    const errors = res.errors.filter(e => e.rowIndex === i)
+    ctx._seg!(i, errors.length ? { imported: 0, skipped: errors.length, errors } : { imported: s.cells.length, skipped: 0, errors: [] })
+  })
+}
+// 三大报表:有公司名的段才发(run 里 `if (!name) continue`),target 用同一个过滤保持段号对齐
+const namedPicks = (picks?: ImportRec[] | Pick[]) => ((picks ?? []) as Pick[]).filter(p => (p.label ?? '').trim())
+// 「去看」:被拒的记录没有去看;期取年 / 取月
+const live = (l: ImportLogDTO) => l.status !== 'rejected'
+const y4 = (p?: string | null) => p?.slice(0, 4)
+const ym7 = (p?: string | null) => (p && p.length >= 7 ? p.slice(0, 7) : undefined)
+
 // ctx:hub 每次导入创建一个,同一引用同时传给 modalProps 与 run(charging 用它在解析期暂存 parseErrors)
 export interface ImportCtx {
   companyId?: number; companyName?: string; year?: number; month?: number
@@ -272,7 +332,6 @@ export interface ImportCtx {
   buildings?: { id: number; name: string }[]  // 楼栋清单(meter §6.3 区域→楼栋映射;视图填,BuildingDTO 结构兼容)
   zones?: { code: string; name: string }[]    // 期区清单(meter sheet 名反查用;视图填,ZoneDTO 结构兼容;缺省回落 meterExcel 写死三区)
   cats?: ChargingCatLite[]   // 充电桩运营商字典(视图填 ChargingCatDTO[],结构兼容)
-  _parseErrors?: { rowIndex: number; label: string; reason: string }[]
   // ── 账册模板(BOOK-WORKBENCH-SPEC):视图填,缺省走静态 lgColumns/layout.ts 回退 ──
   bookDef?: BookDef                            // 台账:当前账册现行版定义(列匹配以它为准,含 hidden)
   bookDefs?: Partial<Record<number, BookDef>>  // 附表10:phase→现行版定义(office=1∪4,factory=2∪3 取并集)
@@ -286,23 +345,48 @@ export interface ImportCtx {
   _run?: ImportRunProgress
   // 逐段导入每段发之前问一次还能不能写(附表10 传 () => edit):false = 已失锁(被接管 / 授权到期),停下不再发
   _alive?: () => boolean
+  // runImport 自己挂的:run 每写完一个落点(target 里第 k 个)报一次结果,一个落点记一条导入记录。
+  // 逐段 / 逐月 / 逐年 / 逐公司发请求的在每次请求后报;一次请求写几个期区 / 公司的按行号拆好再报;只有一个落点的不用报
+  _seg?: (k: number, res: ImportResultDTO) => void
 }
 export interface ImportTypeEntry {
-  key: string; label: string; tag: string; icon: string
-  context: 'none' | 'ledger'
+  key: string; icon: string
+  group: ImportGroup
+  /** 名字(跟侧栏):导入中心行名、弹窗标题、导入记录的 typeLabel */
+  name: string
+  /** 导入中心清单行名下面那句(照 ix-v2-main) */
+  desc: string
+  /** 导入弹窗标题下面那句(照 md-v2-copy;落点是某屏里另一本账的,句尾带「，导进 X」) */
+  sub: string
+  /** 「文件要长这样」下面的规矩,一条一行 */
+  rules: string[]
+  /** 「文件要长这样」小样表:表头 + 两行示例 */
+  sample: { head: string[]; rows: string[][] }
+  /** 导完「去 X 看」的 X */
+  landing: string
+  /** 计数单位:导入 N 行 / 覆盖 N 家 / 导入 N 块表 / 合同按户 */
+  unit: '行' | '户' | '家' | '段' | '块表'
   // 该类导入写进的那一屏的写权(任一即可;RBAC-SPEC §15.7:权限挂在 import kind 上,不挂导入中心这个屏)。
   // 取值须与后端写规则表对同一条 path 的判定一致 —— 前端只管磁贴显不显示,后端才是边界。
   module: readonly string[]
-  // title/templateCols 为 FpImportModal 必填项,收紧类型让 v-bind 展开处可静态校验
-  modalProps: (ctx: ImportCtx) => { title: string; templateCols: string[] } & Record<string, unknown>
+  // templateCols 为 FpImportModal 必填项,收紧类型让 v-bind 展开处可静态校验(标题、sub 不在这里:parserProps 用 name / sub 拼)
+  modalProps: (ctx: ImportCtx) => { templateCols: string[] } & Record<string, unknown>
   // fileName:runImport 透传的文件名(粘贴为「（粘贴）」);目前只有抄表导入把它交给后端(进档案变更记录)
   run: (payload: ImportRec[] | Pick[], ctx: ImportCtx, fileName?: string) => Promise<ImportResultDTO>
-  target: (ctx: ImportCtx) => string | null
+  /** 导到哪:一个落点一条(附表10 每段、工资每月、水电每年、台账整册每家每月;抄表 / 附表6 / 附表11 每个期区;三大报表每家公司)。
+   *  runImport 在 run 之后调(台账、报表的公司 id 那时才认完),顺序与 ctx._seg 的 k 对齐 */
+  target: (ctx: ImportCtx, picks?: ImportRec[] | Pick[]) => ImportTarget[]
+  /** 导入记录的「去看」:用各屏已认的深链参数;旧记录没有结构列、被拒的记录 → null */
+  viewLink: (log: ImportLogDTO) => ImportViewLink | null
+  /** 只有台账:进核对页时问一次 —— 文件标题写的月份(fileYm,YYYY-MM)、要导到的那个月已有几家会被盖掉(existing);
+   *  分段台账两样都不给(同改前不预检) */
+  precheck?: (ctx: ImportCtx, parsed: { records?: ImportRec[] }) => Promise<{ fileYm?: string; existing?: number }>
 }
 
+// 一行没写进去、又有没导的 = 被拒;一行没写、也没有没导的(如科目余额表某家期末全为 0,cells 被滤空)不算被拒
 export function deriveStatus(res: ImportResultDTO): ImportStatus {
   const warn = res.skipped + res.errors.length
-  if (res.imported === 0) return 'rejected'
+  if (res.imported === 0 && warn > 0) return 'rejected'
   return warn > 0 ? 'partial' : 'complete'
 }
 
@@ -396,23 +480,44 @@ function downloadCsv(name: string, text: string): void {
   URL.revokeObjectURL(url)
 }
 
-// 抄表导入补录条的分区兜底清单(§4 fallbackPicker):静态基础集(与后端 /api/zones 保证的
-// {p1,p2,p3,dorm} 基础集一致),不接 zones store —— 本文件是纯注册表模块,
-// importRegistry.spec.ts 没搭 Pinia,店内取 store 会在无 active Pinia 时直接抛错。
-// Finding 5:meterExcel.ts 的 DEFAULT_ZONES 故意比这里窄一区(没有 p3)——那份 fallback 复刻的是
-// 三期开工前的抄表导入原样行为,这份是手动分区选择器,两处不同是刻意的,不要合并。
-const METER_FALLBACK_ZONES = ['p1', 'p2', 'p3', 'dorm']
+// 损益附表 1–5 在侧栏的名字(fpNav.ts「损益附表」那一组)
+const PNL_NAV_LABEL = ['附表1 租金损益', '附表2 用电损益', '附表3 用水损益', '附表4 运管损益', '附表5 费用支出']
 
-export const IMPORT_TYPES: ImportTypeEntry[] = [
+// 光伏 / 充电桩抄表:「文件要长这样」小样表和核对页用同一行表头(下载模板仍用 *_TEMPLATE_COLS 那份带括号单位的)
+const PV_METER_HEAD = ['期数', '楼栋', '日期', '发电总量 kWh', '自消纳 kWh', '上网 kWh', '备注']
+const CP_METER_HEAD = ['运营商', '桩名', '日期', '充电量 kWh', '手续费 元', '收益 元', '备注']
+
+// 导入中心清单的组内顺序(照 ix-v2-main):出账 · 每月工序 / 记账 · 按月 / 记账 · 按年 / 账簿与报表 / 档案
+const ORDER = ['meter', 'pvMeter', 'cpMeter', 'ledger', 's10', 'salary', 'pv', 'charging_7', 'charging_8', 'elec', 'elecCost',
+  'office_13', 'office_14', 'report_is', 'report_bs', 'report_tb', 'pnl_s1', 'pnl_s2', 'pnl_s3', 'pnl_s4', 'pnl_s5', 'budget',
+  'contractFull', 'billingTerms']
+
+// 办公 / 三期水电:解析时已把月份认成 acctMonth / belongMonth;逐年一次请求(target 与 run 共用这一份分组,段号对齐)
+function officeByYear(recs: ImportRec[]): OfficeImportRow[][] {
+  const by = new Map<string, OfficeImportRow[]>()
+  for (const r of recs) {
+    const y = String(r.acctMonth).slice(0, 4)
+    by.set(y, [...(by.get(y) ?? []), { acctMonth: r.acctMonth as string, belongMonth: r.belongMonth as string,
+      elecQty: r.elecQty as number, elecPrice: r.elecPrice as number, waterQty: r.waterQty as number, waterPrice: r.waterPrice as number }])
+  }
+  return [...by.values()]
+}
+
+const TYPES: ImportTypeEntry[] = [
   {
-    key: 'ledger', label: '月度台账', tag: '凭证', icon: 'book-open', context: 'ledger', module: ['ledger:edit'],
+    key: 'ledger', icon: 'book-open', module: ['ledger:edit'],
+    group: '记账 · 按月', name: '月度台账', desc: '各公司收款台账，先选公司', sub: '一家公司一个月的收款台账',
+    rules: ['按表头名字认列，先后不要紧', '合计行、应收合计、本月结余这些系统算的列自动跳过', '同公司同月再导，文件里有的列盖掉旧数'],
+    sample: { head: ['租户', '8月结余', '厂房租金', '厂房企业管理服务费', '基准电费', '基准水费', '本月收款', '备注'], rows: [
+      ['恒毅', '0', '60,000', '8,250', '6,120', '1,880', '76,250', ''],
+      ['叙丰', '12,400', '30,000', '4,100', '3,600', '1,200', '30,000', ''],
+    ] },
+    landing: '月度台账', unit: '家',
     modalProps: (ctx) => {
       const prev = ctx.month ? (ctx.month === 1 ? 12 : ctx.month - 1) : null
       // §3 现行版全局生效:弹窗「模板列顺序」与确认屏预览列序都跟账册现行版;无 def 才退静态种子表
       const columnMap = ctx.bookDef ? ledgerColumnMapFromDef(ctx.bookDef, prev) : ledgerColumnMap(prev)
       return {
-        title: '导入 月度台账' + (ctx.companyName ? ' · ' + ctx.companyName : ''),
-        sub: `按表头名字自动识别列,需包含表头;可整表粘贴(前置公司列/合计行/应收结余列自动忽略),导入到 ${ctx.year} 年 ${ctx.month} 月`,
         templateCols: ['租户', ...columnMap.map(c => c.label)],
         // 整册多 sheet 拆段(规范§二;粘贴路径被 FpImportModal 包装为单 sheet,语义同旧 customParse)
         // v3:每 sheet 先按块起点切分(同 sheet 多月纵向堆叠,规范§五),每块作虚拟 sheet 原样解析
@@ -486,23 +591,25 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
         // 逐公司一次请求:后面哪家失败,前面写进去的、自动新建的公司都不回滚 —— 报给导入弹窗的失败卡照实写
         let made = 0
         try {
-          for (const p of picks) {
+          for (const [k, p] of picks.entries()) {
             const first = p.records[0]
             if (!first) continue
             const cname = String(first.__company ?? '').trim()
             let companyId = ctx.companyId
             if (cname) {
               if (!byName.has(cname)) {
-                const created = await companyApi.create(cname)   // 未匹配自动新建
+                const created = await companyApi.create(cname, true)   // 未匹配自动新建
                 byName.set(cname, created.id)
                 made++
               }
               companyId = byName.get(cname)
             }
+            p.companyId = companyId   // target 记「导到哪家」(新建的公司这时才有 id)
             const ym = first.__ym as { year: number; month: number } | undefined
             const res = await ledgerApi.import(companyId!, ym?.year ?? ctx.year!, ym?.month ?? ctx.month!,
               { rows: p.records.map(toLedgerRow) })
             agg.imported += res.imported; agg.skipped += res.skipped; agg.errors.push(...res.errors)
+            ctx._seg?.(k, res)   // 一家一个月一条导入记录
             ctx._run?.wrote(agg.imported)
           }
         } catch (e) {
@@ -514,10 +621,37 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       return ledgerApi.import(ctx.companyId!, ctx.year!, ctx.month!,
         { rows: (payload as ImportRec[]).map(toLedgerRow) })
     },
-    target: (ctx) => `${ctx.year}-${pad2(ctx.month!)} · ${ctx.companyName ?? ''}`,
+    target: (ctx, picks) => {
+      const ps = picks as Pick[] | undefined
+      if (!Array.isArray(ps?.[0]?.records)) return [T({ ...one(ctxYm(ctx)), companyId: ctx.companyId ?? null })]
+      return ps!.map(p => {
+        const ym = p.records[0]?.__ym as { year: number; month: number } | undefined
+        return T({ ...one(ym ? ymOf(ym.year, ym.month) : ctxYm(ctx)), companyId: p.companyId ?? null })
+      })
+    },
+    viewLink: (l) => (live(l) && l.periodFrom && l.companyId != null ? periodLink('ledger', { p: l.periodFrom, co: l.companyId }) : null),
+    precheck: async (ctx, parsed) => {
+      const recs = parsed.records
+      if (!recs?.length) return {}
+      const d = recs[0].__ymDetected as { year: number; month: number } | undefined
+      const fileYm = d ? ymOf(d.year, d.month) : undefined
+      if (ctx.companyId == null || !ctx.year || !ctx.month) return { fileYm }
+      try {
+        // 按去重租户家数计,结转虚行不算(同改前 LedgerView 的覆盖确认:overwriteTargets)
+        const rows = (await ledgerApi.month(ctx.companyId, ctx.year, ctx.month)).rows
+        return { fileYm, existing: overwriteTargets(rows, recs.map(r => r.tenantName as string | undefined)) }
+      } catch { return { fileYm } }   // 拉不到本月数据不拦(同改前)
+    },
   },
   {
-    key: 's10', label: '销售收入', tag: '附表10', icon: 'coins', context: 'none', module: ['sales-income:edit'],
+    key: 's10', icon: 'coins', module: ['sales-income:edit'],
+    group: '记账 · 按月', name: '附表10 销售收入', desc: '各期区销售收入', sub: '整本销售收入表，一次导多个月、多个期区',
+    rules: ['每段标题写年月和期区，认不出的下一步手选', '一段一段导，断了能接着导'],
+    sample: { head: ['租户名称', '厂房租金', '厂房企业管理服务费', '厂房基础设施维护费', '基准电费', '基准水费'], rows: [
+      ['恒毅', '60,000', '8,250', '1,320', '6,120', '1,880'],
+      ['叙丰', '30,000', '4,100', '660', '3,600', '1,200'],
+    ] },
+    landing: '附表10 销售收入', unit: '行',
     modalProps: (ctx) => {
       // 模板驱动版面:office=一期∪宿舍册并集,factory=二期∪三期并集(解析期 phase 未知只能并集;
       // 某期册没有的 c_ 列,后端按期册校验会逐行报错,不会静默入错册)。def 缺省 → 静态 layout.ts 回退。
@@ -534,8 +668,6 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
         ? { office: union([ctx.bookDefs[1], ctx.bookDefs[4]]), factory: union([ctx.bookDefs[2], ctx.bookDefs[3]]) }
         : phaseLayoutsCol
       return {
-        title: '导入 附表10 · 智能整表',
-        sub: '上传/粘贴整张多段 Excel,系统按标题行自动拆段、识别年/月/期与版面,核对后逐段导入',
         templateCols: layouts.factory.map(c => c.label),
         phaseLayouts: layouts, nameLabels: ['租户名称', '租户'],
       }
@@ -567,83 +699,99 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
         const res = await s10Api.importRows({ phase: p.phase!, acctMonth, rows })
         agg = addResult(agg, res)   // 各段的提示(未绑定租户)也并进来,结果卡「n 条提示」要用
         seg?.segDone(k, res)
+        ctx._seg?.(k, res)   // 一段(一个期区一个月)一条导入记录
       }
       return agg
     },
-    target: () => null,
+    target: (_ctx, picks) => ((picks ?? []) as Pick[]).map(p =>
+      T({ ...one(p.year && p.month ? ymOf(p.year, p.month) : null), zone: p.phase != null ? String(p.phase) : null })),
+    viewLink: (l) => (live(l) && l.periodFrom && l.zone ? periodLink('sales-income', { p: l.periodFrom, co: Number(l.zone) }) : null),
   },
   {
-    key: 'pv', label: '光伏发电', tag: '附表6', icon: 'sun', context: 'none', module: ['pv-income:edit'],
+    key: 'pv', icon: 'sun', module: ['pv-income:edit'],
+    group: '记账 · 按年', name: '附表6 光伏发电', desc: '全年分月光伏收益', sub: '光伏发电明细，一期、二期、三期叠在一张表里',
+    rules: ['按段分期区，按表头名字认列'],
+    sample: { head: ['记账月份', '发生月份', '消纳电量', '消纳电费金额', '上网电量', '上网收益'], rows: [
+      ['2026-08', '2026-07', '52,310', '36,617', '18,420', '7,368'],
+      ['2026-09', '2026-08', '49,870', '34,909', '17,950', '7,180'],
+    ] },
+    landing: '附表6 光伏发电', unit: '行',
     modalProps: () => ({
-      title: '导入 附表6 · 光伏发电',
-      sub: '上传/粘贴多段堆叠的光伏发电明细(一期/二期/三期),系统按段切期、按表头识别列,逐段核对后导入',
       templateCols: ['记账月份', '发生月份', '消纳电量', '消纳电费金额', '上网电量', '上网收益'],
       customParse: (matrix: string[][]) => importPvSections(matrix),
     }),
-    run: async (payload) => {
-      const picks = payload as Pick[]
-      const rows = picks.flatMap(p => p.records)
+    run: async (payload, ctx) => {
+      const rows = recsOf(payload)
       if (!rows.length) return zero()
-      return pvApi.importRows(rows.map(toPvRow))
+      const res = await pvApi.importRows(rows.map(toPvRow))
+      splitByZone(ctx, res, rows.map(r => r.phaseId))   // 一次请求几个期区:一个期区一条导入记录
+      return res
     },
-    target: () => null,
+    target: (_ctx, picks) => byZone(recsOf(picks), r => r.phaseId, r => r.acctMonth),
+    viewLink: (l) => (live(l) && y4(l.periodTo) ? periodLink('pv-income', { p: y4(l.periodTo)!, extra: { mode: 'summary' } }) : null),
   },
   // ── 光伏分栋抄表(PV-METER-SPEC §3):长表一行=一站一日,(电站,日期)幂等 upsert ──
   {
-    key: 'pvMeter', label: '光伏抄表', tag: '抄表', icon: 'gauge', context: 'none', module: ['pv-income:reading'],
-    modalProps: (ctx) => ({
-      title: '导入 光伏抄表 · 分栋明细',
-      sub: '上传/粘贴分栋抄表长表(一行=一站一日),按表头识别列;(电站,日期)重复导入自动覆盖,未知站名/非法日期逐行报告不整批拦',
-      templateCols: PV_METER_TEMPLATE_COLS,
-      // 行级错误(非法日期/负电量)暂存 ctx,run 时并入结果面板(同 charging 模式);表头识别失败才整批拦
-      customParse: (matrix: string[][]) => {
-        const { records, errors } = parsePvMeterRows(matrix)
-        ctx._parseErrors = errors.filter(e => e.rowIndex >= 0)
-        const headerErr = errors.find(e => e.rowIndex < 0)
-        if (headerErr) return { error: headerErr.reason }
-        return { records }
-      },
+    key: 'pvMeter', icon: 'gauge', module: ['pv-income:reading'],
+    group: '出账 · 每月工序', name: '光伏抄表', desc: '各栋光伏每天的发电读数',
+    sub: '各栋光伏每天的发电读数，导进光伏分栋抄表',
+    // 照 md-v2-pick 图(比对照表多「列的先后不要紧，按表头名字认」半句,图为准)
+    rules: ['一行是一个楼栋一天；列的先后不要紧，按表头名字认', '同一楼栋同一天再导，用新数盖掉旧数', '认不出的楼栋或日期单独列出来，不耽误别的行'],
+    sample: { head: PV_METER_HEAD, rows: [
+      ['一期', '1栋', '2026-09-01', '812.4', '640.2', '172.2', ''],
+      ['二期', '7栋', '2026-09-01', '640.2', '512.0', '128.2', '换过表'],
+    ] },
+    landing: '光伏分栋抄表', unit: '行',
+    modalProps: () => ({
+      templateCols: PV_METER_HEAD,
+      // 日期认不出 / 电量为负的行解析时就交 bad(核对页列出,不发);表头识别失败才整批拦
+      customParse: (matrix: string[][]) => parsePvMeterRows(matrix),
     }),
     // ponytail: 直调端点不经 api/pvMeter.ts——该文件归视图域(Wave2-A)所有,双代理并行互不阻塞;A 落地后可换 pvMeterApi
-    run: async (payload, ctx) => {
+    run: async (payload) => {
       const rows = payload as ImportRec[]
-      const pe = ctx._parseErrors ?? []
-      if (!rows.length) return { imported: 0, skipped: pe.length, errors: pe }
-      const res = await http.post<ImportResultDTO>('/pv-meter/import', { rows })
-      return { imported: res.imported, skipped: res.skipped + pe.length, errors: [...res.errors, ...pe] }
+      if (!rows.length) return zero()
+      return http.post<ImportResultDTO>('/pv-meter/import', { rows }, SILENT)
     },
-    target: () => null,
+    target: (_ctx, picks) => [T(span(recsOf(picks).map(r => r.readDate as string)))],
+    viewLink: (l) => (live(l) && ym7(l.periodTo) ? periodLink('pv-income', { p: ym7(l.periodTo)!, extra: { mode: 'meter' } }) : null),
   },
   // ── 充电桩分桩明细(CP-METER-SPEC §3):长表一行=一桩一日,(桩,日)幂等 upsert;与附表7/8 月度汇总完全独立 ──
   {
-    key: 'cpMeter', label: '充电桩明细', tag: '抄表', icon: 'plug', context: 'none', module: ['car-charging:reading', 'ebike-charging:reading'],
-    modalProps: (ctx) => ({
-      title: '导入 充电桩明细 · 分桩抄表',
-      sub: '上传/粘贴分桩充电长表(一行=一桩一日),按表头识别列;(桩,日期)重复导入自动覆盖,未知桩名/非法日期逐行报告不整批拦',
-      templateCols: CP_METER_TEMPLATE_COLS,
-      // 行级错误(非法日期/负金额)暂存 ctx,run 时并入结果面板(同 pvMeter 模式);表头识别失败才整批拦
-      customParse: (matrix: string[][]) => {
-        const { records, errors } = parseCpMeterRows(matrix)
-        ctx._parseErrors = errors.filter(e => e.rowIndex >= 0)
-        const headerErr = errors.find(e => e.rowIndex < 0)
-        if (headerErr) return { error: headerErr.reason }
-        return { records }
-      },
+    key: 'cpMeter', icon: 'plug', module: ['car-charging:reading', 'ebike-charging:reading'],
+    group: '出账 · 每月工序', name: '充电桩抄表', desc: '各桩每天的充电明细', sub: '各桩每天的充电明细，导进充电桩分桩明细',
+    rules: ['一行是一个桩一天', '同桩同一天再导，新数盖掉旧数', '认不出的桩名或日期单独列出'],
+    sample: { head: CP_METER_HEAD, rows: [
+      ['A充电', '快充1', '2026-09-01', '850.5', '42.5', '680.0', ''],
+      ['B充电', '慢充1', '2026-09-01', '312.0', '15.6', '249.6', ''],
+    ] },
+    landing: '充电桩分桩明细', unit: '行',
+    modalProps: () => ({
+      templateCols: CP_METER_HEAD,
+      // 日期认不出 / 金额为负的行解析时就交 bad(同 pvMeter);表头识别失败才整批拦
+      customParse: (matrix: string[][]) => parseCpMeterRows(matrix),
     }),
     // ponytail: 直调端点不经 api/cpMeter.ts——该文件归视图域(W2-A)所有,双代理并行互不阻塞;A 落地后可换 cpMeterApi
-    run: async (payload, ctx) => {
+    run: async (payload) => {
       const rows = payload as ImportRec[]
-      const pe = ctx._parseErrors ?? []
-      if (!rows.length) return { imported: 0, skipped: pe.length, errors: pe }
-      const res = await http.post<ImportResultDTO>('/cp-meter/import', { rows })
-      return { imported: res.imported, skipped: res.skipped + pe.length, errors: [...res.errors, ...pe] }
+      if (!rows.length) return zero()
+      return http.post<ImportResultDTO>('/cp-meter/import', { rows }, SILENT)
     },
-    target: () => null,
+    target: (_ctx, picks) => [T(span(recsOf(picks).map(r => r.readDate as string)))],
+    // ponytail: 记录里不分汽车 / 电动车,去看落汽车充电桩屏的分桩运营账;要分得让 import_log 多记一列桩型
+    viewLink: (l) => (live(l) && ym7(l.periodTo) ? periodLink('car-charging', { p: ym7(l.periodTo)!, extra: { mode: 'meter' } }) : null),
   },
   // ── 园区抄表(METER-SPEC §4):整册多 sheet(一期/二期/宿舍×电/水),每 sheet 月份自理;
-  //    表按 (分区,类别,标识) 自动建档,读数按 (表,月) 幂等覆盖;未识别 sheet(租户缴费单等)静默跳过 ──
+  //    表按 (分区,类别,标识) 自动建档,读数按 (表,月) 幂等覆盖;认不出的 sheet(租户缴费单等)列成导不了的段 ──
   {
-    key: 'meter', label: '园区抄表', tag: '抄表', icon: 'gauge', context: 'none', module: ['meters:edit'],
+    key: 'meter', icon: 'gauge', module: ['meters:edit'],
+    group: '出账 · 每月工序', name: '园区抄表', desc: '各期区水电表读数', sub: '各期区水表、电表的本月读数',
+    rules: ['整本抄表册：每个区的电、水各一张表，标题写年月', '直接粘一块也行，下一步问是哪个月哪个区', '同表同月再导，新数盖掉旧数', '没抄到的表记成漏抄'],
+    sample: { head: ['区域', '企业名称', '表类', '电表名称', '电表编码', '电表倍率', '上月行至', '本月行至'], rows: [
+      ['1栋', '恒毅', '户内用电', '电表①', '230220001238', '1', '12,034', '12,890'],
+      ['1栋', '叙丰', '户内用电', '电表②', '230220001239', '40', '332.1', '351.6'],
+    ] },
+    landing: '园区抄表', unit: '块表',
     modalProps: (ctx) => {
       // v2 拆分(§6.2/§6.3)要租户库(带 id 才能挂 tenantId)+楼栋清单:打开弹窗即预取进模块缓存
       // (同 budget 预取模式,解析在用户选完文件后通常已就绪);视图喂的 ctx.tenantNames/ctx.buildings 作后备。
@@ -653,14 +801,14 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       const ym = ctx.year && ctx.month
         ? `${ctx.year}-${String(ctx.month).padStart(2, '0')}`
         : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+      // 区的选项与 sheet 识别同一份期区清单(ctx.zones;拉不到回落 meterExcel 的写死三区)
+      const zones = resolveZones(ctx.zones)
       return {
-        title: '导入 园区抄表 · 水电表读数',
-        sub: '上传整册抄表工作簿(各期区×电/水 sheet,标题行含年月),识别 sheet 逐段勾选;表自动建档,同表同月重复导入自动覆盖;缺本月读数照收并标「漏抄」。直接粘数据块(没有标题行)也行——账期在弹窗里选。',
         templateCols: METER_TEMPLATE_COLS,
-        // 标题缺年月/分区/类别时的补录值(默认取抄表页当前年月);弹窗只在真用上时才把这条露出来
+        // 标题缺月份 / 区 / 表类任一项时的补问值(三项都预填:月份取抄表页当前年月);解析结果的 ask 说缺的是哪几项
         fallbackPicker: {
-          ym, zone: 'p1', kind: 'elec',
-          zones: METER_FALLBACK_ZONES.map(value => ({ value, label: zoneLabel(value) })),
+          ym, zone: zones[0].code, kind: 'elec',
+          zones: zones.map(z => ({ value: z.code, label: z.name })),
           kinds: Object.entries(METER_KIND_LABEL).map(([value, label]) => ({ value, label })),
         },
         parseWorkbook: (sheets: { name: string; matrix: string[][] }[], fb?: { ym: string; zone: string; kind: string }) =>
@@ -671,13 +819,12 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       }
     },
     // sections 勾选段与单段平铺两种 payload 形态都可能到达(parseWorkbook 契约)
-    run: async (payload, _ctx, fileName) => {
-      const rows = (payload as (ImportRec | { records: ImportRec[] })[])
-        .flatMap(p => 'records' in p && Array.isArray((p as { records: ImportRec[] }).records)
-          ? (p as { records: ImportRec[] }).records : [p as ImportRec])
-      if (!rows.length) return { imported: 0, skipped: 0, errors: [] }
+    run: async (payload, ctx, fileName) => {
+      const rows = recsOf(payload)
+      if (!rows.length) return zero()
       // fileName 进档案变更记录(METER-TIMELINE-SPEC §1.4),抽屉「档案变更」与撤销导入靠它认出是哪一次
-      const res = await http.post<ImportResultDTO>('/meters/import', { rows, fileName })
+      const res = await http.post<ImportResultDTO>('/meters/import', { rows, fileName }, SILENT)
+      splitByZone(ctx, res, rows.map(r => r.zone))   // 一次请求几个区:一个区一条导入记录
       // matches 透传:结果弹层显示 按编码命中/按位置命中/按标识命中/新建 四档(METER-IMPORT-SPEC §4)
       // notices 透传:换楼/企业名称空保留/人工设定未覆盖这些「已导入、仅需知会」的提示,漏了弹层就收不到
       // batchId / changes 透传:撤销这次导入的档案改动、结果弹层列「表 · 字段 · 旧 → 新 · 影响月」(SPEC §3.2 §3.5)
@@ -686,7 +833,8 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
         batchId: res.batchId, changes: res.changes,
       }
     },
-    target: () => null,
+    target: (_ctx, picks) => byZone(recsOf(picks), r => r.zone, r => r.ym),
+    viewLink: (l) => (live(l) && ym7(l.periodTo) ? periodLink('meters', { p: ym7(l.periodTo)! }) : null),
   },
   // ── 合同计费行(BILL-FORWARD 刀1 三次返工 §1.2):月度租金工作簿整册提取,
   //    sheet=租户,块探测 A1~A7 七型;停止收敛——每费项行 1:1 出一条计费行(位置+13枚举+面积/单价/系数/房数);
@@ -694,33 +842,31 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
   //    无合同户报「须先建合同」;须手录 sheet 逐条报告不整批拦;后端按 source 覆盖(manual 保留,import 覆盖);
   //    导入成功自动落「到户报告」CSV(282 户逐户有名) ──
   {
-    key: 'billingTerms', label: '合同计费行', tag: '合同', icon: 'file-text', context: 'none', module: ['contracts:edit'],
+    key: 'billingTerms', icon: 'file-text', module: ['contracts:edit'],
+    group: '档案', name: '合同 · 月度租金工作簿', desc: '每户一张，更新计费行', sub: '每户一张表的月度租金工作簿，用来更新合同计费行',
+    rules: ['一户有厂房、宿舍两份合同时按位置分开', '同名的几份合同下一步让你选', '没合同的户要先建合同', '导完自动下载一份逐户报告'],
+    sample: { head: ['物业名称', '收费项目', '面积', '单价', '本月金额'], rows: [
+      ['1栋3楼', '厂房租金', '1,200', '25', '30,000'],
+      ['1栋3楼', '企业管理服务费', '1,200', '3.5', '4,200'],
+    ] },
+    landing: '合同管理', unit: '户',
     modalProps: (ctx) => {
       prefetchBillingContracts()
       return {
-        title: '导入 合同计费行 · 月度租金工作簿',
-        sub: '上传月度租金工作簿(每租户一 sheet,含通知单块),每费项行 1:1 提取为计费行(位置×费项×计费方式)落到生效合同;多合同户按位置自动路由(厂房/宿舍),同名多合同请勾选归属;流水账/无合同 sheet 须手录/须先建合同;导入后自动下载到户报告',
         templateCols: BILLING_TERM_TEMPLATE_COLS,
+        // 须手录 / 须先建合同 / 名字像好几户的 sheet 也列成段(records 空、不勾、reason 写原因)
         parseWorkbook: (sheets: { name: string; matrix: string[][] }[]) => {
-          const { sections, errors, report } = parseBillingTermsWorkbook(sheets, { contracts: billingContracts ?? [] })
-          ctx._parseErrors = errors.map(e => ({ rowIndex: Math.max(e.rowIndex, 0), label: e.label, reason: e.reason }))
+          const { sections, report } = parseBillingTermsWorkbook(sheets, { contracts: billingContracts ?? [] })
           ctx._bfReport = report
-          if (!sections.length) {
-            return { error: errors.length
-              ? `没有可自动提取的计费行:${errors.length} 项须手录/须先建合同(如 ${errors[0].label}:${errors[0].reason})`
-              : '没识别到通知单块:sheet 需含「收费项目」表头。' }
-          }
+          if (!sections.length) return { error: '没识别到通知单块:sheet 需含「收费项目」表头。' }
           return { sections }
         },
       }
     },
     // sections 勾选段与单段平铺两种 payload 形态都可能到达(parseWorkbook 契约,同 meter)
     run: async (payload, ctx) => {
-      const recs = (payload as (ImportRec | { records: ImportRec[] })[])
-        .flatMap(p => 'records' in p && Array.isArray((p as { records: ImportRec[] }).records)
-          ? (p as { records: ImportRec[] }).records : [p as ImportRec])
-      const pe = ctx._parseErrors ?? []
-      if (!recs.length) return { imported: 0, skipped: pe.length, errors: pe }
+      const recs = recsOf(payload)
+      if (!recs.length) return zero()
       // 剥去 __preview 等 UI 字段,只上契约字段(§1.7 Row{contractId, lines})
       const rows: BillingLinesImportRow[] = recs.map(r => ({
         contractId: r.contractId as number, lines: (r.lines ?? []) as BillingLinesImportRow['lines'],
@@ -728,26 +874,32 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       const res = await contractApi.importBillingLines(rows)
       // 到户报告 CSV(§1.2-8):解析期清点,注:手录(manual)行后端保留,报告以册内提取行为准
       if (ctx._bfReport?.length) downloadCsv('计费字段到户报告', billingReportCsv(ctx._bfReport))
-      return { imported: res.imported, skipped: res.skipped + pe.length, errors: [...res.errors, ...pe] }
+      return res
     },
-    target: () => null,
+    target: () => [T()],   // 合同不按期
+    viewLink: (l) => (live(l) ? { path: '/contracts', query: {} } : null),
   },
   // ── 合同汇总册(园区租户租金合同明细汇总):一户一行 = 期限四件套 + 整组计费行 → POST /contracts/import-full。
   //    明细长表出计费行(1:1,按位置聚段)、汇总宽表出期限四件套与 AB 对账;租户匹配/合同新建在后端(全称优先,简称+期兜底);
   //    导入后自动下载到户报告 CSV(逐户:费项数/位置段数/期限/AB 差异/问题 + 后端匹配还是新建) ──
   {
-    key: 'contractFull', label: '合同期限+计费行', tag: '合同', icon: 'file-text', context: 'none', module: ['contracts:edit'],
+    key: 'contractFull', icon: 'file-text', module: ['contracts:edit'],
+    group: '档案', name: '合同 · 汇总册', desc: '期限和计费行，新户自动建合同', sub: '整本合同汇总册（明细表 + 汇总表）',
+    rules: ['一户一份合同，新户自动建', '缺租期的户标成待补', '导完自动下载一份逐户报告'],
+    sample: { head: ['期', '租户', '企业全称', '物业名称', '收费项目', '面积', '单价', '月单价'], rows: [
+      ['一期', '恒毅', '恒毅精密制造有限公司', '1栋3楼', '厂房租金', '1,200', '25', '30,000'],
+      ['一期', '恒毅', '恒毅精密制造有限公司', '1栋3楼', '企业管理服务费', '1,200', '3.5', '4,200'],
+    ] },
+    landing: '合同管理', unit: '户',
     modalProps: (ctx) => ({
-      title: '导入 合同汇总册 · 期限 + 计费行',
-      sub: '上传「园区租户租金合同明细汇总」整册(明细/汇总两表):明细表逐费项出计费行,汇总表出租赁期限起止/类型/原文/阶梯价并对账月费用合计;一户一份合同,在册的匹配、不在册的自动建档;期限缺失户标「待人工补」;导入后自动下载到户报告',
       templateCols: CONTRACT_FULL_TEMPLATE_COLS,
       parseWorkbook: (sheets: { name: string; matrix: string[][] }[]) => {
-        const { rows, report, errors, error } = parseContractWorkbook(sheets)
-        ctx._parseErrors = errors.map(e => ({ rowIndex: Math.max(e.rowIndex, 0), label: e.label, reason: e.reason }))
+        const { rows, report, bad, error } = parseContractWorkbook(sheets)
         ctx._cfReport = report
         if (error) return { error }
-        if (!rows.length) return { error: '没解析到任何租户行:请确认整册含「明细」「汇总」两表。' }
+        if (!rows.length && !bad.length) return { error: '没解析到任何租户行:请确认整册含「明细」「汇总」两表。' }
         return {
+          bad,
           records: rows.map((r, i) => ({ ...r, __preview: [
             r.phase ? `${r.phase}期` : '', r.tenantName, r.tenantFullName, r.buildingHint,
             r.lines.length, report[i]?.detailTotal ?? '', r.startDate ? `${r.startDate}~${r.endDate}` : '待人工补', r.termType ?? '',
@@ -759,11 +911,10 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       // ContractFullRow 是 type 而非 interface(见 importContractSummary.ts),自带隐式索引签名,
       // 与 ImportRec 可比 —— 单次断言即可,不必 `as unknown as`
       const rows = payload as ContractFullRow[]
-      const pe = ctx._parseErrors ?? []
-      if (!rows.length) return { imported: 0, skipped: pe.length, errors: pe }
+      if (!rows.length) return zero()
       const res = await http.post<{ result: ImportResultDTO; matched: number; created: number
         report: { rowIndex: number; contractNo: string | null; action: string; message: string | null }[] }>(
-        '/contracts/import-full', { rows })
+        '/contracts/import-full', { rows }, SILENT)
       // 到户报告:解析期清点 + 后端匹配结果(rowIndex 与 rows/report 同序)
       const rep = ctx._cfReport ?? []
       if (rep.length) {
@@ -774,81 +925,99 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
         }
         downloadCsv('合同汇总册到户报告', contractReportCsv(rep))
       }
-      const r = res.result
-      return { imported: r.imported, skipped: r.skipped + pe.length, errors: [...r.errors, ...pe] }
+      return res.result
     },
-    target: () => null,
+    target: () => [T()],   // 合同不按期
+    viewLink: (l) => (live(l) ? { path: '/contracts', query: {} } : null),
   },
-  ...([7, 8] as const).map(no => ({
-    key: `charging_${no}`, label: no === 7 ? '汽车充电桩' : '电动车充电桩',
-    tag: `附表${no}`, icon: no === 7 ? 'car' : 'bike', context: 'none' as const,
+  ...([7, 8] as const).map((no): ImportTypeEntry => ({
+    key: `charging_${no}`,
+    icon: no === 7 ? 'car' : 'bike',
     module: [no === 7 ? 'car-charging:edit' : 'ebike-charging:edit'],
+    group: '记账 · 按年', name: no === 7 ? '附表7 汽车充电桩' : '附表8 电动车充电桩',
+    desc: no === 7 ? '全年分月汽车充电收入' : '全年分月电动车充电收入',
+    sub: no === 7 ? '汽车充电桩的损益明细' : '电动车充电桩的损益明细',
+    rules: ['按运营商、按月份认行'],
+    sample: no === 7
+      ? { head: ['充电桩类别', '月份', '充电电量', '充电收入金额', '手续费及服务费金额', '充电成本金额'], rows: [
+          ['A充电', '2026-08', '12,480', '14,976', '449', '9,360'],
+          ['', '2026-09', '13,020', '15,624', '469', '9,765'],
+        ] }
+      : { head: ['充电桩类别', '月份', '充电电量', '充电金额收入', '充电成本'], rows: [
+          ['B充电', '2026-08', '3,260', '2,934', '1,956'],
+          ['', '2026-09', '3,410', '3,069', '2,046'],
+        ] },
+    landing: no === 7 ? '附表7 汽车充电桩' : '附表8 电动车充电桩', unit: '行',
     modalProps: (ctx: ImportCtx) => ({
-      title: `导入 附表${no} · 充电桩`,
-      sub: '上传/粘贴充电桩损益明细,系统按运营商、按月份识别行,核对后导入',
       templateCols: ['充电桩类别', '记账月', '充电电量', '手续费及服务费', '充电成本'],
-      customParse: (matrix: string[][]) => {
-        const { records, errors } = importChargingRows(matrix, no, ctx.cats ?? [])
-        ctx._parseErrors = errors.filter(e => e.rowIndex >= 0)
-        const headerErr = errors.find(e => e.rowIndex < 0)
-        if (headerErr) return { error: headerErr.reason }
-        return { records }
-      },
+      // 月份认不出 / 运营商没登记的行解析时就交 bad;表头识别失败才整批拦
+      customParse: (matrix: string[][]) => importChargingRows(matrix, no, ctx.cats ?? []),
     }),
-    run: async (payload: ImportRec[] | Pick[], ctx: ImportCtx) => {
+    run: async (payload: ImportRec[] | Pick[]) => {
       const rows = payload as ImportRec[]
-      const res = await chargingApi.importRows(no, { rows: rows.map(toChargingRow) })
-      const pe = ctx._parseErrors ?? []
-      return { imported: res.imported, skipped: res.skipped + pe.length, errors: [...res.errors, ...pe] }
+      return chargingApi.importRows(no, { rows: rows.map(toChargingRow) })
     },
-    target: () => null,
+    target: (_ctx, picks) => [T(span(recsOf(picks).map(r => r.acctMonth as string)))],
+    viewLink: (l) => (live(l) && y4(l.periodTo)
+      ? periodLink(no === 7 ? 'car-charging' : 'ebike-charging', { p: y4(l.periodTo)!, extra: { mode: 'summary' } }) : null),
   })),
   {
-    key: 'elec', label: '电费成本', tag: '附表11', icon: 'zap', context: 'none', module: ['elec-cost:edit'],
+    key: 'elec', icon: 'zap', module: ['elec-cost:edit'],
+    group: '记账 · 按年', name: '附表11 电费成本', desc: '全年分月电费成本', sub: '电费成本附表，两行表头',
+    rules: ['按记账月和期区分开'],
+    sample: { head: ['记账期', '期', '用电时段', '开票日期', '用电类别', '单位', '电量', '不含税单价', '税率'], rows: [
+      ['202609', '一期', '峰', '2026-09-28', '大工业', 'kWh', '182,400', '0.8812', '13%'],
+      ['', '', '谷', '2026-09-28', '大工业', 'kWh', '96,300', '0.3125', '13%'],
+    ] },
+    landing: '附表11 电费成本', unit: '行',
     modalProps: () => ({
-      title: '导入 附表11 · 电费成本',
-      sub: '上传/粘贴电费成本附表(两行表头),系统按(记账期,期)切分,产电量电费 + 大工业基本电费记录,核对后导入',
       templateCols: ['类型', '期', '记账月份', '用电类别/计费需量', '电量', '单价', '税率'],
       customParse: (matrix: string[][]) => importElecRows(matrix),
     }),
-    run: async (payload) => {
+    run: async (payload, ctx) => {
       const rows = payload as ImportRec[]
-      return elecApi.importRows(rows.map(toElecRow))
+      const res = await elecApi.importRows(rows.map(toElecRow))
+      splitByZone(ctx, res, rows.map(r => r.phaseId))   // 一次请求几个期:一个期一条导入记录
+      return res
     },
-    target: () => null,
+    target: (_ctx, picks) => byZone(recsOf(picks), r => r.phaseId, r => r.acctMonth),
+    viewLink: (l) => (live(l) && y4(l.periodTo) ? periodLink('elec-cost', { p: y4(l.periodTo)!, extra: { mode: 'summary' } }) : null),
   },
   // ── 园区电费成本模型(ELEC-COST-SPEC §5):长表一行=一表一费项一月,(表,月,费项,拆分)幂等 upsert;
   //    与附表11(上一条 elec)完全独立零改动 ──
   {
-    key: 'elecCost', label: '电费成本', tag: '录入', icon: 'zap', context: 'none', module: ['elec-cost:edit'],
-    modalProps: (ctx) => ({
-      title: '导入 电费成本 · 总表费项',
-      sub: '上传/粘贴电费成本长表(一行=一表一费项一月),按表头识别列;(电表,月份,费项,拆分)重复导入自动覆盖,未知电表/费项逐行报告不整批拦',
+    key: 'elecCost', icon: 'zap', module: ['elec-cost:edit'],
+    group: '记账 · 按年', name: '园区电费模型', desc: '各总表每月电费单费项', sub: '各总表每月电费单的费项',
+    rules: ['一行是一块表一个费项一个月', '同表同月同费项再导，新数盖掉旧数', '认不出的表或费项单独列出'],
+    sample: { head: ['电表', '费项', '拆分', '月份', '金额 元', '电量 kWh', '备注'], rows: [
+      ['1号总表', '工业分时电价', '', '2026-09', '85,000', '120,000', ''],
+      ['1号总表', '工业基本电费', '', '2026-09', '12,600', '', ''],
+    ] },
+    landing: '园区电费模型', unit: '行',
+    modalProps: () => ({
       templateCols: ELEC_COST_TEMPLATE_COLS,
-      // 行级错误(费项/拆分/月份/金额非法)暂存 ctx,run 时并入结果面板(同 pvMeter 模式);表头识别失败才整批拦
-      customParse: (matrix: string[][]) => {
-        const { records, errors } = parseElecCostRows(matrix)
-        ctx._parseErrors = errors.filter(e => e.rowIndex >= 0)
-        const headerErr = errors.find(e => e.rowIndex < 0)
-        if (headerErr) return { error: headerErr.reason }
-        return { records }
-      },
+      // 费项 / 拆分 / 月份 / 金额认不出的行解析时就交 bad(同 pvMeter);表头识别失败才整批拦
+      customParse: (matrix: string[][]) => parseElecCostRows(matrix),
     }),
     // ponytail: 直调端点不经 api/elecCost.ts——该文件归视图域所有,双代理并行互不阻塞;视图域落地后可换 elecCostApi
-    run: async (payload, ctx) => {
+    run: async (payload) => {
       const rows = payload as ImportRec[]
-      const pe = ctx._parseErrors ?? []
-      if (!rows.length) return { imported: 0, skipped: pe.length, errors: pe }
-      const res = await http.post<ImportResultDTO>('/elec-cost/import', { rows })
-      return { imported: res.imported, skipped: res.skipped + pe.length, errors: [...res.errors, ...pe] }
+      if (!rows.length) return zero()
+      return http.post<ImportResultDTO>('/elec-cost/import', { rows }, SILENT)
     },
-    target: () => null,
+    target: (_ctx, picks) => [T(span(recsOf(picks).map(r => r.month as string)))],
+    viewLink: (l) => (live(l) && ym7(l.periodTo) ? periodLink('elec-cost', { p: ym7(l.periodTo)!, extra: { mode: 'cost' } }) : null),
   },
   {
-    key: 'salary', label: '工资明细', tag: '附表12', icon: 'wallet', context: 'none', module: ['salary:edit'],   // 2026-10-04 起工资写单列
+    key: 'salary', icon: 'wallet', module: ['salary:edit'],   // 2026-10-04 起工资写单列
+    group: '记账 · 按月', name: '附表12 工资明细', desc: '全员工资表', sub: '整张工资表，可以一次导几个月',
+    rules: ['每月一段，标题写「2026年9月工资表」', '按姓名认人', '下一步核对年月'],
+    sample: { head: ['姓名', '职种/职务', '基本工资', '岗位工资', '绩效奖金', '社保'], rows: [
+      ['张敏', '会计', '4,800', '1,200', '800', '520'],
+      ['李工', '电工', '4,200', '1,000', '600', '480'],
+    ] },
+    landing: '附表12 工资明细', unit: '行',
     modalProps: (ctx) => ({
-      title: '导入 附表12 · 工资明细',
-      sub: '上传/粘贴整张多月工资表,系统按标题行自动拆月、按姓名识别行,核对年/月后逐月导入',
       templateCols: ['姓名', ...SALARY_COLUMN_MAP.map(c => c.label)],
       columnMap: SALARY_COLUMN_MAP, nameLabels: ['姓名'], sectionTitleRe: SALARY_SECTION_RE,
       defaultYear: ctx.year, defaultMonth: ctx.month ?? 1,
@@ -856,56 +1025,72 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
     run: async (payload, ctx) => {
       const picks = payload as Pick[]
       const agg = zero()
-      for (const p of picks) {
+      for (const [k, p] of picks.entries()) {
         const y = p.year ?? ctx.year!; const m = p.month ?? ctx.month ?? 1
         const res = await salaryApi.importRows(y, m, { rows: p.records.map(toSalaryRow) })
         agg.imported += res.imported; agg.skipped += res.skipped; agg.errors.push(...res.errors)
+        ctx._seg?.(k, res)              // 一个月一条导入记录
         ctx._run?.wrote(agg.imported)   // 逐月一次请求:后面哪月被拒,前面的月不回滚
       }
       return agg
     },
-    target: () => null,
+    target: (ctx, picks) => ((picks ?? []) as Pick[]).map(p => T(one(ymOf(p.year ?? ctx.year!, p.month ?? ctx.month ?? 1)))),
+    viewLink: (l) => (live(l) && l.periodFrom ? periodLink('salary', { p: l.periodFrom }) : null),
   },
-  ...([13, 14] as const).map(no => ({
-    key: `office_${no}`, label: no === 13 ? '办公水电' : '三期水电',
-    tag: `附表${no}`, icon: 'plug', context: 'none' as const, module: ['utilities:edit'],
+  ...([13, 14] as const).map((no): ImportTypeEntry => ({
+    key: `office_${no}`,
+    icon: 'plug', module: ['utilities:edit'],
+    group: '记账 · 按年', name: no === 13 ? '附表13 办公水电' : '附表14 三期水电',
+    desc: no === 13 ? '全年分月办公水电' : '全年分月三期水电',
+    sub: no === 13 ? '办公逐月水电表' : '三期逐月水电表',
+    rules: ['按表头名字认列，按月份认行'],
+    sample: { head: ['月份', '用电量', '基准用电单价', '用水量', '基准用水单价', '所属月份'], rows: [
+      ['2026-08', '3,240', '0.92', '186', '4.10', '2026-07'],
+      ['2026-09', '3,105', '0.92', '172', '4.10', '2026-08'],
+    ] },
+    landing: '办公·三期水电', unit: '行',
     modalProps: () => ({
-      title: `导入 附表${no} · ${no === 13 ? '办公水电' : '三期水电'}`,
-      sub: '上传/粘贴逐月水电表,系统按表头名字识别列、按月份识别行,核对后导入',
       templateCols: ['月份', ...UTILITIES_COLUMN_MAP.map(c => c.label)],
-      columnMap: UTILITIES_COLUMN_MAP, nameLabels: ['月份'],
+      // 按表头认列;月份认不出的行解析时就交 bad(改前到 run 里才记成错误)。认出的行带上 acctMonth / belongMonth
+      customParse: (matrix: string[][]) => {
+        const m = matchByHeader(matrix, UTILITIES_COLUMN_MAP, ['月份'])
+        if (m.error) return { error: m.error }
+        const records: ImportRec[] = []
+        const bad: BadRow[] = []
+        m.records.forEach((r, i) => {
+          const ym = parseYearMonth(r.tenantName)
+          if (!ym) { bad.push({ row: m.rows![i] + 1, cells: (r.__preview ?? []).map(v => String(v ?? '')), reason: '月份认不出' }); return }
+          const acctMonth = ymOf(ym.year, ym.month)
+          const bm = parseYearMonth(r.belongMonth, ym.year)
+          records.push({ ...r, acctMonth, belongMonth: bm ? ymOf(bm.year, bm.month) : acctMonth })
+        })
+        return { records, bad }
+      },
     }),
     run: async (payload: ImportRec[] | Pick[], ctx: ImportCtx) => {
-      const recs = payload as ImportRec[]
-      const byYear = new Map<number, OfficeImportRow[]>()
-      const errors: ImportResultDTO['errors'] = []
-      let frontSkipped = 0
-      recs.forEach((r, i) => {
-        const ym = parseYearMonth(r.tenantName)
-        if (!ym) { errors.push({ rowIndex: i, label: String(r.tenantName ?? ''), reason: '无法识别月份' }); frontSkipped++; return }
-        const acctMonth = `${ym.year}-${pad2(ym.month)}`
-        const bm = parseYearMonth(r.belongMonth, ym.year)
-        const belongMonth = bm ? `${bm.year}-${pad2(bm.month)}` : acctMonth
-        const arr = byYear.get(ym.year) ?? []
-        arr.push({ acctMonth, belongMonth, elecQty: r.elecQty as number, elecPrice: r.elecPrice as number,
-          waterQty: r.waterQty as number, waterPrice: r.waterPrice as number })
-        byYear.set(ym.year, arr)
-      })
-      const agg: ImportResultDTO = { imported: 0, skipped: frontSkipped, errors }
-      for (const rows of byYear.values()) {
+      const agg = zero()
+      for (const [k, rows] of officeByYear(payload as ImportRec[]).entries()) {
         const res = await utilitiesApi.importRows(no, { rows })
         agg.imported += res.imported; agg.skipped += res.skipped; agg.errors.push(...res.errors)
+        ctx._seg?.(k, res)              // 一年一条导入记录
         ctx._run?.wrote(agg.imported)   // 逐年一次请求:后面哪年被拒,前面的年不回滚
       }
       return agg
     },
-    target: () => null,
+    target: (_ctx, picks) => officeByYear(recsOf(picks)).map(rows => T(span(rows.map(r => r.acctMonth)))),
+    viewLink: (l) => (live(l) && y4(l.periodTo)
+      ? periodLink('utilities', { p: y4(l.periodTo)!, extra: { tab: no === 13 ? 'office' : 'phase3' } }) : null),
   })),
   {
-    key: 'report_is', label: '利润表', tag: '报表', icon: 'trending-up', context: 'ledger', module: ['income-statement:edit'],
-    modalProps: (ctx) => ({
-      title: '导入 利润表',
-      sub: `上传/粘贴合并多公司的利润表(两行表头,每公司本月/本年累计两列),按公司拆段、未匹配公司自动新建,导入到 ${ctx.year} 年 ${ctx.month} 月`,
+    key: 'report_is', icon: 'trending-up', module: ['income-statement:edit'],
+    group: '账簿与报表', name: '利润表', desc: '各公司利润表', sub: '几家公司合在一张的利润表',
+    rules: ['两行表头，每家公司本月、本年累计两列', '认不出的公司会新建'],
+    sample: { head: ['项目', '行次', '本月金额', '本年累计金额'], rows: [
+      ['一、营业收入', '1', '1,286,400', '10,912,300'],
+      ['减：营业成本', '2', '702,100', '6,014,800'],
+    ] },
+    landing: '利润表', unit: '行',
+    modalProps: () => ({
       templateCols: ['行次', '本月金额', '本年累计金额'],
       sheetMatch: /利润表|损益表/,   // 文件上传按名挑 sheet(修只读 sheet 0 缺口),未命中回退第一个
       customParse: (matrix: string[][]) => importIncomeStatement(matrix),
@@ -922,10 +1107,11 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
         const name = (p.label ?? '').trim()
         if (!name) continue
         if (!byName.has(name)) {
-          const created = await companyApi.create(name)   // 未匹配自动新建
+          const created = await companyApi.create(name, true)   // 未匹配自动新建
           byName.set(name, created.id)
           made++
         }
+        p.companyId = byName.get(name)   // target 记「导到哪家」
         const cells: ReportCell[] = []
         for (const r of p.records) {
           const rowKey = String(r.rowKey)
@@ -934,15 +1120,23 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
         }
         sections.push({ companyName: name, cells })
       }
-      return keptOnFail(ctx, made, () => reportApi.import('is', ctx.year!, ctx.month!, { sections }))
+      const res = await keptOnFail(ctx, made, () => reportApi.import('is', ctx.year!, ctx.month!, { sections }))
+      splitByCompany(ctx, res, sections)   // 一家公司一条导入记录
+      return res
     },
-    target: (ctx) => `${ctx.year}-${pad2(ctx.month!)}`,
+    target: (ctx, picks) => namedPicks(picks).map(p => T({ ...one(ctxYm(ctx)), companyId: p.companyId ?? null })),
+    viewLink: (l) => (live(l) && l.periodFrom && l.companyId != null ? periodLink('income-statement', { p: l.periodFrom, co: l.companyId }) : null),
   },
   {
-    key: 'report_bs', label: '资产负债表', tag: '报表', icon: 'scale', context: 'ledger', module: ['balance-sheet:edit'],
-    modalProps: (ctx) => ({
-      title: '导入 资产负债表',
-      sub: `上传/粘贴两栏合并多公司的资产负债表(资产‖负债和所有者权益,每公司一列期末余额),按公司拆段、未匹配公司自动新建,导入到 ${ctx.year} 年 ${ctx.month} 月`,
+    key: 'report_bs', icon: 'scale', module: ['balance-sheet:edit'],
+    group: '账簿与报表', name: '资产负债表', desc: '各公司资产负债表', sub: '几家公司合在一张的资产负债表',
+    rules: ['左右两栏，每家公司一列期末余额', '认不出的公司会新建'],
+    sample: { head: ['资产', '行次', '期末余额', '负债和所有者权益', '行次', '期末余额'], rows: [
+      ['货币资金', '1', '2,316,500', '短期借款', '31', '0'],
+      ['应收账款', '4', '846,200', '应付账款', '34', '412,300'],
+    ] },
+    landing: '资产负债表', unit: '行',
+    modalProps: () => ({
       templateCols: ['行次', '期末余额'],
       sheetMatch: /资产负债表/,   // 文件上传按名挑 sheet(修只读 sheet 0 缺口),未命中回退第一个
       customParse: (matrix: string[][]) => importBalanceSheet(matrix),
@@ -959,24 +1153,33 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
         const name = (p.label ?? '').trim()
         if (!name) continue
         if (!byName.has(name)) {
-          const created = await companyApi.create(name)   // 未匹配自动新建
+          const created = await companyApi.create(name, true)   // 未匹配自动新建
           byName.set(name, created.id)
           made++
         }
+        p.companyId = byName.get(name)   // target 记「导到哪家」
         const cells: ReportCell[] = p.records.map(r => ({
           rowKey: String(r.rowKey), field: 'end', amount: Number(r.end) || 0,
         }))
         sections.push({ companyName: name, cells })
       }
-      return keptOnFail(ctx, made, () => reportApi.import('bs', ctx.year!, ctx.month!, { sections }))
+      const res = await keptOnFail(ctx, made, () => reportApi.import('bs', ctx.year!, ctx.month!, { sections }))
+      splitByCompany(ctx, res, sections)   // 一家公司一条导入记录
+      return res
     },
-    target: (ctx) => `${ctx.year}-${pad2(ctx.month!)} · 资产负债表`,
+    target: (ctx, picks) => namedPicks(picks).map(p => T({ ...one(ctxYm(ctx)), companyId: p.companyId ?? null })),
+    viewLink: (l) => (live(l) && l.periodFrom && l.companyId != null ? periodLink('balance-sheet', { p: l.periodFrom, co: l.companyId }) : null),
   },
   {
-    key: 'report_tb', label: '科目余额表', tag: '报表', icon: 'table-2', context: 'ledger', module: ['trial-balance:edit'],
-    modalProps: (ctx) => ({
-      title: '导入 科目余额表',
-      sub: `上传整本工作簿(每张「余额表」sheet=一家公司,缩进型/代码型版式均可),按 sheet 拆段、未匹配公司自动新建,导入到 ${ctx.year} 年 ${ctx.month} 月`,
+    key: 'report_tb', icon: 'table-2', module: ['trial-balance:edit'],
+    group: '账簿与报表', name: '科目余额表', desc: '各公司科目余额表', sub: '整本科目余额表，每家公司一张',
+    rules: ['每张叫「余额表」的表是一家公司', '认不出的公司会新建'],
+    sample: { head: ['科目代码', '科目名称', '期初借方', '期初贷方', '本期借方', '本期贷方', '期末借方', '期末贷方'], rows: [
+      ['1001', '库存现金', '12,400', '', '36,800', '35,100', '14,100', ''],
+      ['1122', '应收账款', '846,200', '', '1,286,400', '1,102,300', '1,030,300', ''],
+    ] },
+    landing: '科目余额表', unit: '行',
+    modalProps: () => ({
       templateCols: ['科目代码', '科目名称', ...TB_FIELDS.map(f => f.label)],
       parseWorkbook: (sheets: { name: string; matrix: string[][] }[]) => importTrialBalance(sheets),
     }),
@@ -992,10 +1195,11 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
         const name = (p.label ?? '').trim()
         if (!name) continue
         if (!byName.has(name)) {
-          const created = await companyApi.create(name)   // 未匹配自动新建
+          const created = await companyApi.create(name, true)   // 未匹配自动新建
           byName.set(name, created.id)
           made++
         }
+        p.companyId = byName.get(name)   // target 记「导到哪家」
         const accounts: ReportAccount[] = []
         const cells: ReportCell[] = []
         for (const r of p.records) {
@@ -1009,18 +1213,33 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
         }
         sections.push({ companyName: name, accounts, cells })
       }
-      return keptOnFail(ctx, made, () => reportApi.import('tb', ctx.year!, ctx.month!, { sections }))
+      const res = await keptOnFail(ctx, made, () => reportApi.import('tb', ctx.year!, ctx.month!, { sections }))
+      splitByCompany(ctx, res, sections)   // 一家公司一条导入记录
+      return res
     },
-    target: (ctx) => `${ctx.year}-${pad2(ctx.month!)} · 科目余额表`,
+    target: (ctx, picks) => namedPicks(picks).map(p => T({ ...one(ctxYm(ctx)), companyId: p.companyId ?? null })),
+    viewLink: (l) => (live(l) && l.periodFrom && l.companyId != null ? periodLink('trial-balance', { p: l.periodFrom, co: l.companyId }) : null),
   },
   // ── 损益附表 1–5(P2-D):5 条同构由 PNL_SCHEDULES 生成;年从标题自动识,识别失败回退屏当前年槽(ctx.year) ──
-  ...PNL_SCHEDULES.map((config, i) => ({
-    key: `pnl_${config.schedule}`, label: config.title, tag: '报表',
+  ...PNL_SCHEDULES.map((config, i): ImportTypeEntry => ({
+    key: `pnl_${config.schedule}`,
     // 损益附表 1–5 落 /api/pnl/{s1..s5}/**,各归各的附表屏(route = 屏 value)
-    icon: ['trending-up', 'zap', 'droplets', 'wrench', 'banknote'][i], context: 'none' as const, module: [`${config.route}:edit`],
+    icon: ['trending-up', 'zap', 'droplets', 'wrench', 'banknote'][i], module: [`${config.route}:edit`],
+    // 名字跟侧栏一字不差(用户 10-10 拍板 U2;图上「附表1 租金损益明细」是附表标题,和侧栏、去处下拉、「去 X 看」对不上)
+    group: '账簿与报表', name: PNL_NAV_LABEL[i],
+    desc: ['全年分月租金损益', '全年分月电费损益', '全年分月水费损益', '全年分月其他运管收益', '全年分月费用支出'][i],
+    sub: '年度统计母册里的这张附表，整年替换',
+    rules: ['传整本母册或只粘这张表都行', '年份从标题认'],
+    sample: { head: [config.groupCol, '科目细分', '1月', '2月', '3月', '…', '12月', '备注'], rows: [
+      [['一期', '厂房租金', '286,400', '286,400', '291,200'], ['电费收入', '一期', '182,400', '176,900', '190,300'],
+        ['水费收入', '一期', '8,640', '8,210', '8,930'], ['管理费', '一期', '46,200', '46,200', '46,200'],
+        ['管理费用', '工资', '186,000', '186,000', '192,000']][i],
+      [['二期', '厂房租金', '198,600', '198,600', '198,600'], ['电费成本', '一期', '151,200', '148,600', '157,800'],
+        ['水费成本', '一期', '7,120', '6,980', '7,350'], ['停车费', '一期', '3,800', '3,650', '3,900'],
+        ['管理费用', '办公费', '4,300', '3,900', '5,100']][i],
+    ].map(r => [...r, '…', '', '']) },
+    landing: PNL_NAV_LABEL[i], unit: '行',
     modalProps: () => ({
-      title: '导入 ' + config.title,
-      sub: '从年度统计母册导入该附表(整年替换);上传含该 sheet 的工作簿或粘贴该表,年份从标题自动识别',
       templateCols: [config.groupCol, '科目细分', ...Array.from({ length: 12 }, (_, m) => `${m + 1}月`), '备注'],
       sheetMatch: config.sheetRe,
       customParse: (matrix: string[][]) => {
@@ -1043,23 +1262,35 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       const res = await pnlApi.import(config.schedule, y, { rows: rows.map(toPnlRow) })
       return Object.assign(res, { __usedYear: y })
     },
-    target: (ctx: ImportCtx) => `${ctx.year ?? ''} · ${config.title}`,
+    target: (ctx, picks) => {
+      const y = (recsOf(picks)[0]?.__yearDetected as number | null | undefined) ?? ctx.year
+      return [T(one(y ? String(y) : null))]
+    },
+    viewLink: (l) => (live(l) && y4(l.periodFrom) ? periodLink(config.route, { p: y4(l.periodFrom)! }) : null),
   })),
   // ── 年度预算(P3-P1 预算对比):解析规则见 importBudget.ts 头注释;确认屏按年分段,run 聚合整包一次导入 ──
   {
     // 年度预算只在导入中心导,归导入中心的编辑权(RBAC-SPEC §15.2)
-    key: 'budget', label: '年度预算', tag: '预算', icon: 'target', context: 'none', module: ['import:edit'],
+    key: 'budget', icon: 'target', module: ['import:edit'],
+    group: '账簿与报表', name: '年度预算', desc: '全年预算和往年实际', sub: '全面预算总表',
+    rules: ['按年分段核对', '2025年起的发生额用系统算的，文件里的这一列跳过'],
+    sample: { head: ['项目', '2025年发生额', '2026年预算', '备注'], rows: [
+      ['收入总计', '92,705,203', '101,200,000', ''],
+      ['利润总额', '22,593,088', '24,800,000', ''],
+    ] },
+    landing: '预算对比', unit: '行',
     modalProps: () => {
       // 收入核对要五张损益附表一次拉齐(fetchPnlSummary 缺一张整个失败):少一张查看就不取,也不拿旧缓存核对
       const canPnl = PNL_SCHEDULES.every(c => useAuthStore().can(`${c.route}:view`))
       if (canPnl) prefetchBudgetPnlRevenue()
       return {
-        title: '导入 年度预算',
-        sub: '上传含「全面预算总表」的预算工作簿(或粘贴该表),按年拆段核对后导入;2025 起发生额列以系统损益推算为准,自动跳过'
-          + (canPnl ? '' : '。有的损益附表你看不了，这次导入不拿它们的收入合计核对预算。'),
         templateCols: ['项目', 'YYYY年发生额(可多列)', 'YYYY年预算', '备注'],
         sheetMatch: BUDGET_SHEET_RE,
-        parseWorkbook: (sheets: { name: string; matrix: string[][] }[]) => importBudget(sheets, canPnl ? budgetPnlRevenue : undefined),
+        // 看不了全部损益附表:这次不核对,核对页的提示条上说一句(改前写在标题下那句里,那句现在只写「这是什么文件」)
+        parseWorkbook: (sheets: { name: string; matrix: string[][] }[]) => {
+          const r = importBudget(sheets, canPnl ? budgetPnlRevenue : undefined)
+          return canPnl ? r : { ...r, warning: [r.warning, BUDGET_NO_PNL].filter(Boolean).join(' ') }
+        },
       }
     },
     // 勾选段(年)平铺成单 payload:后端按 payload 内出现的 year 整年替换
@@ -1068,37 +1299,88 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       if (!rows.length) return zero()
       return budgetApi.import({ rows: rows.map(toBudgetRow) })
     },
-    target: () => null,
+    target: (_ctx, picks) => [T(span(recsOf(picks).map(r => String(r.year))))],
+    viewLink: (l) => (live(l) ? { path: '/budget', query: {} } : null),   // 预算对比屏不认期参数
   },
 ]
+export const IMPORT_TYPES: ImportTypeEntry[] = TYPES.sort((a, b) => ORDER.indexOf(a.key) - ORDER.indexOf(b.key))
 
-// 各屏用:取该类型的解析配置(= modalProps 去掉 title/sub/defaults),屏自己给 :title/:sub/:default-*。
-// 单一事实源:columnMap/customParse/phaseLayouts/nameLabels/templateCols 都出自这里,屏不再本地重复。
-export function parserProps(key: string, ctx: ImportCtx = {}): { templateCols: string[] } & Record<string, unknown> {
+// 各屏与导入中心用:取该类型的解析配置(= modalProps 去掉 defaults)+ 弹窗要的那几样字(标题「导入」+ 名 / sub / 规矩 / 小样表 / 单位,
+// 只在 registry 一处)。屏自己给 :default-*。单一事实源:columnMap/customParse/phaseLayouts/nameLabels/templateCols 都出自这里。
+// 台账另带 precheck(parsed, ym?):绑好 ctx 的核对页预检,ym = 改成导到文件里的那个月时按它查;
+// 回来的 ym / company 是「导到 X · 公司」那一条(弹窗不知道 ctx)。
+export function parserProps(key: string, ctx: ImportCtx = {}): { title: string; templateCols: string[]; sub: string } & Record<string, unknown> {
   const entry = IMPORT_TYPES.find(t => t.key === key)
   if (!entry) throw new Error('unknown import type: ' + key)
-  const { title, sub, defaultYear, defaultMonth, defaultPhase, ...parser } = entry.modalProps(ctx)
-  void title; void sub; void defaultYear; void defaultMonth; void defaultPhase
-  return parser as { templateCols: string[] } & Record<string, unknown>
+  const { defaultYear, defaultMonth, defaultPhase, ...parser } = entry.modalProps(ctx)
+  void defaultYear; void defaultMonth; void defaultPhase
+  const pre = entry.precheck
+  return {
+    ...parser, title: `导入${entry.name}`, sub: entry.sub, rules: entry.rules, sample: entry.sample, unit: entry.unit,
+    ...(pre ? { precheck: async (parsed: { records?: ImportRec[] }, ym?: string) => {
+      const c = ym ? { ...ctx, year: Number(ym.slice(0, 4)), month: Number(ym.slice(5, 7)) } : ctx
+      return { ...(await pre(c, parsed)), ym: ctxYm(c) ?? undefined, company: c.companyName }
+    } } : {}),
+  } as { title: string; templateCols: string[]; sub: string } & Record<string, unknown>
 }
 
-// 唯一导入入口:执行 entry.run → 上报 import_log(best-effort,失败不阻断) → 返回 result。
+// 几个落点并成一条(没分段报结果的整次一条 / 被拒那一条):期取首尾,公司 / 期区只有一个时才写
+function mergeTargets(ts: ImportTarget[]): ImportTarget {
+  const only = (k: 'companyId' | 'zone') => { const v = new Set(ts.map(t => t[k])); return v.size === 1 ? [...v][0] : null }
+  return T({ ...span(ts.flatMap(t => [t.periodFrom, t.periodTo])), companyId: only('companyId') as number | null, zone: only('zone') as string | null })
+}
+
+// 唯一导入入口:执行 entry.run → 记导入记录(best-effort,记不上不阻断) → 返回 { res, logIds }(logIds 给导入中心高亮新记录行)。
+// 一个落点一条记录(导入中心「导到哪」逐行出、行数按段计):run 每写完一个落点报 ctx._seg,没报的整次一条。
+// 整单被拒(后端 4xx 信封,含审核闸)也记一条 rejected + 信封里的原因;断网 / 5xx / nginx 自己挡的(413 太大等,没信封)
+// 不记被拒(没导成,不是被拒),断之前已经写进去的段照记。
+// 核对页里导不了、这次没发的行(ctx._run.bad)记进第一条的「要核对」。
 export async function runImport(
   key: string, payload: ImportRec[] | Pick[], ctx: ImportCtx, fileName: string,
-): Promise<ImportResultDTO> {
+): Promise<{ res: ImportResultDTO; logIds: number[] }> {
   const entry = IMPORT_TYPES.find(t => t.key === key)
   if (!entry) throw new Error('unknown import type: ' + key)
-  const res = await entry.run(payload, ctx, fileName)
+  const segs: ImportResultDTO[] = []
+  const c: ImportCtx = { ...ctx, _seg: (k, r) => { segs[k] = r } }
+  const logIds: number[] = []
+  let extra = ctx._run?.bad ?? 0
+  const record = async (t: ImportTarget, r: ImportResultDTO | null, note?: string) => {
+    // 后端写口 skipped 就是 errors 的条数:两者取大,不重复算
+    const warn = r ? Math.max(r.skipped, r.errors.length) + extra : 0
+    const ok = r?.imported ?? 0
+    if (r) extra = 0
+    try {
+      // 一段的行全被后端逐行拒掉(记成被拒):原因取第一条,不然「被拒」页签里那一行没有原因
+      const why = note ?? (r && ok === 0 && r.errors.length
+        ? r.errors[0].reason + (r.errors.length > 1 ? ` 等 ${r.errors.length} 行` : '') : undefined)
+      const log = await importLogApi.record({
+        dataType: entry.key, typeLabel: entry.name, fileName: fileName || '（粘贴）', ...t, note: why,
+        rows: ok + warn, ok, warn, status: r ? deriveStatus({ imported: ok, skipped: warn, errors: [] }) : 'rejected',
+      })
+      if (log?.id != null) logIds.push(log.id)
+    } catch (e) { console.warn('[import-log] 记录失败(不影响导入):', e) }
+  }
+  const recordSegs = async (targets: ImportTarget[]) => {
+    for (const [k, r] of segs.entries()) if (r) await record(targets[k] ?? T(), r)
+  }
+  let res: ImportResultDTO
+  try {
+    res = await entry.run(payload, c, fileName)
+  } catch (e) {
+    const targets = entry.target(c, payload)
+    if (segs.some(r => r?.imported)) invalidateAnaCache()
+    await recordSegs(targets)
+    if (failKind(e) === 'reject' && typeof (e as { code?: unknown } | null)?.code === 'number') {
+      const from = ctx._run?.from ?? 0
+      await record(mergeTargets(targets.filter((_, k) => k >= from && !segs[k])), null, failReason(e))
+    }
+    throw e
+  }
   // 有行入库即让分析层缓存整体失效:空态→去导入→回分析屏立即见新数据(复审:缓存陈旧闭环)
   if (res.imported > 0) invalidateAnaCache()
   ctx._run?.recording()   // 导入弹窗进度卡走到「记下这次导入」
-  try {
-    await importLogApi.record({
-      dataType: entry.key, typeLabel: entry.label, fileName: fileName || '（粘贴）',
-      target: entry.target(ctx),
-      rows: res.imported + res.skipped + res.errors.length,
-      ok: res.imported, warn: res.skipped + res.errors.length, status: deriveStatus(res),
-    })
-  } catch (e) { console.warn('[import-log] 记录失败(不影响导入):', e) }
-  return res
+  const targets = entry.target(c, payload)
+  if (segs.length) await recordSegs(targets)
+  else await record(mergeTargets(targets), res)
+  return { res, logIds }
 }

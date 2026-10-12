@@ -43,6 +43,8 @@ const props = defineProps<{
   touBase?: WorkbenchRow[]
   /** 筛选本身就在找停用表(已停用 / 本月有变化):停用的表直接排进组里,不收进组尾「另有 N 块已停用」 */
   retiredOpen?: boolean
+  /** 导完亮的那几块表(meter id;motion.css fp-row-flash,浅蓝底 2s 褪)。父层在 animationend 里清成 null */
+  flash?: readonly number[] | null
 }>()
 const emit = defineEmits<{
   open: [meterId: number]
@@ -432,7 +434,7 @@ function onEnter(e: KeyboardEvent) {
                  incomplete=档案不全但配不到重复对手,浅黄底,**照常计入Σ** —— 只是催人补档案 -->
             <tr
               v-else-if="v.t === 'row'"
-              :class="{ 'mlg-sus': v.x!.m.suspect === 'shadow', 'mlg-inc': v.x!.m.suspect === 'incomplete' }"
+              :class="{ 'mlg-sus': v.x!.m.suspect === 'shadow', 'mlg-inc': v.x!.m.suspect === 'incomplete', 'fp-row-flash': flash?.includes(v.x!.m.id) }"
             >
               <td :class="[fixCls('loc'), { 'fp-rowtg': rowMode && v.x!.tou }]" :style="S.loc"
                   @click="rowMode && v.x!.tou && rowToggle($event, () => toggleRow(v.x!.m.id))">
@@ -721,4 +723,7 @@ function onEnter(e: KeyboardEvent) {
 .mlg-foot-lbl { display:block; padding:0 10px; }
 /* 合计数 16(04-A「2,892,034.93」),合计行 50 高,与 GRID_H.footH 同步 */
 .mlg-foot-v { display:block; text-align:right; padding:0 8px; font-family:var(--font-mono); font-size:16px; font-variant-numeric:tabular-nums; color:var(--text-primary); }
+/* 行高亮:格子自带底色,motion.css 的 fp-row-flash 挂在行上会被盖住,跟到格子上;减少动态效果时照留 2s(同 motion.css 那条例外) */
+.mlg-table tbody tr.fp-row-flash > td { animation: fp-row-flash var(--dur-highlight) var(--ease-standard); }
+@media (prefers-reduced-motion: reduce) { .mlg-table tbody tr.fp-row-flash > td { animation-duration: var(--dur-highlight) !important; } }
 </style>

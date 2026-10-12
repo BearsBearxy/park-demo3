@@ -4,8 +4,8 @@
 // 列:消纳电量→selfKwh、消纳电费金额→selfAmt、上网电量→gridKwh、上网收益→gridAmt;
 //     发生月份/备注 作 text 列;光伏发电总量/总金额(派生)不映射、自动忽略。
 // 行:parseYearMonth(记账月份)→acctMonth、parseYearMonth(发生月份)→occurMonth。
-import { matchByHeader, type ColumnMapEntry, type ImportRec } from './importHeaderMatch'
-import { parseYearMonth } from './parseYearMonth'
+import { matchByHeader, type BadRow, type ColumnMapEntry, type ImportRec } from './importHeaderMatch'
+import { parseYearMonth, isAggregate } from './parseYearMonth'
 
 export interface PvSection { label: string; records: ImportRec[] }
 
@@ -41,13 +41,19 @@ function matchTitle(row: string[]): { phaseId: string; label: string } | null {
 }
 
 // 段块 → 记录:matchByHeader 解析后,记账月份(tenantName)/发生月份(occurRaw)经 parseYearMonth → YYYY-MM;
-// 月份解析失败(空/小计漏网)→ 跳过。
-function parsePvBlock(block: string[][], phaseId: string): ImportRec[] {
-  const { records } = matchByHeader(block, PV_COLUMN_MAP, NAME_LABELS)
+// 记账月份认不出 → bad(核对页列出,row 按整张表算);空行 / 小计 / 合计 / 年度行(2024年)照旧静默跳过。
+function parsePvBlock(block: string[][], phaseId: string, offset: number, bad: BadRow[]): ImportRec[] {
+  const { records, rows } = matchByHeader(block, PV_COLUMN_MAP, NAME_LABELS)
   const out: ImportRec[] = []
-  for (const r of records) {
+  for (const [i, r] of records.entries()) {
     const ym = parseYearMonth(r.tenantName)
-    if (!ym) continue
+    if (!ym) {
+      if (isAggregate(String(r.tenantName))) continue
+      // cells 对齐核对页的列(registry pv 的 templateCols:记账月份 / 发生月份 / 消纳电量 / 消纳电费金额 / 上网电量 / 上网收益)
+      bad.push({ row: offset + rows![i] + 1, reason: '记账月份认不出',
+        cells: [r.tenantName, r.occurRaw, r.selfKwh, r.selfAmt, r.gridKwh, r.gridAmt].map(v => String(v ?? '')) })
+      continue
+    }
     const acctMonth = `${ym.year}-${String(ym.month).padStart(2, '0')}`
     const om = parseYearMonth(r.occurRaw)
     const occurMonth = om ? `${om.year}-${String(om.month).padStart(2, '0')}` : acctMonth
@@ -63,7 +69,7 @@ function parsePvBlock(block: string[][], phaseId: string): ImportRec[] {
   return out
 }
 
-export function importPvSections(matrix: string[][]): { sections: PvSection[] } {
+export function importPvSections(matrix: string[][]): { sections: PvSection[]; bad: BadRow[] } {
   const titles: { rowIndex: number; phaseId: string; label: string }[] = []
   matrix.forEach((row, ri) => {
     const t = matchTitle(row)
@@ -71,11 +77,12 @@ export function importPvSections(matrix: string[][]): { sections: PvSection[] } 
   })
 
   const sections: PvSection[] = []
+  const bad: BadRow[] = []
   titles.forEach((t, i) => {
     const start = t.rowIndex + 1
     const end = i + 1 < titles.length ? titles[i + 1].rowIndex : matrix.length
     const block = matrix.slice(start, end)
-    sections.push({ label: t.label, records: parsePvBlock(block, t.phaseId) })
+    sections.push({ label: t.label, records: parsePvBlock(block, t.phaseId, start, bad) })
   })
-  return { sections }
+  return { sections, bad }
 }

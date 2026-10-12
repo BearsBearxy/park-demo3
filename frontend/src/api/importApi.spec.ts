@@ -23,7 +23,7 @@ describe('salaryApi import/delete shapes', () => {
     expect(mock.post).toHaveBeenCalledWith(
       '/salary/import',
       { rows: [{ tenantName: '张三', base: 8000 }] },
-      { params: { year: 2025, month: 3 } },
+      { params: { year: 2025, month: 3 }, silentNetError: true },   // 导入写口不出底部全局提示(失败卡已写原因)
     )
   })
 
@@ -44,6 +44,7 @@ describe('utilitiesApi import/delete shapes', () => {
     expect(mock.post).toHaveBeenCalledWith(
       '/utilities/13/import',
       { rows: [{ acctMonth: '2025-01', belongMonth: '2024-12', elecQty: 1000 }] },
+      { silentNetError: true },
     )
   })
 

@@ -23,7 +23,7 @@ class ImportLogServiceTest {
             l.setRows(1); l.setOk(1); l.setWarn(0); l.setStatus("complete");
             return l;
         });
-        ImportLogDTO dto = svc.record(new ImportLogReq("bogus", "X", "f.xlsx", null, 1, 1, 0, "complete"));
+        ImportLogDTO dto = svc.record(new ImportLogReq("bogus", "X", "f.xlsx", null, 1, 1, 0, "complete", null, null, null, null, null));
         assertThat(dto.dataType()).isEqualTo("bogus");
         verify(mapper).insert(any(ImportLog.class));
     }
@@ -38,7 +38,7 @@ class ImportLogServiceTest {
             l.setTarget("2026-05"); l.setRows(10); l.setOk(9); l.setWarn(1); l.setStatus("partial");
             return l;
         });
-        ImportLogReq req = new ImportLogReq("salary", "工资明细", "工资.xlsx", "2026-05", 10, 9, 1, "partial");
+        ImportLogReq req = new ImportLogReq("salary", "工资明细", "工资.xlsx", "2026-05", 10, 9, 1, "partial", "2026-05", "2026-05", null, null, null);
         ImportLogDTO dto = svc.record(req);
         assertThat(dto.status()).isEqualTo("partial");
         assertThat(dto.ok()).isEqualTo(9);

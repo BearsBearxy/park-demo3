@@ -125,7 +125,7 @@ onMounted(async () => {
 async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
   if (!edit.value) return null   // 写口自守:editMode 会就地转假,浮层可能还挂着
   if (year.value == null) return null
-  return settle(await runImport('office_' + no.value, payload, { _run: p }, fileName), p, refresh)
+  return settle((await runImport('office_' + no.value, payload, { _run: p }, fileName)).res, p, refresh)
 }
 
 // 切子表 → 用对应 no 重载当前年 records
@@ -271,8 +271,6 @@ const onExport = () => guard('导出失败', async () => {
 
       <FpImportModal
         v-if="importing"
-        :title="`导入 附表${no} · ${year}年${meta.name}`"
-        sub="上传/粘贴逐月水电表,系统按表头名字识别列、按月份识别行,核对后导入本年"
         v-bind="parserProps('office_' + no)"
         :runner="onImport"
         @close="importing = false"

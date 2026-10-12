@@ -271,7 +271,7 @@ describe('三大报表 · 提示件(useFinStatementScreen)', () => {
   //          _run 不塞进 ctx → ctx 那句红(registry 就推不动「核对公司」「写入」两步)
   it('❗写完:步骤走到「刷新本期」再重读本期,结果带分公司明细「n 项 · n 格」,编辑态退出', async () => {
     const s = await editing(2)
-    vi.mocked(runImport).mockResolvedValueOnce({ imported: 4, skipped: 0, errors: [] })
+    vi.mocked(runImport).mockResolvedValueOnce({ res: { imported: 4, skipped: 0, errors: [] }, logIds: [] })
     const before = vi.mocked(reportApi.period).mock.calls.length
     const p = fakeRun()
     const out = await s.onImport([{ label: '物业公司', records: [{ rowKey: '1' }, { rowKey: '2' }] }], '利润表.xlsx', p)
@@ -286,7 +286,7 @@ describe('三大报表 · 提示件(useFinStatementScreen)', () => {
   // loadPeriod 自己吞错改 periodErr。破坏验证:去掉 `if (periodErr.value) throw` → refreshed 那句红
   it('❗写进去了但本期没重读上 → refreshed:false(结果卡写「本期没刷新上」),不算导入失败', async () => {
     const s = await editing(0)
-    vi.mocked(runImport).mockResolvedValueOnce({ imported: 2, skipped: 0, errors: [] })
+    vi.mocked(runImport).mockResolvedValueOnce({ res: { imported: 2, skipped: 0, errors: [] }, logIds: [] })
     vi.mocked(reportApi.period).mockRejectedValueOnce(new Error('timeout'))
     const out = await s.onImport([{ label: '物业公司', records: [{ rowKey: '1' }] }], '利润表.xlsx', fakeRun())
     expect(out).toMatchObject({ imported: 2, refreshed: false })
@@ -306,7 +306,7 @@ describe('三大报表 · 提示件(useFinStatementScreen)', () => {
       { account: { rowKey: '1002' }, amounts: { periodCr: 7 } },
     ] }]
     expect(s.describeImport(secs)).toMatchObject({ count: 3, steps: ['读取工作簿', '核对公司', '写入 3 格', '记下这次导入', '刷新本期'] })
-    vi.mocked(runImport).mockResolvedValueOnce({ imported: 3, skipped: 0, errors: [] })
+    vi.mocked(runImport).mockResolvedValueOnce({ res: { imported: 3, skipped: 0, errors: [] }, logIds: [] })
     const p = fakeRun()
     const out = await s.onImport(secs, '余额表.xlsx', p)
     expect(p.note).toHaveBeenCalledWith(0, '1 张余额表')

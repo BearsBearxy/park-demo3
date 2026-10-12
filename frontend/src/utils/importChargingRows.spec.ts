@@ -38,19 +38,19 @@ const car: string[][] = [
 
 describe('importChargingRows — 充电桩单表逐行解析', () => {
   it('电动车(no=8):fee 直取充电金额收入(已扣手续费),运营商下填,聚合行跳过', () => {
-    const { records, errors } = importChargingRows(ebike, 8, cats8)
+    const { records, bad } = importChargingRows(ebike, 8, cats8)
     // 叮叮充 2 月 + 电信 1 月 = 3 条;小计/总计行(parseYearMonth → null)跳过
     expect(records.map(r => [r.cat, r.acctMonth])).toEqual([
       ['dingding', '2025-01'], ['dingding', '2025-02'], ['dianxin', '2025-01'],
     ])
     // fee 直取 incomeRaw(无手续费扣减)
     expect(records[0]).toMatchObject({ cat: 'dingding', acctMonth: '2025-01', kwh: 1205.49, fee: 3872.23, cost: 895.01 })
-    // 小计/总计(matchByHeader 识别为 isSubtotal)静默跳过,不入 records 也不报错
-    expect(errors.length).toBe(0)
+    // 小计/总计(matchByHeader 识别为 isSubtotal)静默跳过,不入 records 也不算导不了
+    expect(bad.length).toBe(0)
   })
 
   it('汽车(no=7):fee = 充电收入金额 − 手续费及服务费金额,聚合(年/范围/小计/总计)跳过', () => {
-    const { records, errors } = importChargingRows(car, 7, cats7)
+    const { records, bad } = importChargingRows(car, 7, cats7)
     // 万城万 单月 10/11 + 小桔 10 = 3 条;2024年/2025年1-9月/小计/总计 跳过
     expect(records.map(r => [r.cat, r.acctMonth])).toEqual([
       ['wancheng', '2025-10'], ['wancheng', '2025-11'], ['xiaoju', '2025-10'],
@@ -58,19 +58,21 @@ describe('importChargingRows — 充电桩单表逐行解析', () => {
     // 万城万 2025-10:fee = 9076.52 − 162.74 = 8913.78
     expect(records[0].fee).toBeCloseTo(8913.78, 2)
     expect(records[0].cost).toBeCloseTo(5395.08, 2)
-    // 年/年范围(2024年 / 2025年1-9月)非 subtotal → 进 loop 报告跳过;小计/总计被 matchByHeader 静默跳过。
-    expect(errors.length).toBe(2)
-    expect(errors.every(e => /非单月行/.test(e.reason))).toBe(true)
+    // 年/年范围(2024年 / 2025年1-9月)是年度合计行、小计/总计被 matchByHeader 剔除:都本来就该跳过,不算导不了
+    expect(bad).toEqual([])
   })
 
-  it('未知运营商 → errors 跳过', () => {
+  it('❗导不了的行交 bad:运营商没登记、月份认不出;行号按读进来的第几行(表头第 1 行)', () => {
     const m: string[][] = [
       c(['充电桩类别', '月份', '充电电量', '充电金额收入', '充电成本']),
-      c(['未知商', '2025-01-01', '100', '300', '80']),
+      c(['叮叮充', '2025-01-01', '1205.49', '3872.23', '895.01']),
+      c(['飞充', '2025-01-01', '100', '300', '80']),
+      c(['', '一月份', '90', '280', '70']),
+      c(['电信', '2025-02-01', '839.63', '2367.91', '699.41']),
     ]
-    const { records, errors } = importChargingRows(m, 8, cats8)
-    expect(records.length).toBe(0)
-    expect(errors.length).toBe(1)
-    expect(errors[0].reason).toContain('未知运营商')
+    const { records, bad } = importChargingRows(m, 8, cats8)
+    expect(records.map(r => [r.cat, r.acctMonth])).toEqual([['dingding', '2025-01'], ['dianxin', '2025-02']])
+    expect(bad.map(b => [b.row, b.reason])).toEqual([[3, '运营商「飞充」没登记'], [4, '月份认不出']])
+    expect(bad[0].cells).toEqual(['飞充', '2025-01-01', '100', '300', '80'])
   })
 })

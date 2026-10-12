@@ -430,8 +430,6 @@ async function onExport() {
 
       <FpImportModal
         v-if="importing"
-        :title="'导入 科目余额表'"
-        :sub="'上传整本工作簿(每张「余额表」工作表=一家公司,缩进型/代码型版式均可),按 sheet 拆段、未匹配公司自动新建,导入到当前所选年月'"
         v-bind="parserProps('report_tb')"
         @close="importing = false"
         :runner="onImport"

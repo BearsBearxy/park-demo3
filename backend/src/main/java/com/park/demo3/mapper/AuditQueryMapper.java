@@ -14,6 +14,8 @@ import java.util.List;
  * detail = 状态行比状态、归属行比企业名称原文(完整前后像在抽屉「档案变更」)· 来源 · 文件名 · 行定位。
  * value_change_log 是第 6 张(V138,用户 2026-10-05 拍板的「数据修改记录」):action = 表名(前端翻成「改台账」……),
  * target = 行定位 · 列名,detail = 改前 → 改后(没有的一边写 —;整批摘要行只有说明)。
+ * import_log 的「导到哪」:0.34.0 起前端只记结构列(V141 的期起止 / 公司 / 期区),不再发 target 字符串 ——
+ * 这里由结构列拼回「月度台账 · 2026-09 · 综合」;旧记录照用 target。期区码 p1/1 → 一期…(附表10 记 1..4,抄表记 p1..dorm)。
  *
  * **谁看得见哪几行也在这里做**(同日拍板:看得到操作日志不等于看得到工资):seeParam / seeImport / seeMeter / tbls 由
  * SystemService.auditLogs 按查看者的查看权算好;看不见的分支整路 1=0(不能去掉分支 —— UNION ALL 的拼法靠 src 判断),
@@ -71,7 +73,12 @@ public interface AuditQueryMapper {
         <if test="src == null or src == 'import'">
           SELECT 'import' AS source, id AS rid, created_at AS ts, operator AS actor,
                  status AS action,
-                 CONCAT(type_label, IFNULL(CONCAT(' · ', target), '')) AS target,
+                 CONCAT(type_label, IFNULL(CONCAT(' · ', IFNULL(target, NULLIF(CONCAT_WS(' · ',
+                        IF(period_from IS NULL, NULL,
+                           IF(period_to IS NULL OR period_to = period_from, period_from, CONCAT(period_from, '~', period_to))),
+                        (SELECT IFNULL(NULLIF(mc.`short`, ''), mc.name) FROM management_company mc WHERE mc.id = import_log.company_id),
+                        CASE WHEN zone IN ('p1', '1') THEN '一期' WHEN zone IN ('p2', '2') THEN '二期'
+                             WHEN zone IN ('p3', '3') THEN '三期' WHEN zone IN ('dorm', '4') THEN '宿舍' ELSE zone END), ''))), '')) AS target,
                  CONCAT(file_name, '  ', ok, '/', `rows`, ' 行',
                         IF(warn &gt; 0, CONCAT(' · ', warn, ' 警告'), '')) AS detail,
                  NULL AS authorizer

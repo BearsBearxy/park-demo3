@@ -150,7 +150,7 @@ async function switchType(t: string) {
 // 导入弹窗的 runner(UI-OVERLAY-SPEC §8):弹窗不关,写 + 记 import_log → 刷新;失败交给弹窗的失败卡(不走回执)。
 async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
   if (!edit.value) return null   // 写口自守:editMode 会就地转假,浮层可能还挂着
-  return settle(await runImport('elec', payload, { _run: p }, fileName), p, refresh)
+  return settle((await runImport('elec', payload, { _run: p }, fileName)).res, p, refresh)
 }
 
 const onCreate = (req: ElecRecordReq) => guard('新增记账失败', async () => {
@@ -283,8 +283,6 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
 
       <FpImportModal
         v-if="importing"
-        :title="`导入 附表11 · ${year}年电费成本`"
-        sub="上传/粘贴电费成本附表(两行表头),系统按(记账期,期)切分,产电量电费 + 大工业基本电费记录,核对后导入"
         v-bind="parserProps('elec')"
         :runner="onImport"
         @close="importing = false"

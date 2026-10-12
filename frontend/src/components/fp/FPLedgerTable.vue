@@ -16,6 +16,8 @@ const props = defineProps<{
   selected?: Set<number>   // 传入即启用编辑态选择列(勾选 ledgerRowKey,批量删除用)
   /** 「合计」两个字上的悬停说明 = 这张表的口径(原页底 ⓘ 说明行,LIST-PAGE-SPEC §2.1);不传不出 */
   footTip?: string
+  /** 行高亮(motion.css fp-row-flash,浅蓝底 2s 褪):命中 ledgerRowKey 的行。父层在 animationend 里清成 null */
+  flash?: readonly number[] | null
 }>()
 
 // V105:行身份从 tenantId 换 ledgerRowKey(id ?? -tenantId)——未绑定行 tenantId 为 null,
@@ -140,7 +142,7 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="row in view" :key="ledgerRowKey(row)">
+        <tr v-for="row in view" :key="ledgerRowKey(row)" :class="{ 'fp-row-flash': flash?.includes(ledgerRowKey(row)) }">
           <td v-if="selectable" class="lg-fix lg-selc" :style="SEL_TD_STYLE">
             <input type="checkbox" class="lg-cb" :checked="selected!.has(ledgerRowKey(row))"
                    @change="emit('toggle-select', ledgerRowKey(row))" />
@@ -272,4 +274,7 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
    !important 只为压过 .lg-selc 的 padding:0 !important,全选框也得挪 */
 .lg-grp-free .lg-table thead th[rowspan] { vertical-align:bottom; padding-bottom:11px !important; }
 .lg-foot-free .lg-table tfoot th { bottom:auto; }
+/* 行高亮:格子自带白底,motion.css 的 fp-row-flash 挂在行上会被盖住,跟到格子上;减少动态效果时照留 2s(同 motion.css 那条例外) */
+.lg-table tbody tr.fp-row-flash > td { animation: fp-row-flash var(--dur-highlight) var(--ease-standard); }
+@media (prefers-reduced-motion: reduce) { .lg-table tbody tr.fp-row-flash > td { animation-duration: var(--dur-highlight) !important; } }
 </style>

@@ -26,7 +26,6 @@ export interface BillingContractLite {
 }
 export interface BillingTermCtxData { contracts: BillingContractLite[] }
 
-export interface BillingTermError { rowIndex: number; label: string; reason: string }
 
 // 费项枚举中文名/默认计费方式复用 types/contract(FEE_NAME/defaultBillMode),不重复定义。
 
@@ -266,7 +265,18 @@ export function billingReportCsv(rows: BillingReportRow[]): string {
   return '﻿' + head.join(',') + '\n' + lines.join('\n')
 }
 
-export interface BillingTermSection { label: string; records: ImportRec[]; checked?: boolean }
+// reason:导不了的 sheet(须手录 / 须先建合同 / 名字像好几户)也列成一段,records 为空、不勾,核对页写原因
+export interface BillingTermSection { label: string; records: ImportRec[]; checked?: boolean; reason?: string }
+
+// 核对页上的原因用大白话;到户报告 CSV 仍写下面 parseBillingTermsWorkbook 里的原话
+function plainReason(r: string): string {
+  if (r.startsWith('流水账')) return '这张表是流水账，条款要手录'
+  if (r.startsWith('无通知单块')) return '没找到缴费通知单，条款要手录'
+  const near = /名称近似多租户\((.*)\)/.exec(r)
+  if (near) return `名字像好几户（${near[1]}），没敢认，请核对`
+  if (r.includes('无生效中的')) return '这户的合同都不在生效期，要先建合同'
+  return '没找到这户的合同，要先建合同'
+}
 
 // 计费行摘要:按 location 分组列费项枚举中文(预览/报告用)
 function feeSummary(lines: FeeLine[]): string {
@@ -284,9 +294,9 @@ const locCount = (lines: FeeLine[]) => new Set(lines.map(l => l.location)).size
 export function parseBillingTermsWorkbook(
   sheets: { name: string; matrix: string[][] }[],
   ctx: BillingTermCtxData,
-): { sections: BillingTermSection[]; errors: BillingTermError[]; report: BillingReportRow[]; feeLineTotal: number } {
+): { sections: BillingTermSection[]; report: BillingReportRow[]; feeLineTotal: number } {
   const sections: BillingTermSection[] = []
-  const errors: BillingTermError[] = []
+  const cannot: BillingTermSection[] = []   // 导不了的 sheet,排在能导的后面
   const manualSheets = new Map<string, string>()   // 租户名 → 须手录/须先建合同原因
   const byContract = new Map<number, { lines: FeeLine[]; sheet: string; pick: boolean }>()
   let feeLineTotal = 0
@@ -303,7 +313,7 @@ export function parseBillingTermsWorkbook(
     if (!hadBlocks) {
       const reason = ledgerBlocks > 0 ? '流水账式 sheet,须手录条款' : '无通知单块,须手录条款'
       manualSheets.set(name, reason)
-      errors.push({ rowIndex: -1, label: name, reason })
+      cannot.push({ label: name, records: [], checked: false, reason: plainReason(reason) })
       continue
     }
     feeLineTotal += lines.length
@@ -311,7 +321,7 @@ export function parseBillingTermsWorkbook(
     if (!candidates.length) {
       const r = reason ?? '未匹配到生效合同'
       const final = /近似/.test(r) ? r : `须先建合同:${r}`
-      errors.push({ rowIndex: -1, label: name, reason: final })
+      cannot.push({ label: name, records: [], checked: false, reason: plainReason(final) })
       manualSheets.set(name, final)
       continue
     }
@@ -375,5 +385,5 @@ export function parseBillingTermsWorkbook(
       })
     }
   }
-  return { sections, errors, report, feeLineTotal }
+  return { sections: [...sections, ...cannot], report, feeLineTotal }
 }

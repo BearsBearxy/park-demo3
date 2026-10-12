@@ -5,11 +5,16 @@
 //   金纳主流五行(锚点①②③) / B 流水账 C 仅汇总须手录 / 非租户 sheet 排除 / 到户报告在册全量逐户有名。
 import { describe, it, expect } from 'vitest'
 import {
-  parseBillingTermsWorkbook, billingReportCsv, normalizeFeeKey,
+  parseBillingTermsWorkbook as parseAll, billingReportCsv, normalizeFeeKey,
   type BillingContractLite, type FeeLine,
 } from './importBillingTerms'
 
 const wb = (name: string, matrix: string[][]) => ({ name, matrix })
+// 导不了的 sheet 也列成段(reason 写原因、records 空、不勾):能导的段叫 sections,导不了的叫 cannot
+const parseBillingTermsWorkbook = (...a: Parameters<typeof parseAll>) => {
+  const r = parseAll(...a)
+  return { ...r, sections: r.sections.filter(s => !s.reason), cannot: r.sections.filter(s => s.reason) }
+}
 const lineOf = (lines: FeeLine[], feeKey: string, loc?: string) =>
   lines.find(l => l.feeKey === feeKey && (loc == null || l.location === loc))!
 
@@ -133,8 +138,8 @@ describe('normalizeFeeKey(费项原文 → 13 枚举)', () => {
 
 describe('parseBillingTermsWorkbook(FeeRow 1:1 计费行)', () => {
   it('金纳主流:5 行 1:1,单一位置(锚点①②③)', () => {
-    const { sections, errors } = parseBillingTermsWorkbook([wb('金纳', JINNA)], ctx)
-    expect(errors).toHaveLength(0)
+    const { sections, cannot } = parseBillingTermsWorkbook([wb('金纳', JINNA)], ctx)
+    expect(cannot).toHaveLength(0)
     expect(sections).toHaveLength(1)
     expect(sections[0].checked).not.toBe(false)
     const rec = sections[0].records[0]
@@ -150,8 +155,8 @@ describe('parseBillingTermsWorkbook(FeeRow 1:1 计费行)', () => {
   })
 
   it('银纳:厂房行→厂房合同、宿舍/门禁/网络行→宿舍合同(位置路由,锚点④⑤⑥⑦),两段都勾选', () => {
-    const { sections, errors } = parseBillingTermsWorkbook([wb('银纳', YINNA)], ctx)
-    expect(errors).toHaveLength(0)
+    const { sections, cannot } = parseBillingTermsWorkbook([wb('银纳', YINNA)], ctx)
+    expect(cannot).toHaveLength(0)
     expect(sections).toHaveLength(2)
     expect(sections.every(s => s.checked === true)).toBe(true)
 
@@ -168,8 +173,8 @@ describe('parseBillingTermsWorkbook(FeeRow 1:1 计费行)', () => {
   })
 
   it('翔海:7 位置厂房租金系数 1.56 独立列(锚点⑧),E座3-4层 4708×12.1×1.56', () => {
-    const { sections, errors } = parseBillingTermsWorkbook([wb('翔海', XIANGHAI)], ctx)
-    expect(errors).toHaveLength(0)
+    const { sections, cannot } = parseBillingTermsWorkbook([wb('翔海', XIANGHAI)], ctx)
+    expect(cannot).toHaveLength(0)
     const lines = sections[0].records[0].lines as FeeLine[]
     expect(lines).toHaveLength(7)
     expect(new Set(lines.map(l => l.location)).size).toBe(7)
@@ -177,16 +182,16 @@ describe('parseBillingTermsWorkbook(FeeRow 1:1 计费行)', () => {
     expect(lineOf(lines, 'rent_factory', 'E座3-4层')).toMatchObject({ area: 4708, unitPrice: 12.1, coeff: 1.56 })
   })
 
-  it('翔海无合同:报「须先建合同」不猜建(锚点⑨)', () => {
+  it('❗翔海无合同:列成导不了的段写「要先建合同」,不猜建(锚点⑨);到户报告仍记原话', () => {
     const noXh = { contracts: CONTRACTS.filter(c => c.tenantName !== '翔海') }
-    const { sections, errors } = parseBillingTermsWorkbook([wb('翔海', XIANGHAI)], noXh)
+    const { sections, cannot } = parseBillingTermsWorkbook([wb('翔海', XIANGHAI)], noXh)
     expect(sections).toHaveLength(0)
-    expect(errors[0].reason).toContain('须先建合同')
+    expect(cannot).toEqual([{ label: '翔海', records: [], checked: false, reason: '没找到这户的合同，要先建合同' }])
   })
 
   it('旭化成:表头互换按位置在前列纠正,系数 1.56 独立列不折入单价(锚点⑩)', () => {
-    const { sections, errors } = parseBillingTermsWorkbook([wb('旭化成', XUHUACHENG)], ctx)
-    expect(errors).toHaveLength(0)
+    const { sections, cannot } = parseBillingTermsWorkbook([wb('旭化成', XUHUACHENG)], ctx)
+    expect(cannot).toHaveLength(0)
     const line = lineOf(sections[0].records[0].lines as FeeLine[], 'rent_office')
     expect(line).toMatchObject({ location: '5号楼', area: 400, unitPrice: 15.7, coeff: 1.56 })
   })
@@ -213,28 +218,30 @@ describe('parseBillingTermsWorkbook(FeeRow 1:1 计费行)', () => {
     expect(lineOf(lines, 'mgmt')).toMatchObject({ unitPrice: 3 })
   })
 
-  it('B 流水账/C 仅汇总:整 sheet 须手录,不阻断整批', () => {
-    const { sections, errors } = parseBillingTermsWorkbook(
-      [wb('中山大学', LEDGER_SHEET), wb('保安宿舍', SUMMARY_ONLY), wb('金纳', JINNA)], ctx)
-    expect(sections).toHaveLength(1)
-    expect(errors).toHaveLength(2)
-    expect(errors.find(e => e.label === '中山大学')?.reason).toContain('流水账')
-    expect(errors.find(e => e.label === '保安宿舍')?.reason).toContain('无通知单块')
+  // 改前这两张 sheet 只进 errors、导完才报(importBillingTerms.ts:145-149);现在核对页上就列成导不了的段,排在能导的后面
+  it('❗B 流水账/C 仅汇总:列成导不了的段(不勾、写原因),不阻断整批', () => {
+    const r = parseAll([wb('中山大学', LEDGER_SHEET), wb('保安宿舍', SUMMARY_ONLY), wb('金纳', JINNA)], ctx)
+    expect(r.sections.map(s => [s.records.length, s.checked, s.reason])).toEqual([
+      [1, true, undefined],
+      [0, false, '这张表是流水账，条款要手录'],
+      [0, false, '没找到缴费通知单，条款要手录'],
+    ])
+    expect(r.sections.slice(1).map(s => s.label)).toEqual(['中山大学', '保安宿舍'])
   })
 
   it('非租户 sheet(水电费/总表)名单式排除', () => {
-    const { sections, errors } = parseBillingTermsWorkbook(
+    const { sections, cannot } = parseBillingTermsWorkbook(
       [wb('2024年2月水电费', JINNA), wb('2024.03应收费用总表', JINNA)], ctx)
     expect(sections).toHaveLength(0)
-    expect(errors).toHaveLength(0)
+    expect(cannot).toHaveLength(0)
   })
 
   it('别名收敛:sheet名⊆租户名唯一命中;同租户多 sheet 按合同合并聚合', () => {
     const ctx2 = { contracts: [
       { id: 21, contractNo: 'HT-开利', tenantName: '开利暖通', startDate: '2023-01-01', endDate: '2025-12-31', status: 'active' },
     ] as BillingContractLite[] }
-    const { sections, errors } = parseBillingTermsWorkbook([wb('暖通', JINNA), wb('开利暖通', JINNA)], ctx2)
-    expect(errors).toHaveLength(0)
+    const { sections, cannot } = parseBillingTermsWorkbook([wb('暖通', JINNA), wb('开利暖通', JINNA)], ctx2)
+    expect(cannot).toHaveLength(0)
     expect(sections).toHaveLength(1)             // 两 sheet 归并同一合同
     expect((sections[0].records[0].lines as FeeLine[]).length).toBe(10)   // 叠加两册 5+5
   })

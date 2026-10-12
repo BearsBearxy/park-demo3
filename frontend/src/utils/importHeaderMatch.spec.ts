@@ -70,7 +70,7 @@ describe('matchByHeader — 真实 Excel 容错(二期结构)', () => {
   it('表头命中过少 → 报错', () => {
     const junk: string[][] = [['a', 'b', 'c'], ['1', '2', '3']]
     const { error } = matchByHeader(junk, COLS, NAME)
-    expect(error).toContain('无法识别表头')
+    expect(error).toBe('没认出表头：没有一行的列名对得上下面的样子。改好表头，再选一次。')
   })
 
   it('normalizeHeader 去标点/空格', () => {

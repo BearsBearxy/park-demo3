@@ -20,8 +20,9 @@ function onDoc(e: MouseEvent) {
   if (wrapRef.value && !wrapRef.value.contains(e.target as Node)) open.value = false
 }
 function onKey(e: KeyboardEvent) {
-  // Esc 只关跳页浮层,不连坐宿主弹窗(UI-OVERLAY-SPEC §2)
-  if (e.key === 'Escape') { e.stopPropagation(); open.value = false }
+  // Esc 只关跳页浮层,不连坐宿主弹窗(UI-OVERLAY-SPEC §2)。只在浮层开着时拦:监听挂载即常驻,
+  // 不判 open 的话收着也吞掉全站每一次 Esc,同页弹窗按 Esc 关不掉(同 ds/Select.vue onKey;2026-10-11 导入中心走查)
+  if (e.key === 'Escape' && open.value) { e.stopPropagation(); open.value = false }
 }
 
 // capture 阶段:宿主容器带 @mousedown.stop 时冒泡监听收不到事件,点外面不关(UI-OVERLAY-SPEC §1)

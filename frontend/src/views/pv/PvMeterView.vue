@@ -452,13 +452,12 @@ async function submitStation() {
 
 // ── 导入(registry 闭环:解析→预览→确认→入库→import_log)/模板/导出 ──
 const importing = ref(false)
-// charging/pvMeter 模式:解析期行级错误暂存 ctx._parseErrors,run 时并入结果——
-// parserProps 与 runImport 必须同一 ctx 引用;每次解析整体覆写,无陈旧残留
+// charging/pvMeter 模式:日期认不出 / 电量为负的行解析时就交 bad(核对页列出,不发)
 const importCtx: ImportCtx = {}
 // 导入弹窗的 runner(UI-OVERLAY-SPEC §8):弹窗不关,写 + 记 import_log → 刷新;失败交给弹窗的失败卡(不走回执)。
 async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
   if (!editReading.value) return null
-  return settle(await runImport('pvMeter', payload as never, { ...importCtx, _run: p }, fileName), p, reloadAfterWrite)
+  return settle((await runImport('pvMeter', payload as never, { ...importCtx, _run: p }, fileName)).res, p, reloadAfterWrite)
 }
 
 // ── 模拟填充(编辑态;照 CpMeterView:确认→POST→回执→重载):按附表6 phase 月度汇总推导当前年分栋抄表记录 ──
@@ -866,8 +865,6 @@ async function onTemplate() {
     <!-- 导入(Wave2-B registry 契约:key 'pvMeter';flat records / sections 两口都接) -->
     <FpImportModal
       v-if="importing"
-      :title="`导入 光伏抄表明细`"
-      sub="上传/粘贴分栋抄表长表(期数|楼栋|日期|发电总量|自消纳|上网|备注);楼栋按电站名精确匹配,(站,日期)重复导入自动覆盖"
       v-bind="parserProps('pvMeter', importCtx)"
       :runner="onImport"
       @close="importing = false"

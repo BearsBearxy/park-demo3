@@ -9,7 +9,8 @@ import { useViewport } from '@/composables/useViewport'
 export const fitRows = (availH: number, theadH: number, rowH: number, min = 6, max = 30): number =>
   Math.min(max, Math.max(min, Math.floor((availH - theadH) / rowH)))
 
-export function useFitRows(wrap: Ref<HTMLElement | null>, rowH = 56, fallback = 10): Ref<number> {
+// min:每页至少几行(缺省 6;导入中心的导入记录是 8,卡片上面压着一整块清单,矮窗也要放下 8 行,放不下由外层滚动兜底)
+export function useFitRows(wrap: Ref<HTMLElement | null>, rowH = 56, fallback = 10, min = 6): Ref<number> {
   const pageSize = ref(fallback)
   // S 档(≤600)停用 fitRows(RESPONSIVE-LAYOUT-SPEC §2「仅 S 档停用」/§5.1):手机拆掉
   // 高度驱动布局链后 clientHeight 量出来的是内容高——恰是上面严禁的反馈回路,故固定每页
@@ -24,7 +25,7 @@ export function useFitRows(wrap: Ref<HTMLElement | null>, rowH = 56, fallback = 
     const pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0)
     // thead 高是样式常量(不随数据/页码变),实测仅为免硬编码;未渲染时兜底 36
     const theadH = el.querySelector('thead')?.getBoundingClientRect().height || 36
-    pageSize.value = fitRows(el.clientHeight - pad, theadH, rowH)
+    pageSize.value = fitRows(el.clientHeight - pad, theadH, rowH, min)
   }
   // clientHeight 由卡片定高+flex 布局决定(与行数无关),pageSize 变更不会反过来触发重算
   const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null   // jsdom 无 RO → 保持 fallback

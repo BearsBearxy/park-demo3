@@ -479,7 +479,7 @@ async function onSmartImport(payload: ImportPayload, fileName: string, p?: Impor
   if (!edit.value) return null   // 写口自守:失锁后弹窗留着(在跑的那次不收),再点导入 / 接着导不许无锁写
   const picks = payload as SectionPick[]
   // 断在第 k 段时前面的段已经写进库:本页先照实刷一次再把错误交给失败卡
-  const res = await runImport('s10', picks, { bookDefs: bookDefs.value, _run: p, _alive: () => edit.value }, fileName)
+  const { res } = await runImport('s10', picks, { bookDefs: bookDefs.value, _run: p, _alive: () => edit.value }, fileName)
     .catch(async (e: unknown) => { await refresh().catch(() => {}); throw e })
   importJump = picks[0] ?? null
   return {
@@ -782,8 +782,6 @@ async function onImportClick() {
 
           <FpImportModal
             v-if="importing"
-            :title="'导入 附表10 · 智能整表'"
-            :sub="'上传/粘贴整张多段 Excel,系统按标题行自动拆段、识别年/月/期与版面,核对后逐段导入'"
             v-bind="parserProps('s10', { bookDefs })"
             :default-year="year"
             :default-month="month"

@@ -1,21 +1,28 @@
 // 园区抄表 Excel 全家桶(METER-SPEC §4):整册多 sheet 解析 + 模板生成 + 当月导出。
 // 真实源文件 = 202405水电表数据表.xlsx 六 sheet(一期/二期/宿舍 × 电/水)及水电费工作簿内同构 sheet。
 // 识别双闸门:①标题行含「YYYY年M月…抄表记录」并带 分区/类别 关键词(sheet 名兜底;
-//              标题缺项 → 用调用方传入的 fallback 账期/分区/类别,段落标 ymSource='fallback' 供 UI 披露);
+//              标题缺任何一项 → 用调用方传入的 fallback 账期/分区/类别,段落标 ymSource='fallback' + asked 缺哪几项,
+//              导入弹窗据此出补问框 —— 缺区或表类也算,不再静默套默认值);
 //            ②表头行(含「区域」)必须同时有 上月行至+本月行至——挡掉标题被复制串味的分摊 sheet。
-// 未识别 sheet 静默跳过(整册常混上百张租户缴费单 sheet)。
+// 认不出的 sheet(有内容的)列成导不了的段(reason 写原因);全空的 sheet 照旧跳过。
 // 已知脏数据(审计实测):幽灵行列(utils/sheet.ts 读取时已剔全空行,列按映射索引取不受游离列影响)、
 // 缺本月读数(=漏抄,照收 null 不报错——进系统标黄,而不是像手工表算出负 231 万度)。
 import { writeAoaWorkbook } from './sheet'
 import type { ImportRec } from './importHeaderMatch'
-import { splitTenantSpot, classifyOwnership, buildingIdFor, OWNERSHIP_LABEL, SPOT_DIR_RE } from './meterSplit'
+import { splitTenantSpot, classifyOwnership, buildingIdFor, SPOT_DIR_RE } from './meterSplit'
 import { tenantMatchNames } from './tenantAlias'
 import { zoneLabel } from './zoneLabel'
 
+/** 标题和 sheet 名里都没认出来、用了弹窗里选的值的那几项:月份 / 区 / 电表还是水表 */
+export type MeterAskItem = 'ym' | 'zone' | 'kind'
+const ASK_NAME: Record<MeterAskItem, string> = { ym: '月份', zone: '区', kind: '电表还是水表' }
+
 export interface MeterSheetSection {
   label: string; records: ImportRec[]; sciCodes?: number
-  ym: string; ymSource: 'title' | 'fallback'   // fallback = 标题里没账期,用了调用方传的默认账期(UI 要披露)
+  ym: string; ymSource: 'title' | 'fallback'   // fallback = 标题缺了月份 / 区 / 表类里的某项,用了调用方传的默认值(UI 要披露)
+  asked?: MeterAskItem[]   // 缺的是哪几项(ymSource='fallback' 时非空)
   noNameCol?: boolean   // 表头首格即「区域」= 缺原册标识列(§J3:同位置同表号的行只剩企业名称可区分)
+  reason?: string       // 认不出的 sheet:为什么导不了(records 为空,核对页标橙不勾)
 }
 
 // 标题缺失时的兜底三件套(弹窗的账期/分区/类别选择器):账期无法从数据推断,只能由用户指定。
@@ -30,8 +37,8 @@ export interface MeterMasterCtx {
 
 export const METER_KIND_LABEL: Record<string, string> = { elec: '电表', water: '水表' }
 
-// FpImportModal 预览表列(__preview 与此对齐,§6.4 拆分结果);模板是 6-sheet 骨架另走 buildMeterTemplate
-export const METER_TEMPLATE_COLS = ['期数', '楼栋', '方位', '租户', '归属', '倍率', '上月总', '本月总', '表列用量']
+// FpImportModal 核对页的列(照 md-v2-meter,__preview 与此对齐);模板是 6-sheet 骨架另走 buildMeterTemplate
+export const METER_TEMPLATE_COLS = ['楼栋', '方位', '租户', '倍率', '上月读数', '本月读数', '用量']
 
 const cleanNum = (v: unknown): number | null => {
   if (v == null) return null
@@ -60,25 +67,27 @@ const dropTrailingZeros = (s: string): string => (/^\d+\.0+$/.test(s) ? s.replac
 
 // 期区清单(T7 GET /api/zones 的形状,取 code+name 即够用)。清单不可用(未注入或接口拉取失败
 // 留了个空数组)时回落这写死的三区 —— 保证老流程(一期/二期/宿舍)在接口挂掉时照常可用。
-// Finding 5:故意比 importRegistry.ts 的 METER_FALLBACK_ZONES({p1,p2,p3,dorm})窄一区 ——
-// 这条 fallback 复刻的是三期开工前的抄表导入原样行为,不是「/api/zones 挂了该给哪些期区」的通用答案;
-// 加 p3 会让接口一挂就悄悄改变这条老路径的识别结果,与「原样保留」的初衷相反。两处不同是刻意的,不要合并。
+// 导入弹窗补问框的「区」下拉也取这一份(importRegistry 用 resolveZones):选得到的区 = 认得出的区,两边不再各写一份。
 export interface ZoneLite { code: string; name: string }
 const DEFAULT_ZONES: ZoneLite[] = [{ code: 'p1', name: '一期' }, { code: 'p2', name: '二期' }, { code: 'dorm', name: '宿舍' }]
-const resolveZones = (zones?: ZoneLite[]): ZoneLite[] => (zones && zones.length ? zones : DEFAULT_ZONES)
+export const resolveZones = (zones?: ZoneLite[]): ZoneLite[] => (zones && zones.length ? zones : DEFAULT_ZONES)
 
 // ── sheet 识别(分级降级):标题(前4行含「抄表记录」的单元格)+ sheet 名 取 月份/分区/类别;
 //    取不到的那几项落到 fallback(用户在导入弹窗里选的账期/分区/类别)——账期无法从数据推断,只能问人。
 function detectSheet(name: string, matrix: string[][], fb: MeterFallback = {}, zones?: ZoneLite[]):
-    { zone: string; kind: string; ym: string; ymSource: 'title' | 'fallback' } | null {
+    { zone: string; kind: string; ym: string; ymSource: 'title' | 'fallback'; asked: MeterAskItem[] } | null {
   const src = [...matrix.slice(0, 4).flat().map(c => String(c ?? '')).filter(s => s.includes('抄表记录')), name].join('|')
   const m = src.match(/(\d{4})年(\d{1,2})月/)
-  const ym = m ? `${m[1]}-${String(+m[2]).padStart(2, '0')}` : fb.ym
-  // 按 label 长度降序反查,防「三期」这类子串被更短的 label 误命中(清单里 label 互不为前缀时无所谓,但排序成本很低)
-  const zone = [...resolveZones(zones)].sort((a, b) => b.name.length - a.name.length)
-    .find(z => src.includes(z.name))?.code ?? fb.zone
-  const kind = /电表/.test(src) ? 'elec' : /水表/.test(src) ? 'water' : fb.kind
-  return ym && zone && kind ? { zone, kind, ym, ymSource: m ? 'title' : 'fallback' } : null
+  const seen: Record<MeterAskItem, string | undefined> = {
+    ym: m ? `${m[1]}-${String(+m[2]).padStart(2, '0')}` : undefined,
+    // 按 label 长度降序反查,防「三期」这类子串被更短的 label 误命中(清单里 label 互不为前缀时无所谓,但排序成本很低)
+    zone: [...resolveZones(zones)].sort((a, b) => b.name.length - a.name.length).find(z => src.includes(z.name))?.code,
+    kind: /电表/.test(src) ? 'elec' : /水表/.test(src) ? 'water' : undefined,
+  }
+  // 缺哪项都算(改前标题有年月、缺区或表类时静默套 fb 的 p1/elec,不出补问)
+  const asked = (['ym', 'zone', 'kind'] as const).filter(k => !seen[k])
+  const ym = seen.ym ?? fb.ym, zone = seen.zone ?? fb.zone, kind = seen.kind ?? fb.kind
+  return ym && zone && kind ? { zone, kind, ym, ymSource: asked.length ? 'fallback' : 'title', asked } : null
 }
 
 // 闸门②:表头行 = 前 8 行里含「区域」且同行有 上月行至+本月行至(挡串味标题的分摊 sheet)。
@@ -167,10 +176,9 @@ export function parseMeterSheet(
     const spot = [...spotCells, tailSpot].filter(Boolean).join(' ')
     // 无标识列时合成标签(§3.1):区域-位置-表名 → 编码;仅作人类可读标签与 L3 兜底,身份靠后端分层匹配
     const name = key || [area, spot, subName].filter(Boolean).join('-').slice(0, 64) || code
-    // 表列用量 vs 派生用量(§2.3):只对照不落库,差异超 max(1,1%) 预览打 ⚠
+    // 用量:按读数算(本月 − 上月)× 倍率,和导进去以后系统算的一样(表里的用量列不落库);读数缺一个才退回表里写的
     const stated = usageCol >= 0 ? cleanNum(row?.[usageCol]) : null
-    const derived = prevTotal == null || currTotal == null ? null : (currTotal - prevTotal) * (factor ?? 1)
-    const gap = stated != null && derived != null && Math.abs(stated - derived) > Math.max(1, Math.abs(derived) * 0.01)
+    const derived = prevTotal == null || currTotal == null ? null : Math.round((currTotal - prevTotal) * (factor ?? 1) * 100) / 100
     const rec: ImportRec = {
       kind: det.kind, zone: det.zone, name, ym: det.ym,
       area: area || undefined,
@@ -183,11 +191,10 @@ export function parseMeterSheet(
       prevTotal, currTotal,
       tenantId, buildingId, ownership,
       note: noteCol >= 0 ? cellStr(row, noteCol) || undefined : undefined,
-      // §6.4 导入预览列:期数|楼栋|方位|租户(或待核原文)|归属|倍率|上月总|本月总|表列用量
-      __preview: [zoneLabel(det.zone), buildings.find(b => b.id === buildingId)?.name ?? '',
+      // 核对页列(md-v2-meter):楼栋|方位|租户(或待核原文)|倍率|上月读数|本月读数|用量;期区写在段名上
+      __preview: [buildings.find(b => b.id === buildingId)?.name ?? area,
         spot, ownership === 'tenant' ? (split.tenant ?? (rawTenant ? `${rawTenant}(待核)` : '')) : rawTenant,
-        OWNERSHIP_LABEL[ownership], factor ?? '', prevTotal ?? '', currTotal ?? '',
-        stated == null ? '' : gap ? `${stated}⚠` : stated],
+        factor ?? '', prevTotal ?? '', currTotal ?? '', derived ?? stated ?? ''],
     }
     if (tou) {
       rec.prevSharp = cleanNum(row?.[prevCol + 1]); rec.prevPeak = cleanNum(row?.[prevCol + 2])
@@ -200,20 +207,30 @@ export function parseMeterSheet(
   if (!records.length) return null
   const [y, mo] = det.ym.split('-')
   const label = `${zoneLabel(det.zone)}${METER_KIND_LABEL[det.kind]} · ${y}年${+mo}月 · ${records.length}块表`
-    + (det.ymSource === 'fallback' ? '(按所选账期)' : '')
-  return { label, records, sciCodes, ym: det.ym, ymSource: det.ymSource, noNameCol: nameCol < 0 }
+    + (det.asked.length ? `(${det.asked.map(k => ASK_NAME[k]).join('、')}按你选的)` : '')
+  return { label, records, sciCodes, ym: det.ym, ymSource: det.ymSource, asked: det.asked, noNameCol: nameCol < 0 }
 }
 
 // ── 整册解析(parseWorkbook 契约):识别 sheet → sections 勾选段;仅 1 段平铺为 records ──
 export function parseMeterWorkbook(
   sheets: { name: string; matrix: string[][] }[], master: MeterMasterCtx = {}, fb: MeterFallback = {}, zones?: ZoneLite[],
-): { records?: ImportRec[]; sections?: MeterSheetSection[]; error?: string; warning?: string; notice?: string } {
-  const sections = sheets.map(s => parseMeterSheet(s.name, s.matrix, master, fb, zones)).filter((s): s is MeterSheetSection => !!s)
-  if (!sections.length)
-    return { error: sheets.some(s => headerRow(s.matrix) >= 0)
-      // 表头认出来了,缺的是账期/分区/类别 → 给可操作提示(裸粘贴数据块走这条)
-      ? '读到抄表表头了,但标题里没有账期(年月)——账期无法从数据推断,请在上方选择账期/分区/类别后重新解析。'
-      : '没识别到抄表数据:表头行需同时含「区域」+「上月行至」+「本月行至」。标题行(YYYY年M月…抄表记录)可以没有,账期在上方选。' }
+): { records?: ImportRec[]; sections?: MeterSheetSection[]; error?: string; warning?: string; notice?: string; ask?: MeterAskItem[] } {
+  // 认不出的 sheet 不再静默跳过:有内容的列成导不了的段,写明原因(全空的 sheet 照旧跳过)
+  const all = sheets.flatMap((s): MeterSheetSection[] => {
+    const sec = parseMeterSheet(s.name, s.matrix, master, fb, zones)
+    if (sec) return [sec]
+    if (!s.matrix.some(r => r.some(c => String(c ?? '').trim() !== ''))) return []
+    const reason = headerRow(s.matrix) < 0 ? '没有「区域」「上月行至」「本月行至」这几列，不是抄表表'
+      : !detectSheet(s.name, s.matrix, fb, zones) ? '看不出是哪个月、哪个区、电表还是水表'
+      : '表头下面没有读数'
+    return [{ label: s.name || '粘贴的表', records: [], ym: '', ymSource: 'title', reason }]
+  })
+  const sections = all.filter(s => !s.reason)
+  // 一段都导不了:说第一张认不出的表为什么(认不出卡下面有「文件要长这样」可对照)
+  if (!sections.length) {
+    const why = all[0]?.reason
+    return { error: why ? `${all.length > 1 ? `${all.length} 张表都导不了，第一张「${all[0].label}」` : ''}${why}。` : '没读到任何内容。' }
+  }
   const sci = sections.reduce((n, s) => n + (s.sciCodes ?? 0), 0)
   // 非阻断提示走 warning(弹窗里的橙色条,与 error 分开、不阻断导入;后端 errors/notices 也不掺)
   // §J3:缺标识列必须当场说出来 —— 位置歧义只剩企业名称可救,治本是用模板/导出当月的文件重导。
@@ -222,10 +239,13 @@ export function parseMeterWorkbook(
     sections.some(s => s.noNameCol) ? '本文件缺原册首列(标识名),同位置同表号的行将只能靠企业名称区分;建议用「下载模板」或「导出当月」的文件重导。' : '',
   ].filter(Boolean).join(' ') || undefined
   const byFb = sections.filter(s => s.ymSource === 'fallback')
+  const ask = (['ym', 'zone', 'kind'] as const).filter(k => byFb.some(s => s.asked?.includes(k)))
   const notice = byFb.length
-    ? `${byFb.length} 段没在标题里读到账期,已按你选的 ${byFb[0].ym} 账期导入(分区/类别同理)。请核对下方段标签,不对就改上方选项。`
+    ? `${byFb.length} 段标题里没写${ask.map(k => ASK_NAME[k]).join('、')}，按你选的导入；不对就改选项，会按新选的重新认。`
     : undefined
-  return sections.length === 1 ? { records: sections[0].records, warning, notice } : { sections, warning, notice }
+  return sections.length === 1 && all.length === 1
+    ? { records: sections[0].records, warning, notice, ask: ask.length ? ask : undefined }
+    : { sections: all, warning, notice, ask: ask.length ? ask : undefined }
 }
 
 // ── 模板:6-sheet 骨架(标题行含年月+真实版式表头+示例行),与解析器互认 ──

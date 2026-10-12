@@ -99,18 +99,18 @@ describe('附表10 · 逐段导入断了', () => {
 describe('附表10 · 导入完再跳期', () => {
   // 破坏验证:跳到第一段的册 / 年月挪回 runner 的 settle 刷新里 → 换期 SchedHeader 退出编辑,「编辑态还在」「还在 9 月」红;
   //          @close 换回 importing = false → 「关窗后跳到 1 月」红
-  it('❗导入完:弹窗还在、编辑态还在、原地出结果卡;点「知道了」才跳到第一段(2026-01)', async () => {
+  it('❗导入完:弹窗还在、编辑态还在、原地出结果卡;点「完成」才跳到第一段(2026-01)', async () => {
     vi.mocked(s10Api.importRows).mockResolvedValue({ imported: 1, skipped: 0, errors: [] })
     const w = await openImport()
     ;(w.findComponent(FpImportModal).vm as unknown as { onSectionsConfirm: (p: SectionPick[]) => void }).onSectionsConfirm(PICKS)
     await flushPromises()
     expect(s10Api.importRows).toHaveBeenCalledTimes(2)
-    expect(w.find('.irc h4').text()).toBe('导入完成')
-    expect(w.find('.irc-meta').text()).toContain('本页已刷新')
+    expect(w.find('.irc h4').text()).toBe('导进去 2 行')
+    expect(w.find('.irc-meta').text(), '本页刷新成了,不写「没刷新上」').not.toContain('没刷新上')
     expect(vmOf(w).edit, '编辑态还在(没被换期踢出去)').toBe(true)
     expect(vmOf(w).month, '看结果时还在本期').toBe(9)
 
-    await w.findAll('.fpimp button').find(b => b.text() === '知道了')!.trigger('click')
+    await w.findAll('.fpimp button').find(b => b.text() === '完成')!.trigger('click')
     await flushPromises()
     expect(w.find('.fpimp-scrim').exists()).toBe(false)
     expect(vmOf(w).month, '关窗后跳到第一段那一月').toBe(1)
@@ -129,7 +129,7 @@ describe('附表10 · 导入完再跳期', () => {
     await flushPromises()
     expect(s10Api.importRows, '第 2 段不再发').toHaveBeenCalledTimes(1)
     expect(w.find('.fpimp-scrim').exists(), '在跑的导入窗没被收走').toBe(true)
-    expect(w.find('.ipf-h h4').text()).toBe('第 2 段没导进去')
+    expect(w.find('.ipf-h h4').text()).toBe('第 2 段（2026年2月 一期）没导进去')
     expect(w.find('.ipf-box').text()).toContain('已退出编辑，从这一段起没有再发')
     expect(w.findAll('.fpimp-f button').map(b => b.text())).toEqual(['关闭', '返回修改'])
     w.unmount()

@@ -18,6 +18,10 @@ export interface SortableColumn<Row = any> {
   wrap?: boolean
   render?: (row: Row) => VNode | string
   sortValue?: SortValue
+  /** false = 表头只写字、不出排序(服务端分页的表:只排当前这一页会误导) */
+  sortable?: boolean
+  /** 贴右的末列(导入记录「去看」,LIST-PAGE-SPEC §4 / 导入中心稿 K7):余宽空列 .fp-fill 放在它前面,不放行尾 */
+  end?: boolean
 }
 
 const props = withDefaults(defineProps<{
@@ -42,6 +46,9 @@ const props = withDefaults(defineProps<{
    *   不是另画一张表 —— 两份版式迟早会漂。
    */
   skeletonRows?: number
+  /** 行高亮(motion.css .fp-row-flash,浅蓝底 2s 褪):rowKey 命中的行亮一下,可给一组(一次导入记几条)。
+   *  动画跑完 emit flashEnd,调用方把它清成 null(写法照 PoolLedgerView flashId:要重播先置 null 再 nextTick 设回) */
+  flashKey?: string | number | readonly (string | number)[] | null
 }>(), {
   rowKey: 'id',
   sort: null,
@@ -49,9 +56,15 @@ const props = withDefaults(defineProps<{
   fixedLayout: false,
   selectedKey: null,
   skeletonRows: 0,
+  flashKey: null,
 })
 
 const isSel = (r: any) => props.selectedKey != null && r[props.rowKey] === props.selectedKey
+const flashSet = computed(() => new Set(props.flashKey == null ? [] : Array.isArray(props.flashKey) ? props.flashKey : [props.flashKey]))
+const isFlash = (r: any) => flashSet.value.has(r[props.rowKey])
+const hasEnd = computed(() => props.columns.some(c => c.end))
+// 行里别的动画(如格子里的转圈)冒上来的 animationend 不算
+function onFlashEnd(e: AnimationEvent) { if (e.animationName === 'fp-row-flash') emit('flashEnd') }
 
 // S 档(≤600)行转卡片(RESPONSIVE-LAYOUT-SPEC §5.1):不渲染 <table>,改渲染 72px 定高卡列。
 // useViewport 自带 jsdom/SSR guard(无 matchMedia → tier 恒 'xl'),既有测试走表格分支不变。
@@ -71,6 +84,7 @@ function cellNode(r: any, i: number) {
 const emit = defineEmits<{
   sortChange: [sort: SortState | null]
   rowClick: [row: any]
+  flashEnd: []
 }>()
 
 function onSort(key: string, dir: 'asc' | 'desc' | null) {
@@ -177,25 +191,27 @@ function renderSortHeader(col: SortableColumn) {
     <table :style="{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-sans)', tableLayout: fixedLayout ? 'fixed' : undefined }">
       <thead>
         <tr style="border-bottom:1px solid var(--divider)">
-          <th
-            v-for="c in columns"
-            :key="c.key"
-            :style="{
-              /* 有 .fp-fill 空列时 auto 布局会把 width 压回内容宽,定宽靠 minWidth 锁住 */
-              width: c.width,
-              minWidth: c.width,
-              /* 与 td 同档收窄,否则 M 档表头与表体列不对齐 */
-              padding: `0 ${cellPadX} 10px`,
-              textAlign: c.align || 'left',
-              font: 'var(--type-label)',
-              fontWeight: 'var(--fw-regular)',
-              color: 'var(--text-muted)',
-              whiteSpace: 'nowrap',
-            }"
-          >
-            <component :is="() => renderSortHeader(c)" />
-          </th>
-          <th class="fp-fill" aria-hidden="true"></th>
+          <template v-for="c in columns" :key="c.key">
+            <th v-if="c.end" class="fp-fill" aria-hidden="true"></th>
+            <th
+              :style="{
+                /* 有 .fp-fill 空列时 auto 布局会把 width 压回内容宽,定宽靠 minWidth 锁住 */
+                width: c.width,
+                minWidth: c.width,
+                /* 与 td 同档收窄,否则 M 档表头与表体列不对齐 */
+                padding: `0 ${cellPadX} 10px`,
+                textAlign: c.align || 'left',
+                font: 'var(--type-label)',
+                fontWeight: 'var(--fw-regular)',
+                color: 'var(--text-muted)',
+                whiteSpace: 'nowrap',
+              }"
+            >
+              <component v-if="c.sortable !== false" :is="() => renderSortHeader(c)" />
+              <template v-else>{{ c.header }}</template>
+            </th>
+          </template>
+          <th v-if="!hasEnd" class="fp-fill" aria-hidden="true"></th>
         </tr>
       </thead>
       <tbody>
@@ -205,18 +221,20 @@ function renderSortHeader(col: SortableColumn) {
           :key="'sk-' + i"
           :style="{ height: 'var(--mx-row-h, 56px)', borderBottom: '1px solid var(--divider)' }"
         >
-          <td v-for="(c, ci) in columns" :key="c.key"
-              :style="{ padding: `0 ${cellPadX}`, verticalAlign: 'middle', textAlign: c.align || 'left' }">
-            <span class="fp-shim" aria-hidden="true"
-                  :style="{ display: 'inline-block', height: '11px', borderRadius: '3px',
-                            width: [62, 44, 54, 38, 48, 58][(ci + i) % 6] + '%' }"></span>
-          </td>
-          <td class="fp-fill" aria-hidden="true"></td>
+          <template v-for="(c, ci) in columns" :key="c.key">
+            <td v-if="c.end" class="fp-fill" aria-hidden="true"></td>
+            <td :style="{ padding: `0 ${cellPadX}`, verticalAlign: 'middle', textAlign: c.align || 'left' }">
+              <span class="fp-shim" aria-hidden="true"
+                    :style="{ display: 'inline-block', height: '11px', borderRadius: '3px',
+                              width: [62, 44, 54, 38, 48, 58][(ci + i) % 6] + '%' }"></span>
+            </td>
+          </template>
+          <td v-if="!hasEnd" class="fp-fill" aria-hidden="true"></td>
         </tr>
         <tr
           v-for="r in sortedRows"
           :key="(r as any)[rowKey]"
-          :class="{ 'is-selected': isSel(r) }"
+          :class="{ 'is-selected': isSel(r), 'fp-row-flash': isFlash(r) }"
           :style="{
             height: 'var(--mx-row-h, 56px)',
             borderBottom: '1px solid var(--divider)',
@@ -227,30 +245,33 @@ function renderSortHeader(col: SortableColumn) {
           @click="$emit('rowClick', r)"
           @mouseenter="rowHover && (($event.currentTarget as HTMLElement).style.background = 'var(--bg-panel)')"
           @mouseleave="rowHover && (($event.currentTarget as HTMLElement).style.background = isSel(r) ? 'var(--row-selected)' : 'transparent')"
+          @animationend="onFlashEnd"
+          @animationcancel="onFlashEnd"
         >
-          <td
-            v-for="c in columns"
-            :key="c.key"
-            v-tip="c.render ? undefined : String((r as any)[c.key] ?? '')"
-            :style="{
-              /* 等高铁律(LIST-PAGE-SPEC §4):垂直留白由 tr 定高提供(--mx-row-h),td 不吃上下 padding */
-              padding: `0 ${cellPadX}`,
-              verticalAlign: 'middle',
-              textAlign: c.align || 'left',
-              font: 'var(--type-body)',
-              color: 'var(--text-primary)',
-              whiteSpace: c.wrap ? 'normal' : 'nowrap',
-              /* 超长内容截断而不是把列撑宽(LIST-PAGE-SPEC §4):table-layout 保持 auto,
-                 内容比列定宽(width / minWidth)长时才生效;全文靠上面的 v-tip 悬停看 */
-              overflow: c.wrap ? undefined : 'hidden',
-              textOverflow: c.wrap ? undefined : 'ellipsis',
-              fontVariantNumeric: c.mono ? 'tabular-nums' : 'normal',
-              fontFamily: c.mono ? 'var(--font-mono)' : 'var(--font-sans)',
-            }"
-          >
-            <Cell :node="c.render ? c.render(r) : (r as any)[c.key]" />
-          </td>
-          <td class="fp-fill" aria-hidden="true"></td>
+          <template v-for="c in columns" :key="c.key">
+            <td v-if="c.end" class="fp-fill" aria-hidden="true"></td>
+            <td
+              v-tip="c.render ? undefined : String((r as any)[c.key] ?? '')"
+              :style="{
+                /* 等高铁律(LIST-PAGE-SPEC §4):垂直留白由 tr 定高提供(--mx-row-h),td 不吃上下 padding */
+                padding: `0 ${cellPadX}`,
+                verticalAlign: 'middle',
+                textAlign: c.align || 'left',
+                font: 'var(--type-body)',
+                color: 'var(--text-primary)',
+                whiteSpace: c.wrap ? 'normal' : 'nowrap',
+                /* 超长内容截断而不是把列撑宽(LIST-PAGE-SPEC §4):table-layout 保持 auto,
+                   内容比列定宽(width / minWidth)长时才生效;全文靠上面的 v-tip 悬停看 */
+                overflow: c.wrap ? undefined : 'hidden',
+                textOverflow: c.wrap ? undefined : 'ellipsis',
+                fontVariantNumeric: c.mono ? 'tabular-nums' : 'normal',
+                fontFamily: c.mono ? 'var(--font-mono)' : 'var(--font-sans)',
+              }"
+            >
+              <Cell :node="c.render ? c.render(r) : (r as any)[c.key]" />
+            </td>
+          </template>
+          <td v-if="!hasEnd" class="fp-fill" aria-hidden="true"></td>
         </tr>
       </tbody>
     </table>
@@ -274,8 +295,10 @@ function renderSortHeader(col: SortableColumn) {
       v-for="r in sortedRows"
       :key="(r as any)[rowKey]"
       class="mx-rowcard"
-      :class="{ 'is-selected': isSel(r) }"
+      :class="{ 'is-selected': isSel(r), 'fp-row-flash': isFlash(r) }"
       @click="$emit('rowClick', r)"
+      @animationend="onFlashEnd"
+      @animationcancel="onFlashEnd"
     >
       <!-- 调用方给 #card 时按屏映射;不给时兜底:第一列 = 主字段,第二三列 = 次级行 -->
       <slot name="card" :row="r">

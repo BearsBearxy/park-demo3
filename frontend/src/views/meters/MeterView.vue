@@ -37,7 +37,7 @@ import DatePicker from '@/components/ds/DatePicker.vue'
 import { buildMeterTemplate, exportMeterMonth } from '@/utils/meterExcel'
 import { OWNERSHIP_LABEL, ownershipLabel } from '@/utils/meterSplit'
 import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
-import type { ImportPayload } from '@/components/import/FpImportModal.vue'
+import type { ImportPayload, ImportRec } from '@/components/import/FpImportModal.vue'
 import { importBusy, settle, type ImportOutcome, type ImportRunProgress } from '@/components/import/importRun'
 import { useAuthStore } from '@/stores/auth'
 import { useFormSheet } from '@/composables/useFormSheet'
@@ -112,6 +112,7 @@ const openId = ref<number | null>(null)
 onDeactivated(() => {
   if (!importBusy.value) importing.value = false   // 导入窗不 Teleport,随页签藏起;在跑的不收(D14)
   openId.value = null
+  flashIds.value = null   // 行高亮:停用时动画只发 cancel 不发 end,类留着回来会再亮一次(同 PoolLedgerView)
   saveConfirm.value = false; delPreview.value = null; asking.value = null
   panel.value = ''
 })
@@ -663,9 +664,28 @@ const importCtx: ImportCtx = {}
 // 三个 load 自己吞错改 metersErr / readErr:刷完看 loadErr,照实报「本页没刷新上」
 async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
   if (!editMode.value || !canReading.value) return null
-  return settle(await runImport('meter', payload as never, { ...importCtx, _run: p }, fileName), p,
-    () => reloadAll().then(() => { if (loadErr.value) throw new Error('本页没读到') }))
+  const { res } = await runImport('meter', payload as never, { ...importCtx, _run: p }, fileName)
+  return settle(res, p, () => reloadAll().then(() => {
+    if (loadErr.value) throw new Error('本页没读到')
+    // 亮哪几块表:后端逐行回的 meterId(matches.rowIndex 对的是发出去的行序),只取导进屏上这个月的
+    const recs = (payload as ImportRec[]).flatMap(x => (Array.isArray(x.records) ? x.records as ImportRec[] : [x]))
+    flashPending = (res.matches ?? []).filter(x => recs[x.rowIndex]?.ym === ym.value).map(x => x.meterId)
+  }))
 }
+
+// 导进去的那几块表浅蓝底 2s 褪(动效板 ⑤「在抄表页里导入也一样」),关窗那一刻才亮(弹窗开着时亮在它后面);
+// 先置 null 再 nextTick,同一块表连导两次也重播
+const flashIds = ref<number[] | null>(null)
+let flashPending: number[] | null = null
+// 每次开导入窗先清掉上一批:页签停用、退出编辑这两条关窗的路不经 closeImport,留着的话下次关窗(哪怕导失败 / 取消)会亮上一次的表
+watch(importing, v => { if (v) flashPending = null })
+function closeImport() {
+  importing.value = false
+  const ids = flashPending
+  flashPending = null
+  if (ids?.length) { flashIds.value = null; void nextTick(() => { flashIds.value = ids }) }
+}
+function onFlashEnd(e: AnimationEvent) { if (e.animationName === 'fp-row-flash') flashIds.value = null }
 async function onTemplate() {
   try { await buildMeterTemplate(ym.value, zones.list) }
   catch (e) { receipt.fail((e as { message?: string })?.message ?? '模板下载失败', { label: '重试', run: () => void onTemplate() }) }
@@ -1051,7 +1071,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDelEsc, true))
       :rows="gridRows" :view-key="viewKey" :edit-mode="editable" :kind="kind" :zone="zone" :draft="draft"
       :building-name-by-id="buildingNameById" :empty-text="emptyText"
       :tou-base="kindZoneRows" :retired-open="status === 'retired' || status === 'changed'"
-      @open="openId = $event" @cell-edit="onCellEdit"
+      :flash="flashIds"
+      @open="openId = $event" @cell-edit="onCellEdit" @animationend="onFlashEnd"
     />
 
     <!-- 退出编辑确认(§7.2):保存修改/放弃修改/×留在编辑态 -->
@@ -1071,11 +1092,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDelEsc, true))
     <!-- 导入(registry key 'meter':整册 parseWorkbook → sections 勾选段;flat/sections 两口都接) -->
     <FpImportModal
       v-if="importing"
-      title="导入 园区抄表 · 水电表读数"
-      sub="上传整册抄表工作簿(各期区×电/水 sheet,标题行含年月),识别 sheet 逐段勾选;表自动建档并按企业名称匹配租户/楼栋/归属,同表同月重复导入自动覆盖;缺本月读数照收并标「未抄」"
       v-bind="parserProps('meter', { ...importCtx, year, month })"
       :runner="onImport"
-      @close="importing = false"
+      @close="closeImport"
     />
 
     <!-- S/M 档底部面板(§5.10「其余进底部面板,面板里一件不少」)。

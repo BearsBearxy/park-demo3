@@ -196,6 +196,9 @@ const ERR_SLOT_WHITELIST: Record<string, string> = {
     'B′ 结果清单：导入结果弹窗（.ir-scrim 是 fixed 浮层）内的「N 条提示」与「N 行未导入」两个区块，是结果内容不是字段校验',
   'components/import/ImportResultToast.vue .ir-errs-list':
     'B′ 结果清单：上面两个区块的明细展开体，用户点 toggle 主动展开，顶的是它自己下面的「知道了」按钮，属预期的展开/收起',
+  // ── A′. 导入弹窗「认不出」卡（0.34.0，图 md-v2-err）────────────────────────
+  'components/import/FpImportModal.vue .fpimp-err':
+    'A′ 换掉内容区本身：认不出卡和拖放区 / 粘贴框 v-if / v-else-if / v-else 三选一，占的是选数据页上半块那一格，不是长在字段底下的校验红字；弹窗 720 × 700 固定，窗口不跳',
 }
 
 /**

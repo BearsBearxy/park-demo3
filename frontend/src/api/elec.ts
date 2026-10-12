@@ -14,7 +14,7 @@ export const elecApi = {
     http.patch(`/elec/records/${id}/note`, { note }),
   remove:  (id: number): Promise<void>        => http.delete(`/elec/records/${id}`),
   // 导入:行自带 type+phaseId+acctMonth,按(期,月)整月整期 upsert。
-  importRows: (rows: ElecImportRow[]): Promise<ImportResultDTO> => http.post('/elec/import', { rows }),
+  importRows: (rows: ElecImportRow[]): Promise<ImportResultDTO> => http.post('/elec/import', { rows }, { silentNetError: true }),
   // 清空本年导入:删本年 source=import。
   clearImported: (year: number): Promise<DeleteResultDTO> =>
     http.delete('/elec/imported', { params: { year } }),

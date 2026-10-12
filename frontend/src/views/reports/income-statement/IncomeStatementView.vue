@@ -393,8 +393,6 @@ async function onExport() {
 
       <FpImportModal
         v-if="importing"
-        :title="'导入 利润表'"
-        :sub="'上传/粘贴合并多公司的利润表(两行表头,每公司本月/本年累计两列),按公司拆段、未匹配公司自动新建,导入到当前所选年月'"
         v-bind="parserProps('report_is')"
         @close="importing = false"
         :runner="onImport"

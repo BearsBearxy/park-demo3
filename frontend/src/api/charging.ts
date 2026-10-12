@@ -19,7 +19,7 @@ export const chargingApi = {
   remove: (no: number, id: number): Promise<void> => http.delete(`/charging/${no}/records/${id}`),
   // 导入:行自带 cat(cat_id)+acctMonth+fee(已按附表算好);按(附表,cat,月)upsert。
   importRows: (no: number, req: ChargingImportRequest): Promise<ImportResultDTO> =>
-    http.post(`/charging/${no}/import`, req),
+    http.post(`/charging/${no}/import`, req, { silentNetError: true }),
   // 清空本附表本年导入:删本附表本年 source=import。
   clearImported: (no: number, year: number): Promise<DeleteResultDTO> =>
     http.delete(`/charging/${no}/imported`, { params: { year } }),

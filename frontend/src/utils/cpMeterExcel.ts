@@ -1,13 +1,11 @@
 // 充电桩分桩明细 Excel 全家桶(CP-METER-SPEC §3):导入行解析 + 模板生成 + 月度汇总导出。
 // 与 pvMeterExcel.ts 同构:导入 = 单 sheet 长表(一行 = 一桩一日),表头按名识别(matchByHeader,含别名/单位后缀前缀匹配);
-// 行级校验(日期可识别、三金额≥0)错误逐行报告不整批拦;未知桩名由后端行级 ImportError 报告。
+// 行级校验(日期可识别、三金额≥0)不过的行解析时就交出来(bad)不整批拦;未知桩名由后端行级 ImportError 报告。
 // 运营商列仅校验参考,捕获进预览但不上传(spec §3);电表用电量不进导入模板(页面手录)。
 // AOA 构建为纯函数(cpMeterExcel.spec.ts 锁定);出流走 utils/sheet.ts 适配层(exceljs,内部懒加载)。
 import { writeAoaWorkbook } from './sheet'
-import { matchByHeader, type ColumnMapEntry, type ImportRec } from './importHeaderMatch'
-import { parsePvReadDate } from './pvMeterExcel'   // ponytail: 日期双格式解析直接复用光伏的(同口径同 epoch)
-
-export interface CpMeterImportError { rowIndex: number; label: string; reason: string }
+import { matchByHeader, type BadRow, type ColumnMapEntry, type ImportRec } from './importHeaderMatch'
+import { parsePvReadDate, readDateReason } from './pvMeterExcel'   // ponytail: 日期双格式解析直接复用光伏的(同口径同 epoch)
 
 // 模板列 = 后端契约字段顺序;__preview 与此对齐(FpImportModal 预览表按 templateCols 逐列取)
 export const CP_METER_TEMPLATE_COLS = ['运营商', '桩名', '日期', '充电量(kWh)', '手续费(元)', '收益(元)', '备注']
@@ -24,26 +22,24 @@ const CP_METER_COLUMN_MAP: ColumnMapEntry[] = [
 
 // ── 导入行解析(纯函数,供 importRegistry customParse) ──────────
 // 返回 records = 后端 POST /api/cp-meter/import 行契约 {station, readDate, chargeKwh, fee, revenue, note};
-// errors 行级(rowIndex≥0)不整批拦,表头识别失败为整批错误(rowIndex=-1)。
+// 日期认不出 / 金额为负的行进 bad(不整批拦),表头识别失败才整批 error。
 // 桩名非空由 matchByHeader 保证(空名行/合计行在关键列扫描时已静默剔除)。
-export function parseCpMeterRows(matrix: string[][]): { records: ImportRec[]; errors: CpMeterImportError[] } {
-  const { records: matched, error } = matchByHeader(matrix, CP_METER_COLUMN_MAP, ['桩名', '充电桩', '站点'])
-  if (error) return { records: [], errors: [{ rowIndex: -1, label: '', reason: error }] }
+export function parseCpMeterRows(matrix: string[][]): { records: ImportRec[]; bad: BadRow[]; error?: string } {
+  const { records: matched, error, rows } = matchByHeader(matrix, CP_METER_COLUMN_MAP, ['桩名', '充电桩', '站点'])
+  if (error) return { records: [], bad: [], error }
 
   const records: ImportRec[] = []
-  const errors: CpMeterImportError[] = []
+  const bad: BadRow[] = []
   matched.forEach((r, i) => {
     const station = String(r.tenantName).trim()
+    const cells = () => [r.operatorRaw, station, r.dateRaw, r.chargeKwh, r.fee, r.revenue, r.noteRaw].map(v => String(v ?? ''))
     const readDate = parsePvReadDate(r.dateRaw)
-    if (!readDate) {
-      errors.push({ rowIndex: i, label: `${station} ${String(r.dateRaw ?? '').trim()}`, reason: '日期无法识别(需 YYYY-MM-DD 或 Excel 日期格)' })
-      return
-    }
+    if (!readDate) { bad.push({ row: rows![i] + 1, cells: cells(), reason: readDateReason(r.dateRaw) }); return }
     const chargeKwh = (r.chargeKwh as number) ?? 0
     const fee = (r.fee as number) ?? 0
     const revenue = (r.revenue as number) ?? 0
     if (chargeKwh < 0 || fee < 0 || revenue < 0) {
-      errors.push({ rowIndex: i, label: `${station} ${readDate}`, reason: '充电量/手续费/收益不能为负' })
+      bad.push({ row: rows![i] + 1, cells: cells(), reason: '充电量、手续费、收益不能是负数' })
       return
     }
     const note = String(r.noteRaw ?? '').trim() || undefined
@@ -52,7 +48,7 @@ export function parseCpMeterRows(matrix: string[][]): { records: ImportRec[]; er
       __preview: [String(r.operatorRaw ?? ''), station, readDate, chargeKwh, fee, revenue, note ?? ''],
     })
   })
-  return { records, errors }
+  return { records, bad }
 }
 
 // ── 模板生成(spec §3:表头 + 两行示例;运营商和桩名用中性的,2026-10-04 用户拍板产品卖给别的园区) ──────

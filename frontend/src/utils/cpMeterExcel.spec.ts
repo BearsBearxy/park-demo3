@@ -5,15 +5,15 @@ import {
 
 // 日期解析器复用 parsePvReadDate(pvMeterExcel.spec.ts 已锁定全格式),此处只验双格式经行解析通路
 
-describe('parseCpMeterRows — 表头别名/行级错误不整批拦', () => {
+describe('parseCpMeterRows — 表头别名/导不了的行解析时交 bad,不整批拦', () => {
   const header = ['运营商', '桩名', '日期', '充电量(kWh)', '手续费(元)', '收益(元)', '备注']
 
   it('标准表头:解析出后端契约字段,运营商列不上传', () => {
-    const { records, errors } = parseCpMeterRows([
+    const { records, bad } = parseCpMeterRows([
       header,
       ['小桔', '快充1', '2026-07-01', '1,250.50', '62.5', '1,000', '正常'],
     ])
-    expect(errors).toEqual([])
+    expect(bad).toEqual([])
     expect(records.length).toBe(1)
     expect(records[0]).toMatchObject({ station: '快充1', readDate: '2026-07-01', chargeKwh: 1250.5, fee: 62.5, revenue: 1000, note: '正常' })
     expect(records[0]).not.toHaveProperty('operatorRaw')
@@ -22,11 +22,11 @@ describe('parseCpMeterRows — 表头别名/行级错误不整批拦', () => {
   })
 
   it('别名表头命中:平台/充电桩/时间/服务费/收入,日期吃 Excel 序列', () => {
-    const { records, errors } = parseCpMeterRows([
+    const { records, bad } = parseCpMeterRows([
       ['平台', '充电桩', '时间', '充电量', '服务费', '收入'],
       ['万城万', '万城万', '45658', '900', '45', '720'],
     ])
-    expect(errors).toEqual([])
+    expect(bad).toEqual([])
     expect(records[0]).toMatchObject({ station: '万城万', readDate: '2025-01-01', chargeKwh: 900, fee: 45, revenue: 720 })
   })
 
@@ -38,28 +38,27 @@ describe('parseCpMeterRows — 表头别名/行级错误不整批拦', () => {
     expect(records[0]).toMatchObject({ station: '慢充1', readDate: '2026-07-15', fee: 25 })
   })
 
-  it('行级错误(非法日期/负金额)逐行报告,好行照常入列;合计行静默剔除', () => {
-    const { records, errors } = parseCpMeterRows([
+  it('❗导不了的行交 bad:行号 + 原样内容 + 原因;好行照常入列,合计行静默剔除不算导不了', () => {
+    const { records, bad } = parseCpMeterRows([
       header,
-      ['小桔', '快充1', '2026-07-01', '100', '5', '80', ''],
-      ['小桔', '慢充1', '不是日期', '1', '1', '0', ''],
-      ['万城万', '万城万', '2026-07-01', '-5', '0', '0', ''],
-      ['', '合计', '', '101', '6', '80', ''],
-      ['小桔', '快充1', '2026-07-02', '60', '', '', ''],   // 空金额 → 0,合法
+      ['小桔', '快充1', '2026-09-01', '100', '5', '80', ''],
+      ['小桔', '慢充1', '9月2日', '1', '1', '0', ''],
+      ['小桔', '慢充2', '2026-09-31', '12', '0.6', '9.6', ''],
+      ['万城万', '万城万', '2026-09-01', '-5', '0', '0', '退款'],
+      ['', '合计', '', '108', '6.6', '89.6', ''],
+      ['小桔', '快充1', '2026-09-02', '60', '', '', ''],   // 空金额 → 0,合法
     ])
-    expect(records.map(r => [r.station, r.readDate])).toEqual([['快充1', '2026-07-01'], ['快充1', '2026-07-02']])
+    expect(records.map(r => [r.station, r.readDate])).toEqual([['快充1', '2026-09-01'], ['快充1', '2026-09-02']])
     expect(records[1]).toMatchObject({ chargeKwh: 60, fee: 0, revenue: 0 })
-    expect(errors.length).toBe(2)
-    expect(errors[0].reason).toContain('日期无法识别')
-    expect(errors[1].reason).toBe('充电量/手续费/收益不能为负')
-    expect(errors.every(e => e.rowIndex >= 0)).toBe(true)   // 均为行级,不整批拦
+    expect(bad.map(b => [b.row, b.reason])).toEqual([[3, '日期认不出'], [4, '没有 9月31日'], [5, '充电量、手续费、收益不能是负数']])
+    expect(bad[2].cells).toEqual(['万城万', '万城万', '2026-09-01', '-5', '0', '0', '退款'])
   })
 
-  it('表头识别失败 → rowIndex=-1 整批错误', () => {
-    const { records, errors } = parseCpMeterRows([['快充1', '2026-07-01', '1', '1', '0']])
+  it('表头识别失败 → 整批 error,没有 bad', () => {
+    const { records, bad, error } = parseCpMeterRows([['快充1', '2026-07-01', '1', '1', '0']])
     expect(records).toEqual([])
-    expect(errors.length).toBe(1)
-    expect(errors[0].rowIndex).toBe(-1)
+    expect(bad).toEqual([])
+    expect(error).toBeTruthy()
   })
 })
 
@@ -72,8 +71,8 @@ describe('buildCpMeterTemplateAoa — 模板结构', () => {
     expect(aoa[2][1]).toBe('慢充1')
   })
   it('模板回导自洽:AOA 直接喂解析器 → 2 条零错误', () => {
-    const { records, errors } = parseCpMeterRows(buildCpMeterTemplateAoa().map(r => r.map(String)))
-    expect(errors).toEqual([])
+    const { records, bad } = parseCpMeterRows(buildCpMeterTemplateAoa().map(r => r.map(String)))
+    expect(bad).toEqual([])
     expect(records.map(r => r.station)).toEqual(['快充1', '慢充1'])
   })
 })

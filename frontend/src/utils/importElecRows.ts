@@ -8,7 +8,7 @@
 //   basic  记录:行若「计费需量」非空(大工业行)→ 额外产 type=basic,demand=计费需量·price=单价(basic 列)·rate=同行税率(或 0)。
 // 派生(不含税金额/税额/价税合计/基本用电费)不导,后端读时算。
 import { excelSerialToDate, parseYearMonth } from './parseYearMonth'
-import type { ImportRec } from './importHeaderMatch'
+import type { BadRow, ImportRec } from './importHeaderMatch'
 
 export interface ElecImportRow {
   type: 'energy' | 'basic'
@@ -24,7 +24,6 @@ export interface ElecImportRow {
   rate: number
   note?: string | null
 }
-export interface ElecParseError { rowIndex: number; label: string; reason: string }
 
 // 左块固定列(数据层稳定:记账期/期 合并下填,用电时段/开票日期 紧随)
 const COL_ACCT = 0
@@ -106,13 +105,13 @@ function locateHeader(matrix: string[][]): { headerRow: number; cols: Record<str
   return null
 }
 
-export function importElecRows(matrix: string[][]): { records?: ImportRec[]; error?: string } {
+export function importElecRows(matrix: string[][]): { records?: ImportRec[]; bad?: BadRow[]; error?: string } {
   const loc = locateHeader(matrix)
   if (!loc) return { error: '无法识别表头:未找到「用电类别 / 电量 / 不含税单价」列。请确认粘贴含表头行。' }
   const { headerRow, cols } = loc
 
   const records: ImportRec[] = []
-  const errors: ElecParseError[] = []
+  const bad: BadRow[] = []
   let acctMonth: string | null = null   // 记账期下填
   let phaseId: string | null = null     // 期下填
 
@@ -122,23 +121,26 @@ export function importElecRows(matrix: string[][]): { records?: ImportRec[]; err
     // 小计/合计/总计行整行跳过(任意单元格命中)
     if (row.some(isSubtotal)) continue
 
-    // 左块下填:记账期(YYYYMM)→acctMonth、期→phaseId
+    // 左块下填:记账期(YYYYMM)→acctMonth、期→phaseId。写了却认不出(如没写年的「9月」)就清空,
+    // 这一块的行都进 bad —— 不许沿用上一块的月 / 期(后端按 (期,月) 先清再插,会把这一块写进上一块的月)
     const acctRaw = row[COL_ACCT]
     if (norm(acctRaw)) {
       const ym = parseYearMonth(acctRaw)
-      if (ym) acctMonth = `${ym.year}-${String(ym.month).padStart(2, '0')}`
+      acctMonth = ym ? `${ym.year}-${String(ym.month).padStart(2, '0')}` : null
     }
     const phaseRaw = row[COL_PHASE]
-    if (norm(phaseRaw)) {
-      const p = phaseFromLabel(String(phaseRaw))
-      if (p) phaseId = p
-    }
+    if (norm(phaseRaw)) phaseId = phaseFromLabel(String(phaseRaw)) || null
 
     const cat = String(row[cols[H_CAT]] ?? '').trim()
     if (!cat) continue   // 无用电类别 = 非数据行(空行/续表)
 
+    // 记账期 / 期是往下填的:到这一行还没出现过(或写得认不出)→ 这行导不了,核对页列出(有好行也照样列,不再整组丢)
     if (!acctMonth || !phaseId) {
-      errors.push({ rowIndex: ri, label: cat, reason: '缺记账期或期(下填未命中)' })
+      bad.push({
+        row: ri + 1,
+        cells: ['', phaseRaw, acctRaw, cat, row[cols[H_QTY]], row[cols[H_PRICE]], row[cols[H_RATE]]].map(v => String(v ?? '')),
+        reason: !acctMonth && !phaseId ? '记账期和期都认不出' : !acctMonth ? '记账期认不出' : '期认不出',
+      })
       continue
     }
 
@@ -169,8 +171,5 @@ export function importElecRows(matrix: string[][]): { records?: ImportRec[]; err
     }
   }
 
-  if (errors.length && !records.length) {
-    return { error: errors[0].reason + `(共 ${errors.length} 行)` }
-  }
-  return { records }
+  return { records, bad }
 }
