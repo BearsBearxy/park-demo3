@@ -211,10 +211,19 @@ describe('parseContractWorkbook 锚点', () => {
     expect(res.report.find(x => x.tenantName === '成吉')?.issues ?? '').not.toMatch(/钉死集/)
   })
 
-  it('空收费项目行 → 行级错误跳过,不进计费行', () => {
+  // 改前存 ctx._parseErrors 导完才报;现在解析时交 bad,核对页列出(row = 明细表 Excel 行号,表头第 1 行)
+  it('❗空收费项目行 → 交 bad(行号 + 对齐预览列的内容 + 原因),不进计费行', () => {
     const r = row('李富全')
     expect(r.lines.length).toBe(1)
-    expect(res.errors.some(e => e.label === '一期·李富全' && /收费项目为空/.test(e.reason))).toBe(true)
+    const dep = DETAIL.findIndex(x => x[3] === 'A座503室水电费押金') + 1
+    expect(res.bad.filter(b => b.cells[1] === '李富全')).toEqual([
+      { row: dep, cells: ['一期', '李富全', '李富全', 'A座503室水电费押金', '', '', '', ''], reason: '收费项目没填' },
+    ])
+  })
+
+  it('❗汇总表有、明细表没有的户 → 交 bad,行号是汇总表那一行', () => {
+    const only = parseContractWorkbook([{ name: '明细', matrix: [DETAIL[0], DETAIL[1]] }, { name: '汇总', matrix: [SUMMARY[0], SUMMARY[1], SUMMARY[4]] }])
+    expect(only.bad.map(b => [b.row, b.cells[2], b.reason])).toEqual([[3, SUMMARY[4][2], '明细表里没有这户的计费行']])
   })
 
   it('同名跨期户按 期+企业全称 区分,不按简称合并', () => {
@@ -311,8 +320,8 @@ describe.skipIf(!fs.existsSync(REAL_FILE))('真实汇总册回归', () => {
     expect(real.error).toBeUndefined()
     expect(real.rows.length).toBe(146)
     expect(real.rows.reduce((n, r) => n + r.lines.length, 0)).toBe(641)
-    expect(real.errors.filter(e => /收费项目为空/.test(e.reason)).length).toBe(7)
-    expect(real.errors.filter(e => /无法归一/.test(e.reason)).length).toBe(0)
+    expect(real.bad.filter(b => b.reason === '收费项目没填').length).toBe(7)
+    expect(real.bad.filter(b => /认不出/.test(b.reason)).length).toBe(0)
   })
 
   it('明细↔汇总 AB 逐户零差异', () => {

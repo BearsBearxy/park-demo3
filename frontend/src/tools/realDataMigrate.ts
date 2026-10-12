@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import * as XLSX from 'xlsx'
-import { parserProps, type ImportCtx } from '@/utils/importRegistry'
+import { parserProps, UTILITIES_COLUMN_MAP, type ImportCtx } from '@/utils/importRegistry'
 import { splitSections } from '@/utils/importSections'
 import { splitSalarySections } from '@/utils/importSalarySections'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
@@ -146,10 +146,10 @@ function parseS10() {
 }
 function parseCustom(key: string, file: string, ctx: ImportCtx = {}) {
   const cfg = parserProps(key, ctx)
-  const parse = cfg.customParse as (m: string[][]) => { records?: ImportRec[]; sections?: { label: string; records: ImportRec[] }[]; error?: string }
+  const parse = cfg.customParse as (m: string[][]) => { records?: ImportRec[]; sections?: { label: string; records: ImportRec[] }[]; bad?: unknown[]; error?: string }
   const r = parse(readSheet(file))
   if (r.error) throw new Error(`${file}: ${r.error}`)
-  return { records: r.records ?? r.sections?.flatMap(s => s.records) ?? [], ctx }
+  return { records: r.records ?? r.sections?.flatMap(s => s.records) ?? [], ctx, bad: r.bad?.length ?? 0 }
 }
 function parseSalary() {
   const cfg = parserProps('salary')
@@ -157,10 +157,8 @@ function parseSalary() {
     cfg.columnMap as ColumnMapEntry[], (cfg.nameLabels as string[]) ?? ['姓名'])
 }
 function parseOffice() {
-  // 与 registry office run 相同:按表头名匹配(月份为行身份)
-  const cfg = parserProps('office_13')
-  // matchByHeader 经由 registry 的 columnMap;这里直接借 salary 同款入口
-  return { columnMap: cfg.columnMap as ColumnMapEntry[], nameLabels: (cfg.nameLabels as string[]) ?? ['月份'] }
+  // 与 registry office 解析相同:按表头名匹配(月份为行身份)
+  return { columnMap: UTILITIES_COLUMN_MAP as ColumnMapEntry[], nameLabels: ['月份'] }
 }
 
 const PNL_FILES: [string, string][] = [
@@ -201,7 +199,7 @@ async function dry() {
     const file = no === 7 ? '汽车充电桩测试.xlsx' : '电动车充电桩测试.xlsx'
     const ctx: ImportCtx = { cats }
     const r = parseCustom(`charging_${no}`, file, ctx)
-    console.log(`=== 附表${no} 充电桩 === ${r.records.length} 行, 解析告警 ${(ctx._parseErrors ?? []).length}`)
+    console.log(`=== 附表${no} 充电桩 === ${r.records.length} 行, 解析告警 ${r.bad}`)
   }
 }
 
@@ -273,9 +271,9 @@ async function importAll() {
   for (const no of [7, 8] as const) {
     const cats = await call<ImportCtx['cats']>('GET', `/charging/${no}/cats`)
     const ctx: ImportCtx = { cats }
-    const { records } = parseCustom(`charging_${no}`, no === 7 ? '汽车充电桩测试.xlsx' : '电动车充电桩测试.xlsx', ctx)
+    const { records, bad } = parseCustom(`charging_${no}`, no === 7 ? '汽车充电桩测试.xlsx' : '电动车充电桩测试.xlsx', ctx)
     const res = await call<ImportResult>('POST', `/charging/${no}/import`, { rows: records })
-    console.log(`charging_${no}:`, fmt(res), `(解析告警 ${(ctx._parseErrors ?? []).length})`)
+    console.log(`charging_${no}:`, fmt(res), `(解析告警 ${bad})`)
   }
   // 工资(逐月)
   for (const p of parseSalary()) {

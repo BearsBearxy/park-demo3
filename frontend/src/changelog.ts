@@ -19,6 +19,47 @@
 import type { ReleaseNote } from '@/types/changelog'
 
 export const CHANGELOG: ReleaseNote[] = [
+  // 功能更新(RELEASE-NOTES-SPEC §2.1 第 1、2 问是):导入中心 + 导入弹窗 + 导入动效改稿(实现规范 2026-10-10,用户「出实现计划然后开工」)。
+  // 新增 → 重点卡「导入中心」:页头选月(GET /api/import-log/coverage?ym=,每类「这个月有没有」,判据同本月出账),缺的点 / 胶囊标橙;
+  //   月份旁边 FPAlertPanel「还差 N 样」点开列出缺什么、点一行打开它的导入(写「还差几样」不写数:数随月变,§4 第 7 条);
+  //   导入记录 GET /api/import-log/page:页签 全部 / 要核对 / 被拒 + 「全部去处」下拉(按导进去的那一屏)。
+  //   核实(对照 master):原来卡片状态只看最近一条导入记录(已是最新 / 部分 / 有告警 / 未导入),不看所选月;记录表不能筛。
+  // 新增「导进去的行会亮」:fp-row-flash(motion.css),导入中心(那一行 + 新记录行)、LedgerView、MeterView 在点「完成」关窗时挂。
+  // 改进(都是用法变了):
+  //   「导入窗口」:核实 master FpImportModal 头注释「右滑抽屉」、预览 records.slice(0, 6);现在 720 × 700 三步,平铺核对页全部行。
+  //   「导不了的行」:核实 master —— pvMeter / cpMeter / elecCost / 充电桩 / 合同汇总存 ctx._parseErrors 导完才报;
+  //     附表6 认不出记账月的行静默丢(importPvSections);附表11 有一条有效记录就丢掉整组 errors(importElecRows)。
+  //   「月度台账」:核实 master LedgerView / ImportCenterView 各两道 ask(月份对不上、会覆盖几家);现在核对页 precheck 二选一。
+  // 修复:
+  //   园区抄表:核实 master meterExcel.detectSheet —— 标题有年月时 ymSource='title',缺的区 / 表类取 fallbackPicker 缺省 p1 / elec,
+  //     notice 只在缺年月时出,所以不问。
+  //   导入窗口:核实 master api/index.ts 拦截器 5xx / 断网一律 reportNetError,导入写口没有豁免,失败卡和底部提示各说一遍。
+  // 金额不变:只改导入的入口、核对与记录;导进去的数怎么算不变。
+  // 配图:Art0340.vue —— 页头月份 + 「还差 5 样」+ 台账(水电橙)、工资(没有)两行。
+  {
+    version: '0.34.0',
+    date: '2026-10-12',
+    headline: '导入中心按月看缺什么，导入改成三步',
+    feature: {
+      icon: 'upload',
+      title: '导入中心',
+      desc: '选一个月，每样数据写着有没有、录到了哪天或哪个月，这个月缺的标橙。月份旁边写着还差几样，点开列出缺什么，点一行就打开它的导入。'
+        + '导入记录能按「要核对」「被拒」和导去哪一屏筛。',
+      to: 'import',
+    },
+    added: [
+      { icon: 'sparkles', title: '导进去的行会亮', desc: '导入中心、月度台账、园区抄表导完点「完成」，导进去的行浅蓝底亮 2 秒再褪掉。' },
+    ],
+    improved: [
+      { icon: 'upload-cloud', title: '导入窗口', desc: '原来从右边滑出、只预览前 6 行；现在分选数据、核对、导入三步，每行都列出来。' },
+      { icon: 'alert-triangle', title: '导不了的行', desc: '原来哪几行没导要导完才知道，有的直接跳过；现在核对时就列出来、写原因。' },
+      { icon: 'book-open', title: '月度台账', desc: '导入时月份对不上、会盖掉旧数，原来各弹一次确认；现在核对页里选导到哪个月，写明会盖掉几家。', to: 'ledger' },
+    ],
+    fixed: [
+      '园区抄表导入：标题写了年月、没写区或表类时，原来不问就按一期电表导',
+      '导入窗口：服务器出错或断网时，原来底部还会多弹一条报错',
+    ],
+  },
   // 功能更新(RELEASE-NOTES-SPEC §2.1 第 1 问是):RBAC-SPEC §15 v4「权限细到菜单单项」,用户 2026-10-09 拍板 ①「全部单项真拆」②「加成员栏」。
   // 新增 → 重点卡「角色权限」:SystemRolesView 的权限树(views/system/roleTree.ts:层 → 分组 → 屏,每屏查看 / 编辑 / 其他动作;
   //   层和分组那一行的三态勾选框管整列)。「催缴单签发、账册模板」是 Perm.META 里挂在催缴单、月度台账两屏下的专有动作

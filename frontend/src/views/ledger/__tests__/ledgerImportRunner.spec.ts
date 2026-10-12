@@ -1,6 +1,6 @@
 // 月度台账 · 导入点下去之后(画布 11 ImportOne / ImportDone / ImportFail;UI-OVERLAY-SPEC §8):
 // 弹窗不关,内容区换进度卡,写完原地出结果卡;失败交给弹窗的失败卡(不走回执)。
-// 年月与覆盖两道预检从「关窗之后」挪进弹窗的 confirm(开跑前问,答「取消」一条都不发)。
+// 年月与覆盖两道预检在弹窗核对页(md-v2-ledger,registry 的 precheck):月份对不上二选一才能导,本月已有的写会盖掉几家。
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
@@ -47,11 +47,11 @@ vi.mock('@/api/locks', () => ({
 vi.mock('@/utils/importRegistry', async (orig) => ({ ...(await orig<object>()), runImport: vi.fn() }))
 
 import LedgerView from '@/views/ledger/LedgerView.vue'
-import FpImportModal, { type ImportPayload } from '@/components/import/FpImportModal.vue'
+import FpImportModal from '@/components/import/FpImportModal.vue'
 import { booksApi } from '@/api/books'
 import { ledgerApi, companyApi } from '@/api/ledger'
 import { runImport } from '@/utils/importRegistry'
-import { askQueue, answer } from '@/utils/ask'
+import { askQueue } from '@/utils/ask'
 import { receipts } from '@/utils/receipt'
 
 beforeEach(() => {
@@ -97,11 +97,11 @@ describe('月度台账 · 导入走弹窗的 runner', () => {
     expect(vi.mocked(runImport).mock.calls[0][2]).toMatchObject({ companyId: 9, year: 2026, month: 9 })
     expect(w.find('.fpimp-scrim').exists(), '导入中弹窗不关').toBe(true)
     const before = vi.mocked(ledgerApi.month).mock.calls.length
-    done({ imported: 1, skipped: 0, errors: [] })
+    done({ res: { imported: 1, skipped: 0, errors: [] }, logIds: [] })
     await flushPromises()
     expect(vi.mocked(ledgerApi.month).mock.calls.length, '写完重读本月').toBe(before + 1)
-    expect(w.find('.irc h4').text()).toBe('导入完成')
-    expect(w.find('.irc-meta').text()).toContain('本页已刷新')
+    expect(w.find('.irc h4').text()).toBe('导进去 1 家')
+    expect(w.find('.irc-meta').text(), '本页刷新成了,不写「没刷新上」').not.toContain('没刷新上')
   })
 
   // 破坏验证:onImport 包回 try/catch + receipt.fail → 失败卡不出、回执多一条 → 红
@@ -115,24 +115,64 @@ describe('月度台账 · 导入走弹窗的 runner', () => {
     expect(receipts).toHaveLength(0)
   })
 
-  // 破坏验证:去掉 :confirm(或 confirmImport 里的覆盖那道)→ askQueue 为空 → 红;答「取消」仍返回 true → 红
-  it('❗整表导入开跑前:文件月 ≠ 本月先问一句,本月已有的户再问覆盖;答「取消」不跑', async () => {
+  // 破坏验证:LedgerView.onImport 不认 p.ym(写死屏上的月)→ 「按 8 月导」红;
+  //          registry 台账 precheck 改回按全部行数(不用 overwriteTargets)→ 8 月那家结转虚行被算成会盖掉 → 「导入 1 家」红
+  it('❗核对页:文件月 ≠ 本月,二选一前主按钮灰、不发确认框;改成导到 8 月 → 按 8 月查会盖掉几家(结转虚行不算)、按 8 月导', async () => {
+    vi.mocked(runImport).mockResolvedValue({ res: { imported: 1, skipped: 0, errors: [] }, logIds: [] } as never)
+    // 9 月:甲户有存储行;8 月:甲户只是结转虚行
+    vi.mocked(ledgerApi.month).mockImplementation((_c: number, y: number, m: number) => Promise.resolve(
+      { ...monthOf(y, m), rows: [{ ...rowOf('甲户'), ...(m === 8 ? { carried: true } : {}) }] } as LedgerMonthDTO))
     const w = await openImport()
-    const confirm = w.findComponent(FpImportModal).props('confirm') as (p: ImportPayload, f: string) => Promise<boolean>
-    const ym = confirm([{ tenantName: '乙户', __ymDetected: { year: 2026, month: 8 } }], '8月台账.xlsx')
+    const modal = w.findComponent(FpImportModal)
+    ;(modal.vm as unknown as { applyResult: (r: unknown) => void })
+      .applyResult({ records: [{ tenantName: '甲户', __ymDetected: { year: 2026, month: 8 }, __preview: ['甲户'] }] })
     await flushPromises()
-    expect(askQueue[0]?.title).toBe('导入到 2026 年 9 月？')
-    answer(false)
-    await expect(ym).resolves.toBe(false)
+    const foot = () => w.findAll('.fpimp-f button')
+    expect(w.find('.fpimp-target').text()).toBe('导到 2026年9月 · 甲公司')
+    expect(w.findAll('.fpimp-hint.warn').map(h => h.find('.tx').text().split('？')[0])).toEqual([
+      '文件标题写的是 2026年8月，和要导到的 9月不一样。导到哪个月',
+      '文件里有 1 家在 9月甲公司的台账里已经有了。导进去会用文件里的数盖掉这 1 家；文件里没有的列不动。',
+    ])
+    expect(foot().at(-1)!.text()).toBe('覆盖 1 家并导入')
+    expect(foot().at(-1)!.attributes('disabled'), '二选一之前不能导').toBeDefined()
+    expect(askQueue, '不再弹确认框').toHaveLength(0)
 
-    const over = confirm([{ tenantName: '甲户' }], '台账.xlsx')
+    await w.findAll('.fpimp-choice .o').find(b => b.text() === '改成导到 8月')!.trigger('click')
     await flushPromises()
-    expect(askQueue[0]?.title).toBe('导入会覆盖已有的台账数据')
-    expect(askQueue[0]?.body).toBe('本月已有 1 家租户的台账数据，文件里提供的列会被覆盖。')
-    answer(false)
-    await expect(over).resolves.toBe(false)
+    expect(w.find('.fpimp-target').text()).toBe('导到 2026年8月 · 甲公司')
+    expect(foot().at(-1)!.text(), '8 月那家只是结转虚行,不算会盖掉').toBe('导入 1 家')
+    await foot().at(-1)!.trigger('click')
+    await flushPromises()
+    expect(vi.mocked(runImport).mock.calls[0][2]).toMatchObject({ companyId: 9, year: 2026, month: 8 })
+    expect(w.find('.irc-p').text()).toBe('8月甲公司的台账已经在库里了。')
+  })
 
-    await expect(confirm([{ tenantName: '乙户' }], '台账.xlsx'), '没撞上已有的户:不问直接跑').resolves.toBe(true)
-    expect(runImport).not.toHaveBeenCalled()
+  // 动效板 ⑤「在台账页里导入也一样,导进去的那几行亮 2 秒」:关窗那一刻才亮,亮的是刷新后新出现 / 内容变了的行
+  // 破坏验证:closeImport 不挂 flashKeys → 「点完成后亮」红;onImport 不比刷新前后(本月行全亮)→ 丙户也亮 → 红
+  it('❗导完点「完成」:新出现 / 内容变了的行亮(fp-row-flash),没变的不亮;弹窗开着时不亮;动画完摘掉', async () => {
+    const r甲 = rowOf('甲户'), r丙 = { ...rowOf('丙户'), id: 6, tenantId: 6 }
+    let after = false
+    vi.mocked(ledgerApi.month).mockImplementation((_c: number, y: number, m: number) => Promise.resolve({
+      ...monthOf(y, m),
+      rows: after ? [{ ...r甲, factoryRent: 100 }, r丙, { ...rowOf('乙户'), id: 7, tenantId: 7 }] : [r甲, r丙],
+    } as LedgerMonthDTO))
+    vi.mocked(runImport).mockImplementation(async () => {
+      after = true
+      return { res: { imported: 2, skipped: 0, errors: [] }, logIds: [] } as never
+    })
+    const w = await openImport()
+    ;(w.findComponent(FpImportModal).vm as unknown as ModalVm)
+      .onSectionsConfirm([{ year: 2026, month: 9, records: [{ tenantName: '甲户' }, { tenantName: '乙户' }] }])
+    await flushPromises()
+    const lit = () => w.findAll('tbody tr.fp-row-flash').map(tr => tr.find('.lg-tname-txt').text()).sort()
+    expect(lit(), '弹窗开着不亮(亮在它后面看不见)').toEqual([])
+    await w.findAll('.fpimp-f button').find(b => b.text() === '完成')!.trigger('click')
+    await flushPromises()
+    expect(lit()).toEqual(['乙户', '甲户'].sort())
+    const ev = new Event('animationend', { bubbles: true })
+    Object.defineProperty(ev, 'animationName', { value: 'fp-row-flash' })
+    w.find('tbody tr.fp-row-flash td').element.dispatchEvent(ev)
+    await flushPromises()
+    expect(lit(), '动画完摘掉,切回来不再亮').toEqual([])
   })
 })

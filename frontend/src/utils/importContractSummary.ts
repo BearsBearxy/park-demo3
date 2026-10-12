@@ -17,6 +17,7 @@
 //   非连续 = B 类多标的并存 → 不拆,期限只取「覆盖 2024-03 的那段」(多段覆盖取最长),其余段起止落 remark。
 //   计费行恒挂「覆盖 2024-03 的那段」(明细长表就是当期执行价);该段之前的古老周期丢弃,原文仍整段留在 termText。
 import type { FeeKey, PropertyType, BillingLineImport } from '@/types/contract'
+import type { BadRow } from './importHeaderMatch'
 import { PINNED_FEES, COND_FEES, OPTIONAL_FEES, RENT_KEY_OF, feeLabel } from '@/types/contract'
 
 export const CONTRACT_FULL_TEMPLATE_COLS =
@@ -54,9 +55,10 @@ export type ContractReportRow = {
   lineCount: number; segments: number; term: string; termType: string
   detailTotal: number; summaryTotal: number | null; diff: number; issues: string
 }
-export interface ContractRowError { rowIndex: number; label: string; reason: string }
+// bad:解析时就知道导不了的行(明细表收费项目没填 / 认不出;汇总表有、明细表没有的户),row 是所在那张表的行号,
+//      cells 对齐预览列(CONTRACT_FULL_TEMPLATE_COLS)
 export interface ContractParseResult {
-  rows: ContractFullRow[]; report: ContractReportRow[]; errors: ContractRowError[]; error?: string
+  rows: ContractFullRow[]; report: ContractReportRow[]; bad: BadRow[]; error?: string
 }
 
 const nz = (v: unknown): string => String(v ?? '').replace(/\s/g, '')
@@ -167,7 +169,7 @@ const pickSheet = (sheets: { name: string; matrix: string[][] }[], key: string) 
   sheets.find(s => (s.matrix[0] ?? []).some(c => nz(c).startsWith(key)))
 
 export function parseContractWorkbook(sheets: { name: string; matrix: string[][] }[]): ContractParseResult {
-  const empty = { rows: [], report: [], errors: [] }
+  const empty = { rows: [], report: [], bad: [] }
   const detail = pickSheet(sheets, '收费项目')
   if (!detail) return { ...empty, error: '未找到「明细」表(表头需含「收费项目」列)' }
   const summary = pickSheet(sheets, '期限类型')
@@ -190,7 +192,7 @@ export function parseContractWorkbook(sheets: { name: string; matrix: string[][]
   if (S.full < 0 || S.start < 0 || S.end < 0 || S.type < 0 || S.text < 0)
     return { ...empty, error: '「汇总」表缺列:需含 企业全称/租赁期限起/租赁期限止/期限类型/期限原文' }
 
-  const errors: ContractRowError[] = []
+  const bad: BadRow[] = []
   const cell = (row: string[], c: number): string => (c < 0 ? '' : String(row[c] ?? '').trim())
 
   // ── 明细长表 → 按「期+企业全称」分桶(④ 同名跨期不合并),桶内按位置分组 ──
@@ -198,15 +200,12 @@ export function parseContractWorkbook(sheets: { name: string; matrix: string[][]
   detail.matrix.slice(1).forEach((row, i) => {
     const full = cell(row, D.full), short = cell(row, D.short)
     if (!full && !short) return
-    const rowIndex = i + 2                       // Excel 行号(1 表头)
-    const label = `${cell(row, D.phase)}·${short || full}`
+    const no = (reason: string) => bad.push({ row: i + 2,   // Excel 行号(1 表头)
+      cells: [cell(row, D.phase), short, full, cell(row, D.loc), '', '', '', ''], reason })
     const item = cell(row, D.item)
-    if (!item) {                                 // ② 押金/保证金/冲减行:无收费项目 → 跳过并报错
-      errors.push({ rowIndex, label, reason: `收费项目为空,跳过(${cell(row, D.loc) || '无位置'})` })
-      return
-    }
+    if (!item) { no('收费项目没填'); return }    // ② 押金/保证金/冲减行:无收费项目 → 不导,核对页列出
     const m = mapFeeItem(item)
-    if (!m) { errors.push({ rowIndex, label, reason: `费项无法归一到 13 枚举: ${item}` }); return }
+    if (!m) { no(`收费项目「${item}」认不出`); return }
     const key = `${nz(cell(row, D.phase))}\u0000${full}`
     let b = buckets.get(key)
     if (!b) { b = { phase: cell(row, D.phase), short, full, byLoc: new Map() }; buckets.set(key, b) }
@@ -223,11 +222,14 @@ export function parseContractWorkbook(sheets: { name: string; matrix: string[][]
 
   // ── 汇总宽表 → 期限四件套索引(同键) ──
   const terms = new Map<string, string[]>()
-  for (const row of summary.matrix.slice(1)) {
+  const termRowNo = new Map<string, number>()   // 汇总表行号(1 表头),导不了的户写「第 N 行」用
+  summary.matrix.slice(1).forEach((row, i) => {
     const full = cell(row, S.full)
-    if (!full) continue
-    terms.set(`${nz(cell(row, S.phase))}\u0000${full}`, row)
-  }
+    if (!full) return
+    const k = `${nz(cell(row, S.phase))}\u0000${full}`
+    terms.set(k, row)
+    termRowNo.set(k, i + 2)
+  })
 
   const rows: ContractFullRow[] = []
   const report: ContractReportRow[] = []
@@ -328,9 +330,10 @@ export function parseContractWorkbook(sheets: { name: string; matrix: string[][]
       termType: cell(t, S.type), detailTotal: 0, summaryTotal: num(t[S.total]), diff: 0,
       issues: '明细表无计费行,未导入',
     })
-    errors.push({ rowIndex: 0, label: full, reason: '明细表无计费行,未导入' })
+    bad.push({ row: termRowNo.get(key) ?? 0, reason: '明细表里没有这户的计费行',
+      cells: [ph, cell(t, S.short), full, cell(t, S.loc), '0', '', cell(t, S.start) ? `${cell(t, S.start)}~${cell(t, S.end)}` : '', cell(t, S.type)] })
   }
-  return { rows, report, errors }
+  return { rows, report, bad }
 }
 
 export function contractReportCsv(rows: ContractReportRow[]): string {

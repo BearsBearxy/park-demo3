@@ -21,7 +21,7 @@ export const s10Api = {
     http.patch(`/s10/${id}/note`, { note }),
   deleteRecord: (id: number): Promise<void> => http.delete(`/s10/${id}`),
   // 软引用 upsert(source='import'、tenant_id=null)。契约路径 §4.2。重导=替换本槽导入行。
-  importRows: (req: S10ImportRequest): Promise<ImportResultDTO> => http.post('/s10/import', req),
+  importRows: (req: S10ImportRequest): Promise<ImportResultDTO> => http.post('/s10/import', req, { silentNetError: true }),
   // 按账面名批量绑定档案(跨期跨月挂未绑定行);返回形状与台账侧共用 BindResultDTO
   bindTenant: (tenantName: string, tenantId: number): Promise<BindResultDTO> =>
     http.put('/s10/bind-tenant', { tenantName, tenantId }),

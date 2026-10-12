@@ -15,8 +15,24 @@ export interface ImportRec { __preview?: unknown[]; __groups?: Record<string, st
 export interface MatchResult {
   records: ImportRec[]
   error?: string
+  /** 认不出的是哪一层:header = 没有表头行 / key = 找不到关键列(租户、姓名、月份…)/ empty = 表头下没有数据行 */
+  errorKind?: 'header' | 'key' | 'empty'
   meta?: { nameCol: number; headerEnd: number }
   unmatched?: { header: string; colIndex: number }[]
+  /** 与 records 同序:每条记录来自 matrix 的第几行(0 基),解析器据此给导不了的行写「第 N 行」 */
+  rows?: number[]
+}
+
+/** 解析时就知道导不了的行(导入弹窗核对页逐行列出,不发给后端)。
+ *  row = 读进来的第几行(1 基;文件里没有空行时就是 Excel 行号),cells = 与预览列对齐的原样内容,reason = 大白话原因。
+ *  合计行、小计行、空行这类本来就该跳过的不算,照旧静默跳过。 */
+export interface BadRow { row: number; cells: string[]; reason: string }
+
+/** 分段导入里一段导不了的原因(大白话,核对页写在那一段上);这一段能导返回 undefined。keyLabel = 关键列叫什么(租户名称 / 姓名) */
+export function blockReason(r: Pick<MatchResult, 'records' | 'errorKind'>, keyLabel: string): string | undefined {
+  if (r.errorKind === 'header') return '这一段的表头认不出'
+  if (r.errorKind === 'key') return `这一段没找到「${keyLabel}」那一列`
+  return r.records.length ? undefined : '这一段表头下面没有数据'
 }
 
 // 去空格 + 常见分隔/括号标点(不改字符本体),便于宽松匹配。
@@ -51,8 +67,13 @@ export function matchByHeader(
   opts?: {
     skipName?: (name: string) => boolean,   // 收行过滤:数据行 name 命中即跳;缺省 = 零行为变化
     keepUnmatched?: boolean,                // 开启:回传未匹配列(unmatched)+ 每行 __unmatched;缺省 = 零行为变化(SPEC §4)
+    need?: string[],                        // 表头认不出时点名缺哪几列(如光伏抄表「楼栋」「日期」,md-v2-err);缺省说「没有一行对得上」
   },
 ): MatchResult {
+  // 认不出时的话(大白话,导入弹窗认不出卡照原样写,前面再带上文件名):不说「版面」「关键列」这类叫法
+  const fixHead = '对照下面的样子改好表头，再选一次。'
+  const missCols = (cols: string[]) => `没找到${cols.map(c => `「${c}」`).join(cols.length === 2 ? '和' : '、')}这${cols.length === 1 ? '一' : cols.length === 2 ? '两' : ` ${cols.length} `}列。${fixHead}`
+  const noHeader = opts?.need?.length ? missCols(opts.need) : `没认出表头：没有一行的列名对得上下面的样子。改好表头，再选一次。`
   // 标签按 normalize 后长度降序:前缀命中时「最长匹配标签优先」,防短标签(如 基本)吞掉长列头。
   // aliases(列名别名,如 商铺租金)与主 label 全体参与匹配;模板/预览列仍只用主 label(一条目一列)。
   const labels = columnMap
@@ -74,7 +95,7 @@ export function matchByHeader(
     if (n >= 2) headerEnd = ri
   })
   if (headerEnd < 0) {
-    return { records: [], error: '无法识别表头:没有一行的列名与本期版面匹配。请确认粘贴含表头行,且粘到了对应期的版面(如二期粘到二期)。' }
+    return { records: [], errorKind: 'header', error: noHeader }
   }
 
   const width = Math.max(0, ...matrix.map(r => r.length))
@@ -89,7 +110,7 @@ export function matchByHeader(
     }
   }
   if (colKey.size < 2) {
-    return { records: [], error: '无法识别表头:列名与本期版面不匹配。请确认粘到了对应期的版面。' }
+    return { records: [], errorKind: 'header', error: noHeader }
   }
 
   // 2b) 分组列(充电桩类别等合并/稀疏列):按表头名(normalize 相等)在表头块内定位 列→原标签。
@@ -110,6 +131,9 @@ export function matchByHeader(
   //    ① 先按 nameLabels 表头匹配,且该列数据多为非空 → 用它(让"月份"等可能为纯数字的关键列也能定位);
   //    ② 否则按"非费用列里数据行文本(非数字/非空/非小计)最多"兜底(扛"租户表头在别行、数据租户不在表头列"如附表10二期)。
   const dataRows = matrix.slice(headerEnd + 1)
+  if (!dataRows.some(r => r.some(c => String(c ?? '').trim() !== ''))) {
+    return { records: [], errorKind: 'empty', error: '表头下面没有数据。' }
+  }
   const nameSet = new Set(nameLabels.map(normalizeHeader))
   let nameCol = -1
   if (nameSet.size) {
@@ -135,7 +159,7 @@ export function matchByHeader(
     }
   }
   if (nameCol < 0) {
-    return { records: [], error: '未找到关键列(租户/姓名/月份):请确认表头含该列、且其下有数据。' }
+    return { records: [], errorKind: 'key', error: missCols([nameLabels[0]]) }
   }
 
   // 3b) 未匹配列(opts.keepUnmatched,SPEC §4 禁静默丢列):有表头文本、又没被认成
@@ -157,8 +181,9 @@ export function matchByHeader(
   // 4) 数据行 → 记录(跳过租户列空/小计行;未命中列忽略)
   //    分组列向下填充:遍历全部数据行(含小计行也吃其组值更新载体),组首有值则更新,空则沿用上一值。
   const records: ImportRec[] = []
+  const rowIdx: number[] = []
   const carry = new Map<number, string>()   // groupCol → 上一非空组值
-  for (const row of dataRows) {
+  for (const [k, row] of dataRows.entries()) {
     for (const ci of groupCol.keys()) {
       const gv = String(row[ci] ?? '').trim()
       if (gv && !isSubtotal(gv)) carry.set(ci, gv)
@@ -184,11 +209,12 @@ export function matchByHeader(
       rec.__unmatched = um
     }
     records.push(rec)
+    rowIdx.push(headerEnd + 1 + k)
   }
   if (!records.length) {
-    return { records: [], error: '已读取数据,但没识别到租户行。请确认含租户名一列。' }
+    return { records: [], errorKind: 'empty', error: '表头下面没有能导的行。' }
   }
-  const result: MatchResult = { records, meta: { nameCol, headerEnd } }
+  const result: MatchResult = { records, meta: { nameCol, headerEnd }, rows: rowIdx }
   if (opts?.keepUnmatched) result.unmatched = unmatchedCols
   return result
 }

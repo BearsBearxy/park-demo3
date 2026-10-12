@@ -248,7 +248,7 @@ async function onImportSections(payload: ImportPayload, fileName: string, p?: Im
   if (year.value == null) return null
   // 矩阵态导入不了(导入按钮在宽表的编辑态里),month 到这里必非空
   const picks = payload as SectionPick[]
-  const res = await runImport('salary', picks, { year: year.value, month: month.value ?? undefined, _run: p }, fileName)
+  const { res } = await runImport('salary', picks, { year: year.value, month: month.value ?? undefined, _run: p }, fileName)
   importJump = picks[0] ?? null
   // loadMonth 自己吞错改 readErr:刷完看它,照实报「本页没刷新上」
   return settle(res, p, () => refresh().then(() => { if (readErr.value) throw new Error(readErr.value) }))
@@ -414,8 +414,6 @@ const onExport = () => guard('导出失败', async () => {
 
       <FpImportModal
         v-if="importing"
-        :title="'导入 附表12 · 工资明细'"
-        sub="上传/粘贴整张多月工资表,系统按标题行自动拆月、按姓名识别行,核对年/月后逐月导入"
         v-bind="parserProps('salary')"
         :default-year="year!"
         :default-month="month!"

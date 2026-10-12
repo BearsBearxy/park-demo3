@@ -22,6 +22,8 @@ const props = withDefaults(defineProps<{
   /** false = 「有」态不写总数(画布 01-B「待补档案 ▾」:几类各有件数,写在弹层每一行上,总数加起来没意义)。
    *  只管「有」态;筛选生效态照旧写那一项的数 */
   showCount?: boolean
+  /** 数后面的量词(导入中心「还差 5 样」);不给就只写数 */
+  unit?: string
 }>(), { label: '待处理', quietLabel: '无待处理', active: false, showCount: true })
 
 const emit = defineEmits<{ (e: 'open'): void; (e: 'clear'): void }>()
@@ -30,7 +32,7 @@ const emit = defineEmits<{ (e: 'open'): void; (e: 'clear'): void }>()
 <template>
   <span v-if="props.active" class="fac on">
     <button class="fac-b" type="button" v-bind="$attrs" @click="emit('open')">
-      <span>{{ props.label }} <b class="n">{{ props.count }}</b></span>
+      <span>{{ props.label }} <b class="n">{{ props.count }}</b>{{ props.unit ? ' ' + props.unit : '' }}</span>
     </button>
     <button class="x" type="button" aria-label="清除筛选" @click.stop="emit('clear')">
       <component :is="iconFor('x')" :size="12" />
@@ -39,7 +41,7 @@ const emit = defineEmits<{ (e: 'open'): void; (e: 'clear'): void }>()
   <button v-else class="fac" :class="{ quiet: props.count === 0 }" type="button" v-bind="$attrs"
           @click="emit('open')">
     <component :is="iconFor(props.count ? 'alert-triangle' : 'check-circle-2')" :size="13" />
-    <span v-if="props.count">{{ props.label }} <b v-if="props.showCount" class="n">{{ props.count }}</b></span>
+    <span v-if="props.count">{{ props.label }} <b v-if="props.showCount" class="n">{{ props.count }}</b>{{ props.showCount && props.unit ? ' ' + props.unit : '' }}</span>
     <span v-else>{{ props.quietLabel }}</span>
     <component v-if="props.count" :is="iconFor('chevron-down')" :size="12" class="dd" />
   </button>

@@ -1,9 +1,9 @@
 // 电费成本 Excel 全家桶(ELEC-COST-SPEC §5):导入行解析 + 模板生成 + 月度导出。
 // 导入 = 单 sheet 长表(一行 = 一表一费项一月),表头按名识别(matchByHeader);
-// 费项名/拆分名精确匹配(映射见下,行级错误不整批拦);未知电表名由后端行级 ImportError 报告(表是 DB 驱动 CRUD)。
+// 费项名/拆分名精确匹配(映射见下,不过的行解析时就交出来 bad,不整批拦);未知电表名由后端行级 ImportError 报告(表是 DB 驱动 CRUD)。
 // AOA 构建为纯函数(elecCostExcel.spec.ts 锁定);出流走 utils/sheet.ts 适配层(exceljs,内部懒加载)。
 import { writeAoaWorkbook } from './sheet'
-import { matchByHeader, type ColumnMapEntry, type ImportRec } from './importHeaderMatch'
+import { matchByHeader, type BadRow, type ColumnMapEntry, type ImportRec } from './importHeaderMatch'
 import { parseYearMonth } from './parseYearMonth'
 
 // ── 中文费项名↔fee_key 映射:前端单一事实源(视图域 import 复用),镜像后端 ElecCostService.FEE_BY_LABEL ──
@@ -41,8 +41,6 @@ export const ELEC_SUB_LABEL: Record<string, string> = {
 const FEE_KEY_SET = new Set(Object.values(ELEC_FEE_BY_LABEL))
 const SUB_KEY_SET = new Set(Object.values(ELEC_SUB_BY_LABEL))
 
-export interface ElecCostImportError { rowIndex: number; label: string; reason: string }
-
 // 模板列 = 后端 ElecCostImportRequest.Row 字段顺序;__preview 与此对齐
 export const ELEC_COST_TEMPLATE_COLS = ['电表', '费项', '拆分', '月份(YYYY-MM)', '金额(元)', '电量(kWh,可空)', '备注']
 
@@ -67,48 +65,35 @@ function numCell(v: unknown): number | null | undefined {
 // ── 导入行解析(纯函数,供 importRegistry customParse) ──────────
 // records = 后端 POST /api/elec-cost/import 行契约 {meter, fee, split, month, amount, qty, note};
 // fee/split 原样透传中文名(后端映射为单一落库口径),客户端仅做精确匹配预检挡行级错误。
-// 电表名合法性(存在/费项×表类型)由后端校验行级报告;表头识别失败为整批错误(rowIndex=-1)。
-export function parseElecCostRows(matrix: string[][]): { records: ImportRec[]; errors: ElecCostImportError[] } {
-  const { records: matched, error } = matchByHeader(matrix, ELEC_COST_COLUMN_MAP, ['电表'])
-  if (error) return { records: [], errors: [{ rowIndex: -1, label: '', reason: error }] }
+// 电表名合法性(存在/费项×表类型)由后端校验行级报告;表头识别失败才整批 error。
+export function parseElecCostRows(matrix: string[][]): { records: ImportRec[]; bad: BadRow[]; error?: string } {
+  const { records: matched, error, rows } = matchByHeader(matrix, ELEC_COST_COLUMN_MAP, ['电表'])
+  if (error) return { records: [], bad: [], error }
 
   const records: ImportRec[] = []
-  const errors: ElecCostImportError[] = []
+  const bad: BadRow[] = []
   matched.forEach((r, i) => {
     const meter = String(r.tenantName).trim()
+    const no = (reason: string) => bad.push({ row: rows![i] + 1, reason,
+      cells: [meter, r.feeRaw, r.splitRaw, r.monthRaw, r.amountRaw, r.qtyRaw, r.noteRaw].map(v => String(v ?? '')) })
     const fee = String(r.feeRaw ?? '').trim()
-    if (!(fee in ELEC_FEE_BY_LABEL) && !FEE_KEY_SET.has(fee)) {
-      errors.push({ rowIndex: i, label: `${meter} ${fee}`, reason: '费项无法识别(如 工业分时电价/工业基本电费/商业用电/光伏上网收益/功率因数奖励/用电费用/电表费用/分摊额度)' })
-      return
-    }
+    if (!(fee in ELEC_FEE_BY_LABEL) && !FEE_KEY_SET.has(fee)) { no(fee ? `费项「${fee}」认不出` : '费项没填'); return }
     const split = String(r.splitRaw ?? '').trim()
-    if (split !== '' && !(split in ELEC_SUB_BY_LABEL) && !SUB_KEY_SET.has(split)) {
-      errors.push({ rowIndex: i, label: `${meter} ${split}`, reason: '拆分无法识别(可留空=合计行;工业拆 B-G座/三期工业大厦,商业拆 A座/三期创业大厦)' })
-      return
-    }
+    if (split !== '' && !(split in ELEC_SUB_BY_LABEL) && !SUB_KEY_SET.has(split)) { no(`拆分「${split}」认不出`); return }
     const ym = parseYearMonth(r.monthRaw)   // 不给回退年:裸「7月」歧义,必须带年
-    if (!ym) {
-      errors.push({ rowIndex: i, label: `${meter} ${String(r.monthRaw ?? '').trim()}`, reason: '月份无法识别(需 YYYY-MM 或 Excel 日期格)' })
-      return
-    }
+    if (!ym) { no('月份认不出'); return }
     const month = `${ym.year}-${String(ym.month).padStart(2, '0')}`
     const amount = numCell(r.amountRaw)
-    if (amount == null || amount < 0) {
-      errors.push({ rowIndex: i, label: `${meter} ${month}`, reason: '金额缺失或为负' })
-      return
-    }
+    if (amount == null || amount < 0) { no(amount === undefined ? '金额没填' : amount === null ? '金额认不出' : '金额不能是负数'); return }
     const qty = numCell(r.qtyRaw)
-    if (qty === null || (qty != null && qty < 0)) {
-      errors.push({ rowIndex: i, label: `${meter} ${month}`, reason: qty === null ? '电量无法识别(可留空)' : '电量不能为负' })
-      return
-    }
+    if (qty === null || (qty != null && qty < 0)) { no(qty === null ? '电量认不出' : '电量不能是负数'); return }
     const note = String(r.noteRaw ?? '').trim() || undefined
     records.push({
       meter, fee, split, month, amount, qty, note,
       __preview: [meter, fee, split, month, amount, qty ?? '', note ?? ''],
     })
   })
-  return { records, errors }
+  return { records, bad }
 }
 
 // ── 模板生成(表头 + 示例行;同费项勿合计+拆分并存,示例即示范) ──────

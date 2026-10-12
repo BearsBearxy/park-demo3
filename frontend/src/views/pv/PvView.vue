@@ -124,7 +124,7 @@ onMounted(async () => {
 // 导入弹窗的 runner(UI-OVERLAY-SPEC §8):弹窗不关,写 + 记 import_log → 刷新;失败交给弹窗的失败卡(不走回执)。
 async function onImportSections(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
   if (!edit.value) return null   // 写口自守:editMode 会就地转假,浮层可能还挂着
-  return settle(await runImport('pv', payload, { _run: p }, fileName), p, refresh)
+  return settle((await runImport('pv', payload, { _run: p }, fileName)).res, p, refresh)
 }
 
 const onCreate = (req: PvRecordReq) => guard('新增记账失败', async () => {
@@ -251,8 +251,6 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
 
       <FpImportModal
         v-if="importing"
-        :title="`导入 附表6 · ${year}年光伏发电`"
-        sub="上传/粘贴多段堆叠的光伏发电明细(一期/二期/三期),系统按段切期、按表头识别列,逐段核对后导入"
         v-bind="parserProps('pv')"
         :runner="onImportSections"
         @close="importing = false"

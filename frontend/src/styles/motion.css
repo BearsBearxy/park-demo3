@@ -36,6 +36,15 @@
   to   { opacity: 1; transform: none; }
 }
 
+/* ---- 行高亮:导完 / 保存后「变的是哪一行」----
+   浅蓝底 2s 褪(--dur-highlight)。只写 from:褪到行自己的底色,暗色下不会落到写死的白。
+   用法照 PoolLedgerView flashId:先置 null 再 nextTick 挂类(同一行连亮两次也重播)、animationend 摘类、
+   KeepAlive 停用时清掉。表格行走 FPSortableTable 的 flashKey。 */
+@keyframes fp-row-flash {
+  from { background-color: var(--accent-blue); }
+}
+.fp-row-flash { animation: fp-row-flash var(--dur-highlight) var(--ease-standard); }
+
 /* ---- 减少动态效果 ----
    系统设置里开了「减少动态效果」的用户。此前只有 scrollbar.css 与登录页响应，其余屏无视该设置。
 
@@ -83,4 +92,8 @@
   /* 骨架微光**不在**上面那条例外里:转圈停下会被读成「卡死」,
      而骨架即使不动,它的形状本身就说明了「这块还没到」。 */
   .fp-shim { animation: none; }
+
+  /* 例外:行高亮照留 2s(动效板「减少动态效果」:它告诉你哪一行变了,不是装饰)。
+     写法同 ImportProgressCard 顶回全局 1ms 的那条 */
+  .fp-row-flash { animation-duration: var(--dur-highlight) !important; }
 }

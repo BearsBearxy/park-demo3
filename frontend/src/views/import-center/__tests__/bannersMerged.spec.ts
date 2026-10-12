@@ -6,11 +6,12 @@ import { describe, it, expect } from 'vitest'
 const read = (rel: string) => readFileSync(join(__dirname, '..', '..', rel), 'utf8')
 
 describe('横条并进已有位置', () => {
-  // 破坏验证:把 .im-drop 块加回 → 红;副句去掉并进来的那半句 → 红
-  it('❗导入中心:长得像拖放区却不收拖放的虚线块删掉,说明并进「按数据类型导入」的副句', () => {
+  // 破坏验证:把 .im-drop 块加回 → 红。2026-10-10 改稿(ix-v2 B6)两句副标题和「下载模板」一起删了,副句不再有
+  it('❗导入中心:长得像拖放区却不收拖放的虚线块删掉;两句副标题与「下载模板」也删了', () => {
     const s = read('import-center/ImportCenterView.vue')
     expect(s).not.toMatch(/class="im-drop/)
-    expect(s).toContain('点卡片「上传」就地上传或粘贴,系统按模板列校验后入库</p>')
+    expect(s).not.toContain('就地上传或粘贴')
+    expect(s).not.toContain('下载模板')
   })
 
   // 破坏验证:.s10-s-hint 那行加回 → 红;编辑签里去掉 s10-editflag-s → 红

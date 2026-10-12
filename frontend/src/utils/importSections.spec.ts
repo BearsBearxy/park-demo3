@@ -115,6 +115,23 @@ describe('splitSections — 智能整表拆段', () => {
     expect(secs[0].records[0].factoryMgmtFee).toBe(100)
   })
 
+  // 改前段级 error 被丢,汇总屏只显示 0 户、不写原因(importSections.ts:76,100)
+  it('❗某段表头认不出 → 这一段带大白话原因(核对页写在那一段上),其余段照常', () => {
+    const m: string[][] = [
+      c(['2025年9月二期园区费用明细表']),
+      c(['客户', '租金', '管理费']),
+      c(['火炬', '1000', '100']),
+      c(['2025年9月三期园区费用明细表']),
+      c(['租户', '厂房租金', '企业管理服务费', '其他费用']),
+      c(['中科华贸', '350000', '5805', '9']),
+    ]
+    const secs = splitSections(m, LAYOUTS, NAME)
+    expect(secs.map(s => [s.phase, s.records.length, s.reason])).toEqual([
+      [2, 0, '这一段的表头认不出'],
+      [3, 1, undefined],
+    ])
+  })
+
   it('无标题前导段(标题前有数据)→ 单独一段,年月期 undefined', () => {
     const withLead: string[][] = [
       c(['租户', '办公室租金', '厂房租金', '其他费用']),

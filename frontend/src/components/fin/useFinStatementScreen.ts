@@ -555,7 +555,7 @@ export function useFinStatementScreen(opts: {
     const secs = importSecs(payload)
     if (stmt === 'tb') p?.note(0, `${secs.length} 张余额表`)
     // registry 核完公司调 p.note('核对公司') + p.stage('写入');整单被拒时 p.kept(「新建的 N 家公司已留下」)
-    const res = await runImport(`report_${stmt}`, payload, { year: year.value, month: month.value, _run: p }, fileName)
+    const { res } = await runImport(`report_${stmt}`, payload, { year: year.value, month: month.value, _run: p }, fileName)
     if (edit.value) cancelEdit()                   // 导入=整期替换:先退出编辑(未保存草稿作废)再重拉
     const out = await settle(res, p, async () => {
       companies.value = await companyApi.list()   // 可能自动新建了公司

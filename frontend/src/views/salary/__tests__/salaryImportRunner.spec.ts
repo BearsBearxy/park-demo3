@@ -78,7 +78,7 @@ describe('附表12 · 导入走弹窗的 runner', () => {
   // 破坏验证:FpImportModal 换回 @import-sections(不给 :runner)→ 弹窗当场关 → 「导入中弹窗不关」红;
   //          settle 的刷新不调 refresh → 「写完重读本月」红;跳期挪回 runner 里 → 结果卡被收走,「导入完成」红;
   //          @close 换回 importing = false → 「关窗后跳到 2 月」红
-  it('❗点导入后弹窗不关;写完重读本月、原地出结果卡;点「知道了」才跳到首段年月(2 月)', async () => {
+  it('❗点导入后弹窗不关;写完重读本月、原地出结果卡;点「完成」才跳到首段年月(2 月)', async () => {
     let done!: (v: unknown) => void
     vi.mocked(salaryApi.importRows).mockReturnValueOnce(new Promise(r => { done = r }) as never)
     const w = await openImport()
@@ -90,10 +90,10 @@ describe('附表12 · 导入走弹窗的 runner', () => {
     done({ imported: 1, skipped: 0, errors: [] })
     await flushPromises()
     expect(vi.mocked(salaryApi.records).mock.calls, '写完重读本月').toEqual([[2025, 3]])
-    expect(w.find('.irc h4').text()).toBe('导入完成')
-    expect(w.find('.irc-meta').text()).toContain('本页已刷新')
+    expect(w.find('.irc h4').text()).toBe('导进去 1 行')
+    expect(w.find('.irc-meta').text(), '本页刷新成了,不写「没刷新上」').not.toContain('没刷新上')
 
-    await w.findAll('.fpimp button').find(b => b.text() === '知道了')!.trigger('click')
+    await w.findAll('.fpimp button').find(b => b.text() === '完成')!.trigger('click')
     await flushPromises()
     expect(w.find('.fpimp-scrim').exists()).toBe(false)
     expect(vi.mocked(salaryApi.records).mock.calls.at(-1), '关窗后跳到首段那一月').toEqual([2025, 2])
@@ -112,7 +112,7 @@ describe('附表12 · 导入走弹窗的 runner', () => {
     expect(w.find('.fpimp-scrim').exists(), '导入中弹窗不收').toBe(true)
     done({ imported: 1, skipped: 0, errors: [] })
     await flushPromises()
-    expect(w.find('.irc h4').text()).toBe('导入完成')
+    expect(w.find('.irc h4').text()).toBe('导进去 1 行')
   })
 
   // 破坏验证:SalaryView 的 onDeactivated 去掉 importBusy 判断 → 回到页签时弹窗没了 → 红
@@ -137,7 +137,7 @@ describe('附表12 · 导入走弹窗的 runner', () => {
     await flushPromises()
     show.value = true
     await flushPromises()
-    expect(host.find('.irc h4').exists() && host.find('.irc h4').text()).toBe('导入完成')
+    expect(host.find('.irc h4').exists() && host.find('.irc h4').text()).toBe('导进去 1 行')
     host.unmount()
   })
 

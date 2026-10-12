@@ -1,12 +1,10 @@
 // 光伏分栋抄表 Excel 全家桶(PV-METER-SPEC §3):导入行解析 + 模板生成 + 月度汇总导出。
 // 导入 = 单 sheet 长表(一行 = 一站一日),表头按名识别(matchByHeader,含别名/单位后缀前缀匹配);
-// 行级校验(日期可识别、三量≥0)错误逐行报告不整批拦;未知站名由后端行级 ImportError 报告。
+// 行级校验(日期可识别、三量≥0)不过的行解析时就交出来(bad,导入弹窗核对页列出)不整批拦;未知站名由后端行级 ImportError 报告。
 // 期数列仅校验参考,捕获进预览但不上传(spec §3)。
 // AOA 构建为纯函数(pvMeterExcel.spec.ts 锁定);出流走 utils/sheet.ts 适配层(exceljs,内部懒加载)。
 import { writeAoaWorkbook } from './sheet'
-import { matchByHeader, type ColumnMapEntry, type ImportRec } from './importHeaderMatch'
-
-export interface PvMeterImportError { rowIndex: number; label: string; reason: string }
+import { matchByHeader, type BadRow, type ColumnMapEntry, type ImportRec } from './importHeaderMatch'
 
 // 模板列 = 后端契约字段顺序;__preview 与此对齐(FpImportModal 预览表按 templateCols 逐列取)
 export const PV_METER_TEMPLATE_COLS = ['期数', '楼栋', '日期', '发电总量(kWh)', '自消纳电量(kWh)', '上网电量(kWh)', '备注']
@@ -26,6 +24,7 @@ const PV_METER_COLUMN_MAP: ColumnMapEntry[] = [
 // 粘贴路径或未设日期格式的单元格可能是裸序列号字符串(如 '45658'),按 1899-12-30 epoch 换算
 // (与 parseYearMonth 同口径,吃掉 1900 非闰年 bug)。非法/聚合串 → null,调用方收行级错误。
 const EXCEL_EPOCH = Date.UTC(1899, 11, 30)
+const DATE_RE = /^(\d{4})\s*[-/年.]\s*(\d{1,2})\s*[-/月.]\s*(\d{1,2})\s*日?$/
 
 function fmtDate(y: number, mo: number, d: number): string | null {
   const dt = new Date(Date.UTC(y, mo - 1, d))
@@ -37,7 +36,7 @@ function fmtDate(y: number, mo: number, d: number): string | null {
 export function parsePvReadDate(cell: unknown): string | null {
   if (cell == null || cell === '') return null
   const s = String(cell).trim()
-  const m = s.match(/^(\d{4})\s*[-/年.]\s*(\d{1,2})\s*[-/月.]\s*(\d{1,2})\s*日?$/)
+  const m = s.match(DATE_RE)
   if (m) return fmtDate(+m[1], +m[2], +m[3])
   if (/^\d+(\.\d+)?$/.test(s)) {
     const n = Math.floor(Number(s))
@@ -49,28 +48,34 @@ export function parsePvReadDate(cell: unknown): string | null {
   return null
 }
 
+/** 日期为什么认不出(导不了的行写原因):格式对、这一天不存在 → 「没有 9月31日」;其余 → 「日期认不出」。光伏 / 充电桩共用 */
+export function readDateReason(cell: unknown): string {
+  const s = String(cell ?? '').trim()
+  if (!s) return '日期没填'
+  const m = s.match(DATE_RE)
+  return m && +m[1] >= 2000 && +m[1] <= 2100 && +m[2] >= 1 && +m[2] <= 12 ? `没有 ${+m[2]}月${+m[3]}日` : '日期认不出'
+}
+
 // ── 导入行解析(纯函数,供 importRegistry customParse) ──────────
 // 返回 records = 后端 POST /api/pv-meter/import 行契约 {station, readDate, genTotal, selfUse, gridFeed, note};
-// errors 行级(rowIndex≥0)不整批拦,表头识别失败为整批错误(rowIndex=-1)。
+// 日期认不出 / 电量为负的行进 bad(不整批拦),表头识别失败才整批 error。
 // 楼栋名非空由 matchByHeader 保证(空名行/合计行在关键列扫描时已静默剔除)。
-export function parsePvMeterRows(matrix: string[][]): { records: ImportRec[]; errors: PvMeterImportError[] } {
-  const { records: matched, error } = matchByHeader(matrix, PV_METER_COLUMN_MAP, ['楼栋', '电站'])
-  if (error) return { records: [], errors: [{ rowIndex: -1, label: '', reason: error }] }
+export function parsePvMeterRows(matrix: string[][]): { records: ImportRec[]; bad: BadRow[]; error?: string } {
+  const { records: matched, error, rows } = matchByHeader(matrix, PV_METER_COLUMN_MAP, ['楼栋', '电站'], undefined, { need: ['楼栋', '日期'] })
+  if (error) return { records: [], bad: [], error }
 
   const records: ImportRec[] = []
-  const errors: PvMeterImportError[] = []
+  const bad: BadRow[] = []
   matched.forEach((r, i) => {
     const station = String(r.tenantName).trim()
+    const cells = () => [r.phaseRaw, station, r.dateRaw, r.genTotal, r.selfUse, r.gridFeed, r.noteRaw].map(v => String(v ?? ''))
     const readDate = parsePvReadDate(r.dateRaw)
-    if (!readDate) {
-      errors.push({ rowIndex: i, label: `${station} ${String(r.dateRaw ?? '').trim()}`, reason: '日期无法识别(需 YYYY-MM-DD 或 Excel 日期格)' })
-      return
-    }
+    if (!readDate) { bad.push({ row: rows![i] + 1, cells: cells(), reason: readDateReason(r.dateRaw) }); return }
     const genTotal = (r.genTotal as number) ?? 0
     const selfUse = (r.selfUse as number) ?? 0
     const gridFeed = (r.gridFeed as number) ?? 0
     if (genTotal < 0 || selfUse < 0 || gridFeed < 0) {
-      errors.push({ rowIndex: i, label: `${station} ${readDate}`, reason: '电量不能为负' })
+      bad.push({ row: rows![i] + 1, cells: cells(), reason: '电量不能是负数' })
       return
     }
     const note = String(r.noteRaw ?? '').trim() || undefined
@@ -79,7 +84,7 @@ export function parsePvMeterRows(matrix: string[][]): { records: ImportRec[]; er
       __preview: [String(r.phaseRaw ?? ''), station, readDate, genTotal, selfUse, gridFeed, note ?? ''],
     })
   })
-  return { records, errors }
+  return { records, bad }
 }
 
 // ── 模板生成(spec §3:表头 + 两行示例;站名用中性的,2026-10-04 用户拍板产品卖给别的园区,模板每个客户都下载得到) ──────

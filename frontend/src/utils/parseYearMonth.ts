@@ -35,7 +35,8 @@ function fromYYYYMM(n: number): YearMonth | null {
 }
 
 // 聚合/汇总串:含「年」但无「月」或带范围「-月」(2024年/2025年1-9月)、小计/合计/总计 → 非单月,返 null。
-function isAggregate(s: string): boolean {
+/** 合计 / 小计 / 年度行(「2024年」「2025年1-9月」):不是单月,本来就该跳过(解析器据此不把它算成「导不了的行」) */
+export function isAggregate(s: string): boolean {
   if (/小计|合计|总计/.test(s)) return true
   if (/年/.test(s) && !/年\s*\d{1,2}\s*月\s*$/.test(s)) return true   // 「2024年」「2025年1-9月」(无单月收尾)
   return false

@@ -47,6 +47,8 @@ const props = defineProps<{
   issuesOpen?: boolean
   /** 未保存改动数(父层 LedgerView.dirtyCount:draft 与快照逐行比,含批删)。离开确认与页签橙点都看它 */
   dirty?: number
+  /** 导完亮的那几行(ledgerRowKey;FPLedgerTable flash)。S 档卡片不亮 */
+  flashKeys?: readonly number[] | null
   focusTenant?: string             // 核对跳转深链:定位并高亮该租户行(一次性,完成后 emit focus-done 由父层清空)
   /** 本期编辑锁的作用域(CONCURRENCY-SPEC §3.1):ledger:{companyId}:{year}-{month}。
    *  不传 = 不上锁,行为与加锁之前一个字不差。 */
@@ -544,6 +546,7 @@ async function onBack() {
       :edit="edit"
       :selected="edit ? selected : undefined"
       :foot-tip="FOOT_TIP"
+      :flash="flashKeys"
       @cell-edit="onCellEdit"
       @tenant-click="emit('tenant-click', $event)"
       @toggle-select="toggleSelect"

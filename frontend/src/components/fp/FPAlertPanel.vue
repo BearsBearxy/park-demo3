@@ -41,6 +41,8 @@ const props = withDefaults(defineProps<{
   count: number
   label?: string
   quietLabel?: string
+  /** 数后面的量词,透传给胶囊(导入中心「还差 5 样」) */
+  unit?: string
   /** 胶囊在工具条右侧时传 end:面板右边对齐胶囊,往左展开。只是首选 —— 放不下会换边,见 place() */
   align?: 'start' | 'end'
 }>(), { label: '待处理', quietLabel: '无待处理', align: 'start' })
@@ -80,7 +82,7 @@ onDeactivated(() => { if (props.open) emit('update:open', false) })
            :style="{ padding: '6px 0', left: `${left}px`, right: 'auto', maxWidth: 'calc(100vw - 32px)', maxHeight: '70vh', overflowY: 'auto' }"
            @open-change="emit('update:open', $event)">
     <template #trigger>
-      <FPAlertChip ref="chip" :count="props.count" :label="props.label" :quiet-label="props.quietLabel"
+      <FPAlertChip ref="chip" :count="props.count" :label="props.label" :quiet-label="props.quietLabel" :unit="props.unit"
                    :aria-expanded="props.open" aria-haspopup="dialog" />
     </template>
     <div class="fap">

@@ -25,5 +25,5 @@ export const reportApi = {
   deleteCustomRow: (stmt: string, id: number): Promise<void> =>
     http.delete(`/reports/${stmt}/custom-row/${id}`),
   import: (stmt: string, year: number, month: number, body: ReportImportRequest): Promise<ImportResultDTO> =>
-    http.post(`/reports/${stmt}/import`, body, { params: { year, month } }),
+    http.post(`/reports/${stmt}/import`, body, { params: { year, month }, silentNetError: true }),
 }

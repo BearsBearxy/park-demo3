@@ -38,5 +38,5 @@ export const contractApi = {
   remove:  (id: number): Promise<void>             => http.delete(`/contracts/${id}`),
   // 计费行批量导入(BILL-FORWARD 刀1 三次返工 §1.7):FeeRow 1:1,按合同整组替换 source='import' 行、保留 manual 行
   importBillingLines: (rows: BillingLinesImportRow[]): Promise<ImportResultDTO> =>
-    http.post('/contracts/billing-lines/import', { rows }),
+    http.post('/contracts/billing-lines/import', { rows }, { silentNetError: true }),
 }

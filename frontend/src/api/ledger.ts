@@ -8,7 +8,8 @@ import type { ImportResultDTO } from '../types/import'
 // paths per spec §4. http unwraps Result envelope.
 export const companyApi = {
   list:   (): Promise<CompanyDTO[]>           => http.get('/companies'),
-  create: (name: string): Promise<CompanyDTO> => http.post('/companies', { name }),
+  // silent:导入里顺手建公司时传 true(失败原因由导入弹窗的失败卡写,不再出底部全局提示)
+  create: (name: string, silent = false): Promise<CompanyDTO> => http.post('/companies', { name }, { silentNetError: silent }),
   rename: (id: number, name: string): Promise<CompanyDTO> => http.put(`/companies/${id}`, { name }),
   remove: (id: number): Promise<void>         => http.delete(`/companies/${id}`),
 }
@@ -26,7 +27,7 @@ export const ledgerApi = {
     http.post(`/ledger/companies/${companyId}/months/${year}/${month}/copy-from-prev`),
   // 逐行定向 upsert(tenant_id 按名解析),不走整月 save 的删空。契约路径见 §4.1。
   import: (companyId: number, year: number, month: number, body: LedgerImportRequest): Promise<ImportResultDTO> =>
-    http.post(`/ledger/companies/${companyId}/import`, body, { params: { year, month } }),
+    http.post(`/ledger/companies/${companyId}/import`, body, { params: { year, month }, silentNetError: true }),
   // 按账面名批量绑定档案(跨公司跨月挂未绑定行;目标月已有该租户行计 conflicts)
   bindTenant: (tenantName: string, tenantId: number): Promise<BindResultDTO> =>
     http.put('/ledger/bind-tenant', { tenantName, tenantId }),

@@ -20,7 +20,7 @@ export interface BudgetImportRow {
 export const budgetApi = {
   // 按 payload 内出现的 year 整年替换(delete+insert,同 pnl 惯例)
   import: (body: { rows: BudgetImportRow[] }): Promise<ImportResultDTO> =>
-    http.post('/budget/import', body),
+    http.post('/budget/import', body, { silentNetError: true }),
   // 表小,一次拉全
   all: (): Promise<BudgetRowDTO[]> => http.get('/budget/all'),
 }

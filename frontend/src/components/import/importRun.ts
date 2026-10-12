@@ -12,9 +12,10 @@
 //                                 三大报表的 run 核完公司调 p.note('核对公司', '新建 n 家') + p.stage('写入')(步骤表里没有这两步就不动),
 //                                 整单被拒时调 p.kept(「新建的 N 家公司已留下」)。
 //                                 一次导入发多次请求的(工资逐月 / 水电逐年 / 台账逐公司)每写完一次调 p.wrote(累计写入数)。
-//   confirm(payload, fileName)    点导入后、开跑前的确认(台账覆盖预检等);返回 false 不跑。
-//   describe(payload, fileName)   进度卡标题的数与单位、副标题、步骤表(科目余额表「6,907 格 · 6 家公司」用);不给按条数。
-//   go / doneNote                 结果卡多一颗按钮(导入中心「去查看」)/ 结果卡右上那句(缺省跟步骤表最后一步走:「刷新本期」→「本期已刷新」)。
+//   precheck(parsed, ym?)         只有台账(parserProps 带上):进核对页时问一次文件标题的月份、要导到的月已有几家。
+//                                 月份对不上要在核对页二选一才能导;选了文件里的月份 → p.ym 带给 runner(屏上的月换成它)。
+//   describe(payload, fileName)   进度卡标题的数与单位、副标题、步骤表(科目余额表「6,907 格 · 6 家公司」用);不给按 unit。
+//   go / doneNote                 结果卡多一颗按钮(导入中心「去 X 看」)/ 结果卡右上「用时」后那句(缺省只在刷新没成时写「本页没刷新上」)。
 import { ref } from 'vue'
 import type { ImportResultDTO } from '@/types/import'
 
@@ -43,6 +44,10 @@ export interface ImportRunProgress {
   /** 非逐段但要发多次请求的(逐月 / 逐年 / 逐公司):到目前已经写进库的条数,每次请求写完报一次。
    *  后面一次失败时前面的不回滚 —— 失败卡据此不写「一条都没写进去」 */
   wrote: (n: number) => void
+  /** 核对页里导不了、这次没发的行数(解析结果的 bad):runImport 记进导入记录的「要核对」,不给按 0 */
+  bad?: number
+  /** 台账核对页二选一选了「改成导到文件里的月」:'YYYY-MM',runner 用它代替屏上 / 小窗里选的月;没选这一项时不给 */
+  ym?: string
 }
 
 /** runner 的返回:结果 + 可选的分项明细(结果卡两列,如「创显 · 830 科目 · 2,542 格」「2025 年 10 月 · 二期 · 78 条」) */
@@ -85,8 +90,8 @@ export function failKind(e: unknown): FailKind {
 
 // 413 = 请求体超过 nginx 的 client_max_body_size(frontend/nginx.conf),请求没到后端,一条都没写。
 // 用户 2026-10-05:「抄表整册导入被拒：超过 1MB 就被服务器挡掉，没有分批导入的办法」—— 原来这里只写「服务器返回 413」,
-// 看不懂、也不知道下一步。现在说清是太大、怎么分批:「返回修改」回到选文件那一屏时勾选都还在,先勾一部分就是分批。
-// 这句所有导入共用:有的选文件那一屏没有勾选(只有一张表 / 粘贴)、有的不按月(合同、预算),所以两种分法都说(复查 F3)。
+// 看不懂、也不知道下一步。现在说清是太大、怎么分批:「返回修改」回到核对那一步时勾选都还在,先勾一部分就是分批。
+// 这句所有导入共用:有的核对页没有勾选(只有一张表 / 粘贴)、有的不按月(合同、预算),所以两种分法都说(复查 F3)。
 // 导入接口放到 16m 之后,按 park_review 各导入的行数估,只有抄表整册够得着这个上限(nginx.conf 导入那段)。
 // 其余状态码不上屏(2026-10-05 文案复查 F1/F2:原来写「服务器返回 504」,同卡标题说没等到结果、这句又像回了话):
 // 504 同 failKind 判 lost,跟标题「没等到服务器的结果」一个意思 —— 后端那头可能还在写,所以说过几分钟刷新;
@@ -94,9 +99,9 @@ export function failKind(e: unknown): FailKind {
 export function failReason(e: unknown): string {
   const x = e as { message?: unknown; isAxiosError?: boolean; response?: { status?: number } } | null
   if (x?.isAxiosError) return !x.response ? '请求发出后没有回应'
-    : x.response.status === 413 ? '数据太多，一次传不上去。请分几次导入：点「返回修改」，选文件那一屏能勾选的话先勾一部分导，剩下的再导一次；不能勾选就把文件拆成几份，一份一份导。'
+    : x.response.status === 413 ? '数据太多，一次传不上去。请分几次导入：点「返回修改」，核对那一步能勾选的话先勾一部分导，剩下的再导一次；不能勾选就把文件拆成几份，一份一份导。'
     : x.response.status === 504 ? '等了很久服务器还没回话，它可能还在写入，请过几分钟刷新本页看结果'
-    : (x.response.status ?? 0) >= 500 ? '服务器出错了，请稍后再试'
+    : (x.response.status ?? 0) >= 500 ? '服务器出错，请稍后重试'
     : '服务器没有接受这次导入，请刷新页面后再试，还不行请联系管理员'
   return typeof x?.message === 'string' && x.message ? x.message : '没有给出原因'
 }

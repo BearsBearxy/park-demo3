@@ -13,7 +13,7 @@ export const pvApi = {
     http.patch(`/pv/records/${id}/note`, { note }),
   remove:  (id: number): Promise<void>      => http.delete(`/pv/records/${id}`),
   // 导入:行自带 phaseId+acctMonth,按(期,月)upsert。
-  importRows: (rows: PvImportRow[]): Promise<ImportResultDTO> => http.post('/pv/import', { rows }),
+  importRows: (rows: PvImportRow[]): Promise<ImportResultDTO> => http.post('/pv/import', { rows }, { silentNetError: true }),
   // 清空本年导入:删本年 source=import。
   clearImported: (year: number): Promise<DeleteResultDTO> =>
     http.delete('/pv/imported', { params: { year } }),

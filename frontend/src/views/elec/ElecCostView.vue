@@ -588,7 +588,7 @@ const importing = ref(false)
 const importCtx: ImportCtx = {}
 // registry 'elecCost' 为并行刀契约(同 pvMeter Wave2-B 模式):解析配置与 run 落在 importRegistry;
 // 未合入时按钮降级提示,不在渲染期抛错炸屏
-let elecCostParser: ({ templateCols: string[] } & Record<string, unknown>) | null = null
+let elecCostParser: ReturnType<typeof parserProps> | null = null
 try { elecCostParser = parserProps('elecCost', importCtx) } catch { elecCostParser = null }
 function openImport() {
   if (!elecCostParser) { receipt.fail('电费成本的导入还没接上,暂时只能逐格录入'); return }
@@ -597,7 +597,7 @@ function openImport() {
 // 导入弹窗的 runner(UI-OVERLAY-SPEC §8):弹窗不关,写 + 记 import_log → 刷新;失败交给弹窗的失败卡(不走回执)。
 async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
   if (!editE.value) return null
-  return settle(await runImport('elecCost', payload as never, { ...importCtx, _run: p }, fileName), p, () => Promise.all([loadMonth(), loadYears()]))
+  return settle((await runImport('elecCost', payload as never, { ...importCtx, _run: p }, fileName)).res, p, () => Promise.all([loadMonth(), loadYears()]))
 }
 
 // ── 指标格式:pvLoss 电量口径 kWh,其余金额 元(后端契约) ──
@@ -898,8 +898,6 @@ function fmtMetric(mt: ElecMetricDTO): string {
     <!-- 导入(registry key='elecCost':长表 电表|费项|拆分|月份|金额|电量|备注) -->
     <FpImportModal
       v-if="importing && elecCostParser"
-      title="导入 电费成本"
-      sub="上传/粘贴长表(电表|费项|拆分|月份|金额|电量|备注);费项/拆分收中文名,(表,月,费项,拆分)重复导入自动覆盖"
       v-bind="elecCostParser"
       :runner="onImport"
       @close="importing = false"

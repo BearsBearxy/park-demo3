@@ -72,18 +72,24 @@ describe('parseMeterSheet — 水表单行表头 & 闸门', () => {
 })
 
 describe('parseMeterWorkbook — 整册 sections', () => {
-  it('多 sheet → sections 勾选段;混入未识别 sheet 静默跳过', () => {
+  // 改前认不出的 sheet 静默跳过(meterExcel.ts:6,211):现在列成导不了的段,原因写在那一段上;全空的 sheet 照旧跳过
+  it('❗多 sheet → sections 勾选段;认不出的 sheet 列成导不了的段(records 空 + 原因),全空 sheet 不列', () => {
     const res = parseMeterWorkbook([
       { name: '二期园区电', matrix: ELEC_SHEET },
       { name: '宿舍水', matrix: WATER_SHEET },
       { name: '金纳', matrix: [['', '缴费通知单']] },
+      { name: '空白', matrix: [['', '']] },
     ])
-    expect(res.sections).toHaveLength(2)
     expect(res.records).toBeUndefined()
+    expect(res.sections!.map(s => [s.label, s.records.length, s.reason])).toEqual([
+      ['二期电表 · 2024年5月 · 3块表', 3, undefined],
+      ['宿舍水表 · 2024年5月 · 2块表', 2, undefined],
+      ['金纳', 0, '没有「区域」「上月行至」「本月行至」这几列，不是抄表表'],
+    ])
   })
   it('仅 1 段平铺为 records;全不识别=整批错误', () => {
     expect(parseMeterWorkbook([{ name: '宿舍水', matrix: WATER_SHEET }]).records).toHaveLength(2)
-    expect(parseMeterWorkbook([{ name: 'x', matrix: [['abc']] }]).error).toContain('抄表记录')
+    expect(parseMeterWorkbook([{ name: 'x', matrix: [['abc']] }]).error).toBe('没有「区域」「上月行至」「本月行至」这几列，不是抄表表。')
   })
 })
 
@@ -133,11 +139,11 @@ describe('parseMeterSheet — v2 主数据拆分', () => {
   ]
   const sec = parseMeterSheet('一期园区水', V2_WATER, master)!
 
-  it('括号拆分:租户挂 id,方位入 spot,原文保留 tenantName;§6.4 预览列', () => {
+  it('括号拆分:租户挂 id,方位入 spot,原文保留 tenantName;核对页列照 md-v2-meter(楼栋|方位|租户|倍率|上月读数|本月读数|用量)', () => {
     expect(sec.records[0]).toMatchObject({
       tenantId: 11, buildingId: 2, ownership: 'tenant', spot: '1-3楼', tenantName: '1-3楼（力灏）',
     })
-    expect(sec.records[0].__preview).toEqual(['一期', '一期 B座', '1-3楼', '力灏', '租户', 1, 10, 20, ''])
+    expect(sec.records[0].__preview).toEqual(['一期 B座', '1-3楼', '力灏', 1, 10, 20, 10])
   })
   it('无括号连写:桑尼号西侧 → 剥方位后缀匹配', () => {
     expect(sec.records[1]).toMatchObject({ tenantId: 12, ownership: 'tenant', spot: '西侧' })
@@ -158,11 +164,11 @@ describe('parseMeterSheet — v2 主数据拆分', () => {
 
   it('多命中待核:邓宇峰×2 → tenantId 空,仍归租户表,预览显原文+待核', () => {
     expect(sec.records[2]).toMatchObject({ tenantId: null, ownership: 'tenant', spot: '高区', tenantName: '邓宇峰（高区）' })
-    expect(sec.records[2].__preview![3]).toBe('邓宇峰（高区）(待核)')
+    expect(sec.records[2].__preview![2]).toBe('邓宇峰（高区）(待核)')
   })
   it('公共表:水泵→ops 不做租户匹配;区域→楼栋映射照挂', () => {
     expect(sec.records[3]).toMatchObject({ tenantId: null, ownership: 'ops', buildingId: 1 })
-    expect(sec.records[3].__preview![4]).toBe('园区经营')
+    expect(sec.records[3].__preview![2], '公共表租户格写原文').toBe('生活水泵')
   })
   it('归属分类:总电表→infra;消防→share;变压器区域无楼栋映射=null;主数据缺省不炸(v1 行为兜底)', () => {
     const elec = parseMeterSheet('二期园区电', ELEC_SHEET, master)!
@@ -253,15 +259,15 @@ describe('parseMeterSheet — 用户新模板(无标识列)', () => {
     expect(sec.records[7]).toMatchObject({ area: '三期项目工地', tenantName: '三车间', code: '230828010021', meterType: undefined })
     expect(sec.records.map(r => r.area)).not.toContain('A座总用电量')
   })
-  it('表列用量只进预览做对照,不入库', () => {
-    expect(sec.records[0].__preview![8]).toBe(38550)   // (1465.56−1439.86)×1500 = 38550,一致无 ⚠
-    expect(sec.records[7].__preview![8]).toBe(160)     // (12−10)×80 = 160
+  it('核对页「用量」按读数算(本月 − 上月)× 倍率;表列用量不入库', () => {
+    expect(sec.records[0].__preview![6]).toBe(38550)   // (1465.56−1439.86)×1500 = 38550
+    expect(sec.records[7].__preview![6]).toBe(160)     // (12−10)×80 = 160
     expect(sec.records[0].usageTotal).toBeUndefined()
   })
-  it('表列用量与派生不符 → 预览打 ⚠(换表/手工调整的行)', () => {
+  it('表里写的用量和读数算的不一样:核对页照读数算的写(导进去系统也这么算),不打没图例的 ⚠', () => {
     const bad = USER_TPL.map(r => [...r])
     bad[10][17] = '999'
-    expect(String(parseMeterSheet('一期园区电', bad)!.records[7].__preview![8])).toContain('⚠')
+    expect(parseMeterSheet('一期园区电', bad)!.records[7].__preview![6]).toBe(160)
   })
 })
 
@@ -378,7 +384,8 @@ describe('标题缺失 → fallback 账期/分区/类别', () => {
     expect(sec.records).toHaveLength(2)
     expect(sec.ym).toBe('2099-07')
     expect(sec.ymSource).toBe('fallback')
-    expect(sec.label).toContain('(按所选账期)')
+    expect(sec.asked).toEqual(['ym', 'zone', 'kind'])
+    expect(sec.label).toContain('(月份、区、电表还是水表按你选的)')
     expect(sec.records[0]).toMatchObject({ kind: 'elec', zone: 'p2', ym: '2099-07', area: '一车间', code: '230220001238', prevTotal: 100, currTotal: 160 })
     expect(sec.records[1]).toMatchObject({ area: '一车间', ym: '2099-07' })   // 区域合并续行照常继承
   })
@@ -405,15 +412,27 @@ describe('标题缺失 → fallback 账期/分区/类别', () => {
     expect(parseMeterSheet('一期租户分摊公共用电金额', FAKE_TITLE_SHEET, {}, { ym: '2099-07', zone: 'p1', kind: 'elec' })).toBeNull()
   })
 
-  it('整册:用上 fallback 即回 notice 供弹窗披露;标题齐全则无 notice', () => {
+  it('整册:用上 fallback 即回 notice + ask(缺哪几项)供弹窗出补问框;标题齐全则都没有', () => {
     const res = parseMeterWorkbook([{ name: '', matrix: BARE }], {}, { ym: '2099-07', zone: 'p1', kind: 'elec' })
     expect(res.records).toHaveLength(2)
-    expect(res.notice).toContain('2099-07')
-    expect(parseMeterWorkbook([{ name: '二期园区电', matrix: ELEC_SHEET }]).notice).toBeUndefined()
+    expect(res.ask).toEqual(['ym', 'zone', 'kind'])
+    expect(res.notice).toContain('标题里没写月份、区、电表还是水表')
+    const full = parseMeterWorkbook([{ name: '二期园区电', matrix: ELEC_SHEET }])
+    expect(full.notice).toBeUndefined()
+    expect(full.ask).toBeUndefined()
   })
 
-  it('错误文案可操作:表头认出来了但没账期 → 提示去上方选账期', () => {
-    expect(parseMeterWorkbook([{ name: '', matrix: BARE }]).error).toContain('请在上方选择账期')
+  // 改前:标题有年月、缺区或表类时静默套 fb 的 p1/elec,不出 notice(meterExcel.ts:79-81,224)
+  it('❗标题只写了年月、没写区和表类 → 照样问(ask=区、表类),不再静默套默认值', () => {
+    const ymOnly = [['', '2026年9月抄表记录'], ...BARE]
+    const res = parseMeterWorkbook([{ name: '', matrix: ymOnly }], {}, { ym: '2099-07', zone: 'p1', kind: 'elec' })
+    expect(res.ask).toEqual(['zone', 'kind'])
+    expect(res.notice).toContain('标题里没写区、电表还是水表')
+    expect(res.records![0]).toMatchObject({ ym: '2026-09', zone: 'p1', kind: 'elec' })
+  })
+
+  it('错误文案说那张表为什么导不了(认不出卡上没有「上方」可选)', () => {
+    expect(parseMeterWorkbook([{ name: '', matrix: BARE }]).error).toBe('看不出是哪个月、哪个区、电表还是水表。')
     expect(parseMeterWorkbook([{ name: '金纳', matrix: [['', '缴费通知单']] }]).error).toContain('上月行至')
   })
 })

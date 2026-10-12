@@ -390,7 +390,7 @@ const importing = ref(false)
 async function onImport(payload: ImportPayload, fileName: string, p?: ImportRunProgress): Promise<ImportOutcome | null> {
   if (year.value == null) return null
   const recs = payload as ImportRec[]
-  const res = await runImport('pnl_' + config.schedule, recs, { year: year.value, _run: p }, fileName)
+  const { res } = await runImport('pnl_' + config.schedule, recs, { year: year.value, _run: p }, fileName)
   // 实际落库年(run 回传 __usedYear)≠ 当前年 → 切到该年再刷新
   const used = (res as ImportResultDTO & { __usedYear?: number }).__usedYear
     ?? (recs[0]?.__yearDetected as number | null) ?? year.value
@@ -572,8 +572,6 @@ const { note: deepNote } = useDeepPeriod({
   <!-- 导入(解析配置出自 registry 单一事实源;年从标题自动识,识别年 ≠ 当前年将自动切年) -->
   <FpImportModal
     v-if="importing"
-    :title="`导入 ${config.title} · ${year}年`"
-    sub="从年度统计母册导入该附表(整年替换);上传含该 sheet 的工作簿或粘贴该表,年份从标题自动识别,识别不到按当前年导入"
     v-bind="parserProps('pnl_' + config.schedule)"
     :runner="onImport"
     @close="importing = false"

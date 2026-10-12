@@ -2,6 +2,10 @@ import axios, { type AxiosRequestConfig } from 'axios'
 
 // 下方响应拦截器已把 Result 信封解包为业务数据,方法返回类型同步声明为 Promise<T>(而非 AxiosResponse<T>)
 declare module 'axios' {
+  export interface AxiosRequestConfig {
+    /** 断网 / 5xx 时不出底部全局提示:调用方自己把原因写在界面上(导入写口 —— 导入弹窗的失败卡已经说了一遍) */
+    silentNetError?: boolean
+  }
   export interface AxiosInstance {
     get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
     delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
@@ -179,8 +183,9 @@ http.interceptors.response.use(
     // 直达视图 alert，不再退化成英文 AxiosError 文案（HTTP 状态口径见后端 GlobalExceptionHandler 头注释）
     const body = error.response?.data
     const enveloped = body && typeof body === 'object' && 'code' in body
-    // 5xx / 断网：读路径普遍无 catch，全局 toast 兜底提示（动态 import 避免 pinia 未装载时的循环依赖）
-    if (!error.response || error.response.status >= 500) {
+    // 5xx / 断网：读路径普遍无 catch，全局 toast 兜底提示（动态 import 避免 pinia 未装载时的循环依赖）；
+    // 请求带 silentNetError 的(导入写口)不出:失败卡里已经写了原因,底部再弹一条等于说两遍
+    if ((!error.response || error.response.status >= 500) && !error.config?.silentNetError) {
       try {
         const { useUiStore } = await import('@/stores/ui')
         useUiStore().reportNetError(enveloped ? (body as { message?: string }).message ?? '服务异常' : '网络异常或服务不可用，请稍后重试')

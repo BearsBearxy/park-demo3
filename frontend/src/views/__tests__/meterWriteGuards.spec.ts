@@ -566,13 +566,76 @@ describe('园区抄表 · 导入结果与批删预览报档案改动(SPEC §3.2 
     await flushPromises()
     expect(vi.mocked(metersApi.readings).mock.calls.length, '写完重读本月').toBeGreaterThan(before)
     const card = w.find('.irc')
-    expect(card.find('.irc-meta').text()).toContain('本页已刷新')
+    expect(card.find('.irc-meta').text(), '本页刷新成了,不写「没刷新上」').not.toContain('没刷新上')
     const box = card.findAll('.irc-fold').find(f => f.text().includes('处表档案改动'))!
     expect(box.text()).toContain('2 处表档案改动')
     await box.find('.irc-toggle').trigger('click')
     const lines = box.findAll('li').map(li => li.text())
     expect(lines[0]).toContain(`企业名称 力灏电子 → 锂朋科技 · 影响 ${YM} 起`)
     expect(lines[1]).toContain(`状态 不在册 → 停用 · 影响 ${YM} ~ 2025-05`)
+  })
+
+  // 动效板 ⑤「在抄表页里导入也一样,导进去的那几行亮 2 秒」:关窗那一刻才亮;亮哪几块 = 后端回的 matches 里导进屏上这个月的
+  // 破坏验证:closeImport 不挂 flashIds → 「点完成后亮」红;onImport 不按 ym 筛 → 「导进别的月不亮」红
+  async function importThenDone(rows: MeterImportRow[]) {
+    const w = await open()
+    const vm = vmOf(w)
+    vi.spyOn(api, 'post').mockResolvedValue({
+      imported: rows.length, skipped: 0, errors: [],
+      matches: rows.map((_r, i) => ({ rowIndex: i, label: '一车间总电', matchBy: 'code', meterId: 1 })),
+    } as never)
+    vm.editMode = true
+    await flushPromises()
+    vm.importing = true
+    await flushPromises()
+    ;(w.findComponent(FpImportModal).vm as unknown as { onSectionsConfirm: (p: unknown[]) => void })
+      .onSectionsConfirm([{ year: 2025, month: 3, records: rows }])
+    await flushPromises()
+    const lit = () => w.findAll('tbody tr.fp-row-flash')
+    expect(lit(), '弹窗开着不亮(亮在它后面看不见)').toHaveLength(0)
+    await w.findAll('.fpimp-f button').find(b => b.text() === '完成')!.trigger('click')
+    await flushPromises()
+    return lit
+  }
+  it('❗导完点「完成」:导进本月的那块表亮(fp-row-flash),动画完摘掉', async () => {
+    const lit = await importThenDone(IMPORT_ROWS)
+    expect(lit()).toHaveLength(1)
+    expect(lit()[0].text(), '亮的是表号 E-001 那一行').toContain('E-001')
+    const ev = new Event('animationend', { bubbles: true })
+    Object.defineProperty(ev, 'animationName', { value: 'fp-row-flash' })
+    lit()[0].find('td').element.dispatchEvent(ev)
+    await flushPromises()
+    expect(lit(), '动画完摘掉,切回来不再亮').toHaveLength(0)
+  })
+  it('❗导进的是别的月:屏上这个月的表不亮', async () => {
+    const lit = await importThenDone([{ ...IMPORT_ROWS[0], ym: '2025-02' }])
+    expect(lit()).toHaveLength(0)
+  })
+  // 破坏验证:去掉 MeterView 里 watch(importing) 开窗清 flashPending 那一行 → 红(退出编辑收窗不经 closeImport,上一批留到下次关窗)
+  it('❗导完弹窗被退出编辑收掉,下次开窗点「取消」不亮上一批', async () => {
+    const w = await open()
+    const vm = vmOf(w)
+    vi.spyOn(api, 'post').mockResolvedValue({
+      imported: 1, skipped: 0, errors: [], matches: [{ rowIndex: 0, label: '一车间总电', matchBy: 'code', meterId: 1 }],
+    } as never)
+    vm.editMode = true
+    await flushPromises()
+    vm.importing = true
+    await flushPromises()
+    ;(w.findComponent(FpImportModal).vm as unknown as { onSectionsConfirm: (p: unknown[]) => void })
+      .onSectionsConfirm([{ year: 2025, month: 3, records: IMPORT_ROWS }])
+    await flushPromises()
+    expect(w.find('.irc').exists(), '前提:导完了,结果卡在').toBe(true)
+    vm.editMode = false            // 接管:弹窗被收,不经 closeImport
+    await flushPromises()
+    expect(w.find('.fpimp-scrim').exists()).toBe(false)
+    vm.editMode = true
+    await flushPromises()
+    vm.importing = true
+    await flushPromises()
+    await w.findAll('.fpimp-f button').find(b => b.text() === '取消')!.trigger('click')
+    await flushPromises()
+    expect(w.findAll('tbody tr.fp-row-flash')).toHaveLength(0)
   })
 
   it('❗批量删除本期的预览报出连带删掉的档案记录条数', async () => {

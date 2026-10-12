@@ -23,13 +23,13 @@ describe('费项/拆分映射 — 前端单一事实源(镜像后端 ElecCostSer
   })
 })
 
-describe('parseElecCostRows — 映射命中/月份双格式/行级错误不整批拦', () => {
+describe('parseElecCostRows — 映射命中/月份双格式/导不了的行解析时交 bad', () => {
   it('标准表头:后端契约字段 {meter,fee,split,month,amount,qty,note},中文名原样透传', () => {
-    const { records, errors } = parseElecCostRows([
+    const { records, bad } = parseElecCostRows([
       header,
       ['一期总表', '工业分时电价', '', '2025-01', '850,000.50', '1,200,000', '电费单'],
     ])
-    expect(errors).toEqual([])
+    expect(bad).toEqual([])
     expect(records.length).toBe(1)
     expect(records[0]).toMatchObject({
       meter: '一期总表', fee: '工业分时电价', split: '', month: '2025-01',
@@ -40,70 +40,70 @@ describe('parseElecCostRows — 映射命中/月份双格式/行级错误不整�
   })
 
   it('别名/直传 key 兼容:功率因素奖励(错别字)、电表费用、直传 fee_key/sub_key 都放行', () => {
-    const { records, errors } = parseElecCostRows([
+    const { records, bad } = parseElecCostRows([
       header,
       ['二期总表', '功率因素奖励', '', '2025-02', '4200', '', ''],
       ['水泵房', '电表费用', '', '2025-02', '8000', '', ''],
       ['一期总表', 'commercial', 'a', '2025-02', '120000', '150000', ''],
     ])
-    expect(errors).toEqual([])
+    expect(bad).toEqual([])
     expect(records.map(r => r.fee)).toEqual(['功率因素奖励', '电表费用', 'commercial'])
     expect(records[2].split).toBe('a')
   })
 
   it('拆分行:中文拆分名命中;月份兼容 YYYY-MM 变体与 Excel 序列', () => {
-    const { records, errors } = parseElecCostRows([
+    const { records, bad } = parseElecCostRows([
       header,
       ['一期总表', '商业用电', 'A座', '2025年3月', '120000', '', ''],
       ['一期总表', '工业分时电价', 'B-G座', '45658', '500000', '700000', ''],   // 序列号 2025-01-01
       ['一期总表', '工业基本电费', '三期工业大厦', '2025/4/1', '30000', '', ''],
     ])
-    expect(errors).toEqual([])
+    expect(bad).toEqual([])
     expect(records.map(r => [r.split, r.month])).toEqual([
       ['A座', '2025-03'], ['B-G座', '2025-01'], ['三期工业大厦', '2025-04'],
     ])
   })
 
   it('电量可空 → qty undefined(区别于 0);金额 0 合法', () => {
-    const { records, errors } = parseElecCostRows([
+    const { records, bad } = parseElecCostRows([
       header,
       ['宿舍电表', '用电费用', '', '2025-01', '0', '', ''],
     ])
-    expect(errors).toEqual([])
+    expect(bad).toEqual([])
     expect(records[0].amount).toBe(0)
     expect(records[0].qty).toBeUndefined()
   })
 
-  it('行级错误逐行报告(费项/拆分/月份/金额/电量),好行照常入列;合计行静默剔除', () => {
-    const { records, errors } = parseElecCostRows([
+  it('❗导不了的行交 bad(费项/拆分/月份/金额/电量):行号 + 原样内容 + 大白话原因;合计行静默剔除不算', () => {
+    const { records, bad } = parseElecCostRows([
       header,
       ['一期总表', '工业分时电价', '', '2025-01', '850000', '1200000', ''],
-      ['一期总表', '乱费项', '', '2025-01', '1', '', ''],
-      ['一期总表', '商业用电', '乱拆分', '2025-01', '1', '', ''],
-      ['一期总表', '商业用电', '', '不是月份', '1', '', ''],
+      ['一期总表', '工业峰谷电价', '', '2025-01', '1', '', ''],
+      ['一期总表', '商业用电', 'C座', '2025-01', '1', '', ''],
+      ['一期总表', '商业用电', '', '一月', '1', '', ''],
       ['一期总表', '商业用电', '', '2025-01', '', '', ''],          // 金额缺失
-      ['一期总表', '商业用电', '', '2025-02', '-5', '', ''],        // 金额为负
-      ['一期总表', '商业用电', '', '2025-03', '1', '乱电量', ''],
+      ['一期总表', '商业用电', '', '2025-02', '-5', '', '冲红'],    // 金额为负
+      ['一期总表', '商业用电', '', '2025-03', '1', '约3万', ''],
       ['合计', '', '', '', '851', '', ''],
       ['宿舍电表', '用电费用', '', '2025-01', '30000', '45000', ''],
     ])
     expect(records.map(r => r.meter)).toEqual(['一期总表', '宿舍电表'])
-    expect(errors.map(e => e.reason)).toEqual([
-      expect.stringContaining('费项无法识别'),
-      expect.stringContaining('拆分无法识别'),
-      expect.stringContaining('月份无法识别'),
-      '金额缺失或为负',
-      '金额缺失或为负',
-      '电量无法识别(可留空)',
+    expect(bad.map(b => [b.row, b.reason])).toEqual([
+      [3, '费项「工业峰谷电价」认不出'],
+      [4, '拆分「C座」认不出'],
+      [5, '月份认不出'],
+      [6, '金额没填'],
+      [7, '金额不能是负数'],
+      [8, '电量认不出'],
     ])
-    expect(errors.every(e => e.rowIndex >= 0)).toBe(true)   // 均为行级,不整批拦
+    expect(bad[4].cells).toEqual(['一期总表', '商业用电', '', '2025-02', '-5', '', '冲红'])
   })
 
-  it('表头识别失败 → rowIndex=-1 整批错误', () => {
-    const { records, errors } = parseElecCostRows([['一期总表', '工业分时电价', '2025-01', '1']])
+  it('表头识别失败 → 整批 error,没有 bad', () => {
+    const { records, bad, error } = parseElecCostRows([['一期总表', '工业分时电价', '2025-01', '1']])
     expect(records).toEqual([])
-    expect(errors.length).toBe(1)
-    expect(errors[0].rowIndex).toBe(-1)
+    expect(bad).toEqual([])
+    expect(error).toBeTruthy()
   })
 })
 
@@ -119,8 +119,8 @@ describe('buildElecCostTemplateAoa — 模板结构与回导自洽', () => {
     expect(aoa.slice(1).every(r => r[2] === '')).toBe(true)
   })
   it('模板回导自洽:AOA 直接喂解析器 → 全行零错误', () => {
-    const { records, errors } = parseElecCostRows(buildElecCostTemplateAoa().map(r => r.map(String)))
-    expect(errors).toEqual([])
+    const { records, bad } = parseElecCostRows(buildElecCostTemplateAoa().map(r => r.map(String)))
+    expect(bad).toEqual([])
     expect(records.length).toBe(buildElecCostTemplateAoa().length - 1)
   })
 })
@@ -161,8 +161,8 @@ describe('buildElecCostMonthAoa — sheet1 电表分区镜像(含拆分行+来�
   })
 
   it('回导自洽(导出→改→重导闭环):sheet1 AOA 直接喂解析器 → 全行零错误,尾缀来源列被忽略', () => {
-    const { records, errors } = parseElecCostRows(buildElecCostMonthAoa(entries, meters, 2025, 1).map(r => r.map(String)))
-    expect(errors).toEqual([])
+    const { records, bad } = parseElecCostRows(buildElecCostMonthAoa(entries, meters, 2025, 1).map(r => r.map(String)))
+    expect(bad).toEqual([])
     expect(records.length).toBe(entries.length)
     expect(records[0]).toMatchObject({ meter: '一期总表', fee: '工业分时电价', split: '', month: '2025-01', amount: 850000.46 })
     expect(records[0]).not.toHaveProperty('来源')

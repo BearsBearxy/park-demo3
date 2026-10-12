@@ -17,7 +17,7 @@ export const salaryApi = {
   remove:  (id: number): Promise<void>          => http.delete(`/salary/records/${id}`),
   // 导入:重导=替换本月 source=import 行(行身份=姓名)。year/month 走 query。
   importRows: (year: number, month: number, req: SalaryImportRequest): Promise<ImportResultDTO> =>
-    http.post('/salary/import', req, { params: { year, month } }),
+    http.post('/salary/import', req, { params: { year, month }, silentNetError: true }),
   // 清空本月导入:删 acctMonth+source=import。
   clearImported: (year: number, month: number): Promise<DeleteResultDTO> =>
     http.delete('/salary/imported', { params: { year, month } }),
