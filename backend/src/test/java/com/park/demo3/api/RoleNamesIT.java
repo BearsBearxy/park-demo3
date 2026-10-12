@@ -55,8 +55,10 @@ class RoleNamesIT extends AbstractMysqlIT {
                    + "\"lastActivityAt\":null,\"editScopes\":[],\"mode\":null}"))
             .andExpect(status().isOk()).andReturn());
 
-        List<String> roles = JsonPath.read(b, "$.data.users[?(@.user=='admin')].role");
-        assertThat(roles).as("头像组上写的是人看得懂的角色名").containsOnly("系统管理员");
+        // 只看本用例自己的座位:在场是进程内内存态,同一个上下文里别的用例(如 ReviewApiIT 给 admin 挂过「录审兼岗」)
+        // 留下的 admin 座位还在列表里,按 user 取会把它们一起读进来(2026-10-11 全量里就这样红过,单跑是绿的)
+        List<String> roles = JsonPath.read(b, "$.data.users[?(@.sid=='it-rolenames-sid')].role");
+        assertThat(roles).as("头像组上写的是人看得懂的角色名").containsExactly("系统管理员");
     }
 
     private String body(MvcResult r) {
