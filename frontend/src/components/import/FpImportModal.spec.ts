@@ -299,6 +299,51 @@ describe('② 核对 · 台账(precheck)', () => {
     expect(primary(w).attributes('disabled')).toBeUndefined()
   })
 
+  // 用户 2026-10-14 选「后端预演」:核对表 5 列,数由预演给(= 导进去以后的数)
+  const LEDGER_HEAD = ['租户', '上月结余', '本月应收', '本月收款', '本月结余']
+  const tbl = (w: ReturnType<typeof mountLedger>) => w.find('.fpimp-tw.fill .fpimp-tbl')
+  const heads = (w: ReturnType<typeof mountLedger>) => tbl(w).findAll('th').map(t => t.text())
+  const cellsOf = (w: ReturnType<typeof mountLedger>) => tbl(w).findAll('tbody tr').map(r => r.findAll('td').map(d => d.text()))
+  const base = { fileYm: '2026-09', existing: 0, ym: '2026-09', company: '水电' }
+
+  // 破坏验证:tblHead 不看 ledgerTbl(写死 templateCols)→ 表头那句红;okN 不减 skipN → 「导入 2 家」红
+  it('❗预演到了:5 列 + 会跳过的行排前面写原因;「能导」和按钮都不算跳过的那家', async () => {
+    const preview = { rows: [['户0', '0', '1,000', '400', '600'], ['户1', '12,400', '38,900', '30,000', '21,300']],
+      errs: [{ cells: ['户2', '', '', '', ''], reason: '全零行(无费用/结余/收款/备注),已跳过' }] }
+    const w = mount(FpImportModal, { props: { title: '导入月度台账', templateCols: ['租户', '8月结余', '厂房租金'], unit: '家',
+      customParse: () => ({ records: recs(3) }), precheck: async () => ({ ...base, preview }) } })
+    await pasteIn(w, 'x')
+    expect(heads(w)).toEqual([...LEDGER_HEAD, '导不了的原因'])
+    expect(cellsOf(w)).toEqual([
+      ['户2', '', '', '', '', '全零行(无费用/结余/收款/备注),已跳过'],
+      ['户0', '0', '1,000', '400', '600', ''],
+      ['户1', '12,400', '38,900', '30,000', '21,300', ''],
+    ])
+    expect(w.find('.fpimp-sum').text()).toBe('认出 3 家：2 家能导，1 家导不了')
+    expect(primary(w).text()).toBe('导入 2 家')
+  })
+
+  // 破坏验证:ledgerTbl 去掉「pre == null」那一半(没到先画原表)→ 表头那句红;flatNum 改回按内容判 → 靠右那句红
+  it('❗预演没到:先出 5 列表头、按文件排好租户名,数空着;四列数字已经靠右(数到了不跳)', async () => {
+    let done!: (v: object) => void
+    const w = mount(FpImportModal, { props: { title: '导入月度台账', templateCols: ['租户', '8月结余', '厂房租金'], unit: '家',
+      customParse: () => ({ records: recs(2) }), precheck: () => new Promise<object>(r => { done = r }) } })
+    await pasteIn(w, 'x')
+    expect(heads(w)).toEqual(LEDGER_HEAD)
+    expect(cellsOf(w)).toEqual([['户0', '', '', '', ''], ['户1', '', '', '', '']])
+    expect(tbl(w).findAll('th').map(t => t.classes().includes('r'))).toEqual([false, true, true, true, true])
+    done({ ...base, preview: { rows: [['户0', '0', '1', '1', '0'], ['户1', '0', '2', '2', '0']], errs: [] } }); await flushPromises()
+    expect(cellsOf(w)[1]).toEqual(['户1', '0', '2', '2', '0'])
+  })
+
+  it('预演失败(锁月 / 断网,precheck 没给 preview):退回文件原样那张表', async () => {
+    const w = mount(FpImportModal, { props: { title: '导入月度台账', templateCols: ['租户', '8月结余', '厂房租金'], unit: '家',
+      customParse: () => ({ records: recs(2) }), precheck: async () => base } })
+    await pasteIn(w, 'x')
+    expect(heads(w)).toEqual(['租户', '8月结余', '厂房租金'])
+    expect(primary(w).text()).toBe('导入 2 家')
+  })
+
   it('分段台账(多 sheet):不预检,两条都不出', async () => {
     const pc = vi.fn()
     const w = mount(FpImportModal, { props: { title: '导入月度台账', templateCols: ['租户'], unit: '家',

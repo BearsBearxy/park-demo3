@@ -52,6 +52,14 @@ public class LedgerController {
         return svc.importRows(id, year, month, req);
     }
 
+    @Operation(summary = "导入预演（核对页用：原样跑一遍导入，返回每行导入后的上月结余 / 应收 / 收款 / 结余，然后回滚，不落库）")
+    @PostMapping("/companies/{id}/import/preview")
+    public LedgerImportPreviewDTO previewImport(@PathVariable Integer id, @RequestParam @Min(2000) @Max(2100) int year,
+                                                @RequestParam @Min(1) @Max(12) int month,
+                                                @Valid @RequestBody LedgerImportRequest req) {
+        return svc.previewImport(id, year, month, req);
+    }
+
     @Operation(summary = "按账面名批量绑定档案（跨公司跨月挂未绑定行；目标月已有该租户行则计入 conflicts）")
     @PutMapping("/bind-tenant")
     public BindResultDTO bindTenant(@Valid @RequestBody TenantBindReq req) { return svc.bindTenant(req); }

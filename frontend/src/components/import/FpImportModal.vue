@@ -40,7 +40,7 @@ type Parsed = {
   records?: ImportRec[]; sections?: LabelSection[]; error?: string; warning?: string; notice?: string
   bad?: BadRow[]; ask?: string[]
 }
-type Precheck = { fileYm?: string; existing?: number; ym?: string; company?: string }
+type Precheck = { fileYm?: string; existing?: number; ym?: string; company?: string; preview?: { rows: string[][]; errs: { cells: string[]; reason: string }[] } }
 
 const props = withDefaults(defineProps<{
   title: string
@@ -281,12 +281,30 @@ const sampleHead = computed(() => props.sample?.head ?? props.templateCols)
 const sampleRows = computed(() => props.sample?.rows ?? [])
 const sampleNum = computed(() => numCols(sampleRows.value, sampleHead.value.length))
 
-const flatRows = computed(() => [
-  ...bad.value.map(b => ({ cells: props.templateCols.map((_, j) => String(b.cells[j] ?? '')), why: b.reason })),
-  ...(records.value ?? []).map(r => ({ cells: props.templateCols.map((_, j) => cell(r.__preview ? r.__preview[j] : '')), why: '' })),
-])
-const flatNum = computed(() => numCols(flatRows.value.map(r => r.cells), props.templateCols.length))
-const okN = computed(() => records.value?.length ?? 0)
+// 台账核对表(md-v2-ledger):5 列,数是后端预演导入算出来的 = 导进去以后的数(用户 2026-10-14 选「后端预演」)。
+// 预演没到时先按文件排好租户名、数空着(不先画文件原样那张宽表再换列);预演失败(锁月 / 断网)才退回文件原样
+const LEDGER_HEAD = ['租户', '上月结余', '本月应收', '本月收款', '本月结余']
+const ledgerTbl = computed(() => ledger.value && (pre.value == null || !!pre.value.preview))
+const tblHead = computed(() => (ledgerTbl.value ? LEDGER_HEAD : props.templateCols))
+/** 预演里导入时会跳过的行(全零行等):核对页就列出来,不算能导的 */
+const skipN = computed(() => pre.value?.preview?.errs.length ?? 0)
+const flatRows = computed(() => {
+  if (!ledgerTbl.value) return [
+    ...bad.value.map(b => ({ cells: props.templateCols.map((_, j) => String(b.cells[j] ?? '')), why: b.reason })),
+    ...(records.value ?? []).map(r => ({ cells: props.templateCols.map((_, j) => cell(r.__preview ? r.__preview[j] : '')), why: '' })),
+  ]
+  const pv = pre.value?.preview
+  const named = (name: unknown) => [String(name ?? ''), '', '', '', '']
+  return [
+    ...bad.value.map(b => ({ cells: named(b.cells[0]), why: b.reason })),
+    ...(pv?.errs ?? []).map(e => ({ cells: e.cells, why: e.reason })),
+    ...(pv ? pv.rows.map(c => ({ cells: c, why: '' })) : (records.value ?? []).map(r => ({ cells: named(r.tenantName), why: '' }))),
+  ]
+})
+// 台账表的四列数字固定靠右(预演没到时是空的,按内容判会先靠左、数到了再跳到右边)
+const flatNum = computed(() => (ledgerTbl.value ? LEDGER_HEAD.map((_, j) => j > 0) : numCols(flatRows.value.map(r => r.cells), props.templateCols.length)))
+const okN = computed(() => (records.value?.length ?? 0) - skipN.value)
+const badN = computed(() => bad.value.length + skipN.value)
 
 // ── 园区抄表补问框 ──
 const ASK_Q: Record<string, string> = { ym: '哪个月', zone: '哪个区', kind: '电表还是水表' }
@@ -604,11 +622,11 @@ onBeforeUnmount(() => { stopTimers(); unhook(); if (busy.value) importBusy.value
 
           <!-- 平铺 -->
           <template v-if="records">
-            <div class="fpimp-sum">认出 <b>{{ n0(okN + bad.length) }}</b> {{ unit }}<template v-if="bad.length">：<b>{{ n0(okN) }}</b> {{ unit }}能导，<span class="w"><b>{{ n0(bad.length) }}</b> {{ unit }}导不了</span></template></div>
-            <div v-if="bad.length" class="fpimp-hint warn">
+            <div class="fpimp-sum">认出 <b>{{ n0(okN + badN) }}</b> {{ unit }}<template v-if="badN">：<b>{{ n0(okN) }}</b> {{ unit }}能导，<span class="w"><b>{{ n0(badN) }}</b> {{ unit }}导不了</span></template></div>
+            <div v-if="badN" class="fpimp-hint warn">
               <component :is="iconFor('alert-triangle')" :size="14" />
-              <div v-if="okN" class="tx">这 {{ n0(bad.length) }} {{ unit }}先放着：可以先导能导的 {{ n0(okN) }} {{ unit }}，改好 Excel 再单独导这 {{ n0(bad.length) }} {{ unit }}。</div>
-              <div v-else class="tx">这 {{ n0(bad.length) }} {{ unit }}都导不了：照下面写的原因改好 Excel，再选一次。</div>
+              <div v-if="okN" class="tx">这 {{ n0(badN) }} {{ unit }}先放着：可以先导能导的 {{ n0(okN) }} {{ unit }}，改好 Excel 再单独导这 {{ n0(badN) }} {{ unit }}。</div>
+              <div v-else class="tx">这 {{ n0(badN) }} {{ unit }}都导不了：照下面写的原因改好 Excel，再选一次。</div>
             </div>
             <div v-if="warn" class="fpimp-hint warn"><component :is="iconFor('alert-triangle')" :size="14" /><div class="tx">{{ warn }}</div></div>
           </template>
@@ -642,13 +660,13 @@ onBeforeUnmount(() => { stopTimers(); unhook(); if (busy.value) importBusy.value
           <div v-if="records || bad.length" class="fpimp-tw fill">
             <table class="fpimp-tbl">
               <thead><tr>
-                <th v-for="(c, j) in templateCols" :key="j" :class="{ r: flatNum[j] }">{{ c }}</th>
-                <th v-if="bad.length">导不了的原因</th>
+                <th v-for="(c, j) in tblHead" :key="j" :class="{ r: flatNum[j] }">{{ c }}</th>
+                <th v-if="badN">导不了的原因</th>
               </tr></thead>
               <tbody>
                 <tr v-for="(r, i) in flatRows" :key="i" :class="{ bad: !!r.why }">
                   <td v-for="(c, j) in r.cells" :key="j" :class="{ r: flatNum[j], mono: flatNum[j] }">{{ c }}</td>
-                  <td v-if="bad.length"><span v-if="r.why" class="fpimp-why">{{ r.why }}</span></td>
+                  <td v-if="badN"><span v-if="r.why" class="fpimp-why">{{ r.why }}</span></td>
                 </tr>
               </tbody>
             </table>

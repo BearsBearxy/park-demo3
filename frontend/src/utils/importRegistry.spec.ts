@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx'
 vi.mock('@/api/importLog', () => ({ importLogApi: { record: vi.fn().mockResolvedValue({}) } }))
 vi.mock('@/api/ledger', () => ({
   companyApi: { list: vi.fn(), create: vi.fn() },
-  ledgerApi: { import: vi.fn(), month: vi.fn() },
+  ledgerApi: { import: vi.fn(), month: vi.fn(), preview: vi.fn() },
 }))
 vi.mock('@/api/budget', () => ({ budgetApi: { import: vi.fn(), all: vi.fn() } }))
 vi.mock('@/api/tenant', () => ({ tenantApi: { list: vi.fn() } }))
@@ -819,7 +819,10 @@ describe('viewLink', () => {
 // ── 台账进核对页先问一次:文件标题的月份、要导到的那个月会盖掉几家 ──
 describe('ledger precheck', () => {
   const entry = IMPORT_TYPES.find(t => t.key === 'ledger')!
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(ledgerApi.preview).mockRejectedValue(new Error('not stubbed'))
+  })
 
   it('❗fileYm = 标题识别的月;existing = 那个月已有台账、文件里也有的家数(去重)', async () => {
     vi.mocked(ledgerApi.month).mockResolvedValue({ rows: [{ tenantName: '恒毅' }, { tenantName: '叙丰' }, { tenantName: '澜川' }] } as never)
@@ -830,7 +833,26 @@ describe('ledger precheck', () => {
     expect(ledgerApi.month).toHaveBeenCalledWith(3, 2026, 9)
   })
 
-  it('分段台账不预检;拉不到本月数据不拦', async () => {
+  // 破坏验证:preview 不传 toLedgerRow 后的行 → 调用参数那句红;errs 名字不退回文件行 → 「新户」那句红
+  it('❗核对页 5 列 = 后端预演的数(上月结余 / 应收 / 收款 / 结余,千分位、最多两位小数);会跳过的行带原因,名字缺了用文件那一行的', async () => {
+    vi.mocked(ledgerApi.month).mockResolvedValue({ rows: [] } as never)
+    vi.mocked(ledgerApi.preview).mockResolvedValue({
+      rows: [
+        { rowIndex: 0, tenantName: '恒毅', balancePrev: 0, totalReceivable: 76250, totalCollected: 76250, balanceEnd: 0 },
+        { rowIndex: 1, tenantName: '叙丰', balancePrev: 12400, totalReceivable: 38900.5, totalCollected: 30000, balanceEnd: 21300.5 },
+      ],
+      errors: [{ rowIndex: 2, label: null, reason: '全零行(无费用/结余/收款/备注),已跳过' }],
+    })
+    const recs = [{ tenantName: '恒毅', factoryRent: 60000, balancePrev: 99 }, { tenantName: '叙丰', __preview: ['叙丰'] }, { tenantName: '新户' }]
+    const r = await entry.precheck!({ companyId: 3, year: 2026, month: 9 }, { records: recs })
+    expect(ledgerApi.preview).toHaveBeenCalledWith(3, 2026, 9, { rows: [{ tenantName: '恒毅', factoryRent: 60000, balancePrev: 99 }, { tenantName: '叙丰' }, { tenantName: '新户' }] })
+    expect(r.preview).toEqual({
+      rows: [['恒毅', '0', '76,250', '76,250', '0'], ['叙丰', '12,400', '38,900.5', '30,000', '21,300.5']],
+      errs: [{ cells: ['新户', '', '', '', ''], reason: '全零行(无费用/结余/收款/备注),已跳过' }],
+    })
+  })
+
+  it('分段台账不预检;拉不到本月数据、预演失败都不拦(核对页退回文件原样那张表)', async () => {
     expect(await entry.precheck!({ companyId: 3, year: 2026, month: 9 }, {})).toEqual({})
     vi.mocked(ledgerApi.month).mockRejectedValue(new Error('net'))
     expect(await entry.precheck!({ companyId: 3, year: 2026, month: 9 }, { records: [{ tenantName: '甲' }] })).toEqual({ fileYm: undefined })

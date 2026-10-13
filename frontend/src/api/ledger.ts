@@ -2,7 +2,7 @@
 import http from './index'
 import type {
   CompanyDTO, YearMonthsDTO, LedgerOverviewDTO, LedgerMonthDTO, LedgerRowDTO, LedgerSaveRequest, LedgerImportRequest,
-  BindResultDTO,
+  BindResultDTO, LedgerImportPreviewDTO,
 } from '../types/ledger'
 import type { ImportResultDTO } from '../types/import'
 
@@ -29,6 +29,10 @@ export const ledgerApi = {
   // 逐行定向 upsert(tenant_id 按名解析),不走整月 save 的删空。契约路径见 §4.1。
   import: (companyId: number, year: number, month: number, body: LedgerImportRequest): Promise<ImportResultDTO> =>
     http.post(`/ledger/companies/${companyId}/import`, body, { params: { year, month }, silentNetError: true }),
+  // 导入预演(核对页 5 列,用户 2026-10-14 选「后端预演」):后端原样跑一遍导入再回滚,数 = 导进去以后的数。
+  // 失败不出底部提示:核对页退回文件原样那张表
+  preview: (companyId: number, year: number, month: number, body: LedgerImportRequest): Promise<LedgerImportPreviewDTO> =>
+    http.post(`/ledger/companies/${companyId}/import/preview`, body, { params: { year, month }, silentNetError: true }),
   // 按账面名批量绑定档案(跨公司跨月挂未绑定行;目标月已有该租户行计 conflicts)
   bindTenant: (tenantName: string, tenantId: number): Promise<BindResultDTO> =>
     http.put('/ledger/bind-tenant', { tenantName, tenantId }),

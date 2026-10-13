@@ -150,3 +150,9 @@ export interface LedgerImportRow extends Partial<LedgerFees> {
 export interface LedgerImportRequest {
   rows: LedgerImportRow[]
 }
+
+/** 导入预演(后端 LedgerImportPreviewDTO):rows 按文件行序,一行 = 文件第 rowIndex 行落到的那户导入后的四个数;errors = 导入时会跳过的行 */
+export interface LedgerImportPreviewDTO {
+  rows: { rowIndex: number; tenantName: string; balancePrev: number; totalReceivable: number; totalCollected: number; balanceEnd: number }[]
+  errors: { rowIndex: number; label: string | null; reason: string }[]
+}
