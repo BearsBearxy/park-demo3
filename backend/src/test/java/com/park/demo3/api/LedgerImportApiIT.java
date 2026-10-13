@@ -151,4 +151,58 @@ class LedgerImportApiIT extends AbstractMysqlIT {
                 .contentType("application/json").content("{\"rows\":[]}"))
                 .andExpect(status().isUnauthorized());
     }
+
+    // ── 导入预演(核对页 5 列,用户 2026-10-14 选「后端预演」):数字 = 真导进去以后的数,而且不落库 ──
+    // 破坏验证:previewImport 去掉 setRollbackOnly → 「不落库」两句红;上月结余改取文件值(seedable 恒真)→ 600 那句红
+    @Test
+    void preview_sameNumbersAsTheRealImport_chainWinsOverFile_andWritesNothing() throws Exception {
+        // 2095 年没有别的用例用台账。3 月:中誉机械重工 应收 1000、收 400 → 期末 600,4 月的上月结余在链上是派生位
+        mvc.perform(put("/api/ledger/companies/1/months/2095/3").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"rows\":[{\"tenantId\":1,\"balancePrev\":0,\"factoryRent\":1000,\"totalCollected\":400}]}"))
+                .andExpect(status().isOk());
+        String body = "{\"rows\":["
+                + "{\"tenantName\":\"中誉机械重工\",\"balancePrev\":99999,\"factoryRent\":500,\"totalCollected\":200},"
+                + "{\"tenantName\":\"预演查无此户\",\"factoryRent\":123},"
+                + "{\"tenantName\":\"预演全零行\"}"
+                + "]}";
+        Object before3 = monthData(2095, 3), before4 = monthData(2095, 4);
+
+        String pv = utf8(mvc.perform(post("/api/ledger/companies/1/import/preview")
+                .param("year", "2095").param("month", "4").header("Authorization", auth())
+                .contentType("application/json").content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0)).andReturn());
+        // 文件写的上月结余 99999,链上是 3 月期末 600:预演照导入的规矩取 600
+        assertThat(num(pv, "$.data.rows[0].balancePrev")).isEqualTo(600.0);
+        assertThat(num(pv, "$.data.rows[0].totalReceivable")).isEqualTo(500.0);
+        assertThat(num(pv, "$.data.rows[0].totalCollected")).isEqualTo(200.0);
+        assertThat(num(pv, "$.data.rows[0].balanceEnd")).isEqualTo(900.0);
+        assertThat(num(pv, "$.data.rows[1].balanceEnd")).isEqualTo(123.0);
+        List<Integer> idx = JsonPath.read(pv, "$.data.rows[*].rowIndex");
+        assertThat(idx).as("全零行不在里面").containsExactly(0, 1);
+        assertThat((Integer) JsonPath.read(pv, "$.data.errors[0].rowIndex")).isEqualTo(2);
+        // 不落库:两个月读回来和预演前一样
+        assertThat(monthData(2095, 3)).as("3 月").isEqualTo(before3);
+        assertThat(monthData(2095, 4)).as("4 月").isEqualTo(before4);
+
+        // 真导一次:库里那户的四个数 = 预演给的
+        mvc.perform(post("/api/ledger/companies/1/import").param("year", "2095").param("month", "4")
+                .header("Authorization", auth()).contentType("application/json").content(body))
+                .andExpect(status().isOk());
+        String after = utf8(mvc.perform(get("/api/ledger/companies/1/months/2095/4").header("Authorization", auth()))
+                .andExpect(status().isOk()).andReturn());
+        List<Integer> ids = JsonPath.read(after, "$.data.rows[*].tenantId");
+        int i = ids.indexOf(1);
+        for (String k : List.of("balancePrev", "totalReceivable", "totalCollected", "balanceEnd"))
+            assertThat(num(after, "$.data.rows[" + i + "]." + k)).as(k).isEqualTo(num(pv, "$.data.rows[0]." + k));
+    }
+
+    private Object monthData(int y, int m) throws Exception {
+        return JsonPath.read(utf8(mvc.perform(get("/api/ledger/companies/1/months/" + y + "/" + m)
+                .header("Authorization", auth())).andExpect(status().isOk()).andReturn()), "$.data");
+    }
+
+    private static double num(String json, String path) {
+        return ((Number) JsonPath.read(json, path)).doubleValue();
+    }
 }

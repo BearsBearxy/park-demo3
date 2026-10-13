@@ -13,6 +13,7 @@ import com.park.demo3.dto.LedgerSaveRequest;
 import com.park.demo3.dto.ImportResultDTO;
 import com.park.demo3.dto.ImportError;
 import com.park.demo3.dto.LedgerImportRequest;
+import com.park.demo3.dto.LedgerImportPreviewDTO;
 import com.park.demo3.dto.TenantBindReq;
 import com.park.demo3.dto.BindResultDTO;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -29,6 +30,7 @@ import com.park.demo3.security.ReviewGuard;
 import com.park.demo3.security.ReviewKind;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
@@ -594,6 +596,34 @@ public class LedgerService {
     //  · 同名多档不瞎猜(softIndex 唯一可判定才配),配不上同样落未绑定行。
     @Transactional
     public ImportResultDTO importRows(Integer companyId, int year, int month, LedgerImportRequest req) {
+        return doImport(companyId, year, month, req, null);
+    }
+
+    // ── 导入预演(核对页 5 列:租户 / 上月结余 / 本月应收 / 本月收款 / 本月结余;用户 2026-10-14 选「后端预演」) ──
+    // 前端照文件算会和导进去的不一样:上月结余在结余链上是派生位(上个月有记录就用上个月的期末,文件值不采信),
+    // 应收按账册口径(recalc)。所以原样跑一遍导入(同一段代码、同一个事务),读出每行落到的那户,然后整体回滚 —— 库里什么都不留。
+    @NoReviewGuard(reason = "预演:跑完整体回滚、不落库;doImport 里照样先过 assertLedgerEditable,锁住的月预演同样 423")
+    @Transactional
+    public LedgerImportPreviewDTO previewImport(Integer companyId, int year, int month, LedgerImportRequest req) {
+        Map<Integer, MonthlyLedger> touched = new LinkedHashMap<>();
+        ImportResultDTO res = doImport(companyId, year, month, req, touched);
+        // rechain 用 SQL 改过结余,重查本月拿归一后的值(有写语句 MyBatis 本地缓存已清)
+        Map<Integer, MonthlyLedger> after = ledger.selectMonth(companyId, year, month).stream()
+            .collect(Collectors.toMap(MonthlyLedger::getId, l -> l, (a, b) -> a));
+        List<LedgerImportPreviewDTO.Row> rows = new ArrayList<>();
+        touched.forEach((i, t) -> {
+            MonthlyLedger l = after.getOrDefault(t.getId(), t);
+            BigDecimal[] d = recalc(l);
+            rows.add(new LedgerImportPreviewDTO.Row(i, req.rows().get(i).tenantName().trim(),
+                r2(l.getBalancePrev()), d[0], r2(l.getTotalCollected()), d[1]));
+        });
+        TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+        return new LedgerImportPreviewDTO(rows, res.errors());
+    }
+
+    /** touched != null 时记下文件第 i 行落到的那一行(预演用) */
+    private ImportResultDTO doImport(Integer companyId, int year, int month, LedgerImportRequest req,
+                                     Map<Integer, MonthlyLedger> touched) {
         ManagementCompany company = companies.selectById(companyId);
         if (company == null) throw new BizException(ResultCode.NOT_FOUND, "公司不存在");
         assertLedgerEditable(companyId, year, month);
@@ -698,6 +728,7 @@ public class LedgerService {
             if (row.extraFees() != null && !row.extraFees().isEmpty())
                 l.setExtraFees(ExtraFees.mergeKeys(l.getExtraFees(), row.extraFees()));
             if (existing != null) ledger.updateById(l); else ledger.insert(l);
+            if (touched != null) touched.put(i, l);
             // 索引维护:同名第二行走 update,不再重复 insert 撞 uk
             if (l.getTenantId() != null) {
                 stored.put(l.getTenantId(), l);

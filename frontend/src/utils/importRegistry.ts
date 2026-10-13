@@ -379,9 +379,10 @@ export interface ImportTypeEntry {
   target: (ctx: ImportCtx, picks?: ImportRec[] | Pick[]) => ImportTarget[]
   /** 导入记录的「去看」:用各屏已认的深链参数;旧记录没有结构列、被拒的记录 → null */
   viewLink: (log: ImportLogDTO) => ImportViewLink | null
-  /** 只有台账:进核对页时问一次 —— 文件标题写的月份(fileYm,YYYY-MM)、要导到的那个月已有几家会被盖掉(existing);
-   *  分段台账两样都不给(同改前不预检) */
-  precheck?: (ctx: ImportCtx, parsed: { records?: ImportRec[] }) => Promise<{ fileYm?: string; existing?: number }>
+  /** 只有台账:进核对页时问一次 —— 文件标题写的月份(fileYm,YYYY-MM)、要导到的那个月已有几家会被盖掉(existing)、
+   *  后端预演算好的 5 列(preview:租户 / 上月结余 / 本月应收 / 本月收款 / 本月结余,errs = 导入时会跳过的行);
+   *  分段台账都不给(同改前不预检) */
+  precheck?: (ctx: ImportCtx, parsed: { records?: ImportRec[] }) => Promise<{ fileYm?: string; existing?: number; preview?: CheckPreview }>
 }
 
 // 一行没写进去、又有没导的 = 被拒;一行没写、也没有没导的(如科目余额表某家期末全为 0,cells 被滤空)不算被拒
@@ -415,6 +416,9 @@ async function keptOnFail<T>(ctx: ImportCtx, made: number, fn: () => Promise<T>)
 
 // 台账:列级定向 upsert,文件没有的列必须「键不出现」(出现即被后端当显式清零),故逐键判 undefined。
 // 顺带把 __ 前缀内部键(__ymDetected/__company/__ym)挡在外面。
+/** 台账核对页的 5 列(FpImportModal 的 LEDGER_HEAD 同序),cells 已是要上屏的字 */
+export interface CheckPreview { rows: string[][]; errs: { cells: string[]; reason: string }[] }
+const money = (v: number) => Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 })
 const toLedgerRow = (r: ImportRec): LedgerImportRow => {
   const row: LedgerImportRow = { tenantName: String(r.tenantName) }
   for (const k of FEE_KEYS) if (r[k] !== undefined) row[k] = r[k] as number
@@ -637,11 +641,21 @@ const TYPES: ImportTypeEntry[] = [
       const d = recs[0].__ymDetected as { year: number; month: number } | undefined
       const fileYm = d ? ymOf(d.year, d.month) : undefined
       if (ctx.companyId == null || !ctx.year || !ctx.month) return { fileYm }
-      try {
+      const [rows, pv] = await Promise.all([
+        ledgerApi.month(ctx.companyId, ctx.year, ctx.month).then(m => m.rows, () => null),   // 拉不到本月数据不拦(同改前)
+        // 核对页 5 列由后端预演(用户 2026-10-14):上月结余在结余链上是派生位、应收按账册口径,前端照文件算会和导进去的不一样。
+        // 预演失败(锁月 423 / 断网)不拦,核对页退回文件原样那张表
+        ledgerApi.preview(ctx.companyId, ctx.year, ctx.month, { rows: recs.map(toLedgerRow) }).catch(() => null),
+      ])
+      return {
+        fileYm,
         // 按去重租户家数计,结转虚行不算(同改前 LedgerView 的覆盖确认:overwriteTargets)
-        const rows = (await ledgerApi.month(ctx.companyId, ctx.year, ctx.month)).rows
-        return { fileYm, existing: overwriteTargets(rows, recs.map(r => r.tenantName as string | undefined)) }
-      } catch { return { fileYm } }   // 拉不到本月数据不拦(同改前)
+        ...(rows ? { existing: overwriteTargets(rows, recs.map(r => r.tenantName as string | undefined)) } : {}),
+        ...(pv ? { preview: {
+          rows: pv.rows.map(r => [r.tenantName, money(r.balancePrev), money(r.totalReceivable), money(r.totalCollected), money(r.balanceEnd)]),
+          errs: pv.errors.map(e => ({ cells: [e.label ?? String(recs[e.rowIndex]?.tenantName ?? ''), '', '', '', ''], reason: e.reason })),
+        } } : {}),
+      }
     },
   },
   {

@@ -16,7 +16,7 @@ vi.mock('vue-router', () => ({
   useRoute: () => ({ query, meta: {}, get fullPath() { return '/x?' + new URLSearchParams(query).toString() } }),
 }))
 vi.mock('@/api/importLog', () => ({ importLogApi: { record: vi.fn() } }))
-vi.mock('@/api/ledger', () => ({ companyApi: { list: vi.fn() }, ledgerApi: { month: vi.fn() } }))
+vi.mock('@/api/ledger', () => ({ companyApi: { list: vi.fn() }, ledgerApi: { month: vi.fn(), preview: vi.fn().mockRejectedValue(new Error('not stubbed')) } }))
 vi.mock('@/api/books', () => ({ booksApi: { list: vi.fn() } }))
 vi.mock('@/api/charging', () => ({ chargingApi: { cats: vi.fn() } }))
 vi.mock('@/utils/importRegistry', async (importOriginal) => ({

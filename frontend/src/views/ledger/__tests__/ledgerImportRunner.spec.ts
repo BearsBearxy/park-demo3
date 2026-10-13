@@ -33,7 +33,7 @@ vi.mock('vue-router', () => ({
 vi.mock('@/api/books', () => ({ booksApi: { list: vi.fn(), templateAt: vi.fn() } }))
 vi.mock('@/api/ledger', () => ({
   companyApi: { list: vi.fn() },
-  ledgerApi: { years: vi.fn(), overview: vi.fn(), month: vi.fn() },
+  ledgerApi: { years: vi.fn(), overview: vi.fn(), month: vi.fn(), preview: vi.fn().mockRejectedValue(new Error('not stubbed')) },
 }))
 vi.mock('@/api/tenant', () => ({ tenantApi: { list: () => Promise.resolve([]) } }))
 vi.mock('@/api/locks', () => ({
