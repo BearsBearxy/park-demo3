@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 悬停说明(十件 ⑩;LAYOUT-STABILITY §4.3,画布 06-B ⑩):v-tip="'一句'" 或 v-tip="{ text, sub }",替代浏览器 title。
 // 外观、停 500ms 出、刚收起一个又停到旁边立即出(连扫,和 ShellTip 共用 tipState)都照抄 components/shell/ShellTip.vue;
 // 顶栏 / 图标轨 / 页签条继续用 ShellTip 组件,别处一律用本指令。

@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // CommandPalette — Ctrl-K quick-jump. Ported from shell.jsx CommandPalette.
 import { ref, computed, watch } from 'vue'

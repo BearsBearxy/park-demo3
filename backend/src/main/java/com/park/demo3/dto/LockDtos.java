@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.dto;
 
 /** 编辑锁的传输对象（CONCURRENCY-SPEC §4.4）。 */

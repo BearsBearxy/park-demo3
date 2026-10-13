@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // ponytail: 自建 <table>，表头用 Popover 排序触发器（需 VNode 表头，故不走纯文本插值的通用表格）
 import { computed, h, defineComponent, withDirectives, type VNode } from 'vue'

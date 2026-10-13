@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import http from './index'
 import type { TenantDTO, TenantSummaryDTO, TenantDetailDTO, TenantCategoryDTO, TenantCreateReq, TenantUpdateReq } from '../types/tenant'
 

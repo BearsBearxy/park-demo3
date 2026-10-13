@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadTouPref, saveTouPref, touColsOn, touMode } from './touColumns'
 

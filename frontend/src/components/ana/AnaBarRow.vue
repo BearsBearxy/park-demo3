@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 通用进度条行(移植 ana-kit.jsx BarRow):出租率/构成等,可带目标线与 delta。
 import { computed } from 'vue'

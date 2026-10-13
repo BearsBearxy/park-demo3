@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // S 档卡片的「点开抽屉看整行」(RESPONSIVE-LAYOUT-SPEC §5.3 逐字:「一行一张卡,
 // 卡上 3–4 个关键字段,点开抽屉看整行」)。只读。

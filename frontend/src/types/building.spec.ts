@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // building.spec.ts — 出租率显示口径单测(METRIC-SOURCE-SPEC §3:算不出来必须能表达算不出来)。
 import { describe, expect, it } from 'vitest'
 import { occByUnit, occPct } from './building'

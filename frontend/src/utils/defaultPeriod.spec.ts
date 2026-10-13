@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { latestPeriodOf } from './defaultPeriod'
 

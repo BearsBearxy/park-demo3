@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/components/ana/anaTheme.ts — ECharts 统一主题:浅色 fpAnaTheme / 暗色 fpAnaThemeDark(spec §一,DARK-MODE-SPEC §6)。
 // 色板:蓝族主色 + teal/coral/amber 辅助 + 语义红;细网格(var(--divider) 观感)、
 // tooltip 与 ShellTip 同款(背景 = --tip-bg、字 12 / 行高 18、圆角 6、内边距 6×10),和 .cz-tip、自绘图气泡一个样子。

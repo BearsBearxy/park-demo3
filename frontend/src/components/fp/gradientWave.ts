@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 流动渐变背景的 WebGL 引擎 —— 移植自 React 组件 gradient-wave.tsx(Stripe 式 MiniGl 渐变),
 // 算法、着色器、默认参数照搬;与原版的差别:
 //   · 原版 resize() 按窗宽把 u_shadow_power 改成 5/6,会盖掉传进来的 shadowPower —— 去掉;

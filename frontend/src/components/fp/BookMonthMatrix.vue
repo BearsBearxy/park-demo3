@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 import Avatar from '@/components/ds/Avatar.vue'
 import FPEmpty from '@/components/fp/FPEmpty.vue'

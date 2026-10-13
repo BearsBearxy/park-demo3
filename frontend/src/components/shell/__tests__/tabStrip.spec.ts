@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 页签条(TAB-BAR-SPEC §3 §4)。「❗」开头的做过破坏验证。
 // jsdom 没有布局:条宽、页签位置用原型上的 getter 桩出来(每个页签按它在条里的次序占 100px)。
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'

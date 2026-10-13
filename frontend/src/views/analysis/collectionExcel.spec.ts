@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect, vi } from 'vitest'
 import type { CollectionRow } from './finCashflow.logic'
 import type { TenantDTO } from '@/types/tenant'

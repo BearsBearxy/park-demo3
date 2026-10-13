@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 园区抄表 v5 工作台纯函数层(METER-V5-SPEC §5+§7 v5.1):rows 合流(meters×readings×binding)、
 // 状态最差优先派生、统计卡口径(各维独立计数,不受徽标优先级影响)、筛选链、
 // Σ段实时校验、楼栋合计/损耗(复用 meterGroup 计算函数)、楼栋分组汇总行(§7.6)、草稿式编辑(draft 取值/脏行/用量重算/

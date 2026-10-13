@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 利润表 sheet 解析 — 6 公司横向合并 → 每公司一段(自定义解析,供 FpImportModal customParse)。
 // 布局(spec §6):2 行表头 — 公司名行(每公司名跨 2 列) + 子表头行(本月金额/本年累计金额);
 //   行首两列「项目|行次」;尾「合计」列(忽略)。

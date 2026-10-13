@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.security;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;

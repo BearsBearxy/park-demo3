@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 合同状态的唯一事实源(METRIC-SOURCE-SPEC §1「一个判断只有一处实现」)。
 //
 // 2026-08-20 抽出。此前 MAP 内联在 FPContractStatus.vue 里,分析层够不着,于是

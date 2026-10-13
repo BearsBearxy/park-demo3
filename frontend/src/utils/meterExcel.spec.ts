@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect } from 'vitest'
 import { parseMeterSheet, parseMeterWorkbook, buildMeterTemplateAoa, buildMeterExportAoa, templateSheets } from './meterExcel'
 import { readingFlags } from './meterLogic'

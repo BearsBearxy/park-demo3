@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 收款簿纯逻辑(S20-BILL-DELIVERY-SPEC §2/§5):收款槽注册表 COL_SLOTS、fee_key→槽映射(镜像后端
 // BillFeeMap)、含继承的解析、缺口计算、行构建、暂存模型与 PUT /bills/paymap 提交计划、户级状态聚合、
 // 对账表 sheet 清单、抽屉方格数据源。payBookLogic.spec.ts 锁定。

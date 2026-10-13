@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 趋势面积图(移植 ana-kit.jsx AnaTrend):今年实线+面积 vs 去年虚线,平滑 + hover 十字。
 import { computed, ref } from 'vue'

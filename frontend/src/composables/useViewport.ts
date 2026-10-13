@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/composables/useViewport.ts — JS 侧视口档位/触屏判定(RESPONSIVE-LAYOUT-SPEC §1)。
 // 模块级单例:matchMedia listener 只挂一次,所有调用方共享同一组 Ref——
 // 视口是全局事实,逐组件各挂一套监听既浪费又可能判定不一致。

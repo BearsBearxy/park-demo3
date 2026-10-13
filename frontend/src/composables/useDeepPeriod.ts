@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/composables/useDeepPeriod.ts — 目标屏消费期间深链(SIDEBAR-UX-REDESIGN §4.2)。
 //
 // 首次:**setup 期同步**跑一次。spec 写的是 onMounted;提前到 setup 是因为五屏的 watch(ym) 与 onMounted 取数

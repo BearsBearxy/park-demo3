@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect } from 'vitest'
 import { TB_FIELDS, tbTotals, tbBalanceDiff, visibleRows, type TbAccount, type TbFieldKey } from './trialBalance'
 

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/__tests__/contractsDeepLink.spec.ts — 合同屏 ?contractNo=(到期墙「临期 90 天」点行,SIDEBAR-UX-REDESIGN §4.2 · P0c)。
 // 合同没有期维度,不接 useDeepPeriod;这里钉的是同一套口径:首载预填搜索框、切回按 fullPath 去重再读、没 query 不重置。
 import { describe, it, expect, beforeEach, vi } from 'vitest'

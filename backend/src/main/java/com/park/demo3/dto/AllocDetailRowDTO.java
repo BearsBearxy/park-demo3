@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.dto;
 import java.math.BigDecimal;
 // 抽屉逐费项明细(表级明细不落库,现算):stale=现算金额≠快照(读数已变,可重新生成)

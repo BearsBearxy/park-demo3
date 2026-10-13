@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 台账的审核闸(SIDEBAR-UX-REDESIGN §7.5,R2 T4)。
 //
 // ⚠ 这是编辑入口的**第三条路**。全仓只有三个地方持编辑态:

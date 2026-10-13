@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 报表中心点卡带期(SIDEBAR-UX-REDESIGN §4.2):走 periodLink,co=all → 三大报表直落「全部汇总」。
 import { landNav } from '@/test-utils/landNav'
 import { describe, it, expect, beforeEach, vi } from 'vitest'

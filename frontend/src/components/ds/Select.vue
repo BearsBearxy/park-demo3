@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted, useId, type CSSProperties } from "vue";
 import { useViewport } from "@/composables/useViewport";

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import http from './index'
 import type { LedgerFees } from '../types/ledger'
 import type { S10Fees, S10ColId } from '../types/s10'

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 自绘 SVG 图共用的轴刻度(niceTicks)。
 import { describe, it, expect } from 'vitest'
 import { niceTicks } from './forecastChart.logic'

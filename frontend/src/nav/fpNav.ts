@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/nav/fpNav.ts — 导航单一事实源(50屏×4层)。源: app/shell.jsx FP_NAV(+预算对比/能源分析/园区抄表/公摊分摊/系统管理)。
 // 数据层按动词四组(SIDEBAR-UX-REDESIGN §2.1):档案(静态) / 出账(每月工序:计费参数→园区抄表→公共电核算→楼栋损耗→催缴单)
 //   / 记账(月｜年,按后端 DataHomeService.scheduleSources 的 monthly()/yearly() 分) / 导入。

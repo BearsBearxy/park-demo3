@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/__tests__/motionR2-g2.spec.ts — 动效第二轮(2026-09-16 行为矩阵)· 园区能耗 / 出租与楼栋 /
 // 电费成本分析 / 租户异常监控 / 现金流量五屏。
 //

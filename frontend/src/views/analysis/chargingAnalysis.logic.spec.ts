@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // chargingAnalysis.logic 单测:手续费率/损耗率口径 + 年汇总加权平均 + 桩月分桶/运营商聚合(spec §3)。
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'

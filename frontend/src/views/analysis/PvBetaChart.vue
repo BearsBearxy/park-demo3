@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 抽屉 B11 · 跟全园一起涨落的程度(PV-ANALYSIS-SCREEN-V4 §3.19;2026-10-06 改稿 pv-v2-drawer)。
 // 画布 宽 = 实测 × 高 200(容器 < 420 时 180),padL 46 / padR 14 / padT 16 / padB 30;12 个等宽月槽固定,空槽不删月:

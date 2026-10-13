@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 提示件替换 M9(S4 T28):参数历史 / 变更记录抽屉的加载失败与空状态、参数删除确认、
 // 附表6 空年、台账新建 / 删除公司弹窗的字段报错。光伏分栋抄表那一屏的同批断言在 meterPeriodFlow.spec.ts。
 import { describe, it, expect, vi, beforeEach } from 'vitest'

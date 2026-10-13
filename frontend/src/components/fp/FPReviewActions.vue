@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 审核动作簇 —— **全站唯一的一份**(per-screen-review §01/§02;SIDEBAR-UX-REDESIGN §9.2)。
 //

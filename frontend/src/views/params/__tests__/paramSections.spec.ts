@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 计费参数六区纯逻辑(paramSections.ts):深链落点五条、本月改动按项去重、池名拆位置 + 名字、对象表格子短文字。
 import { describe, it, expect } from 'vitest'
 import type { ParamChangeDTO, ParamRowDTO } from '@/api/params'

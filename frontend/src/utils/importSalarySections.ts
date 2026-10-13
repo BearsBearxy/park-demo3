@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 工资多月分段 — 一张 sheet 多月堆叠(每月一张完整表,标题行分隔),按标题切段、识别年/月,
 // 逐段用同一套 columnMap 走 matchByHeader 解析。复用 importHeaderMatch(勿改它)。
 // 与 importSections 的区别:工资是单版面(无 office/factory 之分、无期),故只识别 年/月。

@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // FinReportTable — 利润表 / 资产负债表的表(画布 09 ReportIS / ReportBS / ReportStates)。
 // 行由父级预先展平传入;取值、计算(公式、子类求和)归父级,本组件只管摆、收起、录入框。

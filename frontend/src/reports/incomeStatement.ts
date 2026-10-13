@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 利润表行模板 + 小计公式 — 1:1 文件行次 1–32(spec §2)。前端 config,类似 views/sales-income/layout.ts。
 // 小计不落库(spec R7),此处纯前端算;field='cur'(本月)|'ytd'(本年累计)。
 

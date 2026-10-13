@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 跳到别的屏的深链:没有目标屏的查看权时置灰、写明缺哪一项(RBAC v3,用户 2026-10-04 拍板第 8 条;v4 起一屏一项)。
 // 判据在 nav/navAccess(viewLack);这里只配人话名 —— 字典来自后端 Perm.META(api/perms),前端不抄。
 // 字典没到之前按导航表拼屏名(permLabel),和字典里的写法逐字相同,不会先闪英文键。字典只在真要写原因时才去取(lackText 里):

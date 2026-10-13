@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 「你的编辑权已被接管」—— 当面提示（CONCURRENCY-SPEC §4.3）。
 //

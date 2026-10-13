@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 附表10 销售收入 DTOs — 逐字对齐契约/后端 dto/S10*.java。JSON camelCase ⇄ Java record。
 // 25 费用列 camelCase（顺序即列展示顺序，与后端种子完全一致）。
 // 派生（行合计 total / 列合计 columnTotals / 总计 grandTotal）后端算好下发，前端编辑态自行即时重算；不落库。

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import http from '@/api'
 import type { ReconOverview, ReconMonth } from '@/types/recon'
 

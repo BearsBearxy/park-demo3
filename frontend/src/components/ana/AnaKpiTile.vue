@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 分析屏小卡(KPI-CARD-SPEC §3,稿 KpiA ②④):整卡浅底无边,按在排里的位置 sky / slate 交替;
 // label + 值(mono 20,单位 14,太长降 16)+ 副行(涨跌 / 灰色 note,固定两行高 32)。整卡高 108,

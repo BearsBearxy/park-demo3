@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // ① 年/月选择 — 1:1 from screen-ledger.jsx month-selection branch (462-521).
 import { computed } from 'vue'

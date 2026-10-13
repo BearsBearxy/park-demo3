@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 模板 → 导入匹配词典(BOOK-WORKBENCH-SPEC §4)。
 // 匹配词典 = 现行版模板的 显示名+别名,标准列与自定义列同权;hidden 列也进词典 ——
 // 导入命中隐藏列时要提示(§3),绝不能因为宽表不显示就认不出它。

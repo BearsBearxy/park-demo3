@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { onActivated } from 'vue'
 
 /** KeepAlive 页签切回时执行(跳过首次 mounted 后紧跟的 activated,避免主数据 mount 双拉)。

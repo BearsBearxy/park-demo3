@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 带输入控件的居中弹卡 → S 档全屏 sheet(RESPONSIVE-LAYOUT-SPEC §4.4;壳见 styles/form-sheet.css)。
 //
 // 规范 §4.4 原先只覆盖三个标准件(fp/FPDrawer、import/FpImportModal、fp/FPSideDrawer),

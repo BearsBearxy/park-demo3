@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 导入弹窗 · 选数据 → 核对(md-v2-pick / paste / err / flat / secs / ledger / meter;动效板 ①②)。
 // 点导入之后(进度 / 结果 / 失败)在 __tests__/importRunFlow.spec.ts。
 import { mount, flushPromises } from '@vue/test-utils'

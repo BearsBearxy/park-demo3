@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.dto;
 /** 行级绑定/换绑/解绑(台账行 / 附表10 行共用):tenantId=null 即解绑。
  *  addAlias:把本行账面名记进该租户的别名,今后导入自动认(2026-08-27 拍板)。

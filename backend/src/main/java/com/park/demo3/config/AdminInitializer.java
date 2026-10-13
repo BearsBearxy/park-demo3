@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.config;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.park.demo3.entity.AuthRole;

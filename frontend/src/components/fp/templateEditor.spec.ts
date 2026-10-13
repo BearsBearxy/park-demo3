@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { mount, flushPromises } from '@vue/test-utils'

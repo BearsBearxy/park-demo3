@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 /**
  * S 档(≤600)宽表行→卡片的**唯一模板**(响应式稿 WideCardVariants 板 §3)。

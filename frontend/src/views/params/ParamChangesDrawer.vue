@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 「本月改动」区(S21-PARAM-CENTER-SPEC §5.4,2026-10-03 画布 10-C 左半):右当前区卡里的一张表,原 1040 宽右抽屉撤掉 ——
 // 文件名留着 Drawer 只为不动别处的引用。影响本月的参数改动 + 本月重算,新的在上;列 = 时间 / 参数(带范围)/ 旧 → 新 / 谁(带「x 授权」)。

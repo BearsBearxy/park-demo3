@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, onUpdated, ref, watch, type Ref } from "vue";
 

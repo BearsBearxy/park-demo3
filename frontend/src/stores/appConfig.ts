@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/stores/appConfig.ts — 这套部署是我园还是客户园区(GET /api/app/config,后端 config/DeployConfig)。
 // 2026-10-05 用户拍板「按你建议修改」:客户园区不显三处模拟填充、损益附表不自动补行(parkTools=false);
 // 更新记录只给看装机那一版之后的(releaseBaseline)。我园生产后端默认 true / 0.0.0,一切照旧。

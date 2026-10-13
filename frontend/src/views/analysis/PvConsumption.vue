@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // B7 · 自用、上网和损耗(PV-ANALYSIS-SCREEN-V4 §3.8;2026-10-06 改稿画板 pv-v2-m-ledger / y-ledger)。
 // 画布 卡内宽 × 272,padL 46 / padR 46 / padT 22 / padB 26;每刻度一个槽,柱宽 = 槽宽 × 0.6;

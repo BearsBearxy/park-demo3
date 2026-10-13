@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { ref, computed, watch, onMounted, onDeactivated, onUnmounted, getCurrentInstance } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useScreen } from '@/composables/useTabShells'

@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // B1 通栏逐刻度比值图(PV-ANALYSIS-SCREEN-V4 §3.2)。几何照画布 v2/Main.dc.html 的 renderVals 抄:
 // 画布 宽 = 实测 × 高 236(容器窄 200),padL 44 / padR 14 / padT 12 / padB 24;坐标保留一位小数。

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect } from 'vitest'
 import {
   parseCpMeterRows, buildCpMeterTemplateAoa, buildCpMeterMonthAoa, CP_METER_TEMPLATE_COLS,

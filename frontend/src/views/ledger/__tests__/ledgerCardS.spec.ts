@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 月度台账 S 档(≤600)门禁 —— 响应式稿 WideCardPhone 板。
 //
 // 钉三件事:

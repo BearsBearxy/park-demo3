@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 三大报表标题行(画布 09 ReportIS / ReportStates 逐格):左「表名 + 状态签」,右端按钮集随状态变。
 //

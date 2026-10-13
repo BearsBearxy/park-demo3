@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 附表11 Excel 导出。两类型列集不同(对齐 screen-schedule11.jsx 表头 416-444):
 //  energy: 期·记账月·开票日期·时段·用电类别·电量·不含税单价·不含税金额·税率·税额·价税合计·备注
 //  basic:  期·记账月·开票日期·计费需量·单价·基本用电费·税率·税额·价税合计·备注

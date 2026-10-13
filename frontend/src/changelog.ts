@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 给用户看的更新记录 —— 全站只有这一处。
 //
 // 用户看得见的改动,在同一个 PR 里做完这几件事(什么时候必须做:VERSION-UPDATE-SPEC §8;

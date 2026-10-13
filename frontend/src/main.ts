@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import router from './router'

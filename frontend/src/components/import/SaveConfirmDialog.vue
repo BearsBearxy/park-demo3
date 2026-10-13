@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 退出编辑保存确认 — [保存修改][放弃修改] + ×关闭(留编辑态)。CSS 全本组件 scoped。
 import { iconFor } from '@/components/ds/icon'

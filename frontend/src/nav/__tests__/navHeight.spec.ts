@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/nav/__tests__/navHeight.spec.ts — 侧栏面板高度预算(SIDEBAR-UX-REDESIGN §3.1)。
 //
 // 1366×768 办公机:浏览器内视口 ≈ 620px(顶部铬边 + 任务栏吃掉 ~148)

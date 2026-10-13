@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/__tests__/reportDeepLink.spec.ts — 报表层的期间深链(SIDEBAR-UX-REDESIGN §4.2 · P0c):损益附表 + 收入核对。
 // 三大报表那一份在 reportWorkbenchFlow.spec(三屏共用 useFinStatementScreen,一份够)。
 // 每条用例的注释都写明 production 改哪一行会红。

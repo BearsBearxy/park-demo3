@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 修改密码(RBAC-SPEC 拍板 #3:管理员设初始密码 + 首次登录强制改密)。
 // 独立页,不进导航、不进外壳 —— 强制态下侧边栏点哪儿都会被守卫弹回来,给了反而像页面坏了。

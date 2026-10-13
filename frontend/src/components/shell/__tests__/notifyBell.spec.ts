@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 铃铛按钮与记号(PAGE-BEHAVIOR-SPEC §5.3,画布 06-G「长什么样」+ 规则表 封顶 / 0 / 位置和大小 / 出现和消失 / 读屏)。
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'

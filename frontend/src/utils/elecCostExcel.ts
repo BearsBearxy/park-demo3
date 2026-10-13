@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 电费成本 Excel 全家桶(ELEC-COST-SPEC §5):导入行解析 + 模板生成 + 月度导出。
 // 导入 = 单 sheet 长表(一行 = 一表一费项一月),表头按名识别(matchByHeader);
 // 费项名/拆分名精确匹配(映射见下,不过的行解析时就交出来 bad,不整批拦);未知电表名由后端行级 ImportError 报告(表是 DB 驱动 CRUD)。

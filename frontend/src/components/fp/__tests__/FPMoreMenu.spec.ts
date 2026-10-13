@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // FPMoreMenu 带字触发与红色项(画布 05-A「簿册 ▾」「导出 ▾」、04-B「…」里红字「批量删除本期」;实现规范 §1.9)
 import { afterEach, describe, expect, it } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'

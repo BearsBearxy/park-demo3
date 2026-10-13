@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api, { readToken } from '@/api'

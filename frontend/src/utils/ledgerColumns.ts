@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // Ported 1:1 from screen-ledger.jsx lgColumns(prev) — widths/labels/groups verbatim.
 import type { LedgerFees } from '../types/ledger'
 

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect } from 'vitest'
 import { bulletOption, extractS5GroupTotals, matchBudgetKey, pnlKeyTotals, type BulletMetric } from './budget'
 import type { PnlSummary } from './anaData'

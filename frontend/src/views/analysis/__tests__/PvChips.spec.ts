@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // PvChips 挂载测:芯片四态的底色 / 边 / 徽标、点芯片发 pick、「其余 N 栋」浮层的开关(UI-OVERLAY-SPEC)。
 // 分组与排序是 pvAnaV4.logic.ts chipGroups 的事(那边有单测),这里喂一份手写的分组,只看长相与交互。
 // 夹具四态俱全:连续低于 / 连续高于 / 读不出 ×2 / 选中(没有连续段)/ 收起的普通栋 / 未投产。

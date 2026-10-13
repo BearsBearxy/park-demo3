@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { defineComponent, nextTick } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'

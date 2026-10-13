@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 附表11 逐月电费台账表 — 1:1 from screen-schedule11.jsx 表体段(391-549)。
 // 卡片内单滚动;右上 type Segmented 切 energy/basic(两类型列集不同,见 jsx 416-444)。

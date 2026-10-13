@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.mapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.park.demo3.entity.ElecCostEntry;

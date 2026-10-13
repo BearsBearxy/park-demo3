@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 /**
  * mx 列表页(楼栋 / 租户 / 合同)的 S 档行卡门禁 —— 响应式稿 ListPhone 板 §1 / §3。
  *

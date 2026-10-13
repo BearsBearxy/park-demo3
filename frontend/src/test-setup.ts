@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // vitest 全局前置。
 import { config } from '@vue/test-utils'
 import { vTip } from '@/directives/tip'

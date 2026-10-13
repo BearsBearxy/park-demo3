@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 /**
  * 加载失败（十件 ⑦ 的 error 档，画布 06-B ⑦ / 06-D 右格 / 03-B）= `FPEmpty tone="error"` 的封装。

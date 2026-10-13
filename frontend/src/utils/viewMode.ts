@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 一屏两本账时，「上次看的是哪一本」记在本机。
 //
 // 三份规范（PV-METER-SPEC §2 / CP-METER-SPEC §2 / ELEC-COST-SPEC §4）都写着

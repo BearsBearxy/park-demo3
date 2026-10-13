@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 全站 Excel 读写的**唯一入口**(METRIC-SOURCE-SPEC §5)。底层 exceljs,懒加载。
 // 为什么不是 SheetJS:xlsx@0.18.5 挂着两条 high 级公告(原型污染 GHSA-4r6h-8v6p-xvw6、
 // ReDoS GHSA-5pgg-2g8v-p4x9),SheetJS 已停止发布到 npm —— 这个版本**永不修复**,

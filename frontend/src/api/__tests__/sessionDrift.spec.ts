@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 // 跨标签页身份漂移守卫。

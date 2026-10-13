@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script lang="ts">
 /** 整页期间回退标签的字(画布 06-D 中格:「显示 2026-08 · 9 月无数据」)。
  *  selected 是所选期:'YYYY-MM',或按年时的 'YYYY年';used 是屏上实际画的那一期 'YYYY-MM'。

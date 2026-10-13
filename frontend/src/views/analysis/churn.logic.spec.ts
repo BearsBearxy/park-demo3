@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // churn.logic 纯函数单测(v2 抽出;口径=v1:缴费40/收入30/用能30 缺项归一,gone10 记满分)
 import { describe, expect, it } from 'vitest'
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'

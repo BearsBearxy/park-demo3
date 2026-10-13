@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // ds/Select 的两件事(2026-09-20 补):选同值不派发 change、键盘按标准 combobox 走。
 // 起因是把最后两处原生 <select> 换成它时的对抗复查 —— 原生给的语义和键盘操作,自绘的这边缺了一半,
 // 而 34 个调用点都是照着原生的脾气写的(ParamCenterView 的 setExKey 重选同一项会清空已填的值,

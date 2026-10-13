@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 选期矩阵手工年(BOOK-WORKBENCH-SPEC §5 v3,2026-08-24 拍板):
 // 年份范围 = 数据年 ∪ 当前自然年 ∪ 手工年,连续补满;手工年按 屏+册 记在本机
 // (localStorage,沿旧年份门机制),录入数据即转正;数据年不可移除。

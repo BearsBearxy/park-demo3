@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 右抽屉「新增记账」— 1:1 from screen-schedule6.jsx S6Drawer(164-235),用共享 FPDrawer 壳。
 // 期 chips + 记账月(年/月) + 发生月(年/月) + 自消纳(电量/金额) + 上网(电量/收益)

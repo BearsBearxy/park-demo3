@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 收藏(TAB-BAR-SPEC §5.2 §5.3)。「❗」开头的做过破坏验证。
 import { describe, it, expect, beforeEach } from 'vitest'
 import { nextTick } from 'vue'

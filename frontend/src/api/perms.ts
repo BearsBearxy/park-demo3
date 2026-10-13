@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { ref } from 'vue'
 import http from '@/api'
 import { fpBuildRoutes } from '@/nav/fpNav'

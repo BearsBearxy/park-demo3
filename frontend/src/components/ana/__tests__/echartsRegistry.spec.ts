@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // ECharts 按需注册完整性护栏（2026-08-11 审计整改 P2-1 配套）。
 //
 // 为什么需要它：AnaEChart 改成按需注册后，漏注册一个 series 类型 = 该屏整块白图 + 控制台

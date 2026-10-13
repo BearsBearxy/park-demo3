@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.*;

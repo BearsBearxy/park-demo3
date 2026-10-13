@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.service;
 import org.springframework.stereotype.Component;
 import java.util.Locale;

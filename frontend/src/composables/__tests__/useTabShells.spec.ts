@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // KeepAlive 按页签卸载(App.vue + useTabShells)。「❗」开头的做过破坏验证。
 // 照 App.vue 的写法搭一个最小的 KeepAlive:key = value:epoch,exclude = 过期纪元的壳名。
 import { describe, it, expect } from 'vitest'

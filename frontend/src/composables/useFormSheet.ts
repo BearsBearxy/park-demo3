@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/composables/useFormSheet.ts — 带输入控件的居中弹卡是否该变全屏 sheet(RESPONSIVE-LAYOUT-SPEC §4.4)。
 // 壳与判据见 styles/form-sheet.css 顶部注释。
 //

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/router/routeMap.spec.ts — 路由表护栏:导航里的屏必须都配到组件,别静默降级成占位页
 import { describe, it, expect } from 'vitest'
 import { fpBuildRoutes } from '@/nav/fpNav'

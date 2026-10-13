@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { mount } from '@vue/test-utils'
 import { describe, it, expect } from 'vitest'
 import Segmented from '../Segmented.vue'

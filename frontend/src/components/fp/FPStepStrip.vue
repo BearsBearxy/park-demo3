@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 /**
  * 链路条 / 期间条（2026-08-28 设计稿 §3.1、§⑤）。

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 催缴单屏(views/bills/BillNoticesView.vue)的写守卫挂载证明 —— 钉三处:
 //   ① watch(editMode)(:288)转假时 `noteEditKey.value = null` —— 已展开的备注编辑行必须随编辑态收起。
 //      备注编辑行那个 `v-if="noteEditKey === noteKeyId(...)"` **不看 canRun**(:848 / :947 / :985),

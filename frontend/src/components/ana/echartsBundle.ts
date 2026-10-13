@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // ECharts 按需装配（P2-1 二次优化）。全站唯一装配 echarts 的地方，只被 AnaEChart.vue 动态 import。
 //
 // 为什么要单独一个模块，而不是在 AnaEChart 里 await import 四个子路径：

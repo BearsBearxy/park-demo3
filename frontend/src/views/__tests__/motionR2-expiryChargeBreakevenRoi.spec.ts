@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/__tests__/motionR2-expiryChargeBreakevenRoi.spec.ts — 动效第二轮(2026-09-16 行为矩阵)
 // · 到期 / 充电桩 / 盈亏平衡 / 光伏回收四屏。
 //

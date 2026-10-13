@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // B3 · 每千瓦发电走势(PV-ANALYSIS-SCREEN-V4 §3.5;2026-10-06 改稿画板 pv-v2-m-abs / y-abs / m-trail-over)。
 // 画布 卡内宽 × 250(容器 < 420 时 210),padL 44 / padR 84 / padT 12 / padB 24;x = 刻度落点(首尾贴边),月档逐日、年档逐月;

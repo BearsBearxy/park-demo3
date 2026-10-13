@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 收入核对 ①月份层 — P2-E Task3。年份胶囊 + 4 指标条 + 12 月卡 → 点月进 ②工作台。
 // 视觉 1:1 移植 recon-page-v3.js(--pa-* → demo3 令牌,映射见 plan Task3);

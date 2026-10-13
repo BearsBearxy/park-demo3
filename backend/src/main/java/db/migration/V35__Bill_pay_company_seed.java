@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package db.migration;
 
 import com.park.demo3.service.ReconService;

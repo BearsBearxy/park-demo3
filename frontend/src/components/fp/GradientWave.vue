@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 流动渐变背景(移植自 React 组件 gradient-wave.tsx,引擎见 ./gradientWave.ts)。
 // 铺满最近的定位祖先;WebGL 不可用时什么都不画,露出下面的底色。

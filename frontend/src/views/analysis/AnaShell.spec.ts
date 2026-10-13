@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 2026-08-20:年/月由原生 <select> 换成 ds/Select(下拉面板此前是 OS 渲染,与全站不一致),
 // 包裹类 .anx-sel → .anx-selw。
 // 2026-09-19:年下拉 + 月下拉合成一个 ds/DatePicker 期间字段(DATE-PICKER-SPEC §5 第 5 节):

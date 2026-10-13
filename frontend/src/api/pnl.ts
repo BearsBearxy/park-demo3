@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import http from '@/api'
 import type { PnlOverviewDTO, PnlYearDTO, PnlRowDTO } from '@/types/pnl'
 import type { ImportResultDTO } from '@/types/import'

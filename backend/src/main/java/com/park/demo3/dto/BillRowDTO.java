@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.dto;
 import java.math.BigDecimal;
 /** 账单行 = 台账行 × 租户(parent) × 公司。派生列复用 LedgerService.recalc,与台账口径同源。 */

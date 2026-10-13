@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // RBAC v4(权限细到菜单单项)起,导航、首页、页签、路由都按每一屏的 `<屏>:view` 滤。spec 里「这人什么都看得了
 // (系统管理除外)」用这里,别在各 spec 里逐个抄权限点。清单从导航表派生 —— 新加一屏自动带上。
 import { useAuthStore } from '@/stores/auth'

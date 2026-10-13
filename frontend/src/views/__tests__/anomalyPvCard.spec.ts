@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 异常提醒中心底部「光伏触发规则的楼栋」卡(2026-10 改稿 pv-v2-anomaly)挂载测:
 // 取数走 anaData.fetchPvRuleInput 的整条映射(pvMeterApi / paramsApi 打桩),检测走 pvRules.logic 真算;
 // 钉住:卡头 / 读数句 / 规则行逐字、看全部展开收起、处置三态按规则 id 记、查看分析落到光伏屏那一栋那个月、

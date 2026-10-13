@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 重点卡在「本次更新」和「更新记录」里的「去看看」(VERSION-UPDATE-SPEC §2 / §4)。
 // 用假数据:真数据的当前版本可能根本没有能跳的条目(小调整版),正路径得自己造。「❗」开头的做过破坏验证。
 import { describe, it, expect, beforeEach, vi } from 'vitest'

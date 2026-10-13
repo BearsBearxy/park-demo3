@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.service;
 
 import com.park.demo3.service.VersionResolver.Hit;

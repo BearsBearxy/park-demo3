@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, expect, it } from 'vitest'
 import {
   FROZEN_HINT,

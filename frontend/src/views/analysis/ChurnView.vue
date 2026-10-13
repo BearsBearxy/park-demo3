@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 租户流失预警(churn) — v2 重构(spec 2026-07-08 §二.10):AnaShell #kpis + av2 栅格;
 // 风险象限散点(AnaEChart,均值 markLine 十字,点点→goLedger 深链)+ 已流失清单 + s10 出现/消失正负柱。

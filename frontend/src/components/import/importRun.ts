@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 导入弹窗的「点下去之后」(UI-OVERLAY-SPEC §8、IMPORT-GUIDE §二·导入进度):接线协议 + 进度卡的状态。
 //
 // 接线协议(FpImportModal 的可选 prop):

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect } from 'vitest'
 import { groupUnits, toggleUnit, makePrimary, unitChips, unitLabel, selectedAreaSums, prefillRentArea, type FPUnitOption } from './fpUnitPicker'
 

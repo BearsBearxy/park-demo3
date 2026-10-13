@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 /**
  * 编辑锁作用域表（CONCURRENCY-SPEC §3.1）——**全站唯一的一份**。
  *

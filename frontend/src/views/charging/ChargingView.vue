@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 附表7/8 充电桩 — 年度台账状态机(一个 View 参数化 schedule no)。
 // 动线 1:1 from screen-charging.jsx ChargingScreen(233-437):

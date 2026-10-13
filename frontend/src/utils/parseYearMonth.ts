@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 月份单元格 → {year,month} — 扛办公水电真实文件的多种形态:
 //   Excel 序列号(45292)、Date、'YYYY-MM-DD'、'YYYY/M/D'、'YYYY年M月'、'YYYY-MM'、'YYYYMM'(202501)、裸 'M月'/'M'。
 // 裸月无年 → 用回退年(卡片年)。聚合/汇总串(2024年/2025年1-9月/小计/合计/总计)→ null(汽车跳过用)。

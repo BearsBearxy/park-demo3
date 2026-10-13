@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 顶栏(TAB-BAR-SPEC §6):面包屑第一段能点、☆ = 收藏、首页上不出期间与 ☆、每个图标有说明气泡。
 // 「❗」开头的做过破坏验证。
 import { landNav } from '@/test-utils/landNav'

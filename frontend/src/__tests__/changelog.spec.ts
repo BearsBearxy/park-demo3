@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 更新内容(src/changelog.ts)的门禁:这些字会原样上屏,写错了没人报错。
 import { describe, it, expect, vi } from 'vitest'
 import { CHANGELOG, APP_VERSION, noteOf, cmpVersion as cmp } from '@/changelog'

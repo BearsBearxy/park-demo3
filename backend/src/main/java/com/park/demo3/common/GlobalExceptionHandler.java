@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.common;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;

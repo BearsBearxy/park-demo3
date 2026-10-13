@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 一屏两本账的外壳(2026-08-29 设计稿 §②):左栏常驻 + 主区。
 // 光伏/充电桩/电费三屏此前各抄一份同字节的 aside+CSS(pvw/chw/e11w 三个家族)——

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 /**
  * 分析层卡头话术的「桌面 / 手机」两套写法门禁(2026-09-20 立)。
  *

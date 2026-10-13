@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 默认账期整体数据驱动(METRIC-SOURCE-SPEC §4)—— 八个按账期取数的屏共用。
 // 病根(2026-08-18 审计立档证据第 4 条):这些屏过去只把 year snap 到 xxxApi.years() 的最新有数据年,
 // month 却一直留在 `new Date().getMonth()+1`。数据到 2024、系统是 8 月 → 拼出 2024-08 这个

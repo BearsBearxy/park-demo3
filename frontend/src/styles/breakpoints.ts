@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/styles/breakpoints.ts — 断点唯一事实源(RESPONSIVE-LAYOUT-SPEC §1)。
 // 四档语义(桌面优先 max-width 划档):
 //   S ≤600 / M 601–960 / L 961–1280 / XL >1280

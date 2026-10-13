@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 附表7/8 逐月充电台账表 — 1:1 from screen-charging.jsx 表体段(336-425)。
 // 卡片内单滚动;类别筛选 Segmented;全部时按 cat 分组(组头小计),否则平铺。

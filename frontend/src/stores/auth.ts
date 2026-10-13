@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import api, { bindSession, sessionDrifted } from '@/api'

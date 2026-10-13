@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/stores/appearance.ts — 外观:浅色 / 深色 / 跟随系统(DARK-MODE-SPEC §3)。
 // 全站**只有这里**(和 index.html 的首帧脚本)写 <html data-theme>;tokens.css 的
 // :root[data-theme="dark"] 按它换整套颜色令牌。

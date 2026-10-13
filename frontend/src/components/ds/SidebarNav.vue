@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script lang="ts">
 /**
  * SidebarNav — 本文件即标准。

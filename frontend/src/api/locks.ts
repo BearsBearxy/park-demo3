@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import api, { readToken } from '@/api'
 
 /** 锁被谁占着。heldMs / idleMs 由服务端算 —— 客户端的钟不可信，也不该各算各的。 */

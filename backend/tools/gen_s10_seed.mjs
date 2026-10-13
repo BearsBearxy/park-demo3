@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // gen_s10_seed.mjs — 离线确定性生成器:移植 schedule10-data.js 的 deriveCell 公式,
 // 把原型 TENANTS 换成契约里的真实在租租户,输出 V18__s10_seed.sql。
 // 用法: cd demo3/backend && node tools/gen_s10_seed.mjs

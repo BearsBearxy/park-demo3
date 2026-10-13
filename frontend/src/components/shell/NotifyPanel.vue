@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 铃铛面板(画布 06-F;PAGE-BEHAVIOR-SPEC §5.1;UI-OVERLAY-SPEC §7.1)。
 //

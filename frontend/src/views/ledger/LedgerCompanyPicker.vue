@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // ⓪ 选择记账公司页 — 1:1 from screen-ledger.jsx LgCompanyPicker (295-334).
 import { iconFor } from '@/components/ds/icon'

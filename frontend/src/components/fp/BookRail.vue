@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 账册工作台左轨(BOOK-WORKBENCH-SPEC §5/§7-2):本屏账册一键切换 + 公司/账册管理入口。
 // canManage = ledger:company(第15权限点):新增与删除入口并排在底部管理区——

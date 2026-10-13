@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 构建后离线预压缩:给 dist 里的文本产物生成同名 .gz,nginx 的 gzip_static on 直接吐这份,
 // 运行时零 CPU。离线压所以敢开 level 9(nginx 默认 gzip_comp_level 1,实测再省 ~10%)。
 // 零新依赖,只用 node 内置模块。

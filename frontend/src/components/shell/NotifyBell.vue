@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 顶栏铃铛:按钮 + 右上角记号(PAGE-BEHAVIOR-SPEC §5.3,画布 06-G「长什么样」+ 规则表)。
 // 桌面顶栏与手机顶栏是同一个铃铛,mobile 只换按钮尺寸(手机 44×44 触达,RESPONSIVE-LAYOUT-SPEC §6.2)。

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 附表10 费用中文名表 + 通用下载。原本是「账单管理」页的导出模块(BILLS-SPEC 2026-07-16),
 // 该页 2026-08-13 撤下(职能被催缴单交付链 S20 取代),家族/工资条/AOA 那套随之删除,
 // 只留下被出账链复用的这两件:S10_FEE_LABELS(payBookLogic 收款槽标签)、downloadBlob(billNoticeExcel 出流)。

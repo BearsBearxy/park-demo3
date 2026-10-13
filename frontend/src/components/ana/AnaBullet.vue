@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 子弹图(移植 ana-charts.jsx Bullet):实际 vs 目标线。
 import { computed } from 'vue'

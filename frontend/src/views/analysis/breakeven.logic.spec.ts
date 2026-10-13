@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // breakeven.logic 纯函数单测(v2 抽出;CVP/敏感性/拆分口径=v1,含 dev 库锚点回算)
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'

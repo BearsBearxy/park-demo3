@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 导入弹窗 · 核对页的分段表(md-v2-secs):按钮在弹窗底栏,这里只验表和 picks / count。
 import { mount } from '@vue/test-utils'
 import { describe, it, expect } from 'vitest'

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import http from './index'
 import type { ImportLogReq, ImportLogDTO, ImportCoverageDTO, ImportLogPageDTO, ImportLogPageQuery } from '../types/importLog'
 

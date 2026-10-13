@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import Select from "./Select.vue";

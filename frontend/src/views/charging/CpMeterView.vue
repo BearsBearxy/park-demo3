@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // no-review: 充电桩分栋抄表是附表7/8 的**下游**派生第二本账,不单独审;
 //            后端同款豁免见 CpMeterService 上的 @NoReviewGuard。

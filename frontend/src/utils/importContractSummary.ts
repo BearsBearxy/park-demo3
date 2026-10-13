@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 「园区租户租金合同明细汇总(2024年3月).xlsx」解析器 —— 合同期限四件套 + 计费行整组,一户一行上 /contracts/import-full。
 // 三 sheet 分工(剖析实证):
 //   「明细」648 数据行 = 一行一费项 → 计费行唯一来源(1:1 出 BillingLine,按 (租户,位置) 聚成标的段);

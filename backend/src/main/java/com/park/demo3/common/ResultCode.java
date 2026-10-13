@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.common;
 public enum ResultCode {
     BAD_REQUEST(400, "请求参数错误"),

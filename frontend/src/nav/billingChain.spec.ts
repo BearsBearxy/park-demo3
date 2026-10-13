@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect } from 'vitest'
 import { CHAIN, chainStepsOf, pipsOf, chainLabel } from './billingChain'
 import type { ChainCell } from '@/stores/billingPeriod'

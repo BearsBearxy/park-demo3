@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import type { ContractDTO } from '@/types/contract'
 
 // 续签链聚合(CONTRACT-CARD-SPEC §5.3,前端本地做,无 /chain 端点)。

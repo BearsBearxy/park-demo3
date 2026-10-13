@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 右抽屉「新增电费记账」— 1:1 from screen-schedule11.jsx EDrawer(174-280),用共享 FPDrawer 壳。
 // type chips(energy/basic) + 期 chips(色点) + 记账月 + 开票日期 date

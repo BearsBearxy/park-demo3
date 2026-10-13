@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 附表10 销售收入宽表 — 1:1 from screen-schedule10.jsx 表体(376-428)。一行一租户。
 // 两级表头(组/叶子)由账册现行版模板供给(toS10Layout(book.definition) → props.groups,

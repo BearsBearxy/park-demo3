@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 横条收尾(2026-10-03,实现规范 §2「横条盘点」CockpitView:551 / FinCashflowView:314)。
 // 两屏挂载要喂十几个分析接口,这里钉模板与样式原文(同 meterNarrow / isHintS 的源码钉法):
 //   · 驾驶舱:2026-10 改稿把卡内黄条整个拿掉(原来钉的是负收入月提示的 32px 预留位);

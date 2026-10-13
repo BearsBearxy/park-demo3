@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 年份门卡片派生:台账/三大报表共用(接 ledgerApi.years / reportApi.years)。
 // 数据年 ∪ 当前自然年,连续补齐成年份区间(与附表 overview 的 lo..hi 口径一致);
 // 区间外的更早/未来年由 SchedYearGate 的「新增年份」(localStorage 受管年)承担。

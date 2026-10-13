@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 /**
  * 催缴单屏窄档形态 —— RESPONSIVE-LAYOUT-SPEC §5.7(屏顶 KPI 卡行)+ §5.10(屏标题行 + 筛选行)。
  *

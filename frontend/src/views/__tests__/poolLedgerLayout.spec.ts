@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 公共电核算 · 页面三态、列模型、分组行、逐行写法、字距与行(计划 S3 · P4-B1 / B2 / B3 / B5,画布 03-A / 03-B / 03-C;
 // 问题面板跳行 T16,画布 06-C)。夹具照 03-A 一期那几行的真实形状写(AllocPoolRowDTO / AllocPoolLineDTO 全字段)。
 // 断言钉渲染出来的字、类、样式,不钉配置对象;每条的破坏验证写在它头上。

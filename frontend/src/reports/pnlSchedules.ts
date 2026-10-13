@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 损益附表 1–5 config — 一个参数化 View 服务 5 条路由(P2-D spec D4)。类似 views/sales-income/layout.ts,纯 TS 常量。
 // groupCol=真实母册分组列表头;sheetRe 供 FpImportModal sheetMatch 从母册挑表;storeKey 供 SchedYearGate 年槽。
 import type { PnlKind } from '@/types/pnl'

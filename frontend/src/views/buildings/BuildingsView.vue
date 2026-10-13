@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, h, withDirectives } from 'vue'
 import { vTip } from '@/directives/tip'

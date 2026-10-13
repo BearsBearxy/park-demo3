@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 分析图表冒烟:mount 不炸 + 关键 SVG 元素存在(jsdom 无 ResizeObserver → useWidth 回退初始宽)。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'

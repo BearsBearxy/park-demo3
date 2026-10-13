@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 /**
  * 页面状态（十件 ⑥，画布 01-A 卡4 / 06-B ⑥ / 03-B）：整页处在什么状态 → 贴在标题或期间选择旁的 22 高标签，不另起一行。

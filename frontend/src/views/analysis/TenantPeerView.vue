@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 租户对标(tenant-peer)v1 — design-boards T8/T9/T10/T11:新建屏(理由见 docs/superpowers/plans/
 // 2026-09-11-design-boards.md「画板 Peer」一节:选中单个租户看它在同类里的位置,与既有

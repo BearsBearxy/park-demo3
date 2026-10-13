@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // TenantPeer(租户对标,tenant-peer)纯函数 —— design-boards T8/T9/T10/T11。
 // T8/T9:骨架 + 单位租金对标直方图。T10:「哪些期区能给区间」+「电费会翻车」两张卡。
 // T11:「这张图为什么可信/和预测图的区别」对照卡(该卡是静态方法论对照,数字大多复用既有

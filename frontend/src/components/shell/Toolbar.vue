@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // Toolbar — ported from shell.jsx .fp-toolbar / AppToolbar.
 import { computed } from 'vue'

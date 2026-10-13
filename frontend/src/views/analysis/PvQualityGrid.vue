@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 /**
  * PvQualityGrid —— 核对明细档「每天抄表齐不齐」日历 + 右侧缺抄的楼(PV-ANALYSIS-SCREEN-V4 §3.13;2026-10-06 改稿)。

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 6 个附表屏(附表6 光伏 / 7·8 充电桩 / 10 销售收入 / 11 电费 / 12 工资 / 13·14 水电)
 // 共用的年度台账状态机。抽取自 6 屏逐字相同的那部分:
 //   year/edit/drawer/importing/importResult/selectedIds 六个 ref、

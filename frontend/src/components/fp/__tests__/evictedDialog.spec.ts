@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'

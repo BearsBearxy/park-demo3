@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/nav/navFold.ts — 侧栏分组折叠的纯规则(SIDEBAR-UX-REDESIGN §2.1 / §3.2)。
 // 折叠按 section.title 派生,NavSection 不加字段。展开集合本身是 SidebarPanel 的内存态,
 // 这里只回答「路由落在这一屏时,哪些组必须是开的」;SidebarPanel 只追加、不收回。

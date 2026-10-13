@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 附表6 光伏发电 — 年度台账状态机。
 // 动线 1:1 from screen-schedule6.jsx Schedule6Screen(237-440):

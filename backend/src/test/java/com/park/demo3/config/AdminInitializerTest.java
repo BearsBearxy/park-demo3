@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.config;
 import com.park.demo3.entity.AuthRole;
 import com.park.demo3.entity.AuthUser;

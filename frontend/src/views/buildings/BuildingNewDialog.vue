@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 新建/编辑楼栋弹窗 — 样式 1:1 参考 ledger/LedgerNewCompanyDialog.vue
 // 传 initial=编辑态(隐藏每层单元数、加状态下拉、提交走 update);不传=新增态(原流程不变)

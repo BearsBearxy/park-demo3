@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 附表10 逐段导入的 runner(UI-OVERLAY-SPEC §8):断在第 k 段时前面的段已经写进库 —— 本页先照实刷一次,再把错误交给弹窗的失败卡。
 // 锁按月(S.s10):一换期 SchedHeader 就退出编辑、收掉导入窗 —— 跳到第一段的槽挪到看完结果、关窗之后(同附表12)。
 import { describe, it, expect, beforeEach, vi } from 'vitest'

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { landNav } from '@/test-utils/landNav'
 import { mount } from '@vue/test-utils'
 import { describe, expect, it, beforeEach, vi } from 'vitest'

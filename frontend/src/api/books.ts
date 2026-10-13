@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import http from './index'
 import type { Book, BookDef, TemplateSaveResult, TemplateVersion } from '../types/book'
 

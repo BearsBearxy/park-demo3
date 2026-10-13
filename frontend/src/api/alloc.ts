@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import http from './index'
 
 // 公摊分摊(PB-ALLOCATION-SPEC)DTO — 逐字对齐后端 dto/Alloc*。

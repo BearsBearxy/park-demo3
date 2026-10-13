@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 附表6 逐月发电台账表 — 1:1 from screen-schedule6.jsx 表体段(358-429)。
 // 卡片内单滚动;期筛选 Segmented;全部时按 phase 分组(组头小计),否则平铺。

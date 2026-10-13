@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 损益附表分析(pnl-analysis)v2 — spec §二.13:五附表迷你趋势卡(SVG 保留,点卡选中)
 // + 选中附表 12 月组合大图(AnaEChart,对比 ['mom']=上月虚线)+ 收入结构堆叠。

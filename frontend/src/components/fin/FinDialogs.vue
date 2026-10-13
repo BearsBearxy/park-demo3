@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // FinDialogs — 三报表共用弹窗(公司新建/重命名、添加子类)。删除公司的确认改走 ask(删除类),在 useFinStatementScreen。
 // 1:1 移植 fin-common.jsx FinCompanyDialog/FinAddRowDialog + .fin-mask/.fin-dlg 样式;

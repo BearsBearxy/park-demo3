@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // Pure recalc ported from screen-ledger.jsx lgRecalc + ledger-tenants-data.js recalc.
 // totalReceivable = Σ21 fees + Σ自定义口袋列(customIds,平铺后按 c_xxx 取值,BOOK-WORKBENCH-SPEC §2);
 // balanceEnd = balancePrev + Σfees − totalCollected. Round 2dp.

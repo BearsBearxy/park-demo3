@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 /**
  * 空状态 · 加载失败（十件 ⑦，画布 06-B ⑦ / 03-B / 05-B / 06-D 右格）。

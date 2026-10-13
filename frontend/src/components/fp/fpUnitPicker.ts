@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // FPUnitPicker 纯逻辑(S15 §2):全楼栋分组候选 + 有序多选(首个=主单元) + chips 回填
 export interface FPUnitOption {
   id: number

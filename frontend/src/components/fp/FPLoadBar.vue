@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 /**
  * 换期重取时贴在容器顶边的一条 2px 进度线（加载态设计稿 §08）。

@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 当前公司徽标(①/② 页头,点击返回⓪切换) — 1:1 from screen-ledger.jsx LgCompanyBadge (337-345).
 import { iconFor } from '@/components/ds/icon'

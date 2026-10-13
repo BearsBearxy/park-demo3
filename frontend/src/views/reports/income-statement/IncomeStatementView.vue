@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 利润表屏 — 两层状态机(useFinStatementScreen 三屏共用) + PAGE-BEHAVIOR-SPEC §1 加载门。
 // 动线(画布 09,2026-10-03):公司下拉(期间条 / 矩阵标题)→ 选期矩阵(全部年份纵排×12月格)→ 正文。

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 附表11 电费成本 — 真实模板逐行解析(bespoke,供 FpImportModal customParse)。
 // 模板两行表头:r1 分组(进项 / 其中:基本用电)、r2 叶子(开票日期/用电时段/用电类别/单位/电量/
 // 不含税单价/不含税金额/税率/税额/价税合计/计费需量/单价/基本用电费)。数据起 r3。

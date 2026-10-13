@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // fin-pnl v2 纯函数单测:瀑布垫底分解/科目序列/环比叠加/预算月线(budget_row 当年值/12)。
 import { describe, expect, it } from 'vitest'
 import type { PnlSummary } from '@/analysis/anaData'

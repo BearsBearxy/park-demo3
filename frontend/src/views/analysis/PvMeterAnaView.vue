@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 光伏分栋分析(pv-meter-analysis)— PV-ANALYSIS-SCREEN-V4 §2(版式)+ PV-ANALYSIS-SPEC(口径)。
 //

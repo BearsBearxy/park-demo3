@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 导入弹窗「点下去之后」(画布 11 节 ImportSeg / ImportOne / ImportDone / ImportFail / ImportBusyClose;UI-OVERLAY-SPEC §8):
 // 弹窗不关 → 进度卡(逐段真进度 / 单次不确定)→ 原地结果卡或失败卡;200ms 内结束不出进度卡;
 // 逐段断在网络 / 5xx 从断的那段接着导(前面的段不重发);4xx 整单拒只给「返回修改」;导入中关不掉。

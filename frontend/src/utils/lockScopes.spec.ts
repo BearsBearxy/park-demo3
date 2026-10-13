@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect } from 'vitest'
 import { S, NAV_SCOPE_PREFIX, scopePeriod, navOfScope, scopeTarget } from './lockScopes'
 

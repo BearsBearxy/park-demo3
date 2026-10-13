@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.dto;
 
 /** 在场（PRESENCE 设计稿 §03/§04）。 */

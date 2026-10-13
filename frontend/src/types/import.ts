@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 共享导入返回体 — 逐字对齐契约/后端 ImportResultDTO / ImportError。
 export interface ImportError {
   rowIndex: number

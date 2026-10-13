@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 驾驶舱纯函数单测(铁律⑦):取期/环比/欠费清单 + 2026-10 改稿的 monthBoard / yearBoard(文件末尾)。
 // 折万与聚合口径必须与 v1 一致(锚点:2025-10 营收 9,301,531 元 → 930.15 万)。
 import { describe, expect, it } from 'vitest'

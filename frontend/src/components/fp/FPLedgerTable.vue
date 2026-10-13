@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // Ported 1:1 from screen-ledger.jsx (table structure 620-664, sticky offsets 413-416/525-530,
 // body cell 532-558, footer 646-661). Pure presentation; all CSS in this file's scoped block.

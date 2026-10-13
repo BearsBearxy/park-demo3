@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 用能与缴费(tenant-energy)—— 2026-10 改稿(画布 tenant-energy-v2 七块板,图 = 规格)。
 // 这屏回答「这个月租户用电花了多少、钱收回来没有、哪几户最要紧」。

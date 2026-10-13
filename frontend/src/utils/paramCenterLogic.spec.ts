@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, expect, it } from 'vitest'
 import {
   baseRefLabel, copyPrevMonthKeys, forbiddenText, groupRows, pendingSummary, prevYm, rangeBadge, sourceLabel, staleText,

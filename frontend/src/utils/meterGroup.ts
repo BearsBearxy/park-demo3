@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 园区抄表 Excel 式分组区块(METER-SPEC §7 v3,meterGroup.spec.ts 锁定:区块归属/排序/汇总数值)。
 // 期区(zone)→区块(area,车间/楼栋座):区块头=infra 配电总表行,随后 share/ops 公共表(Excel 原序)、
 // tenant 户内表(楼层→方位→房号自然序,走 V74 结构化字段、缺则回退 spot 解析);

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.dto;
 import java.math.BigDecimal;
 // budget/actual 可只有其一(NULL=该年无此值);字段名=前后端契约(spec 预算对比)

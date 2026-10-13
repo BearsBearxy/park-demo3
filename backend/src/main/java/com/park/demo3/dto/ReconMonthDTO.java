@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.dto;
 import java.util.List;
 // 整月对照(无数据月 entities 空数组,不 404)

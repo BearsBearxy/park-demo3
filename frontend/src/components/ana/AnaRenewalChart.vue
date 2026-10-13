@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 「续签率从哪来」自绘 SVG:堆叠条 + 0~100% 数轴,照 board-expiry 实现,含悬停。
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'

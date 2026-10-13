@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.dto;
 import jakarta.validation.constraints.*;
 // 充电桩新增/编辑共用(名称/运营商/类型;新增默认当前屏类型由前端带上)

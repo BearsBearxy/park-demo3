@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 导入列映射决策 → 模板定义合成(BOOK-WORKBENCH §4)。纯函数,LedgerView 在 apply 后
 // 用返回的 def 调一次 booksApi.saveTemplate 持久化。
 //   map    = 表头追进目标列 aliases(轻改动;表头等于列显示名或已在别名里则不动)

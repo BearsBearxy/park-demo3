@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 附表13/14 办公·三期水电 Excel 导出。列序对齐屏表:
 // 记账月 · 所属月 · 用电量 · 基准电价 · 电费金额 · 用水量 · 基准水价 · 水费金额 · 水电费合计 · 备注 + 末行本年合计。
 // 出流走 utils/sheet.ts 适配层(exceljs,内部懒加载,不进初始路由块)。

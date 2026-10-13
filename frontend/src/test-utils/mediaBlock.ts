@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 取一个 @media 块的**块内**文本。
 //
 // 出处(2026-09-20 对抗复查实测):两处断言写成了 `css.slice(css.indexOf('@media (max-width: 600px)'))`

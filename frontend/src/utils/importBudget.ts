@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 年度预算「全面预算总表」解析(registry 'budget' 的 parseWorkbook,spec「导入」节)。
 // 真实版式(两份预算工作簿实测):标题行「YYYY年财务预算总表」/ 表头「项目|2022年发生额|…|YYYY年预算|备注」/
 // ~28 数据行(「收入总计」「    其中：租金收入」前导空格=子行,金额千分位字符串)。

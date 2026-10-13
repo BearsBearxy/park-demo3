@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <template>
   <div class="gallery fp-scroll">
     <h1 class="gallery__title">Design System Gallery</h1>

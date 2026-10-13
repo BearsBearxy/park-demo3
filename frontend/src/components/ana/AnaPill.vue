@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 口径徽章(移植 ana-charts.jsx Pill):tone warn/legal/ops/默认。
 import { computed } from 'vue'

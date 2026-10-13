@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 /**
  * 读数句的「有↔无占位」门禁（2026-09-20 立）。
  *

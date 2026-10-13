@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 0.26.0 重点「导入进度」的配图:导入弹窗里换上的进度卡缩样,四行 —— 标题「正在导入 N 条」、真进度条、「第 k 段 / 已写入 a / N 条」、逐段写入那一步。
 // 记号照 components/import/ImportProgressCard.vue 的 .ipc-h / .ipc-bar / .ipc-sub / .ipc-steps 抄,字压到 12 / 11。

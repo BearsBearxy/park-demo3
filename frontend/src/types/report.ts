@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 报表 DTO — 镜像后端 record（spec §4）。JSON camelCase ⇄ Java record。statement='is'|'bs'|'tb'。
 // field：is='cur'|'ytd'；bs='end'；tb=8 字段(openDr..endCr)——amounts 为泛型 field map。
 

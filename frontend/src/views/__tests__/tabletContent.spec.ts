@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 /**
  * 平板档(M,601–960)列表页排布门禁 —— 响应式稿 TabletContent 板 §①。
  *

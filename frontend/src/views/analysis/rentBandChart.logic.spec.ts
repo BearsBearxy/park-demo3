@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 合约租金带自绘图的几何。量的是 SVG 路径坐标本身 —— 2026-09-12 那天两次栽在
 // 「值全对、画出来是错的」,几何层的断言必须落在坐标上,不是落在配置对象上。
 import { describe, it, expect } from 'vitest'

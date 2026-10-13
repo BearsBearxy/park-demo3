@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'

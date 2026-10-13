@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 续签链 chip 条(CONTRACT-CARD-V2-SPEC §3/§4.1)。期号用阿拉伯数字 1,2,3(用户拍板)。
 // 单期合同整条不渲染;旧合同亦可见后续期并可跳转(§4.1),但各期状态互不污染由卡片自身保证(§4.2)。

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.security;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.*;

@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 收款方(S20-BILL-DELIVERY-SPEC §2.2「去指定」落点):催缴单明细抽屉里的一段。
 //

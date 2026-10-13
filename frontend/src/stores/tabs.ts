@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/stores/tabs.ts — 页签模型(TAB-BAR-SPEC §1 §2)。用法和 Chrome 一样:
 //   普通点击 = 在当前页签打开;Ctrl / 中键 = 新页签;页面里的链接 = 新页签紧挨当前页签右边。
 // 一个页签 = 一屏(路由 value)。同一屏只开一份 —— 筛选、展开都在那一份 KeepAlive 实例里。

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.common;
 import jakarta.servlet.*;
 import jakarta.servlet.http.*;

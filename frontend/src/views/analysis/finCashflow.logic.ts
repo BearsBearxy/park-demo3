@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // fin-cashflow v2 纯函数(spec §二.9):应收实收分组柱 option + 点柱下钻的欠费租户清单 + 欠费账龄分桶(spec §D)。
 // 瀑布 option 复用 finPnl.logic.waterfallOption(同屏组共用技法)。单测 finCashflow.logic.spec.ts。
 import type { AnalysisLedgerRow } from '@/api/analysis'

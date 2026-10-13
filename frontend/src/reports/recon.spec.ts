@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect } from 'vitest'
 import { filterEntities, segCounts, statusColor } from './recon'
 import type { ReconEntity } from '@/types/recon'

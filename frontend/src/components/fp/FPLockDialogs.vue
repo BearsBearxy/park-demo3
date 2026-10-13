@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 /**
  * 编辑锁的两个弹窗:被别人占着时的**接管抽屉**、编辑中被踢时的**失锁提示**。

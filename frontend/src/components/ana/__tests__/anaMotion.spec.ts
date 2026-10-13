@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // motionize 纯函数单测(动效设计稿 §8.2/§8.3,C6-02~C6-06)。
 // 这里钉的是**注入规则**,不是某张图好不好看:相位两套键、屏侧显式键的优先级、
 // reduced / 离屏两条短路、错峰门槛。规则一改,54 张 AnaEChart 同时改。

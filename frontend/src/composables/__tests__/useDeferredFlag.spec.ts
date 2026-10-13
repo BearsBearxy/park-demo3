@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { ref, nextTick } from 'vue'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // FinReportTable 画布 09(2026-10-03)那一批:分组行收起、关键列、0 写「–」、改过格、贴底行与口径悬停、成对表。
 // 夹具不退化:有值 / 0 / 负数都有;组有「其中」(默认收起)与「自动合计」(默认展开)两种;成对表两边行数不等。
 import { describe, it, expect } from 'vitest'

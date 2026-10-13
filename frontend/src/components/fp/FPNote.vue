@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 /**
  * 块内提示（十件 ④，画布 01-A 卡3 / 06-B ④）：只和某一块有关 → 放在那块里面，宽度跟着块走，一行说完。

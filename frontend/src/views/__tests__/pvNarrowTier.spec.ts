@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 /**
  * 自绘 SVG 图的「窄容器档」门禁（2026-09-20 立）。
  *

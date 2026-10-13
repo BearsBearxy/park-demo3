@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import PaySlotGrid from './PaySlotGrid.vue'

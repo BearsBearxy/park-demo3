@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <template>
   <div class="placeholder-wrap">
     <div class="placeholder-card">

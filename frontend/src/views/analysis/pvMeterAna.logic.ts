@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 光伏分栋分析 · 公式层(PV-ANALYSIS-SPEC §05)。全部纯函数:无 Vue 依赖、无 IO、可单测。
 // 口径:eff(s,d) = 发电量 ÷ 装机容量(kWh/kWp);模型 eff = α(s)·β(d)·ε,取对数变可加,
 // 用 Tukey 中位数抛光分离「这栋楼一贯的水平」α 与「当天的天气」β。单测 pvMeterAna.logic.spec.ts。

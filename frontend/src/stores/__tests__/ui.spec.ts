@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/stores/__tests__/ui.spec.ts
 // T1 侧栏自动折叠(spec 2026-07-12 responsive-shrink):跨 1280 断点自动收/放,窄档内手动 toggle 照常。
 // jsdom 无 matchMedia,此处手写 mock(可控 matches + 手动触发 change)。

@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 删除表的确认框(用户 2026-09-24「为什么删除南盛物流要去计费参数重新生成」):
 // 先问后端这块表被什么挡着(delete-impact),再说能不能删、怎么删 ——

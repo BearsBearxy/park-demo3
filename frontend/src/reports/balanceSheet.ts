@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 资产负债表行模板 + 合计公式 — 1:1 文件行次 1–53(spec §2)。同 reports/incomeStatement.ts 约定。
 // 合计不落库(spec B4),此处纯前端算;单列 field='end'(期末余额)。side: L=资产, R=负债和所有者权益。
 

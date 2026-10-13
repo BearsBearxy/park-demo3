@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // anaData 聚合器纯函数单测:vi.mock api 层 → 断言聚合形状与数字 + 模块级缓存防重复拉取。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {

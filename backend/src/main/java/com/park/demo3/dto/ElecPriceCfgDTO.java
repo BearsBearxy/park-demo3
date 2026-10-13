@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.dto;
 import java.math.BigDecimal;
 // 电价参数读侧:value=解析值(当月优先回退默认),source='month'/'default'/null(两级都缺);

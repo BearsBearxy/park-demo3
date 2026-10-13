@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.dto;
 import java.util.List;
 // 月卡层:12 个月的实体/状态计数(hasData=两侧任一有数据)

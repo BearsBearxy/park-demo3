@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 月份选择胶囊 — 共享脚手架(按月录入附表复用)。
 // 1:1 移植 ledger-common.jsx LedgerMonthPills(.lc-mpills/.lc-mpill):

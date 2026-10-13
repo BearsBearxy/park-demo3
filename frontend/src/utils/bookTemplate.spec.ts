@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect } from 'vitest'
 import { lgColumns, FEE_KEYS } from './ledgerColumns'
 import { lgRecalc } from './lgRecalc'

@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 合同弹窗(新增/编辑/续签三态) — 样式 1:1 LedgerNewCompanyDialog/FinDialogs(.ct-mask/.ct-dlg 居中弹窗,
 // Teleport to body,回车提交,错误行内提示);字段多,两列排布。

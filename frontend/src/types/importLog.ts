@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 export interface ImportLogDTO {
   id: number
   dataType: string

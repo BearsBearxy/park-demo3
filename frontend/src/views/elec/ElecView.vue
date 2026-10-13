@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 附表11 电费成本 — 年度台账状态机。
 // 动线 1:1 from screen-schedule11.jsx Schedule11Screen(282-559):

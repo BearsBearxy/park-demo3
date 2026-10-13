@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 export type BadgeTone = "neutral" | "blue" | "cyan" | "slate" | "orange" | "red";
 

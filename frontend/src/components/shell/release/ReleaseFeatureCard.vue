@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 本版重点卡:「本次更新」弹窗与「更新记录」共用这一张(VERSION-UPDATE-SPEC §2 / §4)。
 // 右边的配图按版本取(./art.ts),每版一张、不互相覆盖 —— 关掉弹窗后在更新记录里还看得到。

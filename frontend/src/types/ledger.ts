@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // Ledger DTOs — shapes mirror backend records (spec §4.1/§4.2). JSON camelCase ⇄ Java record.
 // 21 fee columns are flattened onto LedgerRowDTO/LedgerFooter as BigDecimal→number.
 import type { ArchivedCol } from './book'

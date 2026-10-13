@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 /**
  * 就地标记（十件 ①，画布 01-A 卡1 / 06-B ①）：问题属于某一行、某一格 → 标在它身上。

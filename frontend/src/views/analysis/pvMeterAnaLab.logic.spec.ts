@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, expect, it } from 'vitest'
 import {
   acf, nEffOf, buildLab, buildSnapshot, buildDetail, blockBootstrapP, LAB_SHUFFLES, MAX_ITER, TOL,

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/salary/__tests__/salaryCardS.spec.ts
 // 附表12 工资明细(18 列)的 S 档行→卡片门禁。
 //

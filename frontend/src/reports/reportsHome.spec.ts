@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   HOME_CARDS, NO_VIEW, tieBs, tieTb, tieIncome, tieRecon, defaultPeriod, loadHomeData,

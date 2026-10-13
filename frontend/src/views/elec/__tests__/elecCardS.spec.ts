@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/elec/__tests__/elecCardS.spec.ts — 附表11 电费成本 S 档行→卡片的门禁
 // (响应式稿 WideCardVariants 板 §3 行5 + RESPONSIVE-LAYOUT-SPEC §5.3 卡片名单「电量」)。
 //

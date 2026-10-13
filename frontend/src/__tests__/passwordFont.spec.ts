@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 密码框不许用自托管的 Roboto Mono 子集(2026-09-20 手机实测:iPhone Safari 上密码框是一排黑竖条)。
 // 根因:iOS WebKit 用 U+25CF BLACK CIRCLE 画掩码点,子集字体里没有这个字形,而掩码字符不走
 // 「缺字形就往后一族找」的逐字回退 —— 直接画 .notdef 方框。见 tokens.css 的 --font-ui。

@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 0.30.0 重点「操作日志的数据修改」的配图:操作日志里两行手改记录的缩样。
 // 行照 views/system/SystemLogsView.vue 的 .lg-row 抄:左侧竖轴 + 来源圆点(数据修改那一路是 --hue-yellow)、

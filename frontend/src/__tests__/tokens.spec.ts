@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // tokens.css 两块(浅色 :root / 暗色 :root[data-theme="dark"])的机器检查(DARK-MODE-SPEC §7)。
 // ① 浅色块里每个写了颜色值的令牌,暗色块里都有值(或者是两边同值、登记在 SAME_IN_BOTH 里)——
 //    加了浅色令牌忘了配暗色,暗色下它就是一块浅色补丁,浏览器不会报任何错。

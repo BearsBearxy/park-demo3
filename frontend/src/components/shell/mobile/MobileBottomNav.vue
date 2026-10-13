@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 手机底栏(S 档,RESPONSIVE-LAYOUT-SPEC §4.1):层级导航,IconRail 在手机上的化身。
 import { computed } from 'vue'

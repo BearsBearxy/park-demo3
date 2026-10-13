@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 屏级账期（会话内），按 key 分别记。
 //
 // 出账链那份 `stores/billingPeriod` 是**五屏共一个期**的特例：它们抢同一把

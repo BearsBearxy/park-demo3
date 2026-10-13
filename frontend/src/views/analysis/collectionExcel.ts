@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 催缴清单 Excel 导出(审计建议#1)。屏私有(仅 FinCashflowView 消费,不入 utils 以免
 // utils→views 倒置)。列序:租户/家族 · 公司 · 联系人 · 电话 · 4 账龄桶 · 欠费合计 · 最早欠费月 + 末行合计。
 // 金额为元(屏上折万仅为显示;催缴按精确值行动)。联系方式按租户名查主数据,家族根名即主租户名。

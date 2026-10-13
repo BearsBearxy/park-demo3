@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 /**
  * 选期矩阵的横滚档 `scrollRow`(2026-09-21 用户拍板:「首页矩阵改成横滚」)。
  *

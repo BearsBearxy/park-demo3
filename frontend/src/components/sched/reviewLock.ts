@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 /**
  * 年表屏按月份行上锁(SIDEBAR-UX-REDESIGN §7.1 D18)。
  *

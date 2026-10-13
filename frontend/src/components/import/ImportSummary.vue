@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 导入弹窗 · 核对页的分段表(md-v2-secs):一句「认出 N 段 M 行」+ 每段一行 [勾][文件里的标题][月份][期区][行数]。
 // 三种段:按年月 + 期区(附表10)/ 按年月(工资)/ 只有标题(labelOnly:光伏、抄表多表、合同、三大报表、预算……少月份、期区两列)。

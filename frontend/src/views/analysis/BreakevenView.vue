@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 盈亏平衡与敏感性(breakeven) — v2 重构(spec 2026-07-08 §二.12):AnaShell #kpis + av2 栅格;
 // CVP 线(AnaEChart:收入/总成本,markPoint 保本点,markArea 盈利区;固定成本系数滑杆改动即时重算 option)

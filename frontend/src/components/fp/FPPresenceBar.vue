@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 顶栏在场头像组(PRESENCE 设计稿 §03;2026-09-18 放大改版见 TAB-BAR-SPEC §7)。
 //

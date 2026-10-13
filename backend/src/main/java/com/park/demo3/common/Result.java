@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.common;
 import org.slf4j.MDC;
 public record Result<T>(int code, String message, T data, String traceId) {

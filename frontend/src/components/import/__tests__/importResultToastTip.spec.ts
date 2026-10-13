@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 导入结果弹层:档案变化清单里表名的悬停说明(十件 ⑩,2026-10-01)走 v-tip,不再是浏览器 title。
 import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, expect, it } from 'vitest'
 import { PARAM_DEFS, paramDef, writePlan, type ParamDef } from './paramRegistry'
 import fixture from './__fixtures__/param-registry.json'

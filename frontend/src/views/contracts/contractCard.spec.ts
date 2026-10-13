@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect } from 'vitest'
 import {
   PINNED_FEES, COND_FEES, OPTIONAL_FEES, PROPERTY_TYPES,

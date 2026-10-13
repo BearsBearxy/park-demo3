@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 报表中心 hub — P2-F Task2。1:1 移植 screen-reports-home.jsx(RhStyles 逐条 scoped)。
 // 目录/期间两视图共享同一 HomeData(tieout 同源);PAGE-BEHAVIOR-SPEC §1 加载门 + v-else 紧邻链;

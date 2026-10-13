@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 光伏分栋抄表 Excel 全家桶(PV-METER-SPEC §3):导入行解析 + 模板生成 + 月度汇总导出。
 // 导入 = 单 sheet 长表(一行 = 一站一日),表头按名识别(matchByHeader,含别名/单位后缀前缀匹配);
 // 行级校验(日期可识别、三量≥0)不过的行解析时就交出来(bad,导入弹窗核对页列出)不整批拦;未知站名由后端行级 ImportError 报告。

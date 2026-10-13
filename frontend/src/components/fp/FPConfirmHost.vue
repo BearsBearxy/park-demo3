@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 确认弹窗宿主(十件 ⑨,画布 02-A / 02-B / 06-B ⑨):挂在 AppShell,画 ask() 队头那一条。
 // 居中 440;标题是问句,正文给数(数字加粗),主按钮写动作本身。

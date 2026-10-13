@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // no-review: 母册系数簿已有同型守卫 assertMonthEditable(P6 录入即冻结),不重复挂审核闸;
 //            后端同款豁免见 BookService 上的 @NoReviewGuard。

@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { tenantApi } from '@/api/tenant'

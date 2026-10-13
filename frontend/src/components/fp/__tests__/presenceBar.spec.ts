@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 顶栏在线的人(TAB-BAR-SPEC §7)。「❗」开头的做过破坏验证。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, enableAutoUnmount } from '@vue/test-utils'

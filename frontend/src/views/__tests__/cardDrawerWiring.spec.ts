@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/views/__tests__/cardDrawerWiring.spec.ts
 // S 档「卡片 → 只读行抽屉」这条动线的**接线**门禁。
 //

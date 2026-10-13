@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 /**
  * PvAlphaBars —— 核对明细档「各栋常年水平」(PV-ANALYSIS-SCREEN-V4 §3.10;2026-10-06 改稿 pv-v2 m-lab / y-lab)。

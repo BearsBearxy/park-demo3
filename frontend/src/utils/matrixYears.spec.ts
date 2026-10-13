@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { loadExtraYears, saveExtraYears, buildYearRows } from './matrixYears'
 

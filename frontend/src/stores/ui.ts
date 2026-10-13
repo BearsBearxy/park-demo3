@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // src/stores/ui.ts — sidebar open/close state + persistence; 全局网络错误提示。
 import { defineStore } from 'pinia'
 import { ref, type Component } from 'vue'

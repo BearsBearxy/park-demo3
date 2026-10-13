@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 /**
  * 通用选期矩阵门（2026-08-29「两本账」设计稿 §③）。

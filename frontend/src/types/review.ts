@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 审核态的前端契约(SIDEBAR-UX-REDESIGN §7.1 / §7.4)。后端 ReviewRowDTO 的镜像。
 //
 // 键格式 `kind[:scope]:period`,kind 白名单是后端 ReviewKind 的 14 个 code,period 恒 YYYY-MM。

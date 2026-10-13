@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // ⓪→新建公司弹窗 — 1:1 from screen-ledger.jsx LgNewCompanyDialog (348-384).
 import { ref, onMounted } from 'vue'

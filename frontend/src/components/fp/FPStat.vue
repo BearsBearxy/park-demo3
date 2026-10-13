@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 抽屉小卡(KPI-CARD-SPEC §3,稿 KpiA ③④):有 tint 用 tint、没有用 --surface-card;数 mono 20,单位 14,太长降 16。
 import { computed, ref } from 'vue'

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 分析屏跨层链接的源码门禁(SIDEBAR-UX-REDESIGN §6 AnaEmpty 那一行的补漏,2026-09-08)。
 //
 // P5 把「去录入」按目标屏所在层显隐这件事收进了 AnaEmpty,覆盖 17 处调用点。

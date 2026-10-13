@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect } from 'vitest'
 import { lineMonthly, defaultBillMode, FEE_KEYS, FEE_NAME } from '@/types/contract'
 import type { FeeKey, BillMode } from '@/types/contract'

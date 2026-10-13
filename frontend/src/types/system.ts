@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 系统管理(RBAC-SPEC §10 P1)DTO —— 与后端 /api/system/** 契约一一对应。
 // v4(RBAC-SPEC §15)起三屏各自一项:用户管理 sys-users:*、角色权限 sys-roles:*、操作日志 sys-logs:view,按读写规则表逐接口放行。
 

@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 // 附表6 Excel 导出。列序对齐屏表(spec §6):
 // 期 · 记账月 · 发生月 · 发电总量 · 电费总额 · 自消纳电量 · 自消纳金额 · 上网电量 · 上网收益 · 备注 + 末行本年合计。
 // 出流走 utils/sheet.ts 适配层(exceljs,内部懒加载,不进 /pv 初始路由块)。

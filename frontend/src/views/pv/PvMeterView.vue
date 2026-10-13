@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // no-review: 光伏分栋抄表是附表6 的**下游**派生第二本账(依赖方向是附表 → 抄表),不单独审;
 //            后端同款豁免见 PvMeterService 上的 @NoReviewGuard。

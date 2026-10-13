@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 package com.park.demo3.dto;
 import java.time.LocalDateTime;
 public record ImportLogDTO(Long id, String dataType, String typeLabel, String fileName, String target,

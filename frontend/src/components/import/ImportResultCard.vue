@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 导入弹窗的原地结果卡(md-v2-done;动效板 ③;UI-OVERLAY-SPEC §8):进度卡跑完就地换成它,弹窗不关。
 // 标题「✓ 导进去 N 行」,勾一笔画出(320ms,pathLength + dashoffset,both:减少动态时停在画完);右上「用时 m:ss」。

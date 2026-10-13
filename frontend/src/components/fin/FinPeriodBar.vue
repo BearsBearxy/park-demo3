@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 三大报表期间条(画布 09 ReportIS / ReportBS / ReportTB / ReportStates):
 //   「‹ 换期  2025-10 | [公司 ▾] | 利润表 — 资产负债表 — … — 收入核对」

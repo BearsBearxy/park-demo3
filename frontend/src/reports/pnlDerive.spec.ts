@@ -1,3 +1,4 @@
+/* Copyright (c) 2026 Junyang. All rights reserved. */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { DERIVE_MAP, loadDeriveData, deriveRow, compareRow, fillRow, generateMissingRows, isMappedRow } from './pnlDerive'
 import { normalizeHeader } from '@/utils/importHeaderMatch'

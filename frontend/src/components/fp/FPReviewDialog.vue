@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Junyang. All rights reserved. -->
 <script setup lang="ts">
 // 退回 / 撤销审核的理由弹卡(SIDEBAR-UX-REDESIGN §7.5;居中弹卡照 PAGE-BEHAVIOR-SPEC §2)。
 //
