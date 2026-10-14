@@ -94,7 +94,8 @@ const pillBase = {
 function pillStyle(on: boolean, dis: boolean) {
   return {
     ...pillBase,
-    background: on ? "var(--bg-sunken)" : "transparent",
+    // 底色交给下方 .ds-pg-pill 落地:内联 background 会压过 :active 的按下底色
+    "--ds-pg-bg": on ? "var(--bg-sunken)" : "transparent",
     color: dis ? "var(--text-disabled)" : "var(--text-primary)",
     fontWeight: on ? "var(--fw-semibold)" : "var(--fw-regular)",
     cursor: dis ? "not-allowed" : "pointer",
@@ -153,6 +154,7 @@ const ellipsisStyle = {
       <button
         v-else
         class="ds-pg-pill"
+        :aria-current="p === currentPage ? 'page' : undefined"
         :style="pillStyle(p === currentPage, false)"
         @click="goToPage(p as number)"
       >{{ p }}</button>
@@ -177,6 +179,7 @@ const ellipsisStyle = {
    在白底上几乎同色,用底色区分会让「悬停」和「当前页」看起来一样。 */
 .ds-pg-pill {
   --ds-pg-border: var(--border-control);
+  background: var(--ds-pg-bg);
   transition: border-color var(--dur-fast) var(--ease-standard),
               background var(--dur-fast) var(--ease-standard);
 }

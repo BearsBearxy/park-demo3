@@ -79,7 +79,9 @@ const spanStyle = computed(() => ({
   fontFamily: "var(--font-sans)",
   fontSize: `${Math.max(9, Math.round(props.size * 0.38))}px`,
   fontWeight: "var(--fw-semibold)",
-  boxShadow: props.ring ? "0 0 0 2px var(--surface-white)" : "none",
+  // 不传 ring 就不写 box-shadow:内联压得过任何 class,写 none 会把调用方自己的环
+  // (在场头像组 .pb-av、选期矩阵 .bmm-av、年份卡 .sm-yc-av)全抹掉。
+  ...(props.ring ? { boxShadow: "0 0 0 2px var(--surface-white)" } : {}),
   userSelect: "none" as const,
 }));
 </script>
