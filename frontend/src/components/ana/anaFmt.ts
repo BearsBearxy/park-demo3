@@ -28,7 +28,8 @@ export const WARN = 'var(--hue-orange)'
 
 // ── 对比开关叠加线语义色(spec 2026-07-11 §E) ──
 // 曾用 #185FA5 画预算线(与利润线同色不可分)、#85B7EB 画上月线(与数据柱同蓝族难辨)。
-// 仅用于「对比参照线」,数据系列不用;「紫=预算 / 灰=基线」。值在 anaTheme 两套色板的 cmp 里(浅色 5.70 / 4.76,
+// 仅用于「对比参照线」,数据系列不用;「紫=预算 / 灰=基线」。
+// 紫色是全站唯一一处紫(设计系统「紫色零落点」的例外):2026-10-14 用户拍板保留,别再换色相。值在 anaTheme 两套色板的 cmp 里(浅色 5.70 / 4.76,
 // 暗色 5.26 / 5.59,都够 markLine 标签当字色的 4.5)。按当前外观取:在 computed / option 构建里调。
 export const cmpBudget = (): string => anaPalette().cmp.budget
 export const cmpBaseline = (): string => anaPalette().cmp.baseline

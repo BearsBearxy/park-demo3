@@ -37,6 +37,19 @@ describe('Pagination (uncontrolled)', () => {
   })
 })
 
+// 按下底色写在 .ds-pg-pill:active 里:页码上一旦写了内联 background,按下就没有反馈。
+// 当前页不压靠 :not([aria-current='page']),所以当前页必须带 aria-current。
+describe('Pagination 当前页与按下底色', () => {
+  it('页码不写内联 background,底色走 --ds-pg-bg;只有当前页标 aria-current', () => {
+    const w = mount(Pagination, { props: { pageCount: 5, modelValue: 2, showMeta: false } })
+    const pills = w.findAll('button.ds-pg-pill')
+    for (const b of pills) expect(b.attributes('style') ?? '').not.toMatch(/(^|;)\s*background\s*:/)
+    const cur = pills.filter(b => b.attributes('aria-current') === 'page')
+    expect(cur.map(b => b.text())).toEqual(['2'])
+    expect(cur[0].attributes('style')).toContain('--ds-pg-bg: var(--bg-sunken)')
+  })
+})
+
 describe('Pagination windowing', () => {
   const pillNums = (w: ReturnType<typeof mount>) =>
     w.findAll('button').map(b => b.text()).filter(t => /^\d+$/.test(t))
