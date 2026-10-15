@@ -27,6 +27,21 @@
 - **amountOverride 语义以代码为准**：它是 `per_month` 模式的值字段，不是全局 override。修正实体注释与前端注释（**V52 迁移文件不动**——改已应用迁移会炸 Flyway checksum）。纸面价覆盖惯例（仁恒）本就按「翻成 per_month + amount_override」落地，与代码一致。
 - **容量费不复用 `lineMonthly`**：`per_kva_month` 分支只返回 kva 本身。派生引擎走 `resolve('capacity_fee', ym, tenantId, zone)`（22.6 已在 V60 种入，可莱恩 23 走 `tenant:{id}` 例外）。
 
+### 1.1 催缴单的月份 = 收费月（2026-09-28 用户定）
+
+**N 月的催缴单 = N−1 月的水电 + N 月的租金。** 跟原册一样：《2023年9月租金》那本里放的是「2023年8月水电费」和 9 月的租金通知单。所以 2023-09 的催缴单上，电费、水费、公摊、损耗、容量费都按 8 月的读数算，租金按 9 月算。
+
+| 东西 | 按哪个月 |
+|---|---|
+| 催缴单的月份（`bill_notice.ym`、催缴单屏选的月） | 收费月 N |
+| 读数、表档案（归属与状态）、表和合同的绑定、公摊、损耗、容量费、水电价 | 水电月 N−1 |
+| 租金（含合同这个月在不在租、起租或到期月按天折算） | 收费月 N |
+| 出账链、账期、月锁、审核（参数 → 抄表 → 公共电核算 → 楼栋损耗 → 催缴单那条链） | 抄表月，也就是 N−1；催缴单屏拿链月 +1 当自己的月 |
+
+月份换算只许走这两处，别的地方不许自己 ±1：后端 `BillNoticeService.utilityYm(ym)`（收费月 → 水电月）和 `noticeYmOf(uym)`（水电月 → 收费月）；前端 `frontend/src/nav/billingChain.ts` 的 `noticeYmOf` / `chainYmOf`。深链、审核键、出账矩阵上催缴单那颗点链到催缴单时同样 +1。
+
+已实现：PR #61（0.24.0，2026-09-28 合入）。拍板记录见 [DECISIONS 计费与账单](../DECISIONS.md#计费与账单)。
+
 ## 2. S4-0 修缮刀（引擎开工前的地基，全部带 IT）
 
 | # | 改动 | 位置 |
@@ -87,6 +102,8 @@ fee_key 核对结论（2026-08-05，S4-1 已做）：92 出账池 + 5 损耗侧�
 广告字 src 池经 fold_price 出账、自身 fee_key 永不触达催缴单。
 
 ## 5. 派生算法 `BillNoticeService.generate(ym)`
+
+> **月份（2026-09-28 起，见 §1.1）**：这里的 `ym` 是收费月。下面伪码里凡是水电那一侧（`readings`、表档案、`resolveBinding`、`poolContributions`、`alloc_loss_result`、容量费、水电价）都要换成水电月 `uym = utilityYm(ym)` 去取；只有租金（含合同在租判定和按天折算）还按 `ym`。伪码是 08-05 写的，当时没有这一层换算。
 
 单事务，幂等 = `gen_batch` + 先删后插（只删 `status='draft'` 的本批生成单；`issued` 单拒绝覆盖，须先 void）：
 

@@ -96,7 +96,7 @@
 3. 状态机先查 §4 有没有现成的。
 4. 视觉和行为照专册：skill `factory-park-design`、`LIST-PAGE-SPEC`、`PAGE-BEHAVIOR-SPEC`、`LAYOUT-STABILITY-SPEC`（交互不许挪动已渲染的内容）、`UI-OVERLAY-SPEC`、`WRITE-KEEP-CONTEXT-SPEC`（写完不丢用户位置）。🔒 `token-check`（引用了未定义的 CSS 令牌就红）
 5. 编辑屏照 `EDIT-MODE-SPEC` + `CONCURRENCY-SPEC`，编辑态经 `useEditMode` 接入。
-6. 包体有预算。🔒 `size-check`，超了要用户拍板才能抬线。
+6. 重型库（`exceljs`、`echarts`）只许 `await import(...)`，echarts 只在 `components/ana/echartsBundle.ts` 装配。🔒 CI 的 heavy-lib static import gate（`.github/workflows/ci.yml`）。（原写「包体有预算，🔒 `size-check`」。包体预算门禁 2026-09-18 已按用户要求删掉，别加回来。）
 
 ### 3.3 测试
 
@@ -152,6 +152,6 @@ workflow 里「照没照脚手架」那个复查角度就逐条打这张表。
 | 1 | 后端 DTO 要不要按域建子包 | API-CONTRACT-SPEC §7 要求新增的建子包；实际 **0 个子包**，181 个文件平铺 | 二选一：跟实现继续平铺，把 §7 那句改掉；或者从下一个新域开始建子包 |
 | 2 | 前端 DTO 类型写在哪 | 16/35 个 api 文件就地定义；`types/` 有 21 个文件，7 个 api 文件从那里引 | 就地写在 `api/<域>.ts`；多个 api 共用的才放进 `types/` |
 | 3 | api 文件怎么引 http | `api/` 里 `'./index'` 25 个、`'@/api'` 6 个；`api/` 外的 `utils/importRegistry.ts` 用 `'@/api/index'` | `api/` 里统一用 `'./index'`（多数写法） |
-| 4 | 文件行数上限 | 没有门禁 | 照 size-check 的做法记基线：老文件不许再变长，新文件超过 N 行就红；N 待定 |
+| 4 | 文件行数上限 | 没有门禁 | 记基线：老文件不许再变长，新文件超过 N 行就红；N 待定（原写「照 size-check 的做法」，size-check 已于 2026-09-18 删掉） |
 | 5 | 要不要加重复代码检测 | 没有门禁，只靠阶段审查人工 grep | jscpd（要新增一个开发依赖）；或者先用 grep 计数锁住已知那组 |
 | 6 | 新屏的纯逻辑是否必须拆出 `.vue` | 分析屏 38 个 `.vue` 配了 24 个 `.logic.ts`；台账类屏大多写在 `.vue` 里 | 必须拆，单测只盯纯函数 |

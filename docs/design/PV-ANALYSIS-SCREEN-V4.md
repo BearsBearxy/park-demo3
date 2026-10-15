@@ -1,5 +1,7 @@
 # 光伏分栋分析屏 v4 版式与可视化规范（PV-ANALYSIS-SCREEN-V4）
 
+> ⚠ **部分已被取代**：2026-10-06 PR #69（0.31.0）按仓外画布「分析屏现状画布-2026-10-03」又改了一轮，没有回写到这里。版式有出入以代码（`frontend/src/views/analysis/PvMeterAnaView.vue`）和那份画布为准；分析屏通用的版式与文字规矩看仓外「分析屏版式与文字规范 45 条」（路径见 [../../AGENTS.md](../../AGENTS.md) §1）。
+
 拍板：**2026-09-13**，用户看过 v2 画布第一页四块板（Main / Abs / Ledger / Drawer，含已并入的 A2 与 B8-a）后定稿。
 画布：artifact `https://claude.ai/code/artifact/8e9131e4-e060-45dc-a92d-90f84f1f2097`；源 `../运维文档/设计稿/已实现/光伏分栋分析v4定稿-2026-09-13/*.dc.html`（`Main` / `Abs` / `Ledger` / `Drawer` 四个文件；`Options*` / `Queue*` 是对照板，不是规格）。
 **画布是规格，本文是它的索引与口径说明；两者不一致以画布为准。**

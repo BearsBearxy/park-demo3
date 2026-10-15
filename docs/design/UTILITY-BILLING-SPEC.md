@@ -1,5 +1,7 @@
 # 水电费账单自动派生（UTILITY-BILLING-SPEC）
 
+> ⚠ **已被取代**：这份总纲草案没有转正，各部分已分别落地 —— 价目 / 参数 → [S21-PARAM-CENTER-SPEC](S21-PARAM-CENTER-SPEC.md)（原 PRICE-CFG），表和合同绑定 → [S2-BIND-SPEC](S2-BIND-SPEC.md)，公共电核算 → [POOL-ENGINE-SPEC](POOL-ENGINE-SPEC.md)，催缴单派生 → [S4-BILL-NOTICE-SPEC](S4-BILL-NOTICE-SPEC.md)。下文的「草案·待用户拍板」是起草时的状态。
+
 > ⚠️ **草案·待用户拍板**（2026-07-26 起草）。用户开题"计划设计水电费的账单自动派生部分"后中断，
 > 本稿基于就绪度审计（[bill_forward_readiness_audit]）与 BILL-FORWARD-SPEC 刀3 提纲整理，
 > §2 的决策点全部拍板后才转正式 spec。北极星沿 BILL-FORWARD：**抄表读数 × 合同锁定单价 → 每户每月水电费表 → 与附表10 勾稽**。

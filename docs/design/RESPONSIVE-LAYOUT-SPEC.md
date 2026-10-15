@@ -776,10 +776,11 @@ LAYOUT-STABILITY §1**——那条铁律管的是「用户的一次交互不得�
 cd frontend && npm run build && npx vitest run
 ```
 
-**必须跑 `npm run build` 而不是只跑 vue-tsc/token-check**——size-check（包体
-预算门禁）只在 build 里跑，本分支 CI 第一次红就是验证时漏了它（手机三件套
-静态引入把 index 压破预算,后改懒加载 + 定高占位壳）。新增首屏常驻代码前先看
-`scripts/size-check.mjs` 的预算表；上调预算必须签字注释。
+**必须跑 `npm run build` 而不是只跑 vue-tsc/token-check**——build 里还有预压缩，
+CI 也跑的是它。（2026-09-18 改：原写「size-check（包体预算门禁）只在 build 里跑……
+上调预算必须签字注释」。包体预算门禁已按用户要求整个删掉（提交 257399e4），别加回来；
+还在的是 CI 的重型库静态 import 门禁：`exceljs` / `echarts` 只许 `await import(...)`，
+见 `.github/workflows/ci.yml`。）
 门禁绿了才算解完冲突；再按 §9 做四宽（1440/1180/768/390）+ 961/1000 边界抽查。
 1440 与合并前零差异是硬标准。
 

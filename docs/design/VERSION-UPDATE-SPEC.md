@@ -1,6 +1,6 @@
 # 版本更新（What's New）规范
 
-**依据**：设计稿 `../../../运维文档/设计稿/未实现/版本更新-2026-09-18/`（线上画布 https://claude.ai/artifact/Rbm2WJX3dLVcYXTix7egue ），
+**依据**：设计稿 `../../../运维文档/设计稿/已实现/版本更新-2026-09-18/`（2026-10-16 改：原写「未实现/」，做完后挪进了「已实现/」）（线上画布 https://claude.ai/artifact/Rbm2WJX3dLVcYXTix7egue ），
 7 块画板：Main 总览 / Desktop 打开后 / Entry 入口 / History 更新记录 / Motion 动效 / Mobile 手机 / Refresh 刷新提示条。
 **图是规格**；本文件是图的压缩版，两者不一致以图为准。
 

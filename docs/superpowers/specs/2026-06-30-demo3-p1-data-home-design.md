@@ -1,5 +1,7 @@
 # demo3 P1 数据中心首页 data-home 工作台 — 设计规范
 
+> ⚠ **已被取代**：先被 [2026-08-18-data-home-redesign-design.md](2026-08-18-data-home-redesign-design.md) 取代，那份又被 PR #22 首页改成「本月出账」取代（[2026-09-03-sidebar-ux-redesign-design.md](2026-09-03-sidebar-ux-redesign-design.md) §5）。
+
 - 状态：已批准（2026-06-30 brainstorming），待用户复审
 - 事实源：`_handoff_extracted/untitled/project/app/screen-data-home.jsx` + `datacenter-data.js`（`FP_DC.home`）
 - 复用：DS `Card`/`KpiCard`/`Button`/`Avatar`、§6 加载门、`router.push`+`tabs.open` 导航

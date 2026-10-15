@@ -1,5 +1,7 @@
 # 合同卡重设计规范（CONTRACT-CARD-SPEC）
 
+> ⚠ **部分已被覆盖**：§5.3（续签链）和 §6.1（合同卡结构）被 [CONTRACT-CARD-V2-SPEC.md](CONTRACT-CARD-V2-SPEC.md) §4、§3 覆盖；V2 §3 又被 [CONTRACT-BILLING-REWORK-SPEC.md](CONTRACT-BILLING-REWORK-SPEC.md) 覆盖（删阶梯块）。其余章节（§1 钉死费用组、§2 铁律、§6.2 单一编辑、§7 契约）仍有效。
+
 2026-07-24 起草。本规范定义**合同卡（合同管理页详情/录入/列表）的整体重设计**，落地用户第 5 次返工裁定（`demo3_bill_forward_logic.md` 末段「合同卡根本返工裁定」+「合同卡重设计方案确认」两条拍板原文）。
 
 > **范围界定（本轮）**：**只做页面重设计——类型钉死费用组 + 计费与旧字段合一 + 列表日期/状态派生 + 续签链**。**不含导入**（新汇总 Excel `园区租户租金合同明细汇总(2024年3月).xlsx` 的批量导入放下一轮，页面验收后再做）。BILL-FORWARD-SPEC 第 1 刀「扁平计费行」的**数据底座（`contract_billing_term` 多行 + 13 费项枚举 + `bill_mode` + `syncScalarCache` 缓存）继续复用**，本规范在其上加**段类型（property_type）钉死约束层**，并否决其「自由增删费项行/自由位置段」的呈现方式。

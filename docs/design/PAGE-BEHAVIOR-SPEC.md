@@ -6,12 +6,12 @@
 > 待修汇总）是组件级像素基准，用户 2026-09-13 拍板删除，交给 **Factory Park Design System**。
 >
 > 那个设计系统以 skill 形态存在，名字 `factory-park-design`。**真身只有一份**，
-> 在 `C:/financial_dashboard/.claude/skills/factory-park-design/`（132 个文件）；
+> 在 `C:/financial_dashboard/.claude/skills/factory-park-design/`（09-13 是 132 个文件；2026-10-15 删掉 2026-06 的 React 原型后，10-16 数是 52 个）；
 > `~/.claude/skills/factory-park-design` 是指向它的软链，所以全局与各 worktree 都读得到同一份。
 > **按 skill 名引用，不要写绝对路径**，也不要把它拷成第二份。
 > 早先那份 `Factory Park Design System.zip` 是旧快照，已于 2026-09-13 随 handoff 清理一并删除。
 >
-> ⚠ 「已由设计系统取代」这句话**只对一部分成立**：§二 导航像素在 `components/navigation/SidebarNav.jsx` 里有对应，
+> ⚠ 「已由设计系统取代」这句话**只对一部分成立**：§二 导航像素当时在 `components/navigation/SidebarNav.jsx` 里有对应（该原型 2026-10-15 已删，现在只剩 `navigation.prompt.md` 的文字说明），
 > §一 面板像素、§3.5~§3.7 卡片像素在包里**没有对应或给的是另一个数**。这些差异记在下面 §4，不要当作已交接。
 >
 > 原文声明的两个像素事实源都已不在：参考文件 `租户管理.txt` 早已丢失；
@@ -136,7 +136,7 @@
 | 路由切换必须有全局反馈 | `router.beforeEach` 置 `ui.navigating = true`、`afterEach`/`onError` 置 false；`AppShell` 主卡顶部渲染 2px 进度条。**这是导航期间唯一的反馈，不可省** |
 | 空闲期预取 | `requestIdleCallback` 里预拉全部路由 chunk，让第二次点击起零等待 |
 | 禁止远程 webfont | CSS `@import` 远程字体是渲染阻塞样式表里的**串行子请求**（下 index.css → 解析 → 发 googleapis → 发 gstatic，三跳）。境内访问境外字体 CDN 常是连接挂起而非立即 RST，首屏白屏等 TCP 超时。字体一律自托管或用系统栈 |
-| 重型第三方库按需引入 | ECharts 一类必须 `echarts/core` + 显式 `use([...])`，禁止 `import('echarts')` 引包根（全量 1.13MB，实际只用 7 种 series）。**新增图表类型时同步在 `AnaEChart.vue` 的 `use([...])` 里注册**，忘了会运行时报「Series bar is used but not imported」 |
+| 重型第三方库按需引入 | ECharts 一类必须 `echarts/core` + 显式 `use([...])`，禁止 `import('echarts')` 引包根（全量 1.13MB，实际只用 7 种 series）。**新增图表类型时同步在 `components/ana/echartsBundle.ts` 的 `use([...])` 里注册**（全站唯一的 echarts 装配点，只被 `AnaEChart.vue` 动态 import；`AnaEChart.vue:86` 注释写明改的不是它自己），忘了会运行时报「Series bar is used but not imported」 |
 | 主线程长任务必须让出 | 循环里做同步重活（`XLSX.write` 批量导出、大数组序列化）时，每轮之间 `await new Promise(r => setTimeout(r))` 让出**宏任务**。只 `await` 一个已 resolve 的 Promise 是微任务，**不让出渲染帧**，界面会僵死到循环结束（`billExcel` 批量导出 136 户实案） |
 
 ---
@@ -228,12 +228,15 @@
 
 > 2026-09-13 立，同日订正过一次框架。初稿标题是「对设计系统的有意偏离」，**那个框架是错的**：
 > skill `SKILL.md:15-16` 明写设计令牌与组件实现**实现即标准**（`demo3/frontend/src/styles/tokens.css`、
-> `components/{ds,fp}/*.vue`），包里 `tokens/*.css` 是 demo3 的**镜像**，`components/**/*.jsx` 是
-> 2026-06 冻结的 React 原型基线、`:20` 明写**不再更新、改样式看 `.vue`**。
+> `components/{ds,fp}/*.vue`），包里 `tokens/*.css` 是 demo3 的**镜像**。当时包里还有 `components/**/*.jsx`
+> 这套 2026-06 冻结的 React 原型；`SKILL.md:20` 现在写明它们 **2026-10-15 已删除**（用户定），改样式看 `.vue`。
 > 所以**不存在「demo3 与设计系统对立」**，设计系统本来就把实现认作标准。
+>
+> 2026-10-16 订正出处：下面各条引的 `SidebarNav.jsx`、`Card.jsx`、`OverviewScreen.jsx` 都随原型删了，
+> 引文保留作当时的对照；行号已按 10-16 的代码改过。规则本身没变。
 
 本节真正的用处是：`DESIGN-FIDELITY.md` 删除后，下面这几条**只在代码里以既成事实存在，
-没有任何文字出处**。少了它们，下一个照 skill 里那些冻结原型重写组件的人会把它们改掉。
+没有任何文字出处**。少了它们，下一个照旧原型（已删，但 `_handoff_extracted/` 和 git 历史里还有）重写组件的人会把它们改掉。
 
 逐条都在 2026-09-13 实测过两边。分三类：
 
@@ -247,9 +250,9 @@
 
 | 侧 | 值 | 落点 |
 |---|---|---|
-| demo3 | `width:234px; flex:0 0 234px` | `frontend/src/components/shell/SidebarPanel.vue:101-102`（写死，不读令牌） |
-| 设计系统 | `--sidebar-width: 212px` | skill `tokens/spacing.css:41` |
-| demo3 令牌 | `--sidebar-width: 212px` | `frontend/src/styles/tokens.css:236`（抄自设计系统，**面板不消费它**） |
+| demo3 | `width:234px; flex:0 0 234px` | `frontend/src/components/shell/SidebarPanel.vue:144-145`（写死，不读令牌） |
+| 设计系统 | `--sidebar-width: 212px` | skill `tokens/spacing.css:42` |
+| demo3 令牌 | `--sidebar-width: 212px` | `frontend/src/styles/tokens.css:287`（抄自设计系统，**面板不消费它**） |
 
 差 22px，而且**这不是 demo3 与设计系统的分歧，是 demo3 内部的分歧**：skill 的 `spacing.css` 是
 `demo3/frontend/src/styles/tokens.css` 的镜像，两边都写 212；真正跑的 `SidebarPanel.vue` 写死 234，
@@ -266,19 +269,19 @@
 本系统 FP_NAV 无目录项，故 nav-item 一律图标打头。
 自验：图标 `left-offset = 12px`（= padding-left），标签 `left-offset = 36px`（12 + 16 + 8）。
 
-**skill 那侧写的是相反的代码，但那份不算标准**：`components/navigation/SidebarNav.jsx:190` 写的是
+**skill 那侧原来写的是相反的代码，但那份不算标准**：已删的原型 `components/navigation/SidebarNav.jsx:190` 写的是
 `{isDir ? <Chevron open={isOpen} /> : <span style={{ width: 14, flex: "0 0 auto" }} />}` —— 正是这里禁止的那个 14px 空 span。
-demo3 侧是 `frontend/src/components/ds/SidebarNav.vue:165` 的 `isDir ? Chevron(isOpen) : null`。
-那个 `.jsx` 是 2026-06 冻结原型（`SKILL.md:20`），`SidebarNav.prompt.md` 里对此**一字未提** ——
-所以这条规则今天除了本节没有任何文字出处，这才是它必须留下的理由。
+demo3 侧是 `frontend/src/components/ds/SidebarNav.vue:176` 的 `isDir ? Chevron(isOpen) : null`。
+那个 `.jsx` 2026-10-15 已随原型删除，`navigation.prompt.md` 里对此**一字未提** ——
+所以这条规则今天除了本节和代码没有任何文字出处，这才是它必须留下的理由。
 （这条也是 2026-09-03 侧边栏重设计里方案 B「目录项」被否决的理由之一。）
 
 ### 4.3 白底卡片有描边并裁切，表格卡片 padding 传 0 —— A 类
 
-| 属性 | demo3 | 设计系统 |
+| 属性 | demo3（标准） | 已删的原型（2026-10-15 删，只作对照） |
 |---|---|---|
-| `surface="white"` 的 border | `1px solid var(--border-subtle)`（`ds/Card.vue:33`） | `Card.jsx:4` 注释明写 **no border** |
-| `surface="white"` 的 overflow | `hidden`（`ds/Card.vue:34`） | 无此规则 |
+| `surface="white"` 的 border | `1px solid var(--border-subtle)`（`ds/Card.vue:34`） | `Card.jsx:4` 注释明写 **no border** |
+| `surface="white"` 的 overflow | `hidden`（`ds/Card.vue:35`） | 无此规则 |
 | 表格 / 列表卡片的 padding | 调用方显式传 `:padding="0"`，内部表格行自行处理 `14px 4px 0` | `Card.jsx:7` 默认 `padding = 24`，无表格例外 |
 
 ### 4.4 变长文本：手段两边一致 —— B 类（skill 过期）+ C 类（一处真缺口）
@@ -297,18 +300,18 @@ demo3 侧是 `frontend/src/components/ds/SidebarNav.vue:165` 的 `isDir ? Chevro
 
 | # | 设计系统怎么说 | demo3 实际 |
 |---|---|---|
-| 1 | KPI 数值 `var(--fs-display)` + `line-height:1.1`（`CLAUDE.md:17`、`SKILL.md:55`） | `ds/KpiCard.vue:76` 是 `var(--fs-h1)` + `var(--font-mono)` + `line-height:1.1`；`ana/AnaKpiTile.vue:43` 是 `var(--fs-h3)` + `font-mono` + `tabular-nums`。**skill 那两行是过期的**，不是 demo3 违规 |
-| 2 | 「不得裁切半个字」 | `ds/KpiCard.vue:76` 数值那一层**没有任何溢出策略** —— 既没 `nowrap` 也没 `ellipsis`。副标题（`:95`）和 `AnaKpiTile`（`:43`）都有省略号，只有数值这一格漏了。撤掉 `FitText` 时没补上 |
+| 1 | KPI 数值 `var(--fs-display)` + `line-height:1.1`（09-13 时 skill `CLAUDE.md:17`、`SKILL.md:55` 的说法） | 10-16 实测：`ds/KpiCard.vue:151` 的 `.kc-n` 是 `var(--fs-h1)`（24）+ `line-height:30px` + `font-mono`，放不下降到 `.s20`（`--fs-h2`，20）；`ana/AnaKpiTile.vue:69` 的 `.v` 是 `var(--fs-h2)`（20）+ `line-height:26px` + `font-mono` + `tabular-nums`，放不下降到 `.s16`（`--fs-h3`，16）。与 `KPI-CARD-SPEC` §3 一致。**skill 那两行是过期的**（10-16 已按此改），不是 demo3 违规 |
+| 2 | 「不得裁切半个字」 | 09-13 时 `ds/KpiCard.vue` 数值那一层**没有任何溢出策略**。10-16 实测两处数值都已是 `nowrap` + `overflow:hidden` + `ellipsis`（`KpiCard.vue:151`、`AnaKpiTile.vue:69`）—— 不再裁半个字，但这正是下面 10-01 拍板要撤掉的省略号 |
 
-第 1 条要改的是 skill，不是代码。第 2 条是真缺口：给 `KpiCard` 数值补 `white-space:nowrap` +
+第 1 条要改的是 skill，不是代码。第 2 条当时是真缺口（09-13 原话）：给 `KpiCard` 数值补 `white-space:nowrap` +
 `text-overflow:ellipsis`（或按等宽金额列的对齐要求另定），**本轮未改**，动它要看真实超长值长什么样。
 > 2026-10-01 用户拍板：不补省略号。数值 `nowrap`，放不下先降一档，还放不下换成以「万」为单位、悬停看全数（定稿·待实现；2026-10-01 jfen/hint-impl 只把悬停换成深色气泡，「万」和撤省略号都还没做）。`AnaKpiTile` 数值现有的省略号（`AnaKpiTile.vue:54`）也要撤；上面引 skill 的「省略号 + 定宽列」是 09-13 的原话，skill 已于 09-30 / 10-01 改成本段的写法。
 
 ### 4.5 KPI 网格断点：204 已废，现状未收敛 —— C 类
 
 原 `DESIGN-FIDELITY §3.5` 写的是 `repeat(auto-fit, minmax(204px, 1fr))` + `gap 16px`。
-`204` 现在全仓 0 命中，设计系统给的是 `minmax(170px, 1fr)`（`templates/dashboard-app/OverviewScreen.jsx:135`）。
-各屏实际自写了至少七个断点：280 / 248 / 238 / 210 / 190 / 150 / 120。
+`204` 现在全仓 0 命中。设计系统当时给的是 `minmax(170px, 1fr)`（`templates/dashboard-app/OverviewScreen.jsx:135`），这个模板 2026-10-15 已随原型删除，现在设计系统里没有这条。
+各屏实际自写了至少七个断点（09-13 数）：280 / 248 / 238 / 210 / 190 / 150 / 120。
 
 这一条**不是有意偏离，是没人管**。记在这里是为了别把它当成已收敛。要收敛得单独排一轮。
 

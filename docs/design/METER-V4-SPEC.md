@@ -1,5 +1,7 @@
 # 园区抄表 v4（METER-V4-SPEC）— 页面推翻重做
 
+> ⚠ **已被 [METER-V5-SPEC.md](METER-V5-SPEC.md) 取代**（抄表页改成单表格工作台）。数据模型以 [METER-TIMELINE-SPEC.md](METER-TIMELINE-SPEC.md) 为准。下文只作历史。
+
 > 定稿 2026-07-27（用户拍板：页面含版式与表格摆放整体推翻重做）。取代 METER-SPEC §6/§7 的页面章节；
 > **数据模型/后端 11 端点/导入链/三组纯函数（meterSplit/meterGroup/meterLogic）全部保留不动**（1134 块表真实数据 + spec 锁定资产）。
 > S2 新能力（绑定/待核/门禁）以本页为 UI 载体，契约见 S2-BIND-SPEC。

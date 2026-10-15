@@ -114,11 +114,11 @@
 | 颜色令牌（浅色） | `tokens.css` 的 `:root`；一律写 `var(--x)`。状态颜色只从 `components/fp/contractStatus.ts`、`unitStatus.ts` 取 | skill `tokens/colors.css`（镜像）、UI-CONSISTENCY §3 §4、KPI-CARD §2 |
 | 暗色 | `tokens.css` 的 `:root[data-theme="dark"]` + DARK-MODE-SPEC。只有 `stores/appearance.ts` 能写 `data-theme`；图表用 `anaTheme.ts` 的暗色主题 | 仓外设计稿「暗色模式-2026-09-19」 |
 | 字体与字号 | `tokens.css`（`--font-*`、`--fs-*` 八档）+ UI-CONSISTENCY §2：只取 28/24/20/16/15/14/12/11，不许小数，中文最小 11。字体自托管，不许远程字体 | skill `tokens/fonts.css`、`typography.css` |
-| 间距、圆角、阴影 | `tokens.css`；具体组件看各自 `.vue`（`ds/Card.vue` 圆角 20，`KpiCard`/`FPStat` 16，分析图卡 `.av2-card` 8 带 1px 边） | skill `tokens/spacing.css`、readme 的 Corner radii（部分过期） |
+| 间距、圆角、阴影 | `tokens.css`；具体组件看各自 `.vue`（`ds/Card.vue` 圆角 20，`KpiCard`/`FPStat` 16，分析图卡 `.av2-card` 8 带 1px 边） | skill `tokens/spacing.css`、readme 的 Corner radii（10-16 已按代码改） |
 | 浮层与 z-index | `tokens.css` 的 `--z-*` 七级 + PAGE-BEHAVIOR §3 + UI-OVERLAY；新浮层照 `ds/Popover.vue` 抄 | skill `tokens/layers.css` |
-| 图标 | `components/ds/icon.ts` 的 `iconFor`（lucide-vue-next 0.468，线宽 2）。状态用 6px 圆点加字，不用 emoji | skill readme ICONOGRAPHY（过期） |
+| 图标 | `components/ds/icon.ts` 的 `iconFor`（lucide-vue-next 0.468，线宽 2）。状态用 6px 圆点加字，不用 emoji | skill readme ICONOGRAPHY（10-16 已按代码改） |
 | 组件用法 | `components/{ds,fp,ana,shell}/*.vue` | skill `components/**/*.prompt.md`（示例还是 JSX，有 13 个组件代码里没有，另有约 29 个现网组件没写） |
-| 图表 | `components/ana/anaTheme.ts`（色板、`calloutMark`）+ `AnaEChart.vue`；颜色从 `anaTheme.ts` 的 `anaPalette()`、`anaFmt.ts` 的 `hues()` 取；新图表类型在 `echartsBundle.ts` 注册 | skill `charts.prompt.md`（整篇是旧样子，别照做） |
+| 图表 | `components/ana/anaTheme.ts`（色板、`calloutMark`）+ `AnaEChart.vue`；颜色从 `anaTheme.ts` 的 `anaPalette()`、`anaFmt.ts` 的 `hues()` 取；新图表类型在 `echartsBundle.ts` 注册 | skill `charts.prompt.md`（10-16 已按代码重写） |
 | 分析屏版式与读数句 | 仓外 [版式与文字规范 45 条](../运维文档/设计稿/未实现/分析屏现状画布-2026-10-03/版式与文字规范/分析屏版式与文字规范-2026-10-04.md) + `anaSentence.ts`；首屏按 1440×900 的 782px 算 | FORECAST-BAND §3.4、`anaCopyLint.spec.ts` |
 | 列表与表格 | LIST-PAGE-SPEC + skill `components/data/datagrid.prompt.md`；实现在 `FPSortableTable.vue`、`composables/useWideTable.ts`、`styles/mx-list.css`。**新屏**照 LIST-PAGE-SPEC 和 datagrid.prompt 里标「定稿·待实现」的条目做（:30 正文 14px、钱那一列加粗浅底；:34 数字列用 `useWideTable.ts` 的 `numW` 按整列撑宽、不省略），骨架参照 `BuildingsView` / `TenantsView`（LIST-PAGE-SPEC:83）。`mx-list.css` 的 13 / 13.5 / 12.5 / 10px（:62、:125、:126、:133）和 `FPSortableTable` 的数字省略是存量欠账，别照抄 | — |
 | 编辑态 | EDIT-MODE-SPEC v5 + UI-CONSISTENCY §6；实现 `useEditMode.ts`、`useEditLock.ts`、`fp/FPEditModeButton.vue` | ELEVATION、RBAC |
@@ -134,27 +134,13 @@
 
 | 主题 | 说法 A（在哪） | 说法 B（在哪） | 现在以谁为准 |
 |---|---|---|---|
-| 绿色能不能用 | 不许用绿，正向用蓝（skill `Badge`/`Card`/`charts` 的 prompt、两张 guideline 卡） | 2026-08 已解禁，成功和正向变化用绿（skill SKILL.md、`tokens/colors.css`） | **以代码为准**：B。`--delta-up`、`--status-success` 都是绿；只有 `ds/Badge.vue` 没有绿档 |
-| 合同状态 active 叫法 | 「生效中」，绿（skill Badge.prompt、readme） | 「执行中」，蓝（UI-CONSISTENCY §4） | **以代码为准**：`contractStatus.ts:16` 执行中、蓝 |
-| FPStat 数值字号 | 19px（skill product.prompt） | 20/26（KPI-CARD §3） | **以代码为准**：`FPStat.vue` 20/26 |
-| KPI 数值字号引用 | `KpiCard.vue:76` 是 `--fs-h1` + 行高 1.1，`AnaKpiTile.vue:43` 是 `--fs-h3`（skill SKILL.md、skill CLAUDE.md:17、PAGE-BEHAVIOR §4.4） | KpiCard 24/30，AnaKpiTile 20/26，放不下降到 16（KPI-CARD §3） | **以代码为准**：B；A 的行号和行高都过期 |
-| 图表长相 | JSX 胶囊圆角柱、环图（skill charts.prompt、readme） | ECharts，柱默认直角，色板取 `anaTheme` | **以代码为准**：B |
-| 分析图卡外观 | 圆角 20、米白底、无边框（skill readme） | 白底、1px 边、圆角 8 | **以代码为准**：`ana/ana.css` 的 `.av2-card` |
-| 外壳布局 | 三栏、280 宽右栏、顶栏 60（skill readme） | 图标栏 66 + 面板 234、页签条 44、顶栏 48 | **以代码为准**：B |
-| 侧栏宽度 | 可拖，212 起（skill navigation.prompt） | 固定 234（PAGE-BEHAVIOR §4.1） | 代码和规格一致：固定 234 |
-| 图标线宽 | 约 1.5，CDN 加载（skill readme） | lucide-vue-next 0.468，线宽 2 | **以代码为准**：B |
-| 品牌标志 | 「暂无正式 logo」（skill readme、`colors.css`） | 灵睿 LinkSight 09-18 定稿 | **以代码为准**：`brand.ts`、`logo.svg` |
-| PAGE-BEHAVIOR 的出处 | 指向 `SidebarNav.jsx`、`Card.jsx`、`FitText.jsx` 等 | 这些原型 10-15 已从 skill 删掉 | 规则本身和代码一致，只是出处成了死链 |
-| `--text-disabled` 能不能写信息 | 只给禁用控件，写信息用 `--text-muted`（UI-CONSISTENCY §3、DARK-MODE §4） | 小节标题用 `--text-disabled`（skill product.prompt；`FPSectionLabel.vue:14` 就这么写） | **以规格为准**：A 是目标，代码待改 |
+| `--text-disabled` 能不能写信息 | 只给禁用控件，写信息用 `--text-muted`（UI-CONSISTENCY §3、DARK-MODE §4；skill product.prompt 10-16 起也这么写） | 小节标题用 `--text-disabled`（`FPSectionLabel.vue:14` 就这么写） | **以规格为准**：A 是目标，代码待改 |
 | 字号禁小数 | 只取阶梯值（UI-CONSISTENCY §2） | 代码里还有约 238 处小数字号（10-16 grep `font-size: N.Npx`），没有门禁 | **以规格为准**：新代码别照抄 |
-| 外观切换时长 | 600ms（动效规范 `docs/superpowers/specs/2026-09-05-demo3-motion-design.md:5`，已过时） | 450ms（DARK-MODE §3.1，10-14 定以代码为准） | **以代码为准**：`appearance.ts:43` 450 |
-| KPI 卡默认色序 | slate / sky / blue / cyan（skill Card.prompt） | slate → blue → sky → cyan（KPI-CARD K2） | **以代码为准**：`KpiCard.vue` 是 B |
-| skill 令牌镜像 | 说是 `tokens.css` 的镜像（skill SKILL.md） | 镜像比 `tokens.css` 少 19 个变量（10-16 按变量名比：`tokens.css` 165 个、镜像 146 个，镜像独有 0 个；`grep -ohE -- '--[a-zA-Z0-9_-]+\s*:'` 两边去重后 `comm`），09-20 以后没同步 | **以代码为准**：`tokens.css` |
 | 分析屏文案字数上限 | 只是参考，先看懂不懂（记忆 copy-judged-by-comprehension） | 读数句 30 / 参照 28 / 卡头 24 / KPI 副行 16，开发环境超长直接抛错（`anaSentence.ts` LIMIT、`anaCopyLint.spec`） | 句型库和分析层模板是**硬上限**；别处的文案按看不看得懂判 |
-| 设计稿路径和状态 | 暗色、日期选择器与 KPI 卡、提示层级等稿放在「未实现」；VERSION-UPDATE-SPEC:3 写稿在「未实现/版本更新-2026-09-18」 | 都已合进 master（PR #47、#63、#65）；版本更新稿实际在「已实现」 | **以 git 为准**：已实现；规格里的路径是旧的 |
-| 屏上称呼 | 系统口吻，状态词「生效中」（skill readme） | 称用户「你」，不用「您」 | **以代码为准**：屏上文案「您」0 处（`stores/auth.ts:292` 注释里引浏览器原文的那一处除外） |
-| ECharts 新图表类型在哪注册 | `AnaEChart.vue` 的 `use([...])`（PAGE-BEHAVIOR-SPEC:139） | `components/ana/echartsBundle.ts` 的 `use([...])`（:10、:42；`AnaEChart.vue:86` 注释写明「要改的是 echartsBundle.ts，不是这里」） | **以代码为准**：B |
+| 设计稿路径和状态 | 暗色、日期选择器与 KPI 卡、提示层级等稿还放在仓外「未实现」文件夹里（规格引的就是这些路径，路径本身有效） | 都已合进 master（PR #47、#63、#65） | **以 git 为准**：已实现；只是文件夹没挪。（VERSION-UPDATE-SPEC:3 那条断链 10-16 已改成「已实现/」） |
 | 设计出处与授权 | 原创，无外部署名义务（skill readme） | skill `uploads/` 里的参考截图来自一套第三方 UI kit | **不确定**，待用户确认 |
+
+2026-10-16（分支 `jfen/docs-refresh`）已按代码改掉、从本表删除的 16 行：绿色能不能用、合同状态 active 叫法、FPStat 数值字号、KPI 数值字号引用、图表长相、分析图卡外观、外壳布局、侧栏宽度、图标线宽、品牌标志（skill 的 Badge / Card / charts / product / navigation 几份 `.prompt.md`、readme、SKILL.md、CLAUDE.md、两张色卡、`tokens/colors.css`），PAGE-BEHAVIOR 的出处、ECharts 注册点（PAGE-BEHAVIOR-SPEC §4、§1.5），外观切换时长（动效规范），KPI 卡默认色序、skill 令牌镜像（补齐 19 个变量，10-16 按名和值比两边一致）、屏上称呼（skill readme）。skill 改动在外层文件夹，没提交。
 
 ## 6. 已知的坑
 
@@ -209,7 +195,7 @@
 | 设计系统 skill（真身） | [../.claude/skills/factory-park-design/](../.claude/skills/factory-park-design/SKILL.md) | 外层文件夹里。外层 git 没有远程、按约定不提交，所以**没有远程备份**，交接时整个目录要一起拷 |
 | 入口 | `SKILL.md` | 事实源分层表、六份页面级铁律索引、品牌基础（紫色只有预算线一处例外、绿色已解禁、字阶、字体、Lucide）、已作废规则表 |
 | skill 的 `CLAUDE.md` | `CLAUDE.md`（skill 目录里那份，不是本仓根的 CLAUDE.md） | 「变长内容不得破坏网格」的现行做法：数字不省略、KPI 放不下先降一档再换「万」、新代码不许再写 `FitText`（:11-27）；SKILL.md:61 引它 |
-| 令牌镜像 | `tokens/*.css` | 比 `frontend/src/styles/tokens.css` 落后，以后者为准 |
+| 令牌镜像 | `tokens/*.css` | 10-16 补齐到和 `frontend/src/styles/tokens.css` 同名同值（165 个变量）；以后者为准，改令牌时两边一起改 |
 | 规范卡、组件说明 | `guidelines/*.html`、`components/**/*.prompt.md` | 部分过期，见 §5 冲突表 |
 | 线上版 | claude.ai artifact `8X4gUPP8swAu5iV7UR7Ucb` | 私有，只有项目主人能打开；照 master `6a78bbb`（10-14）做的静态快照，代码一改就旧 |
 | 唯一的令牌标准 | `frontend/src/styles/tokens.css` | 在本仓，「实现即标准」 |
