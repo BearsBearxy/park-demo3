@@ -1,5 +1,7 @@
 # 合同卡二次重设计规范（CONTRACT-CARD-V2-SPEC）
 
+> ⚠ **已被取代（租金阶梯部分）**：阶梯模型被推翻（2026-07-25 拍板），涨价改成链上一份份带完整价的合同，见 [CONTRACT-BILLING-REWORK-SPEC.md](CONTRACT-BILLING-REWORK-SPEC.md)（它覆盖本文 §3 卡片结构、删掉阶梯块）和 [CONTRACT-ESCALATION-SPLIT-SPEC.md](CONTRACT-ESCALATION-SPLIT-SPEC.md)（把阶梯拆成链段）。§4 续签链显示仍有效。代码注释还有 7 个文件引本文，所以文件留在原处。
+
 > 2026-07-25 用户拍板。本规范**增补并覆盖** `CONTRACT-CARD-SPEC` 的 §5.3（续签链）与 §6.1（合同卡结构），
 > 其余章节（§1 钉死费用组、§2 铁律、§6.2 单一编辑、§7 契约）继续有效。
 > 代码注释引用本规范请写 `CONTRACT-CARD-V2-SPEC §x.y`。

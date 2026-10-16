@@ -1,6 +1,6 @@
 # 侧边栏与使用动线重设计 + 审核机制（SIDEBAR-UX-REDESIGN）
 
-2026-09-03 立档，**全部决定已拍板（D1–D20，见 §0.2）**。P1、P4、P0a、P0b、P0c、P3 已在分支 `jfen/sidebar-ux-redesign-450c37` 实施（复查记录见各期计划末尾），其余未实施。
+2026-09-03 立档，**全部决定已拍板（D1–D20，见 §0.2）**。P0–P5、R1–R4 全部已合进 master（PR #22–#29）；§9 的 P6（命令面板「本月」组）标可选，没做。（2026-10-16 改：原写「P1、P4、P0a、P0b、P0c、P3 已在分支 `jfen/sidebar-ux-redesign-450c37` 实施，其余未实施」。）
 上游：`docs/research/2026-09-03-sidebar-ux-research/`（01 现状动线审计 · 02 同类产品调研 · 03 综合结论 · 04 方案与拍板过程）；
 BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC · RESPONSIVE-LAYOUT-SPEC · PAGE-BEHAVIOR-SPEC · LAYOUT-STABILITY-SPEC。
 设计稿：https://claude.ai/code/artifact/521bb00c-d981-4e55-8685-5ca7fe8834f7（源文件 `../运维文档/设计稿/已实现/侧边栏与动线重设计-2026-09-03/`）。

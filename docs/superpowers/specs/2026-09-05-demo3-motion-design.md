@@ -1,8 +1,10 @@
 # demo3 动效设计规范(MOTION-DESIGN-SPEC)v1 —— 设计稿,待拍板
 
+> **状态(2026-10-16 补)**:已实现,随 PR #39 合入。代码是按 v2 做的,v2 只在仓外 `运维文档/设计稿/未实现/全站动效-2026-09-05/MOTION-DESIGN-SPEC-v2工作副本.md`;标题的「待拍板」和下文「仓库源码零改动」是 v1 当时的状态。现行令牌在 `tokens.css` 的 `--dur-*` / `--ease-*`。
+
 > **2026-10-03 用户追加（压过下文 C5-04「组体瞬显瞬隐」与 rejected 里的「折叠高度动画」）**：全站表格的展开 / 收起要动画，不许硬切。实现在 `frontend/src/utils/rowMotion.ts`（`main.ts` 装一次，所有 `<table>` 生效）：点击发生在表里时记下每行位置，这一下行有增有留 → 留下的行 FLIP 从旧位置滑到新位置（`--dur-base` · `--ease-both`），新行淡入 + 上方 4px（`--ease-out`）；行集合没变、一行没留、没有点击、离视口一屏以外、减少动态效果都不动；收起时被收掉的行不做淡出。`utils/rowMotion.spec.ts` 钉住。
 
-> **2026-09-20 用户追加（压过下文）**：收起 / 打开导航加动效 —— 宽屏内联侧栏宽度 0 ↔ 235 过渡 200ms（`--dur-base` · `--ease-standard`），窄屏浮层侧栏打开 / 关闭横向滑 8px + 淡入淡出 200ms（`--ease-out`），手机抽屉原本就有 200ms 滑入滑出。实现在 `AppShell.vue` 的 `fp-sb` / `fp-sbf` 两个 Transition，`sidebarMotion.spec` 钉住。外观切换是整页渐变 600ms，见 DARK-MODE-SPEC §3.1。
+> **2026-09-20 用户追加（压过下文）**：收起 / 打开导航加动效 —— 宽屏内联侧栏宽度 0 ↔ 235 过渡 200ms（`--dur-base` · `--ease-standard`），窄屏浮层侧栏打开 / 关闭横向滑 8px + 淡入淡出 200ms（`--ease-out`），手机抽屉原本就有 200ms 滑入滑出。实现在 `AppShell.vue` 的 `fp-sb` / `fp-sbf` 两个 Transition，`sidebarMotion.spec` 钉住。外观切换是整页渐变 450ms（`stores/appearance.ts:43` 的 `FADE_MS`；原写 600ms，已过时），见 DARK-MODE-SPEC §3.1。
 
 > 2026-09-05 立。用户原话:「页面切换、按钮点击、开屏出场、登录完进入页面、切换动效,最重要的是分析屏每个图表可视化的动效」。
 > **本文是设计,不是实现:仓库源码零改动。** 配套设计画布(每条动效的可重播演示 + 时间线 + 落点):见文末「附录 B」。

@@ -1,5 +1,7 @@
 # demo3 · P1 设计 — 导入中心 hub + import_log（P-Import-3）
 
+> ⚠ **界面部分已被取代**：导入中心和导入弹窗 PR #74（0.34.0）重做，见 [2026-10-10-import-center-modal-impl-design.md](2026-10-10-import-center-modal-impl-design.md)。`import_log` 表仍在用。
+
 - **状态**：待用户复审
 - **日期**：2026-07-01
 - **作者**：Claude（brainstorming）

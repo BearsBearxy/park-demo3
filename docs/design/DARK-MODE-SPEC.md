@@ -1,6 +1,6 @@
 # 暗色模式规范（DARK-MODE-SPEC）
 
-2026-09-19 定稿。设计稿：`../运维文档/设计稿/未实现/暗色模式-2026-09-19/`，线上画布 https://claude.ai/artifact/9JedPtffMBhFMC7BspnoX1。
+2026-09-19 定稿，已随 PR #47（0.15.0）上线。设计稿：`../运维文档/设计稿/未实现/暗色模式-2026-09-19/`（做完了但文件夹没挪，路径照旧），线上画布 https://claude.ai/artifact/9JedPtffMBhFMC7BspnoX1。
 7 块画板：Main / Tokens / Shell / Analysis / Kpi / Components / Mobile。**图是规格**；每个令牌的暗色值与对比度以生成脚本
 `gen-画板生成脚本.mjs` 的 `darkOf(DIRS.d2)` 为准（脚本对每一对「字 × 底」断言 ≥4.5、控件边框 ≥3）。
 
@@ -26,6 +26,7 @@
 - 记法：`localStorage["fp-appearance:<账号>"]`，按账号分开（同「版本更新看没看过」）；另写一份 `fp-appearance:last` 给首帧用。读写包 try/catch，读不到 = 浅色（M3）。
 - 「跟随系统」= `matchMedia('(prefers-color-scheme: dark)')`，系统切换时实时跟。
 - **首帧不闪**：`index.html` 的 `<head>` 里一段内联脚本，在 CSS / JS 之前按 `fp-appearance:last` 设好 `<html data-theme>`；登录后按该账号的值再设一次。
+  ⚠ 线上这段内联脚本不会跑（2026-10-16 读代码判断，没在线上实测）：`frontend/nginx.conf:59` 的 CSP 是 `script-src 'self'`，没给这段脚本放 hash 或 nonce，`index.html:24` 的内联 `<script>` 会被浏览器挡掉。结果是暗色用户首帧先闪浅色，等 `stores/appearance.ts` 跑起来再换。本地 vite 开发不走这个头，看不出来。
 - 实现：`stores/appearance.ts`（`mode: 'light'|'dark'|'system'`、`resolved: 'light'|'dark'`），只它写 `data-theme`。
 
 ### 3.1 切换动画（2026-09-20 用户定：整页渐变）

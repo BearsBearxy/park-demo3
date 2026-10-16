@@ -1,5 +1,7 @@
 # 账册模板全局化：一条链 + 每司版本指针
 
+> ⚠ **已被取代**：第二天改成按册 × 月选版，见 [2026-08-26-per-month-template-pin-design.md](2026-08-26-per-month-template-pin-design.md)（PR #9，V111）。
+
 > 2026-08-25 拍板。取代 BOOK-WORKBENCH-SPEC §2「每司一册一链」。
 > 附表10（s10）屏不在本次范围内，其「一册一链」维持原样。
 

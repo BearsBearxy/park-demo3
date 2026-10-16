@@ -1,5 +1,7 @@
 # 公摊分摊与损耗规范（PB-ALLOCATION-SPEC）
 
+> ⚠ **页面部分已被取代**：本文的 `AllocView` 已退役（`frontend/src/utils/allocLogic.ts:3` 注释），公共电核算屏现在是 `PoolLedgerView`，见 [POOL-ENGINE-SPEC.md](POOL-ENGINE-SPEC.md) §6。公式以 [BOOK-STRUCTURE-2024-02.md](BOOK-STRUCTURE-2024-02.md) 为准。
+
 2026-07-22 定稿。P-B 刀：把「公共电表分摊到户 + 变压器损耗率收取 + 已/未分摊对账」从手工 Excel（一期/二期水电费工作簿的 公共电分摊明细/公共电数据/园区损耗 三类 sheet + 独立的 公共用电分摊分析.xlsx）搬进系统。**用量唯一来源=P-A meter_reading 派生，本刀只做"规则结构化 + 金额化 + 快照落库 + 对账"这层薄计算**；户级缴费单与实收核销是 P-C，本刀不做。
 
 口径逆向依据（2024年2月真实数据，逐条带 sheet+行列证据，见 §2）：

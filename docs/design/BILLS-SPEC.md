@@ -2,6 +2,10 @@
 
 2026-07-16 定稿。账单管理屏（/bills）的业务口径与版式铁律，布局另遵 LIST-PAGE-SPEC。
 
+> **2026-10-16 补注：这一屏已撤。** `/bills` 账单管理屏 2026-08-13 撤下（提交 d1afb3ab「撤下账单管理页，职能并入催缴单交付链」），现在打这个地址落到兜底路由（`frontend/src/router/index.ts:126`）。账单怎么交付（收款公司、确认、导出）看 [S20-BILL-DELIVERY-SPEC](S20-BILL-DELIVERY-SPEC.md)。
+>
+> 仍然有效的只有 §5 的映射表 `bill_pay_company`（租户 × 费项 → 收款公司）：催缴单还在用它（后端 `BillNoticeService`，前端 `BillNoticesView.vue`、`ExportNoticeWindow.vue`，接口 `GET/PUT /bills/paymap`）。§5 里讲工资条徽标、导出列的部分随屏撤了。§1–§4、§6 只作历史。
+
 ## 1. 定位与口径铁律
 
 - 账单管理 = **应收账单工具**：数据源 = 附表10（每个租户每月应该交的钱）。

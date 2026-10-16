@@ -1,5 +1,7 @@
 # 二期水电费真实组成结构（P2-UTILITY-FEE-STRUCTURE）
 
+> ⚠ **已被取代**：原册结构以 [BOOK-STRUCTURE-2024-02.md](BOOK-STRUCTURE-2024-02.md)（原册唯一事实源）为准，二期公摊层怎么算看 [P2-SHARE-LAYER-SPEC.md](P2-SHARE-LAYER-SPEC.md)。下文说的「UTILITY-BILLING-SPEC 派生引擎」也已拆开落地（见那份文首）。价表数字仍可参考。
+
 > 2026-07-27 逆向工程定稿。源=《二期2024年2月水电费.xlsx》(68 sheet)+《二期2024年2月公共用电分摊分析.xlsx》。
 > **全部公式经数值复算**：55/55 户通知单与总表勾稽全对(±0.01)，13 只公共电表逐池命中，
 > 用户锚点(力灏/张文峰)分毫吻合。本文是 UTILITY-BILLING-SPEC 派生引擎的事实依据。

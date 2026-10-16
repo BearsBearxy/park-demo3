@@ -1,6 +1,6 @@
 # 能源与电费分析层设计（ENERGY-ANALYSIS-SPEC）
 
-2026-07-20 定稿。把四个新数据域（光伏分栋抄表 / 汽车·电动车充电桩分桩明细 / 电费成本模型）接入经营分析层。风格铁律：与既有 15 屏分析一致（AnaEChart 紧凑仪表盘、结论条、深链 openFresh、AnaMethodNote 口径注释、AnaEmpty 空态、覆盖率护栏——数据不足显示引导而非假数字）。
+2026-07-20 定稿。把四个新数据域（光伏分栋抄表 / 汽车·电动车充电桩分桩明细 / 电费成本模型）接入经营分析层。风格铁律：与既有 15 屏分析一致（AnaEChart 紧凑仪表盘、结论条、深链 openFresh、~~AnaMethodNote 口径注释~~（ⓘ 口径浮层 2026-09-12 用户定整个拆掉，提交 67e630ba，见 [DECISIONS 分析屏](../DECISIONS.md#分析屏)）、AnaEmpty 空态、覆盖率护栏——数据不足显示引导而非假数字）。
 
 ## 1. 新屏「电费成本分析」（value: elec-analysis，能源专题组（2026-09-03 SIDEBAR-UX-REDESIGN §2.3 由「专题分析」拆出））
 
@@ -13,6 +13,8 @@
 - 深链：结论条与图点击 → 电费成本总览对应月。
 
 ## 2. PvRoiView 扩展（光伏投资回收屏，接入分栋抄表 = 树状图 3-7 项分析）
+
+> **本节已被取代（2026-10-16 补注）**：分栋抄表分析没有加在光伏投资回收屏里，而是独立成屏 `pv-meter-analysis`（`frontend/src/views/analysis/PvMeterAnaView.vue`）。光伏投资回收屏只留附表6 口径（`PvRoiView.vue:6` 注释）。分栋分析的数据口径看 [PV-ANALYSIS-SPEC](PV-ANALYSIS-SPEC.md)，版式看 [PV-ANALYSIS-SCREEN-V4](PV-ANALYSIS-SCREEN-V4.md)。下文只作历史。
 
 既有内容（附表6 口径投资回收）原样保留，下方新增「分栋抄表分析」区（数据源 pv_reading/pv_station；无数据整区 AnaEmpty 引导去分栋抄表录入）：
 

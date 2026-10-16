@@ -1,5 +1,7 @@
 # 数据中心首页重设计（DATA-HOME-REDESIGN）
 
+> ⚠ **已被取代**：PR #22 把首页改成「本月出账」，见 [2026-09-03-sidebar-ux-redesign-design.md](2026-09-03-sidebar-ux-redesign-design.md) §5。
+
 2026-08-18 立档。触发：用户反馈「打开首页无从下手，信息量过多，没有主次」。
 
 ## 0. 诊断（根因，非排版问题）
